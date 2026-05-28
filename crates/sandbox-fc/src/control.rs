@@ -620,9 +620,10 @@ fn resolve_control_socket_in(
         let control_sock = SockPaths::new(sock_parent.join(sandbox_id.to_string())).control_sock();
         return match control_sock.try_exists() {
             Ok(true) => Ok(control_sock),
-            Ok(false) => Err(SandboxControlError::NotFound(format!(
-                "no running sandbox matches '{input}' (no control.sock found)"
-            ))),
+            Ok(false) => {
+                let _entries = read_control_socket_parent(sock_parent)?;
+                Err(control_socket_not_found(input))
+            }
             Err(e) => Err(SandboxControlError::Connection(format!(
                 "cannot check {}: {e}",
                 control_sock.display()
@@ -630,12 +631,7 @@ fn resolve_control_socket_in(
         };
     }
 
-    let entries = std::fs::read_dir(sock_parent).map_err(|e| {
-        SandboxControlError::Connection(format!(
-            "cannot read {}: {e} (is a sandbox running?)",
-            sock_parent.display()
-        ))
-    })?;
+    let entries = read_control_socket_parent(sock_parent)?;
 
     let mut matches: Vec<(String, PathBuf)> = Vec::new();
     for entry in entries {
@@ -666,9 +662,7 @@ fn resolve_control_socket_in(
     }
 
     match matches.as_slice() {
-        [] => Err(SandboxControlError::NotFound(format!(
-            "no running sandbox matches '{input}' (no control.sock found)"
-        ))),
+        [] => Err(control_socket_not_found(input)),
         [single] => Ok(single.1.clone()),
         _ => {
             let ids: Vec<&str> = matches.iter().map(|(id, _)| id.as_str()).collect();
@@ -678,6 +672,21 @@ fn resolve_control_socket_in(
             )))
         }
     }
+}
+
+fn read_control_socket_parent(sock_parent: &Path) -> Result<std::fs::ReadDir, SandboxControlError> {
+    std::fs::read_dir(sock_parent).map_err(|e| {
+        SandboxControlError::Connection(format!(
+            "cannot read {}: {e} (is a sandbox running?)",
+            sock_parent.display()
+        ))
+    })
+}
+
+fn control_socket_not_found(input: &str) -> SandboxControlError {
+    SandboxControlError::NotFound(format!(
+        "no running sandbox matches '{input}' (no control.sock found)"
+    ))
 }
 
 #[cfg(test)]
@@ -1377,6 +1386,17 @@ mod tests {
         let missing = dir.path().join("missing");
 
         let err = resolve_control_socket_in(&missing, "nonexistent-id-12345").unwrap_err();
+
+        assert!(matches!(err, SandboxControlError::Connection(_)));
+    }
+
+    #[test]
+    fn resolve_control_socket_full_id_missing_parent_returns_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        let sandbox_id = SandboxId::new_v4();
+
+        let err = resolve_control_socket_in(&missing, &sandbox_id.to_string()).unwrap_err();
 
         assert!(matches!(err, SandboxControlError::Connection(_)));
     }
