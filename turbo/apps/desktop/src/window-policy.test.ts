@@ -1740,6 +1740,22 @@ describe("computer use desktop runtime", () => {
         key: "Command+Shift+S",
         normalizedKey: "Command+Shift+S",
       },
+      {
+        key: "shift+semicolon",
+        normalizedKey: "Shift+Semicolon",
+      },
+      {
+        key: "Control_L+J",
+        normalizedKey: "Control+J",
+      },
+      {
+        key: "ctrl+alt+n",
+        normalizedKey: "Control+Option+N",
+      },
+      {
+        key: "Shift+;",
+        normalizedKey: "Shift+Semicolon",
+      },
     ];
 
     for (const testCase of cases) {
@@ -1838,7 +1854,7 @@ describe("computer use desktop runtime", () => {
     pressKey.mockRejectedValue(
       new ComputerUseNativeHelperError(
         "unsupported_command",
-        "Unsupported key specification: Launchpad",
+        "Unsupported key specification: Launchpad. Use xdotool-style names such as shift+semicolon, Control_L+J, ctrl+alt+n, or BackSpace.",
       ),
     );
     const result = await executeComputerUseCommand(
@@ -1858,7 +1874,8 @@ describe("computer use desktop runtime", () => {
       status: "failed",
       error: {
         code: "unsupported_command",
-        message: "Unsupported key specification: Launchpad",
+        message:
+          "Unsupported key specification: Launchpad. Use xdotool-style names such as shift+semicolon, Control_L+J, ctrl+alt+n, or BackSpace.",
       },
     });
     expect(pressKey).toHaveBeenCalledWith({

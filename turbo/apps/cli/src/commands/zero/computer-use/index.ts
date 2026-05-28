@@ -83,6 +83,8 @@ Notes:
   get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
   type-text sends literal keyboard input to the target app's current focus. Use
   set-value when you need deterministic accessibility value assignment.
+  press-key accepts xdotool-style names such as shift+semicolon, Control_L+J,
+  ctrl+alt+n, and BackSpace, plus existing macOS-style forms such as Command+L.
 
 Examples:
   List available apps:
@@ -101,7 +103,7 @@ Examples:
     zero computer-use type-text --app Safari --text "Hello"
 
   Press a keyboard shortcut:
-    zero computer-use press-key --app Safari --key Command+L
+    zero computer-use press-key --app Safari --key shift+semicolon
 
   Open an app without activating the current foreground app:
     zero computer-use open-app --app Things`;
@@ -547,7 +549,7 @@ const pressKeyCommand = appOption(
       .description("Send a background key or key combination to the target app")
       .requiredOption(
         "--key <key>",
-        "Key or key combination to press, for example Command+K or Control+K",
+        "Key or xdotool-style combination, for example Command+K, shift+semicolon, or Control_L+J",
       )
       .action(
         withErrorHandler(async (options: ComputerUsePressKeyOptions) => {

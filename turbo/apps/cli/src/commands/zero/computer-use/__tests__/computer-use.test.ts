@@ -174,6 +174,8 @@ describe("computer-use command visibility", () => {
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
     expect(helpOutput).toContain("/tmp/vm0/computer-use");
     expect(helpOutput).toContain("overwrites the same files");
+    expect(helpOutput).toContain("shift+semicolon");
+    expect(helpOutput).toContain("Control_L+J");
   });
 
   it("should write screenshot and app state data to local files in command result console output", async () => {

@@ -599,7 +599,7 @@ describe("computer use native backend", () => {
         "AXShowMenu",
       ],
       ["type-text", "--app", "Safari", "--text", "hello"],
-      ["press-key", "--app", "Safari", "--key", "Escape"],
+      ["press-key", "--app", "Safari", "--key", "shift+semicolon"],
     ];
 
     try {
@@ -658,7 +658,7 @@ describe("computer use native backend", () => {
         text: "hello",
       });
       expect(publicCommandRequests[7]?.payload).toMatchObject({
-        key: "Escape",
+        key: "shift+semicolon",
       });
     } finally {
       await stopDaemon(daemonDir);

@@ -214,14 +214,58 @@ let keyModifierDefinitions = [
 
 let keyModifierAliases = [
     "alt": "option",
+    "altl": "option",
+    "altr": "option",
     "cmd": "command",
+    "cmdl": "command",
+    "cmdr": "command",
     "command": "command",
+    "commandl": "command",
+    "commandr": "command",
     "control": "control",
+    "controll": "control",
+    "controlr": "control",
     "ctrl": "control",
+    "ctrll": "control",
+    "ctrlr": "control",
+    "hyper": "command",
+    "hyperl": "command",
+    "hyperr": "command",
     "meta": "command",
+    "metal": "command",
+    "metar": "command",
     "option": "option",
+    "optionl": "option",
+    "optionr": "option",
     "shift": "shift",
+    "shiftl": "shift",
+    "shiftr": "shift",
     "super": "command",
+    "superl": "command",
+    "superr": "command",
+]
+
+let keyAliases = [
+    "apostrophe": "'",
+    "backquote": "`",
+    "backslash": "\\",
+    "bracketleft": "[",
+    "bracketright": "]",
+    "comma": ",",
+    "equal": "=",
+    "equals": "=",
+    "grave": "`",
+    "leftbracket": "[",
+    "minus": "-",
+    "next": "pagedown",
+    "period": ".",
+    "pgdn": "pagedown",
+    "pgup": "pageup",
+    "prior": "pageup",
+    "quote": "'",
+    "rightbracket": "]",
+    "semicolon": ";",
+    "slash": "/",
 ]
 
 let keyCodes = [
@@ -309,6 +353,17 @@ let keyCodes = [
 ]
 
 let keyDisplayNames = [
+    "'": "Apostrophe",
+    ",": "Comma",
+    "-": "Minus",
+    ".": "Period",
+    "/": "Slash",
+    ";": "Semicolon",
+    "=": "Equal",
+    "[": "BracketLeft",
+    "\\": "Backslash",
+    "]": "BracketRight",
+    "`": "Grave",
     "backspace": "Backspace",
     "delete": "Backspace",
     "down": "Down",
@@ -330,6 +385,9 @@ let keyDisplayNames = [
     "up": "Up",
     "uparrow": "Up",
 ]
+
+let keySyntaxHint =
+    "Use xdotool-style names such as shift+semicolon, Control_L+J, ctrl+alt+n, or BackSpace."
 
 struct WindowTarget {
     let pid: pid_t
@@ -3071,12 +3129,19 @@ func performElementAccessibilityClick(
 }
 
 func normalizeKeyToken(_ value: String) -> String {
-    return value
-        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.count == 1 {
+        return trimmed.lowercased()
+    }
+    return trimmed
         .lowercased()
         .filter { character in
             !character.isWhitespace && character != "_" && character != "-"
         }
+}
+
+func canonicalKeyToken(_ token: String) -> String {
+    return keyAliases[token] ?? token
 }
 
 func displayKeyToken(_ token: String) -> String {
@@ -3116,10 +3181,11 @@ func parseKeyPress(_ key: String) throws -> ParsedKeyPress {
             modifierNames.insert(modifierName)
             continue
         }
-        guard let code = keyCodes[token] else {
+        let keyToken = canonicalKeyToken(token)
+        guard let code = keyCodes[keyToken] else {
             throw HelperFailure(
                 code: "unsupported_command",
-                message: "Unsupported key specification: \(rawPart)"
+                message: "Unsupported key specification: \(rawPart). \(keySyntaxHint)"
             )
         }
         if keyCode != nil {
@@ -3129,7 +3195,7 @@ func parseKeyPress(_ key: String) throws -> ParsedKeyPress {
             )
         }
         keyCode = code
-        displayKey = displayKeyToken(token)
+        displayKey = displayKeyToken(keyToken)
     }
 
     guard let keyCode, let displayKey else {
