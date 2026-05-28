@@ -1173,6 +1173,56 @@ class TestCompiledFirewallMatching:
         assert matched.reason == "malformed_firewall_config"
 
     @pytest.mark.parametrize(
+        "base",
+        [
+            "https://api.github.com/repos/{owner}?token=1",
+            "https://{sub}.github.com/repos/{owner}#section",
+        ],
+    )
+    def test_malformed_parameterized_base_query_or_fragment_respects_base_path_scope(
+        self,
+        base,
+    ):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        outside_path = matching.match_compiled_firewall_request(
+            "https://api.github.com/users/octocat",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        empty_owner_segment = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos//repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert outside_path is None
+        assert empty_owner_segment is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
         ("base", "url"),
         [
             ("https://user@api.github.com", "https://api.github.com/repos/org/repo"),
@@ -1215,6 +1265,51 @@ class TestCompiledFirewallMatching:
         )
 
         assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
+        ("base", "matched_url"),
+        [
+            ("https://user@api.github.com/repos", "https://api.github.com/repos/org/repo"),
+            ("https://api.github.com:bad/repos", "https://api.github.com/repos/org/repo"),
+            (
+                "https://user@{sub}.github.com/repos/{owner}",
+                "https://api.github.com/repos/org/repo",
+            ),
+        ],
+    )
+    def test_malformed_base_authority_respects_base_path_scope(self, base, matched_url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        outside_path = matching.match_compiled_firewall_request(
+            "https://api.github.com/users/octocat",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            matched_url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert outside_path is None
         assert isinstance(matched, matching.FirewallBlock)
         assert matched.permissions == ()
         assert matched.reason == "malformed_firewall_config"
