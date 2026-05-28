@@ -788,7 +788,11 @@ class TestCompiledFirewallMatching:
         assert compiled.permissions == ("repo-read",)
         assert compiled.reason == "permission_denied"
 
-    def test_later_allowed_firewall_wins_after_earlier_unknown_match(self):
+    @pytest.mark.parametrize("broad_unknown_policy", ["deny", "allow"])
+    def test_later_allowed_firewall_wins_after_earlier_unknown_match(
+        self,
+        broad_unknown_policy,
+    ):
         fws = [
             {
                 "name": "broad",
@@ -814,7 +818,7 @@ class TestCompiledFirewallMatching:
             },
         ]
         policies = {
-            "broad": {"allow": [], "deny": [], "unknownPolicy": "deny"},
+            "broad": {"allow": [], "deny": [], "unknownPolicy": broad_unknown_policy},
             "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
         }
         url = "https://api.example.com/items/123"
