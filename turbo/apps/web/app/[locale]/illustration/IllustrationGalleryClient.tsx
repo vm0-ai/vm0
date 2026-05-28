@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ILLUSTRATION_STYLES, type IllustrationStyle } from "./data";
 
-const ASSET_BASE = "/illustration";
+const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
 
 interface LightboxState {
   style: IllustrationStyle;

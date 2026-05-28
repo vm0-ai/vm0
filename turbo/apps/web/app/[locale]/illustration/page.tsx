@@ -6,6 +6,7 @@ import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
 import { ILLUSTRATION_STYLES } from "./data";
 
 const BASE_URL = "https://www.vm0.ai";
+const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -80,7 +81,7 @@ export default async function IllustrationPage({ params }: PageProps) {
         "@type": "ListItem",
         position: i + 1,
         name: style.title,
-        image: `${BASE_URL}/illustration/images/${style.image}`,
+        image: `${ASSET_BASE}/images/${style.image}`,
       };
     }),
   };
