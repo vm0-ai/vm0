@@ -3007,7 +3007,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Editorial spot illustration on a warm cream background — grainy charcoal-stippled hands, outline-free flat two-tone color blocks with internal patterns, and scattered ambient marks.",
     desc: 'Grainy-duotone editorial spot illustration: warm cream off-white background, grainy charcoal-stippled hands (and occasional faces) drawn in textured black ink, paired with free-floating flat two-tone color blocks that carry NO outlines and are filled with internal patterns (grid, dots, spiral, hatching, squiggles, wavy lines), surrounded by scattered ambient marks (zigzags, triangles, x marks, circles, dashes). Square 1:1 scene-as-metaphor compositions. Five creative dials per brief: palette (two flat hues, e.g. teal+yellow / coral+sage / lavender+mustard / navy+peach / burgundy+dusty pink), elements (hand(s) + 1-3 props like flag, sprout, magnifier, balloons, ladder), scene archetype (Launch / Grow / Connect / Discover / Communicate / Reflect / Navigate / Care / Transform / Build), complexity (L1 minimal / L2 balanced / L3 rich), and mood (celebratory / calm / curious / reflective / determined / warm / quiet). Trigger when user says /grainy-duotone, asks for a "grainy two-tone editorial illustration", "charcoal-stippled hand illustration", "duotone editorial spot", or briefs with a scene metaphor + two-color palette + complexity.',
-    source: { path: "illustration-template/grainy-duotone" },
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/grainy-duotone",
+    },
   },
   {
     id: "vm0:image-style:op-ed-cover",
@@ -3016,7 +3020,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Editorial magazine op-ed cover — flat-vector scene with paper grain, elongated ink-line characters, muted retro palette, and a serif headline block in the lower-right.",
     desc: 'Editorial magazine op-ed cover illustration. Flat-vector + paper-grain scene with expressive elongated ink-line characters, gentle painterly shading, 1950s-60s editorial mood, and a serif headline overlay block in the lower-right corner carrying a witty contrarian or declarative title with two short lines of italic body copy. 5-axis framework: palette (background + accent + ink), complexity (L1 single hero / L2 small ensemble / L3 busy crowd), scene metaphor (specific cultural microcosm), headline voice (declarative / pun / appreciative / contrarian), and headline block style (solid vs. translucent). Trigger when user says /op-ed-cover, asks for an "editorial magazine illustration", an "op-ed cover", a "magazine essay illustration", or a scene with a headline overlay in this style.',
-    source: { path: "illustration-template/op-ed-cover" },
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/op-ed-cover",
+    },
   },
   {
     id: "vm0:image-style:grain-poster",
@@ -3025,7 +3033,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Flat-vector editorial poster of a serene full-body figure with one hero prop — riso grain on a single textile, closed-eye smile + red cheek blush, muted limited palette.",
     desc: 'Grain Poster — flat-vector editorial illustration of a serene full-body figure interacting with one hero prop (bicycle, bouquet, cat, book, skateboard, sun hat, guitar, dog leash). Closed-eye smile + single round red cheek blush + dark nose mark + solid black hair, silhouette-first (no inked outlines). Riso/halftone grain confined to exactly ONE textile element (skirt or trousers); every other surface is flat color. Muted single-hue background, generous negative space, no headlines or wordmarks. Six tunable dials: palette (cool-dawn · sunset-coral · twilight · forest-green · custom), mood, scene, cast, complexity (L1/L2/L3), framing. Strongest at L1 + side-profile + solo. Trigger when user says /grain-poster, asks for a "flat-vector editorial poster", "riso-grain figure poster", "grainy editorial illustration", or briefs with a scene + palette + cast in this house style.',
-    source: { path: "illustration-template/grain-poster" },
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/grain-poster",
+    },
   },
   {
     id: "vm0:image-style:light-pop-portrait",
@@ -3034,7 +3046,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Light hand-drawn flat-vector single-character portrait on a fully saturated color block — chunky black hair, big shiny eyes, tiny red nose, pink five-point-star sparkle blush.",
     desc: 'Light Pop Portrait — a hand-drawn flat-vector single-character portrait style for playful avatars, mood pieces, and editorial character cards. Square 1:1 canvas filled with one fully saturated background hue; a single child–tween character with chunky glossy-black hair (with one or two flyaway strands), big round shiny eyes (single white glint each, thin lashes above), tiny round red nose, expressive small mouth, and pink FIVE-POINT STAR sparkle blush on the cheeks (never solid dots). Thin delicate slightly-wavy hand-drawn contour lines, flat solid fills only, no gradients or texture, ~5-color palette per piece. Eight creative dials: expression, hairstyle, gender register, pose, palette, headwear, prop, outfit. Trigger when user says /light-pop-portrait, asks for a "light pop portrait", "flat-vector character portrait", "saturated color-block character", or briefs with expression + hairstyle + palette + prop.',
-    source: { path: "illustration-template/light-pop-portrait" },
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/light-pop-portrait",
+    },
   },
   {
     id: "vm0:image-style:endpaper",
@@ -3043,7 +3059,11 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     description:
       "Riso-grain flat-vector collection of chill characters or objects scattered across a saturated solid color field, with two-tone interior shading and closed-eye sleepy faces.",
     desc: 'Riso-grain flat-vector editorial collection illustration. Many small animals or objects scattered across a fully saturated solid color background — like the inside endpaper of a children\'s picture book. Subtle riso/screenprint grain inside every fill, two-tone interior shading on every character (darker top + lighter belly), closed crescent-eye sleepy smiles with tiny dot noses, NO outlines on character bodies, loose hand-drawn line details on props (yarn spirals, leaf veins, pot stripes), scattered curated composition where characters overlap and touch the canvas edges. Five dials: background hue, cast (cats/dogs/foxes/birds/sea-creatures/houseplants/kitchen-objects/etc.), character palette (3–5 curated fills), density (L1 sparse / L2 balanced / L3 packed), prop vocabulary matched to cast. Trigger when user says /endpaper, asks for an "endpaper illustration", a "scattered animal or object collection on saturated color", a "children\'s-book endpaper scene", or briefs with a cast + background hue + density + palette.',
-    source: { path: "illustration-template/endpaper" },
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/endpaper",
+    },
   },
   {
     id: "vm0:image-style:editorial-flatfolk",
