@@ -138,6 +138,54 @@ async def test_firewall_malformed_config_block_reports_reason(
     assert proxy_log_entry["reason"] == "malformed_firewall_config"
 
 
+async def test_firewall_malformed_auth_config_block_reports_reason(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    """Malformed auth config blocks before the auth handler runs."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": None},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["permissions"] == []
+    assert body["reason"] == "malformed_firewall_config"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["reason"] == "malformed_firewall_config"
+
+
 async def test_firewall_malformed_network_policy_block_reports_reason(
     tmp_path, real_flow, mitm_ctx, headers
 ):

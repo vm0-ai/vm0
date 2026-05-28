@@ -89,6 +89,7 @@ class _CompiledApi(NamedTuple):
     base: _CompiledBase
     permissions: tuple[_CompiledPermission, ...]
     base_malformed: bool
+    auth_malformed: bool
     # True when API compilation encountered malformed permissions/rules config.
     has_malformed_rules: bool
 
@@ -560,6 +561,29 @@ def _compiled_base_params_are_valid(base: _CompiledBase) -> bool:
     return True
 
 
+def _is_string_record(value: object) -> bool:
+    return isinstance(value, dict) and all(
+        isinstance(key, str) and isinstance(record_value, str)
+        for key, record_value in value.items()
+    )
+
+
+def _auth_config_is_valid(api_entry: dict) -> bool:
+    if "auth" not in api_entry:
+        return True
+
+    raw_auth = api_entry["auth"]
+    if not isinstance(raw_auth, dict):
+        return False
+
+    if "headers" in raw_auth and not _is_string_record(raw_auth["headers"]):
+        return False
+    if "base" in raw_auth and not isinstance(raw_auth["base"], str):
+        return False
+
+    return "query" not in raw_auth or _is_string_record(raw_auth["query"])
+
+
 def _path_specificity(
     pattern: CompiledPathPattern,
 ) -> _PathSpecificity:
@@ -827,7 +851,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
             continue
 
         raw_name = fw_entry.get("name")
-        name_malformed = not isinstance(raw_name, str)
+        name_malformed = not isinstance(raw_name, str) or raw_name == ""
         firewall_name = raw_name if isinstance(raw_name, str) else ""
 
         raw_apis = fw_entry.get("apis", [])
@@ -845,6 +869,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
             if base is None:
                 continue
             base_malformed = not _compiled_base_params_are_valid(base)
+            auth_malformed = not _auth_config_is_valid(api_entry)
 
             compiled_permissions: list[_CompiledPermission] = []
             has_malformed_rules = name_malformed
@@ -896,6 +921,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                     base,
                     tuple(compiled_permissions),
                     base_malformed,
+                    auth_malformed,
                     has_malformed_rules,
                 )
             )
@@ -1128,10 +1154,12 @@ def match_compiled_firewall_request(
                     base_params,
                 )
             if (
-                api_entry.base_malformed or api_entry.has_malformed_rules
+                api_entry.base_malformed
+                or api_entry.auth_malformed
+                or api_entry.has_malformed_rules
             ) and malformed_match is None:
                 malformed_match = (api_entry.base.raw, fw_entry.name, upper_method, rel_path)
-            if fw_entry.name_malformed or api_entry.base_malformed:
+            if fw_entry.name_malformed or api_entry.base_malformed or api_entry.auth_malformed:
                 continue
             if compiled_network_policies.top_level_malformed or (
                 policy is not None and policy.permission_malformed

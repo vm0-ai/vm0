@@ -824,6 +824,17 @@ class TestCompiledFirewallMatching:
                     }
                 ],
             },
+            {
+                "name": "",
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "permissions": [
+                            {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        ],
+                    }
+                ],
+            },
         ],
     )
     def test_malformed_firewall_name_fails_closed_after_base_match(self, firewall):
@@ -913,6 +924,92 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "repo-read"
 
+    def test_valid_later_permission_can_still_allow_after_malformed_base(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.{sub+}.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "bad-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "specific",
+                "apis": [
+                    {
+                        "base": "https://api.us.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer specific"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {"allow": ["bad-read"], "deny": [], "unknownPolicy": "allow"},
+            "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.us.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.name == "specific"
+        assert result.permission == "items-read"
+
+    def test_valid_later_permission_can_still_allow_after_malformed_auth(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": None},
+                        "permissions": [
+                            {"name": "bad-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "specific",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer specific"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {"allow": ["bad-read"], "deny": [], "unknownPolicy": "allow"},
+            "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.name == "specific"
+        assert result.permission == "items-read"
+
     def test_malformed_rules_shape_fails_closed_without_compile_error(self):
         fws = wrap_firewalls(
             [
@@ -935,6 +1032,57 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
+        "auth_config",
+        [
+            None,
+            "Bearer token",
+            {"headers": None},
+            {"headers": "Authorization"},
+            {"headers": {"Authorization": 123}},
+            {"headers": {123: "Bearer token"}},
+            {"base": None},
+            {"base": 123},
+            {"query": None},
+            {"query": "api_key"},
+            {"query": {"api_key": 123}},
+            {"query": {123: "token"}},
+        ],
+    )
+    def test_malformed_auth_config_fails_closed_after_base_match(self, auth_config):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": auth_config,
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+        compiled_firewalls = self._compiled(fws)
+
+        unrelated = matching.match_compiled_firewall_request(
+            "https://api.gitlab.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unrelated is None
         assert isinstance(result, matching.FirewallBlock)
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
