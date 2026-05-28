@@ -875,6 +875,48 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ("items-read",)
         assert result.reason == "permission_denied"
 
+    def test_later_malformed_policy_wins_after_earlier_unknown_allow(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [],
+                    }
+                ],
+            },
+            {
+                "name": "specific",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer specific"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {"allow": [], "deny": [], "unknownPolicy": "allow"},
+            "specific": {"deny": "items-read", "unknownPolicy": "deny"},
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies(policies),
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.name == "specific"
+        assert result.permissions == ()
+        assert result.reason == "malformed_network_policy"
+
     def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match(self):
         fws = [
             {
