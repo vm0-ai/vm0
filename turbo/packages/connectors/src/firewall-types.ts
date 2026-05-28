@@ -416,13 +416,22 @@ function findNextBasicAuthTemplateStart(
   template: string,
   index: number,
 ): number {
-  let start = template.indexOf("${{", index);
-  while (start !== -1) {
-    const contentStart = skipTemplateWhitespace(template, start + "${{".length);
-    if (template.startsWith("basic(", contentStart)) {
+  let basicIndex = template.indexOf("basic(", index);
+  while (basicIndex !== -1) {
+    let contentStart = basicIndex;
+    while (
+      contentStart > index &&
+      isTemplateWhitespace(template[contentStart - 1]!)
+    ) {
+      contentStart -= 1;
+    }
+
+    const start = contentStart - "${{".length;
+    if (start >= index && template.startsWith("${{", start)) {
       return start;
     }
-    start = template.indexOf("${{", start + "${{".length);
+
+    basicIndex = template.indexOf("basic(", basicIndex + "basic(".length);
   }
   return -1;
 }
