@@ -148,7 +148,7 @@ const EXPECTED_PROVIDER_AUTHORIZATION_BASE_URLS = {
   todoist: "https://todoist.com/oauth/authorize",
   vercel: "https://vercel.com/integrations/test-integration/new",
   webflow: "https://webflow.com/oauth/authorize",
-  x: "https://twitter.com/i/oauth2/authorize",
+  x: "https://x.com/i/oauth2/authorize",
   xero: "https://login.xero.com/identity/connect/authorize",
   zoom: "https://zoom.us/oauth/authorize",
 } as const satisfies Record<AuthCodeGrantConnectorType, string>;

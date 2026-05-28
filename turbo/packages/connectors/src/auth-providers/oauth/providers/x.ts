@@ -3,10 +3,10 @@ import { z } from "zod";
 import { getAuthCodeGrantConfig } from "../grant-config";
 import { throwOAuthError } from "../error";
 
-const X_AUTHORIZATION_URL = "https://twitter.com/i/oauth2/authorize";
+const X_AUTHORIZATION_URL = "https://x.com/i/oauth2/authorize";
 
 const X_USERS_ME_URL =
-  "https://api.twitter.com/2/users/me?user.fields=id,username,name";
+  "https://api.x.com/2/users/me?user.fields=id,username,name";
 
 interface XUserInfo {
   id: string;
@@ -89,7 +89,7 @@ export async function buildXAuthorizationUrl(
 /**
  * Refresh an X access token using the refresh token.
  * PKCE is not required for refresh — only client credentials and refresh token.
- * Access token expires_in: 7200s (2 hours). Ref: https://developer.twitter.com/en/docs/authentication/oauth-2-0/authorization-code
+ * Access token expires_in: 7200s (2 hours). Ref: https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code
  */
 export async function refreshXToken(
   clientId: string,

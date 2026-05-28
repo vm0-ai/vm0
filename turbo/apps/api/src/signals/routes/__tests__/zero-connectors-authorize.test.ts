@@ -574,7 +574,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(location).not.toBeNull();
     const url = new URL(location!);
     expect(`${url.origin}${url.pathname}`).toBe(
-      "https://twitter.com/i/oauth2/authorize",
+      "https://x.com/i/oauth2/authorize",
     );
     expect(url.searchParams.get("client_id")).toBe("x-test-client-id");
     expect(url.searchParams.get("code_challenge")).toMatch(/^[A-Za-z0-9_-]+$/);

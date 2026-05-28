@@ -12,7 +12,7 @@ export const x = {
         helpText: "Sign in with X to grant read access.",
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.twitter.com/2/oauth2/token",
+          tokenUrl: "https://api.x.com/2/oauth2/token",
           client: {
             clientRegistration: "static",
             clientType: "confidential",
