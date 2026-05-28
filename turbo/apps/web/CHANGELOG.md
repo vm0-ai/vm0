@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.397.0](https://github.com/vm0-ai/vm0/compare/web-v12.396.1...web-v12.397.0) (2026-05-28)
+
+
+### Features
+
+* **web:** use two-column layout on /web-design for larger previews ([#15292](https://github.com/vm0-ai/vm0/issues/15292)) ([656ec59](https://github.com/vm0-ai/vm0/commit/656ec59964283f0a13bde11aed24415d8fcce7c8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.45.0
+    * @vm0/core bumped to 8.301.1
+    * @vm0/db bumped to 1.22.0
+
 ## [12.396.1](https://github.com/vm0-ai/vm0/compare/web-v12.396.0...web-v12.396.1) (2026-05-28)
 
 
