@@ -1360,6 +1360,7 @@ describe("computer use desktop runtime", () => {
       elementId: "w0.c0.v2",
       button: "left",
       clickCount: 1,
+      foregroundRecovery: "on-window-unavailable",
     });
     expect(result).toMatchObject({
       status: "succeeded",
@@ -1425,6 +1426,7 @@ describe("computer use desktop runtime", () => {
       elementId: "sidebar.inbox",
       button: "left",
       clickCount: 1,
+      foregroundRecovery: "on-window-unavailable",
     });
     expect(result.status).toBe("succeeded");
     if (result.status !== "succeeded") {
@@ -1548,6 +1550,7 @@ describe("computer use desktop runtime", () => {
       elementIndex: 1,
       button: "left",
       clickCount: 1,
+      foregroundRecovery: "on-window-unavailable",
     });
     if (click.status !== "succeeded") {
       throw new Error("expected click to succeed");
@@ -1683,6 +1686,7 @@ describe("computer use desktop runtime", () => {
       windowFrame: { x: 100, y: 200, width: 1600, height: 1200 },
       button: "right",
       clickCount: 2,
+      foregroundRecovery: "on-window-unavailable",
     });
   });
 
@@ -1742,6 +1746,7 @@ describe("computer use desktop runtime", () => {
       sourceBounds: { x: 0, y: 0, width: 1440, height: 900 },
       button: "left",
       clickCount: 1,
+      foregroundRecovery: "on-window-unavailable",
     });
   });
 
@@ -1836,6 +1841,7 @@ describe("computer use desktop runtime", () => {
       windowFrame: { x: 40, y: 80, width: 800, height: 600 },
       button: "left",
       clickCount: 1,
+      foregroundRecovery: "on-window-unavailable",
     });
   });
 
@@ -1961,6 +1967,7 @@ describe("computer use desktop runtime", () => {
         {
           app: "Safari",
           key: testCase.key,
+          foregroundRecovery: "on-window-unavailable",
         },
       ]);
     }
@@ -2011,8 +2018,72 @@ describe("computer use desktop runtime", () => {
     expect(pressKey).toHaveBeenCalledWith({
       app: "Safari",
       key: "Command+K",
+      foregroundRecovery: "on-window-unavailable",
     });
     expect(openApp).not.toHaveBeenCalled();
+  });
+
+  it("preserves foreground recovery metadata from native key actions", async () => {
+    const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
+    pressKey.mockResolvedValue({
+      ...nativeDispatchResult(
+        "background_keyboard_event",
+        "app_process",
+        "background_app_shortcut",
+      ),
+      normalizedKey: "Command+N",
+      frontmostRestored: false,
+      foregroundRecovery: {
+        triggered: true,
+        policy: "always",
+        reason: "policy_always",
+        activationMethod: "running_app_activate",
+        targetWindowId: 123,
+      },
+    });
+    const result = await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "keyboard.press_key",
+        payload: {
+          app: "Things",
+          key: "Command+N",
+          foregroundRecovery: "always",
+        },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          pressKey,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
+      },
+    );
+
+    expect(pressKey).toHaveBeenCalledWith({
+      app: "Things",
+      key: "Command+N",
+      foregroundRecovery: "always",
+    });
+    expect(result).toMatchObject({
+      status: "succeeded",
+      result: {
+        action: {
+          key: "Command+N",
+          frontmostRestored: false,
+          foregroundRecovery: {
+            triggered: true,
+            policy: "always",
+            reason: "policy_always",
+            activationMethod: "running_app_activate",
+            targetWindowId: 123,
+          },
+        },
+      },
+    });
   });
 
   it("surfaces native press-key syntax rejections", async () => {
@@ -2047,6 +2118,7 @@ describe("computer use desktop runtime", () => {
     expect(pressKey).toHaveBeenCalledWith({
       app: "Safari",
       key: "Command+Launchpad",
+      foregroundRecovery: "on-window-unavailable",
     });
   });
 
@@ -2089,6 +2161,10 @@ describe("computer use desktop runtime", () => {
         },
       },
     });
-    expect(typeText).toHaveBeenCalledWith({ app: "Safari", text: "hello" });
+    expect(typeText).toHaveBeenCalledWith({
+      app: "Safari",
+      text: "hello",
+      foregroundRecovery: "on-window-unavailable",
+    });
   });
 });

@@ -449,6 +449,12 @@ struct CGWindowCandidate {
     }
 }
 
+enum ForegroundRecoveryPolicy: String {
+    case never
+    case onWindowUnavailable = "on-window-unavailable"
+    case always
+}
+
 struct KeyModifierDefinition {
     let name: String
     let displayName: String
@@ -484,11 +490,15 @@ enum WindowSpaceDetector {
         Int32,
         CFArray
     ) -> CFArray?
+    private typealias CopyManagedDisplaySpacesFn = @convention(c) (Int32) -> CFArray?
+    private typealias ManagedDisplaySetCurrentSpaceFn = @convention(c) (Int32, CFString, UInt64) -> Int32
 
     private struct Resolved {
         let main: MainConnectionFn
         let getActiveSpace: GetActiveSpaceFn
         let copySpacesForWindows: CopySpacesForWindowsFn
+        let copyManagedDisplaySpaces: CopyManagedDisplaySpacesFn?
+        let managedDisplaySetCurrentSpace: ManagedDisplaySetCurrentSpaceFn?
     }
 
     private static let resolved: Resolved? = {
@@ -503,7 +513,13 @@ enum WindowSpaceDetector {
         return Resolved(
             main: unsafeBitCast(main, to: MainConnectionFn.self),
             getActiveSpace: unsafeBitCast(active, to: GetActiveSpaceFn.self),
-            copySpacesForWindows: unsafeBitCast(copySpaces, to: CopySpacesForWindowsFn.self)
+            copySpacesForWindows: unsafeBitCast(copySpaces, to: CopySpacesForWindowsFn.self),
+            copyManagedDisplaySpaces: dlsym(rtldDefault, "SLSCopyManagedDisplaySpaces").map {
+                unsafeBitCast($0, to: CopyManagedDisplaySpacesFn.self)
+            },
+            managedDisplaySetCurrentSpace: dlsym(rtldDefault, "SLSManagedDisplaySetCurrentSpace").map {
+                unsafeBitCast($0, to: ManagedDisplaySetCurrentSpaceFn.self)
+            }
         )
     }()
 
@@ -528,6 +544,41 @@ enum WindowSpaceDetector {
         return rawSpaces.map { space in
             space.uint64Value
         }
+    }
+
+    private static func spaceId(from record: [String: Any]) -> UInt64? {
+        if let id = record["id64"] as? NSNumber {
+            return id.uint64Value
+        }
+        if let id = record["ManagedSpaceID"] as? NSNumber {
+            return id.uint64Value
+        }
+        return nil
+    }
+
+    static func switchToSpace(_ targetSpaceId: UInt64) -> Bool {
+        guard let resolved,
+              let copyManagedDisplaySpaces = resolved.copyManagedDisplaySpaces,
+              let managedDisplaySetCurrentSpace = resolved.managedDisplaySetCurrentSpace
+        else {
+            return false
+        }
+        let connectionId = Int32(bitPattern: resolved.main())
+        guard let displays = copyManagedDisplaySpaces(connectionId) as? [[String: Any]] else {
+            return false
+        }
+        for display in displays {
+            guard let displayIdentifier = display["Display Identifier"] as? String,
+                  let spaces = display["Spaces"] as? [[String: Any]],
+                  spaces.contains(where: { space in
+                      spaceId(from: space) == targetSpaceId
+                  })
+            else {
+                continue
+            }
+            return managedDisplaySetCurrentSpace(connectionId, displayIdentifier as CFString, targetSpaceId) == 0
+        }
+        return false
     }
 }
 
@@ -1193,6 +1244,63 @@ struct AddressedEventDispatcher {
     }
 }
 
+func postForegroundKey(keyCode: Int, keyDown: Bool, flags: Int) throws {
+    guard let event = CGEvent(
+        keyboardEventSource: nil,
+        virtualKey: CGKeyCode(keyCode),
+        keyDown: keyDown
+    ) else {
+        throw HelperFailure(code: "accessibility_unavailable", message: "Unable to create keyboard event")
+    }
+    event.flags = CGEventFlags(rawValue: UInt64(flags))
+    event.post(tap: .cghidEventTap)
+}
+
+func postForegroundParsedKeyPress(_ parsed: ParsedKeyPress) throws {
+    var activeFlags = 0
+    for modifier in parsed.modifiers {
+        activeFlags |= modifier.flag
+        try postForegroundKey(keyCode: modifier.keyCode, keyDown: true, flags: activeFlags)
+    }
+    try postForegroundKey(keyCode: parsed.keyCode, keyDown: true, flags: parsed.flags)
+    try postForegroundKey(keyCode: parsed.keyCode, keyDown: false, flags: parsed.flags)
+    for modifier in parsed.modifiers.reversed() {
+        activeFlags &= ~modifier.flag
+        try postForegroundKey(keyCode: modifier.keyCode, keyDown: false, flags: activeFlags)
+    }
+}
+
+func foregroundTextKeyboardEvent(keyDown: Bool, utf16: [UInt16]) throws -> CGEvent {
+    guard let event = CGEvent(
+        keyboardEventSource: nil,
+        virtualKey: 0,
+        keyDown: keyDown
+    ) else {
+        throw HelperFailure(code: "accessibility_unavailable", message: "Unable to create text keyboard event")
+    }
+    utf16.withUnsafeBufferPointer { buffer in
+        event.keyboardSetUnicodeString(
+            stringLength: utf16.count,
+            unicodeString: buffer.baseAddress
+        )
+    }
+    return event
+}
+
+func postForegroundText(_ text: String) throws {
+    for character in text {
+        let utf16 = Array(String(character).utf16)
+        guard !utf16.isEmpty else {
+            continue
+        }
+        let keyDown = try foregroundTextKeyboardEvent(keyDown: true, utf16: utf16)
+        keyDown.post(tap: .cghidEventTap)
+        let keyUp = try foregroundTextKeyboardEvent(keyDown: false, utf16: utf16)
+        keyUp.post(tap: .cghidEventTap)
+        usleep(5_000)
+    }
+}
+
 final class BackgroundActivationSession: @unchecked Sendable {
     enum TapKind {
         case previous
@@ -1452,6 +1560,19 @@ func optionalInt(_ request: [String: Any], _ key: String) -> Int? {
 
 func optionalInt(_ request: [String: Any], _ key: String, default defaultValue: Int) -> Int {
     return (request[key] as? NSNumber)?.intValue ?? defaultValue
+}
+
+func foregroundRecoveryPolicy(_ request: [String: Any]) throws -> ForegroundRecoveryPolicy {
+    guard let rawPolicy = optionalString(request, "foregroundRecovery") else {
+        return .onWindowUnavailable
+    }
+    guard let policy = ForegroundRecoveryPolicy(rawValue: rawPolicy) else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "foregroundRecovery must be never, on-window-unavailable, or always"
+        )
+    }
+    return policy
 }
 
 func rectPayload(_ request: [String: Any], _ key: String) throws -> CGRect {
@@ -2493,6 +2614,233 @@ func withFrontmostPreservation(
     return result
 }
 
+func isWindowUnavailableFailure(_ error: Error) -> Bool {
+    guard let failure = error as? HelperFailure else {
+        return false
+    }
+    return failure.code == "window_unavailable"
+}
+
+func shouldAttemptForegroundRecovery(_ error: Error, policy: ForegroundRecoveryPolicy) -> Bool {
+    return policy == .onWindowUnavailable && isWindowUnavailableFailure(error)
+}
+
+func foregroundRecoveryReason(policy: ForegroundRecoveryPolicy) -> String {
+    return policy == .always ? "policy_always" : "window_unavailable"
+}
+
+func appleScriptStringLiteral(_ value: String) -> String {
+    let escaped = value
+        .replacingOccurrences(of: "\\", with: "\\\\")
+        .replacingOccurrences(of: "\"", with: "\\\"")
+    return "\"\(escaped)\""
+}
+
+func runActivationScript(_ script: String, timeout: TimeInterval = 3) throws -> Bool {
+    let process = Process()
+    let stdoutPipe = Pipe()
+    let stderrPipe = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", script]
+    process.standardOutput = stdoutPipe
+    process.standardError = stderrPipe
+    do {
+        try process.run()
+    } catch {
+        return false
+    }
+
+    let deadline = Date().addingTimeInterval(timeout)
+    while process.isRunning, Date() < deadline {
+        usleep(50_000)
+    }
+    if process.isRunning {
+        process.terminate()
+        return false
+    }
+
+    _ = trimmedPipeOutput(stdoutPipe)
+    _ = trimmedPipeOutput(stderrPipe)
+    return process.terminationStatus == 0
+}
+
+func foregroundActivateRunningApp(appName: String, app: NSRunningApplication) throws -> String {
+    if let bundleIdentifier = app.bundleIdentifier, !bundleIdentifier.isEmpty {
+        let script = "tell application id \(appleScriptStringLiteral(bundleIdentifier)) to activate"
+        if try runActivationScript(script) {
+            return "apple_script_activate_bundle_id"
+        }
+    }
+    if let localizedName = app.localizedName, !localizedName.isEmpty {
+        let script = "tell application \(appleScriptStringLiteral(localizedName)) to activate"
+        if try runActivationScript(script) {
+            return "apple_script_activate_app_name"
+        }
+    }
+    guard let appURL = applicationURL(for: app, fallbackName: appName) else {
+        return "apple_script_activate_failed"
+    }
+    _ = try openApplication(at: appURL, named: appName, activates: true)
+    return "workspace_open_application"
+}
+
+func waitForForegroundRecoveredTarget(
+    timeout: TimeInterval = 3,
+    resolveTarget: () throws -> WindowTarget
+) throws -> (target: WindowTarget, waitMs: Int) {
+    let startedAt = Date()
+    let deadline = startedAt.addingTimeInterval(timeout)
+    var lastWindowUnavailable: HelperFailure?
+    repeat {
+        do {
+            let target = try resolveTarget()
+            let waitMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
+            return (target, waitMs)
+        } catch let failure as HelperFailure where failure.code == "window_unavailable" {
+            lastWindowUnavailable = failure
+            usleep(100_000)
+        }
+    } while Date() < deadline
+
+    do {
+        let target = try resolveTarget()
+        let waitMs = Int(Date().timeIntervalSince(startedAt) * 1_000)
+        return (target, waitMs)
+    } catch {
+        if let lastWindowUnavailable, isWindowUnavailableFailure(error) {
+            throw lastWindowUnavailable
+        }
+        throw error
+    }
+}
+
+func foregroundRecoveryMetadata(
+    policy: ForegroundRecoveryPolicy,
+    reason: String,
+    activationMethod: String,
+    previousSpaceId: UInt64?,
+    candidateBefore: WindowTarget?,
+    targetAfter: WindowTarget,
+    waitMs: Int
+) -> [String: Any] {
+    var result: [String: Any] = [
+        "triggered": true,
+        "policy": policy.rawValue,
+        "reason": reason,
+        "activationMethod": activationMethod,
+        "waitMs": waitMs,
+        "frontmostRestored": false,
+        "targetWindowId": targetAfter.windowNumber,
+        "targetWindowIsOnScreenAfter": targetAfter.isOnScreen,
+    ]
+    if let previousSpaceId {
+        result["previousSpaceId"] = previousSpaceId
+    }
+    if let currentSpaceId = targetAfter.currentSpaceId {
+        result["currentSpaceIdAfter"] = currentSpaceId
+    }
+    if let targetSpaceIds = targetAfter.spaceIds {
+        result["targetWindowSpaceIdsAfter"] = targetSpaceIds
+    }
+    if let onCurrentSpace = targetAfter.onCurrentSpace {
+        result["targetWindowOnCurrentSpaceAfter"] = onCurrentSpace
+    }
+    if let title = targetAfter.title, !title.isEmpty {
+        result["targetWindowTitle"] = title
+    }
+    if let candidateBefore {
+        result["targetWindowIdBefore"] = candidateBefore.windowNumber
+        result["targetWindowIsOnScreenBefore"] = candidateBefore.isOnScreen
+        if let currentSpaceId = candidateBefore.currentSpaceId {
+            result["currentSpaceIdBefore"] = currentSpaceId
+        }
+        if let targetSpaceIds = candidateBefore.spaceIds {
+            result["targetWindowSpaceIdsBefore"] = targetSpaceIds
+        }
+        if let onCurrentSpace = candidateBefore.onCurrentSpace {
+            result["targetWindowOnCurrentSpaceBefore"] = onCurrentSpace
+        }
+    }
+    return result
+}
+
+func withForegroundRecovery(
+    appName: String,
+    policy: ForegroundRecoveryPolicy,
+    reason: String,
+    preferredScreenPoint: CGPoint? = nil,
+    dispatchMode: String,
+    dispatchTarget: String,
+    inputRisk: String,
+    resolveTarget: () throws -> WindowTarget,
+    _ action: (WindowTarget) throws -> [String: Any]
+) throws -> [String: Any] {
+    let app = try resolveRunningApp(named: appName)
+    let frontmostBefore = NSWorkspace.shared.frontmostApplication
+    let previousSpaceId = WindowSpaceDetector.currentSpaceId()
+    let candidateBefore = resolveWindowTarget(
+        app: app,
+        preferredScreenPoint: preferredScreenPoint,
+        scope: .anySpace
+    )
+    let targetSpaceId = candidateBefore?.spaceIds?.first { spaceId in
+        previousSpaceId.map { spaceId != $0 } ?? true
+    } ?? candidateBefore?.spaceIds?.first
+    var activationMethod: String
+    if let targetSpaceId,
+       candidateBefore?.onCurrentSpace == false,
+       WindowSpaceDetector.switchToSpace(targetSpaceId)
+    {
+        activationMethod = "skylight_set_current_space"
+        let appActivationMethod = try foregroundActivateRunningApp(appName: appName, app: app)
+        activationMethod = "\(activationMethod)+\(appActivationMethod)"
+    } else {
+        activationMethod = try foregroundActivateRunningApp(appName: appName, app: app)
+    }
+    let recoveryResult: (target: WindowTarget, waitMs: Int)
+    do {
+        recoveryResult = try waitForForegroundRecoveredTarget(resolveTarget: resolveTarget)
+    } catch let failure as HelperFailure where failure.code == "window_unavailable" {
+        if (activationMethod.contains("apple_script_activate") || activationMethod.hasPrefix("skylight_set_current_space")),
+           let appURL = applicationURL(for: app, fallbackName: appName)
+        {
+            _ = try openApplication(at: appURL, named: appName, activates: true)
+            activationMethod = "workspace_open_application"
+            recoveryResult = try waitForForegroundRecoveredTarget(resolveTarget: resolveTarget)
+        } else {
+            throw failure
+        }
+    }
+
+    var actionResult = try action(recoveryResult.target)
+    actionResult["foregroundRecovery"] = foregroundRecoveryMetadata(
+        policy: policy,
+        reason: reason,
+        activationMethod: activationMethod,
+        previousSpaceId: previousSpaceId,
+        candidateBefore: candidateBefore,
+        targetAfter: recoveryResult.target,
+        waitMs: recoveryResult.waitMs
+    )
+
+    let frontmostAfterAction = NSWorkspace.shared.frontmostApplication
+    var result = nativeActionResult(
+        dispatchMode: dispatchMode,
+        dispatchTarget: dispatchTarget,
+        inputRisk: inputRisk,
+        extra: actionResult
+    )
+    if let frontmostBefore = runningAppRecord(frontmostBefore) {
+        result["frontmostBefore"] = frontmostBefore
+    }
+    if let frontmostAfterAction = runningAppRecord(frontmostAfterAction) {
+        result["frontmostAfterAction"] = frontmostAfterAction
+        result["frontmostAfter"] = frontmostAfterAction
+    }
+    result["frontmostRestored"] = false
+    return result
+}
+
 func titleElementText(_ element: AXUIElement) -> String? {
     guard let titleElement = axElementValue(attribute(element, kAXTitleUIElementAttribute as CFString)) else {
         return nil
@@ -3211,6 +3559,7 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
 
 func handleElementClick(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
+    let policy = try foregroundRecoveryPolicy(request)
     let hasElementTarget = optionalString(request, "elementId") != nil || optionalInt(request, "elementIndex") != nil
     if !hasElementTarget, request["x"] != nil || request["y"] != nil {
         return try handleElementClickPoint(request, session: session)
@@ -3244,7 +3593,8 @@ func handleElementClick(_ request: [String: Any], session: ComputerUseRuntimeSes
             clickTarget: clickTarget,
             config: config,
             clickCount: clickCount,
-            mode: mode
+            mode: mode,
+            foregroundRecovery: policy
         )
     }
 
@@ -3270,6 +3620,7 @@ func handleElementClick(_ request: [String: Any], session: ComputerUseRuntimeSes
             config: config,
             clickCount: clickCount,
             mode: "unsupported_action_mouse_fallback",
+            foregroundRecovery: policy,
             extra: [
                 "unsupportedAction": unsupported.actionName,
                 "unsupportedActionError": unsupported.error.rawValue,
@@ -3342,6 +3693,51 @@ func performBackgroundMouseClick(
         "targetWindowId": target.windowNumber,
         "backgroundActivation": true,
         "focusSuppression": activation.hasFocusSuppressionTaps,
+    ]
+}
+
+func performForegroundMouseClick(
+    target: WindowTarget,
+    point: CGPoint,
+    config: (down: CGEventType, up: CGEventType, button: CGMouseButton),
+    clickCount: Int
+) throws -> [String: Any] {
+    ComputerUseVisualPointer.shared.show(at: point)
+    for index in 1...clickCount {
+        guard let downEvent = CGEvent(
+            mouseEventSource: nil,
+            mouseType: config.down,
+            mouseCursorPosition: point,
+            mouseButton: config.button
+        ) else {
+            throw HelperFailure(code: "accessibility_unavailable", message: "Unable to create mouse event")
+        }
+        downEvent.setIntegerValueField(.mouseEventClickState, value: Int64(index))
+        downEvent.setDoubleValueField(.mouseEventPressure, value: 1)
+        downEvent.post(tap: .cghidEventTap)
+        usleep(30_000)
+
+        guard let upEvent = CGEvent(
+            mouseEventSource: nil,
+            mouseType: config.up,
+            mouseCursorPosition: point,
+            mouseButton: config.button
+        ) else {
+            throw HelperFailure(code: "accessibility_unavailable", message: "Unable to create mouse event")
+        }
+        upEvent.setIntegerValueField(.mouseEventClickState, value: Int64(index))
+        upEvent.setDoubleValueField(.mouseEventPressure, value: 0)
+        upEvent.post(tap: .cghidEventTap)
+        if index < clickCount {
+            usleep(50_000)
+        }
+    }
+
+    return [
+        "screenX": point.x,
+        "screenY": point.y,
+        "targetWindowId": target.windowNumber,
+        "foregroundActivation": true,
     ]
 }
 
@@ -3459,6 +3855,7 @@ func performElementMouseClick(
     config: (down: CGEventType, up: CGEventType, button: CGMouseButton),
     clickCount: Int,
     mode: String,
+    foregroundRecovery: ForegroundRecoveryPolicy,
     extra: [String: Any] = [:]
 ) throws -> [String: Any] {
     guard let frame = clickTarget.capabilities.frame else {
@@ -3468,14 +3865,8 @@ func performElementMouseClick(
         )
     }
     let point = CGPoint(x: frame.midX, y: frame.midY)
-    return try withFrontmostPreservation(
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "element_point",
-        inputRisk: "background_app_pointer"
-    ) {
-        guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
-            throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
-        }
+
+    func clickResult(target: WindowTarget) throws -> [String: Any] {
         var result = try performBackgroundMouseClick(
             target: target,
             point: point,
@@ -3489,7 +3880,179 @@ func performElementMouseClick(
         for (key, value) in extra {
             result[key] = value
         }
-        return (targetPID: target.pid, result: result)
+        return result
+    }
+
+    func foregroundClickResult(target: WindowTarget) throws -> [String: Any] {
+        var result = try performForegroundMouseClick(
+            target: target,
+            point: point,
+            config: config,
+            clickCount: clickCount
+        )
+        result["elementClickMode"] = mode
+        for (key, value) in elementClickResultMetadata(clickTarget: clickTarget) {
+            result[key] = value
+        }
+        for (key, value) in extra {
+            result[key] = value
+        }
+        return result
+    }
+
+    func currentSpaceClick() throws -> [String: Any] {
+        return try withFrontmostPreservation(
+            dispatchMode: "background_mouse_event",
+            dispatchTarget: "element_point",
+            inputRisk: "background_app_pointer"
+        ) {
+            guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
+            }
+            return (targetPID: target.pid, result: try clickResult(target: target))
+        }
+    }
+
+    if foregroundRecovery != .always {
+        do {
+            return try currentSpaceClick()
+        } catch {
+            guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
+                throw error
+            }
+        }
+    }
+
+    return try withForegroundRecovery(
+        appName: appName,
+        policy: foregroundRecovery,
+        reason: foregroundRecoveryReason(policy: foregroundRecovery),
+        preferredScreenPoint: point,
+        dispatchMode: "foreground_mouse_event",
+        dispatchTarget: "element_point",
+        inputRisk: "foreground_app_pointer",
+        resolveTarget: {
+            guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
+            }
+            return target
+        }
+    ) { target in
+        try foregroundClickResult(target: target)
+    }
+}
+
+func postParsedKeyPress(_ parsed: ParsedKeyPress, to target: WindowTarget) throws {
+    let dispatcher = AddressedEventDispatcher(target: target)
+    var activeFlags = 0
+    for modifier in parsed.modifiers {
+        activeFlags |= modifier.flag
+        try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: true, flags: activeFlags)
+    }
+    try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: true, flags: parsed.flags)
+    try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: false, flags: parsed.flags)
+    for modifier in parsed.modifiers.reversed() {
+        activeFlags &= ~modifier.flag
+        try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: false, flags: activeFlags)
+    }
+}
+
+func performBackgroundKeyPress(
+    appName: String,
+    parsed: ParsedKeyPress,
+    foregroundRecovery: ForegroundRecoveryPolicy
+) throws -> [String: Any] {
+    func currentSpaceKeyPress() throws -> [String: Any] {
+        return try withFrontmostPreservation(
+            dispatchMode: "background_keyboard_event",
+            dispatchTarget: "app_process",
+            inputRisk: "background_app_shortcut"
+        ) {
+            let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
+                try postParsedKeyPress(parsed, to: target)
+                return target.pid
+            }
+            return (targetPID: targetPID, result: ["normalizedKey": parsed.normalizedKey])
+        }
+    }
+
+    if foregroundRecovery != .always {
+        do {
+            return try currentSpaceKeyPress()
+        } catch {
+            guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
+                throw error
+            }
+        }
+    }
+
+    let app = try resolveRunningApp(named: appName)
+    return try withForegroundRecovery(
+        appName: appName,
+        policy: foregroundRecovery,
+        reason: foregroundRecoveryReason(policy: foregroundRecovery),
+        dispatchMode: "foreground_keyboard_event",
+        dispatchTarget: "app_process",
+        inputRisk: "foreground_app_shortcut",
+        resolveTarget: {
+            guard let target = resolveWindowTarget(app: app) else {
+                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
+            }
+            return target
+        }
+    ) { _ in
+        try postForegroundParsedKeyPress(parsed)
+        return ["normalizedKey": parsed.normalizedKey]
+    }
+}
+
+func performBackgroundTextInput(
+    appName: String,
+    inputText: String,
+    foregroundRecovery: ForegroundRecoveryPolicy
+) throws -> [String: Any] {
+    func currentSpaceTextInput() throws -> [String: Any] {
+        return try withFrontmostPreservation(
+            dispatchMode: "background_keyboard_text",
+            dispatchTarget: "app_process",
+            inputRisk: "background_app_text"
+        ) {
+            let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
+                let dispatcher = AddressedEventDispatcher(target: target)
+                try dispatcher.postText(inputText)
+                return target.pid
+            }
+            return (targetPID: targetPID, result: ["characterCount": inputText.count])
+        }
+    }
+
+    if foregroundRecovery != .always {
+        do {
+            return try currentSpaceTextInput()
+        } catch {
+            guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
+                throw error
+            }
+        }
+    }
+
+    let app = try resolveRunningApp(named: appName)
+    return try withForegroundRecovery(
+        appName: appName,
+        policy: foregroundRecovery,
+        reason: foregroundRecoveryReason(policy: foregroundRecovery),
+        dispatchMode: "foreground_keyboard_text",
+        dispatchTarget: "app_process",
+        inputRisk: "foreground_app_text",
+        resolveTarget: {
+            guard let target = resolveWindowTarget(app: app) else {
+                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
+            }
+            return target
+        }
+    ) { _ in
+        try postForegroundText(inputText)
+        return ["characterCount": inputText.count]
     }
 }
 
@@ -3647,6 +4210,7 @@ func handleElementClickPoint(
     let windowId = optionalInt(preparedRequest, "windowId")
     let button = optionalString(preparedRequest, "button") ?? "left"
     let clickCount = max(1, min(optionalInt(preparedRequest, "clickCount", default: 1), 3))
+    let policy = try foregroundRecoveryPolicy(preparedRequest)
     let config = try mouseEventConfig(button: button)
     let point = try screenPointFromScreenshotPoint(
         x: x,
@@ -3655,29 +4219,71 @@ func handleElementClickPoint(
         screenshotHeight: screenshotHeight,
         sourceBounds: sourceBounds
     )
-    return try withFrontmostPreservation(
-        dispatchMode: "background_mouse_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_pointer"
-    ) {
-        let target = try snapshotWindowTarget(
+    func resolveSnapshotTarget() throws -> WindowTarget {
+        try snapshotWindowTarget(
             appName: appName,
             snapshotId: snapshotId,
             preferredScreenPoint: point,
             windowId: windowId,
             windowFrame: windowFrame
         )
+    }
 
+    func clickResult(target: WindowTarget) throws -> [String: Any] {
         let result = try performBackgroundMouseClick(
             target: target,
             point: point,
             config: config,
             clickCount: clickCount
         )
-        return (
-            targetPID: target.pid,
-            result: result
+        return result
+    }
+
+    func foregroundClickResult(target: WindowTarget) throws -> [String: Any] {
+        let result = try performForegroundMouseClick(
+            target: target,
+            point: point,
+            config: config,
+            clickCount: clickCount
         )
+        return result
+    }
+
+    func currentSpaceClick() throws -> [String: Any] {
+        return try withFrontmostPreservation(
+            dispatchMode: "background_mouse_event",
+            dispatchTarget: "app_process",
+            inputRisk: "background_app_pointer"
+        ) {
+            let target = try resolveSnapshotTarget()
+            return (
+                targetPID: target.pid,
+                result: try clickResult(target: target)
+            )
+        }
+    }
+
+    if policy != .always {
+        do {
+            return try currentSpaceClick()
+        } catch {
+            guard shouldAttemptForegroundRecovery(error, policy: policy) else {
+                throw error
+            }
+        }
+    }
+
+    return try withForegroundRecovery(
+        appName: appName,
+        policy: policy,
+        reason: foregroundRecoveryReason(policy: policy),
+        preferredScreenPoint: point,
+        dispatchMode: "foreground_mouse_event",
+        dispatchTarget: "app_process",
+        inputRisk: "foreground_app_pointer",
+        resolveTarget: resolveSnapshotTarget
+    ) { target in
+        try foregroundClickResult(target: target)
     }
 }
 
@@ -3728,47 +4334,25 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
 func handleTypeText(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
-    return try withFrontmostPreservation(
-        dispatchMode: "background_keyboard_text",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_text"
-    ) {
-        let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
-            let dispatcher = AddressedEventDispatcher(target: target)
-            try dispatcher.postText(inputText)
-            return target.pid
-        }
-        return (targetPID: targetPID, result: ["characterCount": inputText.count])
-    }
+    let policy = try foregroundRecoveryPolicy(request)
+    return try performBackgroundTextInput(
+        appName: appName,
+        inputText: inputText,
+        foregroundRecovery: policy
+    )
 }
 
 func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let key = try requiredString(request, "key")
     let parsed = try parseKeyPress(key)
+    let policy = try foregroundRecoveryPolicy(request)
 
-    return try withFrontmostPreservation(
-        dispatchMode: "background_keyboard_event",
-        dispatchTarget: "app_process",
-        inputRisk: "background_app_shortcut"
-    ) {
-        let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
-            let dispatcher = AddressedEventDispatcher(target: target)
-            var activeFlags = 0
-            for modifier in parsed.modifiers {
-                activeFlags |= modifier.flag
-                try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: true, flags: activeFlags)
-            }
-            try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: true, flags: parsed.flags)
-            try dispatcher.postKey(keyCode: parsed.keyCode, keyDown: false, flags: parsed.flags)
-            for modifier in parsed.modifiers.reversed() {
-                activeFlags &= ~modifier.flag
-                try dispatcher.postKey(keyCode: modifier.keyCode, keyDown: false, flags: activeFlags)
-            }
-            return target.pid
-        }
-        return (targetPID: targetPID, result: ["normalizedKey": parsed.normalizedKey])
-    }
+    return try performBackgroundKeyPress(
+        appName: appName,
+        parsed: parsed,
+        foregroundRecovery: policy
+    )
 }
 
 func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {

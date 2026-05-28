@@ -12,6 +12,11 @@ import type { ComputerUsePermissionState } from "./computer-use-types";
 
 type ComputerUseNativeErrorCode = ComputerUseCommandFailure["error"]["code"];
 
+export type ComputerUseNativeForegroundRecoveryPolicy =
+  | "never"
+  | "on-window-unavailable"
+  | "always";
+
 export interface ComputerUseNativeClickPointRequest {
   readonly app: string;
   readonly snapshotId: string;
@@ -25,6 +30,7 @@ export interface ComputerUseNativeClickPointRequest {
   readonly windowFrame?: ComputerUseCoordinateBounds;
   readonly button: ComputerUseMouseButton;
   readonly clickCount: number;
+  readonly foregroundRecovery?: ComputerUseNativeForegroundRecoveryPolicy;
 }
 
 export type ComputerUseNativeActionResult = Record<string, unknown>;
@@ -70,6 +76,7 @@ export interface ComputerUseNativeBackend {
     readonly snapshotId?: string;
     readonly button: ComputerUseMouseButton;
     readonly clickCount: number;
+    readonly foregroundRecovery?: ComputerUseNativeForegroundRecoveryPolicy;
   }) => Promise<ComputerUseNativeActionResult>;
   readonly clickPoint: (
     args: ComputerUseNativeClickPointRequest,
@@ -91,10 +98,12 @@ export interface ComputerUseNativeBackend {
   readonly typeText: (args: {
     readonly app: string;
     readonly text: string;
+    readonly foregroundRecovery?: ComputerUseNativeForegroundRecoveryPolicy;
   }) => Promise<ComputerUseNativeTypeTextResult>;
   readonly pressKey: (args: {
     readonly app: string;
     readonly key: string;
+    readonly foregroundRecovery?: ComputerUseNativeForegroundRecoveryPolicy;
   }) => Promise<ComputerUseNativePressKeyResult>;
   readonly scrollElement: (args: {
     readonly app: string;

@@ -112,12 +112,12 @@ function usage(): string {
   vm0-computer list-apps [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer get-app-state --app APP [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer open-app --app APP [--timeout SECONDS] [--daemon-dir DIR]
-  vm0-computer click --app APP (--element-index N | --element ID | --x X --y Y) [--snapshot-id ID] [--button left|right|middle] [--click-count N] [--timeout SECONDS] [--daemon-dir DIR]
+  vm0-computer click --app APP (--element-index N | --element ID | --x X --y Y) [--snapshot-id ID] [--button left|right|middle] [--click-count N] [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer scroll --app APP (--element-index N | --element ID) --direction up|down|left|right [--snapshot-id ID] [--pages N] [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer set-value --app APP (--element-index N | --element ID) --value VALUE [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer perform-action --app APP (--element-index N | --element ID) --action ACTION [--timeout SECONDS] [--daemon-dir DIR]
-  vm0-computer type-text --app APP --text TEXT [--timeout SECONDS] [--daemon-dir DIR]
-  vm0-computer press-key --app APP --key KEY [--timeout SECONDS] [--daemon-dir DIR]`;
+  vm0-computer type-text --app APP --text TEXT [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]
+  vm0-computer press-key --app APP --key KEY [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]`;
 }
 
 function fail(message: string, code = 1): never {
@@ -265,6 +265,20 @@ function parseMouseButton(
   fail("button must be left, right, or middle");
 }
 
+function parseForegroundRecovery(
+  value: string | undefined,
+): "never" | "on-window-unavailable" | "always" | undefined {
+  if (value === undefined) return undefined;
+  if (
+    value === "never" ||
+    value === "on-window-unavailable" ||
+    value === "always"
+  ) {
+    return value;
+  }
+  fail("foreground-recovery must be never, on-window-unavailable, or always");
+}
+
 function requiredStringValue(
   values: ReadonlyMap<string, string>,
   key: string,
@@ -299,6 +313,9 @@ function commandFromArgs(
   const app =
     kind === "apps.list" ? undefined : requiredStringValue(values, "app");
   const snapshotId = stringValue(values, "snapshot-id");
+  const foregroundRecovery = parseForegroundRecovery(
+    stringValue(values, "foreground-recovery"),
+  );
   if (app) payload.app = app;
   if (snapshotId) payload.snapshotId = snapshotId;
 
@@ -319,6 +336,7 @@ function commandFromArgs(
       stringValue(values, "click-count") ?? "1",
       "click-count",
     );
+    if (foregroundRecovery) payload.foregroundRecovery = foregroundRecovery;
   } else if (kind === "element.scroll") {
     Object.assign(payload, elementTargetPayload(values));
     payload.direction = requiredStringValue(values, "direction");
@@ -334,8 +352,10 @@ function commandFromArgs(
     payload.action = requiredStringValue(values, "action");
   } else if (kind === "keyboard.type_text") {
     payload.text = requiredStringValue(values, "text");
+    if (foregroundRecovery) payload.foregroundRecovery = foregroundRecovery;
   } else if (kind === "keyboard.press_key") {
     payload.key = requiredStringValue(values, "key");
+    if (foregroundRecovery) payload.foregroundRecovery = foregroundRecovery;
   }
   return { kind, payload };
 }

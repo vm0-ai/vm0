@@ -3,6 +3,7 @@ import {
   ComputerUseNativeHelperError,
   createComputerUseNativeBackend,
   type ComputerUseNativeBackend,
+  type ComputerUseNativeForegroundRecoveryPolicy,
 } from "./computer-use-native";
 
 export const SUPPORTED_COMPUTER_USE_CAPABILITIES = [
@@ -21,6 +22,8 @@ export type ComputerUseCommandKind =
   (typeof SUPPORTED_COMPUTER_USE_CAPABILITIES)[number];
 
 type AccessibilityElementClickableKind = "mouse" | "pick" | "press" | "select";
+const DEFAULT_FOREGROUND_RECOVERY_POLICY =
+  "on-window-unavailable" satisfies ComputerUseNativeForegroundRecoveryPolicy;
 
 export interface ComputerUseCommand {
   readonly id: string;
@@ -319,6 +322,25 @@ function payloadClickCount(payload: Record<string, unknown>): number {
     value <= 3
     ? value
     : 1;
+}
+
+function payloadForegroundRecoveryPolicy(
+  payload: Record<string, unknown>,
+): ComputerUseNativeForegroundRecoveryPolicy {
+  const value = payloadString(payload, "foregroundRecovery");
+  if (value === null) {
+    return DEFAULT_FOREGROUND_RECOVERY_POLICY;
+  }
+  if (
+    value === "never" ||
+    value === "on-window-unavailable" ||
+    value === "always"
+  ) {
+    return value;
+  }
+  throw new UnsupportedComputerUseCommandError(
+    "foregroundRecovery must be never, on-window-unavailable, or always",
+  );
 }
 
 function snapshotId(): string {
@@ -1463,6 +1485,7 @@ async function clickElement(args: {
   readonly y: number | null;
   readonly button: ComputerUseMouseButton;
   readonly clickCount: number;
+  readonly foregroundRecovery: ComputerUseNativeForegroundRecoveryPolicy;
   readonly nativeBackend: ComputerUseNativeBackend;
   readonly snapshotStore: ComputerUseSnapshotStore;
 }): Promise<ComputerUseCommandExecutionResult> {
@@ -1492,6 +1515,7 @@ async function clickElement(args: {
       ...(target.snapshotId ? { snapshotId: target.snapshotId } : {}),
       button: args.button,
       clickCount: args.clickCount,
+      foregroundRecovery: args.foregroundRecovery,
     });
     return {
       status: "succeeded",
@@ -1525,6 +1549,7 @@ async function clickElement(args: {
       ...(snapshot.windowFrame ? { windowFrame: snapshot.windowFrame } : {}),
       button: args.button,
       clickCount: args.clickCount,
+      foregroundRecovery: args.foregroundRecovery,
     });
     const { screenX, screenY, ...nativeResult } = clickPoint;
     return {
@@ -1605,8 +1630,13 @@ async function typeText(
   app: string,
   text: string,
   nativeBackend: ComputerUseNativeBackend,
+  foregroundRecovery: ComputerUseNativeForegroundRecoveryPolicy,
 ): Promise<ComputerUseCommandExecutionResult> {
-  const result = await nativeBackend.typeText({ app, text });
+  const result = await nativeBackend.typeText({
+    app,
+    text,
+    foregroundRecovery,
+  });
   return {
     status: "succeeded",
     result: {
@@ -1621,8 +1651,9 @@ async function pressKey(
   app: string,
   key: string,
   nativeBackend: ComputerUseNativeBackend,
+  foregroundRecovery: ComputerUseNativeForegroundRecoveryPolicy,
 ): Promise<ComputerUseCommandSuccess> {
-  const result = await nativeBackend.pressKey({ app, key });
+  const result = await nativeBackend.pressKey({ app, key, foregroundRecovery });
   const { normalizedKey, ...nativeResult } = result;
   return {
     status: "succeeded",
@@ -1714,6 +1745,9 @@ export async function executeComputerUseCommand(
       const snapshotId = payloadString(command.payload, "snapshotId");
       const elementId = payloadString(command.payload, "elementId");
       const elementIndex = payloadElementIndex(command.payload);
+      const foregroundRecovery = payloadForegroundRecoveryPolicy(
+        command.payload,
+      );
       if (
         !elementId &&
         elementIndex === null &&
@@ -1750,6 +1784,7 @@ export async function executeComputerUseCommand(
             y,
             button: payloadMouseButton(command.payload),
             clickCount: payloadClickCount(command.payload),
+            foregroundRecovery,
             nativeBackend,
             snapshotStore,
           });
@@ -1851,6 +1886,9 @@ export async function executeComputerUseCommand(
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");
+      const foregroundRecovery = payloadForegroundRecoveryPolicy(
+        command.payload,
+      );
       return text
         ? await executeWriteActionWithPostActionState({
             app,
@@ -1858,13 +1896,21 @@ export async function executeComputerUseCommand(
             nativeBackend,
             snapshotStore,
             execute: async () => {
-              return await typeText(app, text, nativeBackend);
+              return await typeText(
+                app,
+                text,
+                nativeBackend,
+                foregroundRecovery,
+              );
             },
           })
         : missingField("text");
     }
     if (command.kind === "keyboard.press_key") {
       const key = payloadString(command.payload, "key");
+      const foregroundRecovery = payloadForegroundRecoveryPolicy(
+        command.payload,
+      );
       return key
         ? await executeWriteActionWithPostActionState({
             app,
@@ -1872,7 +1918,12 @@ export async function executeComputerUseCommand(
             nativeBackend,
             snapshotStore,
             execute: async () => {
-              return await pressKey(app, key, nativeBackend);
+              return await pressKey(
+                app,
+                key,
+                nativeBackend,
+                foregroundRecovery,
+              );
             },
           })
         : missingField("key");

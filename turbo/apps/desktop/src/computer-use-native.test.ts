@@ -507,6 +507,81 @@ describe("computer use native backend", () => {
     }
   });
 
+  it("forwards foreground recovery policy to native helper actions", async () => {
+    const helper = await createSessionHelper();
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+    });
+
+    try {
+      await backend.clickElement({
+        app: "Safari",
+        elementId: "w0.e0",
+        button: "left",
+        clickCount: 1,
+        foregroundRecovery: "always",
+      });
+      await backend.clickPoint({
+        app: "Safari",
+        snapshotId: "snap_1",
+        x: 200,
+        y: 150,
+        screenshotSource: "window",
+        screenshotWidth: 800,
+        screenshotHeight: 600,
+        sourceBounds: { x: 0, y: 0, width: 800, height: 600 },
+        button: "left",
+        clickCount: 1,
+        foregroundRecovery: "on-window-unavailable",
+      });
+      await backend.typeText({
+        app: "Safari",
+        text: "hello",
+        foregroundRecovery: "never",
+      });
+      await backend.pressKey({
+        app: "Safari",
+        key: "cmd+k",
+        foregroundRecovery: "always",
+      });
+
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as {
+            readonly kind: string;
+            readonly payload?: Record<string, unknown>;
+          };
+        });
+      expect(
+        requests.map((request) => {
+          return request.kind;
+        }),
+      ).toStrictEqual([
+        "element.click",
+        "element.click",
+        "keyboard.type_text",
+        "keyboard.press_key",
+      ]);
+      expect(requests[0]?.payload).toMatchObject({
+        foregroundRecovery: "always",
+      });
+      expect(requests[1]?.payload).toMatchObject({
+        foregroundRecovery: "on-window-unavailable",
+      });
+      expect(requests[2]?.payload).toMatchObject({
+        foregroundRecovery: "never",
+      });
+      expect(requests[3]?.payload).toMatchObject({
+        foregroundRecovery: "always",
+      });
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
   it("prints Zero-compatible app state from the vm0-computer CLI", async () => {
     const helper = await createSessionHelper();
     const daemonDir = await createDaemonDir();
@@ -651,7 +726,15 @@ describe("computer use native backend", () => {
         "AXShowMenu",
       ],
       ["type-text", "--app", "Safari", "--text", "hello"],
-      ["press-key", "--app", "Safari", "--key", "shift+semicolon"],
+      [
+        "press-key",
+        "--app",
+        "Safari",
+        "--key",
+        "shift+semicolon",
+        "--foreground-recovery",
+        "always",
+      ],
     ];
 
     try {
@@ -711,6 +794,7 @@ describe("computer use native backend", () => {
       });
       expect(publicCommandRequests[7]?.payload).toMatchObject({
         key: "shift+semicolon",
+        foregroundRecovery: "always",
       });
     } finally {
       await stopDaemon(daemonDir);
