@@ -604,8 +604,8 @@ impl SandboxControl for FirecrackerControl {
 
 /// Find the control socket for a given sandbox ID (full UUID or prefix).
 ///
-/// Scans the runtime socket directory for directories matching the prefix
-/// that contain a `control.sock` file.
+/// Full UUIDs resolve through the exact socket path. Prefixes scan the runtime
+/// socket directory for matching directories that contain a `control.sock` file.
 fn resolve_control_socket(input: &str) -> Result<PathBuf, SandboxControlError> {
     let runtime = RuntimePaths::new();
     let sock_parent = runtime.sock_base();
@@ -1418,6 +1418,24 @@ mod tests {
         let err = resolve_control_socket_in(&sock_parent, &sandbox_id.to_string()).unwrap_err();
 
         assert!(matches!(err, SandboxControlError::NotFound(_)));
+    }
+
+    #[test]
+    fn resolve_control_socket_full_id_socket_check_error_returns_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_id = SandboxId::new_v4();
+        let sandbox_dir = sock_parent.join(sandbox_id.to_string());
+        std::fs::create_dir_all(&sandbox_dir).unwrap();
+        let control_sock = SockPaths::new(sandbox_dir).control_sock();
+        symlink("control.sock", &control_sock).unwrap();
+
+        let err = resolve_control_socket_in(&sock_parent, &sandbox_id.to_string()).unwrap_err();
+
+        let SandboxControlError::Connection(message) = err else {
+            panic!("expected connection error");
+        };
+        assert!(message.contains(&control_sock.display().to_string()));
     }
 
     #[test]
