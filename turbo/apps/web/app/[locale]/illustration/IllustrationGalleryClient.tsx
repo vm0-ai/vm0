@@ -46,14 +46,6 @@ export function IllustrationGalleryClient() {
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <section className="hero-section illu-hero">
         <div className="container">
-          <div className="illu-cover">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`${ASSET_BASE}/refs/soft-vector/ref-bike-lime.png`}
-              alt="Illustration cover"
-              loading="eager"
-            />
-          </div>
           <h1 className="hero-title">Illustration</h1>
           <p className="hero-description">
             An open gallery of every illustration style in the vm0-skills
@@ -122,6 +114,10 @@ interface CardProps {
 }
 
 function IllustrationCard({ style, onOpen }: CardProps) {
+  const coverSrc = style.cover
+    ? `${ASSET_BASE}/${style.cover}`
+    : `${ASSET_BASE}/images/${style.image}`;
+
   return (
     <article className="illu-tile">
       <button
@@ -134,7 +130,7 @@ function IllustrationCard({ style, onOpen }: CardProps) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`${ASSET_BASE}/images/${style.image}`}
+          src={coverSrc}
           width={style.width}
           height={style.height}
           alt={style.title}

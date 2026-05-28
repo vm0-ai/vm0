@@ -2,6 +2,8 @@ export interface IllustrationStyle {
   slug: string;
   title: string;
   image: string;
+  /** Optional path under ASSET_BASE used as the card cover, e.g. "refs/<slug>/<file>". */
+  cover?: string;
   sample: string;
   width: number;
   height: number;
@@ -28,6 +30,7 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     slug: "soft-vector",
     title: "Soft Vector",
     image: "soft-vector.png",
+    cover: "refs/soft-vector/ref-bike-lime.png",
     sample: "ref-desk-violet.png",
     width: 1024,
     height: 1024,

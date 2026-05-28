@@ -17,27 +17,6 @@
   }
 }
 
-.illu-cover {
-  display: flex;
-  margin-bottom: 56px;
-}
-.illu-cover img {
-  display: block;
-  width: 100%;
-  max-width: 420px;
-  height: auto;
-  border-radius: 16px;
-  border: 0.7px solid hsl(var(--gray-200));
-  background: #fff;
-}
-@media (max-width: 720px) {
-  .illu-cover {
-    margin-bottom: 36px;
-  }
-  .illu-cover img {
-    max-width: 320px;
-  }
-}
 
 .illu-meta-grid {
   display: grid;
