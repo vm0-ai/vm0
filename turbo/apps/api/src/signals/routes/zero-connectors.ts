@@ -175,14 +175,6 @@ function connectorMissingAuthCodeGrantResponse(type: string) {
   );
 }
 
-function unsupportedAuthCodeGrantMessage(type: string): string {
-  return `${type} connector does not use an auth-code grant`;
-}
-
-function unsupportedAuthCodeGrantResponse(type: string) {
-  return jsonResponse({ error: unsupportedAuthCodeGrantMessage(type) }, 400);
-}
-
 function internalServerError(message: string) {
   return {
     status: 500 as const,
@@ -361,10 +353,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const authCodeStartType = resolveConnectorAuthCodeStartType(type);
     if (!authCodeStartType.ok) {
-      if (authCodeStartType.reason === "missing_auth_code_grant") {
-        return connectorMissingAuthCodeGrantResponse(type);
-      }
-      return unsupportedAuthCodeGrantResponse(type);
+      return connectorMissingAuthCodeGrantResponse(type);
     }
 
     if (!auth.orgId) {
@@ -434,12 +423,9 @@ const startConnectorOauthInner$ = command(
 
     const authCodeStartType = resolveConnectorAuthCodeStartType(type);
     if (!authCodeStartType.ok) {
-      if (authCodeStartType.reason === "missing_auth_code_grant") {
-        return badRequestMessage(
-          `${type} connector does not use an auth-code grant`,
-        );
-      }
-      return badRequestMessage(unsupportedAuthCodeGrantMessage(type));
+      return badRequestMessage(
+        `${type} connector does not use an auth-code grant`,
+      );
     }
 
     if (!auth.orgId) {

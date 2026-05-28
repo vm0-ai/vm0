@@ -1,7 +1,6 @@
 import {
   getConnectorOAuthClient,
   hasConnectorAuthCodeGrant,
-  hasConnectorDeviceAuthGrant,
   type ConnectorEnvReader,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
@@ -35,9 +34,7 @@ type ResolveConnectorAuthCodeStartTypeResult =
     }
   | {
       readonly ok: false;
-      readonly reason:
-        | "missing_auth_code_grant"
-        | "unsupported_auth_code_grant";
+      readonly reason: "missing_auth_code_grant";
     };
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
@@ -48,9 +45,6 @@ export function resolveConnectorAuthCodeStartType(
   type: ConnectorType,
 ): ResolveConnectorAuthCodeStartTypeResult {
   if (!hasConnectorAuthCodeGrant(type)) {
-    if (hasConnectorDeviceAuthGrant(type)) {
-      return { ok: false, reason: "unsupported_auth_code_grant" };
-    }
     return { ok: false, reason: "missing_auth_code_grant" };
   }
   return { ok: true, type };
