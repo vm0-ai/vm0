@@ -978,7 +978,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
-  it("injects recent web chat messages into a follow-up run prompt", async () => {
+  it("injects recent web chat runs into a follow-up run prompt", async () => {
     const fixture = await track(seedFixture());
     const first = await send({
       agentId: fixture.agentId,
@@ -986,6 +986,13 @@ describe("POST /api/zero/chat/messages", () => {
     });
     await clearAllDetached();
     await setRunStatus(first.body.runId!, "completed");
+    await store.set(writeDb$).insert(chatMessages).values({
+      chatThreadId: first.body.threadId,
+      role: "assistant",
+      content: "first assistant context",
+      runId: first.body.runId,
+      sequenceNumber: 1,
+    });
 
     const second = await send({
       agentId: fixture.agentId,
@@ -1001,8 +1008,13 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(agentRuns.id, second.body.runId!))
       .limit(1);
     const prompt = run!.appendSystemPrompt!;
-    expect(prompt).toContain("# Web Chat Context");
+    expect(prompt).toContain("# Web Chat Run Context");
+    expect(prompt).toContain(`RUN_ID: ${first.body.runId}`);
+    expect(prompt).toContain(
+      `LOG_COMMAND: zero logs ${first.body.runId} --all`,
+    );
     expect(prompt).toContain("User: first web context");
+    expect(prompt).toContain("Assistant: first assistant context");
     expect(prompt).toContain("RELATIVE_INDEX: 0");
     expect(prompt).not.toContain("follow-up web context");
   });
@@ -1027,7 +1039,7 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(agentRuns.id, second.body.runId!))
       .limit(1);
     expect(run?.appendSystemPrompt).toContain("# Incomplete Rounds Context");
-    expect(run?.appendSystemPrompt).not.toContain("# Web Chat Context");
+    expect(run?.appendSystemPrompt).not.toContain("# Web Chat Run Context");
     expect(run?.appendSystemPrompt).toContain("RUN_STATUS: cancelled");
     expect(run?.appendSystemPrompt).toContain("User: cancel me");
   });
@@ -1139,7 +1151,11 @@ describe("POST /api/zero/chat/messages", () => {
       .where(eq(zeroRuns.id, second.body.runId!))
       .limit(1);
     expect(run?.selectedModel).toBe("claude-sonnet-4-6");
-    expect(run?.appendSystemPrompt).toContain("# Web Chat Context");
+    expect(run?.appendSystemPrompt).toContain("# Web Chat Run Context");
+    expect(run?.appendSystemPrompt).toContain(`RUN_ID: ${first.body.runId}`);
+    expect(run?.appendSystemPrompt).toContain(
+      `LOG_COMMAND: zero logs ${first.body.runId} --all`,
+    );
     expect(run?.appendSystemPrompt).toContain("User: first on opus");
   });
 

@@ -137,10 +137,17 @@ interface ResolvedThread {
   readonly isNewThread: boolean;
 }
 
-interface WebChatPriorMessage {
+interface WebChatPriorRunMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
   readonly attachFiles: readonly string[] | null;
+}
+
+interface WebChatPriorRun {
+  readonly runId: string;
+  readonly status: string;
+  readonly prompt: string;
+  readonly messages: readonly WebChatPriorRunMessage[];
 }
 
 interface WebChatIncompleteRoundMessage {
@@ -210,9 +217,9 @@ type AppendMessageResult =
     };
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
-// Existing web chat threads always carry a small recent-message window in the
-// system prompt. Session compatibility is handled separately by forceNewSession.
-const RECENT_CHAT_MESSAGE_LIMIT = 10;
+// Existing web chat threads carry a small recent-run window in the system
+// prompt. Session compatibility is handled separately by forceNewSession.
+const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -359,38 +366,57 @@ function formatAttachFileIds(
     .join("\n");
 }
 
-function buildWebChatPriorMessagesContext(
-  messages: readonly WebChatPriorMessage[],
+function formatPriorRunMessage(message: WebChatPriorRunMessage): string {
+  const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const attach = formatAttachFileIds(message.attachFiles);
+  const body = `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`;
+  return attach ? `${body}\n${attach}` : body;
+}
+
+function buildWebChatPriorRunsContext(
+  runs: readonly WebChatPriorRun[],
 ): string {
-  if (messages.length === 0) {
+  if (runs.length === 0) {
     return "";
   }
-  const total = messages.length;
-  const blocks = messages.map((message, index) => {
+  const total = runs.length;
+  const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
-    const roleLabel = message.role === "user" ? "User" : "Assistant";
-    const attach = formatAttachFileIds(message.attachFiles);
-    const lines = [
+    const renderedMessages = run.messages.map(formatPriorRunMessage);
+    const hasUserMessage = run.messages.some((message) => {
+      return message.role === "user";
+    });
+    const hasAssistantMessage = run.messages.some((message) => {
+      return message.role === "assistant";
+    });
+    if (!hasUserMessage) {
+      renderedMessages.unshift(
+        `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
+      );
+    }
+    if (!hasAssistantMessage) {
+      renderedMessages.push("Assistant: [no stored assistant message]");
+    }
+    return [
       "---",
       "",
       `- RELATIVE_INDEX: ${relativeIndex}`,
-      `- ROLE: ${message.role}`,
+      `- RUN_ID: ${run.runId}`,
+      `- RUN_STATUS: ${run.status}`,
+      `- LOG_COMMAND: zero logs ${run.runId} --all`,
       "",
-      `${roleLabel}: ${truncatePrior(message.content) || "[empty message]"}`,
-    ];
-    if (attach) {
-      lines.push(attach);
-    }
-    return lines.join("\n");
+      ...renderedMessages,
+    ].join("\n");
   });
   return [
-    "# Web Chat Context",
+    "# Web Chat Run Context",
     "",
-    "The messages below are from a web chat conversation. When responding:",
-    "- Messages closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
+    "The runs below are from the same web chat thread. When responding:",
+    "- Runs closer to RELATIVE_INDEX 0 are more recent -- prioritize them.",
     "- Match the tone of the conversation -- casual messages deserve casual replies.",
     "- Only provide technical analysis when explicitly asked a technical question.",
     "- Keep responses proportional to the message length and complexity.",
+    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
     "",
     blocks.join("\n\n"),
     "",
@@ -525,13 +551,34 @@ async function latestSessionIdForThread(
   return undefined;
 }
 
-async function getLatestMessagesByThreadId(
+async function getLatestRunsByThreadId(
   db: Db,
   threadId: string,
   limit: number,
-): Promise<WebChatPriorMessage[]> {
-  const rows = await db
+): Promise<WebChatPriorRun[]> {
+  const runRows = await db
     .select({
+      runId: zeroRuns.id,
+      status: agentRuns.status,
+      prompt: agentRuns.prompt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, threadId))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(limit);
+
+  const orderedRuns = runRows.reverse();
+  const runIds = orderedRuns.map((run) => {
+    return run.runId;
+  });
+  if (runIds.length === 0) {
+    return [];
+  }
+
+  const messageRows = await db
+    .select({
+      runId: chatMessages.runId,
       role: chatMessages.role,
       content: chatMessages.content,
       attachFiles: chatMessages.attachFiles,
@@ -539,32 +586,42 @@ async function getLatestMessagesByThreadId(
       sequenceNumber: chatMessages.sequenceNumber,
     })
     .from(chatMessages)
-    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
     .where(
       and(
         eq(chatMessages.chatThreadId, threadId),
         isNotNull(chatMessages.content),
+        inArray(chatMessages.runId, runIds),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
       ),
     )
-    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
-    .limit(limit);
+    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.sequenceNumber));
 
-  return rows.reverse().flatMap((row) => {
+  const messagesByRunId = new Map<string, WebChatPriorRunMessage[]>();
+  for (const row of messageRows) {
     if (
+      row.runId === null ||
       row.content === null ||
       (row.role !== "user" && row.role !== "assistant")
     ) {
-      return [];
+      continue;
     }
-    return [
-      {
-        role: row.role,
-        content: row.content,
-        attachFiles: row.attachFiles,
-      },
-    ];
+    const existing = messagesByRunId.get(row.runId) ?? [];
+    existing.push({
+      role: row.role,
+      content: row.content,
+      attachFiles: row.attachFiles,
+    });
+    messagesByRunId.set(row.runId, existing);
+  }
+
+  return orderedRuns.map((run) => {
+    return {
+      runId: run.runId,
+      status: run.status,
+      prompt: run.prompt,
+      messages: messagesByRunId.get(run.runId) ?? [],
+    };
   });
 }
 
@@ -1165,8 +1222,8 @@ async function prepareRecentChatContext(
   if (incompleteContext.length > 0) {
     return "";
   }
-  return buildWebChatPriorMessagesContext(
-    await getLatestMessagesByThreadId(db, threadId, RECENT_CHAT_MESSAGE_LIMIT),
+  return buildWebChatPriorRunsContext(
+    await getLatestRunsByThreadId(db, threadId, RECENT_CHAT_RUN_LIMIT),
   );
 }
 
