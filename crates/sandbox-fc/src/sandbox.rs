@@ -2980,7 +2980,10 @@ mod tests {
             id: id.to_string(),
             sandbox_paths: SandboxPaths::new(base_dir.join("workspace")),
             sock_paths: SockPaths::new(base_dir.join("sock")),
-            network: SandboxNetwork::from_lease(NetnsLease::new_for_test("test-ns")),
+            network: SandboxNetwork {
+                info: NetnsLease::new_for_test("test-ns").into_info_for_test(),
+                lease: None,
+            },
             cow_device: None,
             device_rate_limits: None,
             runtime: SandboxRuntimeHandles::default(),
