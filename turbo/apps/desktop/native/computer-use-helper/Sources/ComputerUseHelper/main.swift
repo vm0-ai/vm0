@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import ComputerUseHelperCore
 import Darwin
 import Foundation
 
@@ -662,6 +663,17 @@ final class ComputerUseVisualPointer: @unchecked Sendable {
                 showOnMain(at: screenPoint)
             }
         }
+    }
+
+    @discardableResult
+    func show(at screenPoint: CGPoint, ifVisibleIn target: WindowTarget) -> Bool {
+        guard isVisualPointerTargetPointVisible(target: target, point: screenPoint) else {
+            hide()
+            return false
+        }
+
+        show(at: screenPoint)
+        return true
     }
 
     func hide() {
@@ -1921,6 +1933,54 @@ func cgWindowIsOnScreen(_ value: Any?) -> Bool {
     return false
 }
 
+func cgWindowAlpha(_ value: Any?) -> Double {
+    if let value = value as? NSNumber {
+        return value.doubleValue
+    }
+    if let value = value as? Double {
+        return value
+    }
+    return 1
+}
+
+func visualPointerWindowStack() -> [VisualPointerStackWindow] {
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    guard let rawList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+        return []
+    }
+
+    let helperPID = getpid()
+    return rawList.compactMap { record -> VisualPointerStackWindow? in
+        guard let ownerPID = (record[kCGWindowOwnerPID as String] as? NSNumber)?.intValue,
+              ownerPID != Int(helperPID),
+              let windowNumber = (record[kCGWindowNumber as String] as? NSNumber)?.intValue,
+              let frame = cgWindowBounds(record[kCGWindowBounds as String])
+        else {
+            return nil
+        }
+
+        return VisualPointerStackWindow(
+            windowNumber: windowNumber,
+            ownerPID: ownerPID,
+            frame: frame,
+            isOnScreen: cgWindowIsOnScreen(record[kCGWindowIsOnscreen as String]),
+            alpha: cgWindowAlpha(record[kCGWindowAlpha as String])
+        )
+    }
+}
+
+func isVisualPointerTargetPointVisible(target: WindowTarget, point: CGPoint) -> Bool {
+    return shouldShowVisualPointer(
+        target: VisualPointerTargetWindow(
+            windowNumber: target.windowNumber,
+            ownerPID: Int(target.pid),
+            frame: target.frame
+        ),
+        point: point,
+        windowStack: visualPointerWindowStack()
+    )
+}
+
 enum CGWindowCandidateScope {
     case currentSpace
     case anySpace
@@ -2215,6 +2275,15 @@ func performWithRequiredBackgroundTarget<T>(
     }
 
     return try action(target)
+}
+
+func showVisualPointerIfTargetPointVisible(app: NSRunningApplication, point: CGPoint) -> Bool {
+    guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+        ComputerUseVisualPointer.shared.hide()
+        return false
+    }
+
+    return ComputerUseVisualPointer.shared.show(at: point, ifVisibleIn: target)
 }
 
 func waitForRunningApp(named appName: String, timeout: TimeInterval = 5) -> NSRunningApplication? {
@@ -3304,7 +3373,7 @@ func performBackgroundMouseClick(
     config: (down: CGEventType, up: CGEventType, button: CGMouseButton),
     clickCount: Int
 ) throws -> [String: Any] {
-    ComputerUseVisualPointer.shared.show(at: point)
+    let visualPointerShown = ComputerUseVisualPointer.shared.show(at: point, ifVisibleIn: target)
     let activation = BackgroundActivationSession.start(target: target)
     defer { activation.finish() }
 
@@ -3342,6 +3411,7 @@ func performBackgroundMouseClick(
         "targetWindowId": target.windowNumber,
         "backgroundActivation": true,
         "focusSuppression": activation.hasFocusSuppressionTaps,
+        "visualPointerShown": visualPointerShown,
     ]
 }
 
@@ -3505,8 +3575,12 @@ func performElementAccessibilityClick(
         dispatchTarget: "element",
         inputRisk: "targeted_app_action"
     ) {
+        var visualPointerShown: Bool?
         if let frame = clickTarget.capabilities.frame {
-            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+            visualPointerShown = showVisualPointerIfTargetPointVisible(
+                app: app,
+                point: CGPoint(x: frame.midX, y: frame.midY)
+            )
         }
         for index in 0..<clickCount {
             let error = AXUIElementPerformAction(clickTarget.element, actionName as CFString)
@@ -3525,6 +3599,9 @@ func performElementAccessibilityClick(
         }
         var result = elementClickResultMetadata(clickTarget: clickTarget)
         result["clickAction"] = actionName
+        if let visualPointerShown {
+            result["visualPointerShown"] = visualPointerShown
+        }
         return (targetPID: app.processIdentifier, result: result)
     }
 }
@@ -3692,11 +3769,19 @@ func handleElementSetValue(_ request: [String: Any], session: ComputerUseRuntime
         inputRisk: "targeted_app_text"
     ) {
         let element = try resolveElement(appName: appName, elementId: elementId)
+        var visualPointerShown: Bool?
         if let frame = clickableFrame(element) {
-            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+            visualPointerShown = showVisualPointerIfTargetPointVisible(
+                app: app,
+                point: CGPoint(x: frame.midX, y: frame.midY)
+            )
         }
         try setAttribute(element, kAXValueAttribute as CFString, value as CFString)
-        return (targetPID: app.processIdentifier, result: [:])
+        var result: [String: Any] = [:]
+        if let visualPointerShown {
+            result["visualPointerShown"] = visualPointerShown
+        }
+        return (targetPID: app.processIdentifier, result: result)
     }
 }
 
@@ -3711,8 +3796,12 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
         inputRisk: "targeted_app_action"
     ) {
         let element = try resolveElement(appName: appName, elementId: elementId)
+        var visualPointerShown: Bool?
         if let frame = clickableFrame(element) {
-            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+            visualPointerShown = showVisualPointerIfTargetPointVisible(
+                app: app,
+                point: CGPoint(x: frame.midX, y: frame.midY)
+            )
         }
         let error = AXUIElementPerformAction(element, action as CFString)
         if error != .success {
@@ -3721,7 +3810,11 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
                 message: "Unable to perform \(action) on \(elementId): \(error.rawValue)"
             )
         }
-        return (targetPID: app.processIdentifier, result: [:])
+        var result: [String: Any] = [:]
+        if let visualPointerShown {
+            result["visualPointerShown"] = visualPointerShown
+        }
+        return (targetPID: app.processIdentifier, result: result)
     }
 }
 
@@ -3788,13 +3881,21 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
         inputRisk: "targeted_app_action"
     ) {
         let element = try resolveElement(appName: appName, elementId: elementId)
+        var visualPointerShown: Bool?
         if let frame = clickableFrame(element) {
-            ComputerUseVisualPointer.shared.show(at: CGPoint(x: frame.midX, y: frame.midY))
+            visualPointerShown = showVisualPointerIfTargetPointVisible(
+                app: app,
+                point: CGPoint(x: frame.midX, y: frame.midY)
+            )
         }
         guard let scrollBar = attributeArray(element, kAXChildrenAttribute as CFString).first(where: { child in
             role(child) == axis
         }) else {
-            return (targetPID: app.processIdentifier, result: [:])
+            var result: [String: Any] = [:]
+            if let visualPointerShown {
+                result["visualPointerShown"] = visualPointerShown
+            }
+            return (targetPID: app.processIdentifier, result: result)
         }
         if let current = numberValue(attribute(scrollBar, kAXValueAttribute as CFString)) {
             try setAttribute(
@@ -3803,7 +3904,11 @@ func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSe
                 NSNumber(value: current + sign * step)
             )
         }
-        return (targetPID: app.processIdentifier, result: [:])
+        var result: [String: Any] = [:]
+        if let visualPointerShown {
+            result["visualPointerShown"] = visualPointerShown
+        }
+        return (targetPID: app.processIdentifier, result: result)
     }
 }
 

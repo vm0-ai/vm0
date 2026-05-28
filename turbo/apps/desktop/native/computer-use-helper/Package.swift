@@ -14,8 +14,16 @@ let package = Package(
         )
     ],
     targets: [
+        .target(
+            name: "ComputerUseHelperCore"
+        ),
         .executableTarget(
-            name: "ComputerUseHelper"
+            name: "ComputerUseHelper",
+            dependencies: ["ComputerUseHelperCore"]
+        ),
+        .testTarget(
+            name: "ComputerUseHelperCoreTests",
+            dependencies: ["ComputerUseHelperCore"]
         )
     ]
 )
