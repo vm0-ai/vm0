@@ -143,6 +143,17 @@ fn build_codex_memories_config() -> String {
     "features.memories=true".to_string()
 }
 
+/// Per-model default for the codex `model_reasoning_effort` config. GPT-5.5
+/// invests heavily in reasoning depth, so default it to `xhigh` rather than
+/// the codex CLI's stock `medium`.
+fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
+    let bare = model.strip_prefix("openai/").unwrap_or(model);
+    match bare {
+        "gpt-5.5" => Some("xhigh"),
+        _ => None,
+    }
+}
+
 fn build_codex_args(
     working_dir: &str,
     model: &str,
@@ -166,6 +177,11 @@ fn build_codex_args(
     if !model.is_empty() {
         args.push("-m".to_string());
         args.push(model.to_string());
+    }
+
+    if let Some(effort) = default_codex_reasoning_effort_for_model(model) {
+        args.push("-c".to_string());
+        args.push(format!("model_reasoning_effort={effort}"));
     }
 
     if !append_system_prompt.is_empty() {
@@ -363,6 +379,37 @@ mod tests {
         let args = build_codex_args_for_test("/wd", "gpt-5", "", "p");
         let m_idx = args.iter().position(|a| a == "-m").unwrap();
         assert_eq!(args[m_idx + 1], "gpt-5");
+    }
+
+    #[test]
+    fn build_codex_args_gpt_5_5_defaults_reasoning_effort_xhigh() {
+        let args = build_codex_args_for_test("/wd", "gpt-5.5", "", "p");
+        assert!(codex_args_have_config(
+            &args,
+            "model_reasoning_effort=xhigh"
+        ));
+    }
+
+    #[test]
+    fn build_codex_args_openai_prefixed_gpt_5_5_defaults_reasoning_effort_xhigh() {
+        let args = build_codex_args_for_test("/wd", "openai/gpt-5.5", "", "p");
+        assert!(codex_args_have_config(
+            &args,
+            "model_reasoning_effort=xhigh"
+        ));
+    }
+
+    #[test]
+    fn build_codex_args_non_gpt_5_5_omits_reasoning_effort() {
+        for model in ["gpt-5.4", "gpt-5.4-mini", "openai/gpt-5.4", ""] {
+            let args = build_codex_args_for_test("/wd", model, "", "p");
+            assert!(
+                !args
+                    .iter()
+                    .any(|arg| arg.starts_with("model_reasoning_effort=")),
+                "unexpected reasoning_effort default for model {model:?}: {args:?}"
+            );
+        }
     }
 
     #[test]
