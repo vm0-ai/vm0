@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.16](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.15...ably-subscriber-v0.7.16) (2026-05-28)
+
+
+### Bug Fixes
+
+* harden ably protocol frame decoding ([#15255](https://github.com/vm0-ai/vm0/issues/15255)) ([ee6adca](https://github.com/vm0-ai/vm0/commit/ee6adcad45e08e3204fdd1cc3eb0c3130b3f4475))
+
 ## [0.7.15](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.14...ably-subscriber-v0.7.15) (2026-05-27)
 
 

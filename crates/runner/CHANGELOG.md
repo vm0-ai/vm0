@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.104.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.16...runner-rs-v0.104.17) (2026-05-28)
+
+
+### Bug Fixes
+
+* prefer specific firewall path matches ([#15223](https://github.com/vm0-ai/vm0/issues/15223)) ([24c6d2e](https://github.com/vm0-ai/vm0/commit/24c6d2ed4ddcfab5f6bfd4e41329d672e45699d7))
+
 ## [0.104.16](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.15...runner-rs-v0.104.16) (2026-05-28)
 
 ## [0.104.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.14...runner-rs-v0.104.15) (2026-05-27)
