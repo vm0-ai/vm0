@@ -412,6 +412,21 @@ function parseBasicAuthTemplateAt(
   };
 }
 
+function findNextBasicAuthTemplateStart(
+  template: string,
+  index: number,
+): number {
+  let start = template.indexOf("${{", index);
+  while (start !== -1) {
+    const contentStart = skipTemplateWhitespace(template, start + "${{".length);
+    if (template.startsWith("basic(", contentStart)) {
+      return start;
+    }
+    start = template.indexOf("${{", start + "${{".length);
+  }
+  return -1;
+}
+
 /**
  * Parse `${{ basic(username, password) }}` templates in linear time.
  * Each side is secrets.X, vars.X, "literal", or empty; comma is required.
@@ -422,7 +437,7 @@ export function parseBasicAuthTemplates(
   template: string,
 ): readonly BasicAuthTemplateMatch[] {
   const matches: BasicAuthTemplateMatch[] = [];
-  let start = template.indexOf("${{");
+  let start = findNextBasicAuthTemplateStart(template, 0);
   if (start === -1) {
     return matches;
   }
@@ -433,10 +448,10 @@ export function parseBasicAuthTemplates(
     const parsed = parseBasicAuthTemplateAt(context, template, start);
     if (parsed.match) {
       matches.push(parsed.match);
-      start = template.indexOf("${{", parsed.index);
+      start = findNextBasicAuthTemplateStart(template, parsed.index);
     } else {
-      start = template.indexOf(
-        "${{",
+      start = findNextBasicAuthTemplateStart(
+        template,
         Math.max(parsed.index, start + "${{".length),
       );
     }
