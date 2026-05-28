@@ -42,10 +42,6 @@ export function IllustrationGalleryClient() {
     };
   }, [lightbox, closeLightbox]);
 
-  const newCount = ILLUSTRATION_STYLES.filter((s) => {
-    return s.isNew;
-  }).length;
-
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <section className="hero-section" style={{ paddingBottom: "32px" }}>
@@ -62,10 +58,6 @@ export function IllustrationGalleryClient() {
                 {ILLUSTRATION_STYLES.length}
               </span>{" "}
               styles
-            </span>
-            <span className="illu-meta-dot">·</span>
-            <span>
-              <span className="illu-meta-value">{newCount}</span> new this issue
             </span>
           </div>
         </div>
@@ -109,7 +101,7 @@ interface CardProps {
 
 function IllustrationCard({ style, onOpen }: CardProps) {
   return (
-    <article className={style.isNew ? "illu-tile is-new" : "illu-tile"}>
+    <article className="illu-tile">
       <button
         type="button"
         className="illu-tile-plate"
@@ -126,7 +118,6 @@ function IllustrationCard({ style, onOpen }: CardProps) {
           alt={style.title}
           loading="lazy"
         />
-        {style.isNew && <span className="illu-new-badge">New</span>}
       </button>
 
       <div className="illu-tile-caption">
@@ -137,9 +128,6 @@ function IllustrationCard({ style, onOpen }: CardProps) {
       </div>
 
       <div className="illu-refs-strip">
-        <span className="illu-refs-caption">
-          <em>{style.refs.length} var</em>
-        </span>
         {style.refs.map((ref) => {
           const isSample = ref === style.sample;
           return (

@@ -86,38 +86,12 @@
   width: 100%;
   height: auto;
 }
-.illu-tile.is-new .illu-tile-plate::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px #ed4e01;
-}
-.illu-new-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  display: inline-flex;
-  align-items: center;
-  background: #ed4e01;
-  color: #fff;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-style: italic;
-  font-weight: 500;
-  font-size: 12px;
-  letter-spacing: 0.01em;
-  padding: 3px 11px 4px;
-  border-radius: 999px;
-  line-height: 1;
-  pointer-events: none;
-}
-
 .illu-tile-caption {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px 12px;
+  padding: 20px 22px 12px;
 }
 .illu-tile-caption h3 {
   font-family: var(--font-noto-sans), "Noto Sans", system-ui, sans-serif;
@@ -140,27 +114,13 @@
 .illu-refs-strip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px 10px;
-  background: hsl(var(--gray-50));
-  border-top: 0.7px solid hsl(var(--gray-200));
+  gap: 8px;
+  padding: 12px 22px 22px;
   overflow-x: auto;
   scrollbar-width: none;
 }
 .illu-refs-strip::-webkit-scrollbar {
   display: none;
-}
-.illu-refs-caption {
-  flex: 0 0 auto;
-  padding-right: 4px;
-}
-.illu-refs-caption em {
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-style: italic;
-  font-weight: 400;
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-  letter-spacing: 0.01em;
 }
 
 .illu-ref-thumb {

@@ -3,7 +3,6 @@ export interface IllustrationStyle {
   title: string;
   image: string;
   sample: string;
-  isNew: boolean;
   width: number;
   height: number;
   refs: readonly string[];
@@ -15,7 +14,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Grain Poster",
     image: "grain-poster.png",
     sample: "ref-twilightdesk-twilight-l3-solo.png",
-    isNew: false,
     width: 704,
     height: 1472,
     refs: [
@@ -33,7 +31,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Sunlit Gouache",
     image: "sunlit-gouache.png",
     sample: "ref-bookshop-interior.jpg",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -49,7 +46,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Folk Muse",
     image: "folk-muse.png",
     sample: "ref-canonical.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -64,7 +60,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Light Pop Portrait",
     image: "light-pop-portrait.png",
     sample: "ref-sleepy-girl-bunny-peach.png",
-    isNew: true,
     width: 1024,
     height: 1024,
     refs: [
@@ -81,7 +76,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Postcard Illustration",
     image: "postcard-illustration.png",
     sample: "ref-sensoji.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: ["ref-sensoji.png", "ref-shibuya.png"],
@@ -91,7 +85,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Mosaic Still Life",
     image: "mosaic-still-life.png",
     sample: "ref-reading-nook.jpg",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -110,7 +103,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Painterly Botanical",
     image: "painterly-botanical.png",
     sample: "ref-wisteria-lavender.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -129,7 +121,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Op-Ed Cover",
     image: "op-ed-cover.png",
     sample: "ref-slowest-bowl.png",
-    isNew: false,
     width: 896,
     height: 1152,
     refs: [
@@ -143,7 +134,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Endpaper",
     image: "endpaper.png",
     sample: "ref-mossy-teal-cats-l2.png",
-    isNew: true,
     width: 1024,
     height: 1536,
     refs: [
@@ -159,7 +149,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Inkstomp",
     image: "inkstomp.png",
     sample: "ref-quiet-quitter.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -178,7 +167,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Mellow Pop",
     image: "mellow-pop.png",
     sample: "ref-mint-open-book-l2.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -198,7 +186,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Papernook",
     image: "papernook.png",
     sample: "ref-researcher.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -214,7 +201,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Ink Mascot",
     image: "ink-mascot.png",
     sample: "ref-content-terracotta.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -233,7 +219,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Riso Relic",
     image: "riso-relic.png",
     sample: "ref-rotary-phone-mustard-ringring.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -249,7 +234,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Editorial Flatfolk",
     image: "editorial-flatfolk.png",
     sample: "ref-harbor.png",
-    isNew: true,
     width: 1024,
     height: 1024,
     refs: ["ref-alpine.png", "ref-harbor.png", "ref-park.png"],
@@ -259,7 +243,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Flat Poster",
     image: "flat-poster.png",
     sample: "ref-teacup-lavender-takeabeat.png",
-    isNew: false,
     width: 1024,
     height: 1536,
     refs: [
@@ -277,7 +260,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Grainy Duotone",
     image: "grainy-duotone.png",
     sample: "ref-magnifier-lavender-mustard-l2.png",
-    isNew: false,
     width: 1056,
     height: 992,
     refs: [
@@ -295,7 +277,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Sticker Sheet",
     image: "sticker-sheet.png",
     sample: "ref-desk.jpg",
-    isNew: false,
     width: 848,
     height: 1264,
     refs: [
@@ -310,7 +291,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Folk Storybook",
     image: "folk-storybook.png",
     sample: "ref-reading-nook.jpg",
-    isNew: false,
     width: 1024,
     height: 1024,
     refs: ["ref-chill-tussle.jpg", "ref-puzzle.jpg", "ref-reading-nook.jpg"],
@@ -320,7 +300,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Inkdab",
     image: "inkdab.png",
     sample: "ref-reading-lavender-rich.png",
-    isNew: false,
     width: 1024,
     height: 1024,
     refs: [
@@ -336,7 +315,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Iso Scene",
     image: "iso-scene.png",
     sample: "blue-city-construction.png",
-    isNew: false,
     width: 1024,
     height: 1024,
     refs: [
@@ -351,7 +329,6 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     title: "Notion Illustration",
     image: "notion-illustration.png",
     sample: "ref-scene-couch.png",
-    isNew: false,
     width: 1088,
     height: 960,
     refs: [
