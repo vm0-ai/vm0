@@ -2089,6 +2089,32 @@ class TestCompiledFirewallMatching:
         assert isinstance(blocked, matching.FirewallBlock)
         assert blocked.reason == "malformed_network_policy"
 
+    @pytest.mark.parametrize("blocked_field", ["deny", "ask"])
+    def test_invalid_unknown_policy_does_not_override_blocked_permission(
+        self,
+        blocked_field,
+    ):
+        fws = self._github_firewalls()
+        policies = {
+            "github": {
+                "allow": [],
+                "deny": ["repo-read"] if blocked_field == "deny" else [],
+                "ask": ["repo-read"] if blocked_field == "ask" else [],
+                "unknownPolicy": "broken",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies(policies),
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
+
     def test_unrelated_malformed_policy_does_not_block_other_firewall(self):
         fws = self._github_firewalls()
         policies = {"slack": {"deny": "channels-read"}}
