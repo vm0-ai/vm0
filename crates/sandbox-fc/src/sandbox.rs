@@ -4571,6 +4571,25 @@ mod tests {
     }
 
     #[test]
+    fn operation_error_preserves_file_operation_context_for_guest_failures() {
+        for operation in [SandboxOperation::ReadFile, SandboxOperation::CopyFile] {
+            let timeout = FirecrackerSandbox::operation_error(
+                operation,
+                io::Error::new(io::ErrorKind::TimedOut, "operation timed out"),
+                false,
+            );
+            let guest = FirecrackerSandbox::operation_error(
+                operation,
+                io::Error::new(io::ErrorKind::BrokenPipe, "connection closed"),
+                false,
+            );
+
+            assert_operation_error(timeout, operation, SandboxOperationReason::Timeout);
+            assert_operation_error(guest, operation, SandboxOperationReason::Guest);
+        }
+    }
+
+    #[test]
     fn process_timeout_policy_maps_zero_to_none_and_millis_to_duration() {
         assert_eq!(process_timeout_policy(0), ExecTimeoutPolicy::None);
         assert_eq!(
@@ -4888,12 +4907,18 @@ mod tests {
     }
 
     #[test]
-    fn unavailable_guest_preserves_file_operation_context_for_not_running_state() {
+    fn unavailable_guest_preserves_file_operation_context_for_non_crashed_states() {
         for operation in [SandboxOperation::ReadFile, SandboxOperation::CopyFile] {
-            let err =
-                FirecrackerSandbox::operation_unavailable_error(operation, SandboxState::Created);
+            for (state, expected_state) in [
+                (SandboxState::Created, "created"),
+                (SandboxState::Running, "running"),
+                (SandboxState::Stopping, "stopping"),
+                (SandboxState::Stopped, "stopped"),
+            ] {
+                let err = FirecrackerSandbox::operation_unavailable_error(operation, state);
 
-            assert_invalid_state_operation(err, operation, "created");
+                assert_invalid_state_operation(err, operation, expected_state);
+            }
         }
     }
 
