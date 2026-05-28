@@ -210,6 +210,10 @@ interface ParsedBasicTemplate {
   readonly index: number;
 }
 
+interface BasicAuthTemplateParserContext {
+  readonly nextQuoteIndexes: Int32Array;
+}
+
 function isTemplateWhitespace(char: string): boolean {
   return (
     char === " " ||
@@ -265,7 +269,25 @@ function parseTemplateIdentifier(
   };
 }
 
+function createBasicAuthTemplateParserContext(
+  template: string,
+): BasicAuthTemplateParserContext {
+  const nextQuoteIndexes = new Int32Array(template.length + 1);
+  let nextQuoteIndex = -1;
+  nextQuoteIndexes[template.length] = nextQuoteIndex;
+
+  for (let index = template.length - 1; index >= 0; index -= 1) {
+    if (template[index] === '"') {
+      nextQuoteIndex = index;
+    }
+    nextQuoteIndexes[index] = nextQuoteIndex;
+  }
+
+  return { nextQuoteIndexes };
+}
+
 function parseBasicAuthTemplateArg(
+  context: BasicAuthTemplateParserContext,
   template: string,
   index: number,
 ): ParsedBasicArg {
@@ -277,21 +299,23 @@ function parseBasicAuthTemplateArg(
 
   if (char === '"') {
     const literalStart = nextIndex + 1;
-    nextIndex = literalStart;
-    while (nextIndex < template.length) {
-      const literalChar = template[nextIndex]!;
-      if (literalChar === "\\") {
-        return { arg: null, index: nextIndex + 1 };
-      }
-      if (literalChar === '"') {
-        return {
-          arg: { literal: template.slice(literalStart, nextIndex) },
-          index: nextIndex + 1,
-        };
-      }
-      nextIndex += 1;
+    const quoteIndex = context.nextQuoteIndexes[literalStart] ?? -1;
+    if (quoteIndex === -1) {
+      const nestedTemplateStart = template.indexOf("${{", literalStart);
+      return {
+        arg: null,
+        index:
+          nestedTemplateStart === -1 ? template.length : nestedTemplateStart,
+      };
     }
-    return { arg: null, index: template.length };
+    const escapeIndex = template.indexOf("\\", literalStart);
+    if (escapeIndex !== -1 && escapeIndex < quoteIndex) {
+      return { arg: null, index: escapeIndex + 1 };
+    }
+    return {
+      arg: { literal: template.slice(literalStart, quoteIndex) },
+      index: quoteIndex + 1,
+    };
   }
 
   let namespace: FirewallTemplateReferenceNamespace;
@@ -302,12 +326,12 @@ function parseBasicAuthTemplateArg(
     namespace = "vars";
     nextIndex += "vars.".length;
   } else {
-    return { arg: null, index: Math.max(nextIndex + 1, index + 1) };
+    return { arg: null, index: nextIndex };
   }
 
   const key = parseTemplateIdentifier(template, nextIndex);
   if (!key) {
-    return { arg: null, index: Math.max(nextIndex + 1, index + 1) };
+    return { arg: null, index: nextIndex };
   }
   return {
     arg: { namespace, key: key.value },
@@ -316,6 +340,7 @@ function parseBasicAuthTemplateArg(
 }
 
 function parseBasicAuthTemplateAt(
+  context: BasicAuthTemplateParserContext,
   template: string,
   start: number,
 ): ParsedBasicTemplate {
@@ -326,7 +351,7 @@ function parseBasicAuthTemplateAt(
   }
   index += "basic(".length;
 
-  const first = parseBasicAuthTemplateArg(template, index);
+  const first = parseBasicAuthTemplateArg(context, template, index);
   if (!first.arg) {
     return { match: null, index: first.index };
   }
@@ -336,7 +361,7 @@ function parseBasicAuthTemplateAt(
   }
   index += 1;
 
-  const second = parseBasicAuthTemplateArg(template, index);
+  const second = parseBasicAuthTemplateArg(context, template, index);
   if (!second.arg) {
     return { match: null, index: second.index };
   }
@@ -372,19 +397,23 @@ export function parseBasicAuthTemplates(
   template: string,
 ): readonly BasicAuthTemplateMatch[] {
   const matches: BasicAuthTemplateMatch[] = [];
-  let searchFrom = 0;
+  let start = template.indexOf("${{");
+  if (start === -1) {
+    return matches;
+  }
 
-  while (searchFrom < template.length) {
-    const start = template.indexOf("${{", searchFrom);
-    if (start === -1) {
-      break;
-    }
-    const parsed = parseBasicAuthTemplateAt(template, start);
+  const context = createBasicAuthTemplateParserContext(template);
+
+  while (start !== -1) {
+    const parsed = parseBasicAuthTemplateAt(context, template, start);
     if (parsed.match) {
       matches.push(parsed.match);
-      searchFrom = parsed.index;
+      start = template.indexOf("${{", parsed.index);
     } else {
-      searchFrom = Math.max(parsed.index, start + "${{".length);
+      start = template.indexOf(
+        "${{",
+        Math.max(parsed.index, start + "${{".length),
+      );
     }
   }
 
