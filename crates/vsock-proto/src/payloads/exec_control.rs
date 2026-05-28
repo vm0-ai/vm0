@@ -65,72 +65,80 @@ pub struct DecodedControlResult<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct ControlCodecErrors {
+struct ControlIdentity<'a> {
+    target_seq: u32,
+    control_nonce: ExecControlNonce,
+    message_id: &'a str,
+}
+
+#[derive(Clone, Copy)]
+struct CommonControlCodecErrors {
     target_seq_zero: &'static str,
     message_id_empty: &'static str,
     target_seq_truncated: &'static str,
-    request_timeout_ms_truncated: &'static str,
     nonce_truncated: &'static str,
     nonce_invalid: &'static str,
     message_id_len_truncated: &'static str,
     message_id_truncated: &'static str,
     message_id_utf8: &'static str,
-    payload_len_truncated: &'static str,
-    payload_too_large: &'static str,
-    payload_truncated: &'static str,
     trailing_bytes: &'static str,
 }
 
 #[derive(Clone, Copy)]
+pub(crate) struct ControlCodecErrors {
+    common: CommonControlCodecErrors,
+    request_timeout_ms_truncated: &'static str,
+    payload_len_truncated: &'static str,
+    payload_too_large: &'static str,
+    payload_truncated: &'static str,
+}
+
+#[derive(Clone, Copy)]
 pub(crate) struct ControlResultCodecErrors {
-    target_seq_zero: &'static str,
-    message_id_empty: &'static str,
-    target_seq_truncated: &'static str,
-    nonce_truncated: &'static str,
-    nonce_invalid: &'static str,
-    message_id_len_truncated: &'static str,
-    message_id_truncated: &'static str,
-    message_id_utf8: &'static str,
+    common: CommonControlCodecErrors,
     status_truncated: &'static str,
     status_invalid: &'static str,
     diagnostic_len_truncated: &'static str,
     diagnostic_truncated: &'static str,
     diagnostic_utf8: &'static str,
-    trailing_bytes: &'static str,
 }
 
 pub(crate) const EXEC_CONTROL_CODEC_ERRORS: ControlCodecErrors = ControlCodecErrors {
-    target_seq_zero: "exec_control target_seq must be non-zero",
-    message_id_empty: "exec_control message_id empty",
-    target_seq_truncated: "exec_control target_seq truncated",
+    common: CommonControlCodecErrors {
+        target_seq_zero: "exec_control target_seq must be non-zero",
+        message_id_empty: "exec_control message_id empty",
+        target_seq_truncated: "exec_control target_seq truncated",
+        nonce_truncated: "exec_control nonce truncated",
+        nonce_invalid: "exec_control nonce invalid",
+        message_id_len_truncated: "exec_control message_id_len truncated",
+        message_id_truncated: "exec_control message_id truncated",
+        message_id_utf8: "invalid UTF-8 in exec_control message_id",
+        trailing_bytes: "exec_control trailing bytes",
+    },
     request_timeout_ms_truncated: "exec_control request_timeout_ms truncated",
-    nonce_truncated: "exec_control nonce truncated",
-    nonce_invalid: "exec_control nonce invalid",
-    message_id_len_truncated: "exec_control message_id_len truncated",
-    message_id_truncated: "exec_control message_id truncated",
-    message_id_utf8: "invalid UTF-8 in exec_control message_id",
     payload_len_truncated: "exec_control payload_len truncated",
     payload_too_large: "exec_control payload too large",
     payload_truncated: "exec_control payload truncated",
-    trailing_bytes: "exec_control trailing bytes",
 };
 
 pub(crate) const EXEC_CONTROL_RESULT_CODEC_ERRORS: ControlResultCodecErrors =
     ControlResultCodecErrors {
-        target_seq_zero: "exec_control_result target_seq must be non-zero",
-        message_id_empty: "exec_control_result message_id empty",
-        target_seq_truncated: "exec_control_result target_seq truncated",
-        nonce_truncated: "exec_control_result nonce truncated",
-        nonce_invalid: "exec_control_result nonce invalid",
-        message_id_len_truncated: "exec_control_result message_id_len truncated",
-        message_id_truncated: "exec_control_result message_id truncated",
-        message_id_utf8: "invalid UTF-8 in exec_control_result message_id",
+        common: CommonControlCodecErrors {
+            target_seq_zero: "exec_control_result target_seq must be non-zero",
+            message_id_empty: "exec_control_result message_id empty",
+            target_seq_truncated: "exec_control_result target_seq truncated",
+            nonce_truncated: "exec_control_result nonce truncated",
+            nonce_invalid: "exec_control_result nonce invalid",
+            message_id_len_truncated: "exec_control_result message_id_len truncated",
+            message_id_truncated: "exec_control_result message_id truncated",
+            message_id_utf8: "invalid UTF-8 in exec_control_result message_id",
+            trailing_bytes: "exec_control_result trailing bytes",
+        },
         status_truncated: "exec_control_result status truncated",
         status_invalid: "exec_control_result status invalid",
         diagnostic_len_truncated: "exec_control_result diagnostic_len truncated",
         diagnostic_truncated: "exec_control_result diagnostic truncated",
         diagnostic_utf8: "invalid UTF-8 in exec_control_result diagnostic",
-        trailing_bytes: "exec_control_result trailing bytes",
     };
 
 fn status_to_wire(status: ExecControlStatus) -> u8 {
@@ -182,6 +190,98 @@ fn encoded_result_len(
     checked_payload_len_add(total, diagnostic_len)
 }
 
+fn validate_control_identity(
+    identity: ControlIdentity<'_>,
+    errors: CommonControlCodecErrors,
+) -> Result<(), ProtocolError> {
+    if identity.target_seq == 0 {
+        return Err(ProtocolError::InvalidPayload(errors.target_seq_zero));
+    }
+    if identity.message_id.is_empty() {
+        return Err(ProtocolError::InvalidPayload(errors.message_id_empty));
+    }
+    Ok(())
+}
+
+fn control_identity_message_id_len(identity: ControlIdentity<'_>) -> Result<u16, ProtocolError> {
+    ensure_u16_len("message_id", identity.message_id.len())
+}
+
+fn append_target_seq(out: &mut Vec<u8>, target_seq: u32) {
+    out.extend_from_slice(&target_seq.to_be_bytes());
+}
+
+fn append_control_identity_tail(
+    out: &mut Vec<u8>,
+    identity: ControlIdentity<'_>,
+    message_id_len: u16,
+) {
+    out.extend_from_slice(&identity.control_nonce);
+    out.extend_from_slice(&message_id_len.to_be_bytes());
+    out.extend_from_slice(identity.message_id.as_bytes());
+}
+
+fn read_non_zero_target_seq(
+    payload: &[u8],
+    offset: &mut usize,
+    errors: CommonControlCodecErrors,
+) -> Result<u32, ProtocolError> {
+    let target_seq = read_u32(payload, offset, errors.target_seq_truncated)?;
+    if target_seq == 0 {
+        return Err(ProtocolError::InvalidPayload(errors.target_seq_zero));
+    }
+    Ok(target_seq)
+}
+
+fn read_control_nonce(
+    payload: &[u8],
+    offset: &mut usize,
+    errors: CommonControlCodecErrors,
+) -> Result<ExecControlNonce, ProtocolError> {
+    let nonce_bytes = read_slice(
+        payload,
+        offset,
+        EXEC_CONTROL_NONCE_LEN,
+        errors.nonce_truncated,
+    )?;
+    nonce_bytes
+        .try_into()
+        .map_err(|_| ProtocolError::InvalidPayload(errors.nonce_invalid))
+}
+
+fn read_control_message_id<'a>(
+    payload: &'a [u8],
+    offset: &mut usize,
+    errors: CommonControlCodecErrors,
+) -> Result<&'a str, ProtocolError> {
+    let message_id_len = read_u16(payload, offset, errors.message_id_len_truncated)? as usize;
+    if message_id_len == 0 {
+        return Err(ProtocolError::InvalidPayload(errors.message_id_empty));
+    }
+    read_str(
+        payload,
+        offset,
+        message_id_len,
+        errors.message_id_truncated,
+        errors.message_id_utf8,
+    )
+}
+
+fn read_control_identity_tail<'a>(
+    payload: &'a [u8],
+    offset: &mut usize,
+    target_seq: u32,
+    errors: CommonControlCodecErrors,
+) -> Result<ControlIdentity<'a>, ProtocolError> {
+    let control_nonce = read_control_nonce(payload, offset, errors)?;
+    let message_id = read_control_message_id(payload, offset, errors)?;
+    Ok(ControlIdentity {
+        target_seq,
+        control_nonce,
+        message_id,
+    })
+}
+
 pub(crate) fn encode_control_with_errors(
     target_seq: u32,
     control_nonce: ExecControlNonce,
@@ -190,26 +290,24 @@ pub(crate) fn encode_control_with_errors(
     request_timeout_ms: u32,
     errors: ControlCodecErrors,
 ) -> Result<Vec<u8>, ProtocolError> {
-    if target_seq == 0 {
-        return Err(ProtocolError::InvalidPayload(errors.target_seq_zero));
-    }
-    if message_id.is_empty() {
-        return Err(ProtocolError::InvalidPayload(errors.message_id_empty));
-    }
+    let identity = ControlIdentity {
+        target_seq,
+        control_nonce,
+        message_id,
+    };
+    validate_control_identity(identity, errors.common)?;
     if payload.len() > EXEC_CONTROL_MAX_PAYLOAD_BYTES {
         return Err(ProtocolError::PayloadTooLarge("payload", payload.len()));
     }
-    let message_id_len = ensure_u16_len("message_id", message_id.len())?;
+    let message_id_len = control_identity_message_id_len(identity)?;
     let payload_len = ensure_u32_len("payload", payload.len())?;
     let total_len = encoded_control_len(message_id.len(), payload.len())?;
     ensure_payload_fits_message(total_len)?;
 
     let mut out = Vec::with_capacity(total_len);
-    out.extend_from_slice(&target_seq.to_be_bytes());
+    append_target_seq(&mut out, identity.target_seq);
     out.extend_from_slice(&request_timeout_ms.to_be_bytes());
-    out.extend_from_slice(&control_nonce);
-    out.extend_from_slice(&message_id_len.to_be_bytes());
-    out.extend_from_slice(message_id.as_bytes());
+    append_control_identity_tail(&mut out, identity, message_id_len);
     out.extend_from_slice(&payload_len.to_be_bytes());
     out.extend_from_slice(payload);
     Ok(out)
@@ -220,43 +318,21 @@ pub(crate) fn decode_control_with_errors(
     errors: ControlCodecErrors,
 ) -> Result<DecodedControl<'_>, ProtocolError> {
     let mut offset = 0;
-    let target_seq = read_u32(payload, &mut offset, errors.target_seq_truncated)?;
-    if target_seq == 0 {
-        return Err(ProtocolError::InvalidPayload(errors.target_seq_zero));
-    }
+    let target_seq = read_non_zero_target_seq(payload, &mut offset, errors.common)?;
     let request_timeout_ms = read_u32(payload, &mut offset, errors.request_timeout_ms_truncated)?;
-    let nonce_bytes = read_slice(
-        payload,
-        &mut offset,
-        EXEC_CONTROL_NONCE_LEN,
-        errors.nonce_truncated,
-    )?;
-    let control_nonce: ExecControlNonce = nonce_bytes
-        .try_into()
-        .map_err(|_| ProtocolError::InvalidPayload(errors.nonce_invalid))?;
-    let message_id_len = read_u16(payload, &mut offset, errors.message_id_len_truncated)? as usize;
-    if message_id_len == 0 {
-        return Err(ProtocolError::InvalidPayload(errors.message_id_empty));
-    }
-    let message_id = read_str(
-        payload,
-        &mut offset,
-        message_id_len,
-        errors.message_id_truncated,
-        errors.message_id_utf8,
-    )?;
+    let identity = read_control_identity_tail(payload, &mut offset, target_seq, errors.common)?;
     let payload_len = read_u32(payload, &mut offset, errors.payload_len_truncated)? as usize;
     if payload_len > EXEC_CONTROL_MAX_PAYLOAD_BYTES {
         return Err(ProtocolError::InvalidPayload(errors.payload_too_large));
     }
     let message_payload = read_slice(payload, &mut offset, payload_len, errors.payload_truncated)?;
-    expect_consumed(payload, offset, errors.trailing_bytes)?;
+    expect_consumed(payload, offset, errors.common.trailing_bytes)?;
 
     Ok(DecodedControl {
-        target_seq,
+        target_seq: identity.target_seq,
         request_timeout_ms,
-        control_nonce,
-        message_id,
+        control_nonce: identity.control_nonce,
+        message_id: identity.message_id,
         payload: message_payload,
     })
 }
@@ -269,22 +345,20 @@ pub(crate) fn encode_control_result_with_errors(
     diagnostic: &str,
     errors: ControlResultCodecErrors,
 ) -> Result<Vec<u8>, ProtocolError> {
-    if target_seq == 0 {
-        return Err(ProtocolError::InvalidPayload(errors.target_seq_zero));
-    }
-    if message_id.is_empty() {
-        return Err(ProtocolError::InvalidPayload(errors.message_id_empty));
-    }
-    let message_id_len = ensure_u16_len("message_id", message_id.len())?;
+    let identity = ControlIdentity {
+        target_seq,
+        control_nonce,
+        message_id,
+    };
+    validate_control_identity(identity, errors.common)?;
+    let message_id_len = control_identity_message_id_len(identity)?;
     let diagnostic_len = ensure_u16_len("diagnostic", diagnostic.len())?;
     let total_len = encoded_result_len(message_id.len(), diagnostic.len())?;
     ensure_payload_fits_message(total_len)?;
 
     let mut out = Vec::with_capacity(total_len);
-    out.extend_from_slice(&target_seq.to_be_bytes());
-    out.extend_from_slice(&control_nonce);
-    out.extend_from_slice(&message_id_len.to_be_bytes());
-    out.extend_from_slice(message_id.as_bytes());
+    append_target_seq(&mut out, identity.target_seq);
+    append_control_identity_tail(&mut out, identity, message_id_len);
     out.push(status_to_wire(status));
     out.extend_from_slice(&diagnostic_len.to_be_bytes());
     out.extend_from_slice(diagnostic.as_bytes());
@@ -296,30 +370,8 @@ pub(crate) fn decode_control_result_with_errors(
     errors: ControlResultCodecErrors,
 ) -> Result<DecodedControlResult<'_>, ProtocolError> {
     let mut offset = 0;
-    let target_seq = read_u32(payload, &mut offset, errors.target_seq_truncated)?;
-    if target_seq == 0 {
-        return Err(ProtocolError::InvalidPayload(errors.target_seq_zero));
-    }
-    let nonce_bytes = read_slice(
-        payload,
-        &mut offset,
-        EXEC_CONTROL_NONCE_LEN,
-        errors.nonce_truncated,
-    )?;
-    let control_nonce: ExecControlNonce = nonce_bytes
-        .try_into()
-        .map_err(|_| ProtocolError::InvalidPayload(errors.nonce_invalid))?;
-    let message_id_len = read_u16(payload, &mut offset, errors.message_id_len_truncated)? as usize;
-    if message_id_len == 0 {
-        return Err(ProtocolError::InvalidPayload(errors.message_id_empty));
-    }
-    let message_id = read_str(
-        payload,
-        &mut offset,
-        message_id_len,
-        errors.message_id_truncated,
-        errors.message_id_utf8,
-    )?;
+    let target_seq = read_non_zero_target_seq(payload, &mut offset, errors.common)?;
+    let identity = read_control_identity_tail(payload, &mut offset, target_seq, errors.common)?;
     let status = status_from_wire(
         read_u8(payload, &mut offset, errors.status_truncated)?,
         errors.status_invalid,
@@ -332,12 +384,12 @@ pub(crate) fn decode_control_result_with_errors(
         errors.diagnostic_truncated,
         errors.diagnostic_utf8,
     )?;
-    expect_consumed(payload, offset, errors.trailing_bytes)?;
+    expect_consumed(payload, offset, errors.common.trailing_bytes)?;
 
     Ok(DecodedControlResult {
-        target_seq,
-        control_nonce,
-        message_id,
+        target_seq: identity.target_seq,
+        control_nonce: identity.control_nonce,
+        message_id: identity.message_id,
         status,
         diagnostic,
     })
