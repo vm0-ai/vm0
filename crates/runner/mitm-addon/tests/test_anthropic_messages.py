@@ -207,6 +207,14 @@ class TestAnthropicSseUsageExtractor:
         assert parse_errors == []
         assert usage == {}
 
+    def test_data_only_malformed_duplicate_type_does_not_use_stale_type(self):
+        parse, usage, parse_errors = _create_parser_with_parse_errors()
+
+        parse(b'data: {"type":"message_start","type":"message_delta\n\n')
+
+        assert parse_errors == []
+        assert usage == {}
+
     def test_empty_chunks(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()
         parse(b"")
