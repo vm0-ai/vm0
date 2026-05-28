@@ -100,9 +100,10 @@ teardown_file() {
     [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
     export THREAD_ID
 
-    # Wait for the assistant message to terminate. Resets LAST_RUN_ID +
-    # LAST_MSG_CONTENT to the assistant row's runId/content. Also called
-    # without `run` so its exports survive the subshell boundary.
+    # Wait for the assistant message to terminate. Resets LAST_RUN_ID to the
+    # terminal assistant row's runId and LAST_MSG_CONTENT to that run's latest
+    # non-blank assistant content. Also called without `run` so its exports
+    # survive the subshell boundary.
     wait_for_chat_assistant_done "$THREAD_ID"
 
     # Assert: real codex produced the expected sentinel.
