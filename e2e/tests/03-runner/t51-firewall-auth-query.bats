@@ -4,9 +4,9 @@
 #
 # Verifies the full flow for connectors that authenticate via URL query params
 # (e.g., SerpApi uses ?api_key=XXX instead of an Authorization header):
-# 1. Set up connector via user secret
+# 1. Set up connector via API-token connector flow
 # 2. Compose agent with environment referencing connector secret
-# 3. System auto-detects serpapi as connected, adds firewall with auth.query
+# 3. System detects serpapi as connected, adds firewall with auth.query
 # 4. Placeholder env var injected in sandbox
 # 5. Proxy matches requests and injects api_key query parameter
 
@@ -24,8 +24,8 @@ setup_file() {
     export ARTIFACT_NAME="e2e-auth-query-artifact-${UNIQUE_ID}"
 
     # Set up serpapi connector — api-token auth, single secret.
-    # Uses $ZERO_CLI (same pattern as t43-firewall-dynamic-base-url).
-    $ZERO_CLI secret set SERPAPI_TOKEN --body "fake-serpapi-token-for-e2e"
+    $ZERO_CLI connector connect serpapi \
+        --value SERPAPI_TOKEN=fake-serpapi-token-for-e2e
 
     # Create artifact
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
@@ -37,7 +37,7 @@ setup_file() {
 }
 
 teardown_file() {
-    $ZERO_CLI secret delete -y SERPAPI_TOKEN 2>/dev/null || true
+    zero_curl "/api/zero/connectors/serpapi" -X DELETE >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"

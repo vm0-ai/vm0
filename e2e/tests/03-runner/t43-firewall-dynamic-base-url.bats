@@ -4,7 +4,7 @@
 #
 # Verifies the full flow for zendesk (api-token connector with ${{ vars.X }} base URL):
 # 1. Set up connector via one connector-aware CLI call
-# 2. Compose agent with zendesk skill + environment referencing connector secrets/vars
+# 2. Compose agent that relies on stored connector environment injection
 # 3. System auto-detects zendesk as connected, adds firewall with resolved base URL
 # 4. Placeholder env var injected in sandbox
 # 5. Proxy matches requests to resolved base URL and injects auth header
@@ -39,10 +39,7 @@ setup_file() {
 }
 
 teardown_file() {
-    # Clean up secrets and variables
-    $ZERO_CLI secret delete -y ZENDESK_API_TOKEN 2>/dev/null || true
-    $ZERO_CLI variable delete -y ZENDESK_SUBDOMAIN 2>/dev/null || true
-    $ZERO_CLI variable delete -y ZENDESK_EMAIL 2>/dev/null || true
+    zero_curl "/api/zero/connectors/zendesk" -X DELETE >/dev/null 2>&1 || true
 
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -58,10 +55,6 @@ agents:
     description: "Zendesk dynamic base URL placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    environment:
-      ZENDESK_API_TOKEN: \${{ secrets.ZENDESK_API_TOKEN }}
-      ZENDESK_SUBDOMAIN: \${{ vars.ZENDESK_SUBDOMAIN }}
-      ZENDESK_EMAIL: \${{ vars.ZENDESK_EMAIL }}
 EOF
 
     run $VM0_CLI compose --yes "$TEST_DIR/vm0-placeholder.yaml"
@@ -91,10 +84,6 @@ agents:
     description: "Zendesk dynamic base URL proxy test"
     framework: claude-code
     working_dir: /home/user/workspace
-    environment:
-      ZENDESK_API_TOKEN: \${{ secrets.ZENDESK_API_TOKEN }}
-      ZENDESK_SUBDOMAIN: \${{ vars.ZENDESK_SUBDOMAIN }}
-      ZENDESK_EMAIL: \${{ vars.ZENDESK_EMAIL }}
 EOF
 
     run $VM0_CLI compose --yes "$TEST_DIR/vm0-proxy.yaml"
