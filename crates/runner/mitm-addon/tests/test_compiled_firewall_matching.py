@@ -770,6 +770,8 @@ class TestCompiledFirewallMatching:
         [
             "repo-read",
             [None],
+            [{"rules": ["GET /repos/{owner}/{repo}"]}],
+            [{"name": 123, "rules": ["GET /repos/{owner}/{repo}"]}],
             [{"name": "repo-read", "rules": [123]}],
         ],
     )

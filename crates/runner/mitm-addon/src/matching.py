@@ -761,6 +761,10 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                     if not isinstance(perm, dict):
                         has_malformed_rules = True
                         continue
+                    raw_name = perm.get("name")
+                    if not isinstance(raw_name, str):
+                        has_malformed_rules = True
+                        continue
                     raw_rules = perm.get("rules", [])
                     if not isinstance(raw_rules, list):
                         raw_rules = []
@@ -778,7 +782,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                         compiled_rules.append(rule)
 
                     compiled_permissions.append(
-                        _CompiledPermission(perm.get("name", ""), tuple(compiled_rules))
+                        _CompiledPermission(raw_name, tuple(compiled_rules))
                     )
             elif permissions is not None:
                 has_malformed_rules = True
