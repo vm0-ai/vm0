@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.26...guest-agent-v0.33.0) (2026-05-28)
+
+
+### Features
+
+* **guest-agent:** default codex reasoning_effort to xhigh for gpt-5.5 ([#15310](https://github.com/vm0-ai/vm0/issues/15310)) ([0c895c7](https://github.com/vm0-ai/vm0/commit/0c895c794a70c389fe4f03e2142512bd23474a85))
+
 ## [0.32.26](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.25...guest-agent-v0.32.26) (2026-05-28)
 
 ## [0.32.25](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.24...guest-agent-v0.32.25) (2026-05-27)
