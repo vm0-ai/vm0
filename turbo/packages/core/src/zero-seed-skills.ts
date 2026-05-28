@@ -25,6 +25,7 @@ export const SEED_SKILLS: readonly string[] = [
   "escalation-brief",
   "flux-analysis",
   "gaap-reporting",
+  "gen",
   "issue-triage",
   "journal-entries",
   "kb-authoring",
