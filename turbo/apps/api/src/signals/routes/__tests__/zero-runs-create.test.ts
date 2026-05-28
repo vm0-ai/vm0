@@ -1207,7 +1207,7 @@ describe("POST /api/zero/runs", () => {
     });
   });
 
-  it("does not forward unapproved API-token connector secrets", async () => {
+  it("treats connector-named user secrets as ordinary explicit secrets", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -1221,7 +1221,7 @@ describe("POST /api/zero/runs", () => {
       orgId: fx.orgId,
       userId: fx.userId,
       name: "AXIOM_TOKEN",
-      encryptedValue: encryptSecretForTests("xaat-unapproved"),
+      encryptedValue: encryptSecretForTests("xaat-user-secret"),
       type: "user",
     });
 
@@ -1229,7 +1229,7 @@ describe("POST /api/zero/runs", () => {
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
         body: {
-          prompt: "do not leak connector token",
+          prompt: "use explicit user secret",
           agentId: agent.agentId,
         },
       }),
@@ -1243,13 +1243,64 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
+      readonly firewalls?: readonly { readonly name: string }[];
     };
-    expect(executionContext.environment.AXIOM_TOKEN).toBe(
-      ["${{", " secrets.AXIOM_TOKEN }}"].join(""),
+    expect(executionContext.environment.AXIOM_TOKEN).toBe("xaat-user-secret");
+    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+      AXIOM_TOKEN: "xaat-user-secret",
+    });
+    expect(
+      executionContext.firewalls?.some((firewall) => {
+        return firewall.name === "axiom";
+      }),
+    ).toBeFalsy();
+  });
+
+  it("does not infer API-token connector runtime from legacy user secrets", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    const db = store.set(writeDb$);
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "axiom",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "AXIOM_TOKEN",
+      encryptedValue: encryptSecretForTests("xaat-legacy"),
+      type: "user",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "ignore legacy connector secret",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
     );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly firewalls?: readonly { readonly name: string }[];
+    };
     expect(
       decryptSecretsMap(executionContext.encryptedSecrets)?.AXIOM_TOKEN,
     ).toBeUndefined();
+    expect(
+      executionContext.firewalls?.some((firewall) => {
+        return firewall.name === "axiom";
+      }),
+    ).toBeFalsy();
   });
 
   it("masks approved API-token connector env secrets with placeholders", async () => {

@@ -25,10 +25,8 @@ import {
 import {
   getConnectorAuthMethod,
   getConnectorAuthMethodEnvBindings,
-  getConnectorManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import {
-  CONNECTOR_TYPE_KEYS,
   connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
@@ -1477,17 +1475,6 @@ function buildMergedVariables(args: {
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-function userOwnedConnectorSecretNames(): ReadonlySet<string> {
-  const names = new Set<string>();
-  for (const type of CONNECTOR_TYPE_KEYS) {
-    const fields = getConnectorManualGrantFieldNames(type);
-    for (const name of fields?.secrets ?? []) {
-      names.add(name);
-    }
-  }
-  return names;
-}
-
 async function buildReferencedSecrets(args: {
   readonly content: AgentComposeContent;
   readonly runSecrets: Record<string, string> | undefined;
@@ -1506,11 +1493,7 @@ async function buildReferencedSecrets(args: {
 
   const orgSecrets: Record<string, string> = {};
   const userSecrets: Record<string, string> = {};
-  const connectorSecretNames = userOwnedConnectorSecretNames();
   for (const row of args.persistedEnvironment.secrets) {
-    if (connectorSecretNames.has(row.name)) {
-      continue;
-    }
     const target =
       row.userId === ORG_SENTINEL_USER_ID ? orgSecrets : userSecrets;
     target[row.name] = await decryptStoredSecretValue(

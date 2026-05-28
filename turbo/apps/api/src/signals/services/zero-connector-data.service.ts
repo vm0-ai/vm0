@@ -38,7 +38,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -106,6 +106,19 @@ interface PendingOAuthRevoke {
   readonly type: OAuthGrantConnectorType;
   readonly encryptedAccessToken: string;
   readonly featureSwitchContext: FeatureSwitchContext;
+}
+
+async function lockConnectorState(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ConnectorType;
+  },
+): Promise<void> {
+  await db.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('connector_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type}))`,
+  );
 }
 
 function parseOauthScopes(value: string | null): string[] | null {
@@ -512,6 +525,13 @@ export const deleteZeroConnectorLocalState$ = command(
     } satisfies FeatureSwitchContext;
 
     const deleteResult = await writeDb.transaction(async (tx) => {
+      await lockConnectorState(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+      });
+      signal.throwIfAborted();
+
       const [existing] = await tx
         .select({ id: connectors.id, authMethod: connectors.authMethod })
         .from(connectors)
@@ -913,6 +933,13 @@ export const connectApiTokenConnector$ = command(
     let connectorRow: StoredConnectorRow | null = null;
 
     await writeDb.transaction(async (tx) => {
+      await lockConnectorState(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+      });
+      signal.throwIfAborted();
+
       pendingOAuthRevoke =
         await cleanupExistingStoredConnectorForApiTokenConnect(tx, {
           orgId: args.orgId,
@@ -1280,76 +1307,87 @@ export const upsertOAuthConnector$ = command(
         ? secretMetadata.refreshSecretName
         : undefined,
     });
-    const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
-    const existingAuthMethod = await loadExistingConnectorAuthMethod(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.type,
-      signal,
-    });
-
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
 
-    await upsertConnectorSecret(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
-      name: secretMetadata.accessSecretName,
-      value: args.accessToken,
-      description: `OAuth token for ${args.type} connector`,
-      featureSwitchContext,
-    });
-    signal.throwIfAborted();
-
-    if (args.refreshToken && args.refreshSecretName) {
-      await upsertConnectorSecret(writeDb, {
+    const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
+    const connectorRow = await writeDb.transaction(async (tx) => {
+      await lockConnectorState(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        name: args.refreshSecretName,
-        value: args.refreshToken,
-        description: `OAuth refresh token for ${args.type} connector`,
+        type: args.type,
+      });
+      signal.throwIfAborted();
+
+      const existingAuthMethod = await loadExistingConnectorAuthMethod(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        signal,
+      });
+
+      await upsertConnectorSecret(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        name: secretMetadata.accessSecretName,
+        value: args.accessToken,
+        description: `OAuth token for ${args.type} connector`,
         featureSwitchContext,
       });
       signal.throwIfAborted();
-    }
 
-    await upsertExtraOAuthConnectorSecrets({
-      db: writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.type,
-      extraSecrets,
-      featureSwitchContext,
-      signal,
-    });
-    signal.throwIfAborted();
+      if (args.refreshToken && args.refreshSecretName) {
+        await upsertConnectorSecret(tx, {
+          orgId: args.orgId,
+          userId: args.userId,
+          name: args.refreshSecretName,
+          value: args.refreshToken,
+          description: `OAuth refresh token for ${args.type} connector`,
+          featureSwitchContext,
+        });
+        signal.throwIfAborted();
+      }
 
-    const connectorRow = await upsertOAuthConnectorRow(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.type,
-      userInfo: args.userInfo,
-      oauthScopes: args.oauthScopes,
-      tokenExpiresAt,
-      signal,
-    });
+      await upsertExtraOAuthConnectorSecrets({
+        db: tx,
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        extraSecrets,
+        featureSwitchContext,
+        signal,
+      });
+      signal.throwIfAborted();
 
-    await deleteObsoleteConnectorScopedStateForOAuthConnect(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.type,
-      existingAuthMethod,
-      signal,
-    });
+      const row = await upsertOAuthConnectorRow(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        userInfo: args.userInfo,
+        oauthScopes: args.oauthScopes,
+        tokenExpiresAt,
+        signal,
+      });
 
-    await deleteManualGrantConnectorLocalState({
-      db: writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      fields: manualGrantFields,
-      signal,
+      await deleteObsoleteConnectorScopedStateForOAuthConnect(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        existingAuthMethod,
+        signal,
+      });
+
+      await deleteManualGrantConnectorLocalState({
+        db: tx,
+        orgId: args.orgId,
+        userId: args.userId,
+        fields: manualGrantFields,
+        signal,
+      });
+
+      return row;
     });
     signal.throwIfAborted();
 
