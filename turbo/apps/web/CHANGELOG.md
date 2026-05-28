@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.395.3](https://github.com/vm0-ai/vm0/compare/web-v12.395.2...web-v12.395.3) (2026-05-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.21.1
+
 ## [12.395.2](https://github.com/vm0-ai/vm0/compare/web-v12.395.1...web-v12.395.2) (2026-05-28)
 
 

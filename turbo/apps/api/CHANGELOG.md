@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.83.1](https://github.com/vm0-ai/vm0/compare/api-v1.83.0...api-v1.83.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* ignore blank chat assistant output ([#15257](https://github.com/vm0-ai/vm0/issues/15257)) ([eb055ff](https://github.com/vm0-ai/vm0/commit/eb055ff95de057d8f1f909794e78077057ecd24b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.21.1
+
 ## [1.83.0](https://github.com/vm0-ai/vm0/compare/api-v1.82.0...api-v1.83.0) (2026-05-28)
 
 
