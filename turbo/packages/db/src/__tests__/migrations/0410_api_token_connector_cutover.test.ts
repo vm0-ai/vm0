@@ -1,11 +1,76 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
+import { CONNECTOR_TYPE_KEYS } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { db, uniqueId } from "../test-db";
 
 const ORG_SENTINEL_USER_ID = "__org__";
+
+interface ApiTokenMigrationField {
+  readonly connectorType: string;
+  readonly fieldName: string;
+  readonly storage: string;
+  readonly required: boolean;
+}
+
+function apiTokenMigrationFieldKey(field: ApiTokenMigrationField): string {
+  return [field.connectorType, field.fieldName, field.storage].join("\0");
+}
+
+function sortApiTokenMigrationFields(
+  fields: readonly ApiTokenMigrationField[],
+): readonly ApiTokenMigrationField[] {
+  return [...fields].sort((left, right) => {
+    return apiTokenMigrationFieldKey(left).localeCompare(
+      apiTokenMigrationFieldKey(right),
+    );
+  });
+}
+
+function apiTokenMigrationFieldsFromSql(): readonly ApiTokenMigrationField[] {
+  const sqlText = readFileSync(
+    new URL(
+      "../../migrations/0410_api_token_connector_cutover.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const fieldPattern =
+    /\('([^']+)', '([^']+)', '(secret|variable)', (true|false)\)/gu;
+  return sortApiTokenMigrationFields(
+    [...sqlText.matchAll(fieldPattern)].map((match) => {
+      return {
+        connectorType: match[1]!,
+        fieldName: match[2]!,
+        storage: match[3]!,
+        required: match[4] === "true",
+      };
+    }),
+  );
+}
+
+function apiTokenRegistryFields(): readonly ApiTokenMigrationField[] {
+  const fields: ApiTokenMigrationField[] = [];
+  for (const connectorType of [...CONNECTOR_TYPE_KEYS].sort()) {
+    const method = getConnectorAuthMethod(connectorType, "api-token");
+    if (method?.grant.kind !== "manual") {
+      continue;
+    }
+    for (const [fieldName, field] of Object.entries(method.grant.fields)) {
+      fields.push({
+        connectorType,
+        fieldName,
+        storage: field.storage ?? "secret",
+        required: field.required,
+      });
+    }
+  }
+  return sortApiTokenMigrationFields(fields);
+}
 
 async function runScopedApiTokenConnectorCutover(args: {
   readonly orgId: string;
@@ -263,7 +328,13 @@ async function readVariableState(args: {
     .orderBy(variables.name, variables.type);
 }
 
-describe("migration 0408 api-token connector cutover", () => {
+describe("migration 0410 api-token connector cutover", () => {
+  it("keeps the full migration field list in sync with the connector registry", () => {
+    expect(apiTokenMigrationFieldsFromSql()).toStrictEqual(
+      apiTokenRegistryFields(),
+    );
+  });
+
   it("migrates complete required secret rows and preserves unrelated user rows", async () => {
     const orgId = uniqueId("org");
     const userId = uniqueId("user");
