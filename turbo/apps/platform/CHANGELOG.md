@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.389.1](https://github.com/vm0-ai/vm0/compare/app-v0.389.0...app-v0.389.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* hide stale queued chat indicators ([#15260](https://github.com/vm0-ai/vm0/issues/15260)) ([733ff65](https://github.com/vm0-ai/vm0/commit/733ff654479010412e84dfbc050e968c8daee0e0))
+
 ## [0.389.0](https://github.com/vm0-ai/vm0/compare/app-v0.388.4...app-v0.389.0) (2026-05-28)
 
 

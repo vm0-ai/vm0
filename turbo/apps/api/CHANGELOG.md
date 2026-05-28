@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.83.2](https://github.com/vm0-ai/vm0/compare/api-v1.83.1...api-v1.83.2) (2026-05-28)
+
+
+### Bug Fixes
+
+* hide stale queued chat indicators ([#15260](https://github.com/vm0-ai/vm0/issues/15260)) ([733ff65](https://github.com/vm0-ai/vm0/commit/733ff654479010412e84dfbc050e968c8daee0e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.21.2
+
 ## [1.83.1](https://github.com/vm0-ai/vm0/compare/api-v1.83.0...api-v1.83.1) (2026-05-28)
 
 
