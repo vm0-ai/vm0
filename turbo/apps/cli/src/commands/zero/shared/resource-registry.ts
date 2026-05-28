@@ -3335,26 +3335,6 @@ export function findTemplate(id: string): RegistryEntry | undefined {
   });
 }
 
-export function listAudioStyles(): readonly RegistryEntry[] {
-  return filterByKind("audio-style");
-}
-
-export function findAudioStyle(id: string): RegistryEntry | undefined {
-  return listAudioStyles().find((entry) => {
-    return entry.id === id;
-  });
-}
-
-export function listVideoTemplates(): readonly RegistryEntry[] {
-  return filterByKind("video-template");
-}
-
-export function findVideoTemplate(id: string): RegistryEntry | undefined {
-  return listVideoTemplates().find((entry) => {
-    return entry.id === id;
-  });
-}
-
 export function toGenerationTarget(value: string): GenerationTarget {
   if (value === "dashboard") {
     return "dashboard-design";
