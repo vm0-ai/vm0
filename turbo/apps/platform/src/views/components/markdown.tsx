@@ -386,7 +386,12 @@ export function Markdown({
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
       remarkPlugins={
-        mathEnabled ? [remarkMath, ...(remarkPlugins ?? [])] : remarkPlugins
+        mathEnabled
+          ? [
+              [remarkMath, { singleDollarTextMath: false }],
+              ...(remarkPlugins ?? []),
+            ]
+          : remarkPlugins
       }
       rehypePlugins={
         mathEnabled ? [rehypeKatex, ...(rehypePlugins ?? [])] : rehypePlugins
