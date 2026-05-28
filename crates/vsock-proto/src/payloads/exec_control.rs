@@ -203,14 +203,6 @@ fn validate_control_identity(
     Ok(())
 }
 
-fn control_identity_message_id_len(identity: ControlIdentity<'_>) -> Result<u16, ProtocolError> {
-    ensure_u16_len("message_id", identity.message_id.len())
-}
-
-fn append_target_seq(out: &mut Vec<u8>, target_seq: u32) {
-    out.extend_from_slice(&target_seq.to_be_bytes());
-}
-
 fn append_control_identity_tail(
     out: &mut Vec<u8>,
     identity: ControlIdentity<'_>,
@@ -299,13 +291,13 @@ pub(crate) fn encode_control_with_errors(
     if payload.len() > EXEC_CONTROL_MAX_PAYLOAD_BYTES {
         return Err(ProtocolError::PayloadTooLarge("payload", payload.len()));
     }
-    let message_id_len = control_identity_message_id_len(identity)?;
+    let message_id_len = ensure_u16_len("message_id", identity.message_id.len())?;
     let payload_len = ensure_u32_len("payload", payload.len())?;
     let total_len = encoded_control_len(message_id.len(), payload.len())?;
     ensure_payload_fits_message(total_len)?;
 
     let mut out = Vec::with_capacity(total_len);
-    append_target_seq(&mut out, identity.target_seq);
+    out.extend_from_slice(&identity.target_seq.to_be_bytes());
     out.extend_from_slice(&request_timeout_ms.to_be_bytes());
     append_control_identity_tail(&mut out, identity, message_id_len);
     out.extend_from_slice(&payload_len.to_be_bytes());
@@ -351,13 +343,13 @@ pub(crate) fn encode_control_result_with_errors(
         message_id,
     };
     validate_control_identity(identity, errors.common)?;
-    let message_id_len = control_identity_message_id_len(identity)?;
+    let message_id_len = ensure_u16_len("message_id", identity.message_id.len())?;
     let diagnostic_len = ensure_u16_len("diagnostic", diagnostic.len())?;
     let total_len = encoded_result_len(message_id.len(), diagnostic.len())?;
     ensure_payload_fits_message(total_len)?;
 
     let mut out = Vec::with_capacity(total_len);
-    append_target_seq(&mut out, identity.target_seq);
+    out.extend_from_slice(&identity.target_seq.to_be_bytes());
     append_control_identity_tail(&mut out, identity, message_id_len);
     out.push(status_to_wire(status));
     out.extend_from_slice(&diagnostic_len.to_be_bytes());
