@@ -73,7 +73,10 @@ disable_codex_beta() {
 }
 
 # Poll /api/zero/chat-threads/:id/messages until the newest assistant row
-# reaches a terminal status. On success, exports:
+# reaches a terminal status. Completed runs also append a null-content
+# lifecycle marker, so LAST_MSG_CONTENT comes from the latest non-blank
+# assistant content row for the same run.
+# On success, exports:
 #   LAST_RUN_ID      — runId of the assistant message
 #   LAST_MSG_CONTENT — content text
 # Usage: wait_for_chat_assistant_done <thread_id> [timeout_seconds]
@@ -95,7 +98,16 @@ wait_for_chat_assistant_done() {
                     run_id=$(printf '%s' "$body" \
                         | jq -r '[.messages[] | select(.role == "assistant")] | last | .runId // ""')
                     content=$(printf '%s' "$body" \
-                        | jq -r '[.messages[] | select(.role == "assistant")] | last | .content // ""')
+                        | jq -r --arg runId "$run_id" '
+                            [
+                                .messages[]
+                                | select(.role == "assistant")
+                                | select((.runId // "") == $runId)
+                                | select((.content // "") | test("\\S"))
+                            ]
+                            | last
+                            | .content // ""
+                        ')
                     export LAST_RUN_ID="$run_id"
                     export LAST_MSG_CONTENT="$content"
                     echo "# wait_for_chat_assistant_done: terminal=$status_value run=$run_id ($((SECONDS - start))s)" >&2
