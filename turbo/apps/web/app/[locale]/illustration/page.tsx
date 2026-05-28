@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fraunces } from "next/font/google";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
@@ -6,6 +7,15 @@ import { ILLUSTRATION_STYLES } from "./data";
 
 const BASE_URL = "https://www.vm0.ai";
 const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  style: ["italic"],
+  variable: "--font-fraunces",
+  display: "swap",
+  preload: false,
+});
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -88,7 +98,7 @@ export default async function IllustrationPage({ params }: PageProps) {
   };
 
   return (
-    <>
+    <div className={fraunces.variable}>
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(itemListJsonLd)}
       </script>
@@ -96,6 +106,6 @@ export default async function IllustrationPage({ params }: PageProps) {
         {JSON.stringify(breadcrumbJsonLd)}
       </script>
       <IllustrationGalleryClient />
-    </>
+    </div>
   );
 }

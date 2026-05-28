@@ -41,9 +41,13 @@ export function IllustrationGalleryClient() {
     };
   }, [lightbox, closeLightbox]);
 
+  const newCount = ILLUSTRATION_STYLES.filter((s) => {
+    return s.isNew;
+  }).length;
+
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
-      <section className="hero-section" style={{ paddingBottom: "40px" }}>
+      <section className="hero-section" style={{ paddingBottom: "32px" }}>
         <div className="container">
           <h1 className="hero-title">Illustration</h1>
           <p className="hero-description">
@@ -51,20 +55,34 @@ export function IllustrationGalleryClient() {
             register. Click any plate to see every AI variation the style can
             produce.
           </p>
+          <div className="illu-meta-row">
+            <span>
+              <span className="illu-meta-value">
+                {ILLUSTRATION_STYLES.length}
+              </span>{" "}
+              styles
+            </span>
+            <span className="illu-meta-dot">·</span>
+            <span>
+              <span className="illu-meta-value">{newCount}</span> new this issue
+            </span>
+          </div>
         </div>
       </section>
 
       <section style={{ paddingBottom: "120px" }}>
-        <div className="illu-grid">
-          {ILLUSTRATION_STYLES.map((style) => {
-            return (
-              <IllustrationCard
-                key={style.slug}
-                style={style}
-                onOpen={openLightbox}
-              />
-            );
-          })}
+        <div className="illu-wrap">
+          <div className="illu-masonry">
+            {ILLUSTRATION_STYLES.map((style) => {
+              return (
+                <IllustrationCard
+                  key={style.slug}
+                  style={style}
+                  onOpen={openLightbox}
+                />
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -90,10 +108,10 @@ interface CardProps {
 
 function IllustrationCard({ style, onOpen }: CardProps) {
   return (
-    <article className="group flex flex-col overflow-hidden rounded-[20px] bg-white transition-all duration-300 hover:-translate-y-0.5">
+    <article className={style.isNew ? "illu-tile is-new" : "illu-tile"}>
       <button
         type="button"
-        className="illu-card-image-button relative block w-full overflow-hidden bg-[hsl(var(--gray-50))]"
+        className="illu-tile-plate"
         aria-label={`Open ${style.title}`}
         onClick={() => {
           return onOpen(style);
@@ -106,25 +124,21 @@ function IllustrationCard({ style, onOpen }: CardProps) {
           height={style.height}
           alt={style.title}
           loading="lazy"
-          className="block h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
         />
-        {style.isNew && (
-          <span className="absolute left-3 top-3 inline-flex items-center rounded-full bg-[#ed4e01] px-2.5 py-1 text-[11px] font-medium text-white">
-            New
-          </span>
-        )}
+        {style.isNew && <span className="illu-new-badge">New</span>}
       </button>
 
-      <div className="flex items-baseline justify-between gap-3 px-5 pb-2 pt-4">
-        <h3 className="text-[16px] font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
-          {style.title}
-        </h3>
-        <span className="text-[12px] font-medium text-[hsl(var(--muted-foreground))]">
-          {style.refs.length} variation{style.refs.length === 1 ? "" : "s"}
+      <div className="illu-tile-caption">
+        <h3>{style.title}</h3>
+        <span className="illu-tile-count">
+          <em>{style.refs.length} variations</em>
         </span>
       </div>
 
-      <div className="illu-refs-strip flex gap-1.5 overflow-x-auto px-5 pb-5 pt-2">
+      <div className="illu-refs-strip">
+        <span className="illu-refs-caption">
+          <em>{style.refs.length} var</em>
+        </span>
         {style.refs.map((ref) => {
           const isSample = ref === style.sample;
           return (
