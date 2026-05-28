@@ -56,7 +56,6 @@ import {
   buildConnectorOAuthAuthUrl,
   hasConnectorAuthCodeGrantProvider,
   hasConnectorDeviceAuthGrantProvider,
-  hasConnectorTokenRevokeProvider,
   getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
   refreshConnectorOAuthToken,
@@ -428,15 +427,12 @@ describe("connector grant provider capability checks", () => {
     expect(connectorAuthMethodSupportsTokenRevoke("github", "oauth")).toBe(
       true,
     );
-    expect(hasConnectorTokenRevokeProvider("github")).toBe(true);
     expect(connectorAuthMethodSupportsTokenRevoke("notion", "oauth")).toBe(
       false,
     );
-    expect(hasConnectorTokenRevokeProvider("notion")).toBe(false);
     expect(connectorAuthMethodSupportsTokenRevoke("stripe", "api-token")).toBe(
       false,
     );
-    expect(hasConnectorTokenRevokeProvider("stripe")).toBe(false);
   });
 
   it("exposes connector OAuth secret metadata without provider access", () => {

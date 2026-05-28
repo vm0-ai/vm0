@@ -240,22 +240,6 @@ export function hasConnectorDeviceAuthGrantProvider(
   return Object.hasOwn(DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS, type);
 }
 
-export function hasConnectorTokenRevokeProvider(
-  type: string,
-): type is OAuthGrantConnectorType {
-  if (hasConnectorAuthCodeGrantProvider(type)) {
-    return (
-      AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[type].revoke.kind === "token-revoke"
-    );
-  }
-  if (hasConnectorDeviceAuthGrantProvider(type)) {
-    return (
-      DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type].revoke.kind === "token-revoke"
-    );
-  }
-  return false;
-}
-
 export function getConnectorOAuthSecretMetadata(
   type: OAuthGrantConnectorType,
 ): ConnectorOAuthSecretMetadata;

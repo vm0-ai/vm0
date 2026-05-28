@@ -5,7 +5,7 @@ import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/con
 import {
   hasConnectorAuthCodeGrant,
   getConnectorOAuthClient,
-  getConnectorAuthMethodGrantScopes,
+  getConnectorAuthCodeGrantConfig,
   hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -15,7 +15,6 @@ import {
 import {
   exchangeConnectorOAuthCode,
   getConnectorOAuthSecretMetadata,
-  hasConnectorAuthCodeGrantProvider,
   type OAuthTokenResult,
 } from "@vm0/connectors/auth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -197,7 +196,7 @@ async function exchangeTokenForConnector(args: {
 function getRequestedScopes(
   connectorType: AuthCodeGrantConnectorType,
 ): readonly string[] {
-  return getConnectorAuthMethodGrantScopes(connectorType, "oauth");
+  return getConnectorAuthCodeGrantConfig(connectorType).scopes;
 }
 
 function resolveOAuthConnectorType(
@@ -220,16 +219,6 @@ function resolveOAuthConnectorType(
     return {
       ok: false,
       response: redirectWithError(origin, type, message),
-    };
-  }
-  if (!hasConnectorAuthCodeGrantProvider(connectorType)) {
-    return {
-      ok: false,
-      response: redirectWithError(
-        origin,
-        type,
-        `${type} OAuth provider is not configured`,
-      ),
     };
   }
 

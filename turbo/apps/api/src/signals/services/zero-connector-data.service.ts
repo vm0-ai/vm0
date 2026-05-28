@@ -20,7 +20,6 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  hasConnectorTokenRevokeProvider,
   revokeConnectorOAuthToken,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -507,14 +506,10 @@ async function loadPendingOAuthRevoke(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorType;
+  readonly type: OAuthGrantConnectorType;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingOAuthRevoke | null> {
-  if (!hasConnectorTokenRevokeProvider(args.type)) {
-    return null;
-  }
-
   const connectorType = args.type;
   const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
   const accessTokenName = secretMetadata.accessSecretName;
@@ -662,19 +657,19 @@ export const deleteZeroConnectorLocalState$ = command(
         return { deleted: false, pendingOAuthRevoke: null };
       }
 
-      const pendingOAuthRevoke = connectorAuthMethodSupportsTokenRevoke(
-        args.type,
-        existing.authMethod,
-      )
-        ? await loadPendingOAuthRevoke({
-            db: tx,
-            orgId: args.orgId,
-            userId: args.userId,
-            type: args.type,
-            featureSwitchContext,
-            signal,
-          })
-        : null;
+      let pendingOAuthRevoke: PendingOAuthRevoke | null = null;
+      if (
+        connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)
+      ) {
+        pendingOAuthRevoke = await loadPendingOAuthRevoke({
+          db: tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          type: args.type,
+          featureSwitchContext,
+          signal,
+        });
+      }
       signal.throwIfAborted();
 
       await tx.delete(connectors).where(eq(connectors.id, existing.id));
@@ -959,19 +954,17 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
     return null;
   }
 
-  const pendingOAuthRevoke = connectorAuthMethodSupportsTokenRevoke(
-    args.type,
-    existing.authMethod,
-  )
-    ? await loadPendingOAuthRevoke({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-        featureSwitchContext: args.featureSwitchContext,
-        signal: args.signal,
-      })
-    : null;
+  let pendingOAuthRevoke: PendingOAuthRevoke | null = null;
+  if (connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)) {
+    pendingOAuthRevoke = await loadPendingOAuthRevoke({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      type: args.type,
+      featureSwitchContext: args.featureSwitchContext,
+      signal: args.signal,
+    });
+  }
 
   await deleteConnectorScopedSecretNames(db, {
     orgId: args.orgId,

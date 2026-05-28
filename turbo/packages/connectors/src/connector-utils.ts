@@ -273,17 +273,10 @@ export function getConnectorAuthMethodGrantScopes(
   ];
 }
 
-export function connectorAuthMethodHasGrantScopes(
-  type: ConnectorType,
-  authMethod: string,
-): boolean {
-  return getConnectorAuthMethodGrantScopes(type, authMethod).length > 0;
-}
-
 export function connectorAuthMethodSupportsTokenRevoke(
   type: ConnectorType,
   authMethod: string,
-): boolean {
+): type is OAuthGrantConnectorType {
   return (
     getConnectorAuthMethod(type, authMethod)?.revoke.kind === "token-revoke"
   );

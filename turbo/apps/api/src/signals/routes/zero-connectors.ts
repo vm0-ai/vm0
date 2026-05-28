@@ -178,10 +178,6 @@ function unsupportedOAuthFlowResponse(type: string) {
   return jsonResponse({ error: unsupportedOAuthFlowMessage(type) }, 400);
 }
 
-function missingOAuthProviderResponse(type: string) {
-  return jsonResponse({ error: `${type} OAuth provider not configured` }, 500);
-}
-
 function internalServerError(message: string) {
   return {
     status: 500 as const,
@@ -363,10 +359,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       if (startType.reason === "connector_does_not_use_oauth") {
         return connectorDoesNotUseOAuthResponse(type);
       }
-      if (startType.reason === "unsupported_oauth_flow") {
-        return unsupportedOAuthFlowResponse(type);
-      }
-      return missingOAuthProviderResponse(type);
+      return unsupportedOAuthFlowResponse(type);
     }
 
     if (!auth.orgId) {
@@ -439,10 +432,7 @@ const startConnectorOauthInner$ = command(
       if (startType.reason === "connector_does_not_use_oauth") {
         return badRequestMessage(`${type} connector does not use OAuth`);
       }
-      if (startType.reason === "unsupported_oauth_flow") {
-        return badRequestMessage(unsupportedOAuthFlowMessage(type));
-      }
-      return internalServerError(`${type} OAuth provider not configured`);
+      return badRequestMessage(unsupportedOAuthFlowMessage(type));
     }
 
     if (!auth.orgId) {

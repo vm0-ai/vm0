@@ -616,6 +616,26 @@ describe("OAuth device authorization connector routes", () => {
     );
   });
 
+  it("rejects non-OAuth connectors", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "cloudinary" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "cloudinary connector does not use OAuth",
+    );
+  });
+
   it("rejects disabled OAuth auth methods", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

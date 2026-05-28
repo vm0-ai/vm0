@@ -17,7 +17,6 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  hasConnectorDeviceAuthGrantProvider,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
 } from "@vm0/connectors/auth-providers";
@@ -189,9 +188,6 @@ function resolveDeviceAuthType(
     return badRequestMessage(
       `${type} connector does not support OAuth device authorization`,
     );
-  }
-  if (!hasConnectorDeviceAuthGrantProvider(type)) {
-    return internalServerError(`${type} OAuth provider is not configured`);
   }
   return type;
 }

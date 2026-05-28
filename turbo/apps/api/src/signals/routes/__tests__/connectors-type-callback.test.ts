@@ -1259,6 +1259,29 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(url.searchParams.get("message")).toBe("Unknown connector type");
   });
 
+  it("redirects non-OAuth callbacks to the connector error page", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+
+    const response = await requestCallback({
+      type: "cloudinary",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const url = new URL(location!);
+    expect(url.pathname).toBe("/connector/error");
+    expect(url.searchParams.get("type")).toBe("cloudinary");
+    expect(url.searchParams.get("message")).toBe(
+      "cloudinary connector does not use OAuth",
+    );
+  });
+
   it("redirects OAuth provider errors and clears OAuth cookies", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;

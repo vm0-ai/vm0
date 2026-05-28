@@ -11,7 +11,6 @@ import type {
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorOAuthAuthUrl,
-  hasConnectorAuthCodeGrantProvider,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 
@@ -38,7 +37,6 @@ type ResolveConnectorOAuthStartTypeResult =
       readonly ok: false;
       readonly reason:
         | "connector_does_not_use_oauth"
-        | "oauth_provider_not_configured"
         | "unsupported_oauth_flow";
     };
 
@@ -54,9 +52,6 @@ export function resolveConnectorOAuthStartType(
       return { ok: false, reason: "unsupported_oauth_flow" };
     }
     return { ok: false, reason: "connector_does_not_use_oauth" };
-  }
-  if (!hasConnectorAuthCodeGrantProvider(type)) {
-    return { ok: false, reason: "oauth_provider_not_configured" };
   }
   return { ok: true, type };
 }

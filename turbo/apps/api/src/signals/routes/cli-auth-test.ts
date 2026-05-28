@@ -6,12 +6,15 @@ import {
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthSecretMetadata,
-  hasConnectorAuthCodeGrantProvider,
-  hasConnectorDeviceAuthGrantProvider,
-} from "@vm0/connectors/auth-providers";
+  connectorTypeSchema,
+  type OAuthGrantConnectorType,
+} from "@vm0/connectors/connectors";
+import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
+import {
+  hasConnectorAuthCodeGrant,
+  hasConnectorDeviceAuthGrant,
+} from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -212,13 +215,15 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    if (
-      !hasConnectorAuthCodeGrantProvider(connectorType) &&
-      !hasConnectorDeviceAuthGrantProvider(connectorType)
-    ) {
+    let oauthConnectorType: OAuthGrantConnectorType;
+    if (hasConnectorAuthCodeGrant(connectorType)) {
+      oauthConnectorType = connectorType;
+    } else if (hasConnectorDeviceAuthGrant(connectorType)) {
+      oauthConnectorType = connectorType;
+    } else {
       return stringError(400, `${connectorType} connector does not use OAuth`);
     }
-    const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
+    const secretMetadata = getConnectorOAuthSecretMetadata(oauthConnectorType);
     const refreshSecretName = secretMetadata.isRefreshable
       ? secretMetadata.refreshSecretName
       : undefined;
@@ -227,12 +232,12 @@ const createTestConnector$ = command(
       {
         orgId,
         userId,
-        type: connectorType,
+        type: oauthConnectorType,
         accessToken: bodyResult.data.accessToken,
         userInfo: {
-          id: `e2e-test-${connectorType}`,
-          username: `e2e-${connectorType}`,
-          email: `e2e-${connectorType}@test.vm0.ai`,
+          id: `e2e-test-${oauthConnectorType}`,
+          username: `e2e-${oauthConnectorType}`,
+          email: `e2e-${oauthConnectorType}@test.vm0.ai`,
         },
         oauthScopes: [],
         refreshToken: bodyResult.data.refreshToken,
