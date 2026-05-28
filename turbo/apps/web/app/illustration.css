@@ -201,7 +201,7 @@
   background: rgba(10, 10, 10, 0.94);
   display: flex;
   flex-direction: column;
-  z-index: 1100;
+  z-index: 1200;
 }
 .illu-lb-header {
   display: flex;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Footer } from "../../components/Footer";
 import { ILLUSTRATION_STYLES, type IllustrationStyle } from "./data";
 
@@ -174,11 +175,20 @@ interface LightboxProps {
 }
 
 function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { style, activeRef } = state;
   const refCount = style.refs.length;
   const activeSrc = `${ASSET_BASE}/refs/${style.slug}/${activeRef}`;
 
-  return (
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
     <div className="illu-lightbox" role="dialog" aria-modal="true">
       <div className="illu-lb-header">
         <div>
@@ -230,6 +240,7 @@ function Lightbox({ state, onClose, onSelectRef }: LightboxProps) {
           );
         })}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
