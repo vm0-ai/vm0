@@ -12,6 +12,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
@@ -40,6 +41,7 @@ import {
   decryptSecretValue,
   decryptSecretsMap,
 } from "../../services/crypto.utils";
+import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
 import { clearAllDetached } from "../../utils";
@@ -189,6 +191,9 @@ async function deleteFixture(fixture: ChatMessageFixture): Promise<void> {
   });
 
   if (runIds.length > 0) {
+    await writeDb
+      .delete(agentRunQueue)
+      .where(inArray(agentRunQueue.runId, runIds));
     await writeDb
       .delete(runnerJobQueue)
       .where(inArray(runnerJobQueue.runId, runIds));
@@ -549,6 +554,98 @@ describe("POST /api/zero/chat/messages", () => {
       `chatThreadRunCreated:${response.body.threadId}`,
       null,
     );
+  });
+
+  it("appends an assistant queue marker when a chat run enters the org queue", async () => {
+    const fixture = await track(seedFixture());
+
+    const active = await send({
+      agentId: fixture.agentId,
+      prompt: "occupy org concurrency",
+    });
+    await clearAllDetached();
+    expect(active.body.status).toBe("pending");
+
+    const queued = await send({
+      agentId: fixture.agentId,
+      prompt: "wait behind active run",
+    });
+    await clearAllDetached();
+    expect(queued.body.status).toBe("queued");
+
+    const writeDb = store.set(writeDb$);
+    const messages = await writeDb
+      .select({
+        id: chatMessages.id,
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
+        runEventId: chatMessages.runEventId,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, queued.body.threadId))
+      .orderBy(chatMessages.createdAt);
+
+    expect(messages).toContainEqual({
+      id: expect.any(String),
+      role: "user",
+      content: "wait behind active run",
+      runId: queued.body.runId,
+      revokesMessageId: null,
+      runEventId: null,
+    });
+    expect(messages).toContainEqual({
+      id: expect.any(String),
+      role: "assistant",
+      content: "Waiting in queue...",
+      runId: queued.body.runId,
+      revokesMessageId: null,
+      runEventId: "queue:queued",
+    });
+
+    const marker = messages.find((message) => {
+      return message.runEventId === "queue:queued";
+    });
+    expect(marker).toBeDefined();
+    if (!marker) {
+      throw new Error("expected queue marker");
+    }
+
+    await writeDb
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, active.body.runId!));
+    const drained = await store.set(
+      drainOrgQueue$,
+      { orgId: fixture.orgId },
+      context.signal,
+    );
+    expect(drained).toBe(1);
+
+    const [queueRevoker] = await writeDb
+      .select({
+        role: chatMessages.role,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
+        runEventId: chatMessages.runEventId,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.runEventId, "queue:dequeued"),
+          eq(chatMessages.runId, queued.body.runId!),
+        ),
+      )
+      .limit(1);
+    expect(queueRevoker).toStrictEqual({
+      role: "assistant",
+      content: null,
+      runId: queued.body.runId,
+      revokesMessageId: marker.id,
+      runEventId: "queue:dequeued",
+    });
   });
 
   it("dispatches a terminal chat callback when run dispatch fails after insert", async () => {

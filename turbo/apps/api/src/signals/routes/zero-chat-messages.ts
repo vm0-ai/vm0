@@ -61,6 +61,7 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "../services/zero-chat-thread.service";
+import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
 
@@ -1326,6 +1327,7 @@ async function appendAssociatedUserMessage(params: {
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly appendQueueMarker: boolean;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
     await tx
@@ -1340,7 +1342,7 @@ async function appendAssociatedUserMessage(params: {
     const explicitId = params.clientMessageId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
-    await tx
+    const [inserted] = await tx
       .insert(chatMessages)
       .values({
         ...(explicitId ? { id: explicitId } : {}),
@@ -1351,7 +1353,15 @@ async function appendAssociatedUserMessage(params: {
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
       })
-      .onConflictDoNothing({ target: chatMessages.id });
+      .onConflictDoNothing({ target: chatMessages.id })
+      .returning({ createdAt: chatMessages.createdAt });
+    if (params.appendQueueMarker) {
+      await appendQueuedRunAssistantMarker(tx, {
+        chatThreadId: params.threadId,
+        runId: params.runId,
+        createdAfter: inserted?.createdAt ?? nowDate(),
+      });
+    }
     await touchChatThreadLastMessageAt(tx, params.threadId);
   });
 }
@@ -1800,6 +1810,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
+  readonly appendQueueMarker: boolean;
 }): void {
   waitUntil(
     (async () => {
@@ -1811,6 +1822,7 @@ function scheduleAssociatedUserMessage(params: {
         runId: params.runId,
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
+        appendQueueMarker: params.appendQueueMarker,
       });
       await publishUserSignal(
         [params.userId],
@@ -1823,6 +1835,30 @@ function scheduleAssociatedUserMessage(params: {
       await publishThreadListChanged(params.userId);
     })(),
   );
+}
+
+function scheduleCreatedChatRunSideEffects(params: {
+  readonly db: Db;
+  readonly body: NormalSendBody;
+  readonly thread: ResolvedThread;
+  readonly userId: string;
+  readonly runId: string;
+  readonly runStatus: string;
+}): void {
+  scheduleChatTitleGeneration({
+    db: params.db,
+    body: params.body,
+    thread: params.thread,
+    userId: params.userId,
+  });
+  scheduleAssociatedUserMessage({
+    db: params.db,
+    body: params.body,
+    threadId: params.thread.threadId,
+    userId: params.userId,
+    runId: params.runId,
+    appendQueueMarker: params.runStatus === "queued",
+  });
 }
 
 async function resolveEffectiveModelProviderType(params: {
@@ -2078,18 +2114,13 @@ const createNormalChatRun$ = command(
       .where(eq(zeroRuns.id, runResult.body.runId));
     signal.throwIfAborted();
 
-    scheduleChatTitleGeneration({
+    scheduleCreatedChatRunSideEffects({
       db: prepared.db,
       body: args.body,
       thread: prepared.thread,
       userId: args.userId,
-    });
-    scheduleAssociatedUserMessage({
-      db: prepared.db,
-      body: args.body,
-      threadId: prepared.thread.threadId,
-      userId: args.userId,
       runId: runResult.body.runId,
+      runStatus: runResult.body.status,
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {

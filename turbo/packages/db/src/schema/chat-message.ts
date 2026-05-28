@@ -34,12 +34,14 @@ export type ChatMessageAttachFileMetadataList = ChatMessageAttachFileMetadata[];
  * run_id; when the queue is drained, a new user row is appended with run_id and
  * revokes_message_id pointing at the queued row it supersedes.
  *
- * Assistant rows are appended after run output exists. Event-backed rows are
- * one row per assistant-visible agent output event; result-only CLI output can
- * be projected from a terminal "result" event. Failed runs append an assistant
- * row carrying the terminal error message. Event-backed rows are keyed by
- * `(run_id, sequence_number)` for idempotent, lock-free inserts from both the
- * event consumer and the callback's final sweep.
+ * Assistant rows are appended after run output exists. Queue marker control
+ * rows can also be appended for queued runs and later revoked when the run
+ * leaves the queue. Event-backed rows are one row per assistant-visible agent
+ * output event; result-only CLI output can be projected from a terminal
+ * "result" event. Failed runs append an assistant row carrying the terminal
+ * error message. Event-backed rows are keyed by `(run_id, sequence_number)` for
+ * idempotent, lock-free inserts from both the event consumer and the callback's
+ * final sweep.
  *
  * Terminal-state assistant rows carry `run_lifecycle_event` set to one of
  * `completed | failed | cancelled`. Exactly one such row exists per `run_id`;

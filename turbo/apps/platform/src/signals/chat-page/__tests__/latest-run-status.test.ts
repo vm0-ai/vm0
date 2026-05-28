@@ -20,17 +20,8 @@ function createThreadSignals(threadId: string) {
   return createChatThreadSignals(threadId, draft);
 }
 
-/**
- * latestRunStatus$ sources run status from threadData$.activeRuns[0].status
- * rather than scanning paged messages — so UI can flip from "queued" to
- * "running" via the existing reloadThread$ hook on chatThreadRunUpdated
- * Ably events (which re-fetches the thread detail).
- *
- * These tests pin that contract: the signal mirrors whatever active run
- * status the server returned on the most recent fetch.
- */
 describe("latestRunStatus$", () => {
-  it("reflects 'queued' when the server reports the active run is queued", async () => {
+  it("ignores queued thread metadata when no message fact exists", async () => {
     const threadId = "thread-queued-1";
     const runId = "run-queued-1";
 
@@ -72,9 +63,192 @@ describe("latestRunStatus$", () => {
     const thread = createThreadSignals(threadId);
 
     await vi.waitFor(async () => {
+      await expect(
+        context.store.get(thread.latestRunStatus$),
+      ).resolves.toBeNull();
+    });
+  });
+
+  it("reflects queued from an unrecalled assistant queue marker", async () => {
+    const threadId = "thread-queue-marker-1";
+    const runId = "run-queue-marker-1";
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-queue-marker-active",
+              role: "assistant",
+              content: "Waiting in queue...",
+              runId,
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          latestSessionId: null,
+          activeRunIds: [],
+          activeRuns: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      withoutRender: true,
+    });
+
+    const thread = createThreadSignals(threadId);
+
+    await vi.waitFor(async () => {
       await expect(context.store.get(thread.latestRunStatus$)).resolves.toBe(
         "queued",
       );
+    });
+  });
+
+  it("treats assistant output as running even when thread data still says queued", async () => {
+    const threadId = "thread-assistant-running-1";
+    const runId = "run-assistant-running-1";
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-assistant-started",
+              role: "assistant",
+              content: "The local-agent job is running...",
+              runId,
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          latestSessionId: null,
+          activeRunIds: [runId],
+          activeRuns: [{ id: runId, status: "queued" }],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      withoutRender: true,
+    });
+
+    const thread = createThreadSignals(threadId);
+
+    await vi.waitFor(async () => {
+      await expect(context.store.get(thread.latestRunStatus$)).resolves.toBe(
+        "running",
+      );
+    });
+  });
+
+  it("does not trust stale queued thread data after a queue marker is revoked", async () => {
+    const threadId = "thread-revoked-queue-1";
+    const runId = "run-revoked-queue-1";
+    const markerId = "msg-queue-marker";
+
+    server.use(
+      mockApi(chatThreadsContract.list, ({ respond }) => {
+        return respond(200, {
+          pinned: [],
+          threads: [],
+          hasMore: false,
+          nextCursor: null,
+          totalCount: 0,
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: [
+            {
+              id: markerId,
+              role: "assistant",
+              content: "Waiting in queue...",
+              runId,
+              createdAt: "2026-04-13T00:00:01Z",
+            },
+            {
+              id: "msg-queue-marker-revoked",
+              role: "assistant",
+              content: null,
+              runId,
+              revokesMessageId: markerId,
+              createdAt: "2026-04-13T00:00:02Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+        return respond(200, {
+          id: params.id,
+          title: null,
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          latestSessionId: null,
+          activeRunIds: [runId],
+          activeRuns: [{ id: runId, status: "queued" }],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-04-13T00:00:00Z",
+          updatedAt: "2026-04-13T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      withoutRender: true,
+    });
+
+    const thread = createThreadSignals(threadId);
+
+    await vi.waitFor(async () => {
+      await expect(
+        context.store.get(thread.latestRunStatus$),
+      ).resolves.toBeNull();
     });
   });
 

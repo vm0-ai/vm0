@@ -19,12 +19,20 @@ import {
 
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
-import { publishOrgSignal } from "../external/realtime";
+import {
+  publishOrgSignal,
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { logger } from "../../lib/log";
 import { decryptQueuedRunnerJobPayload } from "./agent-run-queue-payload.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
+import {
+  revokeQueuedRunAssistantMarkers,
+  type QueueMarkerRevokeNotification,
+} from "./zero-chat-queue-marker.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -69,6 +77,7 @@ type PromoteQueuedCandidateResult =
   | {
       readonly status: "promoted";
       readonly runnerNotification: RunnerNotification | null;
+      readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
     }
   | { readonly status: "full" }
   | { readonly status: "removed-stale" }
@@ -270,8 +279,17 @@ async function promoteQueuedCandidate(
       .delete(agentRunQueue)
       .where(eq(agentRunQueue.runId, args.row.runId));
 
+    const queueMarkerNotification = await revokeQueuedRunAssistantMarkers(tx, {
+      runId: args.row.runId,
+      userId: args.row.userId,
+    });
+
     if (!args.payload) {
-      return { status: "promoted", runnerNotification: null };
+      return {
+        status: "promoted",
+        runnerNotification: null,
+        queueMarkerNotification,
+      };
     }
 
     await insertPromotedRunnerJob(tx, {
@@ -282,6 +300,7 @@ async function promoteQueuedCandidate(
     });
     return {
       status: "promoted",
+      queueMarkerNotification,
       runnerNotification: {
         runId: args.row.runId,
         runnerGroup: args.payload.runnerGroup,
@@ -379,6 +398,16 @@ export const drainOrgQueue$ = command(
 
       await publishOrgSignal(args.orgId, "queue:changed");
       signal.throwIfAborted();
+
+      if (result.queueMarkerNotification) {
+        await publishUserSignal(
+          [result.queueMarkerNotification.userId],
+          `chatThreadMessageCreated:${result.queueMarkerNotification.chatThreadId}`,
+        );
+        signal.throwIfAborted();
+        await publishThreadListChanged(result.queueMarkerNotification.userId);
+        signal.throwIfAborted();
+      }
 
       if (result.runnerNotification) {
         await notifyRunnerJob(writeDb, result.runnerNotification);
