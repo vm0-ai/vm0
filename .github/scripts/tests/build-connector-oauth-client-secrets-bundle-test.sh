@@ -123,7 +123,6 @@ run_builder() {
     PATH="${TMPDIR}/bin:${PATH}" \
     GITHUB_ACTIONS="${GITHUB_ACTIONS:-}" \
     OP_STUB_MODE="${OP_STUB_MODE:-}" \
-    OP_SERVICE_ACCOUNT_TOKEN=test-token \
     VAULT_NAME="${VAULT_NAME:-Development}" \
     OUTPUT_FILE="$output_file" \
     "$BUILDER"
@@ -160,7 +159,6 @@ status=0
 missing_op_output="$(
   env -i \
     PATH="${TMPDIR}/no-op-bin" \
-    OP_SERVICE_ACCOUNT_TOKEN=test-token \
     VAULT_NAME=Development \
     OUTPUT_FILE="${TMPDIR}/missing-op.json" \
     "$BUILDER" 2>&1
@@ -174,7 +172,6 @@ status=0
 missing_jq_output="$(
   env -i \
     PATH="${TMPDIR}/bin:${TMPDIR}/no-op-bin" \
-    OP_SERVICE_ACCOUNT_TOKEN=test-token \
     VAULT_NAME=Development \
     OUTPUT_FILE="${TMPDIR}/missing-jq.json" \
     "$BUILDER" 2>&1
@@ -188,7 +185,6 @@ status=0
 missing_vault_output="$(
   env -i \
     PATH="${TMPDIR}/bin:${PATH}" \
-    OP_SERVICE_ACCOUNT_TOKEN=test-token \
     OUTPUT_FILE="${TMPDIR}/missing-vault.json" \
     "$BUILDER" 2>&1
 )" || status=$?
@@ -201,7 +197,6 @@ status=0
 invalid_vault_output="$(
   env -i \
     PATH="${TMPDIR}/bin:${PATH}" \
-    OP_SERVICE_ACCOUNT_TOKEN=test-token \
     VAULT_NAME=Preview \
     OUTPUT_FILE="${TMPDIR}/invalid-vault.json" \
     "$BUILDER" 2>&1
@@ -215,7 +210,6 @@ status=0
 missing_output_file_output="$(
   env -i \
     PATH="${TMPDIR}/bin:${PATH}" \
-    OP_SERVICE_ACCOUNT_TOKEN=test-token \
     VAULT_NAME=Development \
     "$BUILDER" 2>&1
 )" || status=$?
@@ -223,19 +217,6 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing OUTPUT_FILE case to fail"
 fi
 assert_contains "$missing_output_file_output" "OUTPUT_FILE is required"
-
-status=0
-missing_token_output="$(
-  env -i \
-    PATH="${TMPDIR}/bin:${PATH}" \
-    VAULT_NAME=Development \
-    OUTPUT_FILE="${TMPDIR}/missing-token.json" \
-    "$BUILDER" 2>&1
-)" || status=$?
-if [[ "$status" -eq 0 ]]; then
-  fail "expected missing OP_SERVICE_ACCOUNT_TOKEN case to fail"
-fi
-assert_contains "$missing_token_output" "OP_SERVICE_ACCOUNT_TOKEN is required"
 
 status=0
 missing_secret_output="$(

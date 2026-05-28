@@ -90,7 +90,6 @@ op_item_for_key() {
 
 require_env VAULT_NAME
 require_env OUTPUT_FILE
-require_env OP_SERVICE_ACCOUNT_TOKEN
 require_tool op "1Password CLI (op) is not installed"
 require_tool jq "jq is not installed"
 
