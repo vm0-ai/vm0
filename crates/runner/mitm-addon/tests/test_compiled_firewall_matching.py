@@ -865,6 +865,32 @@ class TestCompiledFirewallMatching:
         assert result.api_entry is api_entry
         assert result.rule == "ANY /repos/{owner}/{repo}"
 
+    def test_runtime_method_is_normalized_before_rule_matching(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "get",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+        assert result.rule == "GET /repos/{owner}/{repo}"
+
     def test_literal_rule_wins_over_earlier_parameter_rule(self):
         api_entry = {
             "base": "https://api.x.com",
@@ -1614,6 +1640,46 @@ class TestCompiledFirewallMatching:
 
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "repo-read"
+
+    def test_malformed_config_takes_priority_over_later_unknown_allow(self):
+        fws = [
+            {
+                "name": "bad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer bad"}},
+                        "permissions": [
+                            {"name": "bad-read", "rules": ["GET /items/{a}literal{b}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "bad": {"allow": ["bad-read"], "deny": [], "unknownPolicy": "allow"},
+            "broad": {"allow": [], "deny": [], "unknownPolicy": "allow"},
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_firewall_config"
 
     def test_valid_later_permission_can_still_allow_after_malformed_base(self):
         fws = [
