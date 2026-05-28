@@ -648,6 +648,15 @@ fn resolve_control_socket_in(
         if !name_str.starts_with(input) {
             continue;
         }
+        let file_type = entry.file_type().map_err(|e| {
+            SandboxControlError::Connection(format!(
+                "cannot inspect {}: {e}",
+                entry.path().display()
+            ))
+        })?;
+        if !file_type.is_dir() {
+            continue;
+        }
         let control_sock = SockPaths::new(entry.path()).control_sock();
         match control_sock.try_exists() {
             Ok(true) => matches.push((name_str.to_owned(), control_sock)),
@@ -1553,6 +1562,19 @@ mod tests {
         let non_utf8_name = std::ffi::OsString::from_vec(b"sandbox-aa-\xff".to_vec());
         let (_ignored_control_sock, _ignored_listener) =
             bind_control_socket_for_test(&sock_parent.join(non_utf8_name));
+
+        let resolved = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap();
+
+        assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
+    fn resolve_control_socket_prefix_ignores_matching_non_directory_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let (control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
+        std::fs::write(sock_parent.join("sandbox-aa-file"), b"not a directory").unwrap();
 
         let resolved = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap();
 
