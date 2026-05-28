@@ -728,6 +728,7 @@ class TestCompiledFirewallMatching:
         [
             None,
             {"example": {"allow": [], "deny": [], "ask": [], "unknownPolicy": "allow"}},
+            {"example": {"allow": [], "deny": [], "ask": [], "unknownPolicy": None}},
         ],
     )
     def test_compiled_unknown_allow_preserves_base_params(self, network_policies):
