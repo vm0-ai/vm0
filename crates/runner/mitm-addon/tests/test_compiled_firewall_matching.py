@@ -149,6 +149,66 @@ class TestCompiledFirewallMatching:
         )
         assert result is None
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com//v1//messages/foo",
+            "https://api.example.com/v1//messages/foo",
+        ],
+    )
+    def test_compiled_parameterized_host_literal_path_does_not_collapse_empty_segments_inside_base(
+        self,
+        url,
+    ):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub}.example.com/v1/messages",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /foo"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert result is None
+
+    def test_compiled_parameterized_host_literal_path_preserves_empty_segments_after_base(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub}.example.com/v1/messages",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /foo"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/messages//foo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.rel_path == "//foo"
+        assert result.params == {"sub": "api"}
+
     def test_compiled_matches_greedy_host_base_params(self):
         fws = wrap_firewalls(
             [
