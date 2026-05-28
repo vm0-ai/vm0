@@ -23,6 +23,7 @@ import {
 } from "../zero-artifact-sidebar.tsx";
 import {
   artifactFullscreen$,
+  clearArtifactPreview$,
   currentArtifactRef$,
 } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
@@ -176,6 +177,17 @@ describe("chatArtifactSidebar: sidebar slot rendering", () => {
     setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt");
     renderWithStore(<ArtifactSidebarSlot />);
     expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
+  });
+
+  it("clears the artifact pane state", () => {
+    setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt");
+
+    expect(context.store.get(currentArtifactRef$)).not.toBeNull();
+
+    context.store.set(clearArtifactPreview$);
+
+    expect(context.store.get(currentArtifactRef$)).toBeNull();
+    expect(search()).not.toContain("artifact=");
   });
 });
 

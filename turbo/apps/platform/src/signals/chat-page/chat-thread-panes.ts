@@ -8,6 +8,7 @@ import {
 } from "../route.ts";
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
+import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -204,6 +205,7 @@ export const loadLeftThread$ = command(
     }
 
     if (get(currentChatThreadId$) !== threadId) {
+      set(clearArtifactPreview$);
       set(pushPathSilently$, "/chats/:threadId", { threadId });
     }
 
@@ -236,6 +238,8 @@ export const loadRightThread$ = command(
     if (get(internalRightThread$)?.threadId === threadId) {
       return;
     }
+
+    set(clearArtifactPreview$);
 
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) !== threadId) {

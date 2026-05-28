@@ -102,6 +102,16 @@ export const closeArtifact$ = command(({ get, set }) => {
   set(internalArtifactFullscreen$, false);
 });
 
+export const clearArtifactPreview$ = command(({ get, set }) => {
+  const params = new URLSearchParams(get(searchParams$));
+  set(internalArtifactFullscreen$, false);
+  if (!params.has(ARTIFACT_QUERY_PARAM)) {
+    return;
+  }
+  params.delete(ARTIFACT_QUERY_PARAM);
+  set(replaceSearchParams$, params);
+});
+
 // ---------------------------------------------------------------------------
 // Fullscreen toggle — the sidebar fills the viewport on demand. Lives in
 // memory (intentionally not URL-routed) so deep links open at the default
