@@ -9,6 +9,7 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  useLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -60,6 +61,7 @@ import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { hasConnectorAuthCodeGrant } from "@vm0/connectors/connector-utils";
+import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -103,6 +105,7 @@ import {
   completeChatConnectorActionConnect$,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
+import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -155,6 +158,11 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { agentById } from "../../signals/agent.ts";
+import {
+  saveAdminFocusedPolicy$,
+  submitAccessRequest$,
+} from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
@@ -2522,6 +2530,10 @@ function BodyContentBlocks({
           return <ConnectorActionCard key={block.id} block={block} />;
         }
 
+        if (block.type === "permission-action") {
+          return <PermissionActionCard key={block.id} block={block} />;
+        }
+
         if (block.preview.kind === "image") {
           return (
             <ChatImagePreviewLink
@@ -2615,6 +2627,118 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
       >
         {activating && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
+      </button>
+    </div>
+  );
+}
+
+function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+  const pageSignal = useGet(pageSignal$);
+  const config = CONNECTOR_TYPES[block.connectorRef];
+  const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
+  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
+  const actionLabel = block.action === "allow" ? "Allow" : "Deny";
+  const loading =
+    agentLoadable.state === "loading" || adminLoadable.state === "loading";
+  const saving =
+    saveLoadable.state === "loading" || submitLoadable.state === "loading";
+  const canManagePermissions =
+    adminLoadable.state === "hasData" && adminLoadable.data;
+  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  const resolved = agent
+    ? resolveFirewallPolicies(agent.permissionPolicies, [block.connectorRef])
+    : null;
+  const effectivePolicy =
+    resolved?.[block.connectorRef]?.policies[block.permission] ?? "allow";
+  const alreadyApplied = Boolean(agent) && effectivePolicy === block.action;
+  const finished =
+    saveLoadable.state === "hasData" || submitLoadable.state === "hasData";
+
+  const handlePermissionAction = () => {
+    if (!agent || loading || saving || alreadyApplied || finished) {
+      return;
+    }
+
+    if (canManagePermissions) {
+      detach(
+        savePolicy(
+          {
+            agentId: block.agentId,
+            ref: block.connectorRef,
+            permissionName: block.permission,
+            action: block.action,
+            agentFirewallPolicies: agent.permissionPolicies,
+          },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+      return;
+    }
+
+    detach(
+      submitRequest(
+        {
+          agentId: block.agentId,
+          connectorRef: block.connectorRef,
+          permission: block.permission,
+          action: block.action,
+          method: block.method ?? undefined,
+          path: block.path ?? undefined,
+          reason: block.reason ?? undefined,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  const buttonLabel = (() => {
+    if (loading) {
+      return "Checking permissions";
+    }
+    if (saveLoadable.state === "hasData" || alreadyApplied) {
+      return block.action === "allow"
+        ? "Permissions updated"
+        : "Permission denied";
+    }
+    if (submitLoadable.state === "hasData") {
+      return "Request sent";
+    }
+    if (saving) {
+      return canManagePermissions ? "Saving..." : "Requesting...";
+    }
+    return canManagePermissions ? "Confirm" : "Request approval";
+  })();
+
+  return (
+    <div
+      data-testid="permission-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <ConnectorIcon type={block.connectorRef} size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {config.label} permissions
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {actionLabel} {block.permission}
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled={loading || saving || alreadyApplied || finished || !agent}
+        onClick={handlePermissionAction}
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+      >
+        {saving && <IconLoader2 size={15} className="animate-spin" />}
+        {buttonLabel}
       </button>
     </div>
   );

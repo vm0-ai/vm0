@@ -2,9 +2,13 @@ import { computed, type Computed } from "ccstate";
 import {
   createConnectorActionBlock,
   parseConnectorAuthorizeUrl,
-  type ConnectorActionDescriptor,
   type ConnectorActionBlock,
 } from "./connector-action-block.ts";
+import {
+  createPermissionActionBlock,
+  parsePermissionActionUrl,
+  type PermissionActionBlock,
+} from "./permission-action-block.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,7 +42,8 @@ export type BodyRenderBlock =
         text$?: Computed<Promise<string>>;
       };
     }
-  | ConnectorActionBlock;
+  | ConnectorActionBlock
+  | PermissionActionBlock;
 
 type ChatAttachmentKind = BodyPreviewKind;
 
@@ -496,7 +501,7 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   return null;
 }
 
-function extractConnectorActionFromLine(line: string): string | null {
+function extractActionUrlFromLine(line: string): string | null {
   const candidate = stripMarkdownLineDecorations(line);
   const markdownLinkMatch = candidate.match(
     new RegExp(String.raw`^\[([^\]]+)\]\((${URL_TOKEN_PATTERN})\)$`),
@@ -521,11 +526,29 @@ function extractConnectorActionFromLine(line: string): string | null {
   return urls.length === 1 ? urls[0]! : null;
 }
 
-function parseConnectorActionFromLine(
+function createActionBlockFromLine(
   line: string,
-): ConnectorActionDescriptor | null {
-  const url = extractConnectorActionFromLine(line);
-  return url ? parseConnectorAuthorizeUrl(url) : null;
+  id: (type: BodyRenderBlock["type"]) => string,
+): ConnectorActionBlock | PermissionActionBlock | null {
+  const url = extractActionUrlFromLine(line);
+  if (!url) {
+    return null;
+  }
+
+  const connectorAction = parseConnectorAuthorizeUrl(url);
+  if (connectorAction) {
+    return createConnectorActionBlock(id("connector-action"), connectorAction);
+  }
+
+  const permissionAction = parsePermissionActionUrl(url);
+  if (permissionAction) {
+    return createPermissionActionBlock(
+      id("permission-action"),
+      permissionAction,
+    );
+  }
+
+  return null;
 }
 
 function splitMarkdownTableRow(line: string): string[] | null {
@@ -680,15 +703,10 @@ export function parseBodyRenderBlocks(
       continue;
     }
 
-    const connectorAction = parseConnectorActionFromLine(line);
-    if (connectorAction) {
+    const actionBlock = createActionBlockFromLine(line, nextBlockId);
+    if (actionBlock) {
       flushMarkdownBuffer();
-      blocks.push(
-        createConnectorActionBlock(
-          nextBlockId("connector-action"),
-          connectorAction,
-        ),
-      );
+      blocks.push(actionBlock);
       continue;
     }
 
