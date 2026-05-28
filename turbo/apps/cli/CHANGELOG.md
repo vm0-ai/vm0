@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.175.0](https://github.com/vm0-ai/vm0/compare/cli-v9.174.3...cli-v9.175.0) (2026-05-28)
+
+
+### Features
+
+* **cli:** template target taxonomy + --design-system/--template flags on HTML generate commands ([#15313](https://github.com/vm0-ai/vm0/issues/15313)) ([9fecb41](https://github.com/vm0-ai/vm0/commit/9fecb4196ee0cb1f8baef68d8fa9e4020264e28d))
+
 ## [9.174.3](https://github.com/vm0-ai/vm0/compare/cli-v9.174.2...cli-v9.174.3) (2026-05-28)
 
 
