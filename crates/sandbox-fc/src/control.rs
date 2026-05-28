@@ -1429,6 +1429,24 @@ mod tests {
     }
 
     #[test]
+    fn resolve_control_socket_full_id_ignores_sibling_socket_check_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let sandbox_id = SandboxId::new_v4();
+
+        let (control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join(sandbox_id.to_string()));
+        let sibling_dir = sock_parent.join(format!("{sandbox_id}-loop"));
+        std::fs::create_dir_all(&sibling_dir).unwrap();
+        let sibling_control_sock = SockPaths::new(sibling_dir).control_sock();
+        symlink("control.sock", &sibling_control_sock).unwrap();
+
+        let resolved = resolve_control_socket_in(&sock_parent, &sandbox_id.to_string()).unwrap();
+
+        assert_eq!(resolved, control_sock);
+    }
+
+    #[test]
     fn resolve_control_socket_full_id_without_socket_returns_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let sock_parent = dir.path().join("sock");
@@ -1480,6 +1498,25 @@ mod tests {
     fn resolve_control_socket_prefix_socket_check_error_returns_connection() {
         let dir = tempfile::tempdir().unwrap();
         let sock_parent = dir.path().join("sock");
+        let sandbox_dir = sock_parent.join("sandbox-aa-loop");
+        std::fs::create_dir_all(&sandbox_dir).unwrap();
+        let control_sock = SockPaths::new(sandbox_dir).control_sock();
+        symlink("control.sock", &control_sock).unwrap();
+
+        let err = resolve_control_socket_in(&sock_parent, "sandbox-aa-").unwrap_err();
+
+        let SandboxControlError::Connection(message) = err else {
+            panic!("expected connection error");
+        };
+        assert!(message.contains(&control_sock.display().to_string()));
+    }
+
+    #[test]
+    fn resolve_control_socket_prefix_socket_check_error_prevents_partial_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        let (_valid_control_sock, _listener) =
+            bind_control_socket_for_test(&sock_parent.join("sandbox-aa-live"));
         let sandbox_dir = sock_parent.join("sandbox-aa-loop");
         std::fs::create_dir_all(&sandbox_dir).unwrap();
         let control_sock = SockPaths::new(sandbox_dir).control_sock();
