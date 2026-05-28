@@ -1101,6 +1101,59 @@ PY
         assert_eq!(retry_count.get(), 1);
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn retry_text_busy_spawn_does_not_retry_other_errors() {
+        let spawn_calls = std::cell::Cell::new(0usize);
+        let retry_count = std::cell::Cell::new(0usize);
+        let error = retry_text_busy_spawn::<()>(
+            Path::new("fake-mitmdump"),
+            Duration::ZERO,
+            || {
+                spawn_calls.set(spawn_calls.get() + 1);
+                Err(std::io::Error::from_raw_os_error(nix::libc::ENOENT))
+            },
+            |_attempt, _error| retry_count.set(retry_count.get() + 1),
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(spawn_calls.get(), 1);
+        assert_eq!(retry_count.get(), 0);
+        assert!(
+            error.to_string().contains("spawn mitmdump fake-mitmdump"),
+            "unexpected error: {error}",
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn retry_text_busy_spawn_stops_after_retry_limit() {
+        let spawn_calls = std::cell::Cell::new(0usize);
+        let last_retry_attempt = std::cell::Cell::new(0usize);
+        let error = retry_text_busy_spawn::<()>(
+            Path::new("fake-mitmdump"),
+            Duration::ZERO,
+            || {
+                spawn_calls.set(spawn_calls.get() + 1);
+                Err(std::io::Error::from_raw_os_error(nix::libc::ETXTBSY))
+            },
+            |attempt, error| {
+                assert!(is_text_file_busy(error), "unexpected retry error: {error}");
+                last_retry_attempt.set(attempt);
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(spawn_calls.get(), TEXT_BUSY_SPAWN_MAX_RETRIES + 1);
+        assert_eq!(last_retry_attempt.get(), TEXT_BUSY_SPAWN_MAX_RETRIES);
+        assert!(
+            error.to_string().contains("spawn mitmdump fake-mitmdump"),
+            "unexpected error: {error}",
+        );
+    }
+
     async fn wait_for_reaped_pid(pid: nix::unistd::Pid) -> bool {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         loop {
