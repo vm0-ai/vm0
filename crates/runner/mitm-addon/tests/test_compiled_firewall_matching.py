@@ -387,6 +387,126 @@ class TestCompiledFirewallMatching:
         assert result.api_entry is api_entry
         assert result.rule == "ANY /repos/{owner}/{repo}"
 
+    def test_literal_rule_wins_over_earlier_parameter_rule(self):
+        api_entry = {
+            "base": "https://api.x.com",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [
+                {"name": "community-by-id", "rules": ["GET /2/communities/{id}"]},
+                {"name": "community-search", "rules": ["GET /2/communities/search"]},
+            ],
+        }
+        fws = wrap_firewalls([api_entry], name="x")
+        policies = {"x": {"allow": [], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.x.com/2/communities/search",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "community-search"
+        assert result.rule == "GET /2/communities/search"
+        assert result.params == {}
+
+    def test_denied_parameter_rule_does_not_block_more_specific_literal_allow(self):
+        api_entry = {
+            "base": "https://api.x.com",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [
+                {"name": "community-by-id", "rules": ["GET /2/communities/{id}"]},
+                {"name": "community-search", "rules": ["GET /2/communities/search"]},
+            ],
+        }
+        fws = wrap_firewalls([api_entry], name="x")
+        policies = {"x": {"allow": [], "deny": ["community-by-id"], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.x.com/2/communities/search",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "community-search"
+        assert result.rule == "GET /2/communities/search"
+
+    @pytest.mark.parametrize(
+        ("earlier_rule", "later_rule", "url", "expected_rule", "expected_params"),
+        [
+            (
+                "GET /files/{id}",
+                "GET /files/file-{slug}",
+                "https://api.example.com/files/file-readme",
+                "GET /files/file-{slug}",
+                {"slug": "readme"},
+            ),
+            (
+                "GET /files/{path+}",
+                "GET /files/{id}",
+                "https://api.example.com/files/readme",
+                "GET /files/{id}",
+                {"id": "readme"},
+            ),
+        ],
+    )
+    def test_more_specific_parameter_shape_wins(
+        self,
+        earlier_rule,
+        later_rule,
+        url,
+        expected_rule,
+        expected_params,
+    ):
+        api_entry = {
+            "base": "https://api.example.com",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [
+                {"name": "earlier", "rules": [earlier_rule]},
+                {"name": "later", "rules": [later_rule]},
+            ],
+        }
+        fws = wrap_firewalls([api_entry], name="example")
+        policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "later"
+        assert result.rule == expected_rule
+        assert result.params == expected_params
+
+    def test_allowed_parameter_rule_does_not_bypass_more_specific_literal_deny(self):
+        api_entry = {
+            "base": "https://api.x.com",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [
+                {"name": "community-by-id", "rules": ["GET /2/communities/{id}"]},
+                {"name": "community-search", "rules": ["GET /2/communities/search"]},
+            ],
+        }
+        fws = wrap_firewalls([api_entry], name="x")
+        policies = {"x": {"allow": [], "deny": ["community-search"], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.x.com/2/communities/search",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("community-search",)
+        assert result.reason == "permission_denied"
+
     def test_later_allowed_permission_still_wins_after_earlier_denied_match(self):
         fws = wrap_firewalls(
             [
