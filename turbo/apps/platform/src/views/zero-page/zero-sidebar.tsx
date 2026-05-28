@@ -8,7 +8,6 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconChartLine,
   IconLayoutGrid,
   IconCalendar,
   IconUsers,
@@ -97,13 +96,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     label: "Scheduled",
     icon: IconCalendar as NavIcon,
   },
-  {
-    id: "activities",
-    activeKeys: ["activities", "activityDetail"],
-    pathname: "/activities",
-    label: "Activity logs",
-    icon: IconChartLine as NavIcon,
-  },
 ];
 
 interface FooterNavItem {
@@ -171,9 +163,6 @@ function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageNav = MANAGE_NAV.filter((item) => {
-    if (item.id === "activities") {
-      return features?.[FeatureSwitchKey.ZeroDebug];
-    }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
     }
