@@ -72,9 +72,7 @@ describe("zero generate source-backed artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(`# Zero generate ${command}`);
-      expect(stdout).toContain(
-        "federated generation source-selection packet",
-      );
+      expect(stdout).toContain("federated generation source-selection packet");
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(template);
       expect(stdout).toContain(`Artifact kind: ${command}`);
