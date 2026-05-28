@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.389.0](https://github.com/vm0-ai/vm0/compare/app-v0.388.4...app-v0.389.0) (2026-05-28)
+
+
+### Features
+
+* add chat permission action blocks ([#15239](https://github.com/vm0-ai/vm0/issues/15239)) ([9477970](https://github.com/vm0-ai/vm0/commit/947797063365e7573c93ccd21041a28cb8063540))
+* add chat run lifecycle markers ([#15210](https://github.com/vm0-ai/vm0/issues/15210)) ([9c9b4b9](https://github.com/vm0-ai/vm0/commit/9c9b4b9a765810d5868cdafd9dbddd4d1b3f16f3))
+* hide activity logs from sidebar ([#15203](https://github.com/vm0-ai/vm0/issues/15203)) ([5a11cb3](https://github.com/vm0-ai/vm0/commit/5a11cb33ad53e4b275dcc8b8ec76d608fd38a927))
+
+
+### Bug Fixes
+
+* clear artifact sidebar on thread switch ([#15209](https://github.com/vm0-ai/vm0/issues/15209)) ([fbdba3e](https://github.com/vm0-ai/vm0/commit/fbdba3e50b5f937dd929e5b4b20f35cb84491712))
+* make artifact sidebar state url-driven ([#15228](https://github.com/vm0-ai/vm0/issues/15228)) ([bf0acdb](https://github.com/vm0-ai/vm0/commit/bf0acdb7d7016f34f57955235b3140a6c9308655))
+* **platform:** align pricing cards with content area edges ([#15217](https://github.com/vm0-ai/vm0/issues/15217)) ([c4b2d09](https://github.com/vm0-ai/vm0/commit/c4b2d094556d7dac54ac37955ea515f675af976f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.44.0
+    * @vm0/connectors bumped to 1.37.4
+    * @vm0/core bumped to 8.301.0
+
 ## [0.388.4](https://github.com/vm0-ai/vm0/compare/app-v0.388.3...app-v0.388.4) (2026-05-28)
 
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.173.0](https://github.com/vm0-ai/vm0/compare/cli-v9.172.1...cli-v9.173.0) (2026-05-28)
+
+
+### Features
+
+* include bundle ids in computer-use apps ([#15231](https://github.com/vm0-ai/vm0/issues/15231)) ([057bc74](https://github.com/vm0-ai/vm0/commit/057bc74bc7ef3d77aeaea10f7db5334e16c05db6))
+* register 8 image-style templates (bundle) ([#15225](https://github.com/vm0-ai/vm0/issues/15225)) ([a6a4247](https://github.com/vm0-ai/vm0/commit/a6a4247e9c187f6e4dd5e4636e8bb9001aa0eed4))
+* register jade-blockprint image style in open-design registry ([#15235](https://github.com/vm0-ai/vm0/issues/15235)) ([942cb03](https://github.com/vm0-ai/vm0/commit/942cb039e6eb7ea9471068e1b07ee35367bd8105))
+* register shadow-pop styled template resource ([#15237](https://github.com/vm0-ai/vm0/issues/15237)) ([0d2ffcb](https://github.com/vm0-ai/vm0/commit/0d2ffcb87706af10780e4fd41b3871053cb07929))
+* support xdotool press-key names ([#15229](https://github.com/vm0-ai/vm0/issues/15229)) ([2f56d75](https://github.com/vm0-ai/vm0/commit/2f56d75311826c98c7ae2f1e01ed36e641de6b45))
+* type computer-use text with keyboard events ([#15218](https://github.com/vm0-ai/vm0/issues/15218)) ([e944dc5](https://github.com/vm0-ai/vm0/commit/e944dc50e5c976fc741126fe3ff05a3dd6af5d19))
+
+
+### Bug Fixes
+
+* generalize generation source packets ([#15215](https://github.com/vm0-ai/vm0/issues/15215)) ([9fe4853](https://github.com/vm0-ai/vm0/commit/9fe4853e5a6cd9a9ee712d555c63f1d0559dff19))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.44.0
+    * @vm0/connectors bumped to 1.37.4
+    * @vm0/core bumped to 8.301.0
+
 ## [9.172.1](https://github.com/vm0-ai/vm0/compare/cli-v9.172.0...cli-v9.172.1) (2026-05-27)
 
 
