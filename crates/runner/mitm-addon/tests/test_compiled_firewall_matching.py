@@ -371,7 +371,7 @@ class TestCompiledFirewallMatching:
         assert compiled.name == "specific"
         assert compiled.permission == "items-read"
 
-    def test_preserves_raw_rule_order_for_any_before_exact_method(self):
+    def test_preserves_config_rule_order_for_any_before_exact_method(self):
         api_entry = {
             "base": "https://api.github.com",
             "auth": {"headers": {"Authorization": "Bearer token"}},
