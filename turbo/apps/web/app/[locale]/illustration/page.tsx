@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
@@ -7,23 +6,6 @@ import { ILLUSTRATION_STYLES } from "./data";
 
 const BASE_URL = "https://www.vm0.ai";
 const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  style: ["normal", "italic"],
-  variable: "--font-fraunces",
-  display: "swap",
-  preload: false,
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-inter",
-  display: "swap",
-  preload: false,
-});
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -36,7 +18,7 @@ export async function generateMetadata({
   const url = `${BASE_URL}/${locale}/illustration`;
   const title = "Illustration — VM0";
   const description =
-    "Quiet Moments — an editorial gallery showing every illustration style in the vm0-skills register. Twenty-two plates, one brief, each with its full set of AI variations.";
+    "An open gallery of every illustration style in the vm0-skills register. Each plate shows one piece in that style with every AI variation behind it.";
 
   return {
     title,
@@ -75,7 +57,7 @@ export default async function IllustrationPage({ params }: PageProps) {
     "@type": "ItemList",
     name: "VM0 Illustration Gallery",
     description:
-      "Editorial gallery of every illustration style in the vm0-skills register.",
+      "Gallery of every illustration style in the vm0-skills register.",
     itemListElement: ILLUSTRATION_STYLES.map((style, i) => {
       return {
         "@type": "ListItem",
@@ -106,7 +88,7 @@ export default async function IllustrationPage({ params }: PageProps) {
   };
 
   return (
-    <div className={`${fraunces.variable} ${inter.variable}`}>
+    <>
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(itemListJsonLd)}
       </script>
@@ -114,6 +96,6 @@ export default async function IllustrationPage({ params }: PageProps) {
         {JSON.stringify(breadcrumbJsonLd)}
       </script>
       <IllustrationGalleryClient />
-    </div>
+    </>
   );
 }
