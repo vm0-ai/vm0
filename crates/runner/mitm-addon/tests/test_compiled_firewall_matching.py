@@ -176,6 +176,42 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "repo-read"
 
+    @pytest.mark.parametrize(
+        ("base", "url"),
+        [
+            ("https://api.github.com.", "https://api.github.com/repos/org/repo"),
+            ("https://api.github.com", "https://api.github.com./repos/org/repo"),
+            ("https://api.github.com.:08443", "https://api.github.com:8443/repos/org/repo"),
+            ("https://{sub}.github.com.", "https://api.github.com/repos/org/repo"),
+            ("https://{sub}.github.com", "https://api.github.com./repos/org/repo"),
+            ("https://{sub}.github.com.:08443", "https://api.github.com:8443/repos/org/repo"),
+        ],
+    )
+    def test_compiled_matches_authority_normalized_bases(self, base, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
+
     def test_compiled_matches_parameterized_host_nonstandard_port_rejection(self):
         fws = wrap_firewalls(
             [

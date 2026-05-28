@@ -134,9 +134,11 @@ def _split_base_match_url(
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
-    Keeps the raw authority, including any explicit port. The returned path
-    excludes query and fragment so callers can apply base-path prefix semantics
-    without accidentally comparing query strings.
+    Canonicalizes authority details that get_trusted_authority() also normalizes:
+    trailing host dots are removed, default ports are omitted, and explicit ports
+    are rendered as integers. The returned path excludes query and fragment so
+    callers can apply base-path prefix semantics without accidentally comparing
+    query strings.
     """
     try:
         parts = urlsplit(value)
@@ -151,17 +153,33 @@ def _split_base_match_url(
         port = parts.port
     except ValueError:
         port = None
-    authority = parts.netloc
-    if port == _DEFAULT_SCHEME_PORTS.get(parts.scheme.lower()):
-        host, separator, _raw_port = authority.rpartition(":")
-        if separator and host:
-            authority = host
+    authority = _normalize_authority(parts.scheme, parts.netloc, port)
 
     return _BaseUrlParts(
         scheme=parts.scheme,
         authority=authority,
         path=parts.path,
     )
+
+
+def _strip_trailing_host_dot(authority_host: str) -> str:
+    if authority_host.endswith("."):
+        return authority_host[:-1]
+    return authority_host
+
+
+def _normalize_authority(scheme: str, authority: str, port: int | None) -> str:
+    if port is None:
+        return _strip_trailing_host_dot(authority)
+
+    host, separator, _raw_port = authority.rpartition(":")
+    if not separator or not host:
+        return _strip_trailing_host_dot(authority)
+
+    normalized_host = _strip_trailing_host_dot(host)
+    if port == _DEFAULT_SCHEME_PORTS.get(scheme.lower()):
+        return normalized_host
+    return f"{normalized_host}:{port}"
 
 
 def _parse_segment(seg: str) -> ParsedSegment:
@@ -406,11 +424,10 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     if url_parts.scheme.lower() != base_parts.scheme.lower():
         return None
 
-    # Match host directly — do NOT strip port. Non-standard ports (e.g., :8443)
-    # are included in URLs by get_original_url() and must NOT match base patterns
-    # without an explicit port, otherwise auth headers could leak to rogue servers.
-    # Standard ports (443 for https, 80 for http) are omitted from URLs by
-    # get_original_url(), so they match naturally.
+    # Match authority directly after _split_base_match_url canonicalization.
+    # Non-standard ports (e.g., :8443) are still part of the authority and must
+    # not match base patterns without the same explicit port, otherwise auth
+    # headers could leak to a different listener.
     host_params = match_host(url_parts.authority, base_parts.authority)
     if host_params is None:
         return None

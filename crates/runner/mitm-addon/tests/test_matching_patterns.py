@@ -238,6 +238,19 @@ class TestMatchBaseUrl:
         result = matching.match_base_url(url, base)
         assert result == ("/repos", {})
 
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://api.github.com/repos", "https://api.github.com."),
+            ("https://api.github.com./repos", "https://api.github.com"),
+            ("https://api.github.com:8443/repos", "https://api.github.com.:08443"),
+            ("https://api.github.com.:8443/repos", "https://api.github.com:8443"),
+        ],
+    )
+    def test_static_base_authority_normalization_matches_runtime_host(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result == ("/repos", {})
+
     def test_static_base_with_query_is_rejected(self):
         result = matching.match_base_url(
             "https://api.github.com/repos", "https://api.github.com?token=1"
@@ -349,6 +362,23 @@ class TestMatchBaseUrl:
         ],
     )
     def test_parameterized_base_default_ports_match_omitted_ports(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result == ("/api", {"sub": "acme"})
+
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://acme.zendesk.com/api", "https://{sub}.zendesk.com."),
+            ("https://acme.zendesk.com./api", "https://{sub}.zendesk.com"),
+            ("https://acme.zendesk.com:8443/api", "https://{sub}.zendesk.com.:08443"),
+            ("https://acme.zendesk.com.:8443/api", "https://{sub}.zendesk.com:8443"),
+        ],
+    )
+    def test_parameterized_base_authority_normalization_matches_runtime_host(
+        self,
+        url,
+        base,
+    ):
         result = matching.match_base_url(url, base)
         assert result == ("/api", {"sub": "acme"})
 
