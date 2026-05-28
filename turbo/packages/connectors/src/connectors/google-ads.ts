@@ -1,5 +1,4 @@
 import type { ConnectorConfig } from "../connectors";
-import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const googleAds = {
   "google-ads": {
@@ -10,7 +9,6 @@ export const googleAds = {
       "Connect your Google Ads account to manage campaigns, ad groups, and performance reports",
     authMethods: {
       oauth: {
-        featureFlag: FeatureSwitchKey.GoogleAdsConnector,
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Ads access.",

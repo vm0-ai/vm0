@@ -539,8 +539,8 @@ describe("POST /api/zero/chat/messages", () => {
     expect(secrets?.ZERO_TOKEN).toMatch(/^vm0_sandbox_/);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
     expect(zeroAuth?.capabilities).not.toContain("agent-run:write");
-    expect(zeroAuth?.capabilities).not.toContain("host:read");
-    expect(zeroAuth?.capabilities).not.toContain("host:write");
+    expect(zeroAuth?.capabilities).toContain("host:read");
+    expect(zeroAuth?.capabilities).toContain("host:write");
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${response.body.threadId}`,
       null,

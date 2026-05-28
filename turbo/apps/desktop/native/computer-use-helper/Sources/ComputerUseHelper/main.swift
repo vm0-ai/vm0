@@ -60,7 +60,6 @@ let tableCellFallbackChildSources = [
 ]
 
 let collectionTraversalChildSources = [
-    ChildSource(attribute: "AXVisibleRows", prefix: "a"),
     ChildSource(attribute: kAXChildrenAttribute as String, prefix: "e"),
     ChildSource(attribute: "AXContents", prefix: "c"),
     ChildSource(attribute: "AXVisibleChildren", prefix: "v"),
@@ -1652,6 +1651,9 @@ struct ElementClickCapabilities {
     let webAreaMouseClick: Bool
 
     var clickableKind: String? {
+        if role == "AXLink", pressable {
+            return "press"
+        }
         if webAreaMouseClick, frame != nil {
             return "mouse"
         }
@@ -1724,6 +1726,9 @@ func clickCapabilities(
 }
 
 func preferredClickStrategy(_ capabilities: ElementClickCapabilities) -> ElementClickStrategy? {
+    if capabilities.role == "AXLink", capabilities.pressable {
+        return .press
+    }
     if capabilities.webAreaMouseClick, capabilities.frame != nil {
         return .mouse
     }
@@ -2354,15 +2359,30 @@ func childFingerprint(_ element: AXUIElement) -> String {
     guard let bounds = bounds(element) else {
         return ""
     }
+    let roleName = role(element) ?? ""
+    let title = stringValue(attribute(element, kAXTitleAttribute as CFString)) ?? ""
+    let value = stringValue(attribute(element, kAXValueAttribute as CFString)) ?? ""
+    let description = stringValue(attribute(element, kAXDescriptionAttribute as CFString)) ?? ""
+    let url = urlStringValue(attribute(element, kAXURLAttribute as CFString)) ?? ""
+    if (roleName == "AXGroup" || roleName == "AXUnknown"),
+       title.isEmpty,
+       value.isEmpty,
+       description.isEmpty,
+       url.isEmpty
+    {
+        return ""
+    }
     let x = bounds["x"] ?? 0
     let y = bounds["y"] ?? 0
     let width = bounds["width"] ?? 0
     let height = bounds["height"] ?? 0
     let boundsText = "\(x),\(y),\(width),\(height)"
     return [
-        role(element) ?? "",
-        stringValue(attribute(element, kAXTitleAttribute as CFString)) ?? "",
-        stringValue(attribute(element, kAXValueAttribute as CFString)) ?? "",
+        roleName,
+        title,
+        value,
+        description,
+        url,
         boundsText,
     ].joined(separator: "|")
 }
@@ -2409,18 +2429,9 @@ func traversalChildCandidates(_ element: AXUIElement) -> [ChildEntry] {
             ]
         )
     case "AXList", "AXOutline":
-        return firstAvailableCandidates(
-            from: element,
-            sourceGroups: collectionTraversalChildSources.map { source in [source] }
-        )
+        return candidates(from: element, sources: collectionTraversalChildSources)
     default:
-        return firstAvailableCandidates(
-            from: element,
-            sourceGroups: [
-                Array(defaultTraversalChildSources.prefix(2)),
-                Array(defaultTraversalChildSources.suffix(1)),
-            ]
-        )
+        return candidates(from: element, sources: defaultTraversalChildSources)
     }
 }
 
@@ -3181,6 +3192,10 @@ func isUnsupportedActionError(_ error: AXError) -> Bool {
 }
 
 func resolveElementClickTarget(_ element: AXUIElement) -> ElementClickTarget? {
+    if let linkTarget = resolveLinkClickTarget(element) {
+        return linkTarget
+    }
+
     var current: AXUIElement? = element
     var depth = 0
     while let node = current, depth <= limits.maxDepth {
@@ -3194,6 +3209,38 @@ func resolveElementClickTarget(_ element: AXUIElement) -> ElementClickTarget? {
                 promotedDepth: depth,
                 strategy: strategy
             )
+        }
+        current = axElementValue(attribute(node, kAXParentAttribute as CFString))
+        depth += 1
+    }
+    return nil
+}
+
+func resolveLinkClickTarget(_ element: AXUIElement) -> ElementClickTarget? {
+    var current: AXUIElement? = element
+    var depth = 0
+    while let node = current, depth <= limits.maxDepth {
+        let capabilities = clickCapabilities(node)
+        if capabilities.role == "AXLink" {
+            if capabilities.pressable {
+                return ElementClickTarget(
+                    element: node,
+                    capabilities: capabilities,
+                    promotedDepth: depth,
+                    strategy: .press
+                )
+            }
+            if capabilities.frame != nil {
+                return ElementClickTarget(
+                    element: node,
+                    capabilities: capabilities,
+                    promotedDepth: depth,
+                    strategy: .mouse
+                )
+            }
+        }
+        if capabilities.role == "AXWebArea" {
+            return nil
         }
         current = axElementValue(attribute(node, kAXParentAttribute as CFString))
         depth += 1

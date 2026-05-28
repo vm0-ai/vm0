@@ -3130,6 +3130,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       path: "illustration-template/shadow-pop",
     },
   },
+  {
+    id: "vm0:image-style:tiny-wanderer",
+    kind: "image-style",
+    name: "Tiny Wanderer",
+    description:
+      "Contemplative bande-dessinée landscape illustration — tiny human dwarfed by vast nature, ink hatching + flat color, vertical portrait canvas.",
+    desc: 'Contemplative bande-dessinée landscape illustration in a locked house style — a tiny human (or 2–3 figures) is dwarfed by a vast natural panorama, hand-drawn black ink contour + parallel/cross-hatching for clouds, rock walls, foliage, grass, and water texture, sitting on flat color blocks beneath the ink (no gradients, no airbrush). Restrained 3–5 color palette per piece including black ink, vertical portrait canvas (1024x1536, reads ~3:5). Always outdoor/wilderness. Moebius / Christophe Chabouté travel-sketchbook lineage, quiet wonder mood. Six dials per brief: palette family (sage-plains / sunset-warm / coastal-teal / cool-mist / autumn-rust / winter-pale / custom), landscape archetype (plains+clouds / mountain valley / river vista / rocky ridge / coastal cliffs / misty gorge / forest clearing / alpine pass / desert mesa / lakeshore), activity (walking / cycling / hiking / standing-and-gazing), solitude count (1 / 2 / 3), complexity (L1 single plane / L2 fore+mid / L3 full multi-plane vista), and weather/time (midday / golden hour / sunset / overcast / mist / blue hour). Trigger when user says /tiny-wanderer, asks for a "tiny wanderer illustration", "bande-dessinée landscape", "Moebius-style travel illustration", "ink-hatched vertical landscape", or briefs with a palette + landscape archetype + complexity in this house style.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/tiny-wanderer",
+    },
+  },
 ];
 
 function filterByKind(

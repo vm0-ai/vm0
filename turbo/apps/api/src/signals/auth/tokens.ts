@@ -26,7 +26,6 @@ const CONDITIONAL_CAPABILITIES = [
   ["computer-use:write", FeatureSwitchKey.ComputerUse],
   ["host:read", FeatureSwitchKey.HostedSites],
   ["host:write", FeatureSwitchKey.HostedSites],
-  ["maps:read", FeatureSwitchKey.ZeroMaps],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [

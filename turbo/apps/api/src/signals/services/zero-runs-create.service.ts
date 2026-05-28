@@ -2,8 +2,6 @@ import { randomBytes } from "node:crypto";
 
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   connectorTypeSchema,
   type ConnectorType,
@@ -35,7 +33,6 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -206,16 +203,7 @@ function buildIntegrationToolsPrompt(
   }
 }
 
-function buildZeroMapsToolsPrompt(zeroMapsEnabled: boolean): readonly string[] {
-  return zeroMapsEnabled
-    ? ["- Maps, geocoding, directions, and places: use `zero maps --help`."]
-    : [];
-}
-
-function buildAgentToolsPrompt(
-  triggerSource: TriggerSource,
-  args: { readonly zeroMapsEnabled: boolean },
-): string {
+function buildAgentToolsPrompt(triggerSource: TriggerSource): string {
   return [
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
@@ -224,7 +212,7 @@ function buildAgentToolsPrompt(
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop, cron tools (CronCreate, CronList, CronDelete), or ScheduleWakeup — they are not available.",
     "- Browser access: the runtime environment includes `agent-browser` for browser automation and inspection.",
     ...buildIntegrationToolsPrompt(triggerSource),
-    ...buildZeroMapsToolsPrompt(args.zeroMapsEnabled),
+    "- Maps, geocoding, directions, and places: use `zero maps --help`.",
     "- Static web artifacts can be published with `zero host <dir> --site <slug> [--spa]`; run `zero host --help` for details.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose environment names like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- Model availability and provider routing are workspace model settings, separate from connectors. Use `zero model ls` to list allowed models, `zero model switch` for model-switching guidance, and `zero model-provider ls` to inspect built-in/BYOK routing.",
@@ -280,14 +268,11 @@ function buildAppendSystemPrompt(args: {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
-  readonly zeroMapsEnabled: boolean;
 }): string {
   const identity = buildAgentIdentityPrompt(args.agent);
   return [
     identity,
-    buildAgentToolsPrompt(args.triggerSource, {
-      zeroMapsEnabled: args.zeroMapsEnabled,
-    }),
+    buildAgentToolsPrompt(args.triggerSource),
     buildCurrentUserPrompt(args.userInfo),
   ]
     .filter((part): part is string => {
@@ -447,21 +432,6 @@ async function loadUserInfo(
   };
 }
 
-async function isZeroMapsEnabledForUser(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<boolean> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.ZeroMaps, featureSwitchContext);
-}
-
 async function triggerAgentIdForAuth(
   db: Db,
   auth: AuthContext & { readonly orgId: string },
@@ -493,7 +463,6 @@ function createRunBody(args: {
   readonly triggerAgentId: string | undefined;
   readonly triggerSource: TriggerSource | undefined;
   readonly appendSystemPrompt: string | undefined;
-  readonly zeroMapsEnabled: boolean;
 }) {
   const triggerSource =
     args.triggerSource ??
@@ -502,7 +471,6 @@ function createRunBody(args: {
     agent: args.agent,
     userInfo: args.userInfo,
     triggerSource,
-    zeroMapsEnabled: args.zeroMapsEnabled,
   });
   return {
     prompt: args.body.prompt,
@@ -540,7 +508,6 @@ function createIntegrationRunBody(args: {
     | undefined;
   readonly triggerSource: TriggerSource;
   readonly appendSystemPrompt: string | undefined;
-  readonly zeroMapsEnabled: boolean;
 }) {
   return {
     prompt: args.prompt,
@@ -553,7 +520,6 @@ function createIntegrationRunBody(args: {
         agent: args.agent,
         userInfo: args.userInfo,
         triggerSource: args.triggerSource,
-        zeroMapsEnabled: args.zeroMapsEnabled,
       }),
       args.appendSystemPrompt,
     ),
@@ -616,12 +582,6 @@ export const createZeroIntegrationRun$ = command(
       orgId: args.orgId,
     });
     signal.throwIfAborted();
-    const zeroMapsEnabled = await isZeroMapsEnabledForUser(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-    });
-    signal.throwIfAborted();
-
     const allowedConnectorTypes = await loadAllowedConnectorTypes(db, {
       userId: args.userId,
       orgId: args.orgId,
@@ -656,7 +616,6 @@ export const createZeroIntegrationRun$ = command(
           permissionPolicies: agentPermissionPolicies,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
-          zeroMapsEnabled,
         }),
         apiStartTime: args.apiStartTime,
         modelProviderId: agent.modelProviderId ?? undefined,
@@ -737,12 +696,6 @@ export const createZeroRun$ = command(
       orgId: args.auth.orgId,
     });
     signal.throwIfAborted();
-    const zeroMapsEnabled = await isZeroMapsEnabledForUser(db, {
-      userId: args.auth.userId,
-      orgId: args.auth.orgId,
-    });
-    signal.throwIfAborted();
-
     const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
     signal.throwIfAborted();
 
@@ -779,7 +732,6 @@ export const createZeroRun$ = command(
           triggerAgentId,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
-          zeroMapsEnabled,
         }),
         apiStartTime: args.apiStartTime,
         modelProviderId:

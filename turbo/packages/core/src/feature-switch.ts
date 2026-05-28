@@ -119,11 +119,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
-  [FeatureSwitchKey.GoogleAdsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Google Ads connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
@@ -143,8 +138,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable PWA offline caching (static asset cache-first, offline fallback page, and service worker updateViaCache: none)",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -235,12 +229,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
     enabled: false,
   },
-  [FeatureSwitchKey.DocsSite]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Enable the Strapi-backed public docs site routes, navigation entry, and docs pages.",
-    enabled: true,
-  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",
@@ -279,10 +267,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.HostedSites]: {
     maintainer: "lancy@vm0.ai",
-    description:
-      "Enable static hosted-site deployments from zero host. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    description: "Enable static hosted-site deployments from zero host.",
+    enabled: true,
   },
   [FeatureSwitchKey.SandboxIoLimiters]: {
     maintainer: "liangyou@vm0.ai",
@@ -290,12 +276,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable runner-provided disk and network device rate limiters for sandbox VMs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ZeroMaps]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable managed Zero Maps CLI access for geocoding, directions, and places.",
-    enabled: true,
   },
   [FeatureSwitchKey.ChatArtifactSidebar]: {
     maintainer: "ethan@vm0.ai",

@@ -126,6 +126,12 @@ describe("POST /api/zero/host/deployments/prepare", () => {
   it("returns 403 when hosted sites are disabled", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.HostedSites]: false },
+    });
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroHostContract);
@@ -137,6 +143,7 @@ describe("POST /api/zero/host/deployments/prepare", () => {
       [403],
     );
     expect(response.body.error.message).toBe("Hosted sites are not enabled");
+    await track(Promise.resolve({ orgId, userId }));
   });
 
   it("creates a deployment and returns per-file upload URLs", async () => {
