@@ -40,6 +40,7 @@ class _BaseUrlParts(NamedTuple):
     scheme: str
     authority: str
     path: str
+    host_malformed: bool
     has_userinfo: bool
     port_malformed: bool
 
@@ -165,39 +166,49 @@ def _split_base_match_url(
     if has_userinfo and not allow_malformed_authority:
         return None
 
-    authority = _normalize_authority(parts.scheme, parts.hostname, port)
-    if authority is None:
+    authority_result = _normalize_authority(parts.scheme, parts.hostname, port)
+    if authority_result is None:
+        return None
+    authority, host_malformed = authority_result
+    if host_malformed and not allow_malformed_authority:
         return None
 
     return _BaseUrlParts(
         scheme=parts.scheme,
         authority=authority,
         path=parts.path,
+        host_malformed=host_malformed,
         has_userinfo=has_userinfo,
         port_malformed=port_malformed,
     )
 
 
-def _normalize_authority_host(host: str) -> str:
+def _normalize_authority_host(host: str) -> tuple[str, bool]:
     normalized = host.rstrip(".")
+    if not normalized:
+        return normalized, True
     if ":" in normalized:
-        return f"[{normalized}]"
+        return f"[{normalized}]", False
     try:
-        return normalized.encode("idna").decode("ascii").lower()
+        return normalized.encode("idna").decode("ascii").lower(), False
     except UnicodeError:
-        return normalized.lower()
+        return normalized.lower(), True
 
 
-def _normalize_authority(scheme: str, host: str | None, port: int | None) -> str | None:
+def _normalize_authority(
+    scheme: str,
+    host: str | None,
+    port: int | None,
+) -> tuple[str, bool] | None:
     if host is None:
         return None
-    normalized_host = _normalize_authority_host(host)
+    normalized_host, host_malformed = _normalize_authority_host(host)
     if port is None:
-        return normalized_host
+        return normalized_host, host_malformed
 
     if port == _DEFAULT_SCHEME_PORTS.get(scheme.lower()):
-        return normalized_host
-    return f"{normalized_host}:{port}"
+        return normalized_host, host_malformed
+    return f"{normalized_host}:{port}", host_malformed
 
 
 def _parse_segment(seg: str) -> ParsedSegment:
@@ -930,6 +941,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                 continue
             base_malformed = (
                 base.has_query_or_fragment
+                or base.parts.host_malformed
                 or base.parts.has_userinfo
                 or base.parts.port_malformed
                 or not _compiled_base_params_are_valid(base)

@@ -267,12 +267,27 @@ class TestMatchBaseUrl:
         [
             "https://user@api.github.com",
             "https://user:pass@api.github.com",
+            "https://.github.com",
+            "https://api..github.com",
+            "https://.",
             "https://api.github.com:bad",
             "https://api.github.com:99999",
         ],
     )
     def test_static_base_malformed_authority_returns_none(self, base):
         result = matching.match_base_url("https://api.github.com/repos", base)
+        assert result is None
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://.github.com/repos",
+            "https://api..github.com/repos",
+            "https://./repos",
+        ],
+    )
+    def test_static_base_malformed_request_authority_returns_none(self, url):
+        result = matching.match_base_url(url, "https://api.github.com")
         assert result is None
 
     def test_static_base_with_query_is_rejected(self):
@@ -422,12 +437,26 @@ class TestMatchBaseUrl:
         [
             "https://user@{sub}.zendesk.com",
             "https://user:pass@{sub}.zendesk.com",
+            "https://.{sub}.zendesk.com",
+            "https://{sub}..zendesk.com",
             "https://{sub}.zendesk.com:bad",
             "https://{sub}.zendesk.com:99999",
         ],
     )
     def test_parameterized_base_malformed_authority_returns_none(self, base):
         result = matching.match_base_url("https://acme.zendesk.com/api", base)
+        assert result is None
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://.zendesk.com/api",
+            "https://acme..zendesk.com/api",
+            "https://./api",
+        ],
+    )
+    def test_parameterized_base_malformed_request_authority_returns_none(self, url):
+        result = matching.match_base_url(url, "https://{sub}.zendesk.com")
         assert result is None
 
     def test_base_with_port_matches_url_with_same_port(self):
