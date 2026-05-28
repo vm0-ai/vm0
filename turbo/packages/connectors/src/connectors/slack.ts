@@ -16,8 +16,8 @@ export const slack = {
           client: {
             clientRegistration: "static",
             clientType: "confidential",
-            clientIdEnv: "SLACK_CLIENT_ID",
-            clientSecretEnv: "SLACK_CLIENT_SECRET",
+            clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
+            clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
           },
           scopes: [
             // Channels

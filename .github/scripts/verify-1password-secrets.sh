@@ -48,9 +48,6 @@ op_item_for_key() {
     GH_OAUTH_CLIENT_SECRET)
       printf 'github'
       ;;
-    SLACK_CLIENT_SECRET)
-      printf 'slack'
-      ;;
     *_OAUTH_CLIENT_SECRET)
       local prefix="${key%_OAUTH_CLIENT_SECRET}"
       printf '%s' "$prefix" | tr '[:upper:]_' '[:lower:]-'

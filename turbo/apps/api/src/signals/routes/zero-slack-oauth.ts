@@ -135,8 +135,8 @@ function slackCredentials(): {
   readonly clientId: string;
   readonly clientSecret: string;
 } | null {
-  const clientId = env("SLACK_CLIENT_ID");
-  const clientSecret = optionalEnv("SLACK_CLIENT_SECRET");
+  const clientId = env("SLACK_OAUTH_CLIENT_ID");
+  const clientSecret = optionalEnv("SLACK_OAUTH_CLIENT_SECRET");
   if (!clientId || !clientSecret) {
     return null;
   }
@@ -150,7 +150,7 @@ const installOauth$ = computed((get) => {
     return noStoreRedirect(canonicalRedirectUrl);
   }
   const origin = getOAuthWebOrigin(request);
-  const clientId = env("SLACK_CLIENT_ID");
+  const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }
@@ -195,7 +195,7 @@ const connectOauth$ = command(async ({ get }, signal: AbortSignal) => {
     return noStoreRedirect(canonicalRedirectUrl);
   }
   const origin = getOAuthWebOrigin(request);
-  const clientId = env("SLACK_CLIENT_ID");
+  const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return jsonErrorResponse("Slack integration is not configured", 503);
   }

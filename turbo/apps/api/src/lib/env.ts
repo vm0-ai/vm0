@@ -80,7 +80,7 @@ const SCHEMA = {
   TELEGRAM_OFFICIAL_BOT_TOKEN: z.string().optional(),
   TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().optional(),
   TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().optional(),
-  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_OAUTH_CLIENT_ID: z.string().optional(),
   // Gemini via Vertex AI (Vercel OIDC -> GCP Workload Identity Federation).
   // Production should use the GCP_* vars; dev/test may use GEMINI_API_KEY.
   GCP_PROJECT_ID: z.string().min(1).optional(),
