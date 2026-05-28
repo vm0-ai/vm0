@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.174.0](https://github.com/vm0-ai/vm0/compare/cli-v9.173.0...cli-v9.174.0) (2026-05-28)
+
+
+### Features
+
+* register tiny-wanderer image style ([#15270](https://github.com/vm0-ai/vm0/issues/15270)) ([3d66569](https://github.com/vm0-ai/vm0/commit/3d66569ed8cb5354b865b5857232f5381f0b43bf))
+
 ## [9.173.0](https://github.com/vm0-ai/vm0/compare/cli-v9.172.1...cli-v9.173.0) (2026-05-28)
 
 

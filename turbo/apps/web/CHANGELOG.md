@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.396.0](https://github.com/vm0-ai/vm0/compare/web-v12.395.3...web-v12.396.0) (2026-05-28)
+
+
+### Features
+
+* add /illustration editorial gallery page ([#15216](https://github.com/vm0-ai/vm0/issues/15216)) ([91189f5](https://github.com/vm0-ai/vm0/commit/91189f52fb00778c82610001ddbf5fd567c637fa))
+
 ## [12.395.3](https://github.com/vm0-ai/vm0/compare/web-v12.395.2...web-v12.395.3) (2026-05-28)
 
 
