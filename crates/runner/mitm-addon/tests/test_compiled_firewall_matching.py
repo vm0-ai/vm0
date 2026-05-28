@@ -257,6 +257,29 @@ class TestCompiledFirewallMatching:
         assert compiled.reason == "unsafe_path"
         assert compiled.path == "/admin"
 
+    def test_compiled_matches_unknown_policy_when_permissions_are_omitted(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {},
+                }
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission is None
+
     def test_compiled_matches_ask_permission_block(self):
         fws = wrap_firewalls(
             [
