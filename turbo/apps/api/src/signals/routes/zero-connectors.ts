@@ -58,7 +58,7 @@ import {
 import {
   buildResolvedConnectorOAuthAuthResult,
   prepareResolvedConnectorOAuthStart,
-  resolveConnectorOAuthStartType,
+  resolveConnectorAuthCodeStartType,
 } from "./connector-oauth-start";
 
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
@@ -359,9 +359,11 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return jsonResponse(auth.body, auth.status);
     }
 
-    const startType = resolveConnectorOAuthStartType(type);
-    if (!startType.ok) {
-      if (startType.reason === "missing_auth_code_or_device_auth_grant") {
+    const authCodeStartType = resolveConnectorAuthCodeStartType(type);
+    if (!authCodeStartType.ok) {
+      if (
+        authCodeStartType.reason === "missing_auth_code_or_device_auth_grant"
+      ) {
         return connectorMissingInteractiveGrantResponse(type);
       }
       return unsupportedAuthCodeGrantResponse(type);
@@ -384,12 +386,12 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(startType.type, "oauth")) {
+    if (!availability.isAuthMethodAvailable(authCodeStartType.type, "oauth")) {
       return jsonResponse({ error: `${type} connector is not available` }, 403);
     }
 
     const prepared = prepareResolvedConnectorOAuthStart({
-      type: startType.type,
+      type: authCodeStartType.type,
       origin,
       readEnv: optionalEnv,
     });
@@ -397,7 +399,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
     const authResult = await buildResolvedConnectorOAuthAuthResult({
-      type: startType.type,
+      type: authCodeStartType.type,
       oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
@@ -432,9 +434,11 @@ const startConnectorOauthInner$ = command(
     const auth = get(authContext$);
     const type = params.type;
 
-    const startType = resolveConnectorOAuthStartType(type);
-    if (!startType.ok) {
-      if (startType.reason === "missing_auth_code_or_device_auth_grant") {
+    const authCodeStartType = resolveConnectorAuthCodeStartType(type);
+    if (!authCodeStartType.ok) {
+      if (
+        authCodeStartType.reason === "missing_auth_code_or_device_auth_grant"
+      ) {
         return badRequestMessage(
           `${type} connector does not use an auth-code or device-auth grant`,
         );
@@ -452,13 +456,13 @@ const startConnectorOauthInner$ = command(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(startType.type, "oauth")) {
+    if (!availability.isAuthMethodAvailable(authCodeStartType.type, "oauth")) {
       return connectorUnavailable(type);
     }
 
     const origin = getConnectorOAuthOrigin(request);
     const prepared = prepareResolvedConnectorOAuthStart({
-      type: startType.type,
+      type: authCodeStartType.type,
       origin,
       readEnv: optionalEnv,
     });
@@ -466,7 +470,7 @@ const startConnectorOauthInner$ = command(
       return internalServerError(`${type} OAuth not configured`);
     }
     const authResult = await buildResolvedConnectorOAuthAuthResult({
-      type: startType.type,
+      type: authCodeStartType.type,
       oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
@@ -483,7 +487,7 @@ const startConnectorOauthInner$ = command(
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
-      type: startType.type,
+      type: authCodeStartType.type,
       userId: auth.userId,
       orgId: auth.orgId,
       redirectUri: prepared.redirectUri,
