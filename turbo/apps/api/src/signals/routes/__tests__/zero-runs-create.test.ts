@@ -1961,11 +1961,6 @@ describe("POST /api/zero/runs", () => {
       }),
     ).toBeFalsy();
     expect(
-      volumes.some((volume) => {
-        return volume.mountPath === "/home/user/.claude/skills/local-agent";
-      }),
-    ).toBeFalsy();
-    expect(
       volumes.every((volume) => {
         return volume.system === true;
       }),
@@ -1979,23 +1974,12 @@ describe("POST /api/zero/runs", () => {
       customSkills: ["research-kit"],
     });
     const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: { [FeatureSwitchKey.LocalAgentConnector]: true },
-    });
     await db.insert(userConnectors).values([
       {
         orgId: fx.orgId,
         userId: fx.userId,
         agentId: agent.agentId,
         connectorType: "slack",
-      },
-      {
-        orgId: fx.orgId,
-        userId: fx.userId,
-        agentId: agent.agentId,
-        connectorType: "local-agent",
       },
     ]);
 
@@ -2015,17 +1999,12 @@ describe("POST /api/zero/runs", () => {
     const slackIndex = volumes.findIndex((volume) => {
       return volume.mountPath === "/home/user/.claude/skills/slack";
     });
-    const localAgentIndex = volumes.findIndex((volume) => {
-      return volume.mountPath === "/home/user/.claude/skills/local-agent";
-    });
     const customIndex = volumes.findIndex((volume) => {
       return volume.mountPath === "/home/user/.claude/skills/research-kit";
     });
     expect(slackIndex).toBeGreaterThanOrEqual(0);
-    expect(localAgentIndex).toBeGreaterThanOrEqual(0);
     expect(customIndex).toBeGreaterThan(slackIndex);
     expect(volumes[slackIndex]?.system).toBeTruthy();
-    expect(volumes[localAgentIndex]?.system).toBeTruthy();
     expect(volumes[customIndex]).toMatchObject({
       name: "custom-skill@research-kit",
     });

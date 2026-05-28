@@ -4,14 +4,26 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  click,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  permissionAccessRequestsCreateContract,
+  type PermissionAccessRequestResponse,
+  zeroAgentPermissionPoliciesContract,
+  zeroAgentsByIdContract,
+} from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -40,6 +52,235 @@ beforeEach(() => {
       });
     }),
   );
+});
+
+describe("zero chat thread page display - permission action card", () => {
+  function pendingPermissionRequest(
+    overrides: Partial<PermissionAccessRequestResponse> = {},
+  ): PermissionAccessRequestResponse {
+    return {
+      id: "d0000000-0000-4000-a000-000000000001",
+      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+      connectorRef: "vercel",
+      permission: "projects:write",
+      action: "allow",
+      method: null,
+      path: null,
+      reason: "Need access",
+      status: "pending",
+      requesterUserId: "test-user-123",
+      requesterName: "Test User",
+      resolvedBy: null,
+      resolvedAt: null,
+      createdAt: "2026-03-10T00:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("executes permission URLs as permission actions for admins", async () => {
+    let updatedPolicies: unknown;
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
+          runId: "run-permission-action",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(
+        zeroAgentPermissionPoliciesContract.update,
+        ({ body, respond }) => {
+          updatedPolicies = body.policies;
+          return respond(200, {
+            agentId: body.agentId,
+            ownerId: "test-user-123",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: body.policies,
+            customSkills: [],
+            modelProviderId: null,
+            selectedModel: null,
+            preferPersonalProvider: false,
+          });
+        },
+      ),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Vercel permissions")).toBeInTheDocument();
+    expect(within(card).getByText("Allow projects:write")).toBeInTheDocument();
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(updatedPolicies).toStrictEqual({
+        vercel: { policies: { "projects:write": "allow" } },
+      });
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+  });
+
+  it("rejects unknown permissions before updating policies", async () => {
+    let updateCalled = false;
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=unknown%3Apermission&action=allow",
+          runId: "run-unknown-permission-action",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(
+        zeroAgentPermissionPoliciesContract.update,
+        ({ body, respond }) => {
+          updateCalled = true;
+          return respond(200, {
+            agentId: body.agentId,
+            ownerId: "test-user-123",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            permissionPolicies: body.policies,
+            customSkills: [],
+            modelProviderId: null,
+            selectedModel: null,
+            preferPersonalProvider: false,
+          });
+        },
+      ),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    const button = queryAllByRoleFast("button", card).find((element) => {
+      return element.textContent === "Unknown permission";
+    });
+    expect(button).toBeDefined();
+    expect(button).toBeDisabled();
+
+    click(button!);
+
+    expect(updateCalled).toBeFalsy();
+  });
+
+  it("does not create duplicate requests when a member already has a request", async () => {
+    let createCalled = false;
+
+    setMockOrg({ role: "member" });
+    setMockPermissionRequests([pendingPermissionRequest()]);
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
+          runId: "run-existing-permission-request",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(permissionAccessRequestsCreateContract.create, ({ respond }) => {
+        createCalled = true;
+        return respond(201, pendingPermissionRequest());
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("button", card).some((element) => {
+          return element.textContent === "Request sent";
+        }),
+      ).toBeTruthy();
+    });
+    const button = queryAllByRoleFast("button", card).find((element) => {
+      return element.textContent === "Request sent";
+    });
+    expect(button).toBeDefined();
+    expect(button).toBeDisabled();
+
+    click(button!);
+
+    expect(createCalled).toBeFalsy();
+  });
 });
 
 // CHAT-D-036: Attachment image previews render in ChatMessageRow

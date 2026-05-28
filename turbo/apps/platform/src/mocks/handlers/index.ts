@@ -86,14 +86,6 @@ import {
 } from "./api-permission-access-requests.ts";
 import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
 import { apiVoiceIoHandlers } from "./api-voice-io.ts";
-import {
-  apiLocalAgentHandlers,
-  resetMockLocalAgentHosts,
-} from "./api-local-agent.ts";
-import {
-  apiLocalBrowserHandlers,
-  resetMockLocalBrowserHosts,
-} from "./api-local-browser.ts";
 
 export const handlers = [
   ...apiConnectorsHandlers,
@@ -127,8 +119,6 @@ export const handlers = [
   ...apiInsightsHandlers,
   ...apiQueuePositionHandlers,
   ...apiVoiceIoHandlers,
-  ...apiLocalAgentHandlers,
-  ...apiLocalBrowserHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -157,6 +147,4 @@ export function resetAllMockHandlers(): void {
   resetMockSchedules();
   resetMockTeam();
   resetMockOnboardingStatus();
-  resetMockLocalAgentHosts();
-  resetMockLocalBrowserHosts();
 }

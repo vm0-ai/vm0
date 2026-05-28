@@ -88,7 +88,7 @@ export function resetMockConnectors(): void {
   resetMockOauthDeviceAuth();
 }
 
-export function upsertMockConnector(connector: ConnectorResponse): void {
+function upsertMockConnector(connector: ConnectorResponse): void {
   mockConnectors = [
     ...mockConnectors.filter((c) => {
       return c.type !== connector.type;

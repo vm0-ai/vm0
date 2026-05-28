@@ -91,7 +91,6 @@ import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
 import { zeroLogsRoutes } from "./routes/zero-logs";
-import { zeroLocalBrowserRoutes } from "./routes/zero-local-browser";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
@@ -108,7 +107,6 @@ import { zeroPermissionPoliciesRoutes } from "./routes/zero-permission-policies"
 import { zeroPushSubscriptionsRoutes } from "./routes/zero-push-subscriptions";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
-import { zeroLocalAgentRoutes } from "./routes/zero-local-agent";
 import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
@@ -271,7 +269,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroImageIoGenerateRoutes,
   ...zeroVideoIoGenerateRoutes,
   ...zeroLogsRoutes,
-  ...zeroLocalBrowserRoutes,
   ...zeroMapsRoutes,
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
@@ -285,7 +282,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,
   ...zeroRealtimeTokenRoutes,
-  ...zeroLocalAgentRoutes,
   ...zeroReportErrorRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,

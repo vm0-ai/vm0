@@ -2526,10 +2526,6 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/onboarding/status",
         },
         {
-          source: "/api/zero/local-agent/:path*",
-          destination: "https://api.example.test/api/zero/local-agent/:path*",
-        },
-        {
           source: "/api/zero/usage/insight",
           destination: "https://api.example.test/api/zero/usage/insight",
         },

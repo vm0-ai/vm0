@@ -27,8 +27,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 28 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(28);
+  it("should have exactly 24 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(24);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -65,16 +65,6 @@ describe("ZERO_CAPABILITIES", () => {
   it("should include file read and write capabilities", () => {
     expect(ZERO_CAPABILITIES).toContain("file:read");
     expect(ZERO_CAPABILITIES).toContain("file:write");
-  });
-
-  it("should include local-agent read and write capabilities", () => {
-    expect(ZERO_CAPABILITIES).toContain("local-agent:read");
-    expect(ZERO_CAPABILITIES).toContain("local-agent:write");
-  });
-
-  it("should include local-browser read and write capabilities", () => {
-    expect(ZERO_CAPABILITIES).toContain("local-browser:read");
-    expect(ZERO_CAPABILITIES).toContain("local-browser:write");
   });
 
   it("should include hosted-site read and write capabilities", () => {

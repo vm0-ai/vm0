@@ -9,6 +9,7 @@ import {
   useSet,
   useLastLoadable,
   useLastResolved,
+  useLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -60,6 +61,7 @@ import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import { hasConnectorAuthCodeGrant } from "@vm0/connectors/connector-utils";
+import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -103,6 +105,7 @@ import {
   completeChatConnectorActionConnect$,
   type ConnectorActionBlock,
 } from "../../signals/chat-page/connector-action-block.ts";
+import type { PermissionActionBlock } from "../../signals/chat-page/permission-action-block.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -155,6 +158,13 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { agentById } from "../../signals/agent.ts";
+import {
+  extractPermissions,
+  permissionExistingRequestByAction,
+  saveAdminFocusedPolicy$,
+  submitAccessRequest$,
+} from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
@@ -2524,6 +2534,10 @@ function BodyContentBlocks({
           return <ConnectorActionCard key={block.id} block={block} />;
         }
 
+        if (block.type === "permission-action") {
+          return <PermissionActionCard key={block.id} block={block} />;
+        }
+
         if (block.preview.kind === "image") {
           return (
             <ChatImagePreviewLink
@@ -2618,6 +2632,213 @@ function ConnectorActionCard({ block }: { block: ConnectorActionBlock }) {
         {activating && <IconLoader2 size={15} className="animate-spin" />}
         {complete ? "Connected" : "Connect"}
       </button>
+    </div>
+  );
+}
+
+interface PermissionActionButtonState {
+  hasAgent: boolean;
+  hasPermission: boolean;
+  loading: boolean;
+  saving: boolean;
+  saveDone: boolean;
+  submitDone: boolean;
+  alreadyApplied: boolean;
+  canManagePermissions: boolean;
+  existingRequestStatus: "pending" | "approved" | "rejected" | null;
+}
+
+function permissionActionButtonLabel(
+  state: PermissionActionButtonState,
+  action: "allow" | "deny",
+): string {
+  if (state.loading) {
+    return "Checking permissions";
+  }
+  if (!state.hasPermission) {
+    return "Unknown permission";
+  }
+  if (state.saveDone || state.alreadyApplied) {
+    return action === "allow" ? "Permissions updated" : "Permission denied";
+  }
+  if (state.existingRequestStatus === "pending") {
+    return "Request sent";
+  }
+  if (state.existingRequestStatus === "approved") {
+    return "Permissions updated";
+  }
+  if (state.existingRequestStatus === "rejected") {
+    return "Request denied";
+  }
+  if (state.submitDone) {
+    return "Request sent";
+  }
+  if (state.saving) {
+    return state.canManagePermissions ? "Saving..." : "Requesting...";
+  }
+  return state.canManagePermissions ? "Confirm" : "Request approval";
+}
+
+function permissionActionButtonDisabled(
+  state: PermissionActionButtonState,
+): boolean {
+  return (
+    state.loading ||
+    state.saving ||
+    state.alreadyApplied ||
+    state.saveDone ||
+    state.submitDone ||
+    !state.hasAgent ||
+    !state.hasPermission ||
+    Boolean(state.existingRequestStatus)
+  );
+}
+
+function PermissionActionButton({
+  state,
+  action,
+  onClick,
+}: {
+  state: PermissionActionButtonState;
+  action: "allow" | "deny";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={permissionActionButtonDisabled(state)}
+      onClick={onClick}
+      className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
+    >
+      {state.saving && <IconLoader2 size={15} className="animate-spin" />}
+      {permissionActionButtonLabel(state, action)}
+    </button>
+  );
+}
+
+function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+  const pageSignal = useGet(pageSignal$);
+  const config = CONNECTOR_TYPES[block.connectorRef];
+  const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
+  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
+  const canManagePermissions =
+    adminLoadable.state === "hasData" && adminLoadable.data;
+  const existingRequestLoadable = useLoadable(
+    permissionExistingRequestByAction({
+      agentId: block.agentId,
+      connectorRef: block.connectorRef,
+      permission: block.permission,
+      action: block.action,
+      enabled: adminLoadable.state === "hasData" && !canManagePermissions,
+    }),
+  );
+  const focusedPermission = extractPermissions(block.connectorRef).find((p) => {
+    return p.name === block.permission;
+  });
+  const actionLabel = block.action === "allow" ? "Allow" : "Deny";
+  const loading =
+    agentLoadable.state === "loading" ||
+    adminLoadable.state === "loading" ||
+    existingRequestLoadable.state === "loading";
+  const saving =
+    saveLoadable.state === "loading" || submitLoadable.state === "loading";
+  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  const existingRequest =
+    existingRequestLoadable.state === "hasData"
+      ? existingRequestLoadable.data
+      : null;
+  const resolved = agent
+    ? resolveFirewallPolicies(agent.permissionPolicies, [block.connectorRef])
+    : null;
+  const effectivePolicy =
+    resolved?.[block.connectorRef]?.policies[block.permission] ?? "allow";
+  const alreadyApplied = Boolean(agent) && effectivePolicy === block.action;
+  const finished =
+    saveLoadable.state === "hasData" || submitLoadable.state === "hasData";
+  const buttonState: PermissionActionButtonState = {
+    hasAgent: Boolean(agent),
+    hasPermission: Boolean(focusedPermission),
+    loading,
+    saving,
+    saveDone: saveLoadable.state === "hasData",
+    submitDone: submitLoadable.state === "hasData",
+    alreadyApplied,
+    canManagePermissions,
+    existingRequestStatus: existingRequest?.status ?? null,
+  };
+
+  const handlePermissionAction = () => {
+    if (
+      !agent ||
+      !focusedPermission ||
+      existingRequest ||
+      loading ||
+      saving ||
+      alreadyApplied ||
+      finished
+    ) {
+      return;
+    }
+
+    if (canManagePermissions) {
+      detach(
+        savePolicy(
+          {
+            agentId: block.agentId,
+            ref: block.connectorRef,
+            permissionName: focusedPermission.name,
+            action: block.action,
+            agentFirewallPolicies: agent.permissionPolicies,
+          },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+      return;
+    }
+
+    detach(
+      submitRequest(
+        {
+          agentId: block.agentId,
+          connectorRef: block.connectorRef,
+          permission: focusedPermission.name,
+          action: block.action,
+          method: block.method ?? undefined,
+          path: block.path ?? undefined,
+          reason: block.reason ?? undefined,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div
+      data-testid="permission-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <ConnectorIcon type={block.connectorRef} size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {config.label} permissions
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {actionLabel} {focusedPermission?.name ?? block.permission}
+          </div>
+        </div>
+      </div>
+      <PermissionActionButton
+        state={buttonState}
+        action={block.action}
+        onClick={handlePermissionAction}
+      />
     </div>
   );
 }

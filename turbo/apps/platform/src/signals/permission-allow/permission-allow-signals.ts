@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import {
   permissionAccessRequestsCreateContract,
   permissionAccessRequestsListContract,
@@ -107,6 +107,38 @@ export function extractPermissions(ref: string): Permission[] {
 
 const internalRequestsReload$ = state(0);
 
+type PermissionRequestAction = "allow" | "deny";
+
+interface MatchingPermissionAccessRequest {
+  id: string;
+  connectorRef: string;
+  permission: string;
+  action: PermissionRequestAction;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+function findMatchingPermissionRequest(
+  requests: readonly MatchingPermissionAccessRequest[],
+  ref: string,
+  permission: string,
+  action: PermissionRequestAction,
+): MatchingPermissionAccessRequest | null {
+  const match = requests
+    .filter((r) => {
+      return (
+        r.connectorRef === ref &&
+        r.permission === permission &&
+        r.action === action &&
+        (r.status === "pending" || r.status === "rejected")
+      );
+    })
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  return match[0] ?? null;
+}
+
 /** Fetch a specific request by ID (request mode) */
 export const permissionRequestById$ = computed(async (get) => {
   get(internalRequestsReload$);
@@ -133,23 +165,54 @@ export const permissionExistingRequest$ = computed(async (get) => {
   }
   const client = get(zeroClient$)(permissionAccessRequestsListContract);
   const result = await accept(client.list({ query: { agentId } }), [200]);
-  // Find latest pending/rejected request for this ref+permission+action
-  // Note: the API contract uses `firewallRef` (DB/external name); internally
-  // this layer refers to it as `permissionRef` (user-facing name).
-  const match = result.body
-    .filter((r) => {
-      return (
-        r.connectorRef === ref &&
-        r.permission === permission &&
-        r.action === action &&
-        (r.status === "pending" || r.status === "rejected")
-      );
-    })
-    .sort((a, b) => {
-      return b.createdAt.localeCompare(a.createdAt);
-    });
-  return match[0] ?? null;
+  return findMatchingPermissionRequest(result.body, ref, permission, action);
 });
+
+interface ExistingRequestByActionParams {
+  agentId: string;
+  connectorRef: string;
+  permission: string;
+  action: PermissionRequestAction;
+  enabled: boolean;
+}
+
+function createPermissionExistingRequestByActionFactory(): (
+  params: ExistingRequestByActionParams,
+) => Computed<Promise<MatchingPermissionAccessRequest | null>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<MatchingPermissionAccessRequest | null>>
+  >();
+  return (params) => {
+    const key = JSON.stringify(params);
+    const existing = cache.get(key);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      get(internalRequestsReload$);
+      if (!params.enabled) {
+        return null;
+      }
+      const client = get(zeroClient$)(permissionAccessRequestsListContract);
+      const result = await accept(
+        client.list({ query: { agentId: params.agentId } }),
+        [200],
+      );
+      return findMatchingPermissionRequest(
+        result.body,
+        params.connectorRef,
+        params.permission,
+        params.action,
+      );
+    });
+    cache.set(key, atom$);
+    return atom$;
+  };
+}
+
+export const permissionExistingRequestByAction =
+  createPermissionExistingRequestByActionFactory();
 
 // ---------------------------------------------------------------------------
 // URL: update request ID in URL

@@ -27,8 +27,6 @@ import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
 import { generateCommand } from "./commands/zero/generate";
 import { zeroWebCommand } from "./commands/zero/web";
-import { zeroLocalAgentCommand } from "./commands/zero/local-agent";
-import { zeroLocalBrowserCommand } from "./commands/zero/local-browser";
 import { zeroHostCommand } from "./commands/zero/host";
 import { zeroMapsCommand } from "./commands/zero/maps";
 import { zeroModelCommand } from "./commands/zero/model";
@@ -73,8 +71,6 @@ const COMMAND_CAPABILITY_MAP: Record<
   web: null,
   host: "host:write",
   maps: "maps:read",
-  "local-agent": ["local-agent:read", "local-agent:write"],
-  "local-browser": ["local-browser:read", "local-browser:write"],
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -105,8 +101,6 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroWebCommand,
   zeroHostCommand,
   zeroMapsCommand,
-  zeroLocalAgentCommand,
-  zeroLocalBrowserCommand,
 ];
 
 function shouldHideCommand(
@@ -159,9 +153,6 @@ export function buildZeroHelpText(
       ? ['  Generate website?      zero generate website --prompt "..."']
       : []),
     '  Generate voice?        zero generate voice --prompt "..."',
-    ...(shouldHideCommand("local-browser", payload)
-      ? []
-      : ["  Read browser context?  zero local-browser --help"]),
     ...(shouldHideCommand("host", payload)
       ? []
       : ["  Host a static site?    zero host ./dist --site my-site --spa"]),

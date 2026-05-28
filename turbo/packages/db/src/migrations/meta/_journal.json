@@ -2850,6 +2850,13 @@
       "when": 1779939197609,
       "tag": "0406_nostalgic_eddie_brock",
       "breakpoints": true
+    },
+    {
+      "idx": 407,
+      "version": "7",
+      "when": 1779941871127,
+      "tag": "0407_fast_ghost_rider",
+      "breakpoints": true
     }
   ]
 }

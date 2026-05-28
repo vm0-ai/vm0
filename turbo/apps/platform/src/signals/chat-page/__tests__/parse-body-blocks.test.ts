@@ -215,6 +215,32 @@ describe("parseBodyRenderBlocks", () => {
     });
   });
 
+  it("renders permission URLs as permission action blocks", () => {
+    const url =
+      "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(url, {
+      previews: false,
+    });
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "permission-action",
+      id: "permission-action-1",
+      connectorRef: "vercel",
+      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+      permission: "projects:write",
+      action: "allow",
+      method: null,
+      path: null,
+      reason: null,
+      search: "ref=vercel&permission=projects%3Awrite&action=allow",
+      originalUrl: url,
+      href: "/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
+    });
+  });
+
   it("does not render external connector authorize URLs as action blocks", () => {
     const url =
       "https://evil.example/connectors/strapi/authorize?agentId=4f189ea8-ada2-416d-83a9-9c25ddb960c9";

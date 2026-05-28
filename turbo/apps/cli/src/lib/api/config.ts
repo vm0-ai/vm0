@@ -5,20 +5,9 @@ import { existsSync } from "fs";
 import { decodeCliTokenPayload } from "./cli-token.js";
 import { decodeZeroTokenPayload } from "./zero-token.js";
 
-export interface LocalAgentHostConfig {
-  id: string;
-  token: string;
-  apiUrl: string;
-  hostName: string;
-  supportedBackends: string[];
-  permissionMode?: string;
-  linkedAt: string;
-}
-
 interface CliConfig {
   token?: string;
   apiUrl?: string;
-  localAgentHost?: LocalAgentHostConfig;
 }
 
 // Use functions for lazy evaluation (enables testing with mocked homedir)
@@ -110,32 +99,4 @@ export async function clearConfig(): Promise<void> {
   if (existsSync(configFile)) {
     await unlink(configFile);
   }
-}
-
-export async function saveLocalAgentHost(
-  host: LocalAgentHostConfig,
-): Promise<void> {
-  await saveConfig({ localAgentHost: host });
-}
-
-export async function clearLocalAgentHost(hostId: string): Promise<void> {
-  const existing = await loadConfig();
-  if (existing.localAgentHost?.id !== hostId) {
-    return;
-  }
-
-  const nextConfig: CliConfig = { ...existing };
-  delete nextConfig.localAgentHost;
-
-  const configDir = getConfigDir();
-  const configFile = getConfigFile();
-  await mkdir(configDir, { recursive: true });
-  await writeFile(configFile, JSON.stringify(nextConfig, null, 2), "utf8");
-}
-
-export async function getLocalAgentHost(): Promise<
-  LocalAgentHostConfig | undefined
-> {
-  const config = await loadConfig();
-  return config.localAgentHost;
 }

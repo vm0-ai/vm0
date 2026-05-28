@@ -208,7 +208,7 @@ type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
-    expect(hasRequiredScopes("local-agent", null)).toBe(true);
+    expect(hasRequiredScopes("cloudinary", null)).toBe(true);
   });
 
   it("returns true when connector has empty required scopes", () => {
@@ -308,7 +308,6 @@ describe("connector auth method config", () => {
       variables: ["GITLAB_HOST"],
     });
     expect(getConnectorManualGrantFieldNames("github")).toBeNull();
-    expect(getConnectorManualGrantFieldNames("local-agent")).toBeNull();
   });
 
   it("derives connected manual grant methods from required fields", () => {
@@ -331,11 +330,6 @@ describe("connector auth method config", () => {
     expect(
       connected.some((method) => {
         return method.type === "github";
-      }),
-    ).toBe(false);
-    expect(
-      connected.some((method) => {
-        return method.type === "local-agent";
       }),
     ).toBe(false);
   });
@@ -364,7 +358,6 @@ describe("hasConnectorOAuthProvider", () => {
       accessSecretName: "GITHUB_ACCESS_TOKEN",
       isRefreshable: false,
     });
-    expect(getConnectorOAuthSecretMetadata("local-agent")).toBeUndefined();
   });
 
   it("rejects refresh for OAuth connectors without refresh-token access", async () => {
@@ -1248,9 +1241,6 @@ describe("getConfiguredConnectorAuthMethods", () => {
       "oauth",
       "api-token",
     ]);
-    expect(getConfiguredConnectorAuthMethods("local-browser")).toStrictEqual([
-      "api",
-    ]);
   });
 });
 
@@ -1335,10 +1325,6 @@ describe("getConnectorEnvBindings", () => {
   it("returns non-empty envBindings for connector types that surface environment entries to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
       const envBindings = getConnectorEnvBindings(type);
-      if (type === "local-agent" || type === "local-browser") {
-        expect(envBindings).toEqual({});
-        continue;
-      }
       expect(
         Object.keys(envBindings).length,
         `${type} has empty envBindings`,
@@ -1720,13 +1706,6 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toEqual(
       expect.arrayContaining(activeOAuthTypes),
     );
-  });
-
-  it("excludes API-managed local connectors without special runtime env support", () => {
-    const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(emptyEnv);
-
-    expect(runtimeAvailableTypes).not.toContain("local-agent");
-    expect(runtimeAvailableTypes).not.toContain("local-browser");
   });
 
   it("includes Stripe without OAuth runtime env because API-token auth is runtime-available", () => {

@@ -3117,6 +3117,19 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
       path: "illustration-template/jade-blockprint",
     },
   },
+  {
+    id: "vm0:image-style:shadow-pop",
+    kind: "image-style",
+    name: "Shadow Pop",
+    description:
+      "Bright flat-vector illustration with offset black shape shadows, white dashed stitching, palette confetti, and transparent PNG output.",
+    desc: 'Bright flat-vector editorial illustration style — every colored shape sits in front of an offset black silhouette of itself (the signature depth trick, no outlines on the fills), with white hand-drawn dashed stitching, scattered palette-colored sparkle confetti, and a fully transparent PNG background so the piece drops cleanly onto any surface. Five dials per brief — palette (default / berry-pop / tropical / citrus-cobalt), scene metaphor, complexity (L1 / L2 / L3), confetti density, and subject domain. Trigger when user says /shadow-pop, asks for a "shadow-pop illustration", a "bright flat-vector illustration with offset shadow", an "in-app illustration with offset shadow trick", or briefs in the style of the included reference images.',
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/shadow-pop",
+    },
+  },
 ];
 
 function filterByKind(

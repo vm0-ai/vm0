@@ -11,7 +11,6 @@ import {
   verifySandboxToken,
   verifyZeroToken,
 } from "../tokens";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { now } from "../../external/time";
 
 function currentSecond(): number {
@@ -118,33 +117,5 @@ describe("auth tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
-  });
-
-  it("gates local-agent capabilities on the Local Agent connector feature switch", () => {
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.LocalAgentConnector]: false },
-    );
-    const enabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.LocalAgentConnector]: true },
-    );
-
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "local-agent:read",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "local-agent:write",
-    );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
-      "local-agent:read",
-    );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
-      "local-agent:write",
-    );
   });
 });

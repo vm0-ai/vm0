@@ -26,15 +26,6 @@ const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const store = createStore();
 
-async function enableLocalBrowser(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  await enableFeatureSwitches(orgId, userId, {
-    [FeatureSwitchKey.LocalBrowserUse]: true,
-  });
-}
-
 async function enableFeatureSwitches(
   orgId: string,
   userId: string,
@@ -200,24 +191,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(lower.body.connectors).toHaveLength(upper.body.connectors.length);
   });
 
-  it("hides feature-flagged connectors without api-token for non-enabled users", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const localAgent = response.body.connectors.find((c) => {
-      return c.id === "local-agent";
-    });
-    expect(localAgent).toBeUndefined();
-  });
-
   it("hides the test OAuth device connector when the test OAuth feature is disabled", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
@@ -299,47 +272,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth"]);
   });
 
-  it("hides local-browser when the feature is disabled", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const localBrowser = response.body.connectors.find((c) => {
-      return c.id === "local-browser";
-    });
-    expect(localBrowser).toBeUndefined();
-  });
-
-  it("shows local-browser as an api connector when the feature is enabled", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFeatureSwitches.push({ orgId, userId });
-    await enableLocalBrowser(orgId, userId);
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const localBrowser = response.body.connectors.find((c) => {
-      return c.id === "local-browser";
-    });
-    expect(localBrowser).toBeDefined();
-    expect(localBrowser?.authMethods).toStrictEqual(["api"]);
-  });
-
   it("shows ungated api-token while hiding feature-gated oauth", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
@@ -358,24 +290,6 @@ describe("GET /api/zero/connectors/search", () => {
     expect(neon).toBeDefined();
     expect(neon?.authMethods).toContain("api-token");
     expect(neon?.authMethods).not.toContain("oauth");
-  });
-
-  it("hides feature-flagged connector when feature is disabled", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
-
-    const client = setupApp({ context })(zeroConnectorsSearchContract);
-    const response = await accept(
-      client.search({
-        query: {},
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    const localAgent = response.body.connectors.find((c) => {
-      return c.id === "local-agent";
-    });
-    expect(localAgent).toBeUndefined();
   });
 
   it("includes connectors with at least one ungated auth method", async () => {

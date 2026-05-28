@@ -16,7 +16,6 @@ import { vercel } from "./connectors/vercel";
 import { strava } from "./connectors/strava";
 import { googleMeet } from "./connectors/google-meet";
 import { hubspot } from "./connectors/hubspot";
-import { localAgent } from "./connectors/local-agent";
 import { sentry } from "./connectors/sentry";
 import { todoist } from "./connectors/todoist";
 import { xero } from "./connectors/xero";
@@ -136,7 +135,6 @@ import { langfuse } from "./connectors/langfuse";
 import { langsmith } from "./connectors/langsmith";
 import { lark } from "./connectors/lark";
 import { line } from "./connectors/line";
-import { localBrowser } from "./connectors/local-browser";
 import { loops } from "./connectors/loops";
 import { luma } from "./connectors/luma";
 import { lumaAi } from "./connectors/luma-ai";
@@ -575,7 +573,6 @@ const CONNECTOR_TYPES_DEF = {
   ...strava,
   ...googleMeet,
   ...hubspot,
-  ...localAgent,
   ...sentry,
   ...todoist,
   ...xero,
@@ -695,7 +692,6 @@ const CONNECTOR_TYPES_DEF = {
   ...langsmith,
   ...lark,
   ...line,
-  ...localBrowser,
   ...loops,
   ...luma,
   ...lumaAi,

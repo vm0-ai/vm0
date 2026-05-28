@@ -314,34 +314,6 @@ describe("connect modal - content by auth method", () => {
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 
-  it("shows Local Agent connector-specific API content", async () => {
-    await openConnectModal("local-agent", {
-      featureSwitches: { [FeatureSwitchKey.LocalAgentConnector]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Online hosts")).toBeInTheDocument();
-    });
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/No online hosts yet/)).toBeInTheDocument();
-    expect(within(dialog).queryByText("Save")).not.toBeInTheDocument();
-    expect(within(dialog).queryByText(/Sign in with/)).not.toBeInTheDocument();
-  });
-
-  it("shows Local Browser connector-specific API content", async () => {
-    await openConnectModal("local-browser", {
-      featureSwitches: { [FeatureSwitchKey.LocalBrowserUse]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Browser extension")).toBeInTheDocument();
-    });
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Browser hosts")).toBeInTheDocument();
-    expect(within(dialog).queryByText("Save")).not.toBeInTheDocument();
-    expect(within(dialog).queryByText(/Sign in with/)).not.toBeInTheDocument();
-  });
-
   it("keeps API-only content visible while OAuth is settling elsewhere", async () => {
     mockConnectorOauthStart();
     vi.spyOn(window, "open").mockReturnValue(
@@ -363,9 +335,7 @@ describe("connect modal - content by auth method", () => {
       }),
     );
 
-    await openConnectModal("github", {
-      featureSwitches: { [FeatureSwitchKey.LocalAgentConnector]: true },
-    });
+    await openConnectModal("github");
 
     await waitFor(() => {
       expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
@@ -377,10 +347,10 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
     });
 
-    context.store.set(setSelectedConnectorType$, "local-agent");
+    context.store.set(setSelectedConnectorType$, "axiom");
 
     await waitFor(() => {
-      expect(screen.getByText("Online hosts")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
     });
     const dialog = screen.getByRole("dialog");
     expect(

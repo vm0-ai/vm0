@@ -700,8 +700,6 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
-  | "local-browser" // virtual connector backed by a user-authorized browser host
-  | "local-agent" // virtual connector backed by vm0's local-agent API
   | "test-oauth-device"; // internal provider capability test connector
 
 /**

@@ -699,7 +699,6 @@ describe("POST /api/zero/chat/messages", () => {
         switches: {
           [FeatureSwitchKey.ComputerUse]: true,
           [FeatureSwitchKey.HostedSites]: true,
-          [FeatureSwitchKey.LocalAgentConnector]: true,
         },
         updatedAt: nowDate(),
       });
@@ -715,8 +714,6 @@ describe("POST /api/zero/chat/messages", () => {
     expect(zeroAuth?.capabilities).toContain("computer-use:write");
     expect(zeroAuth?.capabilities).toContain("host:read");
     expect(zeroAuth?.capabilities).toContain("host:write");
-    expect(zeroAuth?.capabilities).toContain("local-agent:read");
-    expect(zeroAuth?.capabilities).toContain("local-agent:write");
   });
 
   it("persists attachments on the user message and injects them into the run prompt", async () => {
@@ -1324,6 +1321,7 @@ describe("POST /api/zero/chat/messages", () => {
         selectedModel: "deepseek-v4-pro",
       },
     });
+    await clearAllDetached();
 
     const [run] = await writeDb
       .select({ additionalVolumes: agentRuns.additionalVolumes })

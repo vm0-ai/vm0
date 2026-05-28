@@ -12,8 +12,6 @@ import {
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
-  zeroLocalBrowserConnectorContract,
-  zeroLocalAgentConnectorContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -29,7 +27,7 @@ import {
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
@@ -43,8 +41,6 @@ import {
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
 import { userConnectorAvailability } from "../services/connector-availability.service";
-import { connectLocalBrowserConnector$ } from "../services/zero-local-browser.service";
-import { connectLocalAgentConnector$ } from "../services/zero-local-agent.service";
 import type { RouteEntry } from "../route";
 import {
   getConnectorOAuthCanonicalRedirectUrl,
@@ -85,26 +81,6 @@ const connectorWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
 } as const;
-
-const localBrowserDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Local browser use is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const localAgentDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Local agent connector is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
 
 function connectorUnavailable(type: string) {
   return {
@@ -295,58 +271,6 @@ const searchConnectorsInner$ = computed(async (get) => {
   );
   return { status: 200 as const, body: { connectors: [...connectors] } };
 });
-
-const connectLocalAgentConnectorInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable("local-agent", "api")) {
-      return localAgentDisabled;
-    }
-
-    const result = await set(
-      connectLocalAgentConnector$,
-      { orgId: auth.orgId, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.status === "no_online_host") {
-      return conflict("Start an online local-agent host before connecting");
-    }
-
-    return { status: 200 as const, body: result.connector };
-  },
-);
-
-const connectLocalBrowserConnectorInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable("local-browser", "api")) {
-      return localBrowserDisabled;
-    }
-
-    const result = await set(
-      connectLocalBrowserConnector$,
-      { orgId: auth.orgId, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.status === "no_online_host") {
-      return conflict("Start an online local-browser host before connecting");
-    }
-
-    return { status: 200 as const, body: result.connector };
-  },
-);
 
 const connectApiTokenConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -682,14 +606,6 @@ const getConnectorSessionByIdInner$ = command(
 );
 
 export const zeroConnectorsRoutes: readonly RouteEntry[] = [
-  {
-    route: zeroLocalAgentConnectorContract.create,
-    handler: authRoute(connectorWriteAuth, connectLocalAgentConnectorInner$),
-  },
-  {
-    route: zeroLocalBrowserConnectorContract.create,
-    handler: authRoute(connectorWriteAuth, connectLocalBrowserConnectorInner$),
-  },
   {
     route: zeroConnectorApiTokenContract.connect,
     handler: authRoute(connectorWriteAuth, connectApiTokenConnectorInner$),
