@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.84.0](https://github.com/vm0-ai/vm0/compare/api-v1.83.2...api-v1.84.0) (2026-05-28)
+
+
+### Features
+
+* add generation-aware runner session affinity ([#15246](https://github.com/vm0-ai/vm0/issues/15246)) ([141473b](https://github.com/vm0-ai/vm0/commit/141473b3e36af6392d0fd8fc6734ee223e6729e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.45.0
+    * @vm0/core bumped to 8.301.1
+    * @vm0/db bumped to 1.22.0
+
 ## [1.83.2](https://github.com/vm0-ai/vm0/compare/api-v1.83.1...api-v1.83.2) (2026-05-28)
 
 

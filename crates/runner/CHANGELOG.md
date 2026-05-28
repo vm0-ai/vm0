@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.105.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.17...runner-rs-v0.105.0) (2026-05-28)
+
+
+### Features
+
+* add generation-aware runner session affinity ([#15246](https://github.com/vm0-ai/vm0/issues/15246)) ([141473b](https://github.com/vm0-ai/vm0/commit/141473b3e36af6392d0fd8fc6734ee223e6729e4))
+
+
+### Bug Fixes
+
+* log malformed data-only anthropic sse events ([#15287](https://github.com/vm0-ai/vm0/issues/15287)) ([3960fd4](https://github.com/vm0-ai/vm0/commit/3960fd4495636b06c503e41d947b2fa3843beea0))
+
+
+### Refactoring
+
+* remove orphan active run count duplication ([#15259](https://github.com/vm0-ai/vm0/issues/15259)) ([4908240](https://github.com/vm0-ai/vm0/commit/4908240c5edb406b90c69305d3229942f2f73ee7))
+
 ## [0.104.17](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.104.16...runner-rs-v0.104.17) (2026-05-28)
 
 
