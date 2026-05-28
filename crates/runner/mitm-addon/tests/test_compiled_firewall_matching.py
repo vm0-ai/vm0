@@ -674,6 +674,54 @@ class TestCompiledFirewallMatching:
         assert matched.permissions == ()
         assert matched.reason == "malformed_firewall_config"
 
+    @pytest.mark.parametrize(
+        "firewall",
+        [
+            {
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "permissions": [
+                            {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": 123,
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "permissions": [
+                            {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                        ],
+                    }
+                ],
+            },
+        ],
+    )
+    def test_malformed_firewall_name_fails_closed_after_base_match(self, firewall):
+        compiled_firewalls = self._compiled([firewall])
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        unrelated = matching.match_compiled_firewall_request(
+            "https://api.gitlab.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_firewall_config"
+
     def test_denied_match_takes_priority_over_malformed_config_reason(self):
         fws = wrap_firewalls(
             [
