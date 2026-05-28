@@ -38,6 +38,24 @@ assert_json_value() {
   fi
 }
 
+assert_file_does_not_end_with_newline() {
+  local file=$1
+  local last_byte
+  last_byte="$(tail -c 1 "$file" | od -An -t x1 | tr -d '[:space:]')"
+  if [[ "$last_byte" == "0a" ]]; then
+    fail "expected ${file} to contain compact JSON without trailing newline"
+  fi
+}
+
+assert_file_mode() {
+  local file=$1 expected=$2
+  local actual
+  actual="$(stat -c '%a' "$file")"
+  if [[ "$actual" != "$expected" ]]; then
+    fail "expected ${file} mode ${expected}, got ${actual}"
+  fi
+}
+
 mkdir -p "${TMPDIR}/bin"
 cat > "${TMPDIR}/bin/op" <<'BASH'
 #!/usr/bin/env bash
@@ -117,17 +135,19 @@ success_output="$(
 )"
 assert_contains "$success_output" "Bundled 34 connector OAuth client secret entries from Development"
 jq -c -e . "$success_bundle" >/dev/null
+if [[ "$(jq 'length' "$success_bundle")" != "34" ]]; then
+  fail "expected bundle to contain 34 connector OAuth client secret entries"
+fi
 assert_json_value "$success_bundle" GH_OAUTH_CLIENT_SECRET secret-Development-GH_OAUTH_CLIENT_SECRET
 assert_json_value "$success_bundle" GOOGLE_OAUTH_CLIENT_SECRET secret-Development-GOOGLE_OAUTH_CLIENT_SECRET
 assert_json_value "$success_bundle" SLACK_OAUTH_CLIENT_SECRET secret-Development-SLACK_OAUTH_CLIENT_SECRET
 assert_json_value "$success_bundle" META_ADS_OAUTH_CLIENT_SECRET secret-Development-META_ADS_OAUTH_CLIENT_SECRET
+assert_file_does_not_end_with_newline "$success_bundle"
+assert_file_mode "$success_bundle" 600
 
 success_log_output="$(without_mask_commands "$success_output")"
 assert_not_contains "$success_log_output" "secret-Development-GOOGLE_OAUTH_CLIENT_SECRET"
 assert_not_contains "$success_log_output" "secret-Development-SLACK_OAUTH_CLIENT_SECRET"
-if [[ "$(tail -c 1 "$success_bundle")" == $'\n' ]]; then
-  fail "expected compact JSON without trailing newline"
-fi
 
 production_bundle="${TMPDIR}/production-bundle.json"
 production_output="$(
@@ -176,6 +196,20 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing VAULT_NAME case to fail"
 fi
 assert_contains "$missing_vault_output" "VAULT_NAME is required"
+
+status=0
+invalid_vault_output="$(
+  env -i \
+    PATH="${TMPDIR}/bin:${PATH}" \
+    OP_SERVICE_ACCOUNT_TOKEN=test-token \
+    VAULT_NAME=Preview \
+    OUTPUT_FILE="${TMPDIR}/invalid-vault.json" \
+    "$BUILDER" 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected invalid VAULT_NAME case to fail"
+fi
+assert_contains "$invalid_vault_output" "VAULT_NAME must be Development or Production"
 
 status=0
 missing_output_file_output="$(

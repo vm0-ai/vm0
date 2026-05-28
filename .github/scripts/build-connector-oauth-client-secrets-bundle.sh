@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 readonly MAX_GITHUB_SECRET_BYTES=49152
 
