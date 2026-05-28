@@ -28,7 +28,11 @@ function anthropicMessageText(event: AgentEvent): string | null {
   const parts: string[] = [];
   for (const block of content) {
     const record = recordOf(block);
-    if (record?.type === "text" && typeof record.text === "string") {
+    if (
+      record?.type === "text" &&
+      typeof record.text === "string" &&
+      record.text.trim().length > 0
+    ) {
       parts.push(record.text);
     }
   }
@@ -46,7 +50,7 @@ function codexAgentMessageText(event: AgentEvent): string | null {
   if (
     item?.type !== "agent_message" ||
     typeof item.text !== "string" ||
-    item.text.length === 0
+    item.text.trim().length === 0
   ) {
     return null;
   }

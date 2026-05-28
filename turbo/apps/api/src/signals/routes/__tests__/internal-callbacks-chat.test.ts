@@ -784,6 +784,78 @@ describe("POST /api/internal/callbacks/chat", () => {
     await clearAllDetached();
   });
 
+  it("uses result fallback when Axiom also has blank assistant text", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    completedOutputEvents([
+      {
+        eventType: "assistant",
+        sequenceNumber: 0,
+        eventData: {
+          message: { content: [{ type: "text", text: "" }] },
+        },
+      },
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "RESULT=579" },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const assistantMessages = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return message.role === "assistant" && message.sequenceNumber !== null;
+      },
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]).toMatchObject({
+      sequenceNumber: 1,
+      content: "RESULT=579",
+    });
+    await clearAllDetached();
+  });
+
+  it("uses result fallback when existing streamed assistant output is blank", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await insertAssistantEventMessages(fixture, fixture.runId, [
+      { sequenceNumber: 0, content: "\n\t" },
+    ]);
+    completedOutputEvents([
+      {
+        eventType: "result",
+        sequenceNumber: 1,
+        eventData: { result: "Recovered result" },
+      },
+    ]);
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const assistantMessages = (await listMessages(fixture.threadId)).filter(
+      (message) => {
+        return message.role === "assistant" && message.sequenceNumber !== null;
+      },
+    );
+    expect(
+      assistantMessages.map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(["\n\t", "Recovered result"]);
+    await clearAllDetached();
+  });
+
   it("does not insert a result fallback when assistant output already exists", async () => {
     const fixture = await track(seedChatCallbackFixture());
     await insertAssistantEventMessages(fixture, fixture.runId, [
