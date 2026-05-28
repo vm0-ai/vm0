@@ -102,6 +102,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly" as const,
       lastModified: BUILD_DATE,
     },
+    {
+      path: "/illustration",
+      priority: 0.6,
+      changeFrequency: "monthly" as const,
+      lastModified: BUILD_DATE,
+    },
   ];
 
   const rootRoutes = [
