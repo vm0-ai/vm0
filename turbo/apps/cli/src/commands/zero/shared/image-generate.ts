@@ -41,9 +41,7 @@ interface ImageGenerateCommandConfig {
   examples: string;
 }
 
-function formatStyleListing(
-  styles: readonly RegistryEntry[],
-): string {
+function formatStyleListing(styles: readonly RegistryEntry[]): string {
   if (styles.length === 0) {
     return "  (no image styles registered)";
   }

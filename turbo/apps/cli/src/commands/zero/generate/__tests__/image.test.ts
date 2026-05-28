@@ -444,9 +444,7 @@ describe("zero generate image command", () => {
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain(
-      "Unknown image style: image-style:does-not-exist",
-    );
+    expect(stderr).toContain("Unknown image style: image-style:does-not-exist");
     expect(stderr).toContain("image-style:notion-illustration");
   });
 

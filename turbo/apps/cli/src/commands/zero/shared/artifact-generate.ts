@@ -1,9 +1,6 @@
 import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
-import {
-  type GenerationTarget,
-  toGenerationTarget,
-} from "./resource-registry";
+import { type GenerationTarget, toGenerationTarget } from "./resource-registry";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";

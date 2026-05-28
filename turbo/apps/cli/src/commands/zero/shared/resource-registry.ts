@@ -3158,9 +3158,7 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   },
 ];
 
-function filterByKind(
-  kind: ResourceKind,
-): readonly RegistryEntry[] {
+function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {
   return RESOURCE_REGISTRY.filter((entry) => {
     return entry.kind === kind;
   });
@@ -3170,9 +3168,7 @@ export function listImageStyles(): readonly RegistryEntry[] {
   return filterByKind("image-style");
 }
 
-export function findImageStyle(
-  id: string,
-): RegistryEntry | undefined {
+export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
   });
