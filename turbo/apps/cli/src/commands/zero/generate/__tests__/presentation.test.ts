@@ -63,8 +63,8 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
-    expect(stdout).toContain("od:skill:article-magazine");
-    expect(stdout).toContain("od:template:html-ppt-graphify-dark-graph");
+    expect(stdout).toContain("skill:article-magazine");
+    expect(stdout).toContain("template:html-ppt-graphify-dark-graph");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/api-migration-plan/`.",
     );
@@ -101,14 +101,12 @@ describe("zero generate presentation command", () => {
       hostCommand:
         "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
     });
-    expect(parsed.registryVersion).toEqual(
-      expect.stringContaining("nexu-io/open-design@"),
-    );
+    expect(parsed.registryVersion).toEqual("v1");
     expect(parsed.selection).toEqual(
       expect.objectContaining({
         candidates: expect.objectContaining({
           skills: expect.arrayContaining([
-            expect.objectContaining({ id: "od:skill:article-magazine" }),
+            expect.objectContaining({ id: "skill:article-magazine" }),
           ]),
           templates: expect.any(Array),
           designSystems: expect.any(Array),

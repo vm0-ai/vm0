@@ -6,8 +6,8 @@ import { createStyledImageAuthoringPacket } from "./image-style-authoring";
 import {
   findImageStyle,
   listImageStyles,
-  type OpenDesignRegistryEntry,
-} from "./open-design-registry";
+  type RegistryEntry,
+} from "./resource-registry";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
@@ -42,7 +42,7 @@ interface ImageGenerateCommandConfig {
 }
 
 function formatStyleListing(
-  styles: readonly OpenDesignRegistryEntry[],
+  styles: readonly RegistryEntry[],
 ): string {
   if (styles.length === 0) {
     return "  (no image styles registered)";

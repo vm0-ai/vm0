@@ -1,11 +1,11 @@
 import {
   type GenerationOutputKind,
-  type OpenDesignCandidateSlice,
-  type OpenDesignTarget,
-  selectOpenDesignCandidates,
-} from "./open-design-registry";
+  type ResourceCandidateSlice,
+  type GenerationTarget,
+  selectResourceCandidates,
+} from "./resource-registry";
 
-type HtmlArtifactKind = OpenDesignTarget;
+type HtmlArtifactKind = GenerationTarget;
 
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
@@ -36,7 +36,7 @@ interface HtmlArtifactAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
-    readonly candidates: OpenDesignCandidateSlice["candidates"];
+    readonly candidates: ResourceCandidateSlice["candidates"];
     readonly outputSchema: {
       readonly skills: "string[]";
       readonly template: "string";
@@ -98,7 +98,7 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const candidateSlice = selectOpenDesignCandidates();
+  const candidateSlice = selectResourceCandidates();
   const selectionSchema = {
     skills: "string[]",
     template: "string",

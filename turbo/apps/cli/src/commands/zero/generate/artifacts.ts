@@ -1,4 +1,4 @@
-import { createOpenDesignArtifactGenerateCommand } from "../shared/open-design-artifact-generate";
+import { createArtifactGenerateCommand } from "../shared/artifact-generate";
 
 function standardDetails(kind: string) {
   return (options: { title?: string; audience?: string }) => {
@@ -10,7 +10,7 @@ function standardDetails(kind: string) {
   };
 }
 
-export const reportCommand = createOpenDesignArtifactGenerateCommand({
+export const reportCommand = createArtifactGenerateCommand({
   name: "report",
   generationType: "report",
   target: "report",
@@ -28,7 +28,7 @@ export const reportCommand = createOpenDesignArtifactGenerateCommand({
   ],
 });
 
-export const docsDesignCommand = createOpenDesignArtifactGenerateCommand({
+export const docsDesignCommand = createArtifactGenerateCommand({
   name: "docs-design",
   generationType: "docs-design",
   target: "docs-design",
@@ -46,7 +46,7 @@ export const docsDesignCommand = createOpenDesignArtifactGenerateCommand({
   ],
 });
 
-export const posterCommand = createOpenDesignArtifactGenerateCommand({
+export const posterCommand = createArtifactGenerateCommand({
   name: "poster",
   generationType: "poster",
   target: "poster",
@@ -64,7 +64,7 @@ export const posterCommand = createOpenDesignArtifactGenerateCommand({
   ],
 });
 
-export const dashboardDesignCommand = createOpenDesignArtifactGenerateCommand({
+export const dashboardDesignCommand = createArtifactGenerateCommand({
   name: "dashboard-design",
   generationType: "dashboard-design",
   target: "dashboard-design",
@@ -82,7 +82,7 @@ export const dashboardDesignCommand = createOpenDesignArtifactGenerateCommand({
   ],
 });
 
-export const mobileAppDesignCommand = createOpenDesignArtifactGenerateCommand({
+export const mobileAppDesignCommand = createArtifactGenerateCommand({
   name: "mobile-app-design",
   generationType: "mobile-app-design",
   target: "mobile-app-design",

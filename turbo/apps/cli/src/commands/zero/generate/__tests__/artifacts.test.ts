@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
 import { generateCommand } from "../index";
-import { selectOpenDesignCandidates } from "../../shared/open-design-registry";
+import { selectResourceCandidates } from "../../shared/resource-registry";
 
 describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -31,27 +31,27 @@ describe("zero generate source-backed artifact commands", () => {
     {
       command: "report",
       prompt: "Q2 generation usage report",
-      template: "od:template:finance-report",
+      template: "template:finance-report",
     },
     {
       command: "docs-design",
       prompt: "Docs for adding built-in artifact targets",
-      template: "od:template:docs-page",
+      template: "template:docs-page",
     },
     {
       command: "poster",
       prompt: "A poster for source-backed generation",
-      template: "od:template:html-ppt-zhangzara-retro-zine",
+      template: "template:html-ppt-zhangzara-retro-zine",
     },
     {
       command: "dashboard-design",
       prompt: "A dashboard for generation run health",
-      template: "od:template:dashboard",
+      template: "template:dashboard",
     },
     {
       command: "mobile-app-design",
       prompt: "A mobile app design for reviewing generated artifacts",
-      template: "od:template:mobile-app",
+      template: "template:mobile-app",
     },
   ])(
     "prints a source selection packet for $command",
@@ -119,12 +119,12 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("returns every registered skill grouped by kind", () => {
-    const selection = selectOpenDesignCandidates();
+    const selection = selectResourceCandidates();
 
     expect(selection.candidates.skills).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "od:skill:theme-factory",
+          id: "skill:theme-factory",
           description: expect.stringContaining(
             "Apply professional font and color themes",
           ),
@@ -137,12 +137,12 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("returns every registered template and design system", () => {
-    const selection = selectOpenDesignCandidates();
+    const selection = selectResourceCandidates();
 
     expect(selection.candidates.templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "od:template:saas-landing",
+          id: "template:saas-landing",
           description: expect.stringContaining("Single-page SaaS landing"),
         }),
       ]),
@@ -150,7 +150,7 @@ describe("zero generate source-backed artifact commands", () => {
     expect(selection.candidates.designSystems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "od:design-system:shopify",
+          id: "design-system:shopify",
           description: expect.stringContaining("E-commerce platform"),
         }),
       ]),
@@ -158,9 +158,9 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("attributes every vm0 image style to the vm0-skills repo", () => {
-    const selection = selectOpenDesignCandidates();
+    const selection = selectResourceCandidates();
     const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
-      return entry.id.startsWith("vm0:image-style:");
+      return entry.id.startsWith("image-style:");
     });
 
     expect(vm0ImageStyles.length).toBeGreaterThan(0);

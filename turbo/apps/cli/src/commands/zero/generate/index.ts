@@ -8,7 +8,7 @@ import {
   mobileAppDesignCommand,
   posterCommand,
   reportCommand,
-} from "./open-design-artifacts";
+} from "./artifacts";
 import { presentationCommand } from "./presentation";
 import { videoCommand } from "./video";
 import { websiteCommand } from "./website";

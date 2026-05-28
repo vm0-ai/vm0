@@ -1,14 +1,14 @@
 import {
   type GenerationOutputKind,
-  type OpenDesignCandidateSlice,
-  type OpenDesignRegistryEntry,
-  selectOpenDesignCandidates,
-} from "./open-design-registry";
+  type ResourceCandidateSlice,
+  type RegistryEntry,
+  selectResourceCandidates,
+} from "./resource-registry";
 
 interface StyledImageAuthoringOptions {
   readonly prompt: string;
   readonly details: readonly string[];
-  readonly style: OpenDesignRegistryEntry;
+  readonly style: RegistryEntry;
 }
 
 interface StyledImageAuthoringPacket {
@@ -31,7 +31,7 @@ interface StyledImageAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
-    readonly candidates: OpenDesignCandidateSlice["candidates"];
+    readonly candidates: ResourceCandidateSlice["candidates"];
     readonly outputSchema: {
       readonly imageStyle: "string";
       readonly skills: "string[]";
@@ -56,8 +56,8 @@ const artifactRules = [
 export function createStyledImageAuthoringPacket(
   options: StyledImageAuthoringOptions,
 ): StyledImageAuthoringPacket {
-  const baseSlice = selectOpenDesignCandidates();
-  const candidateSlice: OpenDesignCandidateSlice = {
+  const baseSlice = selectResourceCandidates();
+  const candidateSlice: ResourceCandidateSlice = {
     ...baseSlice,
     candidates: {
       ...baseSlice.candidates,

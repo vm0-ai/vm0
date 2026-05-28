@@ -56,7 +56,7 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
-    expect(stdout).toContain("od:template:web-prototype-taste-editorial");
+    expect(stdout).toContain("template:web-prototype-taste-editorial");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
@@ -96,7 +96,7 @@ describe("zero generate website command", () => {
           skills: expect.any(Array),
           templates: expect.arrayContaining([
             expect.objectContaining({
-              id: "od:template:web-prototype-taste-editorial",
+              id: "template:web-prototype-taste-editorial",
             }),
           ]),
           designSystems: expect.any(Array),

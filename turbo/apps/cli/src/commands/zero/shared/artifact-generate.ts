@@ -1,14 +1,14 @@
 import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import {
-  type OpenDesignTarget,
-  toOpenDesignTarget,
-} from "./open-design-registry";
+  type GenerationTarget,
+  toGenerationTarget,
+} from "./resource-registry";
 import { createHtmlArtifactAuthoringPacket } from "./html-artifact-authoring";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
-interface OpenDesignArtifactOptions {
+interface ArtifactOptions {
   prompt?: string;
   provider?: string;
   site?: string;
@@ -18,19 +18,19 @@ interface OpenDesignArtifactOptions {
   json?: boolean;
 }
 
-interface OpenDesignArtifactCommandConfig {
+interface ArtifactCommandConfig {
   name: string;
   generationType: GenerationType;
-  target: OpenDesignTarget;
+  target: GenerationTarget;
   description: string;
   usageCommand: string;
   examples: string;
-  details: (options: OpenDesignArtifactOptions) => readonly string[];
+  details: (options: ArtifactOptions) => readonly string[];
   artifactRules: readonly string[];
 }
 
-export function createOpenDesignArtifactGenerateCommand(
-  config: OpenDesignArtifactCommandConfig,
+export function createArtifactGenerateCommand(
+  config: ArtifactCommandConfig,
 ): Command {
   return new Command()
     .name(config.name)
@@ -63,7 +63,7 @@ Notes:
   - Authenticates via ZERO_TOKEN`,
     )
     .action(
-      withErrorHandler(async (options: OpenDesignArtifactOptions) => {
+      withErrorHandler(async (options: ArtifactOptions) => {
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           provider: options.provider,
@@ -75,7 +75,7 @@ Notes:
         const prompt = dispatch.prompt;
 
         const packet = createHtmlArtifactAuthoringPacket({
-          kind: toOpenDesignTarget(config.target),
+          kind: toGenerationTarget(config.target),
           prompt,
           slugSource: options.title,
           site: options.site,

@@ -326,18 +326,18 @@ describe("zero generate image command", () => {
       "cli",
       "image",
       "--style",
-      "vm0:image-style:notion-illustration",
+      "image-style:notion-illustration",
       "--prompt",
       "Notion illustration of a product manager mapping a launch plan",
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero generate image --style vm0:image-style:notion-illustration",
+      "# Zero generate image --style image-style:notion-illustration",
     );
     expect(stdout).toContain("federated generation source-selection packet");
     expect(stdout).toContain("## Selected Image Style");
-    expect(stdout).toContain("vm0:image-style:notion-illustration");
+    expect(stdout).toContain("image-style:notion-illustration");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("notion-illustration");
@@ -350,7 +350,7 @@ describe("zero generate image command", () => {
       "cli",
       "image",
       "--style",
-      "vm0:image-style:notion-illustration",
+      "image-style:notion-illustration",
       "--prompt",
       "Notion illustration of a product manager mapping a launch plan",
       "--json",
@@ -370,7 +370,7 @@ describe("zero generate image command", () => {
     expect(selection.candidates.imageStyles).toHaveLength(1);
     expect(selection.candidates.imageStyles[0]).toEqual(
       expect.objectContaining({
-        id: "vm0:image-style:notion-illustration",
+        id: "image-style:notion-illustration",
         source: {
           repo: "vm0-ai/vm0-skills",
           ref: "main",
@@ -389,7 +389,7 @@ describe("zero generate image command", () => {
       "cli",
       "image",
       "--style",
-      "vm0:image-style:vm0-illustration",
+      "image-style:vm0-illustration",
       "--prompt",
       "vm0 style in-app illustration for an empty billing state",
       "--json",
@@ -403,7 +403,7 @@ describe("zero generate image command", () => {
     expect(selection.candidates.imageStyles).toHaveLength(1);
     expect(selection.candidates.imageStyles[0]).toEqual(
       expect.objectContaining({
-        id: "vm0:image-style:vm0-illustration",
+        id: "image-style:vm0-illustration",
         source: {
           repo: "vm0-ai/vm0-skills",
           ref: "main",
@@ -426,8 +426,8 @@ describe("zero generate image command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("--style <id> or --skip-style is required");
-    expect(stderr).toContain("vm0:image-style:notion-illustration");
-    expect(stderr).toContain("vm0:image-style:vm0-illustration");
+    expect(stderr).toContain("image-style:notion-illustration");
+    expect(stderr).toContain("image-style:vm0-illustration");
   });
 
   it("should fail with style listing when --style id is unknown", async () => {
@@ -437,7 +437,7 @@ describe("zero generate image command", () => {
         "cli",
         "image",
         "--style",
-        "vm0:image-style:does-not-exist",
+        "image-style:does-not-exist",
         "--prompt",
         "Anything",
       ]);
@@ -445,9 +445,9 @@ describe("zero generate image command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain(
-      "Unknown image style: vm0:image-style:does-not-exist",
+      "Unknown image style: image-style:does-not-exist",
     );
-    expect(stderr).toContain("vm0:image-style:notion-illustration");
+    expect(stderr).toContain("image-style:notion-illustration");
   });
 
   it("should reject combining --style with --skip-style", async () => {
@@ -457,7 +457,7 @@ describe("zero generate image command", () => {
         "cli",
         "image",
         "--style",
-        "vm0:image-style:notion-illustration",
+        "image-style:notion-illustration",
         "--skip-style",
         "--prompt",
         "Anything",
@@ -558,9 +558,9 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("backgrounds");
     expect(helpOutput).toContain("Image-to-image");
     expect(helpOutput).toContain("Image Styles:");
-    expect(helpOutput).toContain("vm0:image-style:notion-illustration");
+    expect(helpOutput).toContain("image-style:notion-illustration");
     expect(helpOutput).toContain("Notion-editorial-style hand-drawn");
-    expect(helpOutput).toContain("vm0:image-style:vm0-illustration");
+    expect(helpOutput).toContain("image-style:vm0-illustration");
     expect(helpOutput).toContain("Generate vm0-style vm0 in-app");
   });
 

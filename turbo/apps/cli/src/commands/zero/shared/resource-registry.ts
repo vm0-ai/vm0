@@ -1,4 +1,4 @@
-export type OpenDesignTarget =
+export type GenerationTarget =
   | "image"
   | "presentation"
   | "website"
@@ -22,7 +22,7 @@ export type GenerationOutputKind =
   | "docs-design"
   | "bundle";
 
-type OpenDesignResourceKind =
+type ResourceKind =
   | "skill"
   | "template"
   | "design-system"
@@ -31,22 +31,22 @@ type OpenDesignResourceKind =
   | "video-template"
   | "bundle-template";
 
-interface OpenDesignSourceRef {
+interface ResourceSourceRef {
   readonly path: string;
   readonly repo?: string;
   readonly ref?: string;
 }
 
-export interface OpenDesignRegistryEntry {
+export interface RegistryEntry {
   readonly id: string;
-  readonly kind: OpenDesignResourceKind;
+  readonly kind: ResourceKind;
   readonly name: string;
   readonly description: string;
   readonly desc?: string;
-  readonly source: OpenDesignSourceRef;
+  readonly source: ResourceSourceRef;
 }
 
-export interface OpenDesignCandidateSlice {
+export interface ResourceCandidateSlice {
   readonly registryVersion: string;
   readonly source: {
     readonly repo: string;
@@ -57,26 +57,26 @@ export interface OpenDesignCandidateSlice {
     readonly ref: string;
   }[];
   readonly candidates: {
-    readonly skills: readonly OpenDesignRegistryEntry[];
-    readonly templates: readonly OpenDesignRegistryEntry[];
-    readonly designSystems: readonly OpenDesignRegistryEntry[];
-    readonly imageStyles: readonly OpenDesignRegistryEntry[];
-    readonly audioStyles: readonly OpenDesignRegistryEntry[];
-    readonly videoTemplates: readonly OpenDesignRegistryEntry[];
-    readonly bundleTemplates: readonly OpenDesignRegistryEntry[];
+    readonly skills: readonly RegistryEntry[];
+    readonly templates: readonly RegistryEntry[];
+    readonly designSystems: readonly RegistryEntry[];
+    readonly imageStyles: readonly RegistryEntry[];
+    readonly audioStyles: readonly RegistryEntry[];
+    readonly videoTemplates: readonly RegistryEntry[];
+    readonly bundleTemplates: readonly RegistryEntry[];
   };
 }
 
-const OPEN_DESIGN_REPO = "nexu-io/open-design";
-const OPEN_DESIGN_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
+const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
+const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
 const VM0_SKILLS_REF = "main";
 
-const OPEN_DESIGN_REGISTRY_VERSION = `federated:${OPEN_DESIGN_REPO}@${OPEN_DESIGN_COMMIT}`;
+const RESOURCE_REGISTRY_VERSION = "v1";
 
-const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
+const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   {
-    id: "od:skill:article-magazine",
+    id: "skill:article-magazine",
     kind: "skill",
     name: "Article Magazine",
     description:
@@ -84,7 +84,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/article-magazine/SKILL.md" },
   },
   {
-    id: "od:skill:design-brief",
+    id: "skill:design-brief",
     kind: "skill",
     name: "Design Brief",
     description:
@@ -92,7 +92,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/design-brief/SKILL.md" },
   },
   {
-    id: "od:skill:8-bit-orbit-video-template",
+    id: "skill:8-bit-orbit-video-template",
     kind: "skill",
     name: "8 Bit Orbit Video Template",
     description:
@@ -100,7 +100,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/8-bit-orbit-video-template/SKILL.md" },
   },
   {
-    id: "od:skill:after-hours-editorial-template",
+    id: "skill:after-hours-editorial-template",
     kind: "skill",
     name: "After Hours Editorial Template",
     description:
@@ -108,7 +108,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/after-hours-editorial-template/SKILL.md" },
   },
   {
-    id: "od:skill:algorithmic-art",
+    id: "skill:algorithmic-art",
     kind: "skill",
     name: "Algorithmic Art",
     description:
@@ -116,7 +116,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/algorithmic-art/SKILL.md" },
   },
   {
-    id: "od:skill:apple-hig",
+    id: "skill:apple-hig",
     kind: "skill",
     name: "Apple HIG",
     description:
@@ -124,7 +124,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/apple-hig/SKILL.md" },
   },
   {
-    id: "od:skill:brainstorming",
+    id: "skill:brainstorming",
     kind: "skill",
     name: "Brainstorming",
     description:
@@ -132,7 +132,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/brainstorming/SKILL.md" },
   },
   {
-    id: "od:skill:brand-guidelines",
+    id: "skill:brand-guidelines",
     kind: "skill",
     name: "Brand Guidelines",
     description:
@@ -140,7 +140,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/brand-guidelines/SKILL.md" },
   },
   {
-    id: "od:skill:canvas-design",
+    id: "skill:canvas-design",
     kind: "skill",
     name: "Canvas Design",
     description:
@@ -148,14 +148,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/canvas-design/SKILL.md" },
   },
   {
-    id: "od:skill:card-twitter",
+    id: "skill:card-twitter",
     kind: "skill",
     name: "Card Twitter",
     description: "Twitter quote or data card designed to pair with a post.",
     source: { path: "skills/card-twitter/SKILL.md" },
   },
   {
-    id: "od:skill:card-xiaohongshu",
+    id: "skill:card-xiaohongshu",
     kind: "skill",
     name: "Card Xiaohongshu",
     description:
@@ -163,7 +163,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/card-xiaohongshu/SKILL.md" },
   },
   {
-    id: "od:skill:color-expert",
+    id: "skill:color-expert",
     kind: "skill",
     name: "Color Expert",
     description:
@@ -171,7 +171,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/color-expert/SKILL.md" },
   },
   {
-    id: "od:skill:creative-director",
+    id: "skill:creative-director",
     kind: "skill",
     name: "Creative Director",
     description:
@@ -179,7 +179,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/creative-director/SKILL.md" },
   },
   {
-    id: "od:skill:d3-visualization",
+    id: "skill:d3-visualization",
     kind: "skill",
     name: "D3 Visualization",
     description:
@@ -187,7 +187,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/d3-visualization/SKILL.md" },
   },
   {
-    id: "od:skill:deck-guizang-editorial",
+    id: "skill:deck-guizang-editorial",
     kind: "skill",
     name: "Deck Guizang Editorial",
     description:
@@ -195,7 +195,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/deck-guizang-editorial/SKILL.md" },
   },
   {
-    id: "od:skill:deck-open-slide-canvas",
+    id: "skill:deck-open-slide-canvas",
     kind: "skill",
     name: "Deck Open Slide Canvas",
     description:
@@ -203,7 +203,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/deck-open-slide-canvas/SKILL.md" },
   },
   {
-    id: "od:skill:deck-swiss-international",
+    id: "skill:deck-swiss-international",
     kind: "skill",
     name: "Deck Swiss International",
     description:
@@ -211,7 +211,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/deck-swiss-international/SKILL.md" },
   },
   {
-    id: "od:skill:design-consultation",
+    id: "skill:design-consultation",
     kind: "skill",
     name: "Design Consultation",
     description:
@@ -219,7 +219,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/design-consultation/SKILL.md" },
   },
   {
-    id: "od:skill:design-md",
+    id: "skill:design-md",
     kind: "skill",
     name: "Design MD",
     description:
@@ -227,7 +227,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/design-md/SKILL.md" },
   },
   {
-    id: "od:skill:design-review",
+    id: "skill:design-review",
     kind: "skill",
     name: "Design Review",
     description:
@@ -235,7 +235,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/design-review/SKILL.md" },
   },
   {
-    id: "od:skill:digits-fintech-swiss-template",
+    id: "skill:digits-fintech-swiss-template",
     kind: "skill",
     name: "Digits Fintech Swiss Template",
     description:
@@ -243,7 +243,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/digits-fintech-swiss-template/SKILL.md" },
   },
   {
-    id: "od:skill:doc-kami-parchment",
+    id: "skill:doc-kami-parchment",
     kind: "skill",
     name: "DOC Kami Parchment",
     description:
@@ -251,7 +251,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/doc-kami-parchment/SKILL.md" },
   },
   {
-    id: "od:skill:editorial-burgundy-principles-template",
+    id: "skill:editorial-burgundy-principles-template",
     kind: "skill",
     name: "Editorial Burgundy Principles Template",
     description:
@@ -259,7 +259,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/editorial-burgundy-principles-template/SKILL.md" },
   },
   {
-    id: "od:skill:enhance-prompt",
+    id: "skill:enhance-prompt",
     kind: "skill",
     name: "Enhance Prompt",
     description:
@@ -267,7 +267,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/enhance-prompt/SKILL.md" },
   },
   {
-    id: "od:skill:faq-page",
+    id: "skill:faq-page",
     kind: "skill",
     name: "FAQ Page",
     description:
@@ -275,7 +275,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/faq-page/SKILL.md" },
   },
   {
-    id: "od:skill:field-notes-editorial-template",
+    id: "skill:field-notes-editorial-template",
     kind: "skill",
     name: "Field Notes Editorial Template",
     description:
@@ -283,7 +283,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/field-notes-editorial-template/SKILL.md" },
   },
   {
-    id: "od:skill:figma-create-design-system-rules",
+    id: "skill:figma-create-design-system-rules",
     kind: "skill",
     name: "Figma Create Design System Rules",
     description:
@@ -291,7 +291,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/figma-create-design-system-rules/SKILL.md" },
   },
   {
-    id: "od:skill:figma-generate-design",
+    id: "skill:figma-generate-design",
     kind: "skill",
     name: "Figma Generate Design",
     description:
@@ -299,7 +299,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/figma-generate-design/SKILL.md" },
   },
   {
-    id: "od:skill:figma-generate-library",
+    id: "skill:figma-generate-library",
     kind: "skill",
     name: "Figma Generate Library",
     description:
@@ -307,7 +307,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/figma-generate-library/SKILL.md" },
   },
   {
-    id: "od:skill:figma-implement-design",
+    id: "skill:figma-implement-design",
     kind: "skill",
     name: "Figma Implement Design",
     description:
@@ -315,7 +315,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/figma-implement-design/SKILL.md" },
   },
   {
-    id: "od:skill:flutter-animating-apps",
+    id: "skill:flutter-animating-apps",
     kind: "skill",
     name: "Flutter Animating Apps",
     description:
@@ -323,7 +323,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/flutter-animating-apps/SKILL.md" },
   },
   {
-    id: "od:skill:frame-data-chart-nyt",
+    id: "skill:frame-data-chart-nyt",
     kind: "skill",
     name: "Frame Data Chart Nyt",
     description:
@@ -331,7 +331,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-data-chart-nyt/SKILL.md" },
   },
   {
-    id: "od:skill:frame-flowchart-sticky",
+    id: "skill:frame-flowchart-sticky",
     kind: "skill",
     name: "Frame Flowchart Sticky",
     description:
@@ -339,7 +339,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-flowchart-sticky/SKILL.md" },
   },
   {
-    id: "od:skill:frame-glitch-title",
+    id: "skill:frame-glitch-title",
     kind: "skill",
     name: "Frame Glitch Title",
     description:
@@ -347,7 +347,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-glitch-title/SKILL.md" },
   },
   {
-    id: "od:skill:frame-light-leak-cinema",
+    id: "skill:frame-light-leak-cinema",
     kind: "skill",
     name: "Frame Light Leak Cinema",
     description:
@@ -355,7 +355,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-light-leak-cinema/SKILL.md" },
   },
   {
-    id: "od:skill:frame-liquid-bg-hero",
+    id: "skill:frame-liquid-bg-hero",
     kind: "skill",
     name: "Frame Liquid Bg Hero",
     description:
@@ -363,7 +363,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-liquid-bg-hero/SKILL.md" },
   },
   {
-    id: "od:skill:frame-logo-outro",
+    id: "skill:frame-logo-outro",
     kind: "skill",
     name: "Frame Logo Outro",
     description:
@@ -371,7 +371,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-logo-outro/SKILL.md" },
   },
   {
-    id: "od:skill:frame-macos-notification",
+    id: "skill:frame-macos-notification",
     kind: "skill",
     name: "Frame Macos Notification",
     description:
@@ -379,7 +379,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frame-macos-notification/SKILL.md" },
   },
   {
-    id: "od:skill:frontend-design",
+    id: "skill:frontend-design",
     kind: "skill",
     name: "Frontend Design",
     description:
@@ -387,7 +387,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frontend-design/SKILL.md" },
   },
   {
-    id: "od:skill:frontend-dev",
+    id: "skill:frontend-dev",
     kind: "skill",
     name: "Frontend Dev",
     description:
@@ -395,7 +395,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frontend-dev/SKILL.md" },
   },
   {
-    id: "od:skill:frontend-skill",
+    id: "skill:frontend-skill",
     kind: "skill",
     name: "Frontend Skill",
     description:
@@ -403,7 +403,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frontend-skill/SKILL.md" },
   },
   {
-    id: "od:skill:frontend-slides",
+    id: "skill:frontend-slides",
     kind: "skill",
     name: "Frontend Slides",
     description:
@@ -411,7 +411,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/frontend-slides/SKILL.md" },
   },
   {
-    id: "od:skill:gsap-core",
+    id: "skill:gsap-core",
     kind: "skill",
     name: "GSAP Core",
     description:
@@ -419,7 +419,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/gsap-core/SKILL.md" },
   },
   {
-    id: "od:skill:gsap-react",
+    id: "skill:gsap-react",
     kind: "skill",
     name: "GSAP React",
     description:
@@ -427,7 +427,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/gsap-react/SKILL.md" },
   },
   {
-    id: "od:skill:gsap-scrolltrigger",
+    id: "skill:gsap-scrolltrigger",
     kind: "skill",
     name: "GSAP Scrolltrigger",
     description:
@@ -435,7 +435,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/gsap-scrolltrigger/SKILL.md" },
   },
   {
-    id: "od:skill:gsap-timeline",
+    id: "skill:gsap-timeline",
     kind: "skill",
     name: "GSAP Timeline",
     description:
@@ -443,7 +443,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/gsap-timeline/SKILL.md" },
   },
   {
-    id: "od:skill:hand-drawn-diagrams",
+    id: "skill:hand-drawn-diagrams",
     kind: "skill",
     name: "Hand Drawn Diagrams",
     description:
@@ -451,7 +451,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/hand-drawn-diagrams/SKILL.md" },
   },
   {
-    id: "od:skill:hatch-pet",
+    id: "skill:hatch-pet",
     kind: "skill",
     name: "Hatch Pet",
     description:
@@ -459,7 +459,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/hatch-pet/SKILL.md" },
   },
   {
-    id: "od:skill:html-ppt-retro-quarterly-review",
+    id: "skill:html-ppt-retro-quarterly-review",
     kind: "skill",
     name: "HTML PPT Retro Quarterly Review",
     description:
@@ -467,14 +467,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/html-ppt-retro-quarterly-review/SKILL.md" },
   },
   {
-    id: "od:skill:login-flow",
+    id: "skill:login-flow",
     kind: "skill",
     name: "Login Flow",
     description: "Mobile login and authentication flow screens.",
     source: { path: "skills/login-flow/SKILL.md" },
   },
   {
-    id: "od:skill:mockup-device-3d",
+    id: "skill:mockup-device-3d",
     kind: "skill",
     name: "Mockup Device 3D",
     description:
@@ -482,7 +482,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/mockup-device-3d/SKILL.md" },
   },
   {
-    id: "od:skill:paywall-upgrade-cro",
+    id: "skill:paywall-upgrade-cro",
     kind: "skill",
     name: "Paywall Upgrade Cro",
     description:
@@ -490,7 +490,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/paywall-upgrade-cro/SKILL.md" },
   },
   {
-    id: "od:skill:plan-design-review",
+    id: "skill:plan-design-review",
     kind: "skill",
     name: "Plan Design Review",
     description:
@@ -498,7 +498,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/plan-design-review/SKILL.md" },
   },
   {
-    id: "od:skill:platform-design",
+    id: "skill:platform-design",
     kind: "skill",
     name: "Platform Design",
     description:
@@ -506,7 +506,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/platform-design/SKILL.md" },
   },
   {
-    id: "od:skill:poster-hero",
+    id: "skill:poster-hero",
     kind: "skill",
     name: "Poster Hero",
     description:
@@ -514,7 +514,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/poster-hero/SKILL.md" },
   },
   {
-    id: "od:skill:ppt-keynote",
+    id: "skill:ppt-keynote",
     kind: "skill",
     name: "PPT Keynote",
     description:
@@ -522,7 +522,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/ppt-keynote/SKILL.md" },
   },
   {
-    id: "od:skill:release-notes-one-pager",
+    id: "skill:release-notes-one-pager",
     kind: "skill",
     name: "Release Notes One Pager",
     description:
@@ -530,7 +530,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/release-notes-one-pager/SKILL.md" },
   },
   {
-    id: "od:skill:resume-modern",
+    id: "skill:resume-modern",
     kind: "skill",
     name: "Resume Modern",
     description:
@@ -538,7 +538,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/resume-modern/SKILL.md" },
   },
   {
-    id: "od:skill:screenshots-marketing",
+    id: "skill:screenshots-marketing",
     kind: "skill",
     name: "Screenshots Marketing",
     description:
@@ -546,7 +546,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/screenshots-marketing/SKILL.md" },
   },
   {
-    id: "od:skill:shadcn-ui",
+    id: "skill:shadcn-ui",
     kind: "skill",
     name: "Shadcn UI",
     description:
@@ -554,7 +554,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/shadcn-ui/SKILL.md" },
   },
   {
-    id: "od:skill:shader-dev",
+    id: "skill:shader-dev",
     kind: "skill",
     name: "Shader Dev",
     description:
@@ -562,7 +562,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/shader-dev/SKILL.md" },
   },
   {
-    id: "od:skill:slack-gif-creator",
+    id: "skill:slack-gif-creator",
     kind: "skill",
     name: "Slack GIF Creator",
     description:
@@ -570,7 +570,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/slack-gif-creator/SKILL.md" },
   },
   {
-    id: "od:skill:slides",
+    id: "skill:slides",
     kind: "skill",
     name: "Slides",
     description:
@@ -578,7 +578,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/slides/SKILL.md" },
   },
   {
-    id: "od:skill:social-reddit-card",
+    id: "skill:social-reddit-card",
     kind: "skill",
     name: "Social Reddit Card",
     description:
@@ -586,7 +586,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/social-reddit-card/SKILL.md" },
   },
   {
-    id: "od:skill:social-spotify-card",
+    id: "skill:social-spotify-card",
     kind: "skill",
     name: "Social Spotify Card",
     description:
@@ -594,7 +594,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/social-spotify-card/SKILL.md" },
   },
   {
-    id: "od:skill:social-x-post-card",
+    id: "skill:social-x-post-card",
     kind: "skill",
     name: "Social X Post Card",
     description:
@@ -602,7 +602,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/social-x-post-card/SKILL.md" },
   },
   {
-    id: "od:skill:stitch-loop",
+    id: "skill:stitch-loop",
     kind: "skill",
     name: "Stitch Loop",
     description:
@@ -610,7 +610,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/stitch-loop/SKILL.md" },
   },
   {
-    id: "od:skill:swiftui-design",
+    id: "skill:swiftui-design",
     kind: "skill",
     name: "Swiftui Design",
     description:
@@ -618,7 +618,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/swiftui-design/SKILL.md" },
   },
   {
-    id: "od:skill:swiss-creative-mode-template",
+    id: "skill:swiss-creative-mode-template",
     kind: "skill",
     name: "Swiss Creative Mode Template",
     description:
@@ -626,7 +626,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/swiss-creative-mode-template/SKILL.md" },
   },
   {
-    id: "od:skill:swiss-user-research-video-template",
+    id: "skill:swiss-user-research-video-template",
     kind: "skill",
     name: "Swiss User Research Video Template",
     description:
@@ -634,7 +634,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/swiss-user-research-video-template/SKILL.md" },
   },
   {
-    id: "od:skill:taste-skill",
+    id: "skill:taste-skill",
     kind: "skill",
     name: "Taste Skill",
     description:
@@ -642,7 +642,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/taste-skill/SKILL.md" },
   },
   {
-    id: "od:skill:theme-factory",
+    id: "skill:theme-factory",
     kind: "skill",
     name: "Theme Factory",
     description:
@@ -650,7 +650,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/theme-factory/SKILL.md" },
   },
   {
-    id: "od:skill:threejs",
+    id: "skill:threejs",
     kind: "skill",
     name: "Threejs",
     description:
@@ -658,7 +658,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/threejs/SKILL.md" },
   },
   {
-    id: "od:skill:ui-skills",
+    id: "skill:ui-skills",
     kind: "skill",
     name: "UI Skills",
     description:
@@ -666,7 +666,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/ui-skills/SKILL.md" },
   },
   {
-    id: "od:skill:ui-ux-pro-max",
+    id: "skill:ui-ux-pro-max",
     kind: "skill",
     name: "UI UX Pro Max",
     description:
@@ -674,7 +674,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/ui-ux-pro-max/SKILL.md" },
   },
   {
-    id: "od:skill:vfx-text-cursor",
+    id: "skill:vfx-text-cursor",
     kind: "skill",
     name: "VFX Text Cursor",
     description:
@@ -682,7 +682,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/vfx-text-cursor/SKILL.md" },
   },
   {
-    id: "od:skill:video-hyperframes",
+    id: "skill:video-hyperframes",
     kind: "skill",
     name: "Video Hyperframes",
     description:
@@ -690,7 +690,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/video-hyperframes/SKILL.md" },
   },
   {
-    id: "od:skill:web-design-guidelines",
+    id: "skill:web-design-guidelines",
     kind: "skill",
     name: "Web Design Guidelines",
     description:
@@ -698,7 +698,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/web-design-guidelines/SKILL.md" },
   },
   {
-    id: "od:skill:weread-year-in-review-video-template",
+    id: "skill:weread-year-in-review-video-template",
     kind: "skill",
     name: "Weread Year In Review Video Template",
     description:
@@ -706,7 +706,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/weread-year-in-review-video-template/SKILL.md" },
   },
   {
-    id: "od:skill:wpds",
+    id: "skill:wpds",
     kind: "skill",
     name: "WPDS",
     description:
@@ -714,7 +714,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "skills/wpds/SKILL.md" },
   },
   {
-    id: "od:template:dashboard",
+    id: "template:dashboard",
     kind: "template",
     name: "Dashboard",
     description:
@@ -722,7 +722,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/dashboard" },
   },
   {
-    id: "od:template:finance-report",
+    id: "template:finance-report",
     kind: "template",
     name: "Finance Report",
     description:
@@ -730,7 +730,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/finance-report" },
   },
   {
-    id: "od:template:docs-page",
+    id: "template:docs-page",
     kind: "template",
     name: "Docs Page",
     description:
@@ -738,7 +738,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/docs-page" },
   },
   {
-    id: "od:template:mobile-app",
+    id: "template:mobile-app",
     kind: "template",
     name: "Mobile App Design",
     description:
@@ -746,7 +746,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/mobile-app" },
   },
   {
-    id: "od:template:html-ppt-graphify-dark-graph",
+    id: "template:html-ppt-graphify-dark-graph",
     kind: "template",
     name: "Graphify Dark Graph",
     description:
@@ -754,7 +754,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-graphify-dark-graph" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-retro-zine",
+    id: "template:html-ppt-zhangzara-retro-zine",
     kind: "template",
     name: "Zhangzara Retro Zine",
     description:
@@ -762,7 +762,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-retro-zine" },
   },
   {
-    id: "od:template:weekly-update",
+    id: "template:weekly-update",
     kind: "template",
     name: "Weekly Update",
     description:
@@ -770,7 +770,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/weekly-update" },
   },
   {
-    id: "od:template:web-prototype-taste-editorial",
+    id: "template:web-prototype-taste-editorial",
     kind: "template",
     name: "Taste Editorial Web Prototype",
     description:
@@ -778,7 +778,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/web-prototype-taste-editorial" },
   },
   {
-    id: "od:template:audio-jingle",
+    id: "template:audio-jingle",
     kind: "template",
     name: "Audio Jingle",
     description:
@@ -786,7 +786,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/audio-jingle" },
   },
   {
-    id: "od:template:blog-post",
+    id: "template:blog-post",
     kind: "template",
     name: "Blog Post",
     description:
@@ -794,7 +794,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/blog-post" },
   },
   {
-    id: "od:template:clinical-case-report",
+    id: "template:clinical-case-report",
     kind: "template",
     name: "Clinical Case Report",
     description:
@@ -802,7 +802,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/clinical-case-report" },
   },
   {
-    id: "od:template:critique",
+    id: "template:critique",
     kind: "template",
     name: "Critique",
     description:
@@ -810,7 +810,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/critique" },
   },
   {
-    id: "od:template:dating-web",
+    id: "template:dating-web",
     kind: "template",
     name: "Dating Web",
     description:
@@ -818,7 +818,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/dating-web" },
   },
   {
-    id: "od:template:dcf-valuation",
+    id: "template:dcf-valuation",
     kind: "template",
     name: "Dcf Valuation",
     description:
@@ -826,7 +826,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/dcf-valuation" },
   },
   {
-    id: "od:template:digital-eguide",
+    id: "template:digital-eguide",
     kind: "template",
     name: "Digital Eguide",
     description:
@@ -834,7 +834,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/digital-eguide" },
   },
   {
-    id: "od:template:email-marketing",
+    id: "template:email-marketing",
     kind: "template",
     name: "Email Marketing",
     description:
@@ -842,7 +842,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/email-marketing" },
   },
   {
-    id: "od:template:eng-runbook",
+    id: "template:eng-runbook",
     kind: "template",
     name: "Eng Runbook",
     description:
@@ -850,7 +850,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/eng-runbook" },
   },
   {
-    id: "od:template:flowai-live-dashboard-template",
+    id: "template:flowai-live-dashboard-template",
     kind: "template",
     name: "Flowai Live Dashboard Template",
     description:
@@ -858,7 +858,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/flowai-live-dashboard-template" },
   },
   {
-    id: "od:template:gamified-app",
+    id: "template:gamified-app",
     kind: "template",
     name: "Gamified App",
     description:
@@ -866,7 +866,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/gamified-app" },
   },
   {
-    id: "od:template:github-dashboard",
+    id: "template:github-dashboard",
     kind: "template",
     name: "Github Dashboard",
     description:
@@ -874,7 +874,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/github-dashboard" },
   },
   {
-    id: "od:template:guizang-ppt",
+    id: "template:guizang-ppt",
     kind: "template",
     name: "Guizang PPT",
     description:
@@ -882,7 +882,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/guizang-ppt" },
   },
   {
-    id: "od:template:hr-onboarding",
+    id: "template:hr-onboarding",
     kind: "template",
     name: "Hr Onboarding",
     description:
@@ -890,7 +890,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/hr-onboarding" },
   },
   {
-    id: "od:template:html-ppt",
+    id: "template:html-ppt",
     kind: "template",
     name: "HTML PPT",
     description:
@@ -898,7 +898,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt" },
   },
   {
-    id: "od:template:html-ppt-course-module",
+    id: "template:html-ppt-course-module",
     kind: "template",
     name: "HTML PPT Course Module",
     description:
@@ -906,7 +906,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-course-module" },
   },
   {
-    id: "od:template:html-ppt-dir-key-nav-minimal",
+    id: "template:html-ppt-dir-key-nav-minimal",
     kind: "template",
     name: "HTML PPT Dir Key Nav Minimal",
     description:
@@ -914,7 +914,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-dir-key-nav-minimal" },
   },
   {
-    id: "od:template:html-ppt-hermes-cyber-terminal",
+    id: "template:html-ppt-hermes-cyber-terminal",
     kind: "template",
     name: "HTML PPT Hermes Cyber Terminal",
     description:
@@ -922,7 +922,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-hermes-cyber-terminal" },
   },
   {
-    id: "od:template:html-ppt-knowledge-arch-blueprint",
+    id: "template:html-ppt-knowledge-arch-blueprint",
     kind: "template",
     name: "HTML PPT Knowledge Arch Blueprint",
     description:
@@ -930,7 +930,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-knowledge-arch-blueprint" },
   },
   {
-    id: "od:template:html-ppt-obsidian-claude-gradient",
+    id: "template:html-ppt-obsidian-claude-gradient",
     kind: "template",
     name: "HTML PPT Obsidian Claude Gradient",
     description:
@@ -938,7 +938,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-obsidian-claude-gradient" },
   },
   {
-    id: "od:template:html-ppt-pitch-deck",
+    id: "template:html-ppt-pitch-deck",
     kind: "template",
     name: "HTML PPT Pitch Deck",
     description:
@@ -946,7 +946,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-pitch-deck" },
   },
   {
-    id: "od:template:html-ppt-presenter-mode-reveal",
+    id: "template:html-ppt-presenter-mode-reveal",
     kind: "template",
     name: "HTML PPT Presenter Mode Reveal",
     description:
@@ -954,7 +954,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-presenter-mode-reveal" },
   },
   {
-    id: "od:template:html-ppt-product-launch",
+    id: "template:html-ppt-product-launch",
     kind: "template",
     name: "HTML PPT Product Launch",
     description:
@@ -962,7 +962,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-product-launch" },
   },
   {
-    id: "od:template:html-ppt-taste-brutalist",
+    id: "template:html-ppt-taste-brutalist",
     kind: "template",
     name: "HTML PPT Taste Brutalist",
     description:
@@ -970,7 +970,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-taste-brutalist" },
   },
   {
-    id: "od:template:html-ppt-taste-editorial",
+    id: "template:html-ppt-taste-editorial",
     kind: "template",
     name: "HTML PPT Taste Editorial",
     description:
@@ -978,7 +978,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-taste-editorial" },
   },
   {
-    id: "od:template:html-ppt-tech-sharing",
+    id: "template:html-ppt-tech-sharing",
     kind: "template",
     name: "HTML PPT Tech Sharing",
     description:
@@ -986,7 +986,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-tech-sharing" },
   },
   {
-    id: "od:template:html-ppt-testing-safety-alert",
+    id: "template:html-ppt-testing-safety-alert",
     kind: "template",
     name: "HTML PPT Testing Safety Alert",
     description:
@@ -994,7 +994,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-testing-safety-alert" },
   },
   {
-    id: "od:template:html-ppt-weekly-report",
+    id: "template:html-ppt-weekly-report",
     kind: "template",
     name: "HTML PPT Weekly Report",
     description:
@@ -1002,7 +1002,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-weekly-report" },
   },
   {
-    id: "od:template:html-ppt-xhs-pastel-card",
+    id: "template:html-ppt-xhs-pastel-card",
     kind: "template",
     name: "HTML PPT Xhs Pastel Card",
     description:
@@ -1010,7 +1010,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-xhs-pastel-card" },
   },
   {
-    id: "od:template:html-ppt-xhs-post",
+    id: "template:html-ppt-xhs-post",
     kind: "template",
     name: "HTML PPT Xhs Post",
     description:
@@ -1018,7 +1018,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-xhs-post" },
   },
   {
-    id: "od:template:html-ppt-xhs-white-editorial",
+    id: "template:html-ppt-xhs-white-editorial",
     kind: "template",
     name: "HTML PPT Xhs White Editorial",
     description:
@@ -1026,7 +1026,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-xhs-white-editorial" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-8-bit-orbit",
+    id: "template:html-ppt-zhangzara-8-bit-orbit",
     kind: "template",
     name: "HTML PPT Zhangzara 8 Bit Orbit",
     description:
@@ -1034,7 +1034,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-8-bit-orbit" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-biennale-yellow",
+    id: "template:html-ppt-zhangzara-biennale-yellow",
     kind: "template",
     name: "HTML PPT Zhangzara Biennale Yellow",
     description:
@@ -1042,7 +1042,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-biennale-yellow" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-block-frame",
+    id: "template:html-ppt-zhangzara-block-frame",
     kind: "template",
     name: "HTML PPT Zhangzara Block Frame",
     description:
@@ -1050,7 +1050,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-block-frame" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-blue-professional",
+    id: "template:html-ppt-zhangzara-blue-professional",
     kind: "template",
     name: "HTML PPT Zhangzara Blue Professional",
     description:
@@ -1058,7 +1058,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-blue-professional" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-bold-poster",
+    id: "template:html-ppt-zhangzara-bold-poster",
     kind: "template",
     name: "HTML PPT Zhangzara Bold Poster",
     description:
@@ -1066,7 +1066,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-bold-poster" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-broadside",
+    id: "template:html-ppt-zhangzara-broadside",
     kind: "template",
     name: "HTML PPT Zhangzara Broadside",
     description:
@@ -1074,7 +1074,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-broadside" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-capsule",
+    id: "template:html-ppt-zhangzara-capsule",
     kind: "template",
     name: "HTML PPT Zhangzara Capsule",
     description:
@@ -1082,7 +1082,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-capsule" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-cartesian",
+    id: "template:html-ppt-zhangzara-cartesian",
     kind: "template",
     name: "HTML PPT Zhangzara Cartesian",
     description:
@@ -1090,7 +1090,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-cartesian" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-cobalt-grid",
+    id: "template:html-ppt-zhangzara-cobalt-grid",
     kind: "template",
     name: "HTML PPT Zhangzara Cobalt Grid",
     description:
@@ -1098,7 +1098,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-cobalt-grid" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-coral",
+    id: "template:html-ppt-zhangzara-coral",
     kind: "template",
     name: "HTML PPT Zhangzara Coral",
     description:
@@ -1106,7 +1106,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-coral" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-creative-mode",
+    id: "template:html-ppt-zhangzara-creative-mode",
     kind: "template",
     name: "HTML PPT Zhangzara Creative Mode",
     description:
@@ -1114,7 +1114,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-creative-mode" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-daisy-days",
+    id: "template:html-ppt-zhangzara-daisy-days",
     kind: "template",
     name: "HTML PPT Zhangzara Daisy Days",
     description:
@@ -1122,7 +1122,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-daisy-days" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-editorial-tri-tone",
+    id: "template:html-ppt-zhangzara-editorial-tri-tone",
     kind: "template",
     name: "HTML PPT Zhangzara Editorial Tri Tone",
     description:
@@ -1130,7 +1130,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-editorial-tri-tone" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-grove",
+    id: "template:html-ppt-zhangzara-grove",
     kind: "template",
     name: "HTML PPT Zhangzara Grove",
     description:
@@ -1138,7 +1138,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-grove" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-long-table",
+    id: "template:html-ppt-zhangzara-long-table",
     kind: "template",
     name: "HTML PPT Zhangzara Long Table",
     description:
@@ -1146,7 +1146,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-long-table" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-mat",
+    id: "template:html-ppt-zhangzara-mat",
     kind: "template",
     name: "HTML PPT Zhangzara Mat",
     description:
@@ -1154,7 +1154,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-mat" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-monochrome",
+    id: "template:html-ppt-zhangzara-monochrome",
     kind: "template",
     name: "HTML PPT Zhangzara Monochrome",
     description:
@@ -1162,7 +1162,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-monochrome" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-neo-grid-bold",
+    id: "template:html-ppt-zhangzara-neo-grid-bold",
     kind: "template",
     name: "HTML PPT Zhangzara Neo Grid Bold",
     description:
@@ -1170,7 +1170,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-neo-grid-bold" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-peoples-platform",
+    id: "template:html-ppt-zhangzara-peoples-platform",
     kind: "template",
     name: "HTML PPT Zhangzara Peoples Platform",
     description:
@@ -1178,7 +1178,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-peoples-platform" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-pin-and-paper",
+    id: "template:html-ppt-zhangzara-pin-and-paper",
     kind: "template",
     name: "HTML PPT Zhangzara Pin And Paper",
     description:
@@ -1186,7 +1186,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-pin-and-paper" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-pink-script",
+    id: "template:html-ppt-zhangzara-pink-script",
     kind: "template",
     name: "HTML PPT Zhangzara Pink Script",
     description:
@@ -1194,7 +1194,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-pink-script" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-playful",
+    id: "template:html-ppt-zhangzara-playful",
     kind: "template",
     name: "HTML PPT Zhangzara Playful",
     description:
@@ -1202,7 +1202,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-playful" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-raw-grid",
+    id: "template:html-ppt-zhangzara-raw-grid",
     kind: "template",
     name: "HTML PPT Zhangzara Raw Grid",
     description:
@@ -1210,7 +1210,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-raw-grid" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-retro-windows",
+    id: "template:html-ppt-zhangzara-retro-windows",
     kind: "template",
     name: "HTML PPT Zhangzara Retro Windows",
     description:
@@ -1218,7 +1218,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-retro-windows" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-sakura-chroma",
+    id: "template:html-ppt-zhangzara-sakura-chroma",
     kind: "template",
     name: "HTML PPT Zhangzara Sakura Chroma",
     description:
@@ -1226,7 +1226,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-sakura-chroma" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-scatterbrain",
+    id: "template:html-ppt-zhangzara-scatterbrain",
     kind: "template",
     name: "HTML PPT Zhangzara Scatterbrain",
     description:
@@ -1234,7 +1234,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-scatterbrain" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-signal",
+    id: "template:html-ppt-zhangzara-signal",
     kind: "template",
     name: "HTML PPT Zhangzara Signal",
     description:
@@ -1242,7 +1242,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-signal" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-soft-editorial",
+    id: "template:html-ppt-zhangzara-soft-editorial",
     kind: "template",
     name: "HTML PPT Zhangzara Soft Editorial",
     description:
@@ -1250,7 +1250,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-soft-editorial" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-stencil-tablet",
+    id: "template:html-ppt-zhangzara-stencil-tablet",
     kind: "template",
     name: "HTML PPT Zhangzara Stencil Tablet",
     description:
@@ -1258,7 +1258,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-stencil-tablet" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-studio",
+    id: "template:html-ppt-zhangzara-studio",
     kind: "template",
     name: "HTML PPT Zhangzara Studio",
     description:
@@ -1266,7 +1266,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-studio" },
   },
   {
-    id: "od:template:html-ppt-zhangzara-vellum",
+    id: "template:html-ppt-zhangzara-vellum",
     kind: "template",
     name: "HTML PPT Zhangzara Vellum",
     description:
@@ -1274,7 +1274,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/html-ppt-zhangzara-vellum" },
   },
   {
-    id: "od:template:hyperframes",
+    id: "template:hyperframes",
     kind: "template",
     name: "Hyperframes",
     description:
@@ -1282,7 +1282,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/hyperframes" },
   },
   {
-    id: "od:template:ib-pitch-book",
+    id: "template:ib-pitch-book",
     kind: "template",
     name: "Ib Pitch Book",
     description:
@@ -1290,7 +1290,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/ib-pitch-book" },
   },
   {
-    id: "od:template:image-poster",
+    id: "template:image-poster",
     kind: "template",
     name: "Image Poster",
     description:
@@ -1298,7 +1298,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/image-poster" },
   },
   {
-    id: "od:template:invoice",
+    id: "template:invoice",
     kind: "template",
     name: "Invoice",
     description:
@@ -1306,7 +1306,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/invoice" },
   },
   {
-    id: "od:template:kami-deck",
+    id: "template:kami-deck",
     kind: "template",
     name: "Kami Deck",
     description:
@@ -1314,7 +1314,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/kami-deck" },
   },
   {
-    id: "od:template:kami-landing",
+    id: "template:kami-landing",
     kind: "template",
     name: "Kami Landing",
     description:
@@ -1322,7 +1322,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/kami-landing" },
   },
   {
-    id: "od:template:kanban-board",
+    id: "template:kanban-board",
     kind: "template",
     name: "Kanban Board",
     description:
@@ -1330,7 +1330,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/kanban-board" },
   },
   {
-    id: "od:template:last30days",
+    id: "template:last30days",
     kind: "template",
     name: "Last30days",
     description:
@@ -1338,7 +1338,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/last30days" },
   },
   {
-    id: "od:template:live-artifact",
+    id: "template:live-artifact",
     kind: "template",
     name: "Live Artifact",
     description:
@@ -1346,7 +1346,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/live-artifact" },
   },
   {
-    id: "od:template:live-dashboard",
+    id: "template:live-dashboard",
     kind: "template",
     name: "Live Dashboard",
     description:
@@ -1354,7 +1354,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/live-dashboard" },
   },
   {
-    id: "od:template:magazine-poster",
+    id: "template:magazine-poster",
     kind: "template",
     name: "Magazine Poster",
     description:
@@ -1362,7 +1362,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/magazine-poster" },
   },
   {
-    id: "od:template:meeting-notes",
+    id: "template:meeting-notes",
     kind: "template",
     name: "Meeting Notes",
     description:
@@ -1370,7 +1370,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/meeting-notes" },
   },
   {
-    id: "od:template:mobile-onboarding",
+    id: "template:mobile-onboarding",
     kind: "template",
     name: "Mobile Onboarding",
     description:
@@ -1378,7 +1378,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/mobile-onboarding" },
   },
   {
-    id: "od:template:motion-frames",
+    id: "template:motion-frames",
     kind: "template",
     name: "Motion Frames",
     description:
@@ -1386,7 +1386,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/motion-frames" },
   },
   {
-    id: "od:template:open-design-landing",
+    id: "template:open-design-landing",
     kind: "template",
     name: "Editorial Landing",
     description:
@@ -1394,7 +1394,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/open-design-landing" },
   },
   {
-    id: "od:template:open-design-landing-deck",
+    id: "template:open-design-landing-deck",
     kind: "template",
     name: "Editorial Landing Deck",
     description:
@@ -1402,7 +1402,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/open-design-landing-deck" },
   },
   {
-    id: "od:template:orbit-general",
+    id: "template:orbit-general",
     kind: "template",
     name: "Orbit General",
     description:
@@ -1410,7 +1410,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/orbit-general" },
   },
   {
-    id: "od:template:orbit-github",
+    id: "template:orbit-github",
     kind: "template",
     name: "Orbit Github",
     description:
@@ -1418,7 +1418,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/orbit-github" },
   },
   {
-    id: "od:template:orbit-gmail",
+    id: "template:orbit-gmail",
     kind: "template",
     name: "Orbit Gmail",
     description:
@@ -1426,7 +1426,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/orbit-gmail" },
   },
   {
-    id: "od:template:orbit-linear",
+    id: "template:orbit-linear",
     kind: "template",
     name: "Orbit Linear",
     description:
@@ -1434,7 +1434,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/orbit-linear" },
   },
   {
-    id: "od:template:orbit-notion",
+    id: "template:orbit-notion",
     kind: "template",
     name: "Orbit Notion",
     description:
@@ -1442,7 +1442,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/orbit-notion" },
   },
   {
-    id: "od:template:pm-spec",
+    id: "template:pm-spec",
     kind: "template",
     name: "Pm Spec",
     description:
@@ -1450,7 +1450,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/pm-spec" },
   },
   {
-    id: "od:template:pricing-page",
+    id: "template:pricing-page",
     kind: "template",
     name: "Pricing Page",
     description:
@@ -1458,7 +1458,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/pricing-page" },
   },
   {
-    id: "od:template:replit-deck",
+    id: "template:replit-deck",
     kind: "template",
     name: "Replit Deck",
     description:
@@ -1466,7 +1466,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/replit-deck" },
   },
   {
-    id: "od:template:saas-landing",
+    id: "template:saas-landing",
     kind: "template",
     name: "Saas Landing",
     description:
@@ -1474,7 +1474,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/saas-landing" },
   },
   {
-    id: "od:template:simple-deck",
+    id: "template:simple-deck",
     kind: "template",
     name: "Simple Deck",
     description:
@@ -1482,7 +1482,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/simple-deck" },
   },
   {
-    id: "od:template:social-carousel",
+    id: "template:social-carousel",
     kind: "template",
     name: "Social Carousel",
     description:
@@ -1490,7 +1490,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/social-carousel" },
   },
   {
-    id: "od:template:social-media-dashboard",
+    id: "template:social-media-dashboard",
     kind: "template",
     name: "Social Media Dashboard",
     description:
@@ -1498,14 +1498,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/social-media-dashboard" },
   },
   {
-    id: "od:template:social-media-matrix-tracker-template",
+    id: "template:social-media-matrix-tracker-template",
     kind: "template",
     name: "Social Media Matrix Tracker Template",
     description: "社媒矩阵数据追踪面板模板（Social Media Matrix Tracker）。",
     source: { path: "design-templates/social-media-matrix-tracker-template" },
   },
   {
-    id: "od:template:sprite-animation",
+    id: "template:sprite-animation",
     kind: "template",
     name: "Sprite Animation",
     description:
@@ -1513,7 +1513,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/sprite-animation" },
   },
   {
-    id: "od:template:team-okrs",
+    id: "template:team-okrs",
     kind: "template",
     name: "Team Okrs",
     description:
@@ -1521,7 +1521,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/team-okrs" },
   },
   {
-    id: "od:template:trading-analysis-dashboard-template",
+    id: "template:trading-analysis-dashboard-template",
     kind: "template",
     name: "Trading Analysis Dashboard Template",
     description:
@@ -1529,7 +1529,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/trading-analysis-dashboard-template" },
   },
   {
-    id: "od:template:tweaks",
+    id: "template:tweaks",
     kind: "template",
     name: "Tweaks",
     description:
@@ -1537,7 +1537,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/tweaks" },
   },
   {
-    id: "od:template:video-shortform",
+    id: "template:video-shortform",
     kind: "template",
     name: "Video Shortform",
     description:
@@ -1545,7 +1545,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/video-shortform" },
   },
   {
-    id: "od:template:waitlist-page",
+    id: "template:waitlist-page",
     kind: "template",
     name: "Waitlist Page",
     description:
@@ -1553,7 +1553,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/waitlist-page" },
   },
   {
-    id: "od:template:web-prototype",
+    id: "template:web-prototype",
     kind: "template",
     name: "Web Prototype",
     description:
@@ -1561,7 +1561,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/web-prototype" },
   },
   {
-    id: "od:template:web-prototype-taste-brutalist",
+    id: "template:web-prototype-taste-brutalist",
     kind: "template",
     name: "Web Prototype Taste Brutalist",
     description:
@@ -1569,7 +1569,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/web-prototype-taste-brutalist" },
   },
   {
-    id: "od:template:web-prototype-taste-soft",
+    id: "template:web-prototype-taste-soft",
     kind: "template",
     name: "Web Prototype Taste Soft",
     description:
@@ -1577,7 +1577,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/web-prototype-taste-soft" },
   },
   {
-    id: "od:template:wireframe-sketch",
+    id: "template:wireframe-sketch",
     kind: "template",
     name: "Wireframe Sketch",
     description:
@@ -1585,7 +1585,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/wireframe-sketch" },
   },
   {
-    id: "od:template:x-research",
+    id: "template:x-research",
     kind: "template",
     name: "X Research",
     description:
@@ -1593,7 +1593,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-templates/x-research" },
   },
   {
-    id: "od:design-system:dashboard",
+    id: "design-system:dashboard",
     kind: "design-system",
     name: "Dashboard",
     description:
@@ -1601,7 +1601,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/dashboard" },
   },
   {
-    id: "od:design-system:trading-terminal",
+    id: "design-system:trading-terminal",
     kind: "design-system",
     name: "Trading Terminal",
     description:
@@ -1609,7 +1609,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/trading-terminal" },
   },
   {
-    id: "od:design-system:warm-editorial",
+    id: "design-system:warm-editorial",
     kind: "design-system",
     name: "Warm Editorial",
     description:
@@ -1617,7 +1617,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/warm-editorial" },
   },
   {
-    id: "od:design-system:editorial",
+    id: "design-system:editorial",
     kind: "design-system",
     name: "Editorial",
     description:
@@ -1625,7 +1625,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/editorial" },
   },
   {
-    id: "od:design-system:mono",
+    id: "design-system:mono",
     kind: "design-system",
     name: "Mono",
     description:
@@ -1633,7 +1633,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/mono" },
   },
   {
-    id: "od:design-system:apple",
+    id: "design-system:apple",
     kind: "design-system",
     name: "Apple",
     description:
@@ -1641,7 +1641,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/apple" },
   },
   {
-    id: "od:design-system:agentic",
+    id: "design-system:agentic",
     kind: "design-system",
     name: "Agentic",
     description:
@@ -1649,7 +1649,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/agentic" },
   },
   {
-    id: "od:design-system:airbnb",
+    id: "design-system:airbnb",
     kind: "design-system",
     name: "Airbnb",
     description:
@@ -1657,7 +1657,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/airbnb" },
   },
   {
-    id: "od:design-system:airtable",
+    id: "design-system:airtable",
     kind: "design-system",
     name: "Airtable",
     description:
@@ -1665,7 +1665,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/airtable" },
   },
   {
-    id: "od:design-system:ant",
+    id: "design-system:ant",
     kind: "design-system",
     name: "Ant",
     description:
@@ -1673,7 +1673,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/ant" },
   },
   {
-    id: "od:design-system:application",
+    id: "design-system:application",
     kind: "design-system",
     name: "Application",
     description:
@@ -1681,7 +1681,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/application" },
   },
   {
-    id: "od:design-system:arc",
+    id: "design-system:arc",
     kind: "design-system",
     name: "Arc",
     description:
@@ -1689,7 +1689,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/arc" },
   },
   {
-    id: "od:design-system:artistic",
+    id: "design-system:artistic",
     kind: "design-system",
     name: "Artistic",
     description:
@@ -1697,7 +1697,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/artistic" },
   },
   {
-    id: "od:design-system:atelier-zero",
+    id: "design-system:atelier-zero",
     kind: "design-system",
     name: "Atelier Zero",
     description:
@@ -1705,7 +1705,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/atelier-zero" },
   },
   {
-    id: "od:design-system:bento",
+    id: "design-system:bento",
     kind: "design-system",
     name: "Bento",
     description:
@@ -1713,7 +1713,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/bento" },
   },
   {
-    id: "od:design-system:binance",
+    id: "design-system:binance",
     kind: "design-system",
     name: "Binance",
     description:
@@ -1721,7 +1721,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/binance" },
   },
   {
-    id: "od:design-system:bmw",
+    id: "design-system:bmw",
     kind: "design-system",
     name: "Bmw",
     description:
@@ -1729,7 +1729,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/bmw" },
   },
   {
-    id: "od:design-system:bmw-m",
+    id: "design-system:bmw-m",
     kind: "design-system",
     name: "Bmw M",
     description:
@@ -1737,7 +1737,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/bmw-m" },
   },
   {
-    id: "od:design-system:bold",
+    id: "design-system:bold",
     kind: "design-system",
     name: "Bold",
     description:
@@ -1745,7 +1745,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/bold" },
   },
   {
-    id: "od:design-system:brutalism",
+    id: "design-system:brutalism",
     kind: "design-system",
     name: "Brutalism",
     description:
@@ -1753,7 +1753,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/brutalism" },
   },
   {
-    id: "od:design-system:bugatti",
+    id: "design-system:bugatti",
     kind: "design-system",
     name: "Bugatti",
     description:
@@ -1761,7 +1761,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/bugatti" },
   },
   {
-    id: "od:design-system:cafe",
+    id: "design-system:cafe",
     kind: "design-system",
     name: "Cafe",
     description:
@@ -1769,7 +1769,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/cafe" },
   },
   {
-    id: "od:design-system:cal",
+    id: "design-system:cal",
     kind: "design-system",
     name: "Cal",
     description:
@@ -1777,7 +1777,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/cal" },
   },
   {
-    id: "od:design-system:canva",
+    id: "design-system:canva",
     kind: "design-system",
     name: "Canva",
     description:
@@ -1785,7 +1785,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/canva" },
   },
   {
-    id: "od:design-system:cisco",
+    id: "design-system:cisco",
     kind: "design-system",
     name: "Cisco",
     description:
@@ -1793,7 +1793,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/cisco" },
   },
   {
-    id: "od:design-system:claude",
+    id: "design-system:claude",
     kind: "design-system",
     name: "Claude",
     description:
@@ -1801,7 +1801,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/claude" },
   },
   {
-    id: "od:design-system:clay",
+    id: "design-system:clay",
     kind: "design-system",
     name: "Clay",
     description:
@@ -1809,7 +1809,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/clay" },
   },
   {
-    id: "od:design-system:claymorphism",
+    id: "design-system:claymorphism",
     kind: "design-system",
     name: "Claymorphism",
     description:
@@ -1817,7 +1817,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/claymorphism" },
   },
   {
-    id: "od:design-system:clean",
+    id: "design-system:clean",
     kind: "design-system",
     name: "Clean",
     description:
@@ -1825,7 +1825,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/clean" },
   },
   {
-    id: "od:design-system:clickhouse",
+    id: "design-system:clickhouse",
     kind: "design-system",
     name: "Clickhouse",
     description:
@@ -1833,7 +1833,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/clickhouse" },
   },
   {
-    id: "od:design-system:cohere",
+    id: "design-system:cohere",
     kind: "design-system",
     name: "Cohere",
     description:
@@ -1841,7 +1841,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/cohere" },
   },
   {
-    id: "od:design-system:coinbase",
+    id: "design-system:coinbase",
     kind: "design-system",
     name: "Coinbase",
     description:
@@ -1849,7 +1849,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/coinbase" },
   },
   {
-    id: "od:design-system:colorful",
+    id: "design-system:colorful",
     kind: "design-system",
     name: "Colorful",
     description:
@@ -1857,7 +1857,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/colorful" },
   },
   {
-    id: "od:design-system:composio",
+    id: "design-system:composio",
     kind: "design-system",
     name: "Composio",
     description:
@@ -1865,7 +1865,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/composio" },
   },
   {
-    id: "od:design-system:contemporary",
+    id: "design-system:contemporary",
     kind: "design-system",
     name: "Contemporary",
     description:
@@ -1873,7 +1873,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/contemporary" },
   },
   {
-    id: "od:design-system:corporate",
+    id: "design-system:corporate",
     kind: "design-system",
     name: "Corporate",
     description:
@@ -1881,7 +1881,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/corporate" },
   },
   {
-    id: "od:design-system:cosmic",
+    id: "design-system:cosmic",
     kind: "design-system",
     name: "Cosmic",
     description:
@@ -1889,7 +1889,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/cosmic" },
   },
   {
-    id: "od:design-system:creative",
+    id: "design-system:creative",
     kind: "design-system",
     name: "Creative",
     description:
@@ -1897,7 +1897,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/creative" },
   },
   {
-    id: "od:design-system:cursor",
+    id: "design-system:cursor",
     kind: "design-system",
     name: "Cursor",
     description:
@@ -1905,14 +1905,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/cursor" },
   },
   {
-    id: "od:design-system:default",
+    id: "design-system:default",
     kind: "design-system",
     name: "Default",
     description: "A clean, product-oriented default.",
     source: { path: "design-systems/default" },
   },
   {
-    id: "od:design-system:discord",
+    id: "design-system:discord",
     kind: "design-system",
     name: "Discord",
     description:
@@ -1920,7 +1920,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/discord" },
   },
   {
-    id: "od:design-system:dithered",
+    id: "design-system:dithered",
     kind: "design-system",
     name: "Dithered",
     description:
@@ -1928,7 +1928,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/dithered" },
   },
   {
-    id: "od:design-system:doodle",
+    id: "design-system:doodle",
     kind: "design-system",
     name: "Doodle",
     description:
@@ -1936,7 +1936,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/doodle" },
   },
   {
-    id: "od:design-system:dramatic",
+    id: "design-system:dramatic",
     kind: "design-system",
     name: "Dramatic",
     description:
@@ -1944,7 +1944,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/dramatic" },
   },
   {
-    id: "od:design-system:duolingo",
+    id: "design-system:duolingo",
     kind: "design-system",
     name: "Duolingo",
     description:
@@ -1952,7 +1952,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/duolingo" },
   },
   {
-    id: "od:design-system:elegant",
+    id: "design-system:elegant",
     kind: "design-system",
     name: "Elegant",
     description:
@@ -1960,7 +1960,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/elegant" },
   },
   {
-    id: "od:design-system:elevenlabs",
+    id: "design-system:elevenlabs",
     kind: "design-system",
     name: "Elevenlabs",
     description:
@@ -1968,7 +1968,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/elevenlabs" },
   },
   {
-    id: "od:design-system:energetic",
+    id: "design-system:energetic",
     kind: "design-system",
     name: "Energetic",
     description:
@@ -1976,7 +1976,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/energetic" },
   },
   {
-    id: "od:design-system:enterprise",
+    id: "design-system:enterprise",
     kind: "design-system",
     name: "Enterprise",
     description:
@@ -1984,7 +1984,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/enterprise" },
   },
   {
-    id: "od:design-system:expo",
+    id: "design-system:expo",
     kind: "design-system",
     name: "Expo",
     description:
@@ -1992,7 +1992,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/expo" },
   },
   {
-    id: "od:design-system:expressive",
+    id: "design-system:expressive",
     kind: "design-system",
     name: "Expressive",
     description:
@@ -2000,7 +2000,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/expressive" },
   },
   {
-    id: "od:design-system:fantasy",
+    id: "design-system:fantasy",
     kind: "design-system",
     name: "Fantasy",
     description:
@@ -2008,7 +2008,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/fantasy" },
   },
   {
-    id: "od:design-system:ferrari",
+    id: "design-system:ferrari",
     kind: "design-system",
     name: "Ferrari",
     description:
@@ -2016,7 +2016,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/ferrari" },
   },
   {
-    id: "od:design-system:figma",
+    id: "design-system:figma",
     kind: "design-system",
     name: "Figma",
     description:
@@ -2024,7 +2024,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/figma" },
   },
   {
-    id: "od:design-system:flat",
+    id: "design-system:flat",
     kind: "design-system",
     name: "Flat",
     description:
@@ -2032,7 +2032,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/flat" },
   },
   {
-    id: "od:design-system:framer",
+    id: "design-system:framer",
     kind: "design-system",
     name: "Framer",
     description:
@@ -2040,7 +2040,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/framer" },
   },
   {
-    id: "od:design-system:friendly",
+    id: "design-system:friendly",
     kind: "design-system",
     name: "Friendly",
     description:
@@ -2048,7 +2048,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/friendly" },
   },
   {
-    id: "od:design-system:futuristic",
+    id: "design-system:futuristic",
     kind: "design-system",
     name: "Futuristic",
     description:
@@ -2056,7 +2056,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/futuristic" },
   },
   {
-    id: "od:design-system:github",
+    id: "design-system:github",
     kind: "design-system",
     name: "Github",
     description:
@@ -2064,7 +2064,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/github" },
   },
   {
-    id: "od:design-system:glassmorphism",
+    id: "design-system:glassmorphism",
     kind: "design-system",
     name: "Glassmorphism",
     description:
@@ -2072,7 +2072,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/glassmorphism" },
   },
   {
-    id: "od:design-system:gradient",
+    id: "design-system:gradient",
     kind: "design-system",
     name: "Gradient",
     description:
@@ -2080,7 +2080,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/gradient" },
   },
   {
-    id: "od:design-system:hashicorp",
+    id: "design-system:hashicorp",
     kind: "design-system",
     name: "Hashicorp",
     description:
@@ -2088,7 +2088,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/hashicorp" },
   },
   {
-    id: "od:design-system:hud",
+    id: "design-system:hud",
     kind: "design-system",
     name: "Hud",
     description:
@@ -2096,7 +2096,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/hud" },
   },
   {
-    id: "od:design-system:huggingface",
+    id: "design-system:huggingface",
     kind: "design-system",
     name: "Huggingface",
     description:
@@ -2104,7 +2104,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/huggingface" },
   },
   {
-    id: "od:design-system:ibm",
+    id: "design-system:ibm",
     kind: "design-system",
     name: "Ibm",
     description:
@@ -2112,7 +2112,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/ibm" },
   },
   {
-    id: "od:design-system:intercom",
+    id: "design-system:intercom",
     kind: "design-system",
     name: "Intercom",
     description:
@@ -2120,7 +2120,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/intercom" },
   },
   {
-    id: "od:design-system:kami",
+    id: "design-system:kami",
     kind: "design-system",
     name: "Kami",
     description:
@@ -2128,7 +2128,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/kami" },
   },
   {
-    id: "od:design-system:kraken",
+    id: "design-system:kraken",
     kind: "design-system",
     name: "Kraken",
     description:
@@ -2136,7 +2136,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/kraken" },
   },
   {
-    id: "od:design-system:lamborghini",
+    id: "design-system:lamborghini",
     kind: "design-system",
     name: "Lamborghini",
     description:
@@ -2144,7 +2144,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/lamborghini" },
   },
   {
-    id: "od:design-system:levels",
+    id: "design-system:levels",
     kind: "design-system",
     name: "Levels",
     description:
@@ -2152,14 +2152,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/levels" },
   },
   {
-    id: "od:design-system:linear-app",
+    id: "design-system:linear-app",
     kind: "design-system",
     name: "Linear App",
     description: "Project management. Ultra-minimal, precise, purple accent.",
     source: { path: "design-systems/linear-app" },
   },
   {
-    id: "od:design-system:lingo",
+    id: "design-system:lingo",
     kind: "design-system",
     name: "Lingo",
     description:
@@ -2167,7 +2167,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/lingo" },
   },
   {
-    id: "od:design-system:loom",
+    id: "design-system:loom",
     kind: "design-system",
     name: "Loom",
     description:
@@ -2175,7 +2175,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/loom" },
   },
   {
-    id: "od:design-system:lovable",
+    id: "design-system:lovable",
     kind: "design-system",
     name: "Lovable",
     description:
@@ -2183,7 +2183,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/lovable" },
   },
   {
-    id: "od:design-system:luxury",
+    id: "design-system:luxury",
     kind: "design-system",
     name: "Luxury",
     description:
@@ -2191,7 +2191,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/luxury" },
   },
   {
-    id: "od:design-system:mastercard",
+    id: "design-system:mastercard",
     kind: "design-system",
     name: "Mastercard",
     description:
@@ -2199,7 +2199,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/mastercard" },
   },
   {
-    id: "od:design-system:material",
+    id: "design-system:material",
     kind: "design-system",
     name: "Material",
     description:
@@ -2207,7 +2207,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/material" },
   },
   {
-    id: "od:design-system:meta",
+    id: "design-system:meta",
     kind: "design-system",
     name: "Meta",
     description:
@@ -2215,7 +2215,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/meta" },
   },
   {
-    id: "od:design-system:minimal",
+    id: "design-system:minimal",
     kind: "design-system",
     name: "Minimal",
     description:
@@ -2223,14 +2223,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/minimal" },
   },
   {
-    id: "od:design-system:minimax",
+    id: "design-system:minimax",
     kind: "design-system",
     name: "Minimax",
     description: "AI model provider. Bold dark interface with neon accents.",
     source: { path: "design-systems/minimax" },
   },
   {
-    id: "od:design-system:mintlify",
+    id: "design-system:mintlify",
     kind: "design-system",
     name: "Mintlify",
     description:
@@ -2238,7 +2238,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/mintlify" },
   },
   {
-    id: "od:design-system:miro",
+    id: "design-system:miro",
     kind: "design-system",
     name: "Miro",
     description:
@@ -2246,7 +2246,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/miro" },
   },
   {
-    id: "od:design-system:mission-control",
+    id: "design-system:mission-control",
     kind: "design-system",
     name: "Mission Control",
     description:
@@ -2254,7 +2254,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/mission-control" },
   },
   {
-    id: "od:design-system:mistral-ai",
+    id: "design-system:mistral-ai",
     kind: "design-system",
     name: "Mistral AI",
     description:
@@ -2262,7 +2262,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/mistral-ai" },
   },
   {
-    id: "od:design-system:modern",
+    id: "design-system:modern",
     kind: "design-system",
     name: "Modern",
     description:
@@ -2270,7 +2270,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/modern" },
   },
   {
-    id: "od:design-system:mongodb",
+    id: "design-system:mongodb",
     kind: "design-system",
     name: "Mongodb",
     description:
@@ -2278,7 +2278,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/mongodb" },
   },
   {
-    id: "od:design-system:neobrutalism",
+    id: "design-system:neobrutalism",
     kind: "design-system",
     name: "Neobrutalism",
     description:
@@ -2286,7 +2286,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/neobrutalism" },
   },
   {
-    id: "od:design-system:neon",
+    id: "design-system:neon",
     kind: "design-system",
     name: "Neon",
     description:
@@ -2294,7 +2294,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/neon" },
   },
   {
-    id: "od:design-system:neumorphism",
+    id: "design-system:neumorphism",
     kind: "design-system",
     name: "Neumorphism",
     description:
@@ -2302,7 +2302,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/neumorphism" },
   },
   {
-    id: "od:design-system:nike",
+    id: "design-system:nike",
     kind: "design-system",
     name: "Nike",
     description:
@@ -2310,7 +2310,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/nike" },
   },
   {
-    id: "od:design-system:notion",
+    id: "design-system:notion",
     kind: "design-system",
     name: "Notion",
     description:
@@ -2318,7 +2318,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/notion" },
   },
   {
-    id: "od:design-system:nvidia",
+    id: "design-system:nvidia",
     kind: "design-system",
     name: "Nvidia",
     description:
@@ -2326,14 +2326,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/nvidia" },
   },
   {
-    id: "od:design-system:ollama",
+    id: "design-system:ollama",
     kind: "design-system",
     name: "Ollama",
     description: "Run LLMs locally. Terminal-first, monochrome simplicity.",
     source: { path: "design-systems/ollama" },
   },
   {
-    id: "od:design-system:openai",
+    id: "design-system:openai",
     kind: "design-system",
     name: "Openai",
     description:
@@ -2341,14 +2341,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/openai" },
   },
   {
-    id: "od:design-system:opencode-ai",
+    id: "design-system:opencode-ai",
     kind: "design-system",
     name: "Opencode AI",
     description: "AI coding platform. Developer-centric dark theme.",
     source: { path: "design-systems/opencode-ai" },
   },
   {
-    id: "od:design-system:pacman",
+    id: "design-system:pacman",
     kind: "design-system",
     name: "Pacman",
     description:
@@ -2356,7 +2356,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/pacman" },
   },
   {
-    id: "od:design-system:paper",
+    id: "design-system:paper",
     kind: "design-system",
     name: "Paper",
     description:
@@ -2364,7 +2364,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/paper" },
   },
   {
-    id: "od:design-system:perplexity",
+    id: "design-system:perplexity",
     kind: "design-system",
     name: "Perplexity",
     description:
@@ -2372,7 +2372,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/perplexity" },
   },
   {
-    id: "od:design-system:perspective",
+    id: "design-system:perspective",
     kind: "design-system",
     name: "Perspective",
     description:
@@ -2380,14 +2380,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/perspective" },
   },
   {
-    id: "od:design-system:pinterest",
+    id: "design-system:pinterest",
     kind: "design-system",
     name: "Pinterest",
     description: "Visual discovery. Red accent, masonry grid, image-first.",
     source: { path: "design-systems/pinterest" },
   },
   {
-    id: "od:design-system:playstation",
+    id: "design-system:playstation",
     kind: "design-system",
     name: "Playstation",
     description:
@@ -2395,7 +2395,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/playstation" },
   },
   {
-    id: "od:design-system:posthog",
+    id: "design-system:posthog",
     kind: "design-system",
     name: "Posthog",
     description:
@@ -2403,7 +2403,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/posthog" },
   },
   {
-    id: "od:design-system:premium",
+    id: "design-system:premium",
     kind: "design-system",
     name: "Premium",
     description:
@@ -2411,7 +2411,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/premium" },
   },
   {
-    id: "od:design-system:professional",
+    id: "design-system:professional",
     kind: "design-system",
     name: "Professional",
     description:
@@ -2419,7 +2419,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/professional" },
   },
   {
-    id: "od:design-system:publication",
+    id: "design-system:publication",
     kind: "design-system",
     name: "Publication",
     description:
@@ -2427,7 +2427,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/publication" },
   },
   {
-    id: "od:design-system:raycast",
+    id: "design-system:raycast",
     kind: "design-system",
     name: "Raycast",
     description:
@@ -2435,7 +2435,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/raycast" },
   },
   {
-    id: "od:design-system:refined",
+    id: "design-system:refined",
     kind: "design-system",
     name: "Refined",
     description:
@@ -2443,7 +2443,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/refined" },
   },
   {
-    id: "od:design-system:renault",
+    id: "design-system:renault",
     kind: "design-system",
     name: "Renault",
     description:
@@ -2451,21 +2451,21 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/renault" },
   },
   {
-    id: "od:design-system:replicate",
+    id: "design-system:replicate",
     kind: "design-system",
     name: "Replicate",
     description: "Run ML models via API. Clean white canvas, code-forward.",
     source: { path: "design-systems/replicate" },
   },
   {
-    id: "od:design-system:resend",
+    id: "design-system:resend",
     kind: "design-system",
     name: "Resend",
     description: "Email API. Minimal dark theme, monospace accents.",
     source: { path: "design-systems/resend" },
   },
   {
-    id: "od:design-system:retro",
+    id: "design-system:retro",
     kind: "design-system",
     name: "Retro",
     description:
@@ -2473,7 +2473,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/retro" },
   },
   {
-    id: "od:design-system:revolut",
+    id: "design-system:revolut",
     kind: "design-system",
     name: "Revolut",
     description:
@@ -2481,21 +2481,21 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/revolut" },
   },
   {
-    id: "od:design-system:runwayml",
+    id: "design-system:runwayml",
     kind: "design-system",
     name: "Runwayml",
     description: "AI video generation. Cinematic dark UI, media-rich layout.",
     source: { path: "design-systems/runwayml" },
   },
   {
-    id: "od:design-system:sanity",
+    id: "design-system:sanity",
     kind: "design-system",
     name: "Sanity",
     description: "Headless CMS. Red accent, content-first editorial layout.",
     source: { path: "design-systems/sanity" },
   },
   {
-    id: "od:design-system:sentry",
+    id: "design-system:sentry",
     kind: "design-system",
     name: "Sentry",
     description:
@@ -2503,7 +2503,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/sentry" },
   },
   {
-    id: "od:design-system:shadcn",
+    id: "design-system:shadcn",
     kind: "design-system",
     name: "Shadcn",
     description:
@@ -2511,7 +2511,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/shadcn" },
   },
   {
-    id: "od:design-system:shopify",
+    id: "design-system:shopify",
     kind: "design-system",
     name: "Shopify",
     description:
@@ -2519,7 +2519,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/shopify" },
   },
   {
-    id: "od:design-system:simple",
+    id: "design-system:simple",
     kind: "design-system",
     name: "Simple",
     description:
@@ -2527,7 +2527,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/simple" },
   },
   {
-    id: "od:design-system:skeumorphism",
+    id: "design-system:skeumorphism",
     kind: "design-system",
     name: "Skeumorphism",
     description:
@@ -2535,7 +2535,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/skeumorphism" },
   },
   {
-    id: "od:design-system:slack",
+    id: "design-system:slack",
     kind: "design-system",
     name: "Slack",
     description:
@@ -2543,7 +2543,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/slack" },
   },
   {
-    id: "od:design-system:sleek",
+    id: "design-system:sleek",
     kind: "design-system",
     name: "Sleek",
     description:
@@ -2551,7 +2551,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/sleek" },
   },
   {
-    id: "od:design-system:spacex",
+    id: "design-system:spacex",
     kind: "design-system",
     name: "Spacex",
     description:
@@ -2559,7 +2559,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/spacex" },
   },
   {
-    id: "od:design-system:spacious",
+    id: "design-system:spacious",
     kind: "design-system",
     name: "Spacious",
     description:
@@ -2567,7 +2567,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/spacious" },
   },
   {
-    id: "od:design-system:spotify",
+    id: "design-system:spotify",
     kind: "design-system",
     name: "Spotify",
     description:
@@ -2575,7 +2575,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/spotify" },
   },
   {
-    id: "od:design-system:starbucks",
+    id: "design-system:starbucks",
     kind: "design-system",
     name: "Starbucks",
     description:
@@ -2583,7 +2583,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/starbucks" },
   },
   {
-    id: "od:design-system:storytelling",
+    id: "design-system:storytelling",
     kind: "design-system",
     name: "Storytelling",
     description:
@@ -2591,7 +2591,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/storytelling" },
   },
   {
-    id: "od:design-system:stripe",
+    id: "design-system:stripe",
     kind: "design-system",
     name: "Stripe",
     description:
@@ -2599,7 +2599,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/stripe" },
   },
   {
-    id: "od:design-system:supabase",
+    id: "design-system:supabase",
     kind: "design-system",
     name: "Supabase",
     description:
@@ -2607,7 +2607,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/supabase" },
   },
   {
-    id: "od:design-system:superhuman",
+    id: "design-system:superhuman",
     kind: "design-system",
     name: "Superhuman",
     description:
@@ -2615,7 +2615,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/superhuman" },
   },
   {
-    id: "od:design-system:tesla",
+    id: "design-system:tesla",
     kind: "design-system",
     name: "Tesla",
     description:
@@ -2623,7 +2623,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/tesla" },
   },
   {
-    id: "od:design-system:tetris",
+    id: "design-system:tetris",
     kind: "design-system",
     name: "Tetris",
     description:
@@ -2631,7 +2631,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/tetris" },
   },
   {
-    id: "od:design-system:theverge",
+    id: "design-system:theverge",
     kind: "design-system",
     name: "Theverge",
     description:
@@ -2639,7 +2639,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/theverge" },
   },
   {
-    id: "od:design-system:together-ai",
+    id: "design-system:together-ai",
     kind: "design-system",
     name: "Together AI",
     description:
@@ -2647,7 +2647,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/together-ai" },
   },
   {
-    id: "od:design-system:totality-festival",
+    id: "design-system:totality-festival",
     kind: "design-system",
     name: "Totality Festival",
     description:
@@ -2655,7 +2655,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/totality-festival" },
   },
   {
-    id: "od:design-system:uber",
+    id: "design-system:uber",
     kind: "design-system",
     name: "Uber",
     description:
@@ -2663,7 +2663,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/uber" },
   },
   {
-    id: "od:design-system:urdu",
+    id: "design-system:urdu",
     kind: "design-system",
     name: "Urdu",
     description:
@@ -2671,14 +2671,14 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/urdu" },
   },
   {
-    id: "od:design-system:vercel",
+    id: "design-system:vercel",
     kind: "design-system",
     name: "Vercel",
     description: "Frontend deployment. Black and white precision, Geist font.",
     source: { path: "design-systems/vercel" },
   },
   {
-    id: "od:design-system:vibrant",
+    id: "design-system:vibrant",
     kind: "design-system",
     name: "Vibrant",
     description:
@@ -2686,7 +2686,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/vibrant" },
   },
   {
-    id: "od:design-system:vintage",
+    id: "design-system:vintage",
     kind: "design-system",
     name: "Vintage",
     description:
@@ -2694,7 +2694,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/vintage" },
   },
   {
-    id: "od:design-system:vodafone",
+    id: "design-system:vodafone",
     kind: "design-system",
     name: "Vodafone",
     description:
@@ -2702,7 +2702,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/vodafone" },
   },
   {
-    id: "od:design-system:voltagent",
+    id: "design-system:voltagent",
     kind: "design-system",
     name: "Voltagent",
     description:
@@ -2710,7 +2710,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/voltagent" },
   },
   {
-    id: "od:design-system:warp",
+    id: "design-system:warp",
     kind: "design-system",
     name: "Warp",
     description:
@@ -2718,7 +2718,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/warp" },
   },
   {
-    id: "od:design-system:webex",
+    id: "design-system:webex",
     kind: "design-system",
     name: "Webex",
     description:
@@ -2726,7 +2726,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/webex" },
   },
   {
-    id: "od:design-system:webflow",
+    id: "design-system:webflow",
     kind: "design-system",
     name: "Webflow",
     description:
@@ -2734,7 +2734,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/webflow" },
   },
   {
-    id: "od:design-system:wechat",
+    id: "design-system:wechat",
     kind: "design-system",
     name: "Wechat",
     description:
@@ -2742,7 +2742,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/wechat" },
   },
   {
-    id: "od:design-system:wired",
+    id: "design-system:wired",
     kind: "design-system",
     name: "Wired",
     description:
@@ -2750,21 +2750,21 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/wired" },
   },
   {
-    id: "od:design-system:wise",
+    id: "design-system:wise",
     kind: "design-system",
     name: "Wise",
     description: "Money transfer. Bright green accent, friendly and clear.",
     source: { path: "design-systems/wise" },
   },
   {
-    id: "od:design-system:x-ai",
+    id: "design-system:x-ai",
     kind: "design-system",
     name: "X AI",
     description: "Elon Musk's AI lab. Stark monochrome, futuristic minimalism.",
     source: { path: "design-systems/x-ai" },
   },
   {
-    id: "od:design-system:xiaohongshu",
+    id: "design-system:xiaohongshu",
     kind: "design-system",
     name: "Xiaohongshu",
     description:
@@ -2772,7 +2772,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/xiaohongshu" },
   },
   {
-    id: "od:design-system:zapier",
+    id: "design-system:zapier",
     kind: "design-system",
     name: "Zapier",
     description:
@@ -2780,7 +2780,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     source: { path: "design-systems/zapier" },
   },
   {
-    id: "vm0:image-style:notion-illustration",
+    id: "image-style:notion-illustration",
     kind: "image-style",
     name: "Notion Illustration",
     description:
@@ -2793,7 +2793,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:vm0-illustration",
+    id: "image-style:vm0-illustration",
     kind: "image-style",
     name: "vm0 Illustration",
     description:
@@ -2806,7 +2806,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:postcard-illustration",
+    id: "image-style:postcard-illustration",
     kind: "image-style",
     name: "Postcard Illustration",
     description:
@@ -2819,7 +2819,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:folk-storybook",
+    id: "image-style:folk-storybook",
     kind: "image-style",
     name: "Folk Storybook Illustration",
     description:
@@ -2832,7 +2832,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:papernook",
+    id: "image-style:papernook",
     kind: "image-style",
     name: "Papernook",
     description:
@@ -2845,7 +2845,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:painterly-botanical",
+    id: "image-style:painterly-botanical",
     kind: "image-style",
     name: "Painterly Botanical",
     description:
@@ -2858,7 +2858,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:iso-scene",
+    id: "image-style:iso-scene",
     kind: "image-style",
     name: "Isometric Editorial Scene",
     description:
@@ -2871,7 +2871,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:inkdab",
+    id: "image-style:inkdab",
     kind: "image-style",
     name: "Inkdab Illustration",
     description:
@@ -2884,7 +2884,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:riso-relic",
+    id: "image-style:riso-relic",
     kind: "image-style",
     name: "Riso Relic",
     description:
@@ -2897,7 +2897,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:inkstomp",
+    id: "image-style:inkstomp",
     kind: "image-style",
     name: "Inkstomp",
     description:
@@ -2910,7 +2910,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:folk-muse",
+    id: "image-style:folk-muse",
     kind: "image-style",
     name: "Folk Muse",
     description:
@@ -2923,7 +2923,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:sunlit-gouache",
+    id: "image-style:sunlit-gouache",
     kind: "image-style",
     name: "Sunlit Gouache",
     description:
@@ -2936,7 +2936,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:mosaic-still-life",
+    id: "image-style:mosaic-still-life",
     kind: "image-style",
     name: "Mosaic Still Life",
     description:
@@ -2949,7 +2949,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:ink-mascot",
+    id: "image-style:ink-mascot",
     kind: "image-style",
     name: "Ink Mascot",
     description:
@@ -2962,7 +2962,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:sticker-sheet",
+    id: "image-style:sticker-sheet",
     kind: "image-style",
     name: "Sticker Sheet",
     description:
@@ -2975,7 +2975,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:flat-poster",
+    id: "image-style:flat-poster",
     kind: "image-style",
     name: "Flat Poster",
     description:
@@ -2988,7 +2988,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:mellow-pop",
+    id: "image-style:mellow-pop",
     kind: "image-style",
     name: "Mellow Pop",
     description:
@@ -3001,7 +3001,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:grainy-duotone",
+    id: "image-style:grainy-duotone",
     kind: "image-style",
     name: "Grainy Duotone",
     description:
@@ -3014,7 +3014,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:op-ed-cover",
+    id: "image-style:op-ed-cover",
     kind: "image-style",
     name: "Op-Ed Cover",
     description:
@@ -3027,7 +3027,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:grain-poster",
+    id: "image-style:grain-poster",
     kind: "image-style",
     name: "Grain Poster",
     description:
@@ -3040,7 +3040,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:light-pop-portrait",
+    id: "image-style:light-pop-portrait",
     kind: "image-style",
     name: "Light Pop Portrait",
     description:
@@ -3053,7 +3053,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:endpaper",
+    id: "image-style:endpaper",
     kind: "image-style",
     name: "Endpaper",
     description:
@@ -3066,7 +3066,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:editorial-flatfolk",
+    id: "image-style:editorial-flatfolk",
     kind: "image-style",
     name: "Editorial Flatfolk",
     description:
@@ -3079,7 +3079,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:soft-vector",
+    id: "image-style:soft-vector",
     kind: "image-style",
     name: "Soft Vector",
     description:
@@ -3092,7 +3092,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:loose-contour",
+    id: "image-style:loose-contour",
     kind: "image-style",
     name: "Loose Contour",
     description:
@@ -3105,7 +3105,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:jade-blockprint",
+    id: "image-style:jade-blockprint",
     kind: "image-style",
     name: "Jade Blockprint",
     description:
@@ -3118,7 +3118,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:shadow-pop",
+    id: "image-style:shadow-pop",
     kind: "image-style",
     name: "Shadow Pop",
     description:
@@ -3131,7 +3131,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:tiny-wanderer",
+    id: "image-style:tiny-wanderer",
     kind: "image-style",
     name: "Tiny Wanderer",
     description:
@@ -3144,7 +3144,7 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
     },
   },
   {
-    id: "vm0:image-style:iberian-vignette",
+    id: "image-style:iberian-vignette",
     kind: "image-style",
     name: "Iberian Vignette",
     description:
@@ -3159,26 +3159,26 @@ const OPEN_DESIGN_REGISTRY: readonly OpenDesignRegistryEntry[] = [
 ];
 
 function filterByKind(
-  kind: OpenDesignResourceKind,
-): readonly OpenDesignRegistryEntry[] {
-  return OPEN_DESIGN_REGISTRY.filter((entry) => {
+  kind: ResourceKind,
+): readonly RegistryEntry[] {
+  return RESOURCE_REGISTRY.filter((entry) => {
     return entry.kind === kind;
   });
 }
 
-export function listImageStyles(): readonly OpenDesignRegistryEntry[] {
+export function listImageStyles(): readonly RegistryEntry[] {
   return filterByKind("image-style");
 }
 
 export function findImageStyle(
   id: string,
-): OpenDesignRegistryEntry | undefined {
+): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
   });
 }
 
-export function toOpenDesignTarget(value: string): OpenDesignTarget {
+export function toGenerationTarget(value: string): GenerationTarget {
   if (value === "dashboard") {
     return "dashboard-design";
   }
@@ -3191,20 +3191,20 @@ export function toOpenDesignTarget(value: string): OpenDesignTarget {
     return "mobile-app-design";
   }
 
-  return value as OpenDesignTarget;
+  return value as GenerationTarget;
 }
 
-export function selectOpenDesignCandidates(): OpenDesignCandidateSlice {
+export function selectResourceCandidates(): ResourceCandidateSlice {
   return {
-    registryVersion: OPEN_DESIGN_REGISTRY_VERSION,
+    registryVersion: RESOURCE_REGISTRY_VERSION,
     source: {
-      repo: OPEN_DESIGN_REPO,
-      ref: OPEN_DESIGN_COMMIT,
+      repo: RESOURCE_REGISTRY_REPO,
+      ref: RESOURCE_REGISTRY_COMMIT,
     },
     sources: [
       {
-        repo: OPEN_DESIGN_REPO,
-        ref: OPEN_DESIGN_COMMIT,
+        repo: RESOURCE_REGISTRY_REPO,
+        ref: RESOURCE_REGISTRY_COMMIT,
       },
       {
         repo: VM0_SKILLS_REPO,
