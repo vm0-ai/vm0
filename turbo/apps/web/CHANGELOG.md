@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.397.1](https://github.com/vm0-ai/vm0/compare/web-v12.397.0...web-v12.397.1) (2026-05-28)
+
+
+### Bug Fixes
+
+* **web:** expose /illustration as a public route in clerk middleware ([#15295](https://github.com/vm0-ai/vm0/issues/15295)) ([832f7b2](https://github.com/vm0-ai/vm0/commit/832f7b2c83262e7d105868b38c5d8b0eb551a0f8)), closes [#15294](https://github.com/vm0-ai/vm0/issues/15294)
+
 ## [12.397.0](https://github.com/vm0-ai/vm0/compare/web-v12.396.1...web-v12.397.0) (2026-05-28)
 
 
