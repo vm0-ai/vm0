@@ -448,6 +448,8 @@ function compactActionResult(
       typeof value === "boolean"
     ) {
       compact[key] = value;
+    } else if (key === "foregroundRecovery" && isJsonObject(value)) {
+      compact[key] = value;
     }
   }
   return compact;

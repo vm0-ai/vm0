@@ -116,11 +116,20 @@ function responseFor(request) {
     };
   }
   if (request.kind === "keyboard.press_key") {
+    const foregroundRecovery = request.payload.foregroundRecovery
+      ? {
+          foregroundRecovery: {
+            triggered: true,
+            policy: request.payload.foregroundRecovery
+          }
+        }
+      : {};
     return {
       id: request.id,
       status: "succeeded",
       result: {
-        normalizedKey: request.payload.key
+        normalizedKey: request.payload.key,
+        ...foregroundRecovery
       }
     };
   }
@@ -671,6 +680,47 @@ describe("computer use native backend", () => {
         readFile(String(output.appState), "utf8"),
       ).resolves.toContain("<app_state>");
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
+    } finally {
+      await stopDaemon(daemonDir);
+      await rm(daemonDir, { recursive: true, force: true });
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("prints foreground recovery metadata from the vm0-computer CLI", async () => {
+    const helper = await createSessionHelper();
+    const daemonDir = await createDaemonDir();
+
+    try {
+      await startDaemon(helper.helperPath, daemonDir);
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          cliPath,
+          "press-key",
+          "--app",
+          "Safari",
+          "--key",
+          "escape",
+          "--foreground-recovery",
+          "always",
+          "--timeout",
+          "10",
+        ],
+        { cwd: desktopRoot, env: daemonEnv(daemonDir) },
+      );
+      const output = JSON.parse(stdout) as Record<string, unknown>;
+      expect(output).toMatchObject({
+        status: "succeeded",
+        action: {
+          app: "Safari",
+          key: "escape",
+          foregroundRecovery: {
+            triggered: true,
+            policy: "always",
+          },
+        },
+      });
     } finally {
       await stopDaemon(daemonDir);
       await rm(daemonDir, { recursive: true, force: true });
