@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.389.4](https://github.com/vm0-ai/vm0/compare/app-v0.389.3...app-v0.389.4) (2026-05-28)
+
+
+### Bug Fixes
+
+* **platform:** treat unset permission policy as not-applied in chat card ([#15315](https://github.com/vm0-ai/vm0/issues/15315)) ([b63418c](https://github.com/vm0-ai/vm0/commit/b63418c3d1fe5770d0ae63b3844d2c7cc19cfac2))
+
 ## [0.389.3](https://github.com/vm0-ai/vm0/compare/app-v0.389.2...app-v0.389.3) (2026-05-28)
 
 

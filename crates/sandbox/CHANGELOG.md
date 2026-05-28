@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.4...sandbox-v0.17.5) (2026-05-28)
+
+
+### Bug Fixes
+
+* label sandbox file operation errors ([#15303](https://github.com/vm0-ai/vm0/issues/15303)) ([dbc2ec3](https://github.com/vm0-ai/vm0/commit/dbc2ec33f982d1413f93307e933a1b48268a65a4))
+
 ## [0.17.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.3...sandbox-v0.17.4) (2026-05-25)
 
 

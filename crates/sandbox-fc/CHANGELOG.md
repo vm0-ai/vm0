@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.35.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.20...sandbox-fc-v0.35.21) (2026-05-28)
+
+
+### Bug Fixes
+
+* label sandbox file operation errors ([#15303](https://github.com/vm0-ai/vm0/issues/15303)) ([dbc2ec3](https://github.com/vm0-ai/vm0/commit/dbc2ec33f982d1413f93307e933a1b48268a65a4))
+* **sandbox-fc:** surface control socket scan errors ([#15302](https://github.com/vm0-ai/vm0/issues/15302)) ([e56a434](https://github.com/vm0-ai/vm0/commit/e56a43414a9a89119a7be89c659ba9d4c477f719))
+
 ## [0.35.20](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.19...sandbox-fc-v0.35.20) (2026-05-28)
 
 ## [0.35.19](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.18...sandbox-fc-v0.35.19) (2026-05-27)
