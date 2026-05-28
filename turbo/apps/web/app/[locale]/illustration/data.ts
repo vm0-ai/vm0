@@ -12,6 +12,46 @@ export interface IllustrationStyle {
 
 export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
   {
+    slug: "ink-storefront",
+    title: "Ink Storefront",
+    image: "ink-storefront.png",
+    cover: "refs/ink-storefront/ref-l1-lupo.png",
+    sample: "ref-l1-lupo.png",
+    width: 1024,
+    height: 1536,
+    refs: [
+      "ref-l1-lupo.png",
+      "ref-l1-petit-pain.png",
+      "ref-l2-fleur-fern.png",
+    ],
+  },
+  {
+    slug: "tiny-wanderer",
+    title: "Tiny Wanderer",
+    image: "tiny-wanderer.jpg",
+    cover: "refs/tiny-wanderer/varA.jpg",
+    sample: "varA.jpg",
+    width: 512,
+    height: 768,
+    refs: ["varA.jpg", "varB.jpg", "varC.jpg", "varD.jpg"],
+  },
+  {
+    slug: "crowd-ink",
+    title: "Crowd Ink",
+    image: "crowd-ink.png",
+    cover: "refs/crowd-ink/anchor.png",
+    sample: "anchor.png",
+    width: 1536,
+    height: 1024,
+    refs: [
+      "anchor.png",
+      "sample-cafe.png",
+      "sample-office.png",
+      "sample-picnic.png",
+      "sample-subway.png",
+    ],
+  },
+  {
     slug: "cozy-parlor",
     title: "Cozy Parlor",
     image: "cozy-parlor.jpg",
