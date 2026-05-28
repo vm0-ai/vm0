@@ -88,6 +88,7 @@ run_verifier() {
     GH_OAUTH_CLIENT_SECRET="${GH_OAUTH_CLIENT_SECRET:-}" \
     GOOGLE_OAUTH_CLIENT_SECRET="${GOOGLE_OAUTH_CLIENT_SECRET:-}" \
     SLACK_OAUTH_CLIENT_SECRET="${SLACK_OAUTH_CLIENT_SECRET:-}" \
+    X_OAUTH_CLIENT_SECRET="${X_OAUTH_CLIENT_SECRET:-}" \
     "$VERIFY"
 }
 
@@ -127,10 +128,33 @@ success_output="$(
 )"
 assert_contains "$success_output" "ok: GOOGLE_OAUTH_CLIENT_SECRET"
 assert_contains "$success_output" "ok: SLACK_OAUTH_CLIENT_SECRET"
-assert_contains "$success_output" "Checked 2 Development secrets"
+assert_contains "$success_output" "Checked 2 Development OAuth client secret entries (2 compared, 0 warning(s))"
 success_log_output="$(without_mask_commands "$success_output")"
 assert_not_contains "$success_log_output" "shared-google-secret"
 assert_not_contains "$success_log_output" "shared-slack-secret"
+
+warning_output="$(
+  EXPECTED_KEYS=X_OAUTH_CLIENT_SECRET \
+    run_verifier 2>&1
+)"
+assert_contains "$warning_output" "::warning::X_OAUTH_CLIENT_SECRET is missing from GitHub secrets; skipping 1Password comparison"
+assert_contains "$warning_output" "Checked 1 Development OAuth client secret entries (0 compared, 1 warning(s))"
+assert_not_contains "$warning_output" "missing or unreadable from 1Password"
+
+status=0
+missing_op_secret_output="$(
+  EXPECTED_KEYS=X_OAUTH_CLIENT_SECRET \
+    X_OAUTH_CLIENT_SECRET=github-x-secret \
+    run_verifier 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected GitHub-present, 1Password-missing case to fail"
+fi
+assert_contains "$missing_op_secret_output" "X_OAUTH_CLIENT_SECRET is missing or unreadable from 1Password"
+assert_contains "$missing_op_secret_output" "1 secret comparison(s) failed"
+missing_op_secret_log_output="$(without_mask_commands "$missing_op_secret_output")"
+assert_not_contains "$missing_op_secret_log_output" "github-x-secret"
+assert_not_contains "$missing_op_secret_log_output" "op-error-secret"
 
 status=0
 mixed_output="$(
@@ -145,10 +169,9 @@ if [[ "$status" -eq 0 ]]; then
 fi
 assert_contains "$mixed_output" "ok: GOOGLE_OAUTH_CLIENT_SECRET"
 assert_contains "$mixed_output" "ok: SLACK_OAUTH_CLIENT_SECRET"
-assert_contains "$mixed_output" "X_OAUTH_CLIENT_SECRET is missing from GitHub secrets"
-assert_contains "$mixed_output" "X_OAUTH_CLIENT_SECRET is missing or unreadable from 1Password"
+assert_contains "$mixed_output" "::warning::X_OAUTH_CLIENT_SECRET is missing from GitHub secrets; skipping 1Password comparison"
 assert_contains "$mixed_output" "GH_OAUTH_CLIENT_SECRET differs between GitHub secrets and 1Password"
-assert_contains "$mixed_output" "3 secret comparison(s) failed"
+assert_contains "$mixed_output" "1 secret comparison(s) failed"
 mixed_log_output="$(without_mask_commands "$mixed_output")"
 assert_not_contains "$mixed_log_output" "github-github-secret"
 assert_not_contains "$mixed_log_output" "op-github-secret"

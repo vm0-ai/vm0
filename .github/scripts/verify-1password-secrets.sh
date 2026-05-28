@@ -75,20 +75,20 @@ mask_value() {
 
 failures=0
 checked=0
+warnings=0
+compared=0
 
 while IFS= read -r key; do
   [[ -n "$key" ]] || continue
   checked=$((checked + 1))
 
-  has_github_value=true
   github_value="${!key-}"
   if [[ -z "$github_value" ]]; then
-    echo "::error::${key} is missing from GitHub secrets"
-    failures=$((failures + 1))
-    has_github_value=false
-  else
-    mask_value "$github_value"
+    echo "::warning::${key} is missing from GitHub secrets; skipping 1Password comparison"
+    warnings=$((warnings + 1))
+    continue
   fi
+  mask_value "$github_value"
 
   if ! item="$(op_item_for_key "$key")"; then
     echo "::error::No 1Password item mapping for ${key}"
@@ -113,7 +113,7 @@ while IFS= read -r key; do
     mask_value "$op_value"
   fi
 
-  if [[ "$has_github_value" != "true" || "$has_op_value" != "true" ]]; then
+  if [[ "$has_op_value" != "true" ]]; then
     continue
   fi
 
@@ -124,9 +124,10 @@ while IFS= read -r key; do
   fi
 
   echo "ok: ${key}"
+  compared=$((compared + 1))
 done <<< "$EXPECTED_KEYS"
 
-echo "Checked ${checked} ${VAULT_NAME} secrets"
+echo "Checked ${checked} ${VAULT_NAME} OAuth client secret entries (${compared} compared, ${warnings} warning(s))"
 
 if [[ "$failures" -gt 0 ]]; then
   echo "::error::${failures} secret comparison(s) failed"
