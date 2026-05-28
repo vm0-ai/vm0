@@ -21,7 +21,6 @@ export enum FeatureSwitchKey {
   CloseConnector = "closeConnector",
   OutlookMailConnector = "outlookMailConnector",
   OutlookCalendarConnector = "outlookCalendarConnector",
-  GoogleAdsConnector = "googleAdsConnector",
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
   PosthogConnector = "posthogConnector",
@@ -45,7 +44,6 @@ export enum FeatureSwitchKey {
 
   ChatMessageStartButton = "chatMessageStartButton",
   ChatThreadRename = "chatThreadRename",
-  DocsSite = "docsSite",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
@@ -55,6 +53,5 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   HostedSites = "hostedSites",
   SandboxIoLimiters = "sandboxIoLimiters",
-  ZeroMaps = "zeroMaps",
   ChatArtifactSidebar = "chatArtifactSidebar",
 }

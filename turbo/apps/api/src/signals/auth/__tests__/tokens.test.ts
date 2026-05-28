@@ -114,24 +114,10 @@ describe("auth tokens", () => {
     expect(verifyCliToken(legacyCliToken)).toBeNull();
   });
 
-  it("gates maps capability on the Zero Maps feature switch", () => {
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroMaps]: false },
-    );
-    const enabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroMaps]: true },
-    );
+  it("includes maps capability in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "maps:read",
-    );
-    expect(verifyZeroToken(enabledToken)?.capabilities).toContain("maps:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
   });
 
   it("gates local-agent capabilities on the Local Agent connector feature switch", () => {

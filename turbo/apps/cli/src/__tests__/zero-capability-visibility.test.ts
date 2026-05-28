@@ -148,6 +148,7 @@ describe("registerZeroCommands", () => {
       "agent",
       "schedule",
       "whoami",
+      "generate",
       "web",
     ]);
     expect(hiddenCommandNames(prog)).toEqual([
@@ -162,7 +163,6 @@ describe("registerZeroCommands", () => {
       "telegram",
       "phone",
       "variable",
-      "generate",
       "host",
       "maps",
       "local-agent",
@@ -203,6 +203,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "whoami",
+      "generate",
       "web",
     ]);
   });
@@ -670,6 +671,7 @@ describe("registerZeroCommands", () => {
       "model-provider",
       "schedule",
       "whoami",
+      "generate",
       "web",
     ]);
     expect(hiddenCommandNames(prog)).toContain("agent");

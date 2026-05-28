@@ -28,7 +28,6 @@ const CONDITIONAL_CAPABILITIES = [
   ["host:write", FeatureSwitchKey.HostedSites],
   ["local-agent:read", FeatureSwitchKey.LocalAgentConnector],
   ["local-agent:write", FeatureSwitchKey.LocalAgentConnector],
-  ["maps:read", FeatureSwitchKey.ZeroMaps],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
