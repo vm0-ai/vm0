@@ -198,6 +198,17 @@ def test_constructor_copies_observation_config():
     assert result.object_present == set()
 
 
+def test_diagnostic_scalar_can_observe_completed_value_in_incomplete_json():
+    extractor = JsonSelectiveExtractor(scalar_fields={("type",): ScalarField("string")})
+
+    extractor.feed(b'{"type":"message_start","message":{"id":"msg_1","mod')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.values == {}
+    assert extractor.observed_scalar_for_diagnostics(("type",)) == "message_start"
+
+
 def test_common_extraction_matches_json_loads_across_chunk_sizes():
     payloads = [
         (

@@ -377,7 +377,7 @@ class TestModelProviderStreamUsage:
             event="response.completed",
         )
 
-    def test_full_pipeline_eventless_incomplete_sse_does_not_warn(
+    def test_full_pipeline_eventless_incomplete_anthropic_usage_sse_warns(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
         flow = _model_provider_sse_flow(
@@ -402,7 +402,11 @@ class TestModelProviderStreamUsage:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         mock_opener.open.assert_not_called()
-        assert _model_sse_parse_warnings(flow) == []
+        _assert_single_model_sse_parse_warning(
+            flow,
+            usage_protocol="anthropic_messages_sse",
+            event="message_start",
+        )
 
     def test_full_pipeline_anthropic_non_usage_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor

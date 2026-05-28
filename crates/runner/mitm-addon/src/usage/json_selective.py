@@ -224,6 +224,15 @@ class JsonSelectiveExtractor:
             else:
                 i = self._consume_main(chunk, i)
 
+    def observed_scalar_for_diagnostics(self, path: Path) -> object | None:
+        """Return one completed selected scalar for diagnostics only.
+
+        This may expose a scalar observed before a later parse error. Callers
+        must not use it for billing or normal extraction; ``finish().values``
+        remains the authoritative complete-document result.
+        """
+        return self.values.get(path)
+
     def finish(self) -> JsonExtractionResult:
         """Finalize the current document and return the extraction result.
 
