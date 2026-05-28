@@ -42,6 +42,521 @@ export const GALLERY_CATEGORY_LABELS: Record<GalleryCategory | "all", string> =
 
 export const GALLERY_ITEMS: readonly GalleryItem[] = [
   {
+    slug: "spacex-mission-brief",
+    category: "website",
+    title: "SpaceX Mission Brief",
+    description:
+      "A mission brief page with launch window, payload, trajectory, vehicle stats, and live webcast.",
+    prompt:
+      "Using `zero generate website` with design system `spacex` and template `saas-landing`, create a space launch mission brief website. Launch window, payload, trajectory, vehicle stats, webcast, and press kit. Make it feel aerospace black-white, technical, bold.",
+    previewImage:
+      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/spacex-mission-brief.png",
+    artifactUrl: "https://spacex-mission-brief-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:spacex",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:spacex",
+    ],
+  },
+  {
+    slug: "sleek-device-launch",
+    category: "website",
+    title: "Sleek Device Launch",
+    description:
+      "A device launch page with product render, specs, ecosystem, preorder, and comparison.",
+    prompt:
+      "Using `zero generate website` with design system `sleek` and template `saas-landing`, create a sleek hardware device launch page. Product render, specs, ecosystem, comparison, preorder, and support. Make it feel sleek, minimal hardware, high polish.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/sleek-device-launch.png",
+    artifactUrl: "https://sleek-device-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:sleek",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:sleek",
+    ],
+  },
+  {
+    slug: "energetic-sports-app",
+    category: "website",
+    title: "Energetic Sports App",
+    description:
+      "A sports training app launch with workout streaks, coach plans, live challenges, and teams.",
+    prompt:
+      "Using `zero generate website` with design system `energetic` and template `saas-landing`, create a landing page for a sports training app. Workout streaks, coach plans, live challenges, team leaderboard, and start CTA. Make it feel athletic, high energy, mobile.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/energetic-sports-app.png",
+    artifactUrl: "https://energetic-sports-app-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:energetic",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:energetic",
+    ],
+  },
+  {
+    slug: "friendly-onboarding-flow",
+    category: "website",
+    title: "Friendly Onboarding Flow",
+    description:
+      "A product onboarding page with checklist, templates, team invites, empty states, and tips.",
+    prompt:
+      "Using `zero generate website` with design system `friendly` and template `saas-landing`, create a friendly product onboarding website. Checklist, template picker, team invites, empty states, and tips. Make it feel friendly, soft, clear.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/friendly-onboarding-flow.png",
+    artifactUrl: "https://friendly-onboarding-flow-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:friendly",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:friendly",
+    ],
+  },
+  {
+    slug: "colorful-event-agenda",
+    category: "website",
+    title: "Colorful Event Agenda",
+    description:
+      "A conference agenda page with tracks, speakers, venue zones, sponsor moments, and live updates.",
+    prompt:
+      "Using `zero generate website` with design system `colorful` and template `saas-landing`, create a colorful event agenda website. Track filters, speaker cards, venue zones, sponsor moments, and live update strip. Make it feel bright multi-color, energetic, organized.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/colorful-event-agenda.png",
+    artifactUrl: "https://colorful-event-agenda-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:colorful",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:colorful",
+    ],
+  },
+  {
+    slug: "bold-campaign-launch",
+    category: "website",
+    title: "Bold Campaign Launch",
+    description:
+      "A high-impact campaign page with punchy message hierarchy, proof blocks, offers, and signup.",
+    prompt:
+      "Using `zero generate website` with design system `bold` and template `saas-landing`, create a landing page for a high-impact marketing campaign. Huge hero, proof blocks, offer stack, testimonials, and signup CTA. Make it feel loud, confident, direct.",
+    previewImage:
+      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/bold-campaign-launch.png",
+    artifactUrl: "https://bold-campaign-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:bold",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:bold",
+    ],
+  },
+  {
+    slug: "clay-product-tour",
+    category: "website",
+    title: "Clay Product Tour",
+    description:
+      "A product tour landing for a data enrichment workflow with tables, formulas, AI research, and CRM sync.",
+    prompt:
+      "Using `zero generate website` with design system `clay` and template `saas-landing`, create a landing page for a data enrichment product tour. Table mockup, formulas, AI research, CRM sync, templates, and demo CTA. Make it feel soft clay surfaces, modern GTM, crafted.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/clay-product-tour.png",
+    artifactUrl: "https://clay-product-tour-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:clay",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:clay",
+    ],
+  },
+  {
+    slug: "bmw-m-track-experience",
+    category: "website",
+    title: "BMW M Track Experience",
+    description:
+      "A premium performance driving experience page with schedule, telemetry, instructors, and booking.",
+    prompt:
+      "Using `zero generate website` with design system `bmw-m` and template `saas-landing`, create a launch page for a premium track driving experience. Hero, telemetry cards, instructor lineup, schedule, packages, and booking CTA. Make it feel motorsport blue-red, precise, premium.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/bmw-m-track-experience.png",
+    artifactUrl: "https://bmw-m-track-experience-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:bmw-m",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:bmw-m",
+    ],
+  },
+  {
+    slug: "vintage-style-magazine",
+    category: "website",
+    title: "Vintage Style Magazine",
+    description:
+      "A magazine feature on the resurgence of vintage typography with pull quotes and image-led sections.",
+    prompt:
+      "Using `zero generate website` with design system `vintage` and template `blog-post`, create a feature article about the resurgence of vintage typography. Hero spread, body with pull quotes, image-led sections via CSS treatments, and related reading. Make it feel warm sepia, classic serif, slow magazine pacing.",
+    previewImage:
+      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/vintage-style-magazine.png",
+    artifactUrl: "https://vintage-style-magazine-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:article-magazine",
+    templateId: "od:template:blog-post",
+    designSystemId: "od:design-system:vintage",
+    resourceHints: [
+      "od:skill:article-magazine",
+      "od:template:blog-post",
+      "od:design-system:vintage",
+    ],
+  },
+  {
+    slug: "tetris-remix-launch",
+    category: "website",
+    title: "Tetris Remix Launch",
+    description:
+      "A browser tetris remix landing with daily challenge, leaderboard, character skins, and play-now CTA.",
+    prompt:
+      "Using `zero generate website` with design system `tetris` and template `gamified-app`, create a landing page for a browser-based tetris remix with seasonal challenges. Hero with falling-block grid, daily challenge, leaderboard, character skins, and play-now CTA. Make it feel bold primary blocks, joyful arcade energy, retro polish.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/tetris-remix-launch.png",
+    artifactUrl: "https://tetris-remix-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:gamified-app",
+    designSystemId: "od:design-system:tetris",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:gamified-app",
+      "od:design-system:tetris",
+    ],
+  },
+  {
+    slug: "runwayml-video-launch",
+    category: "website",
+    title: "Runwayml Video Launch",
+    description:
+      "A video-model launch with frame grid hero, capability strip, before/after, and license tiers.",
+    prompt:
+      "Using `zero generate website` with design system `runwayml` and template `saas-landing`, create a launch site for a new video model with motion brush. Hero with frame grid, capability strip, before/after, license tiers, and try-now CTA. Make it feel cinematic dark, glossy gradients, creative-tool polish.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/runwayml-video-launch.png",
+    artifactUrl: "https://runwayml-video-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:runwayml",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:runwayml",
+    ],
+  },
+  {
+    slug: "miro-canvas-launch",
+    category: "website",
+    title: "Miro Canvas Launch",
+    description:
+      "An infinite canvas workspace upgrade landing with sticky-note canvas, templates, and AI clustering.",
+    prompt:
+      "Using `zero generate website` with design system `miro` and template `saas-landing`, create a landing page for an infinite canvas workspace upgrade. Hero with sticky-note canvas mockup, templates, integrations, AI clustering teaser, and pricing. Make it feel bright multi-color, playful sticker shapes, collaborative.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/miro-canvas-launch.png",
+    artifactUrl: "https://miro-canvas-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:miro",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:miro",
+    ],
+  },
+  {
+    slug: "doodle-kids-book",
+    category: "website",
+    title: "Doodle Kids Book",
+    description:
+      "A hand-drawn kids storybook subscription landing with character doodles, sample pages, and gift options.",
+    prompt:
+      "Using `zero generate website` with design system `doodle` and template `saas-landing`, create a landing page for a hand-drawn kids storybook subscription. Hero with character doodle, sample pages, age guide, gift options, and subscribe CTA. Make it feel hand-drawn lines, crayon textures, joyful and warm.",
+    previewImage:
+      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/doodle-kids-book.png",
+    artifactUrl: "https://doodle-kids-book-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:doodle",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:doodle",
+    ],
+  },
+  {
+    slug: "arc-browser-launch",
+    category: "website",
+    title: "Arc Browser Launch",
+    description:
+      "A browser launch page with sidebar mockup, spaces flow, command bar, and AI assist teaser.",
+    prompt:
+      "Using `zero generate website` with design system `arc` and template `saas-landing`, create a launch site for a browser that organizes tabs into spaces. Hero with sidebar mockup, spaces flow, command bar, AI assist teaser, and download CTA. Make it feel playful gradient, generous whitespace, designer-favorite.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e3d20797-dd13-4c50-b1f9-b02b5b1d2ba0/arc-browser-launch.png",
+    artifactUrl:
+      "https://web-design-pass2-arc-browser-launch-715f6d07-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:arc",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:arc",
+    ],
+  },
+  {
+    slug: "retro-synthwave-product",
+    category: "website",
+    title: "Retro Synthwave Product",
+    description:
+      "A music-production sample pack launch with neon grid hero, audio waveforms, license tiers, and a download CTA.",
+    prompt:
+      "Using `zero generate website` with design system `retro` and template `saas-landing`, create a launch page for a music-production sample pack inspired by the 80s. Hero with neon grid, pack contents, audio waveforms, license tiers, and download CTA. Make it feel magenta + cyan, sun-grid horizons, VHS feel.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/retro-synthwave-product.png",
+    artifactUrl:
+      "https://web-design-pass1-retro-synthwave-product-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:retro",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:retro",
+    ],
+  },
+  {
+    slug: "claymorphism-kids-app",
+    category: "website",
+    title: "Claymorphism Kids App",
+    description:
+      "A playful learning app landing for kids with bouncy 3D characters, big play buttons, parent approval, and family plan.",
+    prompt:
+      "Using `zero generate website` with design system `claymorphism` and template `saas-landing`, create a landing for a learning app for kids. Bouncy 3D characters, big play buttons, parent-approval section, pricing, and family plan. Make it feel rounded clay shapes, soft shadows, playful pastels.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claymorphism-kids-app.png",
+    artifactUrl:
+      "https://web-design-pass1-claymorphism-kids-app-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:claymorphism",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:claymorphism",
+    ],
+  },
+  {
+    slug: "neumorphism-music-controls",
+    category: "website",
+    title: "Neumorphism Music App",
+    description:
+      "A tactile music control app landing with soft button gallery, preset library, and room calibration.",
+    prompt:
+      "Using `zero generate website` with design system `neumorphism` and template `saas-landing`, create a landing for a tactile music control app for hi-fi setups. Hero device mockup, soft button gallery, preset library, room calibration, and download CTA. Make it feel soft inset/outset shadows, monochrome, calm and tactile.",
+    previewImage:
+      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/neumorphism-music-controls.png",
+    artifactUrl: "https://neumorphism-music-controls-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:neumorphism",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:neumorphism",
+    ],
+  },
+  {
+    slug: "neobrutalism-todo-launch",
+    category: "website",
+    title: "Neobrutalism Todo Launch",
+    description:
+      "An opinionated to-do app marketing site with hard-shadow sticker cards, screenshot strip, and a punchy pricing block.",
+    prompt:
+      "Using `zero generate website` with design system `neobrutalism` and template `web-prototype-taste-brutalist`, create a marketing site for an opinionated to-do app. Loud headline, sticker-like cards with hard shadows, screenshot strip, and a punchy pricing block. Make it feel thick borders, hard offset shadows, primary colors, playful.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/neobrutalism-todo-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-neobrutalism-todo-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:web-prototype-taste-brutalist",
+    designSystemId: "od:design-system:neobrutalism",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:web-prototype-taste-brutalist",
+      "od:design-system:neobrutalism",
+    ],
+  },
+  {
+    slug: "glassmorphism-saas-launch",
+    category: "website",
+    title: "Glassmorphism Cloud Launch",
+    description:
+      "A creator cloud storage launch with frosted hero panels, floating cards over a vivid gradient, and an integrations grid.",
+    prompt:
+      "Using `zero generate website` with design system `glassmorphism` and template `saas-landing`, create a launch site for a creator cloud storage product. Frosted hero panels, floating cards over a vivid gradient, pricing trio, and integrations grid. Make it feel vibrant gradient backdrop, blurred glass surfaces, light and airy.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/glassmorphism-saas-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-glassmorphism-saas-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:glassmorphism",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:glassmorphism",
+    ],
+  },
+  {
+    slug: "revolut-card-launch",
+    category: "website",
+    title: "Revolut Card Launch",
+    description:
+      "A premium metal travel card launch with card render, FX savings calculator, lounge perks, and order CTA.",
+    prompt:
+      "Using `zero generate website` with design system `revolut` and template `saas-landing`, create a launch site for a premium metal travel card. Hero with card render, FX savings calculator, lounge perks, security, and order CTA. Make it feel dark luxe, neon accents, fintech polish.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/revolut-card-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-revolut-card-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:revolut",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:revolut",
+    ],
+  },
+  {
+    slug: "discord-community-launch",
+    category: "website",
+    title: "Discord Community Launch",
+    description:
+      "A verified community server template launch for indie game devs, with channel mockup, role system, and voice stages.",
+    prompt:
+      "Using `zero generate website` with design system `discord` and template `saas-landing`, create a landing for a verified community server template for indie game devs. Hero with channel mockup, role system, voice stages, moderation tools, and a join CTA. Make it feel blurple gradient, playful illustration, gamer-friendly.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/discord-community-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-discord-community-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:discord",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:discord",
+    ],
+  },
+  {
+    slug: "figma-design-tool-launch",
+    category: "website",
+    title: "Figma Design Tool Launch",
+    description:
+      "A launch page for a Figma-to-React plugin with install flow, before/after demo, supported components, and partner logos.",
+    prompt:
+      "Using `zero generate website` with design system `figma` and template `saas-landing`, create a launch page for a new Figma plugin that turns frames into production React. Show install flow, before/after demo, supported components, team plan pricing teaser, and partner logos. Make it feel bright multi-color brand, layered shapes, clear hierarchy.",
+    previewImage:
+      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/figma-design-tool-launch.png",
+    artifactUrl:
+      "https://web-design-pass1-figma-design-tool-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:figma",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:figma",
+    ],
+  },
+  {
+    slug: "raycast-extensions-launch",
+    category: "website",
+    title: "Raycast Extensions Launch",
+    description:
+      "A launch page for a Raycast extensions marketplace with a command-palette mockup, featured extensions, and a developer kit teaser.",
+    prompt:
+      "Using `zero generate website` with design system `raycast` and template `saas-landing`, create a launch page for a Raycast extensions marketplace category. Hero command palette mockup, featured extensions, install flow, developer kit teaser, and a closing CTA. Make it feel punchy red accent, dark UI, hotkey-driven.",
+    previewImage:
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1cfea3f1-6dbd-465b-83c3-eca224bde3b8/raycast-extensions-launch.png",
+    artifactUrl:
+      "https://web-design-serial-19-raycast-extensions-launch-715f6d07.sites.vm0.io",
+    previewKind: "website",
+    generationKind: "website",
+    skillId: "od:skill:frontend-skill",
+    templateId: "od:template:saas-landing",
+    designSystemId: "od:design-system:raycast",
+    resourceHints: [
+      "od:skill:frontend-skill",
+      "od:template:saas-landing",
+      "od:design-system:raycast",
+    ],
+  },
+  {
     slug: "launch-metrics-command-center",
     category: "website",
     title: "Launch Metrics Command Center",
@@ -50,9 +565,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dashboard` and template `dashboard`, create a polished website for a SaaS launch metrics command center. Show activation, retention, revenue, support load, release health, ranked opportunities, and a concise executive summary. Make it feel like a quiet operational dashboard that a founder could scan every morning.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/751a6c2a-cd82-4322-86a4-dc1a1b9ab7a3/gallery-trial-data-dashboard-dashboard-hosted.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e6679356-a63e-4241-973d-2faba24637e9/launch-metrics-command-center.png",
     artifactUrl:
-      "https://gallery-trial-data-dashboard-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-serial-01-launch-metrics-command-center-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -73,9 +588,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `trading-terminal` and template `dashboard`, create a polished website for a real-time market risk monitor. Show liquidity, volatility, exposure, alerts, watchlists, and a concise risk summary for an investment team. Make it feel like a dark, high-density trading terminal with clear charts and fast scanning.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/57d4059d-a65e-4807-b21a-a6f6ae1b4f57/gallery-trial-data-dashboard-terminal-hosted.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e79888aa-9368-46dd-b936-326ef3b18f52/market-risk-monitor.png",
     artifactUrl:
-      "https://gallery-trial-data-dashboard-terminal-715f6d07.sites.vm0.io",
+      "https://web-design-serial-02-market-risk-monitor-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -96,9 +611,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dashboard` and template `finance-report`, create a polished executive website report about AI infrastructure cost efficiency. Include spend trends, unit economics, gross margin pressure, vendor concentration, optimization opportunities, risks, and a clear recommendation section. Make it feel like a rigorous board-ready report with practical charts and tables.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d35e7d77-fb4f-42f7-a9c9-c41282e0c7f5/hosted-screenshot.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1d1c1982-f638-475e-869b-e47bb98b9e5e/ai-infrastructure-cost-report.png",
     artifactUrl:
-      "https://gallery-trial-data-finance-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-serial-03-ai-infrastructure-cost-report-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -119,8 +634,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mono` and template `docs-page`, create a polished website that documents API usage analytics for a developer platform. Include metric definitions, event taxonomy, query examples, dashboard interpretation, anomaly notes, and a concise data quality checklist. Make it feel precise, minimal, and technical without becoming cluttered.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d1f09f14-f861-4a79-9a40-794b11e04e12/hosted-screenshot-visible.png",
-    artifactUrl: "https://gallery-trial-data-docs-mono-715f6d07.sites.vm0.io",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/48a9eed4-7aad-4e2f-9672-cd7186bc22f1/api-usage-analytics-docs.png",
+    artifactUrl:
+      "https://web-design-serial-04-api-usage-analytics-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -141,9 +657,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `editorial` and template `web-prototype-taste-editorial`, create a polished editorial website feature about the rise of urban microfactories. Tell the story through strong headlines, image-led sections, short field notes, expert quotes, and a closing outlook on how local manufacturing changes cities. Make it feel like a premium design magazine feature.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d85179d8-7f58-4c1f-9f05-217f4fc3efec/hosted-desktop.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d48903dc-ee68-457b-a007-aad2ac067969/urban-microfactories.png",
     artifactUrl:
-      "https://gallery-trial-article-editorial-editorial-715f6d07.sites.vm0.io",
+      "https://web-design-serial-05-urban-microfactories-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -164,9 +680,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `warm-editorial` and template `web-prototype-taste-editorial`, create a polished magazine-style website about independent coffee roasters rebuilding neighborhood culture. Use warm storytelling, sensory details, founder profiles, a simple map-like section, and a thoughtful conclusion. Make it feel inviting, tactile, and carefully edited.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1a78c132-62e2-4a95-81dc-ac3f7941207d/gallery-trial-article-editorial-warm-hosted.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b467763f-60a7-4ad2-93d2-ac19017b33b5/neighborhood-roasters.png",
     artifactUrl:
-      "https://gallery-trial-article-editorial-warm-715f6d07.sites.vm0.io",
+      "https://web-design-serial-06-neighborhood-roasters-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -187,9 +703,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `apple` and template `docs-page`, create a polished website guide to choosing a modern travel camera setup. Structure it like a beautiful product guide with clear sections, comparison cards, practical examples, and buying considerations. Make it feel calm and premium, useful for creators who want to travel light.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/31647c3f-1e30-44cc-8a39-41fe627e0d90/hosted-desktop.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5955bb78-aee6-4ca4-8aa7-d3b40d707bf7/travel-camera-setup-guide.png",
     artifactUrl:
-      "https://gallery-trial-article-docs-apple-715f6d07.sites.vm0.io",
+      "https://web-design-serial-07-travel-camera-setup-guide-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:article-magazine",
@@ -210,9 +726,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `apple` and template `web-prototype-taste-editorial`, create a polished website for the launch brief of a personal finance app. Present the target user, product promise, key screens, trust principles, onboarding flow, differentiators, and launch priorities. Make it feel premium, calm, and product-led.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fa2885c1-ff65-4888-b9f7-cb9399ccaa01/hosted-screenshot.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/dca1ce84-8fdb-4e16-8e32-9e71af8c8a75/personal-finance-app-launch-brief.png",
     artifactUrl:
-      "https://gallery-trial-brief-editorial-apple-715f6d07.sites.vm0.io",
+      "https://web-design-serial-08-personal-finance-app-launch-brief-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -233,8 +749,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mono` and template `docs-page`, create a polished website design brief for a developer SDK. Explain the target developers, core jobs to be done, onboarding path, information architecture, API examples, quality bar, and open decisions. Make it feel precise, minimal, and useful for an engineering handoff.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b80adf01-17a1-4ddc-8c5f-a4f46da76399/hosted-desktop.png",
-    artifactUrl: "https://gallery-trial-brief-docs-mono-715f6d07.sites.vm0.io",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/81875ffb-75bb-4f7a-9b96-82dc75a09702/developer-sdk-design-brief.png",
+    artifactUrl:
+      "https://web-design-serial-09-developer-sdk-design-brief-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -255,9 +772,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `dashboard` and template `dashboard`, create a polished website for a support operations redesign brief. Show the current pain points, workflow principles, triage model, automation opportunities, quality metrics, rollout plan, and decision log. Make it feel like a practical dashboard for support and product leaders.",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a4f821f8-474f-4200-b1dc-30c91263a166/screenshot.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4d01a9ec-9b0b-4e50-88ba-cf464078eac0/support-ops-redesign-brief.png",
     artifactUrl:
-      "https://gallery-trial-brief-dashboard-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-serial-10-support-ops-redesign-brief-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -278,9 +795,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `claude` and template `saas-landing`, create a launch site for an AI research assistant platform built on Claude. Cover the core capability, prompt examples, safety principles, integration paths, and a clear call to start a workspace. Make it feel warm, considered, premium, calm.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claude-ai-platform-launch.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e3685901-5785-43be-a7ab-5df06c3e4192/claude-ai-platform-launch.png",
     artifactUrl:
-      "https://web-design-pass1-claude-ai-platform-launch-715f6d07.sites.vm0.io",
+      "https://web-design-serial-11-claude-ai-platform-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -301,9 +818,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `openai` and template `pricing-page`, create a model API pricing page that compares reasoning, multimodal, and fast tiers. Show per-token costs, included quotas, rate limits, batch discounts, enterprise add-ons, and a side-by-side feature matrix. Make it feel precise, confident, monochrome, trustworthy.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/openai-api-pricing-tiers.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/edf274b1-f737-4443-aaae-f48d185c7835/openai-api-pricing-tiers.png",
     artifactUrl:
-      "https://web-design-pass1-openai-api-pricing-tiers-715f6d07.sites.vm0.io",
+      "https://web-design-serial-12-openai-api-pricing-tiers-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:paywall-upgrade-cro",
@@ -324,9 +841,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `linear-app` and template `pm-spec`, create a product spec for shipping a new triage view in a project tracker. Cover problem, user, success metrics, scope, out-of-scope, IA, key states, rollout, and open questions. Make it feel precise, dense, keyboard-first, calm grayscale.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/linear-product-spec.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/eaba41cd-975c-424d-8e0f-5d33bf9a1f77/linear-product-spec.png",
     artifactUrl:
-      "https://web-design-pass1-linear-product-spec-715f6d07.sites.vm0.io",
+      "https://web-design-serial-13-linear-product-spec-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:design-brief",
@@ -347,9 +864,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `vercel` and template `saas-landing`, create a landing site for a frontend deployment and edge runtime platform. Hero with framework grid, preview deploys, edge functions, analytics, pricing teaser, and developer testimonials. Make it feel sharp typography, mono accents, generous whitespace.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/vercel-platform-landing.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d0c0d4cc-62f7-45df-a72a-30f2b8240d4f/vercel-platform-landing.png",
     artifactUrl:
-      "https://web-design-pass1-vercel-platform-landing-715f6d07.sites.vm0.io",
+      "https://web-design-serial-14-vercel-platform-landing-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:web-design-guidelines",
@@ -370,9 +887,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `cursor` and template `saas-landing`, create a launch site for an AI-native code editor. Show inline-chat workflow, tab-tab completion, codebase indexing, model picker, keyboard shortcuts, and a download CTA. Make it feel dark editor aesthetic, vivid syntax highlights, fast and minimal.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/cursor-ide-launch.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6b790114-79b1-416c-b925-577bb280b670/cursor-ide-launch.png",
     artifactUrl:
-      "https://web-design-pass1-cursor-ide-launch-715f6d07.sites.vm0.io",
+      "https://web-design-serial-15-cursor-ide-launch-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -393,9 +910,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `github` and template `github-dashboard`, create a repository insights dashboard with PRs, issues, releases, and contributors. Include activity sparkline, open PR queue, stale issues, top contributors this month, release cadence, and a health summary. Make it feel GitHub octicon language, dense rows, restrained color.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/github-repo-dashboard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/687094c5-bc55-4328-bf4c-097c970fa664/github-repo-dashboard.png",
     artifactUrl:
-      "https://web-design-pass1-github-repo-dashboard-715f6d07.sites.vm0.io",
+      "https://web-design-serial-16-github-repo-dashboard-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -416,9 +933,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `supabase` and template `docs-page`, create a docs page for the auth + row-level-security primitives. Include a left nav, body with code blocks (SQL + JS), inline warning callouts, table of contents, and a previous/next footer. Make it feel readable serif headers, green accents, code-forward.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/supabase-developer-docs.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b6724001-cbf9-4e2f-ac26-acae1a372d97/supabase-developer-docs.png",
     artifactUrl:
-      "https://web-design-pass1-supabase-developer-docs-715f6d07.sites.vm0.io",
+      "https://web-design-serial-17-supabase-developer-docs-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -439,9 +956,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `mintlify` and template `docs-page`, create an API reference page for a transcription endpoint. Include endpoint signature, request/response schemas, code samples in cURL/Python/JS, error table, and a try-it panel. Make it feel airy, gradient accents, friendly developer feel.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/mintlify-api-reference.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e93176d5-3365-4b8e-a24e-6b0e1e87d975/mintlify-api-reference.png",
     artifactUrl:
-      "https://web-design-pass1-mintlify-api-reference-715f6d07.sites.vm0.io",
+      "https://web-design-serial-18-mintlify-api-reference-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-skill",
@@ -454,29 +971,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "raycast-extensions-launch",
-    category: "website",
-    title: "Raycast Extensions Launch",
-    description:
-      "A launch page for a Raycast extensions marketplace with a command-palette mockup, featured extensions, and a developer kit teaser.",
-    prompt:
-      "Using `zero generate website` with design system `raycast` and template `saas-landing`, create a launch page for a Raycast extensions marketplace category. Hero command palette mockup, featured extensions, install flow, developer kit teaser, and a closing CTA. Make it feel punchy red accent, dark UI, hotkey-driven.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/raycast-extensions-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-raycast-extensions-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:raycast",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:raycast",
-    ],
-  },
-  {
     slug: "posthog-product-analytics",
     category: "website",
     title: "PostHog Product Analytics",
@@ -485,9 +979,9 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     prompt:
       "Using `zero generate website` with design system `posthog` and template `dashboard`, create a product analytics dashboard for activation, retention, and feature usage. Show DAU/WAU, feature adoption funnel, retention heatmap, session replay teaser, and a top-events table. Make it feel playful but data-dense, hedgehog energy without being cute.",
     previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/posthog-product-analytics.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/176880c5-e775-4a67-8e15-952df21e7c32/posthog-product-analytics.png",
     artifactUrl:
-      "https://web-design-pass1-posthog-product-analytics-715f6d07.sites.vm0.io",
+      "https://web-design-serial-20-posthog-product-analytics-715f6d07.sites.vm0.io",
     previewKind: "website",
     generationKind: "website",
     skillId: "od:skill:frontend-design",
@@ -543,29 +1037,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:paywall-upgrade-cro",
       "od:template:pricing-page",
       "od:design-system:stripe",
-    ],
-  },
-  {
-    slug: "figma-design-tool-launch",
-    category: "website",
-    title: "Figma Design Tool Launch",
-    description:
-      "A launch page for a Figma-to-React plugin with install flow, before/after demo, supported components, and partner logos.",
-    prompt:
-      "Using `zero generate website` with design system `figma` and template `saas-landing`, create a launch page for a new Figma plugin that turns frames into production React. Show install flow, before/after demo, supported components, team plan pricing teaser, and partner logos. Make it feel bright multi-color brand, layered shapes, clear hierarchy.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/figma-design-tool-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-figma-design-tool-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:figma",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:figma",
     ],
   },
   {
@@ -775,29 +1246,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "discord-community-launch",
-    category: "website",
-    title: "Discord Community Launch",
-    description:
-      "A verified community server template launch for indie game devs, with channel mockup, role system, and voice stages.",
-    prompt:
-      "Using `zero generate website` with design system `discord` and template `saas-landing`, create a landing for a verified community server template for indie game devs. Hero with channel mockup, role system, voice stages, moderation tools, and a join CTA. Make it feel blurple gradient, playful illustration, gamer-friendly.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/discord-community-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-discord-community-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:discord",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:discord",
-    ],
-  },
-  {
     slug: "meta-platform-update",
     category: "website",
     title: "Meta Platform Update",
@@ -867,97 +1315,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "revolut-card-launch",
-    category: "website",
-    title: "Revolut Card Launch",
-    description:
-      "A premium metal travel card launch with card render, FX savings calculator, lounge perks, and order CTA.",
-    prompt:
-      "Using `zero generate website` with design system `revolut` and template `saas-landing`, create a launch site for a premium metal travel card. Hero with card render, FX savings calculator, lounge perks, security, and order CTA. Make it feel dark luxe, neon accents, fintech polish.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/revolut-card-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-revolut-card-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:revolut",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:revolut",
-    ],
-  },
-  {
-    slug: "glassmorphism-saas-launch",
-    category: "website",
-    title: "Glassmorphism Cloud Launch",
-    description:
-      "A creator cloud storage launch with frosted hero panels, floating cards over a vivid gradient, and an integrations grid.",
-    prompt:
-      "Using `zero generate website` with design system `glassmorphism` and template `saas-landing`, create a launch site for a creator cloud storage product. Frosted hero panels, floating cards over a vivid gradient, pricing trio, and integrations grid. Make it feel vibrant gradient backdrop, blurred glass surfaces, light and airy.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/glassmorphism-saas-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-glassmorphism-saas-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:glassmorphism",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:glassmorphism",
-    ],
-  },
-  {
-    slug: "neobrutalism-todo-launch",
-    category: "website",
-    title: "Neobrutalism Todo Launch",
-    description:
-      "An opinionated to-do app marketing site with hard-shadow sticker cards, screenshot strip, and a punchy pricing block.",
-    prompt:
-      "Using `zero generate website` with design system `neobrutalism` and template `web-prototype-taste-brutalist`, create a marketing site for an opinionated to-do app. Loud headline, sticker-like cards with hard shadows, screenshot strip, and a punchy pricing block. Make it feel thick borders, hard offset shadows, primary colors, playful.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/neobrutalism-todo-launch.png",
-    artifactUrl:
-      "https://web-design-pass1-neobrutalism-todo-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:web-prototype-taste-brutalist",
-    designSystemId: "od:design-system:neobrutalism",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:web-prototype-taste-brutalist",
-      "od:design-system:neobrutalism",
-    ],
-  },
-  {
-    slug: "neumorphism-music-controls",
-    category: "website",
-    title: "Neumorphism Music App",
-    description:
-      "A tactile music control app landing with soft button gallery, preset library, and room calibration.",
-    prompt:
-      "Using `zero generate website` with design system `neumorphism` and template `saas-landing`, create a landing for a tactile music control app for hi-fi setups. Hero device mockup, soft button gallery, preset library, room calibration, and download CTA. Make it feel soft inset/outset shadows, monochrome, calm and tactile.",
-    previewImage:
-      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/neumorphism-music-controls.png",
-    artifactUrl: "https://neumorphism-music-controls-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:neumorphism",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:neumorphism",
-    ],
-  },
-  {
     slug: "brutalism-zine-launch",
     category: "website",
     title: "Brutalism Indie Zine",
@@ -978,29 +1335,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:article-magazine",
       "od:template:web-prototype-taste-brutalist",
       "od:design-system:brutalism",
-    ],
-  },
-  {
-    slug: "claymorphism-kids-app",
-    category: "website",
-    title: "Claymorphism Kids App",
-    description:
-      "A playful learning app landing for kids with bouncy 3D characters, big play buttons, parent approval, and family plan.",
-    prompt:
-      "Using `zero generate website` with design system `claymorphism` and template `saas-landing`, create a landing for a learning app for kids. Bouncy 3D characters, big play buttons, parent-approval section, pricing, and family plan. Make it feel rounded clay shapes, soft shadows, playful pastels.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/claymorphism-kids-app.png",
-    artifactUrl:
-      "https://web-design-pass1-claymorphism-kids-app-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:claymorphism",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:claymorphism",
     ],
   },
   {
@@ -1188,29 +1522,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "retro-synthwave-product",
-    category: "website",
-    title: "Retro Synthwave Product",
-    description:
-      "A music-production sample pack launch with neon grid hero, audio waveforms, license tiers, and a download CTA.",
-    prompt:
-      "Using `zero generate website` with design system `retro` and template `saas-landing`, create a launch page for a music-production sample pack inspired by the 80s. Hero with neon grid, pack contents, audio waveforms, license tiers, and download CTA. Make it feel magenta + cyan, sun-grid horizons, VHS feel.",
-    previewImage:
-      "https://web-design-pass1-previews-715f6d07.sites.vm0.io/retro-synthwave-product.png",
-    artifactUrl:
-      "https://web-design-pass1-retro-synthwave-product-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:retro",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:retro",
-    ],
-  },
-  {
     slug: "playstation-game-launch",
     category: "website",
     title: "PlayStation Game Launch",
@@ -1277,29 +1588,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:frontend-design",
       "od:template:dashboard",
       "od:design-system:airtable",
-    ],
-  },
-  {
-    slug: "arc-browser-launch",
-    category: "website",
-    title: "Arc Browser Launch",
-    description:
-      "A browser launch page with sidebar mockup, spaces flow, command bar, and AI assist teaser.",
-    prompt:
-      "Using `zero generate website` with design system `arc` and template `saas-landing`, create a launch site for a browser that organizes tabs into spaces. Hero with sidebar mockup, spaces flow, command bar, AI assist teaser, and download CTA. Make it feel playful gradient, generous whitespace, designer-favorite.",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e3d20797-dd13-4c50-b1f9-b02b5b1d2ba0/arc-browser-launch.png",
-    artifactUrl:
-      "https://web-design-pass2-arc-browser-launch-715f6d07-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:arc",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:arc",
     ],
   },
   {
@@ -1432,28 +1720,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:frontend-skill",
       "od:template:web-prototype",
       "od:design-system:dithered",
-    ],
-  },
-  {
-    slug: "doodle-kids-book",
-    category: "website",
-    title: "Doodle Kids Book",
-    description:
-      "A hand-drawn kids storybook subscription landing with character doodles, sample pages, and gift options.",
-    prompt:
-      "Using `zero generate website` with design system `doodle` and template `saas-landing`, create a landing page for a hand-drawn kids storybook subscription. Hero with character doodle, sample pages, age guide, gift options, and subscribe CTA. Make it feel hand-drawn lines, crayon textures, joyful and warm.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/doodle-kids-book.png",
-    artifactUrl: "https://doodle-kids-book-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:doodle",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:doodle",
     ],
   },
   {
@@ -1765,28 +2031,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "miro-canvas-launch",
-    category: "website",
-    title: "Miro Canvas Launch",
-    description:
-      "An infinite canvas workspace upgrade landing with sticky-note canvas, templates, and AI clustering.",
-    prompt:
-      "Using `zero generate website` with design system `miro` and template `saas-landing`, create a landing page for an infinite canvas workspace upgrade. Hero with sticky-note canvas mockup, templates, integrations, AI clustering teaser, and pricing. Make it feel bright multi-color, playful sticker shapes, collaborative.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/miro-canvas-launch.png",
-    artifactUrl: "https://miro-canvas-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:miro",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:miro",
-    ],
-  },
-  {
     slug: "mistral-open-weights-release",
     category: "website",
     title: "Mistral Open Weights Release",
@@ -2029,28 +2273,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "runwayml-video-launch",
-    category: "website",
-    title: "Runwayml Video Launch",
-    description:
-      "A video-model launch with frame grid hero, capability strip, before/after, and license tiers.",
-    prompt:
-      "Using `zero generate website` with design system `runwayml` and template `saas-landing`, create a launch site for a new video model with motion brush. Hero with frame grid, capability strip, before/after, license tiers, and try-now CTA. Make it feel cinematic dark, glossy gradients, creative-tool polish.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/runwayml-video-launch.png",
-    artifactUrl: "https://runwayml-video-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:runwayml",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:runwayml",
-    ],
-  },
-  {
     slug: "sanity-cms-schema-docs",
     category: "website",
     title: "Sanity CMS Schema Docs",
@@ -2161,28 +2383,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "tetris-remix-launch",
-    category: "website",
-    title: "Tetris Remix Launch",
-    description:
-      "A browser tetris remix landing with daily challenge, leaderboard, character skins, and play-now CTA.",
-    prompt:
-      "Using `zero generate website` with design system `tetris` and template `gamified-app`, create a landing page for a browser-based tetris remix with seasonal challenges. Hero with falling-block grid, daily challenge, leaderboard, character skins, and play-now CTA. Make it feel bold primary blocks, joyful arcade energy, retro polish.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/tetris-remix-launch.png",
-    artifactUrl: "https://tetris-remix-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:gamified-app",
-    designSystemId: "od:design-system:tetris",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:gamified-app",
-      "od:design-system:tetris",
-    ],
-  },
-  {
     slug: "together-ai-inference-pricing",
     category: "website",
     title: "Together AI Inference Pricing",
@@ -2247,28 +2447,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:article-magazine",
       "od:template:blog-post",
       "od:design-system:urdu",
-    ],
-  },
-  {
-    slug: "vintage-style-magazine",
-    category: "website",
-    title: "Vintage Style Magazine",
-    description:
-      "A magazine feature on the resurgence of vintage typography with pull quotes and image-led sections.",
-    prompt:
-      "Using `zero generate website` with design system `vintage` and template `blog-post`, create a feature article about the resurgence of vintage typography. Hero spread, body with pull quotes, image-led sections via CSS treatments, and related reading. Make it feel warm sepia, classic serif, slow magazine pacing.",
-    previewImage:
-      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/vintage-style-magazine.png",
-    artifactUrl: "https://vintage-style-magazine-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:article-magazine",
-    templateId: "od:template:blog-post",
-    designSystemId: "od:design-system:vintage",
-    resourceHints: [
-      "od:skill:article-magazine",
-      "od:template:blog-post",
-      "od:design-system:vintage",
     ],
   },
   {
@@ -2692,28 +2870,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "bmw-m-track-experience",
-    category: "website",
-    title: "BMW M Track Experience",
-    description:
-      "A premium performance driving experience page with schedule, telemetry, instructors, and booking.",
-    prompt:
-      "Using `zero generate website` with design system `bmw-m` and template `saas-landing`, create a launch page for a premium track driving experience. Hero, telemetry cards, instructor lineup, schedule, packages, and booking CTA. Make it feel motorsport blue-red, precise, premium.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/bmw-m-track-experience.png",
-    artifactUrl: "https://bmw-m-track-experience-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:bmw-m",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:bmw-m",
-    ],
-  },
-  {
     slug: "agentic-ops-command",
     category: "website",
     title: "Agentic Ops Command",
@@ -2802,28 +2958,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "bold-campaign-launch",
-    category: "website",
-    title: "Bold Campaign Launch",
-    description:
-      "A high-impact campaign page with punchy message hierarchy, proof blocks, offers, and signup.",
-    prompt:
-      "Using `zero generate website` with design system `bold` and template `saas-landing`, create a landing page for a high-impact marketing campaign. Huge hero, proof blocks, offer stack, testimonials, and signup CTA. Make it feel loud, confident, direct.",
-    previewImage:
-      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/bold-campaign-launch.png",
-    artifactUrl: "https://bold-campaign-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:bold",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:bold",
-    ],
-  },
-  {
     slug: "cafe-menu-story",
     category: "website",
     title: "Cafe Menu Story",
@@ -2843,50 +2977,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:article-magazine",
       "od:template:blog-post",
       "od:design-system:cafe",
-    ],
-  },
-  {
-    slug: "clay-product-tour",
-    category: "website",
-    title: "Clay Product Tour",
-    description:
-      "A product tour landing for a data enrichment workflow with tables, formulas, AI research, and CRM sync.",
-    prompt:
-      "Using `zero generate website` with design system `clay` and template `saas-landing`, create a landing page for a data enrichment product tour. Table mockup, formulas, AI research, CRM sync, templates, and demo CTA. Make it feel soft clay surfaces, modern GTM, crafted.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/clay-product-tour.png",
-    artifactUrl: "https://clay-product-tour-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:clay",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:clay",
-    ],
-  },
-  {
-    slug: "colorful-event-agenda",
-    category: "website",
-    title: "Colorful Event Agenda",
-    description:
-      "A conference agenda page with tracks, speakers, venue zones, sponsor moments, and live updates.",
-    prompt:
-      "Using `zero generate website` with design system `colorful` and template `saas-landing`, create a colorful event agenda website. Track filters, speaker cards, venue zones, sponsor moments, and live update strip. Make it feel bright multi-color, energetic, organized.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/colorful-event-agenda.png",
-    artifactUrl: "https://colorful-event-agenda-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:colorful",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:colorful",
     ],
   },
   {
@@ -3001,28 +3091,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
     ],
   },
   {
-    slug: "energetic-sports-app",
-    category: "website",
-    title: "Energetic Sports App",
-    description:
-      "A sports training app launch with workout streaks, coach plans, live challenges, and teams.",
-    prompt:
-      "Using `zero generate website` with design system `energetic` and template `saas-landing`, create a landing page for a sports training app. Workout streaks, coach plans, live challenges, team leaderboard, and start CTA. Make it feel athletic, high energy, mobile.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/energetic-sports-app.png",
-    artifactUrl: "https://energetic-sports-app-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:energetic",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:energetic",
-    ],
-  },
-  {
     slug: "enterprise-admin-portal",
     category: "website",
     title: "Enterprise Admin Portal",
@@ -3108,28 +3176,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:frontend-design",
       "od:template:dashboard",
       "od:design-system:flat",
-    ],
-  },
-  {
-    slug: "friendly-onboarding-flow",
-    category: "website",
-    title: "Friendly Onboarding Flow",
-    description:
-      "A product onboarding page with checklist, templates, team invites, empty states, and tips.",
-    prompt:
-      "Using `zero generate website` with design system `friendly` and template `saas-landing`, create a friendly product onboarding website. Checklist, template picker, team invites, empty states, and tips. Make it feel friendly, soft, clear.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/friendly-onboarding-flow.png",
-    artifactUrl: "https://friendly-onboarding-flow-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:friendly",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:friendly",
     ],
   },
   {
@@ -3328,50 +3374,6 @@ export const GALLERY_ITEMS: readonly GalleryItem[] = [
       "od:skill:article-magazine",
       "od:template:blog-post",
       "od:design-system:refined",
-    ],
-  },
-  {
-    slug: "sleek-device-launch",
-    category: "website",
-    title: "Sleek Device Launch",
-    description:
-      "A device launch page with product render, specs, ecosystem, preorder, and comparison.",
-    prompt:
-      "Using `zero generate website` with design system `sleek` and template `saas-landing`, create a sleek hardware device launch page. Product render, specs, ecosystem, comparison, preorder, and support. Make it feel sleek, minimal hardware, high polish.",
-    previewImage:
-      "https://web-design-pass3-current-screenshots-715f6d07.sites.vm0.io/sleek-device-launch.png",
-    artifactUrl: "https://sleek-device-launch-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:sleek",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:sleek",
-    ],
-  },
-  {
-    slug: "spacex-mission-brief",
-    category: "website",
-    title: "SpaceX Mission Brief",
-    description:
-      "A mission brief page with launch window, payload, trajectory, vehicle stats, and live webcast.",
-    prompt:
-      "Using `zero generate website` with design system `spacex` and template `saas-landing`, create a space launch mission brief website. Launch window, payload, trajectory, vehicle stats, webcast, and press kit. Make it feel aerospace black-white, technical, bold.",
-    previewImage:
-      "https://web-design-pass3-fixed-screens-715f6d07.sites.vm0.io/spacex-mission-brief.png",
-    artifactUrl: "https://spacex-mission-brief-715f6d07.sites.vm0.io",
-    previewKind: "website",
-    generationKind: "website",
-    skillId: "od:skill:frontend-skill",
-    templateId: "od:template:saas-landing",
-    designSystemId: "od:design-system:spacex",
-    resourceHints: [
-      "od:skill:frontend-skill",
-      "od:template:saas-landing",
-      "od:design-system:spacex",
     ],
   },
   {

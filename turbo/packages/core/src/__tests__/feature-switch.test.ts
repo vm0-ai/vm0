@@ -57,16 +57,6 @@ describe("isFeatureEnabled", () => {
       }),
     ).toBe(true);
   });
-
-  it("should enable docs site globally", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.DocsSite, {})).toBe(true);
-
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.DocsSite, {
-        orgId: "org_nonexistent",
-      }),
-    ).toBe(true);
-  });
 });
 
 describe("getAllFeatureStates", () => {
@@ -100,8 +90,8 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.HostedSites]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
@@ -110,8 +100,8 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.GoogleAdsConnector]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.HostedSites]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {

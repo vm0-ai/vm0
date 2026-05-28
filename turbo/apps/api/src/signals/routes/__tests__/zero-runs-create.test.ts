@@ -546,50 +546,6 @@ describe("POST /api/zero/runs", () => {
     expect(auth?.capabilities).not.toContain("agent-run:write");
   });
 
-  it("omits the maps tool prompt when zero maps is disabled", async () => {
-    const fx = await fixture();
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: { [FeatureSwitchKey.ZeroMaps]: false },
-    });
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      framework: "codex",
-    });
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { prompt: "map directions", agentId: agent.agentId },
-      }),
-      [201],
-    );
-
-    const [run] = await db
-      .select({ appendSystemPrompt: agentRuns.appendSystemPrompt })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, response.body.runId));
-    expect(run?.appendSystemPrompt).not.toContain("zero maps --help");
-
-    const [job] = await db
-      .select({ executionContext: runnerJobQueue.executionContext })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, response.body.runId));
-    const executionContext = job?.executionContext as {
-      readonly encryptedSecrets: string | null;
-    };
-    const zeroToken = decryptSecretsMap(
-      executionContext.encryptedSecrets,
-    )?.ZERO_TOKEN;
-    expect(zeroToken).toBeDefined();
-    if (!zeroToken) {
-      throw new Error("expected ZERO_TOKEN");
-    }
-    expect(verifyZeroToken(zeroToken)?.capabilities).not.toContain("maps:read");
-  });
-
   it("queues zero runs at the org concurrency limit and dispatches them when drained", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);

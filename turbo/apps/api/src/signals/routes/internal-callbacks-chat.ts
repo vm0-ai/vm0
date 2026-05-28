@@ -217,7 +217,9 @@ function extractAnthropicContent(
   blocks: readonly ContentBlock[],
 ): string | null {
   const parts = blocks.flatMap((block) => {
-    return block.type === "text" && typeof block.text === "string"
+    return block.type === "text" &&
+      typeof block.text === "string" &&
+      block.text.trim().length > 0
       ? [block.text]
       : [];
   });
@@ -231,7 +233,7 @@ function extractCodexAgentMessageContent(item: CodexItem): string | null {
   if (
     item.type !== "agent_message" ||
     typeof item.text !== "string" ||
-    item.text.length === 0
+    item.text.trim().length === 0
   ) {
     return null;
   }
@@ -323,6 +325,8 @@ async function latestEventBackedAssistantMessage(
         eq(chatMessages.runId, runId),
         eq(chatMessages.role, "assistant"),
         isNotNull(chatMessages.sequenceNumber),
+        isNotNull(chatMessages.content),
+        sql<boolean>`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
       ),
     )
     .orderBy(desc(chatMessages.sequenceNumber))
