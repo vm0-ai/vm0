@@ -3289,6 +3289,19 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
       path: "illustration-template/iberian-vignette",
     },
   },
+  {
+    id: "image-style:cozy-parlor",
+    kind: "image-style",
+    name: "Cozy Parlor",
+    description:
+      "Hand-painted watercolor + ink-line scene — one anthropomorphic animal in a quiet domestic interior, clean cool-white paper, neutral palette with one hot accent pop.",
+    desc: "Hand-painted watercolor + brushy black ink line on clean cool-white paper (no amber tint). ONE anthropomorphic animal mid-quiet-activity in a domestic interior. Closed-crescent-eye smile, minimal facial features, expression through posture. At least two patterned surfaces per piece. Cool/neutral palette lead (sage, slate-blue, cornflower, lavender, mint, dove-gray) with a single hot accent pop (cherry-red, mustard, magenta-pink) on one object. Six dials per brief — cast, activity, palette family, pattern motif stack, hot accent object, and complexity (L1/L2/L3). Trigger when user says /cozy-parlor, asks for a 'cozy parlor illustration', a 'watercolor animal scene', a 'picture-book interior', or a new piece in this neutral-palette watercolor style.",
+    source: {
+      repo: VM0_SKILLS_REPO,
+      ref: VM0_SKILLS_REF,
+      path: "illustration-template/cozy-parlor",
+    },
+  },
 ];
 
 function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {
