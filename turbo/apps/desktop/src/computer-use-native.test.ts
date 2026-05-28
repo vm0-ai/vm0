@@ -482,7 +482,9 @@ describe("computer use native backend", () => {
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
-        appState: expect.stringContaining("<app_state>"),
+        appState: expect.stringMatching(
+          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
+        ),
         screenshot: expect.stringMatching(
           /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
         ),
@@ -490,7 +492,11 @@ describe("computer use native backend", () => {
       expect(output.result).toBeUndefined();
       expect(output.elements).toBeUndefined();
       expect(output.elementIdsByIndex).toBeUndefined();
+      expect(stdout).not.toContain("<app_state>");
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
+      await expect(
+        readFile(String(output.appState), "utf8"),
+      ).resolves.toContain("<app_state>");
       expect(await readFile(String(output.screenshot))).toStrictEqual(
         screenshotBytes,
       );
@@ -530,7 +536,9 @@ describe("computer use native backend", () => {
       expect(output).toMatchObject({
         status: "succeeded",
         snapshotId: expect.stringMatching(/^desktop_/),
-        appState: expect.stringContaining("<app_state>"),
+        appState: expect.stringMatching(
+          /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.appState\.txt$/,
+        ),
         screenshot: expect.stringMatching(
           /^\/tmp\/vm0\/computer-use\/Safari-desktop_[a-z0-9]+\.png$/,
         ),
@@ -543,6 +551,10 @@ describe("computer use native backend", () => {
         },
       });
       expect(output.result).toBeUndefined();
+      expect(stdout).not.toContain("<app_state>");
+      await expect(
+        readFile(String(output.appState), "utf8"),
+      ).resolves.toContain("<app_state>");
       expect(output.screenshot).not.toBe("data:image/png;base64,abc123");
     } finally {
       await stopDaemon(daemonDir);
