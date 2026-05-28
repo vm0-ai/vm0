@@ -36,7 +36,7 @@ type ResolveConnectorAuthCodeStartTypeResult =
   | {
       readonly ok: false;
       readonly reason:
-        | "missing_auth_code_or_device_auth_grant"
+        | "missing_auth_code_grant"
         | "unsupported_auth_code_grant";
     };
 
@@ -51,7 +51,7 @@ export function resolveConnectorAuthCodeStartType(
     if (hasConnectorDeviceAuthGrant(type)) {
       return { ok: false, reason: "unsupported_auth_code_grant" };
     }
-    return { ok: false, reason: "missing_auth_code_or_device_auth_grant" };
+    return { ok: false, reason: "missing_auth_code_grant" };
   }
   return { ok: true, type };
 }

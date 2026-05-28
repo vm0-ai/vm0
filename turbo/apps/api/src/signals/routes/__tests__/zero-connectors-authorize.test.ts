@@ -929,7 +929,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("returns 400 when starting OAuth for a connector without an auth-code or device-auth grant", async () => {
+  it("returns 400 when starting OAuth for a connector without an auth-code grant", async () => {
     const response = await requestOauthStart("serpapi", {
       authenticated: true,
     });
@@ -937,8 +937,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message:
-          "serpapi connector does not use an auth-code or device-auth grant",
+        message: "serpapi connector does not use an auth-code grant",
         code: "BAD_REQUEST",
       },
     });
