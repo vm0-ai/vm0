@@ -70,6 +70,19 @@ def _model_provider_sse_flow(
     return flow
 
 
+def _openai_responses_sse_flow(
+    tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
+) -> http.HTTPFlow:
+    return _model_provider_sse_flow(
+        tmp_path,
+        real_flow,
+        host="api.openai.com",
+        original_url="https://api.openai.com/v1/responses",
+        firewall_name="model-provider:openai-api-key",
+        cli_agent_type="codex",
+    )
+
+
 def _set_websocket_message(
     flow: http.HTTPFlow,
     *,
@@ -126,22 +139,7 @@ class TestModelProviderStreamUsage:
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
         """response() must flush a trailing SSE usage event before reporting."""
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "text/event-stream"}),
-        )
-
-        mitm_addon.responseheaders(flow)
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.5",'
@@ -170,22 +168,7 @@ class TestModelProviderStreamUsage:
     def test_full_pipeline_model_sse_reports_response_incomplete_usage(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "text/event-stream"}),
-        )
-
-        mitm_addon.responseheaders(flow)
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b"event: response.incomplete\n"
             b'data: {"response":{"id":"resp_incomplete","model":"gpt-5.5",'
@@ -345,14 +328,7 @@ class TestModelProviderStreamUsage:
     def test_full_pipeline_openai_sse_logs_truncated_terminal_event(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = _model_provider_sse_flow(
-            tmp_path,
-            real_flow,
-            host="api.openai.com",
-            original_url="https://api.openai.com/v1/responses",
-            firewall_name="model-provider:openai-api-key",
-            cli_agent_type="codex",
-        )
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
@@ -378,14 +354,7 @@ class TestModelProviderStreamUsage:
     def test_full_pipeline_openai_sse_logs_truncated_late_event_name(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = _model_provider_sse_flow(
-            tmp_path,
-            real_flow,
-            host="api.openai.com",
-            original_url="https://api.openai.com/v1/responses",
-            firewall_name="model-provider:openai-api-key",
-            cli_agent_type="codex",
-        )
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt\n'
             b"event: response.completed\n\n"
@@ -466,14 +435,7 @@ class TestModelProviderStreamUsage:
     def test_full_pipeline_openai_eventless_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = _model_provider_sse_flow(
-            tmp_path,
-            real_flow,
-            host="api.openai.com",
-            original_url="https://api.openai.com/v1/responses",
-            firewall_name="model-provider:openai-api-key",
-            cli_agent_type="codex",
-        )
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
@@ -494,14 +456,7 @@ class TestModelProviderStreamUsage:
     def test_full_pipeline_openai_non_terminal_incomplete_sse_does_not_warn(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = _model_provider_sse_flow(
-            tmp_path,
-            real_flow,
-            host="api.openai.com",
-            original_url="https://api.openai.com/v1/responses",
-            firewall_name="model-provider:openai-api-key",
-            cli_agent_type="codex",
-        )
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b"event: response.in_progress\n"
             b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
@@ -523,22 +478,7 @@ class TestModelProviderStreamUsage:
     def test_full_pipeline_model_sse_zero_event_preserves_billed_usage_and_id(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.response = tutils.tresp(
-            status_code=200,
-            headers=header_map({"content-type": "text/event-stream"}),
-        )
-
-        mitm_addon.responseheaders(flow)
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b"event: response.completed\n"
             b'data: {"response":{"id":"resp_sse_1","model":"gpt-5.5",'
@@ -574,22 +514,7 @@ class TestModelProviderStreamUsage:
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
         """Codex Responses WebSocket frames should bill like SSE events."""
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.response = tutils.tresp(
-            status_code=101,
-            headers=http.Headers(upgrade="websocket"),
-        )
-
-        mitm_addon.responseheaders(flow)
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
         assert flow.metadata["model_websocket_usage_enabled"] is True
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
@@ -909,22 +834,7 @@ class TestModelProviderStreamUsage:
     def test_model_websocket_ignores_client_messages(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
     ):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
-        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-        flow.metadata["firewall_billable"] = True
-        flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.response = tutils.tresp(
-            status_code=101,
-            headers=http.Headers(upgrade="websocket"),
-        )
-
-        mitm_addon.responseheaders(flow)
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
         _set_websocket_message(
             flow,
             from_client=True,
