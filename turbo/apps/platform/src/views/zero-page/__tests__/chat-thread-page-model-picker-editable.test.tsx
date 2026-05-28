@@ -241,7 +241,7 @@ describe("chat thread page — model picker editable", () => {
       await screen.findByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
     );
     await user.click(
-      await screen.findByRole("option", { name: /Claude Opus 4\.7/i }),
+      await screen.findByRole("option", { name: /Claude Opus 4\.8/i }),
     );
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
     await sendMessageInUI(
@@ -253,7 +253,7 @@ describe("chat thread page — model picker editable", () => {
     await waitFor(() => {
       expect(capturedBody).toBeDefined();
     });
-    expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-7");
+    expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
     expect(capturedBody?.forceNewSession).toBeTruthy();
   });
 
@@ -304,7 +304,7 @@ describe("chat thread page — model picker editable", () => {
       await screen.findByRole("combobox", { name: /Claude Sonnet 4\.6/i }),
     );
     await user.click(
-      await screen.findByRole("option", { name: /Claude Opus 4\.7/i }),
+      await screen.findByRole("option", { name: /Claude Opus 4\.8/i }),
     );
     const textarea = await screen.findByPlaceholderText(
       /Type your next message/,
@@ -318,7 +318,7 @@ describe("chat thread page — model picker editable", () => {
     await waitFor(() => {
       expect(capturedBody).toBeDefined();
     });
-    expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-7");
+    expect(capturedBody?.modelSelection?.selectedModel).toBe("claude-opus-4-8");
     expect(capturedBody?.forceNewSession).toBeTruthy();
   });
 });
