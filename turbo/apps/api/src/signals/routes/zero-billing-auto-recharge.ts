@@ -9,6 +9,7 @@ import {
   autoRechargeConfig,
   updateAutoRechargeConfig$,
 } from "../services/billing.service";
+import { triggerAutoRecharge$ } from "../services/zero-credit-recharge.service";
 import type { RouteEntry } from "../route";
 
 const adminRequired = Object.freeze({
@@ -59,6 +60,11 @@ const updateAutoRechargeInner$ = command(
 
     if (!result.ok) {
       return badRequestMessage(result.error);
+    }
+
+    if (bodyResult.data.enabled) {
+      await set(triggerAutoRecharge$, auth.orgId, signal);
+      signal.throwIfAborted();
     }
 
     return { status: 200 as const, body: result.data };
