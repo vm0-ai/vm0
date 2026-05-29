@@ -224,6 +224,30 @@ async function seedSecret(args: {
   });
 }
 
+async function updateSecret(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly value: string;
+  readonly type: "connector" | "model-provider";
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .update(secrets)
+    .set({
+      encryptedValue: encryptSecretForTests(args.value),
+      updatedAt: new Date(now()),
+    })
+    .where(
+      and(
+        eq(secrets.orgId, args.orgId),
+        eq(secrets.userId, args.userId),
+        eq(secrets.name, args.name),
+        eq(secrets.type, args.type),
+      ),
+    );
+}
+
 async function seedCreditState(
   fixture: FirewallFixture,
   args: {
@@ -2968,7 +2992,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           },
           headers: authHeaders(fixture),
         }),
-        [502],
+        [424],
       );
     };
 
@@ -2990,8 +3014,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(refreshCallCount).toBe(1);
     for (const response of responses) {
       expect(response.body.error).toMatchObject({
-        code: "TOKEN_REFRESH_FAILED",
+        code: "OAUTH_RECONNECT_REQUIRED",
         connectors: ["codex-oauth-token"],
+        retryable: false,
+        refreshErrorCode: "refresh_token_expired",
       });
     }
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
