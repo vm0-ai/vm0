@@ -148,7 +148,6 @@ def _set_matched_firewall_failure_response(
     message: str,
     permission: str,
     connectors: list[str] | None = None,
-    extra_fields: dict[str, object] | None = None,
 ) -> None:
     """Set the common matched-firewall auth/forward failure response."""
     # `firewall_action` records the firewall permission decision
@@ -167,8 +166,6 @@ def _set_matched_firewall_failure_response(
     }
     if connectors:
         body["connectors"] = connectors
-    if extra_fields:
-        body.update(extra_fields)
     flow.response = http.Response.make(
         status,
         json.dumps(body).encode(),

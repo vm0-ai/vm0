@@ -718,7 +718,7 @@ class TestHandleFirewallRequest:
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
 
-    async def test_structured_api_error_is_preserved(self, real_flow, headers, mitm_ctx, tmp_path):
+    async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
         api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
