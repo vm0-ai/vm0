@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.105.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.3...runner-rs-v0.105.4) (2026-05-29)
+
+
+### Documentation
+
+* document mitm pending helper counts ([#15349](https://github.com/vm0-ai/vm0/issues/15349)) ([b63c75f](https://github.com/vm0-ai/vm0/commit/b63c75fa8272523fa62db7702d581730c2ee5beb))
+
+
+### Refactoring
+
+* group runner start state by lifecycle ([#15362](https://github.com/vm0-ai/vm0/issues/15362)) ([b327825](https://github.com/vm0-ai/vm0/commit/b3278258f35bc74115bde10a249280bfbdd2ba03))
+* **runner:** centralize per-run log patterns ([#15363](https://github.com/vm0-ai/vm0/issues/15363)) ([609f08a](https://github.com/vm0-ai/vm0/commit/609f08a487b2807f9aa5b2a4643debb67d973ac5))
+
+
+### Performance Improvements
+
+* **mitm-addon:** transfer usage webhook payload ownership ([#15351](https://github.com/vm0-ai/vm0/issues/15351)) ([d5738ee](https://github.com/vm0-ai/vm0/commit/d5738ee93df402482287171dda7377276cfb5714))
+
 ## [0.105.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.2...runner-rs-v0.105.3) (2026-05-28)
 
 ## [0.105.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.1...runner-rs-v0.105.2) (2026-05-28)

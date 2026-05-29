@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.176.2](https://github.com/vm0-ai/vm0/compare/cli-v9.176.1...cli-v9.176.2) (2026-05-29)
+
+
+### Bug Fixes
+
+* harden auto recharge setup ([#15364](https://github.com/vm0-ai/vm0/issues/15364)) ([e75d12c](https://github.com/vm0-ai/vm0/commit/e75d12c927037591842954858c033603e19e9ab2))
+
 ## [9.176.1](https://github.com/vm0-ai/vm0/compare/cli-v9.176.0...cli-v9.176.1) (2026-05-29)
 
 

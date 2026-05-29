@@ -20,8 +20,8 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
   decryptPersistentSecretValue,
-  decryptSecretValue,
-  encryptSecretValue,
+  decryptStoredSecretValue,
+  encryptPersistentSecretValue,
   inspectPersistentSecretCiphertext,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -109,15 +109,16 @@ async function cleanupUser(userId: string, orgId: string) {
     );
 }
 
-function encryptedProviderState(args: {
+async function encryptedProviderState(args: {
   readonly connectorType?: "test-oauth-device" | "slock";
   readonly deviceCode: string;
-}): string {
-  return encryptSecretValue(
+}): Promise<string> {
+  return await encryptPersistentSecretValue(
     JSON.stringify({
       connectorType: args.connectorType ?? "test-oauth-device",
       deviceCode: args.deviceCode,
     }),
+    {},
   );
 }
 
@@ -330,7 +331,7 @@ async function createSession(args: {
       connectorType: args.connectorType ?? "test-oauth-device",
       status: args.status ?? "awaiting_user_authorization",
       sessionTokenHash: sessionTokenHash(sessionToken),
-      encryptedProviderState: encryptedProviderState({
+      encryptedProviderState: await encryptedProviderState({
         connectorType: args.connectorType ?? "test-oauth-device",
         deviceCode: args.deviceCode,
       }),
@@ -394,7 +395,7 @@ async function connectorSecretValue(
         eq(secrets.name, name),
       ),
     );
-  return secret ? decryptSecretValue(secret.encryptedValue) : null;
+  return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
 }
 
 describe("OAuth device authorization connector routes", () => {

@@ -23,8 +23,8 @@ async fn unpark_failure_destroys_idle_entry_and_falls_through() {
         message: "simulated unpark failure".into(),
     }));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
 
     // Pre-seed via the factory so the seeded MockSandbox shares the
     // override set (and consumes the queued unpark error).
@@ -101,9 +101,9 @@ async fn unpark_failure_status_switches_from_idle_to_active_while_job_runs() {
         message: "simulated unpark failure".into(),
     }));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let status = Arc::clone(&config.status);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let status = Arc::clone(&config.shared.status);
     let status_path = env._temp_dir.path().join("status.json");
 
     seed_idle_pool_with_overrides(
@@ -155,8 +155,8 @@ async fn unpark_panic_destroys_idle_entry_and_falls_through() {
     let counter = Arc::clone(&overrides);
     overrides.push_unpark_panic("simulated unpark panic");
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
 
     seed_idle_pool_with_overrides(
         &idle_pool,

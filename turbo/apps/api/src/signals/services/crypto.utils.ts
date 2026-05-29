@@ -339,10 +339,6 @@ export async function encryptStoredSecretValue(
   plaintext: string,
   _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  if (!env("SECRETS_KMS_KEY_ID")) {
-    return encryptSecretValue(plaintext);
-  }
-
   return await encryptStoredSecretValueWithMode(plaintext, "kms");
 }
 
@@ -350,7 +346,7 @@ export async function decryptStoredSecretValue(
   encrypted: string,
   _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  return await decryptStoredSecretValueWithMode(encrypted, "prefer-kms");
+  return await decryptStoredSecretValueWithMode(encrypted, "kms-only");
 }
 
 export async function encryptStoredSecretsMap(
@@ -403,10 +399,6 @@ export async function encryptPersistentSecretValue(
   plaintext: string,
   _ctx: FeatureSwitchContext,
 ): Promise<string> {
-  if (!env("SECRETS_KMS_KEY_ID")) {
-    return encryptSecretValue(plaintext);
-  }
-
   return await encryptPersistentSecretValueWithMode(plaintext, "kms");
 }
 
@@ -414,7 +406,7 @@ export async function decryptPersistentSecretValue(
   encrypted: string,
   _ctx: FeatureSwitchContext,
 ): Promise<string> {
-  return await decryptPersistentSecretValueWithMode(encrypted, "prefer-kms");
+  return await decryptPersistentSecretValueWithMode(encrypted, "kms-only");
 }
 
 export async function encryptPersistentSecretsMap(
@@ -517,26 +509,4 @@ export function decryptSecretValue(encrypted: string): string {
   ]);
 
   return decrypted.toString("utf8");
-}
-
-export function decryptSecretsMap(
-  encryptedData: string | null,
-): Record<string, string> | null {
-  if (!encryptedData) {
-    return null;
-  }
-
-  return secretsMapSchema.parse(
-    JSON.parse(decryptSecretValue(encryptedData)) as unknown,
-  );
-}
-
-export function encryptSecretsMap(
-  secrets: Record<string, string> | null | undefined,
-): string | null {
-  if (!secrets) {
-    return null;
-  }
-
-  return encryptSecretValue(JSON.stringify(secrets));
 }

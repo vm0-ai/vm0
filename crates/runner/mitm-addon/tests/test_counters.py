@@ -137,33 +137,6 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-2")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
-    def test_enqueue_deep_copies_nested_payload(self):
-        payload = {
-            "runId": "run-1",
-            "events": [{"category": "tokens.input", "quantity": 1}],
-        }
-
-        try:
-            with patch.object(usage.webhook.usage_executor, "submit") as mock_submit:
-                usage.webhook._enqueue_webhook(
-                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
-                    "tok",
-                    payload,
-                    "",
-                    "usage_event",
-                )
-
-            copied_payload = mock_submit.call_args.args[3]
-            payload["events"][0]["quantity"] = 999
-            payload["events"].append({"category": "tokens.output", "quantity": 2})
-
-            assert copied_payload == {
-                "runId": "run-1",
-                "events": [{"category": "tokens.input", "quantity": 1}],
-            }
-        finally:
-            usage.counters.decrement_pending_reports()
-
     def test_enqueue_logs_payload_collisions_under_payload(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
         payload = {

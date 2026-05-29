@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.400.0](https://github.com/vm0-ai/vm0/compare/web-v12.399.1...web-v12.400.0) (2026-05-29)
+
+
+### Features
+
+* add Claude Opus 4.8 model page ([#15338](https://github.com/vm0-ai/vm0/issues/15338)) ([3d743b8](https://github.com/vm0-ai/vm0/commit/3d743b8c4a41d82b417fe951b380775f1388786a))
+
 ## [12.399.1](https://github.com/vm0-ai/vm0/compare/web-v12.399.0...web-v12.399.1) (2026-05-29)
 
 

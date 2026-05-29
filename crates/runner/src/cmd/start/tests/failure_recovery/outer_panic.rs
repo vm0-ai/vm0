@@ -17,9 +17,9 @@ async fn outer_job_panic_after_idle_pool_owned_cleans_token_and_active_status() 
         4,
         Arc::new(sandbox_mock::MockSandboxOverrides::new()),
     );
-    config.outer_job_panic = Some(OuterJobPanicPoint::IdlePoolOwned);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::IdlePoolOwned);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
@@ -58,12 +58,12 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
         4,
         Arc::new(sandbox_mock::MockSandboxOverrides::new()),
     );
-    config.outer_job_panic = Some(OuterJobPanicPoint::ActiveOrUnknown);
-    config.orphan_reap_process_discovery = Some(OrphanReapProcessDiscovery {
+    config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::ActiveOrUnknown);
+    config.orphan_reap.process_discovery = Some(OrphanReapProcessDiscovery {
         firecrackers: Arc::new(Vec::new()),
         incomplete_for_current_runner: false,
     });
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 
@@ -95,8 +95,8 @@ async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status(
     overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
 
     let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    config.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    config.test_hooks.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 

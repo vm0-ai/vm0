@@ -357,34 +357,38 @@ impl LogFilenamePattern {
     }
 }
 
-const NETWORK_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
-    prefix: "network-",
-    suffix: ".jsonl",
-};
-const PROXY_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
-    prefix: "proxy-",
-    suffix: ".jsonl",
-};
-const SYSTEM_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
-    prefix: "system-",
-    suffix: ".log",
-};
-const METRICS_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
-    prefix: "metrics-",
-    suffix: ".jsonl",
-};
-const SANDBOX_OPS_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
-    prefix: "sandbox-ops-",
-    suffix: ".jsonl",
-};
+macro_rules! define_per_run_logs {
+    ($($method:ident => ($prefix:literal, $suffix:literal)),+ $(,)?) => {
+        const PER_RUN_LOG_PATTERNS: &[LogFilenamePattern] = &[
+            $(
+                LogFilenamePattern {
+                    prefix: $prefix,
+                    suffix: $suffix,
+                },
+            )+
+        ];
 
-const PER_RUN_LOG_PATTERNS: &[LogFilenamePattern] = &[
-    NETWORK_LOG_PATTERN,
-    PROXY_LOG_PATTERN,
-    SYSTEM_LOG_PATTERN,
-    METRICS_LOG_PATTERN,
-    SANDBOX_OPS_LOG_PATTERN,
-];
+        impl LogPaths {
+            $(
+                pub fn $method(&self, run_id: RunId) -> PathBuf {
+                    LogFilenamePattern {
+                        prefix: $prefix,
+                        suffix: $suffix,
+                    }
+                    .path(&self.dir, run_id)
+                }
+            )+
+        }
+    };
+}
+
+define_per_run_logs! {
+    network_log => ("network-", ".jsonl"),
+    proxy_log => ("proxy-", ".jsonl"),
+    system_log => ("system-", ".log"),
+    metrics_log => ("metrics-", ".jsonl"),
+    sandbox_ops_log => ("sandbox-ops-", ".jsonl"),
+}
 
 const RUNNER_INSTANCE_LOG_PATTERN: LogFilenamePattern = LogFilenamePattern {
     prefix: "runner-",
@@ -400,32 +404,11 @@ impl LogPaths {
         &self.dir
     }
 
-    pub fn network_log(&self, run_id: RunId) -> PathBuf {
-        NETWORK_LOG_PATTERN.path(&self.dir, run_id)
-    }
-
-    pub fn proxy_log(&self, run_id: RunId) -> PathBuf {
-        PROXY_LOG_PATTERN.path(&self.dir, run_id)
-    }
-
-    pub fn system_log(&self, run_id: RunId) -> PathBuf {
-        SYSTEM_LOG_PATTERN.path(&self.dir, run_id)
-    }
-
-    pub fn metrics_log(&self, run_id: RunId) -> PathBuf {
-        METRICS_LOG_PATTERN.path(&self.dir, run_id)
-    }
-
-    pub fn sandbox_ops_log(&self, run_id: RunId) -> PathBuf {
-        SANDBOX_OPS_LOG_PATTERN.path(&self.dir, run_id)
-    }
-
     /// Whether `name` matches any GC-eligible log file pattern.
     ///
-    /// Includes per-job logs (`network-*`, `proxy-*`, `system-*`,
-    /// `metrics-*`, `sandbox-ops-*`), runner instance logs (`runner-*.log`),
-    /// and stale `.vm0tmp-*` copies of those files left behind by a killed
-    /// runner.
+    /// Includes per-job log patterns declared by `PER_RUN_LOG_PATTERNS`,
+    /// runner instance logs (`runner-*.log`), and stale `.vm0tmp-*` copies
+    /// of those files left behind by a killed runner.
     pub fn is_gc_eligible_log(name: &str) -> bool {
         Self::is_final_gc_eligible_log(name) || Self::is_gc_eligible_log_temp(name)
     }

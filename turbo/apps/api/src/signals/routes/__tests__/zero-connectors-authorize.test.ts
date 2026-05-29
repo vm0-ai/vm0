@@ -17,10 +17,10 @@ import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { encryptSecretValue } from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testContext } from "../../../__tests__/test-helpers";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -653,7 +653,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       userId,
       name: "GITHUB_ACCESS_TOKEN",
       type: "connector",
-      encryptedValue: encryptSecretValue("gh-access-token"),
+      encryptedValue: encryptSecretForTests("gh-access-token"),
     });
 
     let revokeAuthorization: string | null = null;

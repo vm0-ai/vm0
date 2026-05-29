@@ -37,7 +37,7 @@ import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -524,7 +524,7 @@ describe("CLI auth routes", () => {
       )
       .limit(1);
 
-    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+    return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
   async function findConnectorSecret(args: {
@@ -546,7 +546,7 @@ describe("CLI auth routes", () => {
       )
       .limit(1);
 
-    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+    return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
   async function readConnectorState(args: {

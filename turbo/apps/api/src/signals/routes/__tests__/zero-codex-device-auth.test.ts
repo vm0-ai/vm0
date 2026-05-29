@@ -15,7 +15,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
-  decryptSecretValue,
+  decryptStoredSecretValue,
   inspectPersistentSecretCiphertext,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -219,7 +219,7 @@ async function chatgptSecret(args: {
       ),
     )
     .limit(1);
-  return secret ? decryptSecretValue(secret.encryptedValue) : null;
+  return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
 }
 
 describe("Codex device auth routes", () => {

@@ -129,12 +129,23 @@ describe("connect modal - display", () => {
 });
 
 describe("connect modal - content by auth method", () => {
-  it("shows OAuth button for OAuth connectors (CONN-C-018)", async () => {
+  it("shows Connect button for OAuth connectors not yet connected (CONN-C-018)", async () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
+  });
+
+  it("shows Authorize button for OAuth connectors already connected", async () => {
+    mockConnectors([{ type: "github" }]);
+
+    await openConnectModal("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Authorize")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
   it("shows device auth code before opening provider verification", async () => {
@@ -167,9 +178,6 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    expect(
-      screen.queryByText("Sign in with Test OAuth Device (internal)"),
-    ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Connection methods unavailable"),
     ).not.toBeInTheDocument();
@@ -338,10 +346,10 @@ describe("connect modal - content by auth method", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Connect"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
@@ -365,7 +373,7 @@ describe("connect modal - content by auth method", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with Deel")).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
     expect(
@@ -407,10 +415,10 @@ describe("connect modal - loading states", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Connect"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
@@ -430,10 +438,10 @@ describe("connect modal - interactions", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Connect"));
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
@@ -599,10 +607,10 @@ describe("connect modal - state management", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Sign in with GitHub"));
+    click(screen.getByText("Connect"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();

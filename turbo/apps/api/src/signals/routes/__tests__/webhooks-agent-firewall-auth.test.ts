@@ -25,11 +25,6 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
-  decryptSecretValue,
-  encryptSecretValue,
-  encryptSecretsMap,
-} from "../../services/crypto.utils";
-import {
   deleteUsageInsightFixture$,
   seedCompose$,
   seedRun$,
@@ -37,6 +32,10 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  decryptSecretForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -76,11 +75,7 @@ function authHeaders(fixture: {
 }
 
 function encryptedSecrets(values: Record<string, string>): string {
-  const encrypted = encryptSecretsMap(values);
-  if (!encrypted) {
-    throw new Error("encryptSecretsMap returned null for non-empty secrets");
-  }
-  return encrypted;
+  return encryptSecretForTests(JSON.stringify(values));
 }
 
 function secretTemplate(name: string): string {
@@ -152,7 +147,7 @@ async function seedSecret(args: {
     orgId: args.orgId,
     userId: args.userId,
     name: args.name,
-    encryptedValue: encryptSecretValue(args.value),
+    encryptedValue: encryptSecretForTests(args.value),
     type: args.type,
   });
 }
@@ -222,7 +217,7 @@ async function readSecret(args: {
       ),
     )
     .limit(1);
-  return row ? decryptSecretValue(row.encryptedValue) : null;
+  return row ? decryptSecretForTests(row.encryptedValue) : null;
 }
 
 async function seedNotionConnector(

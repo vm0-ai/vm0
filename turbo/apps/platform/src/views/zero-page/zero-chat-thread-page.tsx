@@ -162,6 +162,7 @@ import {
   extractPermissions,
   permissionExistingRequestByAction,
   saveAdminFocusedPolicy$,
+  subscribePermissionAccessRequestsChanged$,
   submitAccessRequest$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
@@ -2732,6 +2733,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const adminLoadable = useLoadable(isOrgAdmin$);
   const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
   const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
+  const subscribeRequests = useSet(subscribePermissionAccessRequestsChanged$);
   const canManagePermissions =
     adminLoadable.state === "hasData" && adminLoadable.data;
   const existingRequestLoadable = useLoadable(
@@ -2807,6 +2809,11 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       return;
     }
 
+    detach(
+      subscribeRequests(pageSignal),
+      Reason.Daemon,
+      "permission access request realtime subscription",
+    );
     detach(
       submitRequest(
         {

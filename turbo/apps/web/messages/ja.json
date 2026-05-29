@@ -3917,6 +3917,240 @@
     "generationAccessHeading": "VM0 で {name} を使う",
     "generationAccessBody": "VM0 のエージェントはエージェント実行の一部として {name} を呼び出すことができ、VM0 クレジットで請求されます。上記の定価はアップストリーム・プロバイダーが課金する金額で、VM0 は標準のクレジット換算で透過的に転送します。",
     "content": {
+      "claude-opus-4-8": {
+        "name": "Claude Opus 4.8",
+        "pageTitle": "Claude Opus 4.8",
+        "tagline": "Anthropicの最新フラッグシップ。2026年5月28日リリース。より強力なエージェンティックコーディング、1セッションで数百の並列サブエージェントを展開する動的ワークフロー、そしてOpus 4.7と同じ通常価格で3倍安価なファストモードを提供します。",
+        "cardIntro": "Anthropicの最新Claude 4フラッグシップ。リリース時点でSWE-bench ProとOSWorld-Verifiedをリード。動的ワークフローと3倍安価なファストモードを搭載。",
+        "metaTitle": "Claude Opus 4.8: ベンチマーク、価格、性能",
+        "metaDescription": "Claude Opus 4.8のレビュー。Anthropicが2026年5月28日にリリースしたフラッグシップ。1Mトークンコンテキスト、最大努力思考、動的ワークフロー、ベンダー価格$5/$25、SWE-bench Pro、OSWorld-Verified、MCP-Atlas、BrowseComp、USAMO、GraphWalks長文コンテキスト再現でOpus 4.7からのベンチマーク向上。",
+        "summary": "Claude Opus 4.8は、Anthropicが2026年5月28日にリリースしたフラッグシップで、Opus 4.7と同じベンダー定価$5/$25での直接的なアップグレードです。AnthropicがこれまでにリリースしたSWE-bench Pro（69.2%）、OSWorld-Verified（83.4%）、MCP-Atlas（82.2%）、Humanity's Last Exam（ツール使用で57.9%）の最高スコアを記録し、リーガルエージェントall-pass標準で10%を突破した初のモデルでもあります。\n\n知っておくべき構造的変更は2つあります。動的ワークフロー（ジョブを計画し、1セッション内で数百の並列サブエージェントに展開）と、ファストモード価格の引き下げ（2.5倍速度で$10/$50/1Mトークン — 従来のClaudeモデルのファストモードより3倍安価）です。努力レベルはhigh（デフォルト）、extra、maxに拡張されました。Anthropic自身、このリリースを大きな飛躍ではなく「控えめだが実感できる改善」と位置付けています。",
+        "releaseDate": "2026年5月28日",
+        "familyPosition": "Claude 4ファミリーの最上位。Anthropicが新規エージェントに推奨するデフォルト。Opus 4.7と同じ×1.7倍数で提供。",
+        "background": [
+          "Claude Opus 4.8は、Opus 4.7から41日後の2026年5月28日に、Anthropicの新フラッグシップとしてリリースされました。4.7と同じコーディング、エージェンティックスキル、推論、ナレッジワークのワークロードを対象とし、同じ通常定価（入力$5 / 出力$25 /1Mトークン）と同じVM0倍数（×1.7）で提供されます。Anthropicはこのリリースを段階的な変化ではなく「前世代に対する控えめだが実感できる改善」と位置付けています。",
+          "VM0ユーザーにとって重要な構造的変更は2つあります。1つ目は動的ワークフロー：モデルがタスクを計画し、1セッション内で数百の並列サブエージェントに展開できる機能で、Anthropicはこれを数十万行規模のコードベース移行を1回の実行で扱う方向への一歩と位置付けています。2つ目は2.5倍速のファストモードが$10 / $50/1Mトークンになったこと — 従来のClaudeモデルのファストモードより3倍安価です。努力レベルは3段階に拡張されました：high（デフォルト）、extra（Claude Codeではxhigh）、max。",
+          "独立系の評価（LLM Stats、VentureBeat、Vellum）は、4.7や競合モデルに対する相対順位を裏付けています。4.8はAnthropicが公開した比較表のすべてのセルで勝利していますが、Terminal-Bench 2.1ではGPT-5.5が依然として首位（78.2%対4.8の74.6%）です。SWE-bench Proでの4.7から4.8への上昇は+4.9ポイント、USAMO 2026では+27.4、新しい1MトークンGraphWalks長文コンテキストF1では+27.8です。絶対スコアは方向性として扱ってください — SWE-bench Verifiedはすべてのフロンティアモデルで飽和に近づいています。"
+        ],
+        "architecture": "Opus 4.8はOpus 4.7の1Mトークンコンテキストウィンドウと128Kの最大出力を維持し、ウィンドウ全体で標準入力価格で課金されます。努力制御は3段階に拡張されました：high（新しいデフォルト）、extra（Claude Code内ではxhigh）、max。Messages APIは会話の途中でシステムエントリを受け付けるようになり、プロンプトキャッシュを壊しません。動的ワークフローにより、Claudeは1セッション内で数百の並列サブエージェントを計画し、ディスパッチできます。ファストモードは標準の約2.5倍の速度で$10 / $50/1Mトークンで動作します。テキスト、ビジョン、コードのマルチモーダル入力は変更ありません。",
+        "specs": [
+          {
+            "label": "ファミリー",
+            "value": "Claude 4世代"
+          },
+          {
+            "label": "モダリティ",
+            "value": "テキスト、画像、コード"
+          },
+          {
+            "label": "言語",
+            "value": "英語中心、多言語対応"
+          },
+          {
+            "label": "プロンプトキャッシュ",
+            "value": "サポート（Anthropic）"
+          },
+          {
+            "label": "コンテキストウィンドウ",
+            "value": "1Mトークン"
+          },
+          {
+            "label": "最大出力",
+            "value": "最大128Kトークン"
+          },
+          {
+            "label": "努力レベル",
+            "value": "High（デフォルト） / Extra / Max"
+          },
+          {
+            "label": "ベンダー定価",
+            "value": "入力$5 / 出力$25 /1M（ファストモード$10/$50、2.5倍速度）"
+          }
+        ],
+        "benchmarksNote": "AnthropicのOpus 4.8システムカードからのベンダー報告スコアで、Opus 4.7、GPT-5.5、Gemini 3.1 Proとの最大努力・5試行平均での比較です。4.8はAnthropicが公開する7セル中6セルでリードし、Terminal-Bench 2.1のみGPT-5.5がリードを維持しています。SWE-bench Verifiedはすべてのフロンティアモデルで飽和に近づいています — より難しいSWE-bench Proセットがより持続的なシグナルです。",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "88.6%",
+            "note": "ベンダー報告；Opus 4.7の87.6%から向上"
+          },
+          {
+            "name": "SWE-bench Pro",
+            "score": "69.2%",
+            "note": "フィールドリーダー（4.7: 64.3%、GPT-5.5: 58.6%、Gemini 3.1 Pro: 54.2%）"
+          },
+          {
+            "name": "Terminal-Bench 2.1",
+            "score": "74.6%",
+            "note": "4.7の2.0での66.1%から向上；ここではGPT-5.5が78.2%でリード"
+          },
+          {
+            "name": "OSWorld-Verified (computer use)",
+            "score": "83.4%",
+            "note": "フィールドリーダー（4.7: 82.8%、GPT-5.5: 78.7%）"
+          },
+          {
+            "name": "Online-Mind2Web (browser agent)",
+            "score": "84%",
+            "note": "ベンダー報告"
+          },
+          {
+            "name": "MCP-Atlas",
+            "score": "82.2%",
+            "note": "Opus 4.7の77.3%から向上"
+          },
+          {
+            "name": "BrowseComp (single-agent)",
+            "score": "84.3%",
+            "note": "Opus 4.7の79.3%から向上"
+          },
+          {
+            "name": "GraphWalks long-context F1 (1M tokens)",
+            "score": "68.1%",
+            "note": "Opus 4.7の40.3%から向上"
+          },
+          {
+            "name": "Humanity's Last Exam (with tools)",
+            "score": "57.9%",
+            "note": "ツールなしで49.8%；フィールドリーダー"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~93%",
+            "note": "4.7と横ばい — フロンティアモデル全体で飽和"
+          },
+          {
+            "name": "USAMO 2026 (math)",
+            "score": "96.7%",
+            "note": "Opus 4.7の69.3%から向上"
+          },
+          {
+            "name": "GDPval-AA (knowledge work)",
+            "score": "1890 Elo",
+            "note": "リード（4.7: 1753、GPT-5.5: 1769）"
+          },
+          {
+            "name": "Finance Agent v2",
+            "score": "53.9%",
+            "note": "フィールドリーダー"
+          },
+          {
+            "name": "Legal-agent all-pass",
+            "score": ">10%",
+            "note": "この標準を突破した初のモデル"
+          }
+        ],
+        "performance": [
+          {
+            "title": "動的ワークフロー",
+            "body": "目玉となる新機能です。Opus 4.8はタスクを計画し、同じセッション内で数百の並列サブエージェントを実行できます — Anthropicはこれを数十万行規模のコードベース移行を1回の実行で扱う道筋として位置付けています。VM0上では、これは単一のエージェント実行で、以前は外部のスケジューリングが必要だったファンアウト作業をオーケストレーションできることを意味します。"
+          },
+          {
+            "title": "一発でのコード編集",
+            "body": "AnthropicはOpus 4.8がコードレビューで欠陥を見逃す可能性が4.7の約4分の1になったと報告しており、SWE-bench Proでの+4.9ポイントの向上（69.2%対64.3%）が、より難しく飽和していないコーディングセットでそれを裏付けています。多くのファイルにわたってクリーンに適用される必要があるパッチには4.8を選択してください。"
+          },
+          {
+            "title": "長文コンテキスト再現",
+            "body": "1MトークンでのGraphWalks F1が40.3%から68.1%に跳ね上がりました — リリース中最大の単一ベンチマークでの向上です。1Mトークンウィンドウは名目上だけでなく、範囲の上限でも実際に使用可能になりました。"
+          },
+          {
+            "title": "誠実さと過信",
+            "body": "Anthropicは4.7に対して過信が10倍以上減少し、欠陥のある結果を無批判に報告する率が0%（Claudeファミリー初）、重要なイベントをユーザーに伝えそびれる率が3.7%と報告しています。ミスアラインメント発生率は約1.9で、Anthropicの最も整合性の高いMythos Previewと実質的に並んでいます。"
+          },
+          {
+            "title": "速度とファストモード",
+            "body": "標準速度はOpus 4.7と同等です。価格変更が見出しです：2.5倍速度のファストモードが$10 / $50/1Mトークンで、従来のClaudeモデルのファストモードより3倍安価です。実時間レイテンシが重要なオーケストレーションステップに使う価値があります。"
+          },
+          {
+            "title": "プロンプトインジェクションの注意点",
+            "body": "Anthropicのシステムカードは、4.8がエージェンティックなプロンプトインジェクションに対して4.7よりやや堅牢性が低いと指摘しています — Gray Swanのレッドチーミングでは攻撃成功率が4.7の6.0%に対して約9.6%です。信頼できない入力を扱うパイプラインで4.8を運用するチームは、サンドボックス化のアプローチを見直すべきです。"
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "かつてスプリントが必要だったコードベース規模の移行",
+            "body": "Opus 4.8に数百ファイルにわたる移行を渡し — ORM切り替え、フレームワークのバージョンアップ、モノレポ全体のセキュリティ修正など — 動的ワークフローで1セッション内の並列サブエージェントに作業を展開させてください。SWE-bench Proでの+4.9ポイントの向上と、コードレビューでの見落としの4分の1への減少が、まさにこの種の実行で実を結びます。"
+          },
+          {
+            "title": "実際に筋が通る1Mトークンのリサーチ実行",
+            "body": "200ページの契約書ドラフト、3つの競合提案、前四半期の法務意見書をウィンドウに投入し、Opus 4.8に市場標準より厳しいすべての条項にフラグを立ててもらいます。1MでのGraphWalksが40.3%から68.1%に跳ね上がったことが、この種のクロスドキュメント統合を新たに信頼できるものにしています。"
+          },
+          {
+            "title": "自分の作業について嘘をつかないエージェントオーケストレーター",
+            "body": "4.8をプランナーとして使用し、リクエストを10ステップに分割し、各ステップをより安価なサブエージェントにディスパッチし、結果を報告させます。欠陥のある結果を無批判に報告する率が0%、過信が10倍減少したことが、エージェント自身のセルフレポートが信頼に足る必要がある場合に本番チームが4.8に手を伸ばす理由です。"
+          },
+          {
+            "title": "ファストモードでようやく採算が合うレイテンシ重視のフロー",
+            "body": "2.5倍速度のファストモードは、以前は現在の3倍のコストがかかっていました（$10/$50/1M対前ティア）。インタラクティブなコパイロット、オンコール要約、または実時間レイテンシが体験を左右するあらゆるステップで、ファストモードの4.8は今やClaudeファミリーのデフォルト選択肢です。"
+          }
+        ],
+        "avoidFor": "Sonnet 4.6が一部のコストで同じ品質基準を満たす大量ルーチン作業、Haiku 4.5が遥かに高速なレイテンシ重視のチャット応答、GPT-5.5がTerminal-Bench 2.1で依然としてリードするエージェンティックターミナルコーディング（78.2%対4.8の74.6%）、サンドボックス化なしで信頼できない入力を取り込むパイプライン（4.8のプロンプトインジェクション耐性は4.7よりわずかに弱い）では、Opus 4.8の使用を避けてください。",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.7",
+            "body": "同じ×1.7倍数、同じコンテキストウィンドウ、同じ通常価格。Opus 4.8はAnthropicが公開するすべてのセルでリードしています（SWE-bench Verified +1、SWE-bench Pro +4.9、OSWorld-Verified +0.6、MCP-Atlas +4.9、BrowseComp +5.0、GraphWalks 1M +27.8、USAMO +27.4）。トレードオフはわずかに弱いプロンプトインジェクションプロファイル（攻撃成功率約9.6%対6.0%）です。新規エージェントは4.8に移行し、検証済みでリグレッション再実行を避けたい場合のみ4.7を固定してください。"
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6（×1）は依然としてほとんどのエージェントループのワークホースデフォルトです。Sonnetが難しい推論、長文コンテキスト再現、一発のコード編集で明らかに失敗する場合にOpus 4.8に昇格させてください — 通常はSonnetやHaikuレベルのサブエージェントに委任するプランナーとして使用します。動的ワークフローにより、オーケストレーターとしてのOpus 4.8 + ワーカーとしてのSonnet 4.6が新しい推奨パターンです。"
+          },
+          {
+            "vs": "GPT-5.5",
+            "body": "Opus 4.8はAnthropicの比較セットの7セル中6セルでリードしており、最大の差はSWE-bench Pro（69.2%対58.6%）とOSWorld-Verified（83.4%対78.7%）です。GPT-5.5はTerminal-Bench 2.1（78.2%対74.6%）でリードを維持しています。クロスファイルコーディングとコンピュータ操作エージェントには4.8、ターミナル駆動の作業が支配的な場合は特にGPT-5.5を選んでください。"
+          },
+          {
+            "vs": "Gemini 3.1 Pro",
+            "body": "Opus 4.8はSWE-bench Pro（+15.0）とOSWorld-Verified（+7.2）で大きな差でリードしています。GPQA Diamondのような飽和した科学ベンチマークでは両モデルがノイズ範囲内に留まります。エージェンティックな作業には4.8をデフォルトに、Googleのツール統合ストーリーが必要な場合は特にGeminiを検討してください。"
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro（×0.3）は、生のトークン価格が意思決定を支配する場合のコスト最適化選択肢として依然有効です。Opus 4.8はツールルーティングの信頼性、長文コンテキスト再現、アラインメント指標、コンピュータ操作でリードを維持しており、ほとんどの英語エンタープライズエージェントが価格差にもかかわらず4.8をデフォルトとし続ける理由です。"
+          }
+        ],
+        "verdict": "Claudeファミリーの新規エージェントの新しいデフォルト。再検証可能になり次第4.7から移行し、新規作業には直接これをデフォルトにしてください。Sonnet 4.6はその下のより安価なワークホースとして維持してください。",
+        "faqs": [
+          {
+            "q": "Claude Opus 4.8はいつリリースされましたか？",
+            "a": "AnthropicはOpus 4.7から41日後の2026年5月28日にOpus 4.8をリリースしました。Claude製品、Claude API（モデルID `claude-opus-4-8`）、Amazon Bedrock、Google Cloud Vertex AI、Microsoft Foundry、VM0で本日より利用可能です。"
+          },
+          {
+            "q": "Opus 4.8の価格は4.7と比べてどうですか？",
+            "a": "通常価格は同一です：入力1Mトークンあたり$5、出力1Mトークンあたり$25、キャッシュ入力1Mトークンあたり$0.50。変更点はファストモードで、2.5倍速度で$10 / $50/1Mトークンになりました — 従来のClaudeモデルのファストモードより3倍安価です。"
+          },
+          {
+            "q": "動的ワークフローとは何ですか？",
+            "a": "Opus 4.8がタスクを計画し、1セッション内で数百の並列サブエージェントを実行できる新機能です。Anthropicはこれを、1回のエージェント実行で数十万行規模のコードベース移行を扱う道筋として位置付けています。"
+          },
+          {
+            "q": "Opus 4.8はどの努力レベルをサポートしていますか？",
+            "a": "3つのレベル：high（新しいデフォルト）、extra（Claude Codeではxhigh）、max。高い設定では応答を生成する前に推論により多くのトークンを使い、低い設定では速度とレートリミット効率を優先します。"
+          },
+          {
+            "q": "Opus 4.7から4.8に移行すべきですか？",
+            "a": "新規作業ははい — 同じ倍数、同じ通常価格、Terminal-Bench 2.1を除く公開されたすべての比較セルでより強力な挙動を示します。固定された本番エージェントはリグレッションスイートを通した後に移行し、エージェントが信頼できない入力を取り込む場合はサンドボックス化を見直してください（4.8は4.7よりプロンプトインジェクションへの堅牢性がわずかに弱いです）。"
+          },
+          {
+            "q": "Opus 4.8はプロンプトキャッシュをサポートしていますか？",
+            "a": "はい。キャッシュ入力は1Mトークンあたり$0.50で課金され、キャッシュ部分に対する10倍の割引です。Messages APIは会話の途中でシステムエントリを受け付けるようになり、キャッシュを壊しません。"
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-7",
+            "reason": "前世代のフラッグシップ。プロンプトインジェクションにわずかに堅牢。"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "ほとんどのエージェントループ向けのより安価なデフォルト。"
+          },
+          {
+            "slug": "gpt-5-5",
+            "reason": "エージェンティックターミナルコーディングでTerminal-Bench 2.1をリード。"
+          }
+        ],
+        "routingNotes": "On VM0, Opus 4.8 is routed directly to Anthropic's Messages API and is exposed three ways: through the VM0 Managed credit pool, through a direct Anthropic API key, and through the Claude Code OAuth provider for teams already authenticated with Claude Code. It is also included in the default org model policy.",
+        "vm0Notes": "Prompt caching is enabled by default through VM0, which substantially cuts the cost of repeated system prompts, tool definitions, and pasted reference documents on agents that issue many turns from the same prefix. There are no VM0-side timeout overrides for Opus 4.8; the model uses Anthropic's default API timeouts. Sonnet 4.6 stays the platform default for new agents, so the standard pattern is to keep cheap tiers running everywhere and route only the hardest steps to Opus 4.8."
+      },
       "claude-opus-4-7": {
         "name": "Claude Opus 4.7",
         "pageTitle": "Claude Opus 4.7",

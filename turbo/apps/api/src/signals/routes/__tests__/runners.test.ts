@@ -23,8 +23,8 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signPatJwtForTests, verifySandboxToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { encryptSecretValue } from "../../services/crypto.utils";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -75,7 +75,7 @@ function runnerHeartbeatBody(runnerId: string) {
 }
 
 function encryptedSecretsMap(values: Record<string, string>): string {
-  return encryptSecretValue(JSON.stringify(values));
+  return encryptSecretForTests(JSON.stringify(values));
 }
 
 function modelProviderSecretPlaceholder(

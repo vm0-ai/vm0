@@ -89,4 +89,35 @@ describe("zero credit command", () => {
     });
     expect(output()).toContain("https://checkout.stripe.com/session/credit");
   });
+
+  it("rejects auto-recharge threshold without the auto-recharge flag", async () => {
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      return undefined as never;
+    });
+    const mockConsoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    server.use(stubMembers("admin"));
+
+    try {
+      await zeroCreditCommand.parseAsync([
+        "node",
+        "cli",
+        "20000",
+        "--auto-recharge-threshold",
+        "5000",
+        "--auto-recharge-amount",
+        "20000",
+      ]);
+
+      const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+      expect(errorOutput).toContain(
+        "--auto-recharge-threshold and --auto-recharge-amount require --auto-recharge",
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    } finally {
+      mockConsoleError.mockRestore();
+      mockExit.mockRestore();
+    }
+  });
 });

@@ -25,8 +25,8 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { decryptSecretValue } from "../../services/crypto.utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { decryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -1016,7 +1016,7 @@ async function findDecryptedSecret(args: {
   readonly name: string;
 }): Promise<string | undefined> {
   const secret = await findSecret(args);
-  return secret ? decryptSecretValue(secret.encryptedValue) : undefined;
+  return secret ? decryptSecretForTests(secret.encryptedValue) : undefined;
 }
 
 interface ProviderSuccessCase {
@@ -1559,7 +1559,7 @@ describe("GET /api/connectors/:type/callback", () => {
       name: "GITHUB_ACCESS_TOKEN",
     });
     expect(secret).toBeDefined();
-    expect(decryptSecretValue(secret!.encryptedValue)).toBe("github-token");
+    expect(decryptSecretForTests(secret!.encryptedValue)).toBe("github-token");
 
     const db = store.set(writeDb$);
     const [session] = await db
@@ -2021,7 +2021,7 @@ describe("GET /api/connectors/:type/callback", () => {
       name: "TEST_OAUTH_ACCESS_TOKEN",
     });
     expect(secret).toBeDefined();
-    expect(decryptSecretValue(secret!.encryptedValue)).toBe(
+    expect(decryptSecretForTests(secret!.encryptedValue)).toBe(
       "dynamic-access-token",
     );
   });
@@ -2091,7 +2091,7 @@ describe("GET /api/connectors/:type/callback", () => {
       name: "SLACK_ACCESS_TOKEN",
     });
     expect(secret).toBeDefined();
-    expect(decryptSecretValue(secret!.encryptedValue)).toBe(
+    expect(decryptSecretForTests(secret!.encryptedValue)).toBe(
       "xoxp-stored-token",
     );
   });
@@ -2137,10 +2137,10 @@ describe("GET /api/connectors/:type/callback", () => {
     });
     expect(accessSecret).toBeDefined();
     expect(refreshSecret).toBeDefined();
-    expect(decryptSecretValue(accessSecret!.encryptedValue)).toBe(
+    expect(decryptSecretForTests(accessSecret!.encryptedValue)).toBe(
       "notion-access",
     );
-    expect(decryptSecretValue(refreshSecret!.encryptedValue)).toBe(
+    expect(decryptSecretForTests(refreshSecret!.encryptedValue)).toBe(
       "notion-refresh",
     );
   });
