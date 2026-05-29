@@ -8,6 +8,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  IconChartLine,
   IconLayoutGrid,
   IconCalendar,
   IconUsers,
@@ -95,6 +96,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/schedules",
     label: "Scheduled",
     icon: IconCalendar as NavIcon,
+  },
+  {
+    id: "activities",
+    activeKeys: ["activities", "activityDetail", "activityInspect"],
+    pathname: "/activities",
+    label: "Activity logs",
+    icon: IconChartLine as NavIcon,
+    featureGate: FeatureSwitchKey.ZeroDebug,
   },
 ];
 
