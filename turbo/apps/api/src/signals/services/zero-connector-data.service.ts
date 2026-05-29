@@ -39,7 +39,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -780,7 +780,6 @@ async function upsertApiTokenConnectorRow(
     readonly type: ConnectorType;
   },
 ): Promise<StoredConnectorRow> {
-  const updatedAt = nowDate();
   const [row] = await db
     .insert(connectors)
     .values({
@@ -805,7 +804,7 @@ async function upsertApiTokenConnectorRow(
         oauthScopes: null,
         tokenExpiresAt: null,
         needsReconnect: false,
-        updatedAt,
+        updatedAt: sql`clock_timestamp()`,
       },
     })
     .returning({
@@ -1371,7 +1370,7 @@ async function upsertOAuthConnectorRow(
         oauthScopes: JSON.stringify(args.oauthScopes),
         tokenExpiresAt: args.tokenExpiresAt,
         needsReconnect: false,
-        updatedAt: nowDate(),
+        updatedAt: sql`clock_timestamp()`,
       },
     })
     .returning({

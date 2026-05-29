@@ -16,7 +16,7 @@ import {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -366,7 +366,7 @@ function buildMultiAuthConflictSet(
   const base: Record<string, unknown> = {
     authMethod,
     selectedModel: selectedModel ?? null,
-    updatedAt: nowDate(),
+    updatedAt: sql`clock_timestamp()`,
   };
   if (!metadata) {
     return base;
