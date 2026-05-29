@@ -64,6 +64,15 @@ function classifyOAuthHttpFailure(
   return "provider_response_invalid";
 }
 
+function isOAuthFailureClass(value: unknown): value is OAuthFailureClass {
+  return (
+    value === "reconnect_required" ||
+    value === "upstream_auth_unavailable" ||
+    value === "provider_auth_rejected" ||
+    value === "provider_response_invalid"
+  );
+}
+
 export function isOAuthFailureRetryable(
   failureClass: OAuthFailureClass,
 ): boolean {
@@ -99,7 +108,7 @@ export function isOAuthProviderError(
     value.name === "OAuthProviderError" &&
     typeof (value as { provider?: unknown }).provider === "string" &&
     typeof (value as { operation?: unknown }).operation === "string" &&
-    typeof (value as { failureClass?: unknown }).failureClass === "string" &&
+    isOAuthFailureClass((value as { failureClass?: unknown }).failureClass) &&
     typeof (value as { retryable?: unknown }).retryable === "boolean"
   );
 }

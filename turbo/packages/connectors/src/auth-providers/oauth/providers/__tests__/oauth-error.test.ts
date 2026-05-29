@@ -140,4 +140,16 @@ describe("throwOAuthError", () => {
       throwOAuthError("Stripe", "refresh", response),
     ).rejects.toThrow("Stripe token refresh failed: 400 ");
   });
+
+  it("rejects OAuthProviderError-shaped values with unknown failure class", () => {
+    const error = Object.assign(new Error("bad failure class"), {
+      name: "OAuthProviderError",
+      provider: "Notion",
+      operation: "refresh",
+      failureClass: "unknown",
+      retryable: true,
+    });
+
+    expect(isOAuthProviderError(error)).toBe(false);
+  });
 });
