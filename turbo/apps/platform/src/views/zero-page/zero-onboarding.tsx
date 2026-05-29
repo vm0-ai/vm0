@@ -1009,7 +1009,11 @@ function OnboardingIllustrationPanel() {
   return (
     <div
       className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${
-        showChat ? "pt-[8%]" : showTrial ? "pt-[12%]" : "justify-center"
+        showChat
+          ? "pt-[8%]"
+          : showTrial
+            ? "justify-start pt-16"
+            : "justify-center"
       }`}
     >
       {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
