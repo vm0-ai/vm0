@@ -11,7 +11,6 @@ import {
   connectorTypeSchema,
   type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthProviderSecretMetadata } from "@vm0/connectors/auth-providers";
 import {
   getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
@@ -240,11 +239,6 @@ const createTestConnector$ = command(
     if (!authMethod) {
       throw new Error(`${grantConnectorType} connector has no auth method`);
     }
-    const secretMetadata =
-      getConnectorAuthProviderSecretMetadata(grantConnectorType);
-    const refreshSecretName = secretMetadata.isRefreshable
-      ? secretMetadata.refreshSecretName
-      : undefined;
     await set(
       upsertOAuthConnector$,
       {
@@ -260,7 +254,6 @@ const createTestConnector$ = command(
         },
         oauthScopes: [],
         refreshToken: bodyResult.data.refreshToken,
-        refreshSecretName,
         expiresIn: bodyResult.data.expiresIn,
       },
       signal,

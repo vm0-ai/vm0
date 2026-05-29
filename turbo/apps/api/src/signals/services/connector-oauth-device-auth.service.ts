@@ -18,7 +18,6 @@ import {
   type ConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
-  getConnectorAuthProviderSecretMetadata,
   pollConnectorDeviceAuthorization,
   startConnectorDeviceAuthorization,
 } from "@vm0/connectors/auth-providers";
@@ -910,9 +909,6 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       claimStartedAt,
       signal,
       persistConnector: async ({ result }) => {
-        const secretMetadata = getConnectorAuthProviderSecretMetadata(
-          resolvedType.type,
-        );
         const connectorResult = await set(
           upsertOAuthConnector$,
           {
@@ -924,9 +920,6 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
             userInfo: result.token.userInfo,
             oauthScopes: result.token.scopes,
             refreshToken: result.token.refreshToken,
-            refreshSecretName: secretMetadata.isRefreshable
-              ? secretMetadata.refreshSecretName
-              : undefined,
             expiresIn: result.token.expiresIn,
             extraConnectorSecrets: result.token.extraConnectorSecrets,
           },

@@ -8,6 +8,7 @@ import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zer
 import {
   connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
+  getConnectorAuthMethodAccessMetadata,
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethodEnvBindings,
@@ -18,10 +19,7 @@ import {
   getRuntimeAvailableConnectorTypes,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
-import {
-  getConnectorAuthProviderSecretMetadata,
-  revokeConnectorAuthProviderAccessToken,
-} from "@vm0/connectors/auth-providers";
+import { revokeConnectorAuthProviderAccessToken } from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -30,6 +28,7 @@ import {
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type ConnectorAuthProviderType,
+  type ConnectorEnvBindings,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -87,6 +86,12 @@ interface ExternalUserInfo {
 interface PreparedApiTokenField {
   readonly name: string;
   readonly value: string;
+}
+
+interface ConnectorTokenSecretMetadata {
+  readonly accessSecretName: string;
+  readonly refreshSecretName: string | undefined;
+  readonly isRefreshable: boolean;
 }
 
 interface PreparedApiTokenConnect {
@@ -503,7 +508,13 @@ async function loadPendingConnectorTokenRevoke(args: {
   readonly signal: AbortSignal;
 }): Promise<PendingConnectorTokenRevoke | null> {
   const connectorType = args.type;
-  const secretMetadata = getConnectorAuthProviderSecretMetadata(connectorType);
+  const secretMetadata = connectorTokenSecretMetadataForAuthMethod({
+    type: connectorType,
+    authMethod: args.authMethod,
+  });
+  if (!secretMetadata) {
+    return null;
+  }
   const accessTokenName = secretMetadata.accessSecretName;
 
   const [accessTokenSecret] = await args.db
@@ -1167,6 +1178,66 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
+function connectorSecretNameFromRef(valueRef: string): string | undefined {
+  return valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)
+    ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
+    : undefined;
+}
+
+function staticAccessSecretName(
+  envBindings: ConnectorEnvBindings,
+): string | undefined {
+  const secretNames = new Set<string>();
+  for (const valueRef of Object.values(envBindings)) {
+    const secretName = connectorSecretNameFromRef(valueRef);
+    if (secretName) {
+      secretNames.add(secretName);
+    }
+  }
+  if (secretNames.size !== 1) {
+    return undefined;
+  }
+  return [...secretNames][0];
+}
+
+function connectorTokenSecretMetadataForAuthMethod(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+}): ConnectorTokenSecretMetadata | undefined {
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    args.type,
+    args.authMethod,
+  );
+
+  switch (accessMetadata?.kind) {
+    case "refresh-token": {
+      return {
+        accessSecretName: accessMetadata.accessToken,
+        refreshSecretName: accessMetadata.refreshToken,
+        isRefreshable: true,
+      };
+    }
+
+    case "static": {
+      const accessSecretName = staticAccessSecretName(
+        accessMetadata.envBindings,
+      );
+      return accessSecretName
+        ? {
+            accessSecretName,
+            refreshSecretName: undefined,
+            isRefreshable: false,
+          }
+        : undefined;
+    }
+
+    case "none":
+    case undefined: {
+      return undefined;
+    }
+  }
+}
+
 function allowedOAuthConnectorSecretNames(
   type: ConnectorAuthProviderType,
   authMethod: ConnectorAuthMethodId,
@@ -1452,7 +1523,6 @@ export const upsertOAuthConnector$ = command(
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
       readonly refreshToken?: string | null;
-      readonly refreshSecretName?: string;
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
@@ -1462,7 +1532,15 @@ export const upsertOAuthConnector$ = command(
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
-    const secretMetadata = getConnectorAuthProviderSecretMetadata(args.type);
+    const secretMetadata = connectorTokenSecretMetadataForAuthMethod({
+      type: args.type,
+      authMethod: args.authMethod,
+    });
+    if (!secretMetadata) {
+      throw new Error(
+        `${args.type} connector auth method ${args.authMethod} does not expose an access token secret`,
+      );
+    }
     const tokenExpiresAt = connectorTokenExpiresAt({
       isRefreshable: secretMetadata.isRefreshable,
       expiresIn: args.expiresIn,
@@ -1472,9 +1550,7 @@ export const upsertOAuthConnector$ = command(
       authMethod: args.authMethod,
       extraConnectorSecrets: args.extraConnectorSecrets,
       accessSecretName: secretMetadata.accessSecretName,
-      refreshSecretName: secretMetadata.isRefreshable
-        ? secretMetadata.refreshSecretName
-        : undefined,
+      refreshSecretName: secretMetadata.refreshSecretName,
     });
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
@@ -1485,7 +1561,7 @@ export const upsertOAuthConnector$ = command(
       type: args.type,
       accessSecretName: secretMetadata.accessSecretName,
       accessToken: args.accessToken,
-      refreshSecretName: args.refreshSecretName,
+      refreshSecretName: secretMetadata.refreshSecretName,
       refreshToken: args.refreshToken,
       extraSecrets,
       featureSwitchContext,
