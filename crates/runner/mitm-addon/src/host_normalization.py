@@ -13,6 +13,7 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 )
 _PUNYCODE_PREFIX = "xn--"
 _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
+_UNICODE_MARK_CATEGORY_PREFIX = "M"
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
 _GREEK_CAPITAL_SIGMA = "\u03a3"
 _GREEK_SMALL_SIGMA = "\u03c3"
@@ -57,6 +58,8 @@ def _normalize_label_text(label: str) -> str:
 
 def _validate_normalized_label_text(normalized_label: str) -> None:
     if not normalized_label or "." in normalized_label:
+        raise UnicodeError("invalid IDNA label")
+    if category(normalized_label[0]).startswith(_UNICODE_MARK_CATEGORY_PREFIX):
         raise UnicodeError("invalid IDNA label")
     if any(char in _FORBIDDEN_NORMALIZED_LABEL_CHARS for char in normalized_label):
         raise UnicodeError("invalid IDNA label")

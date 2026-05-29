@@ -427,7 +427,9 @@ class TestCompiledFirewallMatching:
             "\u4f8b\uff1a\u5b50.example",
             "\u4f8b\uff0c\u5b50.example",
             "\u034f.example",
+            "\u0301.example",
             "\ufe0f.example",
+            "xn--rld.example",
         ],
     )
     def test_compiled_rejects_request_url_with_invalid_authority_host(self, invalid_host):

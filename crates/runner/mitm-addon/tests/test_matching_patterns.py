@@ -327,7 +327,9 @@ class TestMatchBaseUrl:
             ("https://\u4f8b\uff1a\u5b50.example/repos", "https://\u4f8b\uff1a\u5b50.example"),
             ("https://\u4f8b\uff0c\u5b50.example/repos", "https://\u4f8b\uff0c\u5b50.example"),
             ("https://\u034f.example/repos", "https://\u034f.example"),
+            ("https://\u0301.example/repos", "https://\u0301.example"),
             ("https://\ufe0f.example/repos", "https://\ufe0f.example"),
+            ("https://xn--rld.example/repos", "https://xn--rld.example"),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):
