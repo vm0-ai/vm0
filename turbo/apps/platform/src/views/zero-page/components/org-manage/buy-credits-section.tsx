@@ -4,13 +4,9 @@ import { Button, Input } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { detachedNavigateTo$ } from "../../../../signals/route.ts";
-import { ROUTES } from "../../../../signals/route-paths.ts";
 import {
-  buyCreditsCoupon$,
   buyCreditsCustomDollars$,
   buyCreditsSelection$,
-  setBuyCreditsCoupon$,
   setBuyCreditsCustomDollars$,
   setBuyCreditsSelection$,
   startCreditCheckout$,
@@ -48,7 +44,7 @@ const tileBaseClass =
 
 function tileBorderClass(selected: boolean): string {
   return selected
-    ? "border border-foreground ring-1 ring-foreground"
+    ? "border border-primary ring-2 ring-primary/20"
     : "zero-border hover:border-muted-foreground/30";
 }
 
@@ -167,58 +163,6 @@ function TileGrid({
   );
 }
 
-function ActionsRow({
-  coupon,
-  onCouponChange,
-  onRedeem,
-  redeemDisabled,
-  buyLabel,
-  buyDisabled,
-  onBuy,
-}: {
-  coupon: string;
-  onCouponChange: (next: string) => void;
-  onRedeem: () => void;
-  redeemDisabled: boolean;
-  buyLabel: string;
-  buyDisabled: boolean;
-  onBuy: (e: React.MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-      <div className="flex items-center gap-2">
-        <Input
-          type="text"
-          value={coupon}
-          onChange={(e) => {
-            onCouponChange(e.target.value);
-          }}
-          placeholder="Enter coupon code"
-          className="h-9 w-[200px]"
-          aria-label="Coupon code"
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 px-4 text-sm"
-          disabled={redeemDisabled}
-          onClick={onRedeem}
-        >
-          Redeem
-        </Button>
-      </div>
-      <Button
-        size="sm"
-        className="h-9 px-4 text-sm font-medium"
-        disabled={buyDisabled}
-        onClick={onBuy}
-      >
-        {buyLabel}
-      </Button>
-    </div>
-  );
-}
-
 function resolveBuyDollars(
   selection: BuyCreditsSelection,
   customDollars: string,
@@ -242,13 +186,10 @@ export function BuyCreditsSection({
 }) {
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCreditCheckout$);
-  const navigateTo = useSet(detachedNavigateTo$);
   const selection = useGet(buyCreditsSelection$);
   const customDollars = useGet(buyCreditsCustomDollars$);
-  const coupon = useGet(buyCreditsCoupon$);
   const setSelection = useSet(setBuyCreditsSelection$);
   const setCustomDollars = useSet(setBuyCreditsCustomDollars$);
-  const setCoupon = useSet(setBuyCreditsCoupon$);
 
   if (currentTier === "free" || currentTier === "pro-suspend") {
     return null;
@@ -275,16 +216,6 @@ export function BuyCreditsSection({
     detach(checkout(payload, newTab, pageSignal), Reason.DomCallback);
   };
 
-  const trimmedCoupon = coupon.trim();
-  const handleRedeem = () => {
-    if (trimmedCoupon === "") {
-      return;
-    }
-    navigateTo(ROUTES.redeemCampaign, {
-      pathParams: { campaign: trimmedCoupon },
-    });
-  };
-
   return (
     <section className="flex flex-col gap-3">
       <h3 className="text-sm font-medium text-foreground">Buy credits</h3>
@@ -307,15 +238,16 @@ export function BuyCreditsSection({
           />
         </div>
         <div className="h-0 zero-border-t mx-5" />
-        <ActionsRow
-          coupon={coupon}
-          onCouponChange={setCoupon}
-          onRedeem={handleRedeem}
-          redeemDisabled={trimmedCoupon === ""}
-          buyLabel={buyLabel}
-          buyDisabled={buyDisabled}
-          onBuy={handleBuy}
-        />
+        <div className="flex items-center justify-end px-5 py-4">
+          <Button
+            size="sm"
+            className="h-9 px-4 text-sm font-medium"
+            disabled={buyDisabled}
+            onClick={handleBuy}
+          >
+            {buyLabel}
+          </Button>
+        </div>
       </div>
     </section>
   );
