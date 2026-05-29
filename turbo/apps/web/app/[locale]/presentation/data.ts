@@ -716,15 +716,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/245ae8d0-d9b5-4d50-b2d5-6f88220d0ce2/96.jpg",
   },
   {
-    slug: "vm0-atelier-zero-v2-unveil",
-    title: "Vm0 Atelier Zero V2 Unveil",
-    prompt:
-      "/gen presentation with design system `atelier-zero` and template `open-design-landing-deck`, create a vm0 design-system v2 internal unveil for the team. New tokens, component refactors, motion language, doc rewrite, rollout plan. Make it feel italic-serif, coral, atelier.",
-    embedUrl: "https://vm0-atelier-zero-v2-unveil-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/997998fb-d8ec-485a-b8ef-6eb672b1eefb/97.jpg",
-  },
-  {
     slug: "community-zine-workshop-facilitator",
     title: "Community Zine Workshop Facilitator",
     prompt:
