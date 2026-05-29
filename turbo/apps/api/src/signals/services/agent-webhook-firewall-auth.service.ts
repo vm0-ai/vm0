@@ -5,7 +5,6 @@ import {
   getConnectorOAuthClient,
   getConnectorAuthMethodAccessMetadata,
   type ConnectorAuthMethodAccessMetadata,
-  type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -19,8 +18,10 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
+  getConnectorAuthProviderClientArgs,
   hasConnectorAuthProvider,
   refreshConnectorAuthProviderAccessToken,
+  type ConnectorAuthProviderClientArgs,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -249,7 +250,7 @@ type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
       readonly connectorType: ConnectorAuthProviderType;
-      readonly oauthClient: ConnectorOAuthClient;
+      readonly clientArgs: ConnectorAuthProviderClientArgs;
       readonly context: RefreshTokenContext;
     }
   | {
@@ -809,7 +810,7 @@ function prepareRefreshTokenContext(
   );
   if (!oauthClient) {
     L.debug(
-      `${args.connectorType} OAuth client not configured, skipping token refresh`,
+      `${args.connectorType} connector client not configured, skipping token refresh`,
     );
     return { ok: false, reason: "client-unconfigured" };
   }
@@ -837,7 +838,7 @@ function prepareRefreshTokenContext(
     prepared: {
       sourceType: "connector",
       connectorType: parsedConnectorType.data,
-      oauthClient,
+      clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
       context,
     },
   };
@@ -960,7 +961,7 @@ async function refreshAccessTokenForSource(
     prepared.sourceType === "connector"
       ? refreshConnectorAuthProviderAccessToken({
           type: prepared.connectorType,
-          oauthClient: prepared.oauthClient,
+          clientArgs: prepared.clientArgs,
           refreshToken: prepared.context.currentRefreshToken,
         })
       : refreshModelProviderOAuthToken({

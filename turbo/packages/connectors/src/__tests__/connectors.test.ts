@@ -56,6 +56,7 @@ import {
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorOAuthAuthUrl,
+  getConnectorAuthProviderClientArgs,
   hasConnectorAuthCodeGrantProvider,
   hasConnectorDeviceAuthGrantProvider,
   getConnectorOAuthSecretMetadata,
@@ -481,7 +482,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       refreshConnectorAuthProviderAccessToken({
         type: "github",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "refresh-token",
       }),
     ).rejects.toThrow("github connector does not support token refresh");
@@ -975,7 +976,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       refreshConnectorAuthProviderAccessToken({
         type: "base44",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "base44-refresh-rotation",
       }),
     ).resolves.toStrictEqual({
@@ -986,7 +987,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       refreshConnectorAuthProviderAccessToken({
         type: "base44",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "base44-refresh-without-rotation",
       }),
     ).resolves.toStrictEqual({
@@ -1307,7 +1308,7 @@ describe("connector grant provider capability checks", () => {
 
     const refreshResult = await refreshConnectorAuthProviderAccessToken({
       type: "slock",
-      oauthClient,
+      clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
       refreshToken: "slock-refresh-token",
     });
     expect(refreshResult).toStrictEqual({
@@ -1326,7 +1327,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       refreshConnectorAuthProviderAccessToken({
         type: "slock",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "slock-refresh-malformed",
       }),
     ).resolves.toStrictEqual({
