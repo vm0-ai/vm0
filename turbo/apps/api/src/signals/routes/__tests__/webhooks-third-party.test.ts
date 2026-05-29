@@ -1398,7 +1398,7 @@ describe("POST /api/webhooks/github", () => {
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
   });
 
-  it("continues an existing session for the same GitHub issue", async () => {
+  it("starts a new session for label triggers on a GitHub issue with an existing session", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
@@ -1455,7 +1455,8 @@ describe("POST /api/webhooks/github", () => {
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.sessionId).toBe(session.id);
+    expect(runs[0]?.sessionId).toStrictEqual(expect.any(String));
+    expect(runs[0]?.sessionId).not.toBe(session.id);
     expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
     expect(runs[0]?.appendSystemPrompt).toContain("New detail");
     expect(runs[0]?.appendSystemPrompt).toContain("- MSG_ID: issue:42");
@@ -1464,8 +1465,9 @@ describe("POST /api/webhooks/github", () => {
 
     const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
     expect(callbacks[0]?.payload).toMatchObject({
-      existingSessionId: session.id,
+      sessionContinuityEnabled: false,
     });
+    expect(callbacks[0]?.payload).not.toHaveProperty("existingSessionId");
   });
 
   it("dispatches pull requests with a matching label listener", async () => {
