@@ -54,6 +54,11 @@ function validatePathSegments(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain whitespace`,
     );
   }
+  if (path.includes("\\")) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain backslash`,
+    );
+  }
   if (path.includes("?") || path.includes("#")) {
     throw new Error(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain query string or fragment`,

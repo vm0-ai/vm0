@@ -399,6 +399,15 @@ describe("validateRule", () => {
     }).toThrow("path must not contain whitespace");
   });
 
+  it("should reject path with raw backslash", () => {
+    expect(() => {
+      return validateRule("GET /foo\\bar", "read", "github");
+    }).toThrow("path must not contain backslash");
+    expect(() => {
+      return validateRule("GET /foo%5Cbar", "read", "github");
+    }).not.toThrow();
+  });
+
   it("should reject {param+} not in last segment", () => {
     expect(() => {
       return validateRule("GET /foo/{path+}/bar", "read", "github");
