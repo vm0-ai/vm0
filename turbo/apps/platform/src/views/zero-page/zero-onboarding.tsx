@@ -22,6 +22,8 @@ import {
   setZeroWorkspaceName$,
   zeroSelectedRole$,
   setZeroRole$,
+  trialGalleryIndex$,
+  setTrialGalleryIndex$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -491,100 +493,101 @@ function TrialStepContent() {
 // ---------------------------------------------------------------------------
 // Trial step — left-panel gallery (step 4)
 //
-// Two-column masonry / waterfall layout. Each tile keeps its native
-// aspect ratio so the artwork is never cropped. The second column is
-// offset slightly so the columns stagger, giving the "waterfall" feel.
-// Workflow tile uses an abstract diagram rather than a screenshot so
-// the trio reads as "outputs Zero can make".
+// Single-active-image carousel: one tile fills the hero card; the row
+// of thumbnails below switches the active slide. Images render at
+// their native aspect ratio so nothing gets cropped.
 // ---------------------------------------------------------------------------
 
 type TrialGalleryItem = {
   readonly id: string;
   readonly label: string;
   readonly title: string;
+  readonly subtitle: string;
   readonly image: string;
 };
 
-const TRIAL_GALLERY_HERO: TrialGalleryItem = {
-  id: "workflow",
-  label: "Workflow",
-  title: "Workflows that ship themselves",
-  image: trialWorkflowSrc,
-};
-
-const TRIAL_GALLERY_SECONDARY: readonly TrialGalleryItem[] = [
+const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
+  {
+    id: "workflow",
+    label: "Workflow",
+    title: "Workflows that ship themselves",
+    subtitle: "Pull data, draft the brief, ship it to Slack each morning",
+    image: trialWorkflowSrc,
+  },
   {
     id: "website",
     label: "Website",
     title: "Polished pages from a single brief",
+    subtitle: "Modern landings, brand sites, launch pages",
     image: trialWebsiteSrc,
   },
   {
     id: "illustration",
     label: "Illustration",
     title: "Editorial illustrations in your style",
+    subtitle: "28 plates in the register — pick one and ship",
     image: trialIllustrationSrc,
   },
 ];
 
-function TrialGalleryTile({
-  item,
-  aspect,
-  objectPosition,
-}: {
-  item: TrialGalleryItem;
-  aspect?: string;
-  objectPosition?: string;
-}) {
-  return (
-    <div
-      data-testid={`onboarding-trial-gallery-item-${item.id}`}
-      className="flex flex-col"
-    >
-      <div className={`rounded-xl overflow-hidden ${aspect ?? ""}`}>
-        <img
-          src={item.image}
-          alt={`${item.label} preview`}
-          className={
-            aspect
-              ? `block w-full h-full object-cover ${objectPosition ?? "object-center"}`
-              : "block w-full h-auto"
-          }
-        />
-      </div>
-      <div className="px-0.5 pt-2">
-        <span className="block text-[10px] font-medium text-muted-foreground">
-          {item.label}
-        </span>
-        <h3 className="text-[12px] font-semibold text-foreground leading-snug">
-          {item.title}
-        </h3>
-      </div>
-    </div>
-  );
-}
-
 function OnboardingTrialPanel() {
+  const rawIndex = useGet(trialGalleryIndex$);
+  const setIndex = useSet(setTrialGalleryIndex$);
+  const activeIndex =
+    ((rawIndex % TRIAL_GALLERY_ITEMS.length) + TRIAL_GALLERY_ITEMS.length) %
+    TRIAL_GALLERY_ITEMS.length;
+  const activeItem = TRIAL_GALLERY_ITEMS[activeIndex];
+
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col gap-3 w-full max-w-[480px]"
+      className="flex flex-col gap-4 w-full max-w-[480px]"
     >
       <p className="text-[11px] font-medium text-muted-foreground">
         Made with Zero
       </p>
-      <TrialGalleryTile item={TRIAL_GALLERY_HERO} />
-      <div className="grid grid-cols-2 gap-3 items-start">
-        {TRIAL_GALLERY_SECONDARY.map((item) => {
-          const objectPosition =
-            item.id === "website" ? "object-top" : "object-center";
+      <div className="rounded-2xl overflow-hidden">
+        <img
+          src={activeItem.image}
+          alt={`${activeItem.label} preview`}
+          className="block w-full h-auto"
+        />
+      </div>
+      <div className="flex flex-col">
+        <span className="text-[11px] font-medium text-muted-foreground">
+          {activeItem.label}
+        </span>
+        <h3 className="text-sm font-semibold text-foreground leading-snug mt-0.5">
+          {activeItem.title}
+        </h3>
+        <p className="text-xs text-muted-foreground leading-snug mt-1">
+          {activeItem.subtitle}
+        </p>
+      </div>
+      <div className="flex items-center gap-2.5">
+        {TRIAL_GALLERY_ITEMS.map((item, i) => {
+          const isActive = i === activeIndex;
           return (
-            <TrialGalleryTile
+            <button
               key={item.id}
-              item={item}
-              aspect="aspect-square"
-              objectPosition={objectPosition}
-            />
+              type="button"
+              aria-label={`Show ${item.label} preview`}
+              data-testid={`onboarding-trial-gallery-dot-${item.id}`}
+              onClick={() => {
+                setIndex(i);
+              }}
+              className={`relative h-11 w-11 rounded-lg overflow-hidden transition-all ${
+                isActive
+                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  : "opacity-50 hover:opacity-100"
+              }`}
+            >
+              <img
+                src={item.image}
+                alt=""
+                className="block w-full h-full object-cover object-center"
+              />
+            </button>
           );
         })}
       </div>

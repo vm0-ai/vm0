@@ -52,6 +52,7 @@ const initialOnboardingStep$ = computed(async (get) => {
 const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
 const internalSelectedRole$ = state<string | null>("founder");
+const internalTrialGalleryIndex$ = state(0);
 
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
@@ -113,6 +114,10 @@ export const zeroSelectedRole$ = computed((get) => {
   return get(internalSelectedRole$);
 });
 
+export const trialGalleryIndex$ = computed((get) => {
+  return get(internalTrialGalleryIndex$);
+});
+
 export const zeroSelectedConnectors$ = computed((get) => {
   return get(internalSelectedConnectors$);
 });
@@ -135,6 +140,10 @@ export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
 
 export const setZeroRole$ = command(({ set }, role: string | null) => {
   set(internalSelectedRole$, role);
+});
+
+export const setTrialGalleryIndex$ = command(({ set }, index: number) => {
+  set(internalTrialGalleryIndex$, index);
 });
 
 const internalConnectorSearch$ = state("");
@@ -173,6 +182,7 @@ export const resetOnboardingStep$ = command(({ set }) => {
   set(internalPromptDraft$, "");
   set(internalEagerInitialized$, false);
   set(internalSelectedRole$, "founder");
+  set(internalTrialGalleryIndex$, 0);
 });
 
 /**
