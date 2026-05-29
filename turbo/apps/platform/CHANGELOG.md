@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.391.0](https://github.com/vm0-ai/vm0/compare/app-v0.390.1...app-v0.391.0) (2026-05-29)
+
+
+### Features
+
+* add permission request realtime refresh ([#15356](https://github.com/vm0-ai/vm0/issues/15356)) ([e2868a9](https://github.com/vm0-ai/vm0/commit/e2868a99aee635fbe288872fa20c30f0a3fd384d))
+
+
+### Bug Fixes
+
+* **platform:** state-aware OAuth CTA copy ([#14930](https://github.com/vm0-ai/vm0/issues/14930)) ([4804db6](https://github.com/vm0-ai/vm0/commit/4804db6446de19a448b7f9a9d52cb32129f43ddd))
+* show activity logs under zero debug ([#15354](https://github.com/vm0-ai/vm0/issues/15354)) ([af7ff22](https://github.com/vm0-ai/vm0/commit/af7ff222eee5f9c3a7c557c6a4a65b99b98addbf))
+
 ## [0.390.1](https://github.com/vm0-ai/vm0/compare/app-v0.390.0...app-v0.390.1) (2026-05-29)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.86.0](https://github.com/vm0-ai/vm0/compare/api-v1.85.1...api-v1.86.0) (2026-05-29)
+
+
+### Features
+
+* add permission request realtime refresh ([#15356](https://github.com/vm0-ai/vm0/issues/15356)) ([e2868a9](https://github.com/vm0-ai/vm0/commit/e2868a99aee635fbe288872fa20c30f0a3fd384d))
+
+
+### Bug Fixes
+
+* allow promo codes for credit checkouts ([#15361](https://github.com/vm0-ai/vm0/issues/15361)) ([a04e585](https://github.com/vm0-ai/vm0/commit/a04e5851bc7afe5126450a67e3f49886c3d07e1e))
+* harden auto recharge setup ([#15364](https://github.com/vm0-ai/vm0/issues/15364)) ([e75d12c](https://github.com/vm0-ai/vm0/commit/e75d12c927037591842954858c033603e19e9ab2))
+* require kms secret envelopes ([#15339](https://github.com/vm0-ai/vm0/issues/15339)) ([bc95653](https://github.com/vm0-ai/vm0/commit/bc95653928fe2516c8e030c23590faaea3f12fd3))
+
 ## [1.85.1](https://github.com/vm0-ai/vm0/compare/api-v1.85.0...api-v1.85.1) (2026-05-29)
 
 
