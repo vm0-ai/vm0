@@ -3917,6 +3917,240 @@
     "generationAccessHeading": "Usar {name} en VM0",
     "generationAccessBody": "Los agentes de VM0 pueden invocar {name} como parte de una ejecución de agente, facturado contra tus créditos VM0. El precio listado arriba es lo que cobra el proveedor upstream; VM0 lo traslada con la conversión estándar de créditos.",
     "content": {
+      "claude-opus-4-8": {
+        "name": "Claude Opus 4.8",
+        "pageTitle": "Claude Opus 4.8",
+        "tagline": "El nuevo modelo insignia de Anthropic. Lanzado el 28 de mayo de 2026 con codificación agéntica más fuerte, flujos de trabajo dinámicos que despliegan cientos de subagentes en paralelo y un modo rápido 3× más barato al mismo precio regular que Opus 4.7.",
+        "cardIntro": "El más nuevo modelo insignia Claude 4 de Anthropic. Lidera SWE-bench Pro y OSWorld-Verified al lanzamiento, con flujos de trabajo dinámicos y un modo rápido 3× más barato.",
+        "metaTitle": "Claude Opus 4.8: Benchmarks, Precios y Capacidades",
+        "metaDescription": "Reseña de Claude Opus 4.8. El modelo insignia de Anthropic del 28 de mayo de 2026 con contexto de 1M tokens, pensamiento de máximo esfuerzo, flujos de trabajo dinámicos, precios de proveedor de $5/$25 y mejoras de benchmark sobre Opus 4.7 en SWE-bench Pro, OSWorld-Verified, MCP-Atlas, BrowseComp, USAMO y recuperación de contexto largo GraphWalks.",
+        "summary": "Claude Opus 4.8 es el lanzamiento insignia de Anthropic del 28 de mayo de 2026, una actualización directa de Opus 4.7 al mismo precio de lista del proveedor de $5/$25. Registra las puntuaciones más altas que Anthropic haya lanzado en SWE-bench Pro (69,2%), OSWorld-Verified (83,4%), MCP-Atlas (82,2%) y Humanity's Last Exam (57,9% con herramientas), y es el primer modelo en superar el 10% en el estándar all-pass de agente legal.\n\nLos dos cambios estructurales que vale la pena conocer son los flujos de trabajo dinámicos (planificar un trabajo y desplegarlo en cientos de subagentes paralelos en una sola sesión) y un recorte de precio del modo rápido a 2,5× de velocidad por $10/$50 por 1M tokens — tres veces más barato que el modo rápido de modelos Claude anteriores. Los niveles de esfuerzo se expanden a high (predeterminado), extra y max. Anthropic mismo presenta el lanzamiento como una \"mejora modesta pero tangible\" en lugar de un salto.",
+        "releaseDate": "28 de mayo de 2026",
+        "familyPosition": "Nivel superior de la familia Claude 4. El predeterminado recomendado por Anthropic para nuevos agentes; se lanza con el mismo multiplicador ×1,7 que Opus 4.7.",
+        "background": [
+          "Claude Opus 4.8 se lanzó el 28 de mayo de 2026 como el nuevo modelo insignia de Anthropic, 41 días después de Opus 4.7. Apunta a las mismas cargas de trabajo de codificación, habilidades agénticas, razonamiento y trabajo de conocimiento que 4.7, al mismo precio de lista regular ($5 entrada / $25 salida por 1M tokens) y el mismo multiplicador de VM0 (×1,7). Anthropic posiciona el lanzamiento como una \"mejora modesta pero tangible sobre su predecesor\" en lugar de un cambio escalonado.",
+          "Dos cambios estructurales importan para los usuarios de VM0. Primero, los flujos de trabajo dinámicos: el modelo puede planificar una tarea y desplegarla en cientos de subagentes paralelos en una sola sesión, lo que Anthropic describe como un paso hacia el manejo de migraciones a escala de código base de cientos de miles de líneas de código en una sola ejecución. Segundo, el modo rápido a 2,5× de velocidad ahora cuesta $10 / $50 por 1M tokens — tres veces más barato que el modo rápido de modelos Claude anteriores. Los niveles de esfuerzo se expanden a tres escalones: high (predeterminado), extra (xhigh en Claude Code) y max.",
+          "Las lecturas independientes (LLM Stats, VentureBeat, Vellum) corroboran el orden relativo frente a 4.7 y los competidores: 4.8 gana en cada celda del conjunto de comparación publicado por Anthropic excepto Terminal-Bench 2.1, donde GPT-5.5 sigue liderando (78,2% vs 74,6% de 4.8). El salto de 4.7 a 4.8 en SWE-bench Pro es de +4,9 puntos; en USAMO 2026 es de +27,4; en el nuevo F1 de contexto largo GraphWalks de 1M tokens es de +27,8. Trata las puntuaciones absolutas como direccionales — SWE-bench Verified se está acercando a la saturación en todos los modelos frontera."
+        ],
+        "architecture": "Opus 4.8 mantiene la ventana de contexto de 1M tokens y la salida máxima de 128K de Opus 4.7, facturada a precio de entrada estándar en toda la ventana. El control de esfuerzo se expande a tres niveles: high (el nuevo predeterminado), extra (xhigh dentro de Claude Code) y max. La API de Messages ahora acepta entradas de sistema a mitad de conversación sin romper el caché de prompts. Los flujos de trabajo dinámicos permiten a Claude planificar y despachar cientos de subagentes paralelos en una sola sesión. El modo rápido funciona a ~2,5× la velocidad estándar por $10 / $50 por 1M tokens. Las entradas multimodales a través de texto, visión y código no cambian.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Generación Claude 4"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, visión, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Inglés primero, multilingüe"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (Anthropic)"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "1M tokens"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "Hasta 128K tokens"
+          },
+          {
+            "label": "Niveles de esfuerzo",
+            "value": "High (predeterminado) / Extra / Max"
+          },
+          {
+            "label": "Precio de lista",
+            "value": "$5 entrada / $25 salida por 1M (modo rápido $10/$50, 2,5× velocidad)"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de la system card de Opus 4.8 de Anthropic, con comparaciones contra Opus 4.7, GPT-5.5 y Gemini 3.1 Pro a esfuerzo máximo y promedios de 5 intentos. 4.8 lidera en seis de las siete celdas que Anthropic publica; GPT-5.5 conserva el liderazgo en Terminal-Bench 2.1. SWE-bench Verified se está acercando a la saturación en todos los modelos frontera — el conjunto más difícil SWE-bench Pro es la señal más duradera.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "88.6%",
+            "note": "reportado por el proveedor; sube desde 87,6% de Opus 4.7"
+          },
+          {
+            "name": "SWE-bench Pro",
+            "score": "69.2%",
+            "note": "lidera el campo (4.7: 64,3%, GPT-5.5: 58,6%, Gemini 3.1 Pro: 54,2%)"
+          },
+          {
+            "name": "Terminal-Bench 2.1",
+            "score": "74.6%",
+            "note": "sube desde 66,1% de 4.7 en 2.0; GPT-5.5 lidera aquí con 78,2%"
+          },
+          {
+            "name": "OSWorld-Verified (computer use)",
+            "score": "83.4%",
+            "note": "lidera el campo (4.7: 82,8%, GPT-5.5: 78,7%)"
+          },
+          {
+            "name": "Online-Mind2Web (browser agent)",
+            "score": "84%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "MCP-Atlas",
+            "score": "82.2%",
+            "note": "sube desde 77,3% de Opus 4.7"
+          },
+          {
+            "name": "BrowseComp (single-agent)",
+            "score": "84.3%",
+            "note": "sube desde 79,3% de Opus 4.7"
+          },
+          {
+            "name": "GraphWalks long-context F1 (1M tokens)",
+            "score": "68.1%",
+            "note": "sube desde 40,3% de Opus 4.7"
+          },
+          {
+            "name": "Humanity's Last Exam (with tools)",
+            "score": "57.9%",
+            "note": "49,8% sin herramientas; lidera el campo"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~93%",
+            "note": "sin cambios vs 4.7 — saturado en modelos frontera"
+          },
+          {
+            "name": "USAMO 2026 (math)",
+            "score": "96.7%",
+            "note": "sube desde 69,3% de Opus 4.7"
+          },
+          {
+            "name": "GDPval-AA (knowledge work)",
+            "score": "1890 Elo",
+            "note": "lidera (4.7: 1753, GPT-5.5: 1769)"
+          },
+          {
+            "name": "Finance Agent v2",
+            "score": "53.9%",
+            "note": "lidera el campo"
+          },
+          {
+            "name": "Legal-agent all-pass",
+            "score": ">10%",
+            "note": "primer modelo en superar este estándar"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Flujos de trabajo dinámicos",
+            "body": "La nueva capacidad estrella. Opus 4.8 puede planificar una tarea y luego ejecutar cientos de subagentes paralelos dentro de la misma sesión — Anthropic posiciona esto como el camino hacia migraciones a escala de código base de cientos de miles de líneas en una sola ejecución. En VM0, esto significa que una sola ejecución de agente puede orquestar trabajo de fan-out que antes requería programación externa."
+          },
+          {
+            "title": "Ediciones de código al primer intento",
+            "body": "Anthropic reporta que Opus 4.8 tiene alrededor de cuatro veces menos probabilidades que 4.7 de pasar por alto fallos al revisar código, y el salto de +4,9 puntos en SWE-bench Pro (69,2% vs 64,3%) respalda eso en el conjunto de codificación más difícil y menos saturado. Elige 4.8 para parches que deben aplicarse limpiamente en muchos archivos."
+          },
+          {
+            "title": "Recuperación de contexto largo",
+            "body": "GraphWalks F1 a 1M tokens salta de 40,3% a 68,1% — la mayor ganancia en un solo benchmark del lanzamiento. La ventana de 1M tokens ahora es realmente utilizable en el extremo superior de su rango, no solo nominalmente."
+          },
+          {
+            "title": "Honestidad y exceso de confianza",
+            "body": "Anthropic reporta una reducción de más de diez veces en el exceso de confianza frente a 4.7, 0% en reportar acríticamente resultados defectuosos (un primero para la familia Claude) y una tasa del 3,7% de no plantear eventos importantes al usuario. La incidencia de desalineación es ~1,9, prácticamente empatada con el Mythos Preview mejor alineado de Anthropic."
+          },
+          {
+            "title": "Velocidad y modo rápido",
+            "body": "La velocidad estándar es comparable a Opus 4.7. El cambio de precio es el titular: el modo rápido a 2,5× de velocidad cuesta $10 / $50 por 1M tokens, tres veces más barato que el modo rápido de modelos Claude anteriores. Vale la pena usarlo para pasos de orquestación donde importa la latencia de reloj de pared."
+          },
+          {
+            "title": "Advertencia sobre inyección de prompts",
+            "body": "La system card de Anthropic nota que 4.8 es algo menos robusto a la inyección de prompts agéntica que 4.7 — el red-teaming de Gray Swan muestra una tasa de éxito de ataque de ~9,6% frente al 6,0% en 4.7. Los equipos que ejecutan 4.8 en pipelines que manejan entradas no confiables deberían revisar su enfoque de sandboxing."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "La migración a escala de código base que solía necesitar un sprint",
+            "body": "Pásale a Opus 4.8 una migración que toca unos cientos de archivos — cambio de ORM, salto de versión de framework, corrección de seguridad en un monorepo — y deja que los flujos de trabajo dinámicos desplieguen el trabajo a subagentes paralelos dentro de una sola sesión. El salto de +4,9 puntos en SWE-bench Pro y la reducción cuádruple de fallos pasados por alto en la revisión de código son lo que rinde frutos en este tipo de ejecución."
+          },
+          {
+            "title": "La ejecución de investigación de 1M tokens que realmente se sostiene",
+            "body": "Suelta un borrador de contrato de 200 páginas, tres propuestas de competidores y las opiniones legales del último trimestre en la ventana, luego pide a Opus 4.8 que marque cada cláusula más restrictiva que el mercado. GraphWalks a 1M saltando de 40,3% a 68,1% es lo que hace que este tipo de síntesis entre documentos sea recientemente confiable."
+          },
+          {
+            "title": "El orquestador de agentes que no miente sobre su trabajo",
+            "body": "Usa 4.8 como el planificador que divide una solicitud en diez pasos, despacha cada uno a subagentes más baratos y reporta el resultado. La tasa del 0% en reportar acríticamente resultados defectuosos, combinada con la caída de diez veces en exceso de confianza, es la razón por la que los equipos de producción recurren a 4.8 cuando el autoinforme del propio agente debe ser confiable."
+          },
+          {
+            "title": "El flujo sensible a la latencia que finalmente cuadra en modo rápido",
+            "body": "El modo rápido a 2,5× de velocidad solía costar tres veces lo que cuesta ahora ($10/$50 por 1M frente al nivel anterior). Para copilotos interactivos, resumidores on-call o cualquier paso donde la latencia de reloj de pared domine la experiencia, el modo rápido de 4.8 ahora es la elección predeterminada en la familia Claude."
+          }
+        ],
+        "avoidFor": "Evita Opus 4.8 en trabajo rutinario de alto volumen donde Sonnet 4.6 alcanza la misma calidad a una fracción del costo, en respuestas de chat sensibles a la latencia donde Haiku 4.5 es mucho más rápido, en codificación agéntica de terminal donde GPT-5.5 sigue liderando Terminal-Bench 2.1 (78,2% vs 74,6% de 4.8), y en pipelines que ingieren entradas no confiables sin sandboxing — la robustez de 4.8 a la inyección de prompts es ligeramente más débil que la de 4.7.",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.7",
+            "body": "Mismo multiplicador ×1,7, misma ventana de contexto, mismo precio regular. Opus 4.8 lidera en cada celda que Anthropic publica (SWE-bench Verified +1, SWE-bench Pro +4,9, OSWorld-Verified +0,6, MCP-Atlas +4,9, BrowseComp +5,0, GraphWalks 1M +27,8, USAMO +27,4). El compromiso es un perfil de inyección de prompts ligeramente más débil (tasa de éxito de ataque ~9,6% vs 6,0%). Migra nuevos agentes a 4.8; fija 4.7 solo si has validado contra él y no quieres reejecutar regresiones."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 (×1) sigue siendo el caballo de batalla predeterminado para la mayoría de bucles de agente. Promueve a Opus 4.8 cuando Sonnet falla visiblemente en razonamiento difícil, recuperación de contexto largo o ediciones de código al primer intento — usualmente como el planificador que delega a subagentes de nivel Sonnet o Haiku. Con flujos de trabajo dinámicos, Opus 4.8 como orquestador + Sonnet 4.6 como trabajadores es el nuevo patrón recomendado."
+          },
+          {
+            "vs": "GPT-5.5",
+            "body": "Opus 4.8 lidera en seis de las siete celdas del conjunto de comparación de Anthropic, con las mayores brechas en SWE-bench Pro (69,2% vs 58,6%) y OSWorld-Verified (83,4% vs 78,7%). GPT-5.5 conserva el liderazgo en Terminal-Bench 2.1 (78,2% vs 74,6%). Elige 4.8 para codificación entre archivos y agentes de uso de computadora; elige GPT-5.5 específicamente cuando domine el trabajo en terminal."
+          },
+          {
+            "vs": "Gemini 3.1 Pro",
+            "body": "Opus 4.8 lidera por amplios márgenes en SWE-bench Pro (+15,0) y OSWorld-Verified (+7,2). Los dos modelos se mantienen dentro del ruido en benchmarks científicos saturados como GPQA Diamond. Predetermina 4.8 para trabajo agéntico; considera Gemini específicamente cuando necesites la historia de integración de herramientas de Google."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro (×0,3) sigue siendo la elección optimizada en costo cuando el precio bruto por token domina la decisión. Opus 4.8 conserva el liderazgo en fiabilidad de enrutamiento de herramientas, recuperación de contexto largo, métricas de alineación y uso de computadora, razón por la cual la mayoría de agentes empresariales en inglés siguen defaulteando a 4.8 a pesar de la brecha de precio."
+          }
+        ],
+        "verdict": "El nuevo predeterminado para nuevos agentes en la familia Claude. Migra desde 4.7 cuando puedas revalidar; defaultea directamente a él para trabajo nuevo. Mantén Sonnet 4.6 como el caballo de batalla más barato debajo.",
+        "faqs": [
+          {
+            "q": "¿Cuándo se lanzó Claude Opus 4.8?",
+            "a": "Anthropic lanzó Opus 4.8 el 28 de mayo de 2026, 41 días después de Opus 4.7. Está disponible hoy en los productos Claude, la API de Claude (model id `claude-opus-4-8`), Amazon Bedrock, Google Cloud Vertex AI, Microsoft Foundry y VM0."
+          },
+          {
+            "q": "¿Cómo se compara el precio de Opus 4.8 con 4.7?",
+            "a": "El precio regular es idéntico: $5 por 1M tokens de entrada, $25 por 1M tokens de salida, $0,50 por 1M de entrada cacheada. El cambio es el modo rápido, ahora $10 / $50 por 1M tokens a 2,5× de velocidad — tres veces más barato que el modo rápido de modelos Claude anteriores."
+          },
+          {
+            "q": "¿Qué son los flujos de trabajo dinámicos?",
+            "a": "Una nueva capacidad que permite a Opus 4.8 planificar una tarea y luego ejecutar cientos de subagentes paralelos dentro de una sola sesión. Anthropic posiciona esto como el camino hacia migraciones a escala de código base de cientos de miles de líneas de código en una sola ejecución de agente."
+          },
+          {
+            "q": "¿Qué niveles de esfuerzo soporta Opus 4.8?",
+            "a": "Tres niveles: high (el nuevo predeterminado), extra (xhigh en Claude Code) y max. Los ajustes más altos gastan más tokens en razonamiento antes de producir una respuesta; los ajustes más bajos favorecen la velocidad y la eficiencia del límite de tasa."
+          },
+          {
+            "q": "¿Debería migrar de Opus 4.7 a 4.8?",
+            "a": "Sí para trabajo nuevo — mismo multiplicador, mismo precio regular, comportamiento más fuerte en cada celda de comparación publicada excepto Terminal-Bench 2.1. Migra los agentes de producción fijados solo después de ejecutarlos en tu suite de regresión, y revisa tu sandboxing si el agente ingiere entradas no confiables (4.8 es ligeramente menos robusto a la inyección de prompts que 4.7)."
+          },
+          {
+            "q": "¿Opus 4.8 soporta caché de prompts?",
+            "a": "Sí. La entrada cacheada se factura a $0,50 por 1M tokens, un descuento de 10× sobre la porción cacheada. La API de Messages ahora también acepta entradas de sistema a mitad de conversación sin romper el caché."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-7",
+            "reason": "Modelo insignia anterior; ligeramente más robusto a la inyección de prompts"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Predeterminado más barato para la mayoría de bucles de agente"
+          },
+          {
+            "slug": "gpt-5-5",
+            "reason": "Lidera Terminal-Bench 2.1 para codificación agéntica de terminal"
+          }
+        ],
+        "routingNotes": "En VM0, Opus 4.8 se enruta directamente a la API Messages de Anthropic y se expone de tres formas: a través del pool de créditos VM0 Managed, a través de una clave API directa de Anthropic, y a través del proveedor OAuth de Claude Code para equipos ya autenticados con Claude Code. También está incluido en la política de modelos predeterminada de la organización.",
+        "vm0Notes": "El caché de prompts está habilitado por defecto a través de VM0, lo que reduce sustancialmente el costo de prompts de sistema repetidos, definiciones de herramientas y documentos de referencia pegados en agentes que emiten muchos turnos desde el mismo prefijo. No hay anulaciones de timeout del lado de VM0 para Opus 4.8; el modelo usa los timeouts de API predeterminados de Anthropic. Sonnet 4.6 sigue siendo el predeterminado de la plataforma para nuevos agentes, por lo que el patrón estándar es mantener niveles baratos ejecutándose en todas partes y enrutar solo los pasos más difíciles a Opus 4.8."
+      },
       "claude-opus-4-7": {
         "name": "Claude Opus 4.7",
         "pageTitle": "Claude Opus 4.7",
