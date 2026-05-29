@@ -3703,7 +3703,7 @@
     "anatomyHeading": "Anatomy of the style",
     "whenToUseHeading": "When to reach for {title}",
     "recipeHeading": "How to generate a {title} illustration",
-    "recipeIntro": "Open Zero, type the slash command, and brief in five short parts. The finished editorial plate comes back in under a minute — no design tool, no waiting on a designer.",
+    "recipeIntro": "Open Zero and send the slash command with the style name. The finished editorial plate comes back in under a minute — no design tool, no waiting on a designer. Add a short scene brief after the style name to customise.",
     "recipeCommandLabel": "Slash command",
     "comparisonHeading": "{title} vs other VM0 illustration styles",
     "relatedHeading": "Closest neighbours in the register",
@@ -3712,13 +3712,13 @@
     "content": {
       "cozy-parlor": {
         "seoTitle": "Cozy Parlor — Hand-Painted Watercolor & Ink Editorial Illustrations",
-        "description": "Generate hand-painted watercolor & ink editorial illustrations starring anthropomorphic animals in cozy interiors. Free AI illustration style from VM0 — invoke /cozy-parlor in Zero.",
+        "description": "Generate hand-painted watercolor & ink editorial illustrations starring anthropomorphic animals in cozy interiors. Free AI illustration style from VM0 — invoke /gen cozy-parlor in Zero.",
         "lede": "An editorial AI illustration style from VM0 that paints one anthropomorphic animal inside a quiet, patterned interior — soft watercolor under confident ink, anchored by a single hot accent.",
         "definition": "Cozy Parlor is a hand-drawn AI illustration style developed by VM0 for editorial and marketing use. Every plate stages a single anthropomorphic animal — a frog, hedgehog, mouse, or otter — inside a patterned cool-white interior, rendered in confident brush-pen ink over soft watercolor washes, with one saturated accent prop carrying the warmth.",
         "valueProps": [
           {
             "title": "Hand-painted editorial look, on demand",
-            "body": "Cozy Parlor generates magazine-quality watercolor and ink illustrations the way a studio illustrator would — confident contour, neutral washes, single-pass brushwork — but produced end-to-end inside Zero. No design tool, no stock library, no commissioning fee. Brief in five lines, finished plate out."
+            "body": "Cozy Parlor generates magazine-quality watercolor and ink illustrations the way a studio illustrator would — confident contour, neutral washes, single-pass brushwork — but produced end-to-end inside Zero. No design tool, no stock library, no commissioning fee. Type the style name, finished plate out."
           },
           {
             "title": "Distinctive in a sea of generic AI art",
@@ -3730,7 +3730,7 @@
           },
           {
             "title": "Free to generate, royalty-free to ship",
-            "body": "Every plate you generate with the /cozy-parlor skill belongs to you. Use them in production blog posts, marketing emails, app onboarding flows, SaaS landing pages, and printed collateral without licensing fees or attribution. The four variations on this page show the style's range, generated with gpt-image-1.5 from the locked VM0 register spec."
+            "body": "Every plate you generate with /gen cozy-parlor belongs to you. Use them in production blog posts, marketing emails, app onboarding flows, SaaS landing pages, and printed collateral without licensing fees or attribution. The four variations on this page show the style's range, generated with gpt-image-1.5 from the locked VM0 register spec."
           }
         ],
         "anatomy": [
@@ -3774,8 +3774,8 @@
           }
         ],
         "recipe": {
-          "prompt": "/cozy-parlor a hedgehog in a fair-isle sweater browsing a wall of vinyl records, candlelight orange accent on the turntable lamp, slate-blue walls, terracotta rug, single window implied off-frame",
-          "note": "Brief in five parts: cast (which animal, what it wears), activity (what it's doing with its hands), accent (which single prop carries the hot color), room palette (two neutral washes), and one ambient cue (light source or time of day). The locked spec handles ink, paper, and composition — you don't need to specify them."
+          "prompt": "/gen cozy-parlor",
+          "note": "The style name alone gets you a hand-painted Cozy Parlor plate with a default scene. To customise, append a short scene brief — cast (which animal, what it wears), activity, accent prop (which single object carries the hot color), room palette (two neutral washes), and one ambient cue (light source or time of day). The locked spec handles ink, paper, and composition either way."
         },
         "comparison": [
           {
@@ -3804,11 +3804,11 @@
           },
           {
             "question": "Can I use Cozy Parlor illustrations for commercial work?",
-            "answer": "Yes. Every plate generated with the /cozy-parlor skill belongs to you. Use it in production blog posts, marketing emails, app empty states, SaaS landing pages, newsletters, sales decks, and printed materials — no licensing fees, no attribution required."
+            "answer": "Yes. Every plate generated with /gen cozy-parlor belongs to you. Use it in production blog posts, marketing emails, app empty states, SaaS landing pages, newsletters, sales decks, and printed materials — no licensing fees, no attribution required."
           },
           {
             "question": "How long does it take to generate one Cozy Parlor illustration?",
-            "answer": "Under a minute end-to-end. Send the /cozy-parlor slash command in Zero with a five-part brief and the finished plate comes back inside the same chat — no design tool, no waiting on a designer, no round-trip with a freelancer."
+            "answer": "Under a minute end-to-end. Send /gen cozy-parlor in Zero — optionally with a short scene brief — and the finished plate comes back inside the same chat. No design tool, no waiting on a designer, no round-trip with a freelancer."
           },
           {
             "question": "How is this different from a generic AI illustration generator?",
@@ -3831,7 +3831,7 @@
             "answer": "Portrait (the locked default is 2:3) because the single-character framing needs vertical room. Square works for tighter editorial cards and social posts; landscape tends to break the cozy-interior feel, so reach for Iso Scene or Editorial Flatfolk when you need width."
           }
         ],
-        "ctaBody": "Open Zero, invoke /cozy-parlor with a five-part brief, and get a hand-painted editorial plate back in under a minute. Free for everyone in the VM0 beta."
+        "ctaBody": "Open Zero, send /gen cozy-parlor, and get a hand-painted editorial plate back in under a minute."
       }
     }
   },

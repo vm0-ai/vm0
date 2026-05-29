@@ -3703,7 +3703,7 @@
     "anatomyHeading": "Anatomie des Stils",
     "whenToUseHeading": "Wann zu {title} greifen",
     "recipeHeading": "So erzeugst du eine {title}-Illustration",
-    "recipeIntro": "Öffne Zero, tippe den Slash-Befehl, brief in fünf kurzen Teilen. Das fertige Editorial-Bild kommt in unter einer Minute zurück — kein Designtool, kein Warten auf einen Designer.",
+    "recipeIntro": "Öffne Zero und schick den Slash-Befehl mit dem Stilnamen ab. Das fertige Editorial-Bild kommt in unter einer Minute zurück — kein Designtool, kein Warten auf einen Designer. Ein kurzer Szenen-Brief hinter dem Stilnamen lässt sich optional anhängen.",
     "recipeCommandLabel": "Slash-Befehl",
     "comparisonHeading": "{title} im Vergleich zu anderen VM0-Stilen",
     "relatedHeading": "Nächste Verwandte im Register",
@@ -3712,13 +3712,13 @@
     "content": {
       "cozy-parlor": {
         "seoTitle": "Cozy Parlor — Handgemalte Aquarell- und Tusche-Editorial-Illustrationen",
-        "description": "Generiere handgemalte Aquarell- und Tusche-Editorial-Illustrationen mit anthropomorphen Tieren in gemütlichen Interieurs. Kostenloser KI-Illustrationsstil von VM0 — rufe /cozy-parlor in Zero auf.",
+        "description": "Generiere handgemalte Aquarell- und Tusche-Editorial-Illustrationen mit anthropomorphen Tieren in gemütlichen Interieurs. Kostenloser KI-Illustrationsstil von VM0 — rufe /gen cozy-parlor in Zero auf.",
         "lede": "Ein editorialer KI-Illustrationsstil von VM0, der ein einzelnes anthropomorphes Tier in ein ruhiges, gemustertes Interieur setzt — weiches Aquarell unter sicherer Tusche, getragen von einem einzigen heißen Akzent.",
         "definition": "Cozy Parlor ist ein von VM0 entwickelter, handgezeichneter KI-Illustrationsstil für Editorial- und Marketingzwecke. Jedes Bild zeigt ein einzelnes anthropomorphes Tier — einen Frosch, Igel, eine Maus oder einen Otter — in einem gemusterten kühl-weißen Interieur, gerendert in sicherer Brush-Pen-Tusche über weichen Aquarellwäschen, mit einem einzigen gesättigten Akzent-Requisit als Wärmequelle.",
         "valueProps": [
           {
             "title": "Handgemalter Editorial-Look auf Abruf",
-            "body": "Cozy Parlor erzeugt Aquarell- und Tusche-Illustrationen in Magazin-Qualität — sichere Kontur, neutrale Wäschen, einzügiger Pinselzug — vollständig in Zero. Kein Designtool, keine Stock-Bibliothek, keine Auftragskosten. Brief in fünf Zeilen, fertiges Bild raus."
+            "body": "Cozy Parlor erzeugt Aquarell- und Tusche-Illustrationen in Magazin-Qualität — sichere Kontur, neutrale Wäschen, einzügiger Pinselzug — vollständig in Zero. Kein Designtool, keine Stock-Bibliothek, keine Auftragskosten. Stilnamen tippen, fertiges Bild raus."
           },
           {
             "title": "Unverkennbar in der KI-Bilderflut",
@@ -3730,7 +3730,7 @@
           },
           {
             "title": "Kostenlos generieren, lizenzfrei einsetzen",
-            "body": "Jedes Bild, das du mit dem /cozy-parlor-Skill erzeugst, gehört dir. Verwende es in Produktions-Blogposts, Marketing-E-Mails, App-Onboardings, SaaS-Landingpages und Print — ohne Lizenzgebühren, ohne Namensnennung. Die vier Varianten auf dieser Seite zeigen die Bandbreite des Stils, gerendert mit gpt-image-1.5 nach der gelockten VM0-Register-Spec."
+            "body": "Jedes Bild, das du mit /gen cozy-parlor erzeugst, gehört dir. Verwende es in Produktions-Blogposts, Marketing-E-Mails, App-Onboardings, SaaS-Landingpages und Print — ohne Lizenzgebühren, ohne Namensnennung. Die vier Varianten auf dieser Seite zeigen die Bandbreite des Stils, gerendert mit gpt-image-1.5 nach der gelockten VM0-Register-Spec."
           }
         ],
         "anatomy": [
@@ -3774,8 +3774,8 @@
           }
         ],
         "recipe": {
-          "prompt": "/cozy-parlor ein Igel in einem Fair-Isle-Pullover blättert durch eine Wand voller Schallplatten, kerzenoranger Akzent auf der Plattenspieler-Lampe, schieferblaue Wände, Terracotta-Teppich, ein einzelnes Fenster außerhalb des Bildausschnitts angedeutet",
-          "note": "Briefe in fünf Teilen: Besetzung (welches Tier, was es trägt), Tätigkeit (was es mit den Händen macht), Akzent (welches einzelne Requisit den heißen Ton trägt), Raumpalette (zwei neutrale Wäschen) und ein Umgebungshinweis (Lichtquelle oder Tageszeit). Die festgeschriebene Spec übernimmt Tusche, Papier und Komposition — die musst du nicht angeben."
+          "prompt": "/gen cozy-parlor",
+          "note": "Der Stilname allein liefert dir bereits ein handgemaltes Cozy-Parlor-Bild mit einer Default-Szene. Wenn du anpassen willst, hänge einen kurzen Szenen-Brief an: Besetzung (welches Tier, was es trägt), Tätigkeit, Akzent-Requisit (welches einzelne Objekt den heißen Ton trägt), Raumpalette (zwei neutrale Wäschen) und ein Umgebungshinweis (Lichtquelle oder Tageszeit). Tusche, Papier und Komposition übernimmt die festgeschriebene Spec ohnehin."
         },
         "comparison": [
           {
@@ -3804,11 +3804,11 @@
           },
           {
             "question": "Darf ich Cozy-Parlor-Illustrationen kommerziell nutzen?",
-            "answer": "Ja. Jedes Bild, das du mit dem /cozy-parlor-Skill erzeugst, gehört dir. Nutze es in Produktions-Blogposts, Marketing-E-Mails, App-Empty-States, SaaS-Landingpages, Newslettern, Sales-Decks und Print — ohne Lizenzgebühren, ohne Namensnennung."
+            "answer": "Ja. Jedes Bild, das du mit /gen cozy-parlor erzeugst, gehört dir. Nutze es in Produktions-Blogposts, Marketing-E-Mails, App-Empty-States, SaaS-Landingpages, Newslettern, Sales-Decks und Print — ohne Lizenzgebühren, ohne Namensnennung."
           },
           {
             "question": "Wie lange dauert das Generieren einer Cozy-Parlor-Illustration?",
-            "answer": "Unter einer Minute, von Anfang bis Ende. Schick den /cozy-parlor-Slash-Befehl in Zero mit einem fünfteiligen Brief — das fertige Bild kommt im selben Chat zurück. Kein Designtool, kein Warten auf einen Designer, kein Hin und Her mit einem Freelancer."
+            "answer": "Unter einer Minute, von Anfang bis Ende. Schick /gen cozy-parlor in Zero — optional mit einem kurzen Szenen-Brief — und das fertige Bild kommt im selben Chat zurück. Kein Designtool, kein Warten auf einen Designer, kein Hin und Her mit einem Freelancer."
           },
           {
             "question": "Wie unterscheidet sich das von generischen KI-Illustrationsgeneratoren?",
@@ -3831,7 +3831,7 @@
             "answer": "Hochformat (festgelegter Default ist 2:3), weil die Einzelfigur vertikalen Raum braucht. Quadrat funktioniert für engere Editorial-Karten und Social Posts; Querformat bricht die Innenraum-Stimmung — wenn du Breite brauchst, greif zu Iso Scene oder Editorial Flatfolk."
           }
         ],
-        "ctaBody": "Öffne Zero, ruf /cozy-parlor mit einem fünfteiligen Brief auf — und du hast in unter einer Minute ein handgemaltes Editorial-Bild. Kostenlos für alle in der VM0-Beta."
+        "ctaBody": "Öffne Zero, schick /gen cozy-parlor — und du hast in unter einer Minute ein handgemaltes Editorial-Bild."
       }
     }
   },

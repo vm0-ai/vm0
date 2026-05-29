@@ -3703,7 +3703,7 @@
     "anatomyHeading": "Anatomía del estilo",
     "whenToUseHeading": "Cuándo recurrir a {title}",
     "recipeHeading": "Cómo generar una ilustración {title}",
-    "recipeIntro": "Abre Zero, escribe el comando slash y haz el brief en cinco partes cortas. La lámina editorial terminada vuelve en menos de un minuto — sin herramienta de diseño, sin esperar a un diseñador.",
+    "recipeIntro": "Abre Zero y envía el comando slash con el nombre del estilo. La lámina editorial terminada vuelve en menos de un minuto — sin herramienta de diseño, sin esperar a un diseñador. Añade un brief de escena corto después del nombre del estilo para personalizar.",
     "recipeCommandLabel": "Comando slash",
     "comparisonHeading": "{title} frente a otros estilos de ilustración de VM0",
     "relatedHeading": "Los más cercanos del registro",
@@ -3712,13 +3712,13 @@
     "content": {
       "cozy-parlor": {
         "seoTitle": "Cozy Parlor — Ilustraciones editoriales en acuarela y tinta pintadas a mano",
-        "description": "Genera ilustraciones editoriales en acuarela y tinta pintadas a mano con animales antropomórficos en interiores acogedores. Estilo de IA gratuito de VM0 — invoca /cozy-parlor en Zero.",
+        "description": "Genera ilustraciones editoriales en acuarela y tinta pintadas a mano con animales antropomórficos en interiores acogedores. Estilo de IA gratuito de VM0 — invoca /gen cozy-parlor en Zero.",
         "lede": "Un estilo editorial de ilustración con IA de VM0 que pinta a un único animal antropomórfico dentro de un interior tranquilo y estampado — acuarela suave bajo tinta firme, anclada por un único acento cálido.",
         "definition": "Cozy Parlor es un estilo de ilustración con IA dibujado a mano, desarrollado por VM0 para uso editorial y de marketing. Cada lámina pone en escena a un único animal antropomórfico — una rana, un erizo, un ratón o una nutria — dentro de un interior estampado en blanco frío, renderizado en tinta firme de pincel-marcador sobre lavados de acuarela suaves, con un único objeto de acento saturado que carga la calidez.",
         "valueProps": [
           {
             "title": "Acabado pintado a mano, bajo demanda",
-            "body": "Cozy Parlor genera ilustraciones de acuarela y tinta con calidad de revista — contorno firme, lavados neutros, pincelada de una sola pasada — producidas de extremo a extremo dentro de Zero. Sin herramienta de diseño, sin biblioteca de stock, sin tarifa de encargo. Brief en cinco líneas, lámina lista en la salida."
+            "body": "Cozy Parlor genera ilustraciones de acuarela y tinta con calidad de revista — contorno firme, lavados neutros, pincelada de una sola pasada — producidas de extremo a extremo dentro de Zero. Sin herramienta de diseño, sin biblioteca de stock, sin tarifa de encargo. Escribe el nombre del estilo y la lámina sale lista."
           },
           {
             "title": "Distintivo en un mar de arte de IA genérico",
@@ -3730,7 +3730,7 @@
           },
           {
             "title": "Gratis para generar, libre de regalías para publicar",
-            "body": "Cada lámina que generas con el skill /cozy-parlor te pertenece. Úsala en posts de blog en producción, emails de marketing, flujos de onboarding, landing pages de SaaS y material impreso — sin tarifas de licencia, sin atribución. Las cuatro variaciones de esta página muestran el rango del estilo, generadas con gpt-image-1.5 a partir de la spec bloqueada del registro de VM0."
+            "body": "Cada lámina que generas con /gen cozy-parlor te pertenece. Úsala en posts de blog en producción, emails de marketing, flujos de onboarding, landing pages de SaaS y material impreso — sin tarifas de licencia, sin atribución. Las cuatro variaciones de esta página muestran el rango del estilo, generadas con gpt-image-1.5 a partir de la spec bloqueada del registro de VM0."
           }
         ],
         "anatomy": [
@@ -3774,8 +3774,8 @@
           }
         ],
         "recipe": {
-          "prompt": "/cozy-parlor un erizo con un jersey fair-isle hojea una pared de vinilos, acento naranja vela en la lámpara del tocadiscos, paredes azul pizarra, alfombra terracota, una sola ventana sugerida fuera de cuadro",
-          "note": "Brief en cinco partes: reparto (qué animal y cómo va vestido), actividad (qué hace con las manos), acento (qué único objeto carga el color cálido), paleta de habitación (dos lavados neutros) y una pista ambiental (fuente de luz u hora del día). La spec bloqueada se encarga de la tinta, el papel y la composición — no hace falta especificarlos."
+          "prompt": "/gen cozy-parlor",
+          "note": "Solo con el nombre del estilo ya obtienes una lámina Cozy Parlor pintada a mano con una escena por defecto. Para personalizarla, añade un brief de escena corto: reparto (qué animal y cómo va vestido), actividad, objeto de acento (qué único objeto carga el color cálido), paleta de habitación (dos lavados neutros) y una pista ambiental (fuente de luz u hora del día). La spec bloqueada se encarga igualmente de la tinta, el papel y la composición."
         },
         "comparison": [
           {
@@ -3804,11 +3804,11 @@
           },
           {
             "question": "¿Puedo usar las ilustraciones Cozy Parlor para trabajos comerciales?",
-            "answer": "Sí. Cada lámina generada con el skill /cozy-parlor te pertenece. Úsala en posts de blog en producción, emails de marketing, estados vacíos en apps, landing pages de SaaS, newsletters, decks de ventas y materiales impresos — sin tarifas de licencia, sin atribución."
+            "answer": "Sí. Cada lámina generada con /gen cozy-parlor te pertenece. Úsala en posts de blog en producción, emails de marketing, estados vacíos en apps, landing pages de SaaS, newsletters, decks de ventas y materiales impresos — sin tarifas de licencia, sin atribución."
           },
           {
             "question": "¿Cuánto tarda en generarse una ilustración Cozy Parlor?",
-            "answer": "Menos de un minuto, de extremo a extremo. Envía el slash command /cozy-parlor en Zero con un brief en cinco partes y la lámina terminada vuelve dentro del mismo chat — sin herramienta de diseño, sin esperar a un diseñador, sin ida y vuelta con un freelance."
+            "answer": "Menos de un minuto, de extremo a extremo. Envía /gen cozy-parlor en Zero — opcionalmente con un brief de escena corto — y la lámina terminada vuelve dentro del mismo chat. Sin herramienta de diseño, sin esperar a un diseñador, sin ida y vuelta con un freelance."
           },
           {
             "question": "¿En qué se diferencia de un generador de ilustraciones con IA genérico?",
@@ -3831,7 +3831,7 @@
             "answer": "Vertical (el valor por defecto bloqueado es 2:3) porque el encuadre de un solo personaje necesita aire vertical. El cuadrado funciona para tarjetas editoriales más ajustadas y posts sociales; el apaisado tiende a romper la sensación de interior íntimo — si necesitas anchura, recurre a Iso Scene o Editorial Flatfolk."
           }
         ],
-        "ctaBody": "Abre Zero, invoca /cozy-parlor con un brief en cinco partes y obtén una lámina editorial pintada a mano en menos de un minuto. Gratis para todo el mundo en la beta de VM0."
+        "ctaBody": "Abre Zero, envía /gen cozy-parlor y obtén una lámina editorial pintada a mano en menos de un minuto."
       }
     }
   },

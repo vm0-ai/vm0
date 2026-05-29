@@ -84,7 +84,7 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     ],
     model: "gpt-image-1.5",
     palette: "Cool-white paper · ink · one hot accent",
-    slashCommand: "/cozy-parlor",
+    slashCommand: "/gen cozy-parlor",
     registerPR: "vm0-skills #236",
     relatedSlugs: ["sunlit-gouache", "painterly-botanical", "folk-storybook"],
   },
