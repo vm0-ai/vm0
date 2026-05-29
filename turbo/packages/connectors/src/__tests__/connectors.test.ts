@@ -21,6 +21,7 @@ import {
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorInvalidDefaultAuthMethodType,
   type ConnectorManualGrantFieldConfig,
+  type ConnectorRefreshTokenAccessMethodsAreSingle,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
   type RefreshTokenAccessConnectorType,
@@ -447,6 +448,7 @@ describe("connector provider capability checks", () => {
   });
 
   it("matches exactly the connector types that declare refresh-token access", () => {
+    expectTypeOf<ConnectorRefreshTokenAccessMethodsAreSingle>().toEqualTypeOf<never>();
     expectTypeOf<"base44">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"notion">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"github">().not.toMatchTypeOf<RefreshTokenAccessConnectorType>();
