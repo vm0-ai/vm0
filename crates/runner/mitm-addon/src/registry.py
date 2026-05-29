@@ -69,12 +69,12 @@ def load_registry(registry_path: str) -> dict:
     """Load the proxy registry, reusing cached data when possible.
 
     The registry is reloaded only when file stat metadata changes. If stat
-    fails, the current registry cache is returned and the failure is
-    warning-logged once. If reading/parsing/normalizing/compiling a changed
-    file fails, the current cache is preserved and returned, and that file
-    state is recorded as processed so repeated reads do not re-warn until a
-    successful reload clears the error state. A successful reload also evicts
-    firewall-auth cache entries for run IDs no longer present in the registry.
+    fails, the current registry cache is returned. If processing a changed file
+    fails, the current cache is preserved and returned, and that file state is
+    recorded as processed so repeated reads short-circuit on the same stat key.
+    Failures are warning-logged at most once until a successful reload clears
+    the error state. A successful reload also evicts firewall-auth cache
+    entries for run IDs no longer present in the registry.
     """
     global _registry_cache, _registry_compiled_cache, _registry_compiled_policy_cache
     global _registry_cache_key
