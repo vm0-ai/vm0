@@ -46,7 +46,6 @@ import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authoriz
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
-import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
@@ -99,10 +98,6 @@ function redirectWithId(target: RoutePath, targetParam: string) {
 
 const ROUTE_CONFIG = [
   // --- New routes ---
-  {
-    path: ROUTES.chatList,
-    setup: setupAuthPageWrapper(setupChatListPage$),
-  },
   {
     path: ROUTES.insights,
     setup: setupAuthPageWrapper(setupNetworkInsightsPage$),
