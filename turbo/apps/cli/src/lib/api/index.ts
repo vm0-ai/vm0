@@ -212,6 +212,7 @@ export {
 export {
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
+  fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "./domains/zero-computer-use";
 

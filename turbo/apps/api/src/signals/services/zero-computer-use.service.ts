@@ -1,14 +1,18 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { command } from "ccstate";
+import { command, type Computed } from "ccstate";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import type {
-  ComputerUseCommandError,
-  ComputerUseCommandKind,
-  ComputerUseCommandResult,
-  ComputerUseCommandStatus,
-  ComputerUseReadCommandKind,
-  ComputerUseWriteCommandKind,
+import {
+  isExpiredScreenshotPointer,
+  isStoredScreenshotPointer,
+  type ClientScreenshotPointer,
+  type ComputerUseCommandError,
+  type ComputerUseCommandKind,
+  type ComputerUseCommandResult,
+  type ComputerUseCommandStatus,
+  type ComputerUseReadCommandKind,
+  type ComputerUseWriteCommandKind,
+  type StoredScreenshotPointer,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import {
   computerUseCommandAuditEvents,
@@ -16,9 +20,11 @@ import {
   computerUseHosts,
 } from "@vm0/db/schema/computer-use-host";
 
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import { downloadS3Buffer, putS3Object } from "../external/s3";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
 const L = logger("ZeroComputerUse");
@@ -230,6 +236,129 @@ function commandPayload(
   return payload;
 }
 
+type ComputedGetter = <T>(source: Computed<T>) => T;
+
+const SCREENSHOT_DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
+
+function parseScreenshotDataUrl(
+  value: string,
+): { readonly mimeType: string; readonly buffer: Buffer } | null {
+  const match = SCREENSHOT_DATA_URL_PATTERN.exec(value);
+  if (!match) {
+    return null;
+  }
+  const mimeType = match[1] ?? "";
+  if (!mimeType.startsWith("image/")) {
+    return null;
+  }
+  return { mimeType, buffer: Buffer.from(match[2] ?? "", "base64") };
+}
+
+function extensionForScreenshotMime(mimeType: string): string {
+  if (mimeType === "image/png") {
+    return "png";
+  }
+  if (mimeType === "image/jpeg") {
+    return "jpg";
+  }
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+  return "bin";
+}
+
+function numberField(result: ComputerUseCommandResult, key: string): number {
+  const value = result[key];
+  return typeof value === "number" ? value : 0;
+}
+
+/**
+ * Upload an inline base64 screenshot to private object storage and return a
+ * copy of the result with `screenshot` replaced by an object-storage pointer.
+ * Runs outside the completion transaction so the command row lock is never held
+ * across S3 network I/O. Returns the result unchanged when there is no inline
+ * screenshot (older clients, non-screenshot commands, or already a pointer).
+ */
+async function offloadScreenshotForResult(
+  get: ComputedGetter,
+  db: Db,
+  params: {
+    readonly hostToken: string;
+    readonly commandId: string;
+    readonly result: ComputerUseCommandResult;
+  },
+  signal: AbortSignal,
+): Promise<ComputerUseCommandResult> {
+  const screenshot = params.result.screenshot;
+  if (typeof screenshot !== "string") {
+    return params.result;
+  }
+  const parsed = parseScreenshotDataUrl(screenshot);
+  if (!parsed) {
+    return params.result;
+  }
+
+  const [identity] = await db
+    .select({
+      orgId: computerUseHosts.orgId,
+      userId: computerUseHosts.userId,
+    })
+    .from(computerUseHosts)
+    .where(
+      and(
+        eq(computerUseHosts.tokenHash, hashSecret(params.hostToken)),
+        isNull(computerUseHosts.revokedAt),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!identity) {
+    return params.result;
+  }
+
+  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+  const key = `computer-use/${identity.orgId}/${identity.userId}/${params.commandId}/screenshot.${extensionForScreenshotMime(parsed.mimeType)}`;
+  await get(putS3Object(bucket, key, parsed.buffer, parsed.mimeType));
+  signal.throwIfAborted();
+
+  const pointer: StoredScreenshotPointer = {
+    type: "s3",
+    bucket,
+    key,
+    mimeType: parsed.mimeType,
+    sizeBytes: parsed.buffer.length,
+    width: numberField(params.result, "screenshotWidth"),
+    height: numberField(params.result, "screenshotHeight"),
+  };
+  return { ...params.result, screenshot: pointer };
+}
+
+/**
+ * Map a stored result's screenshot pointer to its client-facing form, dropping
+ * the internal `bucket`/`key` so storage layout never leaves the API. Inline
+ * (legacy) string screenshots and pointer-free results pass through unchanged.
+ */
+function toClientResult(
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const screenshot = result.screenshot;
+  if (isStoredScreenshotPointer(screenshot)) {
+    const clientPointer: ClientScreenshotPointer = {
+      type: "s3",
+      mimeType: screenshot.mimeType,
+      sizeBytes: screenshot.sizeBytes,
+      width: screenshot.width,
+      height: screenshot.height,
+    };
+    return { ...result, screenshot: clientPointer };
+  }
+  if (isExpiredScreenshotPointer(screenshot)) {
+    const clientPointer: ClientScreenshotPointer = { type: "expired" };
+    return { ...result, screenshot: clientPointer };
+  }
+  return result;
+}
+
 function redactedResultForAudit(
   result: ComputerUseCommandResult | null | undefined,
 ): Record<string, unknown> | null {
@@ -267,7 +396,10 @@ function redactedResultForAudit(
   if (typeof result.appState === "string") {
     redacted.appStateLength = result.appState.length;
   }
-  if (typeof result.screenshot === "string") {
+  if (
+    typeof result.screenshot === "string" ||
+    (typeof result.screenshot === "object" && result.screenshot !== null)
+  ) {
     redacted.screenshot = "[redacted]";
   }
   const action = result.action;
@@ -345,7 +477,9 @@ function serializeCommand(row: ComputerUseCommandRow, hostName: string | null) {
     hostId: row.hostId,
     hostName,
     payload: row.payload,
-    ...(result ? { result: result as ComputerUseCommandResult } : {}),
+    ...(result
+      ? { result: toClientResult(result) as ComputerUseCommandResult }
+      : {}),
     ...(row.status === "failed" ? { error: commandErrorFromRow(row) } : {}),
     timeoutMs: row.timeoutMs,
     createdAt: row.createdAt.toISOString(),
@@ -846,6 +980,57 @@ export const getComputerUseCommand$ = command(
   },
 );
 
+export const getComputerUseCommandScreenshot$ = command(
+  async (
+    { get, set },
+    params: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly commandId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly buffer: Buffer;
+    readonly contentType: string;
+  } | null> => {
+    const db = set(writeDb$);
+    const [row] = await db
+      .select({
+        status: computerUseCommands.status,
+        result: computerUseCommands.result,
+      })
+      .from(computerUseCommands)
+      .where(
+        and(
+          eq(computerUseCommands.orgId, params.orgId),
+          eq(computerUseCommands.userId, params.userId),
+          eq(computerUseCommands.id, params.commandId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!row || row.status !== "succeeded" || !row.result) {
+      return null;
+    }
+
+    const screenshot = row.result.screenshot;
+    if (isStoredScreenshotPointer(screenshot)) {
+      const buffer = await get(
+        downloadS3Buffer(screenshot.bucket, screenshot.key),
+      );
+      signal.throwIfAborted();
+      return { buffer, contentType: screenshot.mimeType };
+    }
+    if (typeof screenshot === "string") {
+      const parsed = parseScreenshotDataUrl(screenshot);
+      if (parsed) {
+        return { buffer: parsed.buffer, contentType: parsed.mimeType };
+      }
+    }
+    return null;
+  },
+);
+
 async function denyPendingComputerUseWriteCommand(
   tx: ComputerUseTx,
   commandRow: ComputerUseCommandRow,
@@ -1057,7 +1242,7 @@ export const claimNextComputerUseHostCommand$ = command(
 
 export const completeComputerUseHostCommand$ = command(
   async (
-    { set },
+    { get, set },
     params:
       | {
           readonly hostToken: string;
@@ -1075,6 +1260,19 @@ export const completeComputerUseHostCommand$ = command(
   ): Promise<CompleteComputerUseHostCommandResult> => {
     const db = set(writeDb$);
     const now = nowDate();
+    const storedResult =
+      params.status === "succeeded"
+        ? await offloadScreenshotForResult(
+            get,
+            db,
+            {
+              hostToken: params.hostToken,
+              commandId: params.commandId,
+              result: params.result,
+            },
+            signal,
+          )
+        : null;
     const result = await db.transaction(async (tx) => {
       const host = await hostFromToken(tx, params.hostToken, signal);
       if (!host) {
@@ -1102,7 +1300,9 @@ export const completeComputerUseHostCommand$ = command(
       }
 
       const commandResult =
-        params.status === "succeeded" ? params.result : { error: params.error };
+        params.status === "succeeded"
+          ? (storedResult ?? params.result)
+          : { error: params.error };
       const [updated] = await tx
         .update(computerUseCommands)
         .set({

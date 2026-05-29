@@ -269,6 +269,54 @@ const computerUseCommandErrorSchema = z.object({
 
 const computerUseCommandResultSchema = z.record(z.string(), z.unknown());
 
+/**
+ * Screenshot pointer shapes for `computer_use_commands.result.screenshot`.
+ *
+ * Old rows store the screenshot as a `data:image/...;base64,...` string. New
+ * rows store the bytes in private object storage and keep only a pointer here.
+ * The stored pointer carries `bucket`/`key`; the client-facing pointer omits
+ * them so internal storage layout never leaves the API. After retention
+ * deletes the object the pointer is rewritten to `{ type: "expired" }`.
+ */
+export interface StoredScreenshotPointer {
+  readonly type: "s3";
+  readonly bucket: string;
+  readonly key: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface ClientScreenshotPointer {
+  readonly type: "s3" | "expired";
+  readonly mimeType?: string;
+  readonly sizeBytes?: number;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+export function isStoredScreenshotPointer(
+  value: unknown,
+): value is StoredScreenshotPointer {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { readonly type?: unknown }).type === "s3" &&
+    typeof (value as { readonly key?: unknown }).key === "string"
+  );
+}
+
+export function isExpiredScreenshotPointer(
+  value: unknown,
+): value is { readonly type: "expired" } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { readonly type?: unknown }).type === "expired"
+  );
+}
+
 export const computerUseHostSchema = z.object({
   id: z.string(),
   displayName: z.string(),
@@ -481,6 +529,19 @@ export const zeroComputerUseCommandContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a desktop computer-use command result",
+  },
+  getScreenshot: {
+    method: "GET",
+    path: "/api/zero/computer-use/commands/:commandId/screenshot",
+    headers: authHeadersSchema,
+    pathParams: commandIdPathParamsSchema,
+    responses: {
+      200: c.noBody(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Download a desktop computer-use command screenshot",
   },
 });
 
