@@ -28,7 +28,7 @@ import {
   connectorTypeSchema,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type OAuthGrantConnectorType,
+  type AuthorizationGrantConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -1171,7 +1171,7 @@ function connectorTokenExpiresAt(args: {
 }
 
 function allowedOAuthConnectorSecretNames(
-  type: OAuthGrantConnectorType,
+  type: AuthorizationGrantConnectorType,
 ): Set<string> {
   return new Set(getConnectorSecretNames(type, "oauth"));
 }
@@ -1187,7 +1187,7 @@ function isOAuthPrimaryTokenSecret(args: {
 }
 
 function validateExtraOAuthConnectorSecrets(args: {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: AuthorizationGrantConnectorType;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
@@ -1221,7 +1221,7 @@ function validateExtraOAuthConnectorSecrets(args: {
 }
 
 async function encryptExtraOAuthConnectorSecrets(args: {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: AuthorizationGrantConnectorType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
@@ -1242,7 +1242,7 @@ async function encryptExtraOAuthConnectorSecrets(args: {
 }
 
 async function encryptOAuthConnectorSecretSet(args: {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: AuthorizationGrantConnectorType;
   readonly accessSecretName: string;
   readonly accessToken: string;
   readonly refreshSecretName: string | undefined;
@@ -1336,7 +1336,7 @@ async function upsertOAuthConnectorRow(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: OAuthGrantConnectorType;
+    readonly type: AuthorizationGrantConnectorType;
     readonly userInfo: ExternalUserInfo;
     readonly oauthScopes: readonly string[];
     readonly tokenExpiresAt: Date | null;
@@ -1395,7 +1395,7 @@ async function deleteObsoleteConnectorScopedStateForOAuthConnect(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: OAuthGrantConnectorType;
+    readonly type: AuthorizationGrantConnectorType;
     readonly existingAuthMethod: string | null;
     readonly signal: AbortSignal;
   },
@@ -1440,7 +1440,7 @@ export const upsertOAuthConnector$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: OAuthGrantConnectorType;
+      readonly type: AuthorizationGrantConnectorType;
       readonly accessToken: string;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];

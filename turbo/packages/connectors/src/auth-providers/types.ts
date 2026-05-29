@@ -1,6 +1,6 @@
 import type {
   AuthCodeGrantConnectorType,
-  OAuthGrantConnectorType,
+  AuthorizationGrantConnectorType,
   DeviceAuthGrantConnectorType,
 } from "../connectors";
 import type {
@@ -47,29 +47,31 @@ export interface NoneAccessProvider {
   getAccessSecretName(): string;
 }
 
-export interface RefreshTokenAccessProvider<T extends OAuthGrantConnectorType> {
+export interface RefreshTokenAccessProvider<
+  T extends AuthorizationGrantConnectorType,
+> {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
   getRefreshSecretName(): string;
   refreshToken(args: ConnectorOAuthRefreshArgs<T>): Promise<OAuthRefreshResult>;
 }
 
-export type OAuthConnectorAccessProvider<T extends OAuthGrantConnectorType> =
-  | NoneAccessProvider
-  | RefreshTokenAccessProvider<T>;
+export type ConnectorAuthProviderAccess<
+  T extends AuthorizationGrantConnectorType,
+> = NoneAccessProvider | RefreshTokenAccessProvider<T>;
 
 interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-interface TokenRevokeProvider<T extends OAuthGrantConnectorType> {
+interface TokenRevokeProvider<T extends AuthorizationGrantConnectorType> {
   readonly kind: "token-revoke";
   revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
 }
 
-export type OAuthConnectorRevokeProvider<T extends OAuthGrantConnectorType> =
-  | NoneRevokeProvider
-  | TokenRevokeProvider<T>;
+export type ConnectorAuthProviderRevoke<
+  T extends AuthorizationGrantConnectorType,
+> = NoneRevokeProvider | TokenRevokeProvider<T>;
 
 export interface AuthProvider<TGrant, TAccess, TRevoke> {
   readonly grant: TGrant;
@@ -81,16 +83,16 @@ export type AuthCodeConnectorAuthProvider<
   T extends AuthCodeGrantConnectorType,
 > = AuthProvider<
   AuthCodeGrantProvider<T>,
-  OAuthConnectorAccessProvider<T>,
-  OAuthConnectorRevokeProvider<T>
+  ConnectorAuthProviderAccess<T>,
+  ConnectorAuthProviderRevoke<T>
 >;
 
 export type DeviceAuthConnectorAuthProvider<
   T extends DeviceAuthGrantConnectorType,
 > = AuthProvider<
   DeviceAuthGrantProvider<T>,
-  OAuthConnectorAccessProvider<T>,
-  OAuthConnectorRevokeProvider<T>
+  ConnectorAuthProviderAccess<T>,
+  ConnectorAuthProviderRevoke<T>
 >;
 
 export type ModelProviderGrantProvider = NoneGrantProvider;

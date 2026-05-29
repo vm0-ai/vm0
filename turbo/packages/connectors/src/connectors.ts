@@ -940,7 +940,7 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-export type OAuthGrantConnectorType = ConnectorTypesByGrantKind<
+export type AuthorizationGrantConnectorType = ConnectorTypesByGrantKind<
   "auth-code" | "device-auth"
 >;
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
