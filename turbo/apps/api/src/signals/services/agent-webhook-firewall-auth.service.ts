@@ -1453,8 +1453,12 @@ async function syncSkippedTokens(
   for (const { connectorType, token } of currentTokens) {
     if (!token) {
       L.warn(
-        `[${context.auth.runId}] No DB token for skipped connector ${connectorType}, using encryptedSecrets value`,
+        `[${context.auth.runId}] No DB token for skipped connector ${connectorType}, marking access unresolved`,
       );
+      for (const envVar of context.envVarsByConnector.get(connectorType) ??
+        []) {
+        delete context.secrets[envVar];
+      }
       continue;
     }
     for (const envVar of context.envVarsByConnector.get(connectorType) ?? []) {

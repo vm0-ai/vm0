@@ -1337,6 +1337,49 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("does not use stale encrypted connector access when current selected access storage is missing", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-notion-token",
+      refreshToken: "current-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+    const db = store.set(writeDb$);
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "NOTION_ACCESS_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_ACCESS_RESOLUTION_FAILED",
+      connectors: ["notion"],
+    });
+  });
+
   it("does not bypass missing selected connector access when the connector row is absent", async () => {
     const fixture = await track(seedFixture());
 
