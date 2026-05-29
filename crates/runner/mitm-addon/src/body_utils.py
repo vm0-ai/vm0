@@ -418,7 +418,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     Non-empty ``stream_buffer`` values must have a matching
     ``stream_buffer_state`` with a ``truncated`` flag. Empty stream buffers do
-    not require the flag, but present state must still be a mapping. Missing or
+    not require the flag, but present state must still be a dict. Missing or
     malformed state is an internal metadata invariant violation and raises
     ``RuntimeError`` instead of silently falling back.
 
@@ -474,7 +474,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             elif stream_state is not None and not isinstance(stream_state, dict):
                 raise RuntimeError(
                     "Invalid response body capture metadata: stream_buffer is "
-                    "empty but stream_buffer_state is not a mapping "
+                    "empty but stream_buffer_state is not a dict "
                     f"(stream_buffer_state type={type(stream_state).__name__})."
                 )
             elif stream_state:
