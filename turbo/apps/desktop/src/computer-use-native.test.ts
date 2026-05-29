@@ -159,6 +159,75 @@ process.stdin.on("data", (chunk) => {
   return { dir, helperPath, requestLogPath };
 }
 
+// A serve-mode helper that makes concurrency observable: it logs how many
+// requests are in flight when each one arrives, defers its response so overlap
+// would be visible, records every process launch, and never answers a request
+// for the "HANG" app so the client-side timeout/respawn path can be exercised.
+async function createConcurrencyHelper(responseDelayMs: number): Promise<{
+  readonly dir: string;
+  readonly helperPath: string;
+  readonly requestLogPath: string;
+  readonly startLogPath: string;
+}> {
+  const dir = await mkdtemp(path.join(tmpdir(), "computer-use-helper-"));
+  const helperPath = path.join(dir, "helper");
+  const requestLogPath = path.join(dir, "requests.ndjson");
+  const startLogPath = path.join(dir, "starts.log");
+  await writeFile(
+    helperPath,
+    `#!/usr/bin/env node
+const fs = require("node:fs");
+const requestLogPath = ${JSON.stringify(requestLogPath)};
+const startLogPath = ${JSON.stringify(startLogPath)};
+const responseDelayMs = ${responseDelayMs.toString()};
+fs.appendFileSync(startLogPath, String(process.pid) + "\\n");
+let inFlight = 0;
+let buffer = "";
+
+function handleLine(line) {
+  if (line.trim().length === 0) return;
+  const request = JSON.parse(line);
+  inFlight += 1;
+  fs.appendFileSync(
+    requestLogPath,
+    JSON.stringify({ id: request.id, app: request.payload.app, inFlight }) + "\\n"
+  );
+  const app = request.payload.app;
+  if (app === "HANG") return;
+  setTimeout(() => {
+    inFlight -= 1;
+    if (app === "FAIL") {
+      process.stdout.write(
+        JSON.stringify({
+          id: request.id,
+          status: "failed",
+          error: { code: "app_open_failed", message: "Unable to open " + app }
+        }) + "\\n"
+      );
+      return;
+    }
+    process.stdout.write(
+      JSON.stringify({ id: request.id, status: "succeeded", result: {} }) + "\\n"
+    );
+  }, responseDelayMs);
+}
+
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (buffer.includes("\\n")) {
+    const index = buffer.indexOf("\\n");
+    const line = buffer.slice(0, index);
+    buffer = buffer.slice(index + 1);
+    handleLine(line);
+  }
+});
+`,
+  );
+  await chmod(helperPath, 0o755);
+  return { dir, helperPath, requestLogPath, startLogPath };
+}
+
 async function createDaemonDir(): Promise<string> {
   return await mkdtemp(path.join(tmpdir(), "vm0-computer-daemon-"));
 }
@@ -510,6 +579,128 @@ describe("computer use native backend", () => {
           button: "right",
         },
       });
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent native requests to one in-flight at a time", async () => {
+    const helper = await createConcurrencyHelper(40);
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+    });
+
+    try {
+      const apps = Array.from({ length: 8 }, (_, index) => {
+        return `app${index.toString()}`;
+      });
+      await Promise.all(
+        apps.map((app) => {
+          return backend.openApp(app);
+        }),
+      );
+
+      const requests = (await readFile(helper.requestLogPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => {
+          return JSON.parse(line) as {
+            readonly id: string;
+            readonly app: string;
+            readonly inFlight: number;
+          };
+        });
+
+      expect(requests).toHaveLength(8);
+      // Serialization means the helper never sees more than one request at once.
+      expect(
+        Math.max(
+          ...requests.map((request) => {
+            return request.inFlight;
+          }),
+        ),
+      ).toBe(1);
+      // The helper receives requests in submission order (FIFO queue).
+      expect(
+        requests.map((request) => {
+          return request.app;
+        }),
+      ).toStrictEqual(apps);
+      expect(
+        requests.map((request) => {
+          return request.id;
+        }),
+      ).toStrictEqual(
+        Array.from({ length: 8 }, (_, index) => {
+          return `desktop_${(index + 1).toString()}`;
+        }),
+      );
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the serialized queue alive when one request fails", async () => {
+    const helper = await createConcurrencyHelper(20);
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+    });
+
+    try {
+      const results = await Promise.allSettled([
+        backend.openApp("ok-a"),
+        backend.openApp("ok-b"),
+        backend.openApp("FAIL"),
+        backend.openApp("ok-c"),
+        backend.openApp("ok-d"),
+      ]);
+
+      expect(
+        results.map((result) => {
+          return result.status;
+        }),
+      ).toStrictEqual([
+        "fulfilled",
+        "fulfilled",
+        "rejected",
+        "fulfilled",
+        "fulfilled",
+      ]);
+      const failed = results[2];
+      if (failed?.status !== "rejected") {
+        throw new Error("expected the FAIL request to reject");
+      }
+      expect(failed.reason).toMatchObject({ code: "app_open_failed" });
+    } finally {
+      backend.dispose();
+      await rm(helper.dir, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers by respawning the helper after a request times out", async () => {
+    const helper = await createConcurrencyHelper(20);
+    // Generous enough that a legitimate request (which must cold-start a fresh
+    // helper process after the kill) never trips it, while the never-answered
+    // "HANG" request always does.
+    const backend = createComputerUseNativeBackend({
+      helperPath: helper.helperPath,
+      requestTimeoutMs: 600,
+    });
+
+    try {
+      await expect(backend.openApp("HANG")).rejects.toMatchObject({
+        code: "accessibility_unavailable",
+        message: expect.stringContaining("timed out running app.open"),
+      });
+      // The next request runs on a freshly spawned helper, not the killed one.
+      await expect(backend.openApp("ok")).resolves.toEqual({});
+
+      const starts = (await readFile(helper.startLogPath, "utf8"))
+        .trim()
+        .split("\n");
+      expect(starts).toHaveLength(2);
     } finally {
       backend.dispose();
       await rm(helper.dir, { recursive: true, force: true });

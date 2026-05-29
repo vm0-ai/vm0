@@ -148,6 +148,7 @@ interface ResolveComputerUseHelperPathOptions {
 interface RunComputerUseHelperOptions {
   readonly helperPath?: string;
   readonly mode?: "serve" | "oneshot";
+  readonly requestTimeoutMs?: number;
 }
 
 export class ComputerUseNativeHelperError extends Error {
@@ -431,6 +432,12 @@ function runtimePayload(
   return payload;
 }
 
+// macOS funnels screen capture through a single WindowServer broker that fails
+// transiently when two captures overlap, so the helper must run one request at
+// a time. This is the backstop that keeps a wedged helper from blocking the
+// whole serialized queue forever; on timeout the helper is killed and respawned.
+const DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS = 60_000;
+
 class ComputerUseNativeRuntimeClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private stdoutBuffer = "";
@@ -438,8 +445,12 @@ class ComputerUseNativeRuntimeClient {
   private closed = false;
   private stderr = "";
   private readonly pending = new Map<string, PendingRuntimeRequest>();
+  private queueTail: Promise<void> = Promise.resolve();
 
-  constructor(private readonly helperPath: string) {}
+  constructor(
+    private readonly helperPath: string,
+    private readonly requestTimeoutMs: number,
+  ) {}
 
   request(request: ComputerUseNativeRequest): Promise<Record<string, unknown>> {
     if (this.closed) {
@@ -450,15 +461,57 @@ class ComputerUseNativeRuntimeClient {
         ),
       );
     }
+    // Serialize every request so at most one capture is in flight. The tail
+    // tracks completion only and swallows the outcome so a single rejected
+    // request never poisons the chain for the requests queued behind it.
+    const run = this.queueTail.then(() => this.dispatch(request));
+    this.queueTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private dispatch(
+    request: ComputerUseNativeRequest,
+  ): Promise<Record<string, unknown>> {
     const child = this.ensureChild();
     const id = `desktop_${(this.requestCounter += 1).toString()}`;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { kind: request.kind, resolve, reject });
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this.pending.delete(id)) {
+          return;
+        }
+        // A wedged helper would block every queued request behind it. Detach
+        // and kill it so the next request starts on a fresh process; the
+        // detach makes the stale child's later "close" a no-op (see ensureChild).
+        if (this.child === child) {
+          this.child = null;
+        }
+        child.kill("SIGKILL");
+        reject(
+          new ComputerUseNativeHelperError(
+            "accessibility_unavailable",
+            `Native Computer Use runtime timed out running ${request.kind}`,
+          ),
+        );
+      }, this.requestTimeoutMs);
+      this.pending.set(id, {
+        kind: request.kind,
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
       child.stdin.write(
         `${JSON.stringify({ id, kind: request.kind, payload: runtimePayload(request) })}\n`,
         (error) => {
-          if (error) {
-            this.pending.delete(id);
+          if (error && this.pending.delete(id)) {
+            clearTimeout(timer);
             reject(
               new ComputerUseNativeHelperError(
                 "accessibility_unavailable",
@@ -494,6 +547,8 @@ class ComputerUseNativeRuntimeClient {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
+    this.stderr = "";
+    this.stdoutBuffer = "";
 
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -504,14 +559,22 @@ class ComputerUseNativeRuntimeClient {
       this.stderr += chunk;
     });
     child.on("error", (error) => {
-      this.rejectAll(
-        new ComputerUseNativeHelperError(
-          "accessibility_unavailable",
-          `Unable to start native Computer Use runtime: ${error.message}`,
-        ),
-      );
+      if (this.child === child && !this.closed) {
+        this.rejectAll(
+          new ComputerUseNativeHelperError(
+            "accessibility_unavailable",
+            `Unable to start native Computer Use runtime: ${error.message}`,
+          ),
+        );
+      }
     });
     child.on("close", (code) => {
+      // A helper we already replaced (e.g. after a timeout kill) closes with its
+      // pending request already settled; ignore it so we neither clear the new
+      // child reference nor reject the request now running on the new child.
+      if (this.child !== child) {
+        return;
+      }
       this.child = null;
       if (!this.closed) {
         this.rejectAll(
@@ -593,7 +656,10 @@ export function createComputerUseNativeBackend(
   const runtime =
     options.mode === "oneshot"
       ? null
-      : new ComputerUseNativeRuntimeClient(helperPath);
+      : new ComputerUseNativeRuntimeClient(
+          helperPath,
+          options.requestTimeoutMs ?? DEFAULT_RUNTIME_REQUEST_TIMEOUT_MS,
+        );
   const run = async (
     request: ComputerUseNativeRequest,
   ): Promise<Record<string, unknown>> => {
