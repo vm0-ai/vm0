@@ -739,6 +739,12 @@ function errMsg(base: string, svc: string, detail: string): string {
 }
 
 const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
+const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
+
+interface ParameterizedAuthorityParts {
+  readonly normalizedHost: string;
+  readonly portSuffix: string;
+}
 
 function isHexDigit(char: string): boolean {
   return (
@@ -832,6 +838,50 @@ function validateNoUserinfo(
   }
 }
 
+function splitParameterizedAuthority(
+  authority: string,
+  base: string,
+  serviceName: string,
+): ParameterizedAuthorityParts {
+  let host = authority;
+  let portSuffix = "";
+  if (authority.startsWith("[")) {
+    const closeBracket = authority.indexOf("]");
+    if (closeBracket === -1) {
+      throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+    }
+    host = authority.slice(0, closeBracket + 1);
+    portSuffix = authority.slice(closeBracket + 1);
+    if (portSuffix !== "" && !portSuffix.startsWith(":")) {
+      throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+    }
+  } else {
+    const portSeparator = authority.lastIndexOf(":");
+    if (portSeparator !== -1) {
+      host = authority.slice(0, portSeparator);
+      portSuffix = authority.slice(portSeparator);
+    }
+  }
+
+  let normalizedHost = host.replace(HOST_DOT_EQUIVALENT_PATTERN, ".");
+  if (normalizedHost.endsWith(".")) {
+    normalizedHost = normalizedHost.slice(0, -1);
+  }
+  if (
+    normalizedHost === "" ||
+    normalizedHost.endsWith(".") ||
+    normalizedHost.split(".").some((label) => {
+      return label === "";
+    })
+  ) {
+    throw new Error(
+      errMsg(base, serviceName, "host must not contain empty labels"),
+    );
+  }
+
+  return { normalizedHost, portSuffix };
+}
+
 function hostSegmentForSyntaxValidation(
   seg: string,
   base: string,
@@ -856,18 +906,18 @@ function hostSegmentForSyntaxValidation(
 
 function validateParameterizedHostUrlSyntax(
   scheme: string,
-  host: string,
+  authority: ParameterizedAuthorityParts,
   base: string,
   serviceName: string,
 ): void {
-  const syntaxHost = host
+  const syntaxHost = authority.normalizedHost
     .split(".")
     .map((seg) => {
       return hostSegmentForSyntaxValidation(seg, base, serviceName);
     })
     .join(".");
   try {
-    new URL(`${scheme}://${syntaxHost}`);
+    new URL(`${scheme}://${syntaxHost}${authority.portSuffix}`);
   } catch {
     throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
   }
@@ -1000,15 +1050,21 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
   validateNoUserinfo(host, base, serviceName);
   validateHostPercentEncoding(host, base, serviceName);
+  const authority = splitParameterizedAuthority(host, base, serviceName);
   validateParameterizedHostUrlSyntax(
     base.slice(0, schemeEnd),
-    host,
+    authority,
     base,
     serviceName,
   );
 
   const paramNames = new Set<string>();
-  validateHostParams(host.split("."), paramNames, base, serviceName);
+  validateHostParams(
+    authority.normalizedHost.split("."),
+    paramNames,
+    base,
+    serviceName,
+  );
   if (path) {
     validatePathParams(splitPathSegments(path), paramNames, base, serviceName);
   }

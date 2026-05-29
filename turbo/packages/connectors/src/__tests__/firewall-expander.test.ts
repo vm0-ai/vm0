@@ -631,6 +631,36 @@ describe("validateBaseUrl", () => {
     }).toThrow("host has invalid percent encoding");
   });
 
+  it("should reject empty labels in parameterized host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com..", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://{sub}..example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://.{sub}.example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example..com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com..:8443", "fw");
+    }).toThrow("host must not contain empty labels");
+  });
+
+  it("should accept a trailing dot in parameterized host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com.", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com.:8443", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}\u3002example.com", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject non-ascii mixed host parameter literals", () => {
     expect(() => {
       return validateBaseUrl("https://例-{sub}.example.com", "fw");
