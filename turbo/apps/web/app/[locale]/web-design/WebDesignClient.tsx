@@ -78,8 +78,8 @@ export function WebDesignClient() {
         >
           <h1 className="hero-title">Website Design</h1>
           <p className="hero-description">
-            Image-led website examples you can open, inspect, and remix into
-            your own Zero creation.
+            Get your creative website from a single, short prompt. We promise it
+            works with no extra setup.
           </p>
         </div>
       </section>
