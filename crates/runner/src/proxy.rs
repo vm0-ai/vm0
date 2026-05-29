@@ -1589,6 +1589,8 @@ PY
                 source_type: "model-provider".to_string(),
                 source_user_id: Some("user-123".to_string()),
                 metadata_key: Some("codex-oauth-token".to_string()),
+                auth_method: None,
+                access_kind: None,
             },
         )]);
         let registration = VmRegistration {

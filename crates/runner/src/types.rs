@@ -62,7 +62,7 @@ pub struct ExecutionContext {
     // Forwarded to mitm-addon via proxy registry for auth resolution
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
-    // Maps secret names to OAuth connector types for runtime token refresh
+    // Maps runtime secret/env keys to connector or provider owner keys for access resolution.
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
     // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh
@@ -110,6 +110,10 @@ pub struct SecretConnectorMetadata {
     pub source_user_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_method: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_kind: Option<String>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -450,6 +454,11 @@ mod tests {
                     "sourceType": "model-provider",
                     "sourceUserId": "user-123",
                     "metadataKey": "codex-oauth-token"
+                },
+                "GMAIL_ACCESS_TOKEN": {
+                    "sourceType": "connector",
+                    "authMethod": "oauth",
+                    "accessKind": "refresh-token"
                 }
             },
             "debugNoMockClaude": true,
@@ -479,6 +488,14 @@ mod tests {
         assert_eq!(
             metadata["CHATGPT_ACCESS_TOKEN"].source_user_id.as_deref(),
             Some("user-123")
+        );
+        assert_eq!(
+            metadata["GMAIL_ACCESS_TOKEN"].auth_method.as_deref(),
+            Some("oauth")
+        );
+        assert_eq!(
+            metadata["GMAIL_ACCESS_TOKEN"].access_kind.as_deref(),
+            Some("refresh-token")
         );
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());

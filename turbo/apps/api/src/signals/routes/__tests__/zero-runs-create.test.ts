@@ -883,6 +883,15 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<
+        string,
+        {
+          readonly sourceType: string;
+          readonly authMethod?: string;
+          readonly accessKind?: string;
+        }
+      > | null;
     };
     expect(executionContext.environment).toMatchObject({
       ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
@@ -1223,6 +1232,8 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<string, unknown> | null;
     };
     expect(executionContext.environment.EXTERNAL_TOKEN).toBe("user-secret");
     expect(
@@ -1378,6 +1389,8 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<string, unknown> | null;
     };
     expect(executionContext.environment.AXIOM_TOKEN).toBe(
       "xaat-c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0",
@@ -1431,6 +1444,8 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<string, unknown> | null;
     };
     expect(executionContext.environment.GITLAB_TOKEN).toBe(
       connectorSecretPlaceholder("gitlab", "GITLAB_TOKEN"),
@@ -1441,6 +1456,8 @@ describe("POST /api/zero/runs", () => {
     ).toMatchObject({
       GITLAB_TOKEN: "glpat-token",
     });
+    expect(executionContext.secretConnectorMap).toBeNull();
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
   it("injects authorized OAuth connector secrets and refresh metadata", async () => {
@@ -1499,6 +1516,14 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<
+        string,
+        {
+          readonly sourceType: string;
+          readonly authMethod?: string;
+          readonly accessKind?: string;
+        }
+      > | null;
       readonly firewalls: readonly { readonly name: string }[];
       readonly billableFirewalls: readonly string[];
     };
@@ -1513,6 +1538,18 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toMatchObject({
       X_ACCESS_TOKEN: "x",
       X_TOKEN: "x",
+    });
+    expect(executionContext.secretConnectorMetadataMap).toMatchObject({
+      X_ACCESS_TOKEN: {
+        sourceType: "connector",
+        authMethod: "oauth",
+        accessKind: "refresh-token",
+      },
+      X_TOKEN: {
+        sourceType: "connector",
+        authMethod: "oauth",
+        accessKind: "refresh-token",
+      },
     });
     expect(
       executionContext.firewalls.map((firewall) => {
@@ -1644,6 +1681,14 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<
+        string,
+        {
+          readonly sourceType: string;
+          readonly authMethod?: string;
+          readonly accessKind?: string;
+        }
+      > | null;
       readonly firewalls: readonly {
         readonly name: string;
         readonly apis: readonly {
@@ -1668,6 +1713,18 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toMatchObject({
       BASE44_ACCESS_TOKEN: "base44",
       BASE44_TOKEN: "base44",
+    });
+    expect(executionContext.secretConnectorMetadataMap).toMatchObject({
+      BASE44_ACCESS_TOKEN: {
+        sourceType: "connector",
+        authMethod: "oauth",
+        accessKind: "refresh-token",
+      },
+      BASE44_TOKEN: {
+        sourceType: "connector",
+        authMethod: "oauth",
+        accessKind: "refresh-token",
+      },
     });
     const firewall = executionContext.firewalls.find((candidate) => {
       return candidate.name === "base44";
@@ -1734,6 +1791,14 @@ describe("POST /api/zero/runs", () => {
       readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<
+        string,
+        {
+          readonly sourceType: string;
+          readonly authMethod?: string;
+          readonly accessKind?: string;
+        }
+      > | null;
       readonly firewalls: readonly {
         readonly name: string;
         readonly apis: readonly {
@@ -1762,6 +1827,18 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMap).toStrictEqual({
       SLOCK_ACCESS_TOKEN: "slock",
       SLOCK_TOKEN: "slock",
+    });
+    expect(executionContext.secretConnectorMetadataMap).toStrictEqual({
+      SLOCK_ACCESS_TOKEN: {
+        sourceType: "connector",
+        authMethod: "oauth",
+        accessKind: "refresh-token",
+      },
+      SLOCK_TOKEN: {
+        sourceType: "connector",
+        authMethod: "oauth",
+        accessKind: "refresh-token",
+      },
     });
     const firewall = executionContext.firewalls.find((candidate) => {
       return candidate.name === "slock";

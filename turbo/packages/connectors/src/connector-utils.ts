@@ -159,6 +159,52 @@ function connectorAccessEnvBindings(
   }
 }
 
+export type ConnectorAuthMethodAccessMetadata =
+  | {
+      readonly kind: "static";
+      readonly envBindings: ConnectorEnvBindings;
+    }
+  | {
+      readonly kind: "refresh-token";
+      readonly accessToken: string;
+      readonly refreshToken: string;
+      readonly envBindings: ConnectorEnvBindings;
+    }
+  | {
+      readonly kind: "none";
+      readonly envBindings: ConnectorEnvBindings;
+    };
+
+export function getConnectorAuthMethodAccessMetadata(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodAccessMetadata | undefined {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return undefined;
+  }
+
+  switch (method.access.kind) {
+    case "static":
+      return {
+        kind: "static",
+        envBindings: method.access.envBindings,
+      };
+    case "refresh-token":
+      return {
+        kind: "refresh-token",
+        accessToken: method.access.accessToken,
+        refreshToken: method.access.refreshToken,
+        envBindings: method.access.envBindings,
+      };
+    case "none":
+      return {
+        kind: "none",
+        envBindings: {},
+      };
+  }
+}
+
 function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   switch (method.grant.kind) {
     case "auth-code":

@@ -133,6 +133,8 @@ export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider"]),
   sourceUserId: z.string().optional(),
   metadataKey: z.string().optional(),
+  authMethod: z.string().optional(),
+  accessKind: z.enum(["static", "refresh-token", "none"]).optional(),
 });
 
 export const secretConnectorMetadataMapSchema = z.record(
@@ -151,7 +153,7 @@ export const storedExecutionContextSchema = z.object({
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
-  // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
+  // Maps runtime secret/env keys to connector or provider owner keys for access resolution.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
@@ -207,7 +209,7 @@ export const executionContextSchema = z.object({
   secretValues: z.array(z.string()).nullable(),
   // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
   encryptedSecrets: z.string().nullable(),
-  // Maps secret names to OAuth connector types for runtime token refresh
+  // Maps runtime secret/env keys to connector or provider owner keys for access resolution.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema

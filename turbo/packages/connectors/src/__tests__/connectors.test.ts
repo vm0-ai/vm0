@@ -35,6 +35,7 @@ import {
   hasRequiredScopes,
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
@@ -1407,6 +1408,36 @@ describe("getConnectorAuthMethodEnvBindings", () => {
 
   it("returns empty env bindings for an unknown auth method", () => {
     expect(getConnectorAuthMethodEnvBindings("ahrefs", "missing")).toEqual({});
+  });
+});
+
+describe("getConnectorAuthMethodAccessMetadata", () => {
+  it("returns refresh-token access metadata for the selected OAuth method", () => {
+    expect(getConnectorAuthMethodAccessMetadata("stripe", "oauth")).toEqual({
+      kind: "refresh-token",
+      accessToken: "STRIPE_ACCESS_TOKEN",
+      refreshToken: "STRIPE_REFRESH_TOKEN",
+      envBindings: {
+        STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
+      },
+    });
+  });
+
+  it("returns static access metadata for the selected API-token method", () => {
+    expect(getConnectorAuthMethodAccessMetadata("stripe", "api-token")).toEqual(
+      {
+        kind: "static",
+        envBindings: {
+          STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+        },
+      },
+    );
+  });
+
+  it("returns undefined for an unknown auth method", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("stripe", "missing"),
+    ).toBeUndefined();
   });
 });
 

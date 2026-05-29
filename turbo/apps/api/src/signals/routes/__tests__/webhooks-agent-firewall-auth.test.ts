@@ -1195,6 +1195,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           secretConnectorMap: {
             TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
           },
+          secretConnectorMetadataMap: {
+            TEST_OAUTH_ACCESS_TOKEN: {
+              sourceType: "connector",
+              authMethod: "oauth",
+              accessKind: "refresh-token",
+            },
+          },
         },
         headers: authHeaders(fixture),
       }),
@@ -1231,6 +1238,240 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "connector",
       }),
     ).resolves.toBe("new-test-oauth-refresh-token");
+  });
+
+  it("resolves a missing selected connector access secret through refresh metadata", async () => {
+    const dynamicOAuth = useDynamicTestOAuthRefresh();
+    restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
+    const fixture = await track(seedFixture());
+    await seedExpiredTestOAuthConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+          },
+          secretConnectorMetadataMap: {
+            TEST_OAUTH_ACCESS_TOKEN: {
+              sourceType: "connector",
+              authMethod: "oauth",
+              accessKind: "refresh-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-test-oauth-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "TEST_OAUTH_ACCESS_TOKEN",
+    ]);
+  });
+
+  it("loads a missing selected connector access secret when the stored token is current", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-notion-token",
+      refreshToken: "current-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+          secretConnectorMetadataMap: {
+            NOTION_ACCESS_TOKEN: {
+              sourceType: "connector",
+              authMethod: "oauth",
+              accessKind: "refresh-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-notion-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+    expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+  });
+
+  it("returns an access resolution failure when current selected connector access storage is missing", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-notion-token",
+      refreshToken: "current-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+    const db = store.set(writeDb$);
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "NOTION_ACCESS_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+          secretConnectorMetadataMap: {
+            NOTION_ACCESS_TOKEN: {
+              sourceType: "connector",
+              authMethod: "oauth",
+              accessKind: "refresh-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_ACCESS_RESOLUTION_FAILED",
+      connectors: ["notion"],
+    });
+  });
+
+  it("does not bypass missing selected connector access without explicit metadata", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("returns a refresh failure when selected connector refresh tokens are missing", async () => {
+    const dynamicOAuth = useDynamicTestOAuthRefresh();
+    restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
+    const fixture = await track(seedFixture());
+    await seedExpiredTestOAuthConnector(fixture);
+    const db = store.set(writeDb$);
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "TEST_OAUTH_REFRESH_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+          },
+          secretConnectorMetadataMap: {
+            TEST_OAUTH_ACCESS_TOKEN: {
+              sourceType: "connector",
+              authMethod: "oauth",
+              accessKind: "refresh-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["test-oauth"],
+    });
+    expect(dynamicOAuth.refreshes).toStrictEqual([]);
+  });
+
+  it("keeps missing static connector access secrets as missing configuration", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+          secretConnectorMetadataMap: {
+            STRIPE_TOKEN: {
+              sourceType: "connector",
+              authMethod: "api-token",
+              accessKind: "static",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
   });
 
   it("uses OAuth token expiry when it is earlier than billable credit lease", async () => {

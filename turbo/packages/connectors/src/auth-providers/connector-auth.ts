@@ -355,6 +355,23 @@ export async function refreshConnectorOAuthToken<
   }
 }
 
+export async function refreshConnectorAccessToken(args: {
+  readonly type: ConnectorType;
+  readonly oauthClient: ConnectorOAuthClient;
+  readonly refreshToken: string;
+}): Promise<OAuthRefreshResult> {
+  if (!hasConnectorOAuthProvider(args.type)) {
+    throw new Error(
+      `${args.type} connector does not have a refresh-token access provider`,
+    );
+  }
+  return await refreshConnectorOAuthToken({
+    type: args.type,
+    oauthClient: args.oauthClient,
+    refreshToken: args.refreshToken,
+  });
+}
+
 export async function revokeConnectorOAuthToken<
   T extends OAuthGrantConnectorType,
 >(args: {
