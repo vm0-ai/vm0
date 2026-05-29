@@ -505,27 +505,25 @@ type TrialGalleryItem = {
   readonly image: string;
 };
 
-const TRIAL_GALLERY_LEFT: readonly TrialGalleryItem[] = [
+const TRIAL_GALLERY_HERO: TrialGalleryItem = {
+  id: "workflow",
+  label: "Workflow",
+  title: "Workflows that ship themselves",
+  image: trialWorkflowSrc,
+};
+
+const TRIAL_GALLERY_SECONDARY: readonly TrialGalleryItem[] = [
   {
-    id: "workflow",
-    label: "Workflow",
-    title: "Workflows that ship themselves",
-    image: trialWorkflowSrc,
+    id: "website",
+    label: "Website",
+    title: "Polished pages from a single brief",
+    image: trialWebsiteSrc,
   },
   {
     id: "illustration",
     label: "Illustration",
     title: "Editorial illustrations in your style",
     image: trialIllustrationSrc,
-  },
-];
-
-const TRIAL_GALLERY_RIGHT: readonly TrialGalleryItem[] = [
-  {
-    id: "website",
-    label: "Website",
-    title: "Polished pages from a single brief",
-    image: trialWebsiteSrc,
   },
 ];
 
@@ -558,22 +556,16 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col w-full max-w-[480px]"
+      className="flex flex-col gap-3 w-full max-w-[480px]"
     >
-      <p className="text-[11px] font-medium text-muted-foreground mb-5">
+      <p className="text-[11px] font-medium text-muted-foreground">
         Made with Zero
       </p>
+      <TrialGalleryTile item={TRIAL_GALLERY_HERO} />
       <div className="grid grid-cols-2 gap-3 items-start">
-        <div className="flex flex-col gap-3">
-          {TRIAL_GALLERY_LEFT.map((item) => {
-            return <TrialGalleryTile key={item.id} item={item} />;
-          })}
-        </div>
-        <div className="flex flex-col gap-3 mt-10">
-          {TRIAL_GALLERY_RIGHT.map((item) => {
-            return <TrialGalleryTile key={item.id} item={item} />;
-          })}
-        </div>
+        {TRIAL_GALLERY_SECONDARY.map((item) => {
+          return <TrialGalleryTile key={item.id} item={item} />;
+        })}
       </div>
     </div>
   );
