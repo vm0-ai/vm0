@@ -29,6 +29,8 @@
 //!   @exit-after-result        - Emit result event, exit(0) immediately;
 //!                               tests that reap stays no-op on the
 //!                               happy path
+//!   @ECHO@                    - First-line marker. Validate remaining non-empty
+//!                               lines as JSONL and emit them unchanged.
 
 use serde_json::{Value, json};
 use std::io::Write;
@@ -36,6 +38,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
+const ECHO_MARKER: &str = "@ECHO@";
 
 /// Parsed command-line arguments.
 struct ParsedArgs {
@@ -45,6 +48,7 @@ struct ParsedArgs {
 
 #[derive(Debug, Eq, PartialEq)]
 enum MockScenario<'a> {
+    EchoJsonl(&'a str),
     FailNoNewline(&'a str),
     FailInvalidUtf8,
     FailInvalidUtf8Long,
@@ -58,6 +62,9 @@ enum MockScenario<'a> {
 
 impl<'a> MockScenario<'a> {
     fn from_prompt(prompt: &'a str) -> Self {
+        if let Some(payload) = echo_jsonl_payload(prompt) {
+            return Self::EchoJsonl(payload);
+        }
         if let Some(msg) = prompt.strip_prefix("@fail-no-newline:") {
             return Self::FailNoNewline(msg);
         }
@@ -102,6 +109,77 @@ impl<'a> MockScenario<'a> {
         }
         Self::Shell
     }
+}
+
+fn echo_jsonl_payload(prompt: &str) -> Option<&str> {
+    let (first_line, payload) = prompt.split_once('\n').unwrap_or((prompt, ""));
+    if first_line.trim_end_matches('\r') == ECHO_MARKER {
+        return Some(payload);
+    }
+    None
+}
+
+fn parse_echo_jsonl(payload: &str) -> Result<Vec<(String, Value)>, String> {
+    let mut events = Vec::new();
+    for (index, line) in payload.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = serde_json::from_str::<Value>(line)
+            .map_err(|e| format!("invalid @ECHO@ JSONL line {}: {e}", index + 2))?;
+        events.push((line.to_string(), event));
+    }
+
+    if events.is_empty() {
+        return Err("@ECHO@ payload must contain at least one JSONL event".to_string());
+    }
+
+    Ok(events)
+}
+
+fn echo_session_id(events: &[(String, Value)]) -> Option<&str> {
+    events.iter().find_map(|(_, event)| {
+        let event_type = event.get("type").and_then(Value::as_str)?;
+        let subtype = event.get("subtype").and_then(Value::as_str)?;
+        if event_type != "system" || subtype != "init" {
+            return None;
+        }
+        event.get("session_id").and_then(Value::as_str)
+    })
+}
+
+fn write_echo_session_history(events: &[(String, Value)]) {
+    let Some(session_id) = echo_session_id(events) else {
+        return;
+    };
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "/".to_string());
+
+    if let Some(path) = create_session_history(session_id, &cwd)
+        && let Ok(mut file) = std::fs::File::create(&path)
+    {
+        for (line, _) in events {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+}
+
+fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
+    let events = match parse_echo_jsonl(payload) {
+        Ok(events) => events,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return ExitCode::from(1);
+        }
+    };
+
+    for (line, _) in &events {
+        println!("{line}");
+    }
+    write_echo_session_history(&events);
+    let _ = std::io::stdout().flush();
+    ExitCode::SUCCESS
 }
 
 fn skip_flag_value(args: &[String], i: &mut usize) {
@@ -480,6 +558,7 @@ fn main() -> ExitCode {
     let parsed = parse_args(&args);
 
     match MockScenario::from_prompt(&parsed.prompt) {
+        MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload),
         MockScenario::FailNoNewline(msg) => {
             eprint!("{msg}");
             let _ = std::io::stderr().flush();
@@ -840,5 +919,50 @@ mod tests {
     #[test]
     fn classifies_ordinary_prompt_as_shell() {
         assert_eq!(MockScenario::from_prompt("echo hello"), MockScenario::Shell);
+    }
+
+    #[test]
+    fn classifies_echo_jsonl_when_first_line_is_marker() {
+        assert_eq!(
+            MockScenario::from_prompt("@ECHO@\n{\"type\":\"result\"}"),
+            MockScenario::EchoJsonl("{\"type\":\"result\"}")
+        );
+    }
+
+    #[test]
+    fn classifies_echo_jsonl_with_crlf_marker() {
+        assert_eq!(
+            MockScenario::from_prompt("@ECHO@\r\n{\"type\":\"result\"}"),
+            MockScenario::EchoJsonl("{\"type\":\"result\"}")
+        );
+    }
+
+    #[test]
+    fn does_not_classify_marker_with_extra_text_as_echo_jsonl() {
+        assert_eq!(
+            MockScenario::from_prompt("@ECHO@ please\n{\"type\":\"result\"}"),
+            MockScenario::Shell
+        );
+    }
+
+    #[test]
+    fn parses_echo_jsonl_non_empty_lines() {
+        let events =
+            parse_echo_jsonl(r#"{"type":"system","subtype":"init","session_id":"preview-1"}"#)
+                .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1["type"], "system");
+    }
+
+    #[test]
+    fn rejects_invalid_echo_jsonl() {
+        let err = parse_echo_jsonl(r#"{"type":"system""#).unwrap_err();
+        assert!(err.contains("invalid @ECHO@ JSONL line 2"));
+    }
+
+    #[test]
+    fn rejects_empty_echo_jsonl_payload() {
+        let err = parse_echo_jsonl("\n\n").unwrap_err();
+        assert_eq!(err, "@ECHO@ payload must contain at least one JSONL event");
     }
 }
