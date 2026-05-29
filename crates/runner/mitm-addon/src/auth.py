@@ -574,6 +574,32 @@ def _apply_header_query_injection(
             flow.request.query[key] = value
 
 
+def _set_url_rewrite_forward_failed(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    error_type: str,
+) -> None:
+    log_proxy_entry(
+        proxy_log_path,
+        "error",
+        "URL rewrite forward failed",
+        type="firewall",
+        firewall_base=firewall_base,
+        error_type=error_type,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=502,
+        action="ALLOW",
+        error_code="url_rewrite_forward_failed",
+        message="Failed to forward request to upstream",
+        permission=allow.name,
+    )
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -588,7 +614,17 @@ async def _apply_url_rewrite(
     # connection already connected to the placeholder IP. Setting
     # flow.response bypasses the upstream connection entirely.
     orig_query = urllib.parse.urlparse(flow.request.path).query
-    new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+    try:
+        new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+    except ValueError as e:
+        _set_url_rewrite_forward_failed(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            error_type=type(e).__name__,
+        )
+        return False
 
     # Filter client-controlled hop-by-hop headers before adding trusted
     # auth headers, so Connection tokens cannot suppress injected auth.
@@ -606,21 +642,12 @@ async def _apply_url_rewrite(
         )
         flow.response = http.Response.make(status, resp_body, resp_headers)
     except Exception as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "error",
-            "URL rewrite forward failed",
-            type="firewall",
+        _set_url_rewrite_forward_failed(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
             firewall_base=firewall_base,
             error_type=type(e).__name__,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=502,
-            action="ALLOW",
-            error_code="url_rewrite_forward_failed",
-            message="Failed to forward request to upstream",
-            permission=allow.name,
         )
         return False
 

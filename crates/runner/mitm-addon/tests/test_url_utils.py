@@ -56,6 +56,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret"
 
+    def test_base_with_fragment_rejected(self):
+        with pytest.raises(ValueError, match="fragment"):
+            url_utils.build_rewrite_url(
+                "https://example.com/hook#secret-fragment",
+                "/",
+                "",
+            )
+
     def test_empty_orig_query_ignored(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook",

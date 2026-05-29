@@ -418,6 +418,8 @@ def build_rewrite_url(
         raise ValueError("Unsafe rewrite path: dot segments are not allowed")
 
     base_parsed = urllib.parse.urlsplit(resolved_base)
+    if base_parsed.fragment:
+        raise ValueError("Invalid auth.base URL: must not contain fragment")
 
     # Append rel_path to the base path portion
     base_path = (
