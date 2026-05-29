@@ -1018,7 +1018,7 @@ async function markRefreshFailure(
       .set({
         needsReconnect: true,
         lastRefreshErrorCode: errorCode,
-        updatedAt: nowDate(),
+        updatedAt: sql`clock_timestamp()`,
       })
       .where(
         and(
@@ -1034,7 +1034,7 @@ async function markRefreshFailure(
     .update(connectors)
     .set({
       needsReconnect: true,
-      updatedAt: nowDate(),
+      updatedAt: sql`clock_timestamp()`,
     })
     .where(
       and(
