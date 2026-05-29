@@ -1236,7 +1236,7 @@ describe("POST /api/zero/slack/events", () => {
     expect(run).toMatchObject({
       modelProvider: "vm0",
       modelProviderId: null,
-      modelProviderCredentialScope: null,
+      modelProviderCredentialScope: "org",
       selectedModel: "gpt-5.5",
     });
 

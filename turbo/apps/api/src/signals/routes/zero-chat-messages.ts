@@ -54,11 +54,11 @@ import {
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
-  modelOnlyModelFirstPin,
+  existingModelFirstThreadPin,
   modelProviderPinAvailable,
-  resolveDefaultModelFirstPin,
+  resolveChatRunModelPin,
   resolveModelFirstProviderAdmission,
-  resolveModelSelectionPin,
+  zeroRunModelSelectionFromPin,
 } from "../services/zero-model-selection.service";
 import {
   touchChatThreadLastMessageAt,
@@ -706,55 +706,6 @@ async function activeRunExistsForThread(
   return run !== undefined;
 }
 
-async function getStoredThreadModelPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  const [thread] = await db
-    .select({ selectedModel: chatThreads.selectedModel })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  if (!thread?.selectedModel) {
-    return null;
-  }
-  return modelOnlyModelFirstPin(thread.selectedModel);
-}
-
-async function getFirstRunModelPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  const [run] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(chatMessages)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, threadId),
-        eq(chatMessages.role, "user"),
-        isNotNull(chatMessages.runId),
-        isNotNull(zeroRuns.selectedModel),
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id))
-    .limit(1);
-  if (!run?.selectedModel) {
-    return null;
-  }
-  return modelOnlyModelFirstPin(run.selectedModel);
-}
-
-async function existingModelFirstThreadPin(
-  db: Db,
-  threadId: string,
-): Promise<ThreadModelPin | null> {
-  return (
-    (await getStoredThreadModelPin(db, threadId)) ??
-    (await getFirstRunModelPin(db, threadId))
-  );
-}
-
 function emptyModelFirstThreadPin(): ThreadModelPin {
   return {
     modelProviderId: null,
@@ -762,106 +713,6 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
     modelProviderCredentialScope: null,
     selectedModel: null,
   };
-}
-
-async function resolveStoredModelFirstPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly pin: ThreadModelPin;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-> {
-  if (!params.pin.selectedModel) {
-    return params.pin;
-  }
-  if (params.pin.modelProviderId) {
-    const available = await modelProviderPinAvailable({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      modelProviderId: params.pin.modelProviderId,
-    });
-    if (!available) {
-      return providerDeleted();
-    }
-    return params.pin;
-  }
-  if (params.pin.modelProviderType || params.pin.modelProviderCredentialScope) {
-    return params.pin;
-  }
-  return resolveModelSelectionPin({
-    db: params.db,
-    orgId: params.orgId,
-    userId: params.userId,
-    modelSelection: {
-      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
-      selectedModel: params.pin.selectedModel,
-    },
-  });
-}
-
-async function persistThreadPinIfUnset(
-  db: Db,
-  threadId: string,
-  pin: ThreadModelPin,
-): Promise<ThreadModelPin> {
-  if (!pin.selectedModel) {
-    return pin;
-  }
-  await db
-    .update(chatThreads)
-    .set({
-      ...modelOnlyModelFirstPin(pin.selectedModel),
-      updatedAt: nowDate(),
-    })
-    .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
-    .returning({ selectedModel: chatThreads.selectedModel });
-  return pin;
-}
-
-async function resolveRunModelPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly threadId: string;
-  readonly modelSelection: IncomingModelSelection;
-  readonly forceNewSession: boolean;
-}): Promise<
-  | ThreadModelPin
-  | ReturnType<typeof providerDeleted>
-  | ReturnType<typeof badRequestMessage>
-> {
-  const existing = params.forceNewSession
-    ? null
-    : await existingModelFirstThreadPin(params.db, params.threadId);
-  if (existing) {
-    const pin = await resolveStoredModelFirstPin({
-      db: params.db,
-      orgId: params.orgId,
-      userId: params.userId,
-      pin: existing,
-    });
-    if ("status" in pin) {
-      return pin;
-    }
-    return persistThreadPinIfUnset(params.db, params.threadId, pin);
-  }
-
-  const pin = params.modelSelection
-    ? await resolveModelSelectionPin({
-        db: params.db,
-        orgId: params.orgId,
-        userId: params.userId,
-        modelSelection: params.modelSelection,
-      })
-    : await resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
-  if ("status" in pin) {
-    return pin;
-  }
-  return persistThreadPinIfUnset(params.db, params.threadId, pin);
 }
 
 async function validateModelSelection(params: {
@@ -1808,7 +1659,7 @@ const createNormalChatRun$ = command(
     signal: AbortSignal,
   ) => {
     const { args, prepared } = params;
-    const modelPin = await resolveRunModelPin({
+    const modelPin = await resolveChatRunModelPin({
       db: prepared.db,
       orgId: args.orgId,
       userId: args.userId,
@@ -1853,6 +1704,10 @@ const createNormalChatRun$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        zeroRunModelSelection: zeroRunModelSelectionFromPin(
+          modelPin,
+          providerAdmission.effectiveModelProvider,
+        ),
         callbacks: [
           {
             url: chatCallbackUrl(),
@@ -1887,17 +1742,6 @@ const createNormalChatRun$ = command(
     if (runResult.status !== 201) {
       return runResult;
     }
-
-    await prepared.db
-      .update(zeroRuns)
-      .set({
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, runResult.body.runId));
-    signal.throwIfAborted();
 
     scheduleCreatedChatRunSideEffects({
       db: prepared.db,

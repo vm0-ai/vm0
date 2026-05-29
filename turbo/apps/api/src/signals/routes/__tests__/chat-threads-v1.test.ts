@@ -13,6 +13,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -36,6 +37,7 @@ import {
   decryptSecretForTests,
   decryptSecretsMapForTests,
 } from "./helpers/encrypt-secret";
+import { seedOrgModelProvider$ } from "./helpers/zero-model-providers";
 
 interface PatFixture {
   readonly token: string;
@@ -983,6 +985,76 @@ describe("POST /api/v1/chat-threads/messages", () => {
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
     expect(zeroAuth?.userId).toBe(pat.userId);
     expect(zeroAuth?.orgId).toBe(pat.orgId);
+  });
+
+  it("resolves the default model route when sending through the public API", async () => {
+    const pat = await seedPatFixture();
+    pats.push(pat);
+    const agent = await seedRunnableAgentFixture(pat);
+    await setDefaultAgent(pat, agent);
+    agents.push(agent);
+    const writeDb = store.set(writeDb$);
+    const provider = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: pat.orgId,
+        type: "anthropic-api-key",
+        secretName: "ANTHROPIC_API_KEY",
+      },
+      context.signal,
+    );
+    await writeDb.insert(orgModelPolicies).values({
+      orgId: pat.orgId,
+      model: "claude-opus-4-7",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: provider.id,
+      createdByUserId: pat.userId,
+      updatedByUserId: pat.userId,
+    });
+
+    const client = setupApp({ context })(chatThreadV1SendContract);
+    const response = await accept(
+      client.send({
+        headers: { authorization: `Bearer ${pat.token}` },
+        body: { prompt: "use the v1 default model" },
+      }),
+      [201],
+    );
+
+    const [message] = await writeDb
+      .select({ runId: chatMessages.runId })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, response.body.messageId))
+      .limit(1);
+    if (!message?.runId) {
+      throw new Error("Expected user message to reference a run");
+    }
+
+    const [thread] = await writeDb
+      .select({ selectedModel: chatThreads.selectedModel })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, response.body.threadId))
+      .limit(1);
+    expect(thread?.selectedModel).toBe("claude-opus-4-7");
+
+    const [run] = await writeDb
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, message.runId))
+      .limit(1);
+    expect(run).toStrictEqual({
+      modelProvider: "anthropic-api-key",
+      modelProviderId: provider.id,
+      modelProviderCredentialScope: "org",
+      selectedModel: "claude-opus-4-7",
+    });
   });
 
   it("does not require unconfigured connector environment refs before creating a chat run", async () => {

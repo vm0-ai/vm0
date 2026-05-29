@@ -24,6 +24,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
@@ -33,6 +34,7 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
+import type { ZeroRunModelSelection } from "./zero-model-selection.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -105,6 +107,31 @@ interface RunCallback {
 interface ZeroRunMetadata {
   readonly triggerAgentId?: string;
   readonly scheduleId?: string;
+}
+
+interface CreateZeroRunArgs {
+  readonly auth: AuthContext & { readonly orgId: string };
+  readonly body: ZeroRunCreateBody;
+  readonly apiStartTime: number;
+  readonly triggerSource?: TriggerSource;
+  readonly appendSystemPrompt?: string;
+  readonly userInfoExtras?: Pick<
+    UserInfo,
+    | "slackDisplayName"
+    | "slackUserId"
+    | "telegramDisplayName"
+    | "telegramUsername"
+    | "telegramUserId"
+    | "telegramLanguage"
+    | "agentphoneHandle"
+  >;
+  readonly callbacks?: readonly RunCallback[];
+  readonly chatThreadId?: string;
+  readonly modelProviderId?: string;
+  readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
+  readonly selectedModelOverride?: string;
+  readonly zeroRunModelSelection?: ZeroRunModelSelection;
+  readonly zeroRunMetadata?: ZeroRunMetadata;
 }
 
 function forbidden(message: string) {
@@ -635,34 +662,27 @@ export const createZeroIntegrationRun$ = command(
   },
 );
 
+async function persistZeroRunModelSelection(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly modelSelection: ZeroRunModelSelection;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await args.db
+    .update(zeroRuns)
+    .set({
+      modelProvider: args.modelSelection.modelProvider,
+      modelProviderId: args.modelSelection.modelProviderId,
+      modelProviderCredentialScope:
+        args.modelSelection.modelProviderCredentialScope,
+      selectedModel: args.modelSelection.selectedModel,
+    })
+    .where(eq(zeroRuns.id, args.runId));
+  args.signal.throwIfAborted();
+}
+
 export const createZeroRun$ = command(
-  async (
-    { set },
-    args: {
-      readonly auth: AuthContext & { readonly orgId: string };
-      readonly body: ZeroRunCreateBody;
-      readonly apiStartTime: number;
-      readonly triggerSource?: TriggerSource;
-      readonly appendSystemPrompt?: string;
-      readonly userInfoExtras?: Pick<
-        UserInfo,
-        | "slackDisplayName"
-        | "slackUserId"
-        | "telegramDisplayName"
-        | "telegramUsername"
-        | "telegramUserId"
-        | "telegramLanguage"
-        | "agentphoneHandle"
-      >;
-      readonly callbacks?: readonly RunCallback[];
-      readonly chatThreadId?: string;
-      readonly modelProviderId?: string;
-      readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
-      readonly selectedModelOverride?: string;
-      readonly zeroRunMetadata?: ZeroRunMetadata;
-    },
-    signal: AbortSignal,
-  ) => {
+  async ({ set }, args: CreateZeroRunArgs, signal: AbortSignal) => {
     const db = set(writeDb$);
     const agentId =
       args.body.agentId ??
@@ -719,7 +739,7 @@ export const createZeroRun$ = command(
       [...allowedConnectorTypes],
     );
 
-    return await set(
+    const result = await set(
       createAgentRun$,
       {
         userId: args.auth.userId,
@@ -760,5 +780,17 @@ export const createZeroRun$ = command(
       },
       signal,
     );
+    signal.throwIfAborted();
+
+    if (result.status === 201 && args.zeroRunModelSelection) {
+      await persistZeroRunModelSelection({
+        db,
+        runId: result.body.runId,
+        modelSelection: args.zeroRunModelSelection,
+        signal,
+      });
+    }
+
+    return result;
   },
 );

@@ -17,7 +17,6 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { Cron } from "croner";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
@@ -32,6 +31,7 @@ import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import {
   resolveDefaultModelFirstPin,
   resolveModelFirstProviderAdmission,
+  zeroRunModelSelectionFromPin,
 } from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -1107,6 +1107,10 @@ export const runScheduleNow$ = command(
         modelProviderCredentialScope:
           modelPin.modelProviderCredentialScope ?? undefined,
         selectedModelOverride: modelPin.selectedModel ?? undefined,
+        zeroRunModelSelection: zeroRunModelSelectionFromPin(
+          modelPin,
+          providerAdmission.effectiveModelProvider,
+        ),
         appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
         callbacks: buildScheduleCallbacks(schedule),
         zeroRunMetadata: { scheduleId: schedule.id },
@@ -1118,17 +1122,6 @@ export const runScheduleNow$ = command(
     if (result.status !== 201) {
       return { kind: "run_error", response: result };
     }
-
-    await db
-      .update(zeroRuns)
-      .set({
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, result.body.runId));
-    signal.throwIfAborted();
 
     await db
       .update(zeroAgentSchedules)

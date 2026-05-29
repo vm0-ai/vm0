@@ -9,6 +9,7 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import { notFound } from "../../lib/error";
 import {
@@ -18,6 +19,7 @@ import {
   zeroRunRunner,
 } from "../services/zero-runs.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { resolveDefaultModelFirstRunSelection } from "../services/zero-model-selection.service";
 import type { RouteEntry } from "../route";
 
 const createRunBody$ = bodyResultOf(zeroRunsMainContract.create);
@@ -80,9 +82,47 @@ const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const auth = get(organizationAuthContext$);
+  const requestedModelProvider =
+    body.data.modelProvider && body.data.modelProvider !== "default"
+      ? body.data.modelProvider
+      : undefined;
+  const modelSelection = await resolveDefaultModelFirstRunSelection({
+    db: set(writeDb$),
+    orgId: auth.orgId,
+    userId: auth.userId,
+    requestedModelProvider,
+  });
+  signal.throwIfAborted();
+  if ("status" in modelSelection) {
+    return modelSelection;
+  }
+  if (!modelSelection.modelPin.selectedModel) {
+    return await set(
+      createZeroRun$,
+      { auth, body: body.data, apiStartTime },
+      signal,
+    );
+  }
+
+  const runBody = { ...body.data };
+  delete runBody.modelProvider;
   return await set(
     createZeroRun$,
-    { auth, body: body.data, apiStartTime },
+    {
+      auth,
+      body: {
+        ...runBody,
+        ...(modelSelection.effectiveModelProvider
+          ? { modelProvider: modelSelection.effectiveModelProvider }
+          : {}),
+      },
+      apiStartTime,
+      modelProviderId: modelSelection.modelPin.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        modelSelection.modelPin.modelProviderCredentialScope ?? undefined,
+      selectedModelOverride: modelSelection.modelPin.selectedModel ?? undefined,
+      zeroRunModelSelection: modelSelection.zeroRunModelSelection,
+    },
     signal,
   );
 });

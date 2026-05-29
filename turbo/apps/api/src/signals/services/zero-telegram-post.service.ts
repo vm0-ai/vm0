@@ -1733,6 +1733,15 @@ async function runAgentForTelegram(
       modelProviderCredentialScope:
         args.modelRoute?.modelProviderCredentialScope,
       selectedModelOverride: args.modelRoute?.selectedModel,
+      zeroRunModelSelection: args.modelRoute
+        ? {
+            modelProvider: args.modelRoute.modelProviderType,
+            modelProviderId: args.modelRoute.modelProviderId,
+            modelProviderCredentialScope:
+              args.modelRoute.modelProviderCredentialScope,
+            selectedModel: args.modelRoute.selectedModel,
+          }
+        : undefined,
       callbacks: [
         {
           url: `${env("VM0_API_URL")}/api/internal/callbacks/telegram`,

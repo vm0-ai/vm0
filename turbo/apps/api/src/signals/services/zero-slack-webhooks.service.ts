@@ -1063,6 +1063,15 @@ async function runAgentForSlackOrg(
       modelProviderId: params.modelProviderId,
       modelProviderCredentialScope: params.modelProviderCredentialScope,
       selectedModelOverride: params.selectedModelOverride,
+      zeroRunModelSelection: params.modelProviderType
+        ? {
+            modelProvider: params.modelProviderType,
+            modelProviderId: params.modelProviderId ?? null,
+            modelProviderCredentialScope:
+              params.modelProviderCredentialScope ?? null,
+            selectedModel: params.selectedModelOverride ?? null,
+          }
+        : undefined,
       callbacks: [
         {
           url: `${env("VM0_API_URL")}/api/internal/callbacks/slack/org`,

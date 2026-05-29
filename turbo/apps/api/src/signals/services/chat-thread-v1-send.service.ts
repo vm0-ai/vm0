@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { command } from "ccstate";
+import { command, type Setter } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -17,11 +17,28 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { touchChatThreadLastMessageAt } from "./zero-chat-thread.service";
+import {
+  resolveChatRunModelPin,
+  resolveModelFirstProviderAdmission,
+  zeroRunModelSelectionFromPin,
+} from "./zero-model-selection.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 interface OwnedThreadForSend {
   readonly id: string;
   readonly agentComposeId: string;
+}
+
+interface SendChatThreadMessageV1Args {
+  readonly auth: AuthContext & { readonly orgId: string };
+  readonly prompt: string;
+  readonly threadId: string | undefined;
+  readonly apiStartTime: number;
+}
+
+interface V1ThreadForRun {
+  readonly thread: OwnedThreadForSend;
+  readonly sessionId?: string;
 }
 
 function hasAgentSessionId(
@@ -52,156 +69,234 @@ function chatCallbackUrl(): string {
 }
 
 export const sendChatThreadMessageV1$ = command(
-  async (
-    { set },
-    args: {
-      readonly auth: AuthContext & { readonly orgId: string };
-      readonly prompt: string;
-      readonly threadId: string | undefined;
-      readonly apiStartTime: number;
-    },
-    signal: AbortSignal,
-  ) => {
+  async ({ set }, args: SendChatThreadMessageV1Args, signal: AbortSignal) => {
     const db = set(writeDb$);
 
-    let thread: OwnedThreadForSend;
-    let sessionId: string | undefined;
-
-    if (args.threadId) {
-      const [existingThread] = await db
-        .select({
-          id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
-        })
-        .from(chatThreads)
-        .where(
-          and(
-            eq(chatThreads.id, args.threadId),
-            eq(chatThreads.userId, args.auth.userId),
-          ),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-
-      if (!existingThread) {
-        return notFound("Chat thread not found");
-      }
-
-      thread = existingThread;
-      sessionId = await latestSessionIdForThread(db, thread.id);
-      signal.throwIfAborted();
-    } else {
-      const agentId = await defaultAgentId(db, args.auth.orgId);
-      signal.throwIfAborted();
-
-      if (!agentId) {
-        return badRequestMessage(
-          "No default agent configured for this organization",
-        );
-      }
-
-      const [createdThread] = await db
-        .insert(chatThreads)
-        .values({
-          userId: args.auth.userId,
-          agentComposeId: agentId,
-          title: null,
-        })
-        .returning({
-          id: chatThreads.id,
-          agentComposeId: chatThreads.agentComposeId,
-        });
-      signal.throwIfAborted();
-
-      if (!createdThread) {
-        throw new Error("Failed to create chat thread");
-      }
-
-      thread = createdThread;
+    const resolvedThread = await resolveThreadForV1Send(db, args, signal);
+    if ("status" in resolvedThread) {
+      return resolvedThread;
     }
 
-    // Route through createZeroRun$ so the V1 surface matches the web chat
-    // path: env-ref validation is skipped, ZERO_TOKEN secret is injected,
-    // credit enforcement / concurrency queueing / skill volumes / connector
-    // allowlists are all applied. Direct createAgentRun$ calls left the V1
-    // path missing every one of those, which surfaced as a 400 "Missing
-    // required values: vars.*" whenever the default agent referenced
-    // integration vars the caller had not provided.
-    const runResult = await set(
-      createZeroRun$,
-      {
-        auth: args.auth,
-        apiStartTime: args.apiStartTime,
-        chatThreadId: thread.id,
-        triggerSource: "web",
-        appendSystemPrompt: buildWebChatPrompt(),
-        body: {
-          prompt: args.prompt,
-          agentId: thread.agentComposeId,
-          ...(sessionId ? { sessionId } : {}),
-        },
-        callbacks: [
-          {
-            url: chatCallbackUrl(),
-            secret: generateCallbackSecret(),
-            payload: { threadId: thread.id, agentId: thread.agentComposeId },
-          },
-        ],
-      },
+    const runResult = await createChatThreadV1Run({
+      set,
+      db,
+      args,
+      ...resolvedThread,
       signal,
-    );
+    });
     signal.throwIfAborted();
 
     if (runResult.status !== 201) {
       return runResult;
     }
 
-    const [message] = await db
-      .insert(chatMessages)
-      .values({
-        chatThreadId: thread.id,
-        role: "user",
-        content: args.prompt,
-        runId: runResult.body.runId,
-      })
-      .returning({ id: chatMessages.id });
-    signal.throwIfAborted();
-
-    if (!message) {
-      throw new Error("Failed to insert chat message");
-    }
-
-    await touchChatThreadLastMessageAt(db, thread.id);
-    signal.throwIfAborted();
-
-    await publishUserSignal(
-      [args.auth.userId],
-      `chatThreadMessageCreated:${thread.id}`,
-    );
-    signal.throwIfAborted();
-
-    await publishThreadListChanged(args.auth.userId);
-    signal.throwIfAborted();
-
-    await publishUserSignal(
-      [args.auth.userId],
-      `chatThreadRunCreated:${thread.id}`,
-    );
-    signal.throwIfAborted();
-
-    await publishThreadListChanged(args.auth.userId);
-    signal.throwIfAborted();
+    const messageId = await insertUserMessageForV1({
+      db,
+      threadId: resolvedThread.thread.id,
+      prompt: args.prompt,
+      runId: runResult.body.runId,
+      signal,
+    });
+    await publishV1MessageSignals({
+      db,
+      userId: args.auth.userId,
+      threadId: resolvedThread.thread.id,
+      signal,
+    });
 
     return {
       status: 201 as const,
       body: {
-        threadId: thread.id,
-        messageId: message.id,
+        threadId: resolvedThread.thread.id,
+        messageId,
         createdAt: runResult.body.createdAt,
       },
     };
   },
 );
+
+async function resolveThreadForV1Send(
+  db: Db,
+  args: SendChatThreadMessageV1Args,
+  signal: AbortSignal,
+) {
+  if (args.threadId) {
+    const [existingThread] = await db
+      .select({
+        id: chatThreads.id,
+        agentComposeId: chatThreads.agentComposeId,
+      })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.threadId),
+          eq(chatThreads.userId, args.auth.userId),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    if (!existingThread) {
+      return notFound("Chat thread not found");
+    }
+
+    const sessionId = await latestSessionIdForThread(db, existingThread.id);
+    signal.throwIfAborted();
+    return { thread: existingThread, sessionId } satisfies V1ThreadForRun;
+  }
+
+  const agentId = await defaultAgentId(db, args.auth.orgId);
+  signal.throwIfAborted();
+  if (!agentId) {
+    return badRequestMessage(
+      "No default agent configured for this organization",
+    );
+  }
+
+  const [createdThread] = await db
+    .insert(chatThreads)
+    .values({
+      userId: args.auth.userId,
+      agentComposeId: agentId,
+      title: null,
+    })
+    .returning({
+      id: chatThreads.id,
+      agentComposeId: chatThreads.agentComposeId,
+    });
+  signal.throwIfAborted();
+
+  if (!createdThread) {
+    throw new Error("Failed to create chat thread");
+  }
+
+  return { thread: createdThread } satisfies V1ThreadForRun;
+}
+
+async function createChatThreadV1Run(args: {
+  readonly set: Setter;
+  readonly db: Db;
+  readonly args: SendChatThreadMessageV1Args;
+  readonly thread: OwnedThreadForSend;
+  readonly sessionId?: string;
+  readonly signal: AbortSignal;
+}) {
+  const modelPin = await resolveChatRunModelPin({
+    db: args.db,
+    orgId: args.args.auth.orgId,
+    userId: args.args.auth.userId,
+    threadId: args.thread.id,
+    modelSelection: undefined,
+    forceNewSession: false,
+  });
+  args.signal.throwIfAborted();
+  if ("status" in modelPin) {
+    return modelPin;
+  }
+
+  const providerAdmission = await resolveModelFirstProviderAdmission({
+    db: args.db,
+    orgId: args.args.auth.orgId,
+    userId: args.args.auth.userId,
+    modelPin,
+    requestedModelProvider: undefined,
+  });
+  args.signal.throwIfAborted();
+  if (providerAdmission.error) {
+    return providerAdmission.error;
+  }
+
+  return await args.set(
+    createZeroRun$,
+    {
+      auth: args.args.auth,
+      apiStartTime: args.args.apiStartTime,
+      chatThreadId: args.thread.id,
+      modelProviderId: modelPin.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        modelPin.modelProviderCredentialScope ?? undefined,
+      selectedModelOverride: modelPin.selectedModel ?? undefined,
+      zeroRunModelSelection: zeroRunModelSelectionFromPin(
+        modelPin,
+        providerAdmission.effectiveModelProvider,
+      ),
+      triggerSource: "web",
+      appendSystemPrompt: buildWebChatPrompt(),
+      body: {
+        prompt: args.args.prompt,
+        agentId: args.thread.agentComposeId,
+        ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+        ...(providerAdmission.effectiveModelProvider
+          ? { modelProvider: providerAdmission.effectiveModelProvider }
+          : {}),
+      },
+      callbacks: [
+        {
+          url: chatCallbackUrl(),
+          secret: generateCallbackSecret(),
+          payload: {
+            threadId: args.thread.id,
+            agentId: args.thread.agentComposeId,
+          },
+        },
+      ],
+    },
+    args.signal,
+  );
+}
+
+async function insertUserMessageForV1(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly prompt: string;
+  readonly runId: string;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const [message] = await args.db
+    .insert(chatMessages)
+    .values({
+      chatThreadId: args.threadId,
+      role: "user",
+      content: args.prompt,
+      runId: args.runId,
+    })
+    .returning({ id: chatMessages.id });
+  args.signal.throwIfAborted();
+
+  if (!message) {
+    throw new Error("Failed to insert chat message");
+  }
+
+  return message.id;
+}
+
+async function publishV1MessageSignals(args: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  await touchChatThreadLastMessageAt(args.db, args.threadId);
+  args.signal.throwIfAborted();
+
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
+  args.signal.throwIfAborted();
+
+  await publishThreadListChanged(args.userId);
+  args.signal.throwIfAborted();
+
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadRunCreated:${args.threadId}`,
+  );
+  args.signal.throwIfAborted();
+
+  await publishThreadListChanged(args.userId);
+  args.signal.throwIfAborted();
+}
 
 async function defaultAgentId(db: Db, orgId: string): Promise<string | null> {
   const [orgRow] = await db

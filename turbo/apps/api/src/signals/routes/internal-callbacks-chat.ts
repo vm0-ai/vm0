@@ -12,7 +12,6 @@ import {
   type ChatMessageAttachFileMetadata,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -59,6 +58,10 @@ import {
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+  resolveModelSelectionPin,
+} from "../services/zero-model-selection.service";
 import { settle, tapError } from "../utils";
 
 const log = logger("callback:chat");
@@ -164,15 +167,6 @@ function chatCallbackUrl(): string {
   return new URL("/api/internal/callbacks/chat", env("VM0_API_URL")).toString();
 }
 
-function parseModelProviderCredentialScope(
-  value: string | null,
-): ModelProviderCredentialScope | null {
-  if (value === null || value === "org" || value === "member") {
-    return value;
-  }
-  throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
 function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
@@ -190,6 +184,15 @@ function buildQueuedCreateZeroRunArgs(
     modelProviderCredentialScope:
       input.queuedMessage.modelProviderCredentialScope ?? undefined,
     selectedModelOverride: input.queuedMessage.selectedModel ?? undefined,
+    zeroRunModelSelection: input.queuedMessage.selectedModel
+      ? {
+          modelProvider: input.queuedMessage.modelProviderType,
+          modelProviderId: input.queuedMessage.modelProviderId,
+          modelProviderCredentialScope:
+            input.queuedMessage.modelProviderCredentialScope,
+          selectedModel: input.queuedMessage.selectedModel,
+        }
+      : undefined,
     callbacks: [
       {
         url: chatCallbackUrl(),
@@ -837,40 +840,32 @@ async function nextQueuedUserMessage(
 async function resolveQueuedMessageModelPin(params: {
   readonly db: Db;
   readonly orgId: string;
+  readonly userId: string;
   readonly queuedMessage: QueuedUserMessage;
 }): Promise<QueuedUserMessage> {
   if (!params.queuedMessage.selectedModel) {
     return params.queuedMessage;
   }
 
-  const [policy] = await params.db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      and(
-        eq(orgModelPolicies.orgId, params.orgId),
-        eq(orgModelPolicies.model, params.queuedMessage.selectedModel),
-      ),
-    )
-    .limit(1);
-
-  if (!policy) {
+  const pin = await resolveModelSelectionPin({
+    db: params.db,
+    orgId: params.orgId,
+    userId: params.userId,
+    modelSelection: {
+      modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
+      selectedModel: params.queuedMessage.selectedModel,
+    },
+  });
+  if ("status" in pin) {
     return params.queuedMessage;
   }
 
   return {
     ...params.queuedMessage,
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
+    modelProviderId: pin.modelProviderId,
+    modelProviderType: pin.modelProviderType,
+    modelProviderCredentialScope: pin.modelProviderCredentialScope,
+    selectedModel: pin.selectedModel,
   };
 }
 
@@ -998,6 +993,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   const resolvedQueuedMessage = await resolveQueuedMessageModelPin({
     db: args.db,
     orgId: agent.orgId,
+    userId,
     queuedMessage,
   });
 

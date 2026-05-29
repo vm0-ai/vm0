@@ -1,8 +1,9 @@
 import { command } from "ccstate";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
-import { userModelPreference } from "./zero-user-data.service";
+import { writeDb$ } from "../external/db";
+import { resolveDefaultModelFirstPin } from "./zero-model-selection.service";
+import { ensureOrgModelPolicies } from "./zero-model-policy.service";
 
 export interface IntegrationModelRoutePin {
   readonly modelProviderType: string;
@@ -13,47 +14,31 @@ export interface IntegrationModelRoutePin {
 
 export const resolveIntegrationModelRouteForUser$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly orgId: string;
       readonly userId: string;
     },
     signal: AbortSignal,
   ): Promise<IntegrationModelRoutePin | undefined> => {
-    const preference = await get(
-      userModelPreference({ orgId: args.orgId, userId: args.userId }),
-    );
+    const db = set(writeDb$);
+    await ensureOrgModelPolicies(db, args.orgId, args.userId);
     signal.throwIfAborted();
-
-    const policies = await set(
-      listOrgModelPolicies$,
-      { orgId: args.orgId, userId: args.userId },
-      signal,
-    );
-
-    const preferredPolicy = preference.selectedModel
-      ? policies.policies.find((policy) => {
-          return policy.model === preference.selectedModel;
-        })
-      : undefined;
-    const defaultPolicy = policies.policies.find((policy) => {
-      return policy.id === policies.workspaceDefaultPolicyId;
-    });
-    const routePolicy =
-      preferredPolicy ??
-      defaultPolicy ??
-      policies.policies.find((policy) => {
-        return policy.isDefault;
-      });
-    if (!routePolicy || routePolicy.routeStatus !== "valid") {
+    const pin = await resolveDefaultModelFirstPin(db, args.orgId, args.userId);
+    signal.throwIfAborted();
+    if (
+      !pin.selectedModel ||
+      !pin.modelProviderType ||
+      !pin.modelProviderCredentialScope
+    ) {
       return undefined;
     }
 
     return {
-      modelProviderType: routePolicy.defaultProviderType,
-      modelProviderId: routePolicy.modelProviderId,
-      modelProviderCredentialScope: routePolicy.credentialScope,
-      selectedModel: routePolicy.model,
+      modelProviderType: pin.modelProviderType,
+      modelProviderId: pin.modelProviderId,
+      modelProviderCredentialScope: pin.modelProviderCredentialScope,
+      selectedModel: pin.selectedModel,
     };
   },
 );

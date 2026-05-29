@@ -15,6 +15,10 @@ import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route";
 import { formatIntegrationRunError } from "../services/integration-run-errors.service";
+import {
+  resolveDefaultModelFirstRunSelection,
+  type ModelFirstRunSelection,
+} from "../services/zero-model-selection.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
   apiUrl,
@@ -66,6 +70,19 @@ interface InboundEmailEvent {
     readonly subject: string;
     readonly created_at?: string;
   };
+}
+
+interface EmailRunCallback {
+  readonly url: string;
+  readonly secret: string;
+  readonly payload: unknown;
+}
+
+interface EmailRunAuth {
+  readonly tokenType: "session";
+  readonly userId: string;
+  readonly orgId: string;
+  readonly orgRole: "member";
 }
 
 function jsonResponse(
@@ -205,6 +222,28 @@ function triggerCallbacks(args: {
   ];
 }
 
+function replyCallbacksForEmail(args: {
+  readonly emailThreadSessionId: string;
+  readonly inboundEmailId: string;
+  readonly headers: Record<string, string>;
+  readonly replyRecipients: {
+    readonly to: readonly string[];
+    readonly cc: readonly string[];
+  };
+}): readonly EmailRunCallback[] {
+  return replyCallbacks({
+    emailThreadSessionId: args.emailThreadSessionId,
+    inboundEmailId: args.inboundEmailId,
+    inboundMessageId: headerValue(args.headers, "message-id"),
+    inboundReferences: headerValue(args.headers, "references"),
+    replyRecipients: args.replyRecipients,
+  });
+}
+
+function emailRunAuth(userId: string, orgId: string): EmailRunAuth {
+  return { tokenType: "session", userId, orgId, orgRole: "member" };
+}
+
 function runError(args: {
   readonly set: Setter;
   readonly result: unknown;
@@ -259,6 +298,69 @@ async function failedRunResult(args: {
       signal: args.signal,
     }),
   };
+}
+
+async function resolveEmailModelSelection(args: {
+  readonly set: Setter;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}) {
+  const selection = await resolveDefaultModelFirstRunSelection({
+    db: args.set(writeDb$),
+    orgId: args.orgId,
+    userId: args.userId,
+  });
+  args.signal.throwIfAborted();
+  if ("status" in selection) {
+    return await failedRunResult({
+      set: args.set,
+      result: selection,
+      orgId: args.orgId,
+      userId: args.userId,
+      signal: args.signal,
+    });
+  }
+  return selection;
+}
+
+async function createModelSelectedEmailRun(args: {
+  readonly set: Setter;
+  readonly auth: EmailRunAuth;
+  readonly body: {
+    readonly agentId: string;
+    readonly sessionId?: string;
+    readonly prompt: string;
+  };
+  readonly apiStartTime: number;
+  readonly modelSelection: ModelFirstRunSelection;
+  readonly callbacks: readonly EmailRunCallback[];
+  readonly signal: AbortSignal;
+}) {
+  return await args.set(
+    createZeroRun$,
+    {
+      auth: args.auth,
+      body: {
+        ...args.body,
+        ...(args.modelSelection.effectiveModelProvider
+          ? { modelProvider: args.modelSelection.effectiveModelProvider }
+          : {}),
+      },
+      apiStartTime: args.apiStartTime,
+      triggerSource: "email",
+      appendSystemPrompt: buildIntegrationPrompt(),
+      modelProviderId:
+        args.modelSelection.modelPin.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        args.modelSelection.modelPin.modelProviderCredentialScope ?? undefined,
+      selectedModelOverride:
+        args.modelSelection.modelPin.selectedModel ?? undefined,
+      zeroRunModelSelection: args.modelSelection.zeroRunModelSelection,
+      callbacks: args.callbacks,
+    },
+    args.signal,
+  );
 }
 
 const sendInboundErrorReply$ = command(
@@ -433,8 +535,6 @@ const handleInboundEmailReply$ = command(
       replyTo: email.replyTo,
       botDomain: getFromDomain(),
     });
-    const inboundMessageId = headerValue(email.headers, "message-id");
-    const inboundReferences = headerValue(email.headers, "references");
     let prompt = extractEmailBody(email.html, email.text);
     if (!prompt.trim()) {
       return {
@@ -451,33 +551,34 @@ const handleInboundEmailReply$ = command(
     }
 
     const runtimeOrgId = session.orgId ?? agent.orgId;
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: {
-          tokenType: "session",
-          userId: session.userId,
-          orgId: runtimeOrgId,
-          orgRole: "member",
-        },
-        body: {
-          agentId: session.agentId,
-          sessionId: session.agentSessionId,
-          prompt,
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "email",
-        appendSystemPrompt: buildIntegrationPrompt(),
-        callbacks: replyCallbacks({
-          emailThreadSessionId: session.id,
-          inboundEmailId: args.event.data.email_id,
-          inboundMessageId,
-          inboundReferences,
-          replyRecipients,
-        }),
-      },
+    const modelSelection = await resolveEmailModelSelection({
+      set,
+      orgId: runtimeOrgId,
+      userId: session.userId,
       signal,
-    );
+    });
+    if ("ok" in modelSelection) {
+      return modelSelection;
+    }
+
+    const result = await createModelSelectedEmailRun({
+      set,
+      auth: emailRunAuth(session.userId, runtimeOrgId),
+      body: {
+        agentId: session.agentId,
+        sessionId: session.agentSessionId,
+        prompt,
+      },
+      apiStartTime: args.apiStartTime,
+      modelSelection,
+      callbacks: replyCallbacksForEmail({
+        emailThreadSessionId: session.id,
+        inboundEmailId: args.event.data.email_id,
+        headers: email.headers,
+        replyRecipients,
+      }),
+      signal,
+    });
     signal.throwIfAborted();
     return result.status === 201
       ? { ok: true }
@@ -583,37 +684,36 @@ const handleInboundEmailTrigger$ = command(
     }
 
     const replyToken = generateReplyToken(randomUUID());
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: {
-          tokenType: "session",
-          userId,
-          orgId,
-          orgRole: "member",
-        },
-        body: {
-          agentId,
-          prompt,
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "email",
-        appendSystemPrompt: buildIntegrationPrompt(),
-        callbacks: triggerCallbacks({
-          senderEmail: args.event.data.from,
-          agentId,
-          userId,
-          inboundEmailId: args.event.data.email_id,
-          replyToken,
-          inboundMessageId: headerValue(email.headers, "message-id"),
-          inboundReferences: headerValue(email.headers, "references"),
-          subject: args.event.data.subject,
-          runtimeOrgId: orgId,
-          replyRecipients,
-        }),
-      },
+    const modelSelection = await resolveEmailModelSelection({
+      set,
+      orgId,
+      userId,
       signal,
-    );
+    });
+    if ("ok" in modelSelection) {
+      return modelSelection;
+    }
+
+    const result = await createModelSelectedEmailRun({
+      set,
+      auth: emailRunAuth(userId, orgId),
+      body: { agentId, prompt },
+      apiStartTime: args.apiStartTime,
+      modelSelection,
+      callbacks: triggerCallbacks({
+        senderEmail: args.event.data.from,
+        agentId,
+        userId,
+        inboundEmailId: args.event.data.email_id,
+        replyToken,
+        inboundMessageId: headerValue(email.headers, "message-id"),
+        inboundReferences: headerValue(email.headers, "references"),
+        subject: args.event.data.subject,
+        runtimeOrgId: orgId,
+        replyRecipients,
+      }),
+      signal,
+    });
     signal.throwIfAborted();
     return result.status === 201
       ? { ok: true }

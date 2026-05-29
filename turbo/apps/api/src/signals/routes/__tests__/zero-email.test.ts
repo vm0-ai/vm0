@@ -18,6 +18,7 @@ import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
@@ -37,6 +38,7 @@ import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { generateReplyToken } from "../../services/zero-email-common.service";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
+import { seedOrgModelProvider$ } from "./helpers/zero-model-providers";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -1214,6 +1216,26 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("dispatches a Zero run for a new org-address email", async () => {
     const fx = await fixture();
+    const db = store.set(writeDb$);
+    const provider = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fx.orgId,
+        type: "anthropic-api-key",
+        secretName: "ANTHROPIC_API_KEY",
+      },
+      context.signal,
+    );
+    await db.insert(orgModelPolicies).values({
+      orgId: fx.orgId,
+      model: "claude-opus-4-7",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: provider.id,
+      createdByUserId: fx.userId,
+      updatedByUserId: fx.userId,
+    });
     mockReceivedEmail({
       from: fx.userEmail,
       to: [`${fx.orgSlug}@mail.example.com`],
@@ -1235,7 +1257,6 @@ describe("POST /api/zero/email/inbound", () => {
     await expect(response.json()).resolves.toStrictEqual({ received: true });
     await clearAllDetached();
 
-    const db = store.set(writeDb$);
     const runs = await db
       .select({ id: agentRuns.id, prompt: agentRuns.prompt })
       .from(agentRuns)
@@ -1250,6 +1271,12 @@ describe("POST /api/zero/email/inbound", () => {
       .from(zeroRuns)
       .where(eq(zeroRuns.id, runs[0]!.id));
     expect(zeroRun?.triggerSource).toBe("email");
+    expect(zeroRun).toMatchObject({
+      modelProvider: "anthropic-api-key",
+      modelProviderId: provider.id,
+      modelProviderCredentialScope: "org",
+      selectedModel: "claude-opus-4-7",
+    });
 
     const [callback] = await db
       .select()
