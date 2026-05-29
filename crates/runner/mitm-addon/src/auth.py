@@ -306,6 +306,10 @@ async def fetch_firewall_headers(
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
+    encrypted_secrets is the encrypted runtime secret namespace. After API-side
+    decryption, keys are the `NAME` in `${{ secrets.NAME }}` and values are the
+    real secret values.
+
     secret_connector_map maps firewall auth secret env aliases (the `NAME` in
     `${{ secrets.NAME }}`) to the connector or provider owner that can
     refresh/resolve access. secret_connector_metadata_map uses the same keys to

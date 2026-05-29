@@ -57,9 +57,12 @@ pub struct ExecutionContext {
     pub environment: Option<HashMap<String, String>>,
     #[serde(default)]
     pub resume_session: Option<ResumeSession>,
+    // Plain secret values used only for redaction. These are values, not names.
     #[serde(default)]
     pub secret_values: Option<Vec<String>>,
-    // Forwarded to mitm-addon via proxy registry for auth resolution
+    // Encrypted runtime secret namespace forwarded to mitm-addon for auth
+    // resolution. Decrypted keys match `${{ secrets.NAME }}` names; connector
+    // and model-provider keys are env aliases, not storage secret names.
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
     // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)

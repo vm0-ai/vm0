@@ -275,6 +275,9 @@ interface PermissionManifest {
 }
 
 interface StoredExecutionSecrets {
+  // Runtime secret namespace encrypted into executionContext.encryptedSecrets.
+  // Keys are the `NAME` in `${{ secrets.NAME }}`; connector/model-provider
+  // entries use env aliases, not backing storage secret names.
   readonly secrets: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | null;
   readonly secretConnectorMetadataMap: Record<
@@ -286,6 +289,7 @@ interface StoredExecutionSecrets {
 interface BuiltStoredExecutionContext {
   readonly context: StoredExecutionContext;
   readonly secretNames: readonly string[];
+  // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
 }
 
@@ -3014,6 +3018,10 @@ function buildStoredExecutionSecrets(args: {
       platformSecrets,
     ],
   });
+  // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
+  // auth and environment expansion. Stored connectors and model providers enter
+  // this map under env binding aliases; raw DB storage names stay behind the
+  // access metadata used during refresh/lookup.
   return {
     secrets: mergeRecords(
       args.connectorContext.secrets,

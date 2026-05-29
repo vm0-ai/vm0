@@ -199,6 +199,8 @@ export const webhookFirewallAuthContract = c.router({
     path: "/api/webhooks/agent/firewall/auth",
     headers: authHeadersSchema,
     body: z.object({
+      // Encrypted runtime secret namespace. After decryption, keys are the
+      // `NAME` in `${{ secrets.NAME }}`.
       encryptedSecrets: z.string().min(1),
       authHeaders: z.record(z.string(), z.string()),
       authBase: z.string().optional(),
