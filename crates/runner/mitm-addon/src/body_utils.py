@@ -35,8 +35,8 @@ _UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
 
 # Decompression cap for production model-provider and connector JSON usage
 # fallback paths. Keep this larger than STREAM_BUFFER_LIMIT so diagnostic
-# fallbacks can parse complete usage payloads while still bounding
-# decompression bombs.
+# and silent usage fallbacks can parse complete usage payloads while still
+# bounding decompression bombs.
 LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
 
 # Python's brotli binding has no max-output API, and one process() call can
