@@ -113,12 +113,13 @@ BASH
 chmod +x "${TMPDIR}/bin/gh"
 
 run_syncer() {
-  local scope=$1 repo=$2 log_file=$3
-  GH_STUB_LOG="$log_file" PATH="${TMPDIR}/bin:${PATH}" "$SYNCER" "$scope" "$repo"
+  local log_file=$1
+  shift
+  GH_STUB_LOG="$log_file" PATH="${TMPDIR}/bin:${PATH}" "$SYNCER" "$@"
 }
 
 development_log="${TMPDIR}/development-gh.log"
-development_output="$(run_syncer development vm0-ai/vm0 "$development_log")"
+development_output="$(run_syncer "$development_log" development)"
 assert_contains "$development_output" "Building CONNECTOR_OAUTH_CLIENT_SECRETS from the Development 1Password vault"
 assert_contains "$development_output" "Updated repository secret CONNECTOR_OAUTH_CLIENT_SECRETS for vm0-ai/vm0"
 development_args="$(sed -n '1p' "$development_log")"
@@ -129,7 +130,7 @@ assert_json_value "$development_body" GOOGLE_OAUTH_CLIENT_SECRET secret-Developm
 assert_json_value "$development_body" GH_OAUTH_CLIENT_SECRET secret-Development-GH_OAUTH_CLIENT_SECRET
 
 production_log="${TMPDIR}/production-gh.log"
-production_output="$(run_syncer production vm0-ai/vm0 "$production_log")"
+production_output="$(run_syncer "$production_log" production vm0-ai/vm0)"
 assert_contains "$production_output" "Building CONNECTOR_OAUTH_CLIENT_SECRETS from the Production 1Password vault"
 assert_contains "$production_output" "Updated production environment secret CONNECTOR_OAUTH_CLIENT_SECRETS for vm0-ai/vm0"
 production_args="$(sed -n '1p' "$production_log")"

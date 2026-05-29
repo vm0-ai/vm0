@@ -19,6 +19,10 @@ Targets:
   production   Production vault -> production environment secret
 
 The repo defaults to ${DEFAULT_REPO}.
+
+Prerequisites:
+  - op can access the target 1Password vault through local sign-in or OP_SERVICE_ACCOUNT_TOKEN
+  - gh is authenticated with permission to write repository and production environment secrets
 EOF
 }
 
