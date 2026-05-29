@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 
 import type {
   AuthCodeGrantConnectorType,
+  ConnectorAuthMethodId,
   ConnectorAuthClientConfig,
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodIdForGrantKind,
 } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -1034,10 +1036,21 @@ function staticAccessSecretName(
   return secretNames.size === 1 ? [...secretNames][0] : undefined;
 }
 
-function accessTokenSecretNameForOAuthMethod(
+function authCodeAuthMethodForTest(
   type: AuthCodeGrantConnectorType,
+): ConnectorAuthMethodId {
+  const authMethod = getConnectorAuthMethodIdForGrantKind(type, "auth-code");
+  if (!authMethod) {
+    throw new Error(`${type}: auth-code auth method is missing`);
+  }
+  return authMethod;
+}
+
+function accessTokenSecretNameForAuthCodeMethod(
+  type: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
 ): string {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, "oauth");
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
   switch (accessMetadata?.kind) {
     case "refresh-token": {
       return accessMetadata.accessToken;
@@ -1046,22 +1059,23 @@ function accessTokenSecretNameForOAuthMethod(
       const secretName = staticAccessSecretName(accessMetadata.envBindings);
       if (!secretName) {
         throw new Error(
-          `${type}: OAuth auth method has no static access secret`,
+          `${type}: auth-code auth method has no static access secret`,
         );
       }
       return secretName;
     }
     case "none":
     case undefined: {
-      throw new Error(`${type}: OAuth auth method has no access secret`);
+      throw new Error(`${type}: auth-code auth method has no access secret`);
     }
   }
 }
 
-function refreshTokenSecretNameForOAuthMethod(
+function refreshTokenSecretNameForAuthCodeMethod(
   type: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
 ): string | undefined {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, "oauth");
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
   return accessMetadata?.kind === "refresh-token"
     ? accessMetadata.refreshToken
     : undefined;
@@ -2261,17 +2275,19 @@ describe("GET /api/connectors/:type/callback", () => {
         userId,
         type: providerCase.type,
       });
+      const authMethod = authCodeAuthMethodForTest(providerCase.type);
       expect(connector).toMatchObject({
         type: providerCase.type,
-        authMethod: "oauth",
+        authMethod,
         externalId: providerCase.externalId,
         externalUsername: providerCase.externalUsername,
         externalEmail: providerCase.externalEmail,
         needsReconnect: false,
       });
 
-      const accessTokenSecretName = accessTokenSecretNameForOAuthMethod(
+      const accessTokenSecretName = accessTokenSecretNameForAuthCodeMethod(
         providerCase.type,
+        authMethod,
       );
       await expect(
         findDecryptedSecret({
@@ -2281,8 +2297,9 @@ describe("GET /api/connectors/:type/callback", () => {
         }),
       ).resolves.toBe(accessToken);
 
-      const refreshTokenSecretName = refreshTokenSecretNameForOAuthMethod(
+      const refreshTokenSecretName = refreshTokenSecretNameForAuthCodeMethod(
         providerCase.type,
+        authMethod,
       );
       if (refreshTokenSecretName) {
         await expect(
