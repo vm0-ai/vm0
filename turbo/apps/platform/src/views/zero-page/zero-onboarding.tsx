@@ -546,11 +546,11 @@ function OnboardingTrialPanel() {
       <p className="text-[11px] font-medium text-muted-foreground">
         Made with Zero
       </p>
-      <div className="rounded-2xl overflow-hidden">
+      <div className="aspect-video w-full rounded-2xl overflow-hidden bg-muted/40 flex items-center justify-center">
         <img
           src={activeItem.image}
           alt={`${activeItem.label} preview`}
-          className="block w-full h-auto"
+          className="max-h-full max-w-full object-contain"
         />
       </div>
       <div className="flex flex-col">
