@@ -6,7 +6,7 @@ Pure functions with no module-level state or I/O.
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal, NamedTuple
-from urllib.parse import urlsplit
+from urllib.parse import unquote_to_bytes, urlsplit
 
 from path_security import has_unsafe_dot_segment
 
@@ -23,6 +23,9 @@ _RULE_TOKEN_COUNT = 2
 _MIN_HOST_SEGMENTS = 2
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
+_PERCENT_ESCAPE_LENGTH = 3
+_FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
     (
         "GET",
@@ -44,9 +47,30 @@ def _has_base_url_params(base: str) -> bool:
 
 def _has_invalid_authority_host_chars(host: str) -> bool:
     return any(
-        char.isspace() or ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
+        char.isspace()
+        or ord(char) < _ASCII_CONTROL_MAX
+        or ord(char) == _ASCII_DELETE
+        or char in _FORBIDDEN_AUTHORITY_HOST_CHARS
         for char in host
     )
+
+
+def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
+    if "%" not in host:
+        return host, False
+
+    index = host.find("%")
+    while index != -1:
+        hex_start = index + 1
+        hex_end = hex_start + 2
+        if hex_end > len(host) or not all(char in _HEX_DIGITS for char in host[hex_start:hex_end]):
+            return host, True
+        index = host.find("%", index + _PERCENT_ESCAPE_LENGTH)
+
+    try:
+        return unquote_to_bytes(host).decode("utf-8"), False
+    except UnicodeDecodeError:
+        return host, True
 
 
 class _BaseUrlParts(NamedTuple):
@@ -197,9 +221,12 @@ def _split_base_match_url(
 
 
 def _normalize_authority_host(host: str) -> tuple[str, bool]:
-    normalized = host.rstrip(".")
+    decoded_host, percent_malformed = _percent_decode_authority_host(host.rstrip("."))
+    normalized = decoded_host.rstrip(".")
     if not normalized:
         return normalized, True
+    if percent_malformed:
+        return normalized.lower(), True
     if _has_invalid_authority_host_chars(normalized):
         return normalized.lower(), True
     if ":" in normalized:

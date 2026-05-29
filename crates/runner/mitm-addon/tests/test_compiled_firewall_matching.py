@@ -404,11 +404,24 @@ class TestCompiledFirewallMatching:
         )
         assert compiled is None
 
-    def test_compiled_rejects_request_url_with_invalid_authority_host(self):
+    @pytest.mark.parametrize(
+        "invalid_host",
+        [
+            "exa mple.com",
+            "exa<mple.com",
+            "exa>mple.com",
+            "exa|mple.com",
+            "exa^mple.com",
+            "exa\\mple.com",
+            "exa%mple.com",
+            "exa%20mple.com",
+        ],
+    )
+    def test_compiled_rejects_request_url_with_invalid_authority_host(self, invalid_host):
         fws = wrap_firewalls(
             [
                 {
-                    "base": "https://exa mple.com",
+                    "base": f"https://{invalid_host}",
                     "auth": {"headers": {"Authorization": "Bearer token"}},
                     "permissions": [],
                 }
@@ -418,7 +431,7 @@ class TestCompiledFirewallMatching:
         policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
 
         result = matching.match_compiled_firewall_request(
-            "https://exa mple.com/items",
+            f"https://{invalid_host}/items",
             "GET",
             self._compiled(fws),
             policies,
@@ -576,6 +589,11 @@ class TestCompiledFirewallMatching:
                 "https://{sub}.例子.测试",
                 "https://api.xn--fsqu00a.xn--0zwm56d/repos/org/repo",
                 {"sub": "api", "owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://%E2%98%83.example.com",
+                "https://xn--n3h.example.com/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
             ),
         ],
     )
