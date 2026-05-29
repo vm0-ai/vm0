@@ -325,7 +325,6 @@ interface RefreshBatchContext {
   readonly orgId: string;
   readonly userId: string;
   readonly secrets: Record<string, string>;
-  readonly expiryMap: Map<string, number | null>;
   readonly forceRefresh: boolean;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
   readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
@@ -1870,7 +1869,6 @@ async function refreshExpiredTokens(
     orgId: args.orgId,
     userId: args.auth.userId,
     secrets: args.secrets,
-    expiryMap,
     forceRefresh: args.forceRefresh,
     metadataByConnector,
     connectorAccessByType: args.connectorAccessByType,
