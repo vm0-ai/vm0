@@ -342,6 +342,12 @@ describe("validateRule", () => {
     }).not.toThrow();
   });
 
+  it("should accept explicit empty path segments", () => {
+    expect(() => {
+      return validateRule("GET //repos", "p", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject missing path", () => {
     expect(() => {
       return validateRule("GET", "read", "github");
@@ -511,6 +517,12 @@ describe("validateBaseUrl", () => {
     }).not.toThrow();
     expect(() => {
       return validateBaseUrl("https://api.example.com/v1/{org}/projects", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept parameterized base URL with explicit empty path segments", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/v1//{org}", "fw");
     }).not.toThrow();
   });
 

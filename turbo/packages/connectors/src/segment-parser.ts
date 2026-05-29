@@ -120,6 +120,13 @@ export function parseSegment(seg: string): SegmentParseResult {
   return { kind: "param", prefix, name, suffix, greedy };
 }
 
+export function splitPathSegments(path: string): string[] {
+  if (path === "" || path === "/") return [];
+  const pathWithoutLeadingSlash = path.startsWith("/") ? path.slice(1) : path;
+  if (pathWithoutLeadingSlash === "") return [];
+  return pathWithoutLeadingSlash.split("/");
+}
+
 function countChar(s: string, ch: string): number {
   let n = 0;
   for (let i = 0; i < s.length; i++) {

@@ -1,5 +1,5 @@
 import type { FirewallConfig } from "./firewall-types";
-import { parseSegment } from "./segment-parser";
+import { parseSegment, splitPathSegments } from "./segment-parser";
 
 /**
  * Match a runtime segment against a mixed pattern's literal prefix/suffix.
@@ -39,8 +39,8 @@ export function matchFirewallPath(
   path: string,
   pattern: string,
 ): Record<string, string> | null {
-  const pathSegs = path.split("/").filter(Boolean);
-  const patternSegs = pattern.split("/").filter(Boolean);
+  const pathSegs = splitPathSegments(path);
+  const patternSegs = splitPathSegments(pattern);
 
   const params: Record<string, string> = {};
   let pi = 0;
@@ -68,6 +68,7 @@ export function matchFirewallPath(
     if (pi >= pathSegs.length) return null;
     const runtime = pathSegs[pi]!;
     if (prefix === "" && suffix === "") {
+      if (runtime === "") return null;
       params[name] = runtime;
     } else {
       const captured = matchMixedSegment(runtime, prefix, suffix);

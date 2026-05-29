@@ -3,7 +3,7 @@ import {
   type ExpandedFirewallConfig,
   validateBaseUrl,
 } from "./firewall-types";
-import { parseSegment } from "./segment-parser";
+import { parseSegment, splitPathSegments } from "./segment-parser";
 import { fetchFirewallConfig, type FetchFn } from "./firewall-loader";
 
 export interface FirewallSelection {
@@ -37,7 +37,7 @@ function validatePathSegments(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain query string or fragment`,
     );
   }
-  const segments = path.split("/").filter(Boolean);
+  const segments = splitPathSegments(path);
   const paramNames = new Set<string>();
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;

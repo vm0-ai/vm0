@@ -67,8 +67,20 @@ describe("matchFirewallPath", () => {
     expect(matchFirewallPath("/", "/api/v1")).toBeNull();
   });
 
-  it("handles paths with trailing slashes", () => {
-    expect(matchFirewallPath("/api/v1/users/", "/api/v1/users")).toEqual({});
+  it("treats trailing slashes as distinct path segments", () => {
+    expect(matchFirewallPath("/api/v1/users/", "/api/v1/users")).toBeNull();
+  });
+
+  it("rejects empty path segments for single-segment params", () => {
+    expect(matchFirewallPath("/repos//myrepo", "/repos/{owner}")).toBeNull();
+    expect(matchFirewallPath("//repos/myorg", "/repos/{owner}")).toBeNull();
+    expect(matchFirewallPath("/repos/myorg/", "/repos/{owner}")).toBeNull();
+  });
+
+  it("can match explicitly empty path segments", () => {
+    expect(matchFirewallPath("/repos//myorg", "/repos//{owner}")).toEqual({
+      owner: "myorg",
+    });
   });
 
   it("handles multiple params in a row", () => {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { parseSegment } from "./segment-parser";
+import { parseSegment, splitPathSegments } from "./segment-parser";
 
 /**
  * Proxy-side firewall configuration for token replacement.
@@ -867,12 +867,7 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const paramNames = new Set<string>();
   validateHostParams(host.split("."), paramNames, base, serviceName);
   if (path) {
-    validatePathParams(
-      path.split("/").filter(Boolean),
-      paramNames,
-      base,
-      serviceName,
-    );
+    validatePathParams(splitPathSegments(path), paramNames, base, serviceName);
   }
 }
 
