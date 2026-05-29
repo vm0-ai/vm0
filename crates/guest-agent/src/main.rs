@@ -363,7 +363,7 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::InvalidApiKey);
     }
     if matches!(framework, AgentFramework::Codex)
-        && (normalized.contains("usage limit") || normalized.contains("hit your session limit"))
+        && (normalized.contains("usage limit") || normalized.contains("session limit"))
     {
         return Some(FailureReason::UsageLimit);
     }
