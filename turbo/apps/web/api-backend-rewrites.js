@@ -242,6 +242,10 @@ const ZERO_COMPUTER_USE_COMMAND_APPROVAL_REWRITE_SOURCE = `${ZERO_COMPUTER_USE_C
 const ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE = new RegExp(
   `^/api/zero/computer-use/commands/${UUID_PATH_SEGMENT_PATTERN}/approval$`,
 );
+const ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_REWRITE_SOURCE = `${ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE}/screenshot`;
+const ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_PATH_RE = new RegExp(
+  `^/api/zero/computer-use/commands/${UUID_PATH_SEGMENT_PATTERN}/screenshot$`,
+);
 const ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE =
   "/api/zero/computer-use/heartbeat";
 const ZERO_COMPUTER_USE_HOST_STOP_REWRITE_SOURCE =
@@ -446,6 +450,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
   ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
+  [
+    "/api/cron/computer-use-screenshot-cleanup",
+    "/api/cron/computer-use-screenshot-cleanup",
+  ],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
@@ -878,6 +886,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_COMPUTER_USE_COMMAND_APPROVAL_REWRITE_SOURCE,
     "/api/zero/computer-use/commands/:commandId/approval",
     ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE,
+  ],
+  [
+    ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_REWRITE_SOURCE,
+    "/api/zero/computer-use/commands/:commandId/screenshot",
+    ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_PATH_RE,
   ],
   [
     ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE,

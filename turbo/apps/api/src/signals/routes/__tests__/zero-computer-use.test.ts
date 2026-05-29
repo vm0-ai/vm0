@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
 import {
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
@@ -21,10 +22,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { cleanupComputerUseScreenshots$ } from "../../services/cron-computer-use-screenshot-cleanup.service";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -758,7 +759,39 @@ describe("desktop computer-use runtime", () => {
     expect(otherResponse.status).toBe(404);
   });
 
+  it("rejects screenshot cleanup with an invalid cron secret", async () => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    const client = setupApp({ context })(
+      cronComputerUseScreenshotCleanupContract,
+    );
+
+    const response = await accept(
+      client.cleanup({
+        headers: { authorization: "Bearer wrong-secret" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("rejects screenshot cleanup without cron authorization", async () => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    const client = setupApp({ context })(
+      cronComputerUseScreenshotCleanupContract,
+    );
+
+    const response = await accept(client.cleanup({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
   it("expires old screenshots, deleting objects and tombstoning legacy rows", async () => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
     const fixture = await createOrgFixture();
     const writeDb = store.set(writeDb$);
     const oldCreatedAt = new Date(now() - 40 * 24 * 60 * 60 * 1000);
@@ -850,12 +883,17 @@ describe("desktop computer-use runtime", () => {
       return Promise.resolve({});
     });
 
-    const cleaned = await store.set(
-      cleanupComputerUseScreenshots$,
-      context.signal,
+    const cleanupClient = setupApp({ context })(
+      cronComputerUseScreenshotCleanupContract,
+    );
+    const cleanupResponse = await accept(
+      cleanupClient.cleanup({
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+      [200],
     );
 
-    expect(cleaned).toBe(2);
+    expect(cleanupResponse.body.cleaned).toBe(2);
     expect(deletedKeys).toContain(pointerKey);
     expect(deletedKeys).not.toContain("computer-use/recent/screenshot.png");
 
