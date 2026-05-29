@@ -1071,6 +1071,12 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
 }
 
 export function validateBaseUrl(base: string, serviceName: string): void {
+  if (base.includes("\\")) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain backslash`,
+    );
+  }
+
   // Template base URLs are validated after variable resolution at compose time.
   if (hasBaseUrlVars(base)) return;
 

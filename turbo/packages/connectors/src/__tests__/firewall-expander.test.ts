@@ -592,6 +592,18 @@ describe("validateBaseUrl", () => {
     }).toThrow("must not contain fragment");
   });
 
+  it("should reject backslash before URL parser normalization", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com\\v1", "fw");
+    }).toThrow("must not contain backslash");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com\\v1", "fw");
+    }).toThrow("must not contain backslash");
+    expect(() => {
+      return validateBaseUrl("https://${{ vars.API_HOST }}\\v1", "fw");
+    }).toThrow("must not contain backslash");
+  });
+
   it("should reject percent-encoded braces in parameterized host", () => {
     expect(() => {
       return validateBaseUrl("https://{sub}.%7Benv%7D.example.com", "fw");
