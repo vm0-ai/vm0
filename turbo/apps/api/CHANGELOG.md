@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.88.0](https://github.com/vm0-ai/vm0/compare/api-v1.87.2...api-v1.88.0) (2026-05-29)
+
+
+### Features
+
+* **onboarding:** add role picker on step 1 and gallery on trial step ([#15334](https://github.com/vm0-ai/vm0/issues/15334)) ([ec0b632](https://github.com/vm0-ai/vm0/commit/ec0b6326c2eb49db1d869c3a2db53d40537bd5a9))
+
+
+### Refactoring
+
+* resolve connector auth clients by method ([#15392](https://github.com/vm0-ai/vm0/issues/15392)) ([d602fea](https://github.com/vm0-ai/vm0/commit/d602feaf9b0d5eca469bf7e5a3508c5ada0a6806))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.0
+    * @vm0/connectors bumped to 1.37.8
+    * @vm0/core bumped to 8.302.4
+    * @vm0/db bumped to 1.23.0
+
 ## [1.87.2](https://github.com/vm0-ai/vm0/compare/api-v1.87.1...api-v1.87.2) (2026-05-29)
 
 

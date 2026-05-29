@@ -7,7 +7,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
-import type { ConnectorOAuthClientConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthClientConfig } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
@@ -356,7 +356,7 @@ async function seedGithubOAuthStaticAccessConnector(
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
-} as const satisfies ConnectorOAuthClientConfig;
+} as const satisfies ConnectorAuthClientConfig;
 
 type CapturedOAuthRefresh = {
   readonly clientId: string | undefined;
@@ -378,20 +378,20 @@ function useDynamicTestOAuthRefresh(): {
 function configureDynamicTestOAuthRefresh(
   refreshes: CapturedOAuthRefresh[],
 ): () => void {
-  const grant = getConnectorAuthMethod("test-oauth", "oauth")?.grant;
-  if (grant?.kind !== "auth-code") {
+  const method = getConnectorAuthMethod("test-oauth", "oauth");
+  if (method?.grant.kind !== "auth-code") {
     throw new Error("test-oauth OAuth config is missing");
   }
 
-  const mutableGrant = grant as { client: ConnectorOAuthClientConfig };
-  const originalClient = grant.client;
+  const mutableMethod = method as { client: ConnectorAuthClientConfig };
+  const originalClient = mutableMethod.client;
   const access = testOauthProvider.access;
   if (access.kind !== "refresh-token") {
     throw new Error("test-oauth provider should support refresh");
   }
   const originalRefreshToken = access.refreshToken;
 
-  mutableGrant.client = dynamicPublicClient;
+  mutableMethod.client = dynamicPublicClient;
   access.refreshToken = (args) => {
     refreshes.push({
       clientId: args.clientId,
@@ -406,7 +406,7 @@ function configureDynamicTestOAuthRefresh(
   };
 
   return () => {
-    mutableGrant.client = originalClient;
+    mutableMethod.client = originalClient;
     access.refreshToken = originalRefreshToken;
   };
 }

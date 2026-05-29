@@ -12,8 +12,8 @@ import {
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 import {
-  getConnectorOAuthClient,
-  isStaticConfidentialConnectorOAuthClient,
+  resolveConnectorAuthClientForMethod,
+  isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
@@ -370,8 +370,12 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   readonly readEnv: ConnectorEnvReader;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  const oauthClient = getConnectorOAuthClient("github", args.readEnv);
-  if (!oauthClient || !isStaticConfidentialConnectorOAuthClient(oauthClient)) {
+  const authClient = resolveConnectorAuthClientForMethod(
+    "github",
+    "oauth",
+    args.readEnv,
+  );
+  if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
     return null;
   }
 
@@ -380,7 +384,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   const authResult = normalizeAuthUrlResult(
     await buildConnectorOAuthAuthUrl({
       type: "github",
-      oauthClient,
+      authClient,
       redirectUri,
       state,
     }),

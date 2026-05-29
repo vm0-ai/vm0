@@ -10,13 +10,34 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
-import upsellCrownSrc from "./assets/upsell-crown.webp";
+import trialWorkflowSrc from "./assets/trial-workflow.webp";
+import webModernSrc from "./assets/web-modern.webp";
+import webCafeSrc from "./assets/web-cafe.webp";
+import webEnergeticSrc from "./assets/web-energetic.webp";
+import webFantasySrc from "./assets/web-fantasy.webp";
+import illFolkSrc from "./assets/ill-folk.webp";
+import illFlatfolkSrc from "./assets/ill-flatfolk.webp";
+import illBotanicalSrc from "./assets/ill-botanical.webp";
+import illPapernookSrc from "./assets/ill-papernook.webp";
+import illPosterSrc from "./assets/ill-poster.webp";
+import illOpedcoverSrc from "./assets/ill-opedcover.webp";
+import illMellowPopSrc from "./assets/ill-mellow-pop.webp";
+import illEndpaperSrc from "./assets/ill-endpaper.webp";
+import illIsoSceneSrc from "./assets/ill-iso-scene.webp";
+import illInkdabSrc from "./assets/ill-inkdab.webp";
+import slackIconImg from "./components/settings/icons/slack.svg";
+import telegramIconImg from "./components/settings/icons/telegram.svg";
+import imessageIconImg from "./components/settings/icons/imessage.svg";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,
   setZeroWorkspaceName$,
+  zeroSelectedRole$,
+  setZeroRole$,
+  trialGalleryIndex$,
+  setTrialGalleryIndex$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -437,12 +458,6 @@ function TrialStepContent() {
           real spending power, not a token allowance. The $20 is the visual
           anchor of the entire step. */}
       <div className="rounded-2xl bg-gray-50 px-6 py-6 mb-6 relative overflow-hidden">
-        <img
-          src={upsellCrownSrc}
-          alt=""
-          role="presentation"
-          className="absolute top-3 right-3 h-14 w-14 object-contain"
-        />
         <div className="flex items-baseline gap-2">
           <span className="text-5xl font-semibold text-foreground leading-none tracking-tight">
             $20
@@ -453,7 +468,7 @@ function TrialStepContent() {
         </div>
         <p className="text-sm text-foreground mt-3 leading-relaxed">
           <span className="font-medium">20,000 VM0 credits</span> to spend on
-          Zero. Enough agent runs to draft, build and ship from day one.
+          Zero.
         </p>
       </div>
 
@@ -483,24 +498,199 @@ function TrialStepContent() {
   );
 }
 
-/** Left-panel illustration for step 4 — Zero avatar + trial framing,
- *  matching the rest of the onboarding steps. */
-function OnboardingTrialPanel() {
+// ---------------------------------------------------------------------------
+// Trial step — left-panel gallery (step 4)
+//
+// Three-slide auto-rotating carousel. Each slide showcases a category of
+// output Zero can produce:
+//   - workflow: the workflow walkthrough gif
+//   - website: a 2x2 masonry of generated landing pages
+//   - illustration: a 3x2 grid of editorial illustrations
+// Thumbnails along the bottom center mark and switch the active slide.
+// ---------------------------------------------------------------------------
+
+type TrialGalleryCopy = {
+  readonly id: string;
+  readonly label: string;
+  readonly title: string;
+  readonly subtitle: string;
+};
+
+const TRIAL_GALLERY_COPY: readonly TrialGalleryCopy[] = [
+  {
+    id: "workflow",
+    label: "Workflow",
+    title: "Workflows that run themselves",
+    subtitle: "Daily briefs, scheduled alerts, weekly digests",
+  },
+  {
+    id: "website",
+    label: "Website",
+    title: "Websites that look hand-designed",
+    subtitle: "Landing pages, brand sites, launch microsites",
+  },
+  {
+    id: "illustration",
+    label: "Illustration",
+    title: "Illustrations in your brand voice",
+    subtitle: "Editorial covers, hero art, mascots",
+  },
+];
+
+const TRIAL_WEBSITE_TILES: readonly string[] = [
+  webModernSrc,
+  webCafeSrc,
+  webFantasySrc,
+  webEnergeticSrc,
+];
+
+const TRIAL_ILLUSTRATION_TILES: readonly string[] = [
+  illFlatfolkSrc,
+  illEndpaperSrc,
+  illBotanicalSrc,
+  illFolkSrc,
+  illMellowPopSrc,
+  illPapernookSrc,
+  illIsoSceneSrc,
+  illOpedcoverSrc,
+  illInkdabSrc,
+  illPosterSrc,
+];
+
+const TRIAL_GALLERY_THUMBS: readonly string[] = [
+  trialWorkflowSrc,
+  webModernSrc,
+  illFlatfolkSrc,
+];
+
+const TRIAL_WORKFLOW_CHANNELS: readonly { key: string; src: string }[] = [
+  { key: "slack", src: slackIconImg },
+  { key: "telegram", src: telegramIconImg },
+  { key: "imessage", src: imessageIconImg },
+];
+
+function TrialWorkflowSlide() {
   return (
-    <>
+    <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-3">
+      <div className="flex items-center justify-center gap-4">
+        {TRIAL_WORKFLOW_CHANNELS.map((channel) => {
+          // Slack's source SVG places its mark in the centre of a padded
+          // 270x270 viewBox; without scaling, the visible hash mark is much
+          // smaller than Telegram + iMessage which fill their own viewBoxes
+          // edge to edge. scale-[1.85] sizes Slack to match, and the
+          // remaining ~3px asymmetry around the layout box is well within
+          // the gap-4 (16px) inter-icon spacing.
+          const slackScale =
+            channel.key === "slack" ? "scale-[1.85] -mr-px" : "";
+          return (
+            <img
+              key={channel.key}
+              src={channel.src}
+              alt=""
+              className={`h-9 w-9 object-contain ${slackScale}`}
+            />
+          );
+        })}
+      </div>
       <img
-        src={zeroAnimatedSrc}
-        alt=""
-        role="presentation"
-        className="h-24 w-24 object-contain mb-7"
+        src={trialWorkflowSrc}
+        alt="Workflow preview"
+        className="block min-h-0 max-w-[78%] max-h-full object-contain rounded-xl"
       />
-      <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
-        7 days of Pro, on us
-      </h3>
-      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
-        Full access while you explore. This is what your agent will do for you.
-      </p>
-    </>
+    </div>
+  );
+}
+
+function TrialWebsiteSlide() {
+  return (
+    <div className="h-full w-full grid grid-cols-2 grid-rows-2 gap-2 p-2">
+      {TRIAL_WEBSITE_TILES.map((src) => {
+        return (
+          <div key={src} className="rounded-xl overflow-hidden bg-background">
+            <img
+              src={src}
+              alt=""
+              className="h-full w-full object-cover object-top"
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrialIllustrationSlide() {
+  return (
+    <div className="h-full w-full p-2 overflow-hidden columns-4 gap-2 [&>*]:mb-2 [&>*]:break-inside-avoid">
+      {TRIAL_ILLUSTRATION_TILES.map((src) => {
+        return (
+          <div key={src} className="rounded-xl overflow-hidden bg-background">
+            <img src={src} alt="" className="block w-full h-auto" />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OnboardingTrialPanel() {
+  const rawIndex = useGet(trialGalleryIndex$);
+  const setIndex = useSet(setTrialGalleryIndex$);
+
+  const slideCount = TRIAL_GALLERY_COPY.length;
+  const activeIndex = ((rawIndex % slideCount) + slideCount) % slideCount;
+  const activeCopy = TRIAL_GALLERY_COPY[activeIndex];
+
+  return (
+    <div
+      data-testid="onboarding-trial-gallery"
+      className="flex flex-col gap-5 w-full max-w-[560px] items-center"
+    >
+      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden">
+        {activeIndex === 0 ? (
+          <TrialWorkflowSlide />
+        ) : activeIndex === 1 ? (
+          <TrialWebsiteSlide />
+        ) : (
+          <TrialIllustrationSlide />
+        )}
+      </div>
+      <div className="flex flex-col items-center text-center max-w-[400px]">
+        <h3 className="text-lg font-semibold text-foreground leading-snug">
+          {activeCopy.title}
+        </h3>
+        <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
+          {activeCopy.subtitle}
+        </p>
+      </div>
+      <div className="flex items-center justify-center gap-2.5">
+        {TRIAL_GALLERY_COPY.map((copy, i) => {
+          const isActive = i === activeIndex;
+          return (
+            <button
+              key={copy.id}
+              type="button"
+              aria-label={`Show ${copy.label} preview`}
+              data-testid={`onboarding-trial-gallery-dot-${copy.id}`}
+              onClick={() => {
+                setIndex(i);
+              }}
+              className={`relative h-12 w-12 rounded-lg overflow-hidden transition-all ${
+                isActive
+                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  : "opacity-50 hover:opacity-100"
+              }`}
+            >
+              <img
+                src={TRIAL_GALLERY_THUMBS[i]}
+                alt=""
+                className="block w-full h-full object-cover object-center"
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -845,7 +1035,13 @@ function OnboardingIllustrationPanel() {
 
   return (
     <div
-      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
+      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${
+        showChat
+          ? "pt-[8%]"
+          : showTrial
+            ? "justify-start pt-24"
+            : "justify-center"
+      }`}
     >
       {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
       {!showOrbit && !showChat && !showTrial && (
@@ -972,9 +1168,51 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
 // Workspace step content (step 1)
 // ---------------------------------------------------------------------------
 
+type RoleOption = {
+  readonly id: string;
+  readonly label: string;
+};
+
+const ROLE_OPTIONS: readonly RoleOption[] = [
+  { id: "founder", label: "Founder" },
+  { id: "sales-marketing", label: "Sales & marketing" },
+  { id: "ops-support", label: "Operations" },
+  { id: "engineer", label: "Engineer" },
+  { id: "coach-consultant", label: "Consultant" },
+  { id: "other", label: "Something else" },
+];
+
+function RoleChip({
+  option,
+  isSelected,
+  onClick,
+}: {
+  option: RoleOption;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`onboarding-role-${option.id}`}
+      onClick={onClick}
+      aria-pressed={isSelected}
+      className={`rounded-lg px-3.5 h-9 text-sm transition-colors focus:outline-none ${
+        isSelected
+          ? "bg-primary/10 text-primary font-medium border border-primary/30"
+          : "zero-border bg-background text-foreground hover:bg-muted/40"
+      }`}
+    >
+      {option.label}
+    </button>
+  );
+}
+
 function WorkspaceStepContent() {
   const workspaceName = useGet(zeroWorkspaceName$);
   const setWorkspaceName = useSet(setZeroWorkspaceName$);
+  const selectedRole = useGet(zeroSelectedRole$);
+  const setRole = useSet(setZeroRole$);
   const stepNext = useSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
 
@@ -1005,13 +1243,35 @@ function WorkspaceStepContent() {
             return setWorkspaceName(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && workspaceName.trim()) {
+            if (e.key === "Enter" && workspaceName.trim() && selectedRole) {
               detach(stepNext(pageSignal), Reason.DomCallback);
             }
           }}
           className="h-10 rounded-lg"
           autoFocus
         />
+      </div>
+      <div className="w-full mt-6">
+        <p className="block text-sm font-medium text-foreground mb-3">
+          Your role
+        </p>
+        <div
+          data-testid="onboarding-role-list"
+          className="flex flex-wrap gap-2"
+        >
+          {ROLE_OPTIONS.map((option) => {
+            return (
+              <RoleChip
+                key={option.id}
+                option={option}
+                isSelected={selectedRole === option.id}
+                onClick={() => {
+                  return setRole(option.id);
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </>
   );

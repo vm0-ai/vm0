@@ -12,15 +12,15 @@ export const webflow = {
         featureFlag: FeatureSwitchKey.WebflowConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Webflow to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "WEBFLOW_OAUTH_CLIENT_ID",
+          clientSecretEnv: "WEBFLOW_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.webflow.com/oauth/access_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "WEBFLOW_OAUTH_CLIENT_ID",
-            clientSecretEnv: "WEBFLOW_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "authorized_user:read",
             "sites:read",

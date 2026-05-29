@@ -99,6 +99,10 @@ describe("onboarding connector permission dialog suppression", () => {
     });
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Step 3: Try this prompt (github pre-selected from the deep link)
@@ -179,6 +183,10 @@ describe("onboarding connector permission dialog suppression", () => {
       expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
     });
     await fill(screen.getByPlaceholderText("e.g. Acme Corp"), "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {

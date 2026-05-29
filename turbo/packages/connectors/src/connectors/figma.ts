@@ -11,15 +11,15 @@ export const figma = {
         featureFlag: FeatureSwitchKey.FigmaConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Figma to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.figma.com/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "current_user:read",
             "file_content:read",

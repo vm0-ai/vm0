@@ -12,15 +12,15 @@ export const mailchimp = {
         featureFlag: FeatureSwitchKey.MailchimpConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Mailchimp to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "MAILCHIMP_OAUTH_CLIENT_ID",
+          clientSecretEnv: "MAILCHIMP_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://login.mailchimp.com/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "MAILCHIMP_OAUTH_CLIENT_ID",
-            clientSecretEnv: "MAILCHIMP_OAUTH_CLIENT_SECRET",
-          },
           scopes: [],
         },
         access: {

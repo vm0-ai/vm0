@@ -5,10 +5,10 @@ import {
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorOAuthScopes,
-  isStaticConfidentialConnectorOAuthClient,
-  type StaticConfidentialConnectorOAuthClient,
+  isStaticConfidentialConnectorAuthClient,
+  type StaticConfidentialConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import { exchangeConnectorOAuthCode } from "@vm0/connectors/auth-providers";
 import {
@@ -86,16 +86,20 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
 }
 
 function githubUserOauthClient():
-  | StaticConfidentialConnectorOAuthClient
+  | StaticConfidentialConnectorAuthClient
   | undefined {
-  const oauthClient = getConnectorOAuthClient("github", optionalEnv);
-  if (!oauthClient) {
+  const authClient = resolveConnectorAuthClientForMethod(
+    "github",
+    "oauth",
+    optionalEnv,
+  );
+  if (!authClient) {
     return undefined;
   }
-  if (!isStaticConfidentialConnectorOAuthClient(oauthClient)) {
+  if (!isStaticConfidentialConnectorAuthClient(authClient)) {
     return undefined;
   }
-  return oauthClient;
+  return authClient;
 }
 
 function githubAppUserOauthCredentials():
@@ -381,6 +385,7 @@ const connectGithubUserAfterSetup$ = command(
           orgId: args.orgId,
           userId: vm0UserId,
           type: "github",
+          authMethod: "oauth",
           accessToken,
           userInfo,
           oauthScopes:
@@ -726,8 +731,8 @@ const callbackGithubUserOauth$ = command(
       );
     }
 
-    const oauthClient = githubUserOauthClient();
-    if (!oauthClient) {
+    const authClient = githubUserOauthClient();
+    if (!authClient) {
       return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
@@ -735,7 +740,7 @@ const callbackGithubUserOauth$ = command(
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorOAuthCode({
       type: "github",
-      oauthClient,
+      authClient,
       code: query.code,
       redirectUri,
       state: query.state,
@@ -760,6 +765,7 @@ const callbackGithubUserOauth$ = command(
         orgId: state.orgId,
         userId: state.vm0UserId,
         type: "github",
+        authMethod: "oauth",
         accessToken: token.accessToken,
         userInfo: token.userInfo,
         oauthScopes: getConnectorOAuthScopes(GITHUB_CONNECTOR_TYPE),

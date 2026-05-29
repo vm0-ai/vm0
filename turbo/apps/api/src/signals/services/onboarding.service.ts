@@ -44,6 +44,7 @@ interface OnboardingSetupArgs {
   readonly avatarUrl?: string;
   readonly selectedConnectors: readonly ConnectorType[];
   readonly timezone?: string;
+  readonly onboardingRole?: string;
   readonly onboardingPaymentPending?: boolean;
 }
 
@@ -276,6 +277,7 @@ async function upsertSetupMemberMetadata(
     readonly orgId: string;
     readonly userId: string;
     readonly timezone?: string;
+    readonly onboardingRole?: string;
   },
 ): Promise<void> {
   await db
@@ -284,12 +286,18 @@ async function upsertSetupMemberMetadata(
       orgId: args.orgId,
       userId: args.userId,
       timezone: args.timezone ?? null,
+      onboardingRole: args.onboardingRole ?? null,
       createdAt: nowDate(),
       updatedAt: nowDate(),
     })
     .onConflictDoUpdate({
       target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { updatedAt: nowDate() },
+      set: {
+        ...(args.onboardingRole === undefined
+          ? {}
+          : { onboardingRole: args.onboardingRole }),
+        updatedAt: nowDate(),
+      },
     });
 }
 
@@ -376,6 +384,14 @@ async function completeExistingDefaultAgentSetup(
     userId: args.userId,
     agentId,
     selectedConnectors,
+  });
+  signal.throwIfAborted();
+
+  await upsertSetupMemberMetadata(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    timezone: args.timezone,
+    onboardingRole: args.onboardingRole,
   });
   signal.throwIfAborted();
 
@@ -614,6 +630,7 @@ export const setupOnboarding$ = command(
       orgId: args.orgId,
       userId: args.userId,
       timezone: args.timezone,
+      onboardingRole: args.onboardingRole,
     });
     signal.throwIfAborted();
 

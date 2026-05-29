@@ -12,15 +12,15 @@ export const docusign = {
         featureFlag: FeatureSwitchKey.DocuSignConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with DocuSign to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "DOCUSIGN_OAUTH_CLIENT_ID",
+          clientSecretEnv: "DOCUSIGN_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://account-d.docusign.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "DOCUSIGN_OAUTH_CLIENT_ID",
-            clientSecretEnv: "DOCUSIGN_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["signature", "extended", "openid"],
         },
         access: {

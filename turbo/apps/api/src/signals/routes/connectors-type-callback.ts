@@ -3,13 +3,15 @@ import { unescape as decodeCookieComponent } from "node:querystring";
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
+  resolveConnectorAuthClientForMethod,
+  getConnectorAuthMethodGrantScopes,
+  getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
-  getConnectorOAuthClient,
-  getConnectorAuthCodeGrantConfig,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type AuthCodeGrantConnectorType,
+  type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorOAuthCode,
@@ -58,6 +60,7 @@ type CallbackIdentity = {
 
 type CompleteOAuthCallbackInput = {
   readonly connectorType: AuthCodeGrantConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string;
@@ -108,6 +111,7 @@ type ResolvedOAuthConnectorType =
   | {
       readonly ok: true;
       readonly connectorType: AuthCodeGrantConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
     }
   | {
       readonly ok: false;
@@ -170,20 +174,25 @@ function missingStateRedirectResponse(origin: string, type: string): Response {
 
 async function exchangeTokenForConnector(args: {
   readonly connectorType: AuthCodeGrantConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  const oauthClient = getConnectorOAuthClient(args.connectorType, optionalEnv);
-  if (!oauthClient) {
+  const authClient = resolveConnectorAuthClientForMethod(
+    args.connectorType,
+    args.authMethod,
+    optionalEnv,
+  );
+  if (!authClient) {
     throw new Error(`${args.connectorType} OAuth not configured`);
   }
 
   return await exchangeConnectorOAuthCode({
     type: args.connectorType,
-    oauthClient,
+    authClient,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -194,8 +203,9 @@ async function exchangeTokenForConnector(args: {
 
 function getRequestedScopes(
   connectorType: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
 ): readonly string[] {
-  return getConnectorAuthCodeGrantConfig(connectorType).scopes;
+  return getConnectorAuthMethodGrantScopes(connectorType, authMethod);
 }
 
 function resolveOAuthConnectorType(
@@ -222,7 +232,15 @@ function resolveOAuthConnectorType(
     };
   }
 
-  return { ok: true, connectorType };
+  const authMethod = getConnectorAuthMethodIdForGrantKind(
+    connectorType,
+    "auth-code",
+  );
+  if (!authMethod) {
+    throw new Error(`${connectorType} connector has no auth-code auth method`);
+  }
+
+  return { ok: true, connectorType, authMethod };
 }
 
 async function claimStoredOAuthStateForCallback(args: {
@@ -371,6 +389,7 @@ const completeOAuthCallback$ = command(
   ): Promise<Response> => {
     const token = await exchangeTokenForConnector({
       connectorType: args.connectorType,
+      authMethod: args.authMethod,
       code: args.code,
       redirectUri: args.redirectUri,
       state: args.state,
@@ -386,9 +405,10 @@ const completeOAuthCallback$ = command(
         orgId: args.identity.orgId,
         userId: args.identity.userId,
         type: args.connectorType,
+        authMethod: args.authMethod,
         accessToken: token.accessToken,
         userInfo: token.userInfo,
-        oauthScopes: getRequestedScopes(args.connectorType),
+        oauthScopes: getRequestedScopes(args.connectorType, args.authMethod),
         refreshToken: token.refreshToken,
         refreshSecretName: secretMetadata.isRefreshable
           ? secretMetadata.refreshSecretName
@@ -504,7 +524,7 @@ const callbackConnectorInner$ = command(
     if (!connectorTypeResult.ok) {
       return connectorTypeResult.response;
     }
-    const { connectorType } = connectorTypeResult;
+    const { connectorType, authMethod } = connectorTypeResult;
 
     const writeDb = set(writeDb$);
     const savedState = getCookie(request, CONNECTOR_OAUTH_STATE_COOKIE_NAME);
@@ -595,6 +615,7 @@ const callbackConnectorInner$ = command(
         completeOAuthCallback$,
         {
           connectorType,
+          authMethod,
           code,
           redirectUri: resolvedState.redirectUri,
           state,

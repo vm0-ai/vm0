@@ -154,6 +154,7 @@ interface DispatchParams {
   readonly prompt: string;
   readonly matchedLabelName?: string;
   readonly triggerDescription?: string;
+  readonly sessionContinuityEnabled: boolean;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
   readonly apiStartTime: number;
@@ -984,6 +985,7 @@ function buildCallbackPayload(args: {
   readonly issueNumber: number;
   readonly composeId: string;
   readonly existingSessionId: string | undefined;
+  readonly sessionContinuityEnabled: boolean;
   readonly reactionId: string | undefined;
 }): GitHubIssuesCallbackPayload {
   return githubIssuesCallbackPayloadSchema.parse({
@@ -992,6 +994,7 @@ function buildCallbackPayload(args: {
     issueNumber: args.issueNumber,
     agentId: args.composeId,
     existingSessionId: args.existingSessionId,
+    sessionContinuityEnabled: args.sessionContinuityEnabled,
     triggerCommentId: args.params.commentId,
     triggerCommentBody: args.params.commentId
       ? args.params.comment?.body
@@ -1282,6 +1285,7 @@ const dispatchMatchingLabelListener$ = command(
         composeId: listener.composeId,
         prompt: listener.prompt,
         matchedLabelName: listener.labelName,
+        sessionContinuityEnabled: false,
         apiStartTime: args.apiStartTime,
       },
       signal,
@@ -1444,6 +1448,7 @@ export const handleGithubIssueCommentEvent$ = command(
         composeId: installation.defaultComposeId,
         prompt,
         triggerDescription: `${githubAppBotUsername() ?? "GitHub App"} mention`,
+        sessionContinuityEnabled: true,
         commentId: String(payload.comment.id),
         comment: payload.comment,
         apiStartTime: args.apiStartTime,
@@ -1493,22 +1498,25 @@ const dispatchGithubAgentRun$ = command(
     );
     signal.throwIfAborted();
 
-    const sessionResult = await resolveExistingSession({
-      db,
-      installationDbId: installation.id,
-      repo: params.repo,
-      issueNumber,
-      composeId: target.composeId,
-      vm0UserId: params.vm0UserId,
-      commentId: params.commentId,
-      modelRoute,
-      signal,
-    });
-    if (sessionResult.kind === "duplicate") {
-      return;
+    let existingSessionId: string | undefined;
+    if (params.sessionContinuityEnabled) {
+      const sessionResult = await resolveExistingSession({
+        db,
+        installationDbId: installation.id,
+        repo: params.repo,
+        issueNumber,
+        composeId: target.composeId,
+        vm0UserId: params.vm0UserId,
+        commentId: params.commentId,
+        modelRoute,
+        signal,
+      });
+      if (sessionResult.kind === "duplicate") {
+        return;
+      }
+      existingSessionId = sessionResult.sessionId;
     }
 
-    const existingSessionId = sessionResult.sessionId;
     const prompt = replaceGithubFileReferencesForContext(params.prompt);
     signal.throwIfAborted();
     const issueContext = await buildIssueContextForRun({
@@ -1530,6 +1538,7 @@ const dispatchGithubAgentRun$ = command(
       issueNumber,
       composeId: target.composeId,
       existingSessionId,
+      sessionContinuityEnabled: params.sessionContinuityEnabled,
       reactionId,
     });
 

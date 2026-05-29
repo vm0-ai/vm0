@@ -6,7 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
-  getConnectorOAuthClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodAccessMetadata,
   type ConnectorAuthMethodAccessMetadata,
 } from "@vm0/connectors/connector-utils";
@@ -330,6 +330,7 @@ interface RefreshBatchContext {
 }
 
 interface ConnectorAccessState {
+  readonly authMethod: string;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
   readonly tokenExpiresAt: number | null;
 }
@@ -620,6 +621,7 @@ async function loadConnectorAccessStates(
       continue;
     }
     result.set(row.type, {
+      authMethod: row.authMethod,
       accessMetadata,
       tokenExpiresAt: row.tokenExpiresAt
         ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
@@ -791,15 +793,14 @@ function prepareRefreshTokenContext(
     };
   }
 
-  const accessMetadata = args.connectorAccessByType.get(
-    args.connectorType,
-  )?.accessMetadata;
-  if (accessMetadata?.kind !== "refresh-token") {
+  const connectorAccess = args.connectorAccessByType.get(args.connectorType);
+  if (connectorAccess?.accessMetadata.kind !== "refresh-token") {
     L.debug(
       `${args.connectorType} does not use refresh-token access, skipping`,
     );
     return { ok: false, reason: "not-refreshable" };
   }
+  const accessMetadata = connectorAccess.accessMetadata;
   const parsedConnectorType = connectorTypeSchema.safeParse(args.connectorType);
   if (!parsedConnectorType.success) {
     return { ok: false, reason: "not-refreshable" };
@@ -807,13 +808,14 @@ function prepareRefreshTokenContext(
   if (!hasConnectorAuthProvider(parsedConnectorType.data)) {
     return { ok: false, reason: "not-refreshable" };
   }
-  const oauthClient = getConnectorOAuthClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     parsedConnectorType.data,
+    connectorAccess.authMethod,
     (name) => {
       return optionalEnv(name);
     },
   );
-  if (!oauthClient) {
+  if (!authClient) {
     L.debug(
       `${args.connectorType} connector client not configured, skipping token refresh`,
     );
@@ -843,7 +845,7 @@ function prepareRefreshTokenContext(
     prepared: {
       sourceType: "connector",
       connectorType: parsedConnectorType.data,
-      clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
+      clientArgs: getConnectorAuthProviderClientArgs(authClient),
       context,
     },
   };

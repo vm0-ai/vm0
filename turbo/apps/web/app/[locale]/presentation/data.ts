@@ -110,15 +110,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/67056cf8-b935-4eab-bbf9-d63f906aace2/11.jpg",
   },
   {
-    slug: "openai-gpt-6-conf-talk",
-    title: "Openai GPT 6 Conf Talk",
-    prompt:
-      "/gen presentation with design system `openai` and template `html-ppt-tech-sharing`, create a GPT-6 capability and safety conference talk. Reasoning benchmarks, training compute, alignment evals, deployment policy, partner ecosystem. Make it feel research, candid, technical.",
-    embedUrl: "https://openai-gpt-6-conf-talk-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/18a5d6d2-17d5-4cd7-92d8-788ae2bf475e/12.jpg",
-  },
-  {
     slug: "claude-5-model-deep-dive",
     title: "Claude 5 Model Deep Dive",
     prompt:
@@ -126,15 +117,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
     embedUrl: "https://claude-5-model-deep-dive-715f6d07.sites.vm0.io",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/51044e26-0fb2-48eb-952e-c46a06602df8/13.jpg",
-  },
-  {
-    slug: "cohere-enterprise-rag-arch",
-    title: "Cohere Enterprise RAG Arch",
-    prompt:
-      "/gen presentation with design system `cohere` and template `html-ppt-knowledge-arch-blueprint`, create an enterprise RAG reference architecture session. Embedding pipeline, retrieval graph, reranker stack, eval harness, deployment topology. Make it feel architectural, enterprise, blueprint-clean.",
-    embedUrl: "https://cohere-enterprise-rag-arch-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/16e50264-9ef9-49d2-986a-602f0ebc0647/14.jpg",
   },
   {
     slug: "mixtral-next-moe-research",
@@ -263,15 +245,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fa851b6d-3550-4cc4-a34b-1b399385d281/28.jpg",
   },
   {
-    slug: "cal-com-routing-forms-v2-launch",
-    title: "Cal Com Routing Forms V2 Launch",
-    prompt:
-      "/gen presentation with design system `cal` and template `html-ppt-product-launch`, create a Cal.com Routing Forms v2 launch deck. New form builder, workflow webhooks, embed SDK, pricing tiers, customer wins. Make it feel friendly, modern, developer.",
-    embedUrl: "https://cal-com-routing-forms-v2-launch-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e62c0908-a068-4451-8894-e7bdc6bdb05d/29.jpg",
-  },
-  {
     slug: "canva-design-ai-allhands",
     title: "Canva Design AI Allhands",
     prompt:
@@ -344,15 +317,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0ff00890-6c31-4649-8103-7e96e3a60908/37.jpg",
   },
   {
-    slug: "figma-sites-ga-keynote",
-    title: "Figma Sites GA Keynote",
-    prompt:
-      "/gen presentation with design system `figma` and template `html-ppt-product-launch`, create a Figma Sites GA launch keynote. New site editor, CMS panel, publishing pipeline, pricing, customer stories. Make it feel design, premium, modern.",
-    embedUrl: "https://figma-sites-ga-keynote-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e990a33a-9aad-4da1-99b1-f2383257fdee/38.jpg",
-  },
-  {
     slug: "framer-ai-sites-2026-launch",
     title: "Framer AI Sites 2026 Launch",
     prompt:
@@ -386,7 +350,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `intercom` and template `html-ppt-pitch-deck`, create an Intercom Fin AI Agent enterprise sales deck. Deflection rate proof, integrations, governance controls, pricing model, customer wins. Make it feel modern, friendly, sales.",
     embedUrl: "https://intercom-fin-ai-agent-sales-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4da7c33a-ae2b-4230-9dd8-c7066ae40b7d/42.jpg",
+      "https://presentation-gallery-previews-715f6d07.sites.vm0.io/intercom-fin-ai-agent-sales.jpg",
   },
   {
     slug: "kraken-pro-flash-crash-postmortem",
@@ -396,15 +360,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
     embedUrl: "https://kraken-pro-flash-crash-postmortem-715f6d07.sites.vm0.io",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a1e56c73-d52c-42e2-925b-6d402cc170b2/43.jpg",
-  },
-  {
-    slug: "levels-metabolic-q-report",
-    title: "Levels Metabolic Q Report",
-    prompt:
-      "/gen presentation with design system `levels` and template `html-ppt-xhs-pastel-card`, create a Levels metabolic health quarterly member report. Glucose variability trends, food correlations, sleep impact, exercise wins, next-quarter goals. Make it feel calm, pastel, member-friendly.",
-    embedUrl: "https://levels-metabolic-q-report-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/46c8082b-e29b-4680-8144-9fcdd0e961de/44.jpg",
   },
   {
     slug: "linear-product-intelligence-keynote",
@@ -433,15 +388,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
     embedUrl: "https://loom-ai-workflows-launch-715f6d07.sites.vm0.io",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ce0a6d49-6ccb-4d4a-b4ad-01812bfd5228/47.jpg",
-  },
-  {
-    slug: "lovable-v3-community-launch",
-    title: "Lovable V3 Community Launch",
-    prompt:
-      "/gen presentation with design system `lovable` and template `html-ppt-zhangzara-playful`, create a Lovable v3 community launch deck. Prompt-to-app demo, project gallery, builder economics, partner ecosystem, roadmap. Make it feel playful, friendly, indie.",
-    embedUrl: "https://lovable-v3-community-launch-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/acaba5da-dde7-4e6e-badf-f8f74d198886/48.jpg",
   },
   {
     slug: "mastercard-fraud-risk-council",
@@ -477,7 +423,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `mongodb` and template `html-ppt-tech-sharing`, create a MongoDB Atlas Vector Search conference talk. Index internals, hybrid search, embedding refresh, benchmark numbers, customer wins. Make it feel technical, candid, database.",
     embedUrl: "https://mongodb-atlas-vector-search-talk-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a72acc89-65c2-4dad-b423-fa7efa511b8c/52.jpg",
+      "https://presentation-gallery-previews-715f6d07.sites.vm0.io/mongodb-atlas-vector-search-talk.jpg",
   },
   {
     slug: "ollama-on-device-community-talk",
@@ -496,15 +442,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
     embedUrl: "https://perplexity-pages-comet-keynote-715f6d07.sites.vm0.io",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cdfe86fd-b14a-4571-a763-25d7ab97211f/54.jpg",
-  },
-  {
-    slug: "pinterest-predicts-2027",
-    title: "Pinterest Predicts 2027",
-    prompt:
-      "/gen presentation with design system `pinterest` and template `html-ppt-xhs-post`, create a Pinterest Predicts 2027 trend release. Trend cards, search-volume charts, brand opportunity callouts, creator quotes, campaign ideas. Make it feel editorial, pastel, lifestyle.",
-    embedUrl: "https://pinterest-predicts-2027-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/09712cfb-d33f-4a74-8fbf-215ce6bce975/55.jpg",
   },
   {
     slug: "posthog-product-eng-metrics-talk",
@@ -553,49 +490,13 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e1d12fd2-f2c9-445c-b2e2-d9ac9bc0e323/60.jpg",
   },
   {
-    slug: "runway-gen-4-film-tools",
-    title: "Runway Gen 4 Film Tools",
-    prompt:
-      "/gen presentation with design system `runwayml` and template `html-ppt-zhangzara-bold-poster`, create a Runway Gen-4 film-tools launch deck for studios. Pipeline integration, look-dev examples, talent quotes, festival placements, pricing. Make it feel cinematic, bold, editorial.",
-    embedUrl: "https://runway-gen-4-film-tools-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8c4091b9-91cc-4a26-b91d-5c73616a9498/61.jpg",
-  },
-  {
-    slug: "sanity-content-platform-arch",
-    title: "Sanity Content Platform Arch",
-    prompt:
-      "/gen presentation with design system `sanity` and template `html-ppt-knowledge-arch-blueprint`, create a Sanity content-platform reference architecture for a media company. Content graph, GROQ queries, syndication pipeline, governance, migration plan. Make it feel architectural, editorial, clean.",
-    embedUrl: "https://sanity-content-platform-arch-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/835c0f27-0ed0-4feb-9192-63738ebbdd8b/62.jpg",
-  },
-  {
-    slug: "sentry-prod-outage-postmortem",
-    title: "Sentry Prod Outage Postmortem",
-    prompt:
-      "/gen presentation with design system `sentry` and template `html-ppt-testing-safety-alert`, create a production incident post-mortem deck for a major customer outage. Incident timeline, blast radius, contributing factors, remediation, follow-ups. Make it feel alert, accountable, structured.",
-    embedUrl: "https://sentry-prod-outage-postmortem-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0402048e-e931-4fc4-a372-100d1459517f/63.jpg",
-  },
-  {
     slug: "shopify-magic-merchants-launch",
     title: "Shopify Magic Merchants Launch",
     prompt:
       "/gen presentation with design system `shopify` and template `html-ppt-product-launch`, create a Shopify Magic for Merchants summer edition launch deck. AI tools demo, store templates, payment updates, merchant case studies, pricing. Make it feel friendly, modern, commerce.",
     embedUrl: "https://shopify-magic-merchants-launch-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d6dd24ec-c19f-444e-b9a6-86d7ced2b867/64.jpg",
-  },
-  {
-    slug: "spotify-wrapped-2027",
-    title: "Spotify Wrapped 2027",
-    prompt:
-      "/gen presentation with design system `spotify` and template `html-ppt-product-launch`, create a Spotify Wrapped 2027 product launch deck. Personalization features, creator stories, advertiser opportunities, partner spotlights, rollout calendar. Make it feel kinetic, expressive, music-first.",
-    embedUrl: "https://spotify-wrapped-2027-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3b9e552d-877a-485e-a5c1-390236a2cbc7/65.jpg",
+      "https://presentation-gallery-previews-715f6d07.sites.vm0.io/shopify-magic-merchants-launch.jpg",
   },
   {
     slug: "starbucks-reserve-brand-book",
@@ -643,15 +544,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d95e2199-9581-4a6d-a4bc-755958ed049e/70.jpg",
   },
   {
-    slug: "uber-eats-marketplace-wbr",
-    title: "Uber Eats Marketplace WBR",
-    prompt:
-      "/gen presentation with design system `uber` and template `html-ppt-weekly-report`, create an Uber Eats marketplace weekly business review. Cohort GMV, courier supply, restaurant churn, ad revenue, growth experiments. Make it feel corporate, marketplace, data-driven.",
-    embedUrl: "https://uber-eats-marketplace-wbr-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8e92078e-a3c2-4db7-9cb4-2c875a622a4e/71.jpg",
-  },
-  {
     slug: "vercel-v0-ga-enterprise-launch",
     title: "Vercel V0 GA Enterprise Launch",
     prompt:
@@ -688,51 +580,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/82705e3b-4ca9-4353-9628-78ef9a566ab2/75.jpg",
   },
   {
-    slug: "wechat-miniprogram-2027",
-    title: "Wechat Miniprogram 2027",
-    prompt:
-      "/gen presentation with design system `wechat` and template `guizang-ppt`, create a 微信小程序 2027 生态年度大会主题演讲. 小程序数量、视频号联动、AI 能力开放、商家案例、商业化路径. Make it feel 电子杂志, 中式, 优雅.",
-    embedUrl: "https://wechat-miniprogram-2027-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3ab7c2cf-46ce-4ff6-8d97-927bcdd6d15a/76.jpg",
-  },
-  {
-    slug: "wise-treasury-weekly-ops",
-    title: "Wise Treasury Weekly Ops",
-    prompt:
-      "/gen presentation with design system `wise` and template `html-ppt-weekly-report`, create a Wise treasury weekly ops review. FX exposure, corridor volumes, settlement breakage, compliance flags, runway. Make it feel corporate, fintech, structured.",
-    embedUrl: "https://wise-treasury-weekly-ops-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/aedd6ccf-045e-419c-b396-92258eabd1f6/77.jpg",
-  },
-  {
-    slug: "xhs-2027-spring-summer-trends",
-    title: "Xhs 2027 Spring Summer Trends",
-    prompt:
-      "/gen presentation with design system `xiaohongshu` and template `html-ppt-xhs-post`, create a 小红书 2027 春夏种草趋势报告. 趋势卡片、爆款笔记拆解、博主合作建议、品牌进入策略、案例集. Make it feel 马卡龙, 生活方式, 中文.",
-    embedUrl: "https://xhs-2027-spring-summer-trends-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/681c6b00-6191-4945-9724-e39caef0e8e1/78.jpg",
-  },
-  {
-    slug: "xhs-creator-annual-review",
-    title: "Xhs Creator Annual Review",
-    prompt:
-      "/gen presentation with design system `xiaohongshu` and template `html-ppt-xhs-pastel-card`, create a 小红书博主个人成长年报. 内容选题复盘、粉丝画像、合作品牌清单、明年计划、感谢清单. Make it feel 柔和, 慢生活, 治愈.",
-    embedUrl: "https://xhs-creator-annual-review-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/02a8b28b-f905-4cff-9d5b-3b37f21fd23d/79.jpg",
-  },
-  {
-    slug: "zapier-central-orchestration-arch",
-    title: "Zapier Central Orchestration Arch",
-    prompt:
-      "/gen presentation with design system `zapier` and template `html-ppt-knowledge-arch-blueprint`, create a Zapier Central agent-orchestration reference architecture for ops teams. Trigger graph, agent skills, data store, governance, rollout plan. Make it feel architectural, friendly, automation.",
-    embedUrl: "https://zapier-central-orchestration-arch-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3e3cd579-f1f0-47e7-b5a4-4daf68981039/80.jpg",
-  },
-  {
     slug: "saas-revops-weekly-metrics",
     title: "Saas Revops Weekly Metrics",
     prompt:
@@ -742,22 +589,13 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/2bfd342f-d627-4164-9550-1f3e7a927ade/81.jpg",
   },
   {
-    slug: "prop-desk-daily-pnl",
-    title: "Prop Desk Daily Pnl",
-    prompt:
-      "/gen presentation with design system `trading-terminal` and template `html-ppt-hermes-cyber-terminal`, create a prop-trading desk daily P&L recap. Greeks dashboard, vol surface, top winners/losers, risk limits, overnight watchlist. Make it feel terminal, dense, technical.",
-    embedUrl: "https://prop-desk-daily-pnl-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/625e1323-3d8d-483e-821d-6bcd9d00877b/82.jpg",
-  },
-  {
     slug: "craft-coffee-feature-pitch",
     title: "Craft Coffee Feature Pitch",
     prompt:
       "/gen presentation with design system `warm-editorial` and template `html-ppt-taste-editorial`, create a long-form magazine feature pitch on the future of craft coffee. Story arc, photography moodboard, sources, columnist quotes, publishing schedule. Make it feel warm, editorial, hairline.",
     embedUrl: "https://craft-coffee-feature-pitch-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c21b42c5-95b0-42bc-80da-33a4f6b5089f/83.jpg",
+      "https://presentation-gallery-previews-715f6d07.sites.vm0.io/craft-coffee-feature-pitch.jpg",
   },
   {
     slug: "nym-year-in-review",
@@ -876,15 +714,6 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "https://antique-paper-restoration-catalogue-715f6d07.sites.vm0.io",
     previewImage:
       "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/245ae8d0-d9b5-4d50-b2d5-6f88220d0ce2/96.jpg",
-  },
-  {
-    slug: "vm0-atelier-zero-v2-unveil",
-    title: "Vm0 Atelier Zero V2 Unveil",
-    prompt:
-      "/gen presentation with design system `atelier-zero` and template `open-design-landing-deck`, create a vm0 design-system v2 internal unveil for the team. New tokens, component refactors, motion language, doc rewrite, rollout plan. Make it feel italic-serif, coral, atelier.",
-    embedUrl: "https://vm0-atelier-zero-v2-unveil-715f6d07.sites.vm0.io",
-    previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/997998fb-d8ec-485a-b8ef-6eb672b1eefb/97.jpg",
   },
   {
     slug: "community-zine-workshop-facilitator",

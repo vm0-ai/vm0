@@ -12,15 +12,15 @@ export const testOauth = {
         featureFlag: FeatureSwitchKey.TestOauthConnector,
         label: "OAuth",
         helpText: "Test-only OAuth provider. Only reachable in dev/preview.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientId: "test-oauth-client",
+          clientSecret: "test-oauth-secret",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "/api/test/oauth-provider/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientId: "test-oauth-client",
-            clientSecret: "test-oauth-secret",
-          },
           scopes: ["read"],
         },
         access: {

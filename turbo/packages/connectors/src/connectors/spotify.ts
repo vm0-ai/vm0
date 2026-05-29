@@ -12,15 +12,15 @@ export const spotify = {
         featureFlag: FeatureSwitchKey.SpotifyConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Spotify to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "SPOTIFY_OAUTH_CLIENT_ID",
+          clientSecretEnv: "SPOTIFY_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://accounts.spotify.com/api/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "SPOTIFY_OAUTH_CLIENT_ID",
-            clientSecretEnv: "SPOTIFY_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "ugc-image-upload",
             "user-read-playback-state",

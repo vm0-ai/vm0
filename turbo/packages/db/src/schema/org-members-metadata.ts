@@ -19,6 +19,7 @@ export const orgMembersMetadata = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     timezone: text("timezone"),
+    onboardingRole: text("onboarding_role"),
     pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
     sendMode: text("send_mode").notNull().default("enter"),
     selectedModel: varchar("selected_model", { length: 255 }),

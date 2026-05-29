@@ -12,15 +12,15 @@ export const googleAds = {
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Ads access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://oauth2.googleapis.com/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "https://www.googleapis.com/auth/adwords",
             "https://www.googleapis.com/auth/userinfo.email",

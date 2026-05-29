@@ -10,15 +10,15 @@ export const slack = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Slack to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
+          clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://slack.com/api/oauth.v2.access",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
-            clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             // Channels
             "channels:read",

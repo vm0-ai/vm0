@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorOAuthClient } from "../../../../connector-utils";
+import { resolveConnectorAuthClientForMethod } from "../../../../connector-utils";
 import { hasConnectorAuthCodeGrantProvider } from "../../../connector-auth";
 import { googleAdsProvider } from "../google-ads-provider";
 import { server } from "./test-server";
@@ -48,7 +48,7 @@ describe("connector/providers/google-ads", () => {
       };
 
       expect(
-        getConnectorOAuthClient("google-ads", (name) => {
+        resolveConnectorAuthClientForMethod("google-ads", "oauth", (name) => {
           return env[name];
         }),
       ).toMatchObject({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorOAuthClient } from "../../../../connector-utils";
+import { resolveConnectorAuthClientForMethod } from "../../../../connector-utils";
 import { hasConnectorAuthCodeGrantProvider } from "../../../connector-auth";
 import {
   buildMetaAdsAuthorizationUrl,
@@ -160,7 +160,7 @@ describe("connector/providers/meta-ads", () => {
       };
 
       expect(
-        getConnectorOAuthClient("meta-ads", (name) => {
+        resolveConnectorAuthClientForMethod("meta-ads", "oauth", (name) => {
           return env[name];
         }),
       ).toMatchObject({

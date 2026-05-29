@@ -5,12 +5,12 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
+  type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorEnvBindings,
   type ConnectorGenerationType,
   type ConnectorGrantConfig,
   type ConnectorGrantKind,
-  type ConnectorOAuthClientConfig,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type ConnectorAuthProviderType,
@@ -435,63 +435,58 @@ export function getAvailableConnectorAuthMethods(
 
 export type ConnectorEnvReader = (name: string) => string | undefined;
 
-export type StaticConfidentialConnectorOAuthClient = {
+export type StaticConfidentialConnectorAuthClient = {
   readonly clientRegistration: "static";
   readonly clientType: "confidential";
   readonly clientId: string;
   readonly clientSecret: string;
 };
 
-export type StaticPublicConnectorOAuthClient = {
+export type StaticPublicConnectorAuthClient = {
   readonly clientRegistration: "static";
   readonly clientType: "public";
   readonly clientId: string;
 };
 
-export type DynamicPublicConnectorOAuthClient = {
+export type DynamicPublicConnectorAuthClient = {
   readonly clientRegistration: "dynamic";
   readonly clientType: "public";
 };
 
-export type StaticConnectorOAuthClient =
-  | StaticConfidentialConnectorOAuthClient
-  | StaticPublicConnectorOAuthClient;
+export type StaticConnectorAuthClient =
+  | StaticConfidentialConnectorAuthClient
+  | StaticPublicConnectorAuthClient;
 
-export type ConnectorOAuthClient =
-  | StaticConnectorOAuthClient
-  | DynamicPublicConnectorOAuthClient;
+export type ConnectorAuthClient =
+  | StaticConnectorAuthClient
+  | DynamicPublicConnectorAuthClient;
 
-export function isStaticConnectorOAuthClient(
-  oauthClient: ConnectorOAuthClient,
-): oauthClient is StaticConnectorOAuthClient {
-  return oauthClient.clientRegistration === "static";
+export function isStaticConnectorAuthClient(
+  authClient: ConnectorAuthClient,
+): authClient is StaticConnectorAuthClient {
+  return authClient.clientRegistration === "static";
 }
 
-export function isStaticConfidentialConnectorOAuthClient(
-  oauthClient: ConnectorOAuthClient,
-): oauthClient is StaticConfidentialConnectorOAuthClient {
+export function isStaticConfidentialConnectorAuthClient(
+  authClient: ConnectorAuthClient,
+): authClient is StaticConfidentialConnectorAuthClient {
   return (
-    isStaticConnectorOAuthClient(oauthClient) &&
-    oauthClient.clientType === "confidential"
+    isStaticConnectorAuthClient(authClient) &&
+    authClient.clientType === "confidential"
   );
 }
 
-function getConnectorOAuthClientConfig(
-  type: ConnectorAuthProviderType,
-): ConnectorOAuthClientConfig;
-function getConnectorOAuthClientConfig(
+export function getConnectorAuthClientConfigForMethod(
   type: ConnectorType,
-): ConnectorOAuthClientConfig | undefined;
-function getConnectorOAuthClientConfig(
-  type: ConnectorType,
-): ConnectorOAuthClientConfig | undefined {
-  return getConnectorOAuthGrantConfig(type)?.client;
+  authMethod: string,
+): ConnectorAuthClientConfig | undefined {
+  return getConnectorAuthMethod(type, authMethod)?.client;
 }
 
-function resolveConnectorOAuthClient(
-  client: ConnectorOAuthClientConfig,
+export function resolveConnectorAuthClient(
+  client: ConnectorAuthClientConfig,
   readEnv: ConnectorEnvReader,
-): ConnectorOAuthClient | undefined {
+): ConnectorAuthClient | undefined {
   if (client.clientRegistration === "dynamic") {
     return { clientRegistration: "dynamic", clientType: "public" };
   }
@@ -534,22 +529,42 @@ function resolveConnectorOAuthClient(
   };
 }
 
-export function getConnectorOAuthClient(
+export function resolveConnectorAuthClientForMethod(
   type: ConnectorType,
+  authMethod: string,
   readEnv: ConnectorEnvReader,
-): ConnectorOAuthClient | undefined {
-  const client = getConnectorOAuthClientConfig(type);
-  if (!client) {
+): ConnectorAuthClient | undefined {
+  const clientConfig = getConnectorAuthClientConfigForMethod(type, authMethod);
+  if (!clientConfig) {
     return undefined;
   }
-  return resolveConnectorOAuthClient(client, readEnv);
+  return resolveConnectorAuthClient(clientConfig, readEnv);
 }
 
-function hasConfiguredOAuth(
+function hasRuntimeAvailableAuthMethod(
   readEnv: ConnectorEnvReader,
   type: ConnectorType,
 ): boolean {
-  return getConnectorOAuthClient(type, readEnv) !== undefined;
+  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+    const method = getConnectorAuthMethod(type, authMethod);
+    switch (method?.grant.kind) {
+      case "auth-code":
+      case "device-auth": {
+        if (resolveConnectorAuthClientForMethod(type, authMethod, readEnv)) {
+          return true;
+        }
+        break;
+      }
+      case "manual": {
+        return true;
+      }
+      case "managed":
+      case undefined: {
+        break;
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -557,8 +572,8 @@ function hasConfiguredOAuth(
  *
  * This is not user connected state and it does not evaluate feature switches.
  * It includes connectors with user-entered manual grant methods because they
- * do not require a server OAuth client, while OAuth connectors require their
- * runtime OAuth client env to exist unless their client config is static inline.
+ * do not require a server auth client, while auth-provider methods require
+ * their runtime client env to exist unless their client config is static inline.
  */
 export function getRuntimeAvailableConnectorTypes(
   readEnv: ConnectorEnvReader,
@@ -566,12 +581,7 @@ export function getRuntimeAvailableConnectorTypes(
   const runtimeAvailable = new Set<ConnectorType>();
 
   for (const type of CONNECTOR_TYPE_KEYS) {
-    if (
-      hasConfiguredOAuth(readEnv, type) ||
-      connectorAuthMethodValues(type).some((method) => {
-        return method.grant.kind === "manual";
-      })
-    ) {
+    if (hasRuntimeAvailableAuthMethod(readEnv, type)) {
       runtimeAvailable.add(type);
     }
   }

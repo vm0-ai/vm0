@@ -12,15 +12,15 @@ export const mercury = {
         featureFlag: FeatureSwitchKey.MercuryConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Mercury to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
+          clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://oauth2.mercury.com/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "MERCURY_OAUTH_CLIENT_ID",
-            clientSecretEnv: "MERCURY_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["offline_access"],
         },
         access: {

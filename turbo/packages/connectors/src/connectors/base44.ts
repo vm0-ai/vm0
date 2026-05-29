@@ -10,15 +10,15 @@ export const base44 = {
       oauth: {
         label: "OAuth",
         helpText: "Sign in with Base44 to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "base44_cli",
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: "https://app.base44.com/oauth/device/code",
           tokenUrl: "https://app.base44.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "public",
-            clientId: "base44_cli",
-          },
           scopes: ["apps:read", "apps:write", "offline"],
         },
         access: {

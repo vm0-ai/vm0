@@ -384,6 +384,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
 
     const prepared = prepareResolvedConnectorAuthCodeStart({
       type: authCodeStartType.type,
+      authMethod: authCodeStartType.authMethod,
       origin,
       readEnv: optionalEnv,
     });
@@ -392,7 +393,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
-      oauthClient: prepared.oauthClient,
+      authClient: prepared.authClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
     });
@@ -455,6 +456,7 @@ const startConnectorOauthInner$ = command(
     const origin = getConnectorOAuthOrigin(request);
     const prepared = prepareResolvedConnectorAuthCodeStart({
       type: authCodeStartType.type,
+      authMethod: authCodeStartType.authMethod,
       origin,
       readEnv: optionalEnv,
     });
@@ -463,7 +465,7 @@ const startConnectorOauthInner$ = command(
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
-      oauthClient: prepared.oauthClient,
+      authClient: prepared.authClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
     });

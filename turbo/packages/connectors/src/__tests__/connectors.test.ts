@@ -36,12 +36,12 @@ import {
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethodAccessMetadata,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
-  getConnectorOAuthClient,
   getConnectorOAuthScopes,
   getConnectorManualGrantFieldNames,
   getRuntimeAvailableConnectorTypes,
@@ -49,9 +49,10 @@ import {
   getConnectorVariableNames,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
-  isStaticConfidentialConnectorOAuthClient,
-  isStaticConnectorOAuthClient,
+  isStaticConfidentialConnectorAuthClient,
+  isStaticConnectorAuthClient,
   isGoogleOAuthConnector,
+  type ConnectorEnvReader,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
@@ -85,6 +86,10 @@ function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
 
 const server = setupServer();
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
+
+function getOauthAuthClient(type: ConnectorType, readEnv: ConnectorEnvReader) {
+  return resolveConnectorAuthClientForMethod(type, "oauth", readEnv);
+}
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -464,7 +469,7 @@ describe("connector grant provider capability checks", () => {
   });
 
   it("rejects refresh for OAuth connectors without refresh-token access", async () => {
-    const oauthClient = getConnectorOAuthClient("github", (name) => {
+    const oauthClient = getOauthAuthClient("github", (name) => {
       if (name === "GH_OAUTH_CLIENT_ID") {
         return "test-github-client";
       }
@@ -489,7 +494,7 @@ describe("connector grant provider capability checks", () => {
   });
 
   it("revokes OAuth tokens through the provider registry", async () => {
-    const oauthClient = getConnectorOAuthClient("github", (name) => {
+    const oauthClient = getOauthAuthClient("github", (name) => {
       if (name === "GH_OAUTH_CLIENT_ID") {
         return "test-github-client";
       }
@@ -520,7 +525,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       revokeConnectorOAuthToken({
         type: "github",
-        oauthClient,
+        authClient: oauthClient,
         loadAccessToken: () => {
           return "gh-access-token";
         },
@@ -533,7 +538,7 @@ describe("connector grant provider capability checks", () => {
   });
 
   it("returns unsupported for OAuth connectors without revoke support", async () => {
-    const oauthClient = getConnectorOAuthClient("notion", (name) => {
+    const oauthClient = getOauthAuthClient("notion", (name) => {
       if (name === "NOTION_OAUTH_CLIENT_ID") {
         return "test-notion-client";
       }
@@ -553,7 +558,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       revokeConnectorOAuthToken({
         type: "notion",
-        oauthClient,
+        authClient: oauthClient,
         loadAccessToken: () => {
           loadedAccessToken = true;
           return "notion-access-token";
@@ -578,7 +583,7 @@ describe("connector grant provider capability checks", () => {
       );
 
       for (const type of providerTypes) {
-        const oauthClient = getConnectorOAuthClient(type, () => {
+        const oauthClient = getOauthAuthClient(type, () => {
           return "test-client-credential";
         });
         expect(oauthClient, `${type}: OAuth client`).toBeDefined();
@@ -587,7 +592,7 @@ describe("connector grant provider capability checks", () => {
         }
         const authResult = await buildConnectorOAuthAuthUrl({
           type,
-          oauthClient,
+          authClient: oauthClient,
           redirectUri: "https://app.test/callback",
           state: "state-123",
         });
@@ -678,7 +683,7 @@ describe("connector grant provider capability checks", () => {
       }),
     );
 
-    const oauthClient = getConnectorOAuthClient("test-oauth-device", () => {
+    const oauthClient = getOauthAuthClient("test-oauth-device", () => {
       return undefined;
     });
     expect(oauthClient).toBeDefined();
@@ -689,7 +694,7 @@ describe("connector grant provider capability checks", () => {
 
     const startResult = await startConnectorOAuthDeviceAuth({
       type: "test-oauth-device",
-      oauthClient,
+      authClient: oauthClient,
     });
     expect(startResult).toStrictEqual({
       deviceCode: "test-device:test-oauth-device-client:read",
@@ -704,21 +709,21 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "slow-down",
       }),
     ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "denied",
       }),
     ).resolves.toStrictEqual({
@@ -729,7 +734,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "expired",
       }),
     ).resolves.toStrictEqual({
@@ -740,7 +745,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "error",
       }),
     ).resolves.toStrictEqual({
@@ -751,7 +756,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "invalid-grant",
       }),
     ).resolves.toStrictEqual({
@@ -762,7 +767,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "test-oauth-device",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: startResult.deviceCode,
       }),
     ).resolves.toStrictEqual({
@@ -881,7 +886,7 @@ describe("connector grant provider capability checks", () => {
       }),
     );
 
-    const oauthClient = getConnectorOAuthClient("base44", () => {
+    const oauthClient = getOauthAuthClient("base44", () => {
       return undefined;
     });
     expect(oauthClient).toBeDefined();
@@ -893,7 +898,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       startConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
       }),
     ).resolves.toStrictEqual({
       deviceCode: "base44-device-code",
@@ -908,21 +913,21 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "slow-down",
       }),
     ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "denied",
       }),
     ).resolves.toStrictEqual({
@@ -933,7 +938,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "expired",
       }),
     ).resolves.toStrictEqual({
@@ -944,7 +949,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "temporarily-unavailable",
       }),
     ).resolves.toStrictEqual({
@@ -955,7 +960,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "base44",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "base44-device-code",
       }),
     ).resolves.toStrictEqual({
@@ -1161,7 +1166,7 @@ describe("connector grant provider capability checks", () => {
       ),
     );
 
-    const oauthClient = getConnectorOAuthClient("slock", () => {
+    const oauthClient = getOauthAuthClient("slock", () => {
       return undefined;
     });
     expect(oauthClient).toBeDefined();
@@ -1173,7 +1178,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       startConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
       }),
     ).resolves.toStrictEqual({
       deviceCode: "slock-device-code",
@@ -1187,14 +1192,14 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "denied",
       }),
     ).resolves.toStrictEqual({
@@ -1205,7 +1210,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "expired",
       }),
     ).resolves.toStrictEqual({
@@ -1216,7 +1221,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "no-servers",
       }),
     ).resolves.toStrictEqual({
@@ -1227,7 +1232,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "missing-refresh",
       }),
     ).resolves.toMatchObject({
@@ -1237,7 +1242,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "server-error",
       }),
     ).resolves.toStrictEqual({
@@ -1249,7 +1254,7 @@ describe("connector grant provider capability checks", () => {
     await expect(
       pollConnectorOAuthDeviceAuth({
         type: "slock",
-        oauthClient,
+        authClient: oauthClient,
         deviceCode: "userinfo-error",
       }),
     ).resolves.toStrictEqual({
@@ -1260,7 +1265,7 @@ describe("connector grant provider capability checks", () => {
     });
     const completeResult = await pollConnectorOAuthDeviceAuth({
       type: "slock",
-      oauthClient,
+      authClient: oauthClient,
       deviceCode: "slock-device-code",
     });
     expect(completeResult).toMatchObject({
@@ -1294,7 +1299,7 @@ describe("connector grant provider capability checks", () => {
 
     const malformedCompleteResult = await pollConnectorOAuthDeviceAuth({
       type: "slock",
-      oauthClient,
+      authClient: oauthClient,
       deviceCode: "malformed-token",
     });
     expect(malformedCompleteResult).toMatchObject({
@@ -1757,7 +1762,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("derives static confidential OAuth client from connector config", () => {
-    const oauthClient = getConnectorOAuthClient("github", (name) => {
+    const oauthClient = getOauthAuthClient("github", (name) => {
       return (
         {
           GH_OAUTH_CLIENT_ID: "github-client-id",
@@ -1775,7 +1780,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("does not configure static confidential OAuth when the secret is missing", () => {
-    const oauthClient = getConnectorOAuthClient("github", (name) => {
+    const oauthClient = getOauthAuthClient("github", (name) => {
       return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
     });
 
@@ -1783,7 +1788,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("supports literal static OAuth clients without runtime OAuth client env", () => {
-    const oauthClient = getConnectorOAuthClient("test-oauth", emptyEnv);
+    const oauthClient = getOauthAuthClient("test-oauth", emptyEnv);
 
     expect(oauthClient).toStrictEqual({
       clientRegistration: "static",
@@ -1794,7 +1799,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("supports static public OAuth clients with only a client id", () => {
-    const oauthClient = getConnectorOAuthClient("test-oauth-device", emptyEnv);
+    const oauthClient = getOauthAuthClient("test-oauth-device", emptyEnv);
 
     expect(oauthClient).toStrictEqual({
       clientRegistration: "static",
@@ -1804,7 +1809,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("identifies static OAuth client variants", () => {
-    const staticOAuthClient = getConnectorOAuthClient("github", (name) => {
+    const staticAuthClient = getOauthAuthClient("github", (name) => {
       return (
         {
           GH_OAUTH_CLIENT_ID: "github-client-id",
@@ -1812,31 +1817,28 @@ describe("getRuntimeAvailableConnectorTypes", () => {
         } as Record<string, string>
       )[name];
     });
-    if (!staticOAuthClient) {
+    if (!staticAuthClient) {
       throw new Error("Expected GitHub OAuth client");
     }
-    expect(isStaticConnectorOAuthClient(staticOAuthClient)).toBeTruthy();
+    expect(isStaticConnectorAuthClient(staticAuthClient)).toBeTruthy();
     expect(
-      isStaticConfidentialConnectorOAuthClient(staticOAuthClient),
+      isStaticConfidentialConnectorAuthClient(staticAuthClient),
     ).toBeTruthy();
-    if (isStaticConfidentialConnectorOAuthClient(staticOAuthClient)) {
-      const clientSecret: string = staticOAuthClient.clientSecret;
+    if (isStaticConfidentialConnectorAuthClient(staticAuthClient)) {
+      const clientSecret: string = staticAuthClient.clientSecret;
       expect(clientSecret).toBe("github-client-secret");
     }
 
-    const publicOAuthClient = getConnectorOAuthClient(
-      "test-oauth-device",
-      emptyEnv,
-    );
-    if (!publicOAuthClient) {
+    const publicAuthClient = getOauthAuthClient("test-oauth-device", emptyEnv);
+    if (!publicAuthClient) {
       throw new Error("Expected public OAuth client");
     }
-    expect(isStaticConnectorOAuthClient(publicOAuthClient)).toBeTruthy();
+    expect(isStaticConnectorAuthClient(publicAuthClient)).toBeTruthy();
     expect(
-      isStaticConfidentialConnectorOAuthClient(publicOAuthClient),
+      isStaticConfidentialConnectorAuthClient(publicAuthClient),
     ).toBeFalsy();
-    if (isStaticConnectorOAuthClient(publicOAuthClient)) {
-      const clientId: string = publicOAuthClient.clientId;
+    if (isStaticConnectorAuthClient(publicAuthClient)) {
+      const clientId: string = publicAuthClient.clientId;
       expect(clientId).toBe("test-oauth-device-client");
     }
   });
@@ -1926,6 +1928,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
       kind: "auth-code",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project", "workflow"],
+    });
+    expect("client" in getConnectorAuthCodeGrantConfig("github")).toBe(false);
+    expect(method).toMatchObject({
       client: {
         clientRegistration: "static",
         clientType: "confidential",
@@ -1945,33 +1950,39 @@ describe("connector OAuth lifecycle grant helpers", () => {
       kind: "device-auth",
       deviceAuthUrl: "/api/test/oauth-provider/device/code",
       tokenUrl: "/api/test/oauth-provider/token",
+      scopes: ["read"],
+    });
+    expect(getConnectorAuthMethod("test-oauth-device", "oauth")).toMatchObject({
       client: {
         clientRegistration: "static",
         clientType: "public",
         clientId: "test-oauth-device-client",
       },
-      scopes: ["read"],
     });
     expect(getConnectorDeviceAuthGrantConfig("base44")).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
       tokenUrl: "https://app.base44.com/oauth/token",
+      scopes: ["apps:read", "apps:write", "offline"],
+    });
+    expect(getConnectorAuthMethod("base44", "oauth")).toMatchObject({
       client: {
         clientRegistration: "static",
         clientType: "public",
         clientId: "base44_cli",
       },
-      scopes: ["apps:read", "apps:write", "offline"],
     });
     expect(getConnectorDeviceAuthGrantConfig("slock")).toMatchObject({
       kind: "device-auth",
       deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
       tokenUrl: "https://api.slock.ai/api/auth/device/token",
+      scopes: [],
+    });
+    expect(getConnectorAuthMethod("slock", "oauth")).toMatchObject({
       client: {
         clientRegistration: "dynamic",
         clientType: "public",
       },
-      scopes: [],
     });
   });
 
@@ -2027,12 +2038,14 @@ describe("connector OAuth device authorization config", () => {
       kind: "device-auth",
       deviceAuthUrl: "/api/test/oauth-provider/device/code",
       tokenUrl: "/api/test/oauth-provider/token",
+      scopes: ["read"],
+    });
+    expect(getConnectorAuthMethod("test-oauth-device", "oauth")).toMatchObject({
       client: {
         clientRegistration: "static",
         clientType: "public",
         clientId: "test-oauth-device-client",
       },
-      scopes: ["read"],
     });
   });
 
@@ -2042,12 +2055,14 @@ describe("connector OAuth device authorization config", () => {
       kind: "device-auth",
       deviceAuthUrl: "https://app.base44.com/oauth/device/code",
       tokenUrl: "https://app.base44.com/oauth/token",
+      scopes: ["apps:read", "apps:write", "offline"],
+    });
+    expect(getConnectorAuthMethod("base44", "oauth")).toMatchObject({
       client: {
         clientRegistration: "static",
         clientType: "public",
         clientId: "base44_cli",
       },
-      scopes: ["apps:read", "apps:write", "offline"],
     });
   });
 
@@ -2057,11 +2072,13 @@ describe("connector OAuth device authorization config", () => {
       kind: "device-auth",
       deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
       tokenUrl: "https://api.slock.ai/api/auth/device/token",
+      scopes: [],
+    });
+    expect(getConnectorAuthMethod("slock", "oauth")).toMatchObject({
       client: {
         clientRegistration: "dynamic",
         clientType: "public",
       },
-      scopes: [],
     });
   });
 });

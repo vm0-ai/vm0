@@ -259,7 +259,7 @@ export interface ConnectorManualGrantFieldConfig {
   storage?: "secret" | "variable";
 }
 
-export type ConnectorOAuthClientConfig =
+export type ConnectorAuthClientConfig =
   | {
       readonly clientRegistration: "static";
       readonly clientType: "confidential";
@@ -287,33 +287,33 @@ export type ConnectorOAuthClientConfig =
       readonly clientType: "public";
     };
 
-export type StaticConfidentialConnectorOAuthClientConfig = Extract<
-  ConnectorOAuthClientConfig,
+export type StaticConfidentialConnectorAuthClientConfig = Extract<
+  ConnectorAuthClientConfig,
   {
     readonly clientRegistration: "static";
     readonly clientType: "confidential";
   }
 >;
 
-export type StaticPublicConnectorOAuthClientConfig = Extract<
-  ConnectorOAuthClientConfig,
+export type StaticPublicConnectorAuthClientConfig = Extract<
+  ConnectorAuthClientConfig,
   {
     readonly clientRegistration: "static";
     readonly clientType: "public";
   }
 >;
 
-export type DynamicPublicConnectorOAuthClientConfig = Extract<
-  ConnectorOAuthClientConfig,
+export type DynamicPublicConnectorAuthClientConfig = Extract<
+  ConnectorAuthClientConfig,
   {
     readonly clientRegistration: "dynamic";
     readonly clientType: "public";
   }
 >;
 
-export type PublicConnectorOAuthClientConfig =
-  | StaticPublicConnectorOAuthClientConfig
-  | DynamicPublicConnectorOAuthClientConfig;
+export type PublicConnectorAuthClientConfig =
+  | StaticPublicConnectorAuthClientConfig
+  | DynamicPublicConnectorAuthClientConfig;
 
 export type ConnectorGrantKind =
   | "manual"
@@ -329,7 +329,6 @@ export interface ConnectorManualGrantConfig {
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly tokenUrl: string;
-  readonly client: ConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 
@@ -337,7 +336,6 @@ export interface ConnectorDeviceAuthGrantConfig {
   readonly kind: "device-auth";
   readonly deviceAuthUrl: string;
   readonly tokenUrl: string;
-  readonly client: PublicConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 
@@ -386,20 +384,37 @@ export type ConnectorRevokeConfig =
       readonly kind: "token-revoke";
     };
 
-/**
- * Auth method configuration for user-selectable connector connection flows.
- */
-export interface ConnectorAuthMethodConfig {
+interface ConnectorAuthMethodConfigBase {
   label: string;
   helpText?: string;
   /** When set, this auth method is only available while the feature is enabled. */
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
   showExperimentalLabel?: boolean;
-  readonly grant: ConnectorGrantConfig;
-  readonly access: ConnectorAccessConfig;
-  readonly revoke: ConnectorRevokeConfig;
 }
+
+/**
+ * Auth method configuration for user-selectable connector connection flows.
+ */
+export type ConnectorAuthMethodConfig =
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client: ConnectorAuthClientConfig;
+      readonly grant: ConnectorAuthCodeGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client: PublicConnectorAuthClientConfig;
+      readonly grant: ConnectorDeviceAuthGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client?: ConnectorAuthClientConfig;
+      readonly grant: ConnectorManualGrantConfig | ConnectorManagedGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    });
 
 /**
  * Connector auth method ids exposed as configured connection flows.
@@ -410,6 +425,14 @@ export interface ConnectorAuthMethodConfig {
 export type ConnectorAuthMethodId = "oauth" | "api-token" | "api";
 
 type AssertNever<T extends never> = T;
+
+type IsUnion<T, U = T> = [T] extends [never]
+  ? false
+  : T extends unknown
+    ? [U] extends [T]
+      ? false
+      : true
+    : false;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -909,6 +932,33 @@ type InvalidAuthMethodRevokeKindConnectorType = {
 }[ConnectorType];
 export type ConnectorAuthMethodRevokeKindsMatchKeys =
   AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
+
+type ConnectorAuthMethodIdsByGrantKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorGrantKind,
+> = {
+  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+    readonly grant: { readonly kind: Kind };
+  }
+    ? Method
+    : never;
+}[ConnectorAuthMethodKeys<Type>];
+
+type ConnectorTypeWithMultipleAuthMethodsForGrantKind<
+  Kind extends ConnectorGrantKind,
+> = {
+  [Type in ConnectorType]: IsUnion<
+    ConnectorAuthMethodIdsByGrantKind<Type, Kind>
+  > extends true
+    ? Type
+    : never;
+}[ConnectorType];
+export type ConnectorAuthCodeGrantMethodsAreSingle = AssertNever<
+  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"auth-code">
+>;
+export type ConnectorDeviceAuthGrantMethodsAreSingle = AssertNever<
+  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"device-auth">
+>;
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {

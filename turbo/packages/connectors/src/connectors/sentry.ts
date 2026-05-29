@@ -10,15 +10,15 @@ export const sentry = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Sentry to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "SENTRY_OAUTH_CLIENT_ID",
+          clientSecretEnv: "SENTRY_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://sentry.io/oauth/token/",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "SENTRY_OAUTH_CLIENT_ID",
-            clientSecretEnv: "SENTRY_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "org:read",
             "project:read",

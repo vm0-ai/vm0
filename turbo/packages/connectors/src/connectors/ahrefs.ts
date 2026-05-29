@@ -12,15 +12,15 @@ export const ahrefs = {
         featureFlag: FeatureSwitchKey.AhrefsConnector,
         label: "OAuth",
         helpText: "Sign in with Ahrefs to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "AHREFS_OAUTH_CLIENT_ID",
+          clientSecretEnv: "AHREFS_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://app.ahrefs.com/api/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "AHREFS_OAUTH_CLIENT_ID",
-            clientSecretEnv: "AHREFS_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["api"],
         },
         access: {

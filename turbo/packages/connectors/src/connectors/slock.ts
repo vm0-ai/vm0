@@ -12,14 +12,14 @@ export const slock = {
       oauth: {
         label: "OAuth Device Authorization",
         helpText: "Sign in with Slock using a device code.",
+        client: {
+          clientRegistration: "dynamic",
+          clientType: "public",
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: `${SLOCK_API_BASE_URL}/api/auth/device/authorize`,
           tokenUrl: `${SLOCK_API_BASE_URL}/api/auth/device/token`,
-          client: {
-            clientRegistration: "dynamic",
-            clientType: "public",
-          },
           scopes: [],
         },
         access: {

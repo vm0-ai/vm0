@@ -10,15 +10,15 @@ export const vercel = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Vercel to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "VERCEL_OAUTH_CLIENT_ID",
+          clientSecretEnv: "VERCEL_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "VERCEL_OAUTH_CLIENT_ID",
-            clientSecretEnv: "VERCEL_OAUTH_CLIENT_SECRET",
-          },
           scopes: [],
         },
         access: {

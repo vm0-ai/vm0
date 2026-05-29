@@ -12,15 +12,15 @@ export const zoom = {
         featureFlag: FeatureSwitchKey.ZoomConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Zoom to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
+          clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://zoom.us/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
-            clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "user:read:user",
             "meeting:read:list_meetings",

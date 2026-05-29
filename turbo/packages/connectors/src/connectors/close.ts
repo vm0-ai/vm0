@@ -12,15 +12,15 @@ export const close = {
         featureFlag: FeatureSwitchKey.CloseConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Close to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "CLOSE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.close.com/oauth2/token/",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "CLOSE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["all.full_access", "offline_access"],
         },
         access: {

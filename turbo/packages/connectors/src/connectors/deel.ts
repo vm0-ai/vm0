@@ -12,15 +12,15 @@ export const deel = {
         featureFlag: FeatureSwitchKey.DeelConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Deel to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
+          clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://app.deel.com/oauth2/tokens",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
-            clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "contracts:read",
             "people:read",

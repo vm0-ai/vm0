@@ -12,15 +12,15 @@ export const garminConnect = {
         featureFlag: FeatureSwitchKey.GarminConnectConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Garmin Connect to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
-          },
           scopes: [],
         },
         access: {

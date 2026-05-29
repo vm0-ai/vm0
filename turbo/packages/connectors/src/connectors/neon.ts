@@ -12,15 +12,15 @@ export const neon = {
         featureFlag: FeatureSwitchKey.NeonConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Neon to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "NEON_OAUTH_CLIENT_ID",
+          clientSecretEnv: "NEON_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://oauth2.neon.tech/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "NEON_OAUTH_CLIENT_ID",
-            clientSecretEnv: "NEON_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "openid",
             "offline_access",

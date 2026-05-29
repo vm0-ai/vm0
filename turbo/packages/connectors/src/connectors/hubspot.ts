@@ -10,15 +10,15 @@ export const hubspot = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with HubSpot to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "HUBSPOT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "HUBSPOT_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.hubapi.com/oauth/v1/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "HUBSPOT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "HUBSPOT_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "crm.objects.contacts.read",
             "crm.objects.contacts.write",

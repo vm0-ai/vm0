@@ -10,15 +10,15 @@ export const airtable = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Airtable to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://airtable.com/oauth2/v1/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "data.records:read",
             "data.records:write",

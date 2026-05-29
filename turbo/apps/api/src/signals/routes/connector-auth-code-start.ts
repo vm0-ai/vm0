@@ -1,9 +1,9 @@
 import {
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodIdForGrantKind,
-  getConnectorOAuthClient,
   hasConnectorAuthCodeGrant,
+  type ConnectorAuthClient,
   type ConnectorEnvReader,
-  type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeGrantConnectorType,
@@ -22,7 +22,7 @@ type PrepareResolvedConnectorAuthCodeStartResult =
       readonly ok: true;
       readonly state: string;
       readonly redirectUri: string;
-      readonly oauthClient: ConnectorOAuthClient;
+      readonly authClient: ConnectorAuthClient;
     }
   | {
       readonly ok: false;
@@ -63,13 +63,18 @@ export function resolveConnectorAuthCodeStartType(
 // normal async commit point.
 export function prepareResolvedConnectorAuthCodeStart(args: {
   readonly type: AuthCodeGrantConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
 }): PrepareResolvedConnectorAuthCodeStartResult {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
-  const oauthClient = getConnectorOAuthClient(args.type, args.readEnv);
-  if (!oauthClient) {
+  const authClient = resolveConnectorAuthClientForMethod(
+    args.type,
+    args.authMethod,
+    args.readEnv,
+  );
+  if (!authClient) {
     return { ok: false, reason: "oauth_not_configured" };
   }
 
@@ -77,20 +82,20 @@ export function prepareResolvedConnectorAuthCodeStart(args: {
     ok: true,
     state,
     redirectUri,
-    oauthClient,
+    authClient,
   };
 }
 
 export async function buildResolvedConnectorAuthCodeAuthUrl(args: {
   readonly type: AuthCodeGrantConnectorType;
-  readonly oauthClient: ConnectorOAuthClient;
+  readonly authClient: ConnectorAuthClient;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<AuthUrlResult> {
   return normalizeAuthUrlResult(
     await buildConnectorOAuthAuthUrl({
       type: args.type,
-      oauthClient: args.oauthClient,
+      authClient: args.authClient,
       redirectUri: args.redirectUri,
       state: args.state,
     }),

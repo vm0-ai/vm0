@@ -45,6 +45,10 @@ async function walkAdminToContinue() {
 
   const input = screen.getByPlaceholderText("e.g. Acme Corp");
   await fill(input, "Test Workspace");
+  click(screen.getByTestId("onboarding-role-founder"));
+  await waitFor(() => {
+    expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+  });
   click(screen.getByText("Next"));
 
   await waitFor(() => {
