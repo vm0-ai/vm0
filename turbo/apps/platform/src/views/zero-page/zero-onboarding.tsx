@@ -22,8 +22,6 @@ import {
   setZeroWorkspaceName$,
   zeroSelectedRole$,
   setZeroRole$,
-  trialGalleryIndex$,
-  setTrialGalleryIndex$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -531,63 +529,41 @@ const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
 ];
 
 function OnboardingTrialPanel() {
-  const rawIndex = useGet(trialGalleryIndex$);
-  const setIndex = useSet(setTrialGalleryIndex$);
-  const activeIndex =
-    ((rawIndex % TRIAL_GALLERY_ITEMS.length) + TRIAL_GALLERY_ITEMS.length) %
-    TRIAL_GALLERY_ITEMS.length;
-  const activeItem = TRIAL_GALLERY_ITEMS[activeIndex];
-
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="w-full max-w-[380px] flex flex-col items-center"
+      className="w-full max-w-[420px] flex flex-col"
     >
-      <p className="text-[11px] font-medium text-muted-foreground mb-4">
+      <p className="text-[11px] font-medium text-muted-foreground mb-5">
         Made with Zero
       </p>
-      <div className="w-full aspect-[4/5] zero-border rounded-2xl overflow-hidden bg-background shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)]">
-        <img
-          src={activeItem.image}
-          alt={`${activeItem.label} preview`}
-          className="h-full w-full object-cover object-top"
-        />
-      </div>
-      <div className="mt-6 flex flex-col items-center text-center max-w-[320px]">
-        <span className="zero-badge rounded-full px-2.5 py-0.5 text-[11px] font-medium text-foreground">
-          {activeItem.label}
-        </span>
-        <h3 className="mt-3 text-base font-semibold text-foreground leading-snug">
-          {activeItem.title}
-        </h3>
-        <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
-          {activeItem.subtitle}
-        </p>
-      </div>
-      <div className="mt-6 flex items-center gap-2.5">
-        {TRIAL_GALLERY_ITEMS.map((item, i) => {
-          const isActive = i === activeIndex;
+      <div className="flex flex-col gap-3">
+        {TRIAL_GALLERY_ITEMS.map((item) => {
           return (
-            <button
+            <div
               key={item.id}
-              type="button"
-              aria-label={`Show ${item.label} preview`}
-              data-testid={`onboarding-trial-gallery-dot-${item.id}`}
-              onClick={() => {
-                setIndex(i);
-              }}
-              className={`relative h-10 w-10 rounded-lg overflow-hidden transition-all ${
-                isActive
-                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "opacity-50 hover:opacity-100"
-              }`}
+              data-testid={`onboarding-trial-gallery-item-${item.id}`}
+              className="flex items-center gap-4 zero-border rounded-xl p-3 bg-background"
             >
-              <img
-                src={item.image}
-                alt=""
-                className="h-full w-full object-cover object-top"
-              />
-            </button>
+              <div className="shrink-0 h-[96px] w-[140px] rounded-lg overflow-hidden zero-border bg-background">
+                <img
+                  src={item.image}
+                  alt={`${item.label} preview`}
+                  className="h-full w-full object-cover object-top"
+                />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  {item.label}
+                </span>
+                <h3 className="mt-0.5 text-sm font-semibold text-foreground leading-snug">
+                  {item.title}
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground leading-snug">
+                  {item.subtitle}
+                </p>
+              </div>
+            </div>
           );
         })}
       </div>
