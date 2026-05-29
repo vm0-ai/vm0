@@ -60,7 +60,7 @@ import {
   hasConnectorDeviceAuthGrantProvider,
   getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
-  refreshConnectorOAuthToken,
+  refreshConnectorAccessToken,
   revokeConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
 } from "../auth-providers/connector-auth";
@@ -479,12 +479,12 @@ describe("connector grant provider capability checks", () => {
     }
 
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAccessToken({
         type: "github",
         oauthClient,
         refreshToken: "refresh-token",
       }),
-    ).rejects.toThrow("github OAuth provider does not support refresh");
+    ).rejects.toThrow("github connector does not support token refresh");
   });
 
   it("revokes OAuth tokens through the provider registry", async () => {
@@ -973,7 +973,7 @@ describe("connector grant provider capability checks", () => {
     });
 
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAccessToken({
         type: "base44",
         oauthClient,
         refreshToken: "base44-refresh-rotation",
@@ -984,7 +984,7 @@ describe("connector grant provider capability checks", () => {
       expiresIn: 3600,
     });
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAccessToken({
         type: "base44",
         oauthClient,
         refreshToken: "base44-refresh-without-rotation",
@@ -1305,7 +1305,7 @@ describe("connector grant provider capability checks", () => {
       },
     });
 
-    const refreshResult = await refreshConnectorOAuthToken({
+    const refreshResult = await refreshConnectorAccessToken({
       type: "slock",
       oauthClient,
       refreshToken: "slock-refresh-token",
@@ -1324,7 +1324,7 @@ describe("connector grant provider capability checks", () => {
     );
 
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAccessToken({
         type: "slock",
         oauthClient,
         refreshToken: "slock-refresh-malformed",

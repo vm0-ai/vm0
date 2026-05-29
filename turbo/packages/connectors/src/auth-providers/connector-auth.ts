@@ -219,7 +219,7 @@ const DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS: DeviceAuthConnectorOAuthProviderMap
     "test-oauth-device": testOauthDeviceProvider,
   };
 
-export function hasConnectorOAuthProvider(
+function hasConnectorAuthorizationGrantProvider(
   type: string,
 ): type is OAuthGrantConnectorType {
   return (
@@ -334,7 +334,7 @@ export async function pollConnectorOAuthDeviceAuth<
   } as ConnectorOAuthDeviceAuthPollArgs<T>);
 }
 
-export async function refreshConnectorOAuthToken<
+async function refreshConnectorProviderAccessToken<
   T extends OAuthGrantConnectorType,
 >(args: {
   readonly type: T;
@@ -345,7 +345,7 @@ export async function refreshConnectorOAuthToken<
 
   switch (access.kind) {
     case "none":
-      throw new Error(`${args.type} OAuth provider does not support refresh`);
+      throw new Error(`${args.type} connector does not support token refresh`);
 
     case "refresh-token":
       return await access.refreshToken({
@@ -360,12 +360,12 @@ export async function refreshConnectorAccessToken(args: {
   readonly oauthClient: ConnectorOAuthClient;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  if (!hasConnectorOAuthProvider(args.type)) {
+  if (!hasConnectorAuthorizationGrantProvider(args.type)) {
     throw new Error(
-      `${args.type} connector does not have a refresh-token access provider`,
+      `${args.type} connector does not have an authorization grant provider`,
     );
   }
-  return await refreshConnectorOAuthToken({
+  return await refreshConnectorProviderAccessToken({
     type: args.type,
     oauthClient: args.oauthClient,
     refreshToken: args.refreshToken,
