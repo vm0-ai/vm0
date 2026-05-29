@@ -66,7 +66,15 @@ def _normalize_registry_vms(raw_registry: object) -> tuple[dict, int]:
 
 
 def load_registry(registry_path: str) -> dict:
-    """Load the proxy registry from file, with stat-based cache invalidation."""
+    """Load the proxy registry, reusing cached data when possible.
+
+    The registry is reloaded only when file stat metadata changes. If stat
+    fails, or if reading/parsing/normalizing/compiling the changed file fails,
+    the last valid registry cache is returned and the failure is warning-logged
+    once until a successful reload clears the error state. A successful reload
+    also evicts firewall-auth cache entries for run IDs no longer present in
+    the registry.
+    """
     global _registry_cache, _registry_compiled_cache, _registry_compiled_policy_cache
     global _registry_cache_key
     global _registry_load_error_logged
