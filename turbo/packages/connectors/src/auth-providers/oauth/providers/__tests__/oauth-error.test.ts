@@ -102,6 +102,28 @@ describe("throwOAuthError", () => {
     });
   });
 
+  it.each(["server_error", "temporarily_unavailable"])(
+    "classifies OAuth %s as retryable upstream auth unavailable",
+    async (oauthError) => {
+      const response = makeResponse(400, JSON.stringify({ error: oauthError }));
+
+      const error = await throwOAuthError("Slack", "refresh", response).catch(
+        (e: unknown) => {
+          return e;
+        },
+      );
+
+      expect(error).toMatchObject({
+        provider: "Slack",
+        operation: "refresh",
+        failureClass: "upstream_auth_unavailable",
+        retryable: true,
+        upstreamStatus: 400,
+        oauthError,
+      });
+    },
+  );
+
   it("handles empty response body", async () => {
     const response = makeResponse(502, "");
 

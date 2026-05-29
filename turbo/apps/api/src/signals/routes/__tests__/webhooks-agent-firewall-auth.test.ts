@@ -2395,17 +2395,40 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
   });
 
   it.each([
-    { status: 502, description: "provider 502" },
-    { status: 429, description: "provider 429" },
+    {
+      description: "provider 502",
+      status: 502,
+      tokenResponse: () => {
+        return HttpResponse.text("temporarily unavailable", { status: 502 });
+      },
+    },
+    {
+      description: "provider 429",
+      status: 429,
+      tokenResponse: () => {
+        return HttpResponse.text("temporarily unavailable", { status: 429 });
+      },
+    },
+    {
+      description: "OAuth temporarily_unavailable",
+      status: 400,
+      tokenResponse: () => {
+        return HttpResponse.json(
+          {
+            error: "temporarily_unavailable",
+            error_description: "provider maintenance",
+          },
+          { status: 400 },
+        );
+      },
+    },
   ])(
     "returns upstream-auth-unavailable and leaves reconnect unchanged on $description",
-    async ({ status }) => {
+    async ({ status, tokenResponse }) => {
       const fixture = await track(seedFixture());
       await seedExpiredNotionConnector(fixture);
       server.use(
-        http.post("https://api.notion.com/v1/oauth/token", () => {
-          return HttpResponse.text("temporarily unavailable", { status });
-        }),
+        http.post("https://api.notion.com/v1/oauth/token", tokenResponse),
       );
 
       const response = await accept(

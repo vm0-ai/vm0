@@ -48,11 +48,23 @@ function isReconnectRequiredOAuthError(
   return oauthError === "invalid_grant" || oauthError === "invalid_token";
 }
 
+function isUpstreamUnavailableOAuthError(
+  oauthError: string | undefined,
+): boolean {
+  return (
+    oauthError === "server_error" || oauthError === "temporarily_unavailable"
+  );
+}
+
 function classifyOAuthHttpFailure(
   status: number,
   oauthError: string | undefined,
 ): OAuthFailureClass {
-  if (status === 429 || status >= 500) {
+  if (
+    status === 429 ||
+    status >= 500 ||
+    isUpstreamUnavailableOAuthError(oauthError)
+  ) {
     return "upstream_auth_unavailable";
   }
   if (isReconnectRequiredOAuthError(oauthError)) {
