@@ -56,6 +56,22 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret"
 
+    def test_base_unicode_host_normalized_for_forwarding(self):
+        url = url_utils.build_rewrite_url(
+            "https://bücher.example:8443/hook",
+            "/sub",
+            "",
+        )
+        assert url == "https://xn--bcher-kva.example:8443/hook/sub"
+
+    def test_base_percent_encoded_host_normalized_for_forwarding(self):
+        url = url_utils.build_rewrite_url(
+            "https://b%C3%BCcher.example/hook",
+            "/sub",
+            "",
+        )
+        assert url == "https://xn--bcher-kva.example/hook/sub"
+
     @pytest.mark.parametrize(
         ("base", "message"),
         [
@@ -68,6 +84,10 @@ class TestBuildRewriteUrl:
             ("https://exa mple.com/hook", "whitespace"),
             ("https://example.com:99999/hook", "Port out of range"),
             ("https://[::1/hook", "Invalid IPv6 URL"),
+            ("https://example%2ecom/hook", "unsafe percent encoding"),
+            ("https://example%2ccom/hook", "unsafe percent encoding"),
+            ("https://%7bparam%7d.example/hook", "unsafe percent encoding"),
+            ("https://example%zz.com/hook", "invalid percent encoding"),
         ],
     )
     def test_invalid_resolved_base_rejected(self, base, message):

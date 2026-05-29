@@ -21,7 +21,11 @@ _IPV6_VERSION = 6
 _MAX_PORT = 65535
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
+_PERCENT_ESCAPE_LENGTH = 3
 _FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+_PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
+_RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _VALID_REWRITE_SCHEMES = frozenset(("http", "https"))
 
 
@@ -383,10 +387,7 @@ def _strip_optional_terminal_slash(path: str) -> str:
 
 
 def _has_raw_whitespace(value: str) -> bool:
-    return any(
-        char.isspace() or ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
-        for char in value
-    )
+    return any(char in _RAW_WHITESPACE_CHARS for char in value)
 
 
 def _merge_rewrite_query(
@@ -406,7 +407,36 @@ def _merge_rewrite_query(
     return _join_query_sources(filtered_base_pairs, filtered_orig_pairs, auth_pairs)
 
 
-def _validated_rewrite_base(resolved_base: str) -> urllib.parse.SplitResult:
+def _percent_decode_host(host: str) -> str:
+    if "%" not in host:
+        return host
+
+    index = host.find("%")
+    while index != -1:
+        run_end = index
+        while run_end < len(host) and host[run_end] == "%":
+            hex_start = run_end + 1
+            hex_end = hex_start + 2
+            hex_value = host[hex_start:hex_end]
+            if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
+                raise ValueError("Invalid auth.base URL: host has invalid percent encoding")
+            run_end += _PERCENT_ESCAPE_LENGTH
+
+        try:
+            decoded_run = urllib.parse.unquote_to_bytes(host[index:run_end]).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Invalid auth.base URL: host has invalid percent encoding") from exc
+        if any(char in _PERCENT_DECODED_HOST_SYNTAX_CHARS for char in decoded_run):
+            raise ValueError("Invalid auth.base URL: host has unsafe percent encoding")
+        index = host.find("%", run_end)
+
+    try:
+        return urllib.parse.unquote_to_bytes(host).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Invalid auth.base URL: host has invalid percent encoding") from exc
+
+
+def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
     if "\\" in resolved_base:
         raise ValueError("Invalid auth.base URL: must not contain backslash")
     if _has_raw_whitespace(resolved_base):
@@ -425,15 +455,19 @@ def _validated_rewrite_base(resolved_base: str) -> urllib.parse.SplitResult:
     host = parsed.hostname
     if not host:
         raise ValueError("Invalid auth.base URL: missing host")
+    decoded_host = _percent_decode_host(host)
     try:
-        _normalize_hostname(host)
+        normalized_host = _normalize_hostname(decoded_host)
     except (UnicodeError, ValueError) as exc:
         raise ValueError("Invalid auth.base URL: invalid host") from exc
     try:
-        _ = parsed.port
+        port = parsed.port
     except ValueError as exc:
         raise ValueError(str(exc)) from exc
-    return parsed
+    authority = _format_url_host(normalized_host)
+    if port is not None:
+        authority = f"{authority}:{port}"
+    return parsed, authority
 
 
 def build_rewrite_url(
@@ -455,7 +489,7 @@ def build_rewrite_url(
     if has_unsafe_dot_segment(rel_path):
         raise ValueError("Unsafe rewrite path: dot segments are not allowed")
 
-    base_parsed = _validated_rewrite_base(resolved_base)
+    base_parsed, base_authority = _validated_rewrite_base(resolved_base)
 
     # Append rel_path to the base path portion
     base_path = (
@@ -466,6 +500,4 @@ def build_rewrite_url(
 
     merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)
 
-    return urllib.parse.urlunsplit(
-        (base_parsed.scheme, base_parsed.netloc, base_path, merged_qs, "")
-    )
+    return urllib.parse.urlunsplit((base_parsed.scheme, base_authority, base_path, merged_qs, ""))
