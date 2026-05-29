@@ -1,12 +1,14 @@
 import {
+  getConnectorAuthMethodIdForGrantKind,
   getConnectorOAuthClient,
   hasConnectorAuthCodeGrant,
   type ConnectorEnvReader,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type {
-  ConnectorType,
   AuthCodeGrantConnectorType,
+  ConnectorAuthMethodId,
+  ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorOAuthAuthUrl,
@@ -31,6 +33,7 @@ type ResolveConnectorAuthCodeStartTypeResult =
   | {
       readonly ok: true;
       readonly type: AuthCodeGrantConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
     }
   | {
       readonly ok: false;
@@ -47,7 +50,11 @@ export function resolveConnectorAuthCodeStartType(
   if (!hasConnectorAuthCodeGrant(type)) {
     return { ok: false, reason: "missing_auth_code_grant" };
   }
-  return { ok: true, type };
+  const authMethod = getConnectorAuthMethodIdForGrantKind(type, "auth-code");
+  if (!authMethod) {
+    throw new Error(`${type} connector has no auth-code auth method`);
+  }
+  return { ok: true, type, authMethod };
 }
 
 // Prepare only synchronous auth-code start data. Callers must resolve the route's

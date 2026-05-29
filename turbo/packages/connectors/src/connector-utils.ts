@@ -74,6 +74,18 @@ export function getConnectorAuthMethod(
   return undefined;
 }
 
+export function getConnectorAuthMethodIdForGrantKind(
+  type: ConnectorType,
+  grantKind: ConnectorGrantKind,
+): ConnectorAuthMethodId | undefined {
+  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === grantKind) {
+      return authMethod;
+    }
+  }
+  return undefined;
+}
+
 function connectorAuthMethodValues(
   type: ConnectorType,
 ): ConnectorAuthMethodConfig[] {

@@ -29,6 +29,7 @@ import {
   connectorAuthMethodHasGrantKind,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodGrantScopes,
+  getConnectorAuthMethodIdForGrantKind,
   getConnectorAuthMethodScopeDiff,
   getConfiguredConnectorAuthMethods,
   hasRequiredScopes,
@@ -262,6 +263,19 @@ describe("hasRequiredScopes", () => {
   });
 
   it("checks required scopes from the selected auth method grant", () => {
+    expect(getConnectorAuthMethodIdForGrantKind("github", "auth-code")).toBe(
+      "oauth",
+    );
+    expect(
+      getConnectorAuthMethodIdForGrantKind("test-oauth-device", "device-auth"),
+    ).toBe("oauth");
+    expect(getConnectorAuthMethodIdForGrantKind("stripe", "manual")).toBe(
+      "api-token",
+    );
+    expect(
+      getConnectorAuthMethodIdForGrantKind("github", "manual"),
+    ).toBeUndefined();
+
     expect(
       connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
     ).toBe(true);

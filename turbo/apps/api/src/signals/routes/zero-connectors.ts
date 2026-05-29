@@ -373,7 +373,12 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(authCodeStartType.type, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        authCodeStartType.type,
+        authCodeStartType.authMethod,
+      )
+    ) {
       return jsonResponse({ error: `${type} connector is not available` }, 403);
     }
 
@@ -438,7 +443,12 @@ const startConnectorOauthInner$ = command(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(authCodeStartType.type, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        authCodeStartType.type,
+        authCodeStartType.authMethod,
+      )
+    ) {
       return connectorUnavailable(type);
     }
 
