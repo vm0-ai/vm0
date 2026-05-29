@@ -2892,6 +2892,13 @@
       "when": 1780049375925,
       "tag": "0412_nifty_gertrude_yorkes",
       "breakpoints": true
+    },
+    {
+      "idx": 413,
+      "version": "7",
+      "when": 1780054787507,
+      "tag": "0413_remove_schedule_model_fields",
+      "breakpoints": true
     }
   ]
 }

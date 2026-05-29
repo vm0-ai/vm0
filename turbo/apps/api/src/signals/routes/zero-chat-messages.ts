@@ -5,17 +5,14 @@ import {
   chatMessagesContract,
   type AttachFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -26,7 +23,6 @@ import {
   inArray,
   isNotNull,
   isNull,
-  or,
   sql,
 } from "drizzle-orm";
 import type { z } from "zod";
@@ -51,12 +47,19 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
-import { ensureOrgModelPolicies } from "../services/zero-model-policy.service";
 import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
 } from "../services/zero-chat-title.service";
-import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+  type ModelFirstPin,
+  modelOnlyModelFirstPin,
+  modelProviderPinAvailable,
+  resolveDefaultModelFirstPin,
+  resolveModelFirstProviderAdmission,
+  resolveModelSelectionPin,
+} from "../services/zero-model-selection.service";
 import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
@@ -106,30 +109,7 @@ interface AgentForChatSend {
   readonly visibility: "public" | "private";
 }
 
-interface ThreadModelPin {
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
-  readonly selectedModel: string | null;
-}
-
-function parseModelProviderCredentialScope(
-  value: string | null,
-): ModelProviderCredentialScope | null {
-  if (value === null || value === "org" || value === "member") {
-    return value;
-  }
-  throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
-function modelOnlyThreadPin(selectedModel: string | null): ThreadModelPin {
-  return {
-    modelProviderId: null,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel,
-  };
-}
+type ThreadModelPin = ModelFirstPin;
 
 interface ResolvedThread {
   readonly threadId: string;
@@ -223,9 +203,6 @@ const sendBody$ = bodyResultOf(chatMessagesContract.send);
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
-const ORG_SENTINEL_USER_ID = "__org__";
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 
 function forbidden(message: string) {
@@ -729,67 +706,6 @@ async function activeRunExistsForThread(
   return run !== undefined;
 }
 
-async function defaultModelFirstPin(
-  db: Db,
-  orgId: string,
-  userId: string,
-): Promise<ThreadModelPin> {
-  const [preference] = await db
-    .select({ selectedModel: orgMembersMetadata.selectedModel })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  const preferredModel = preference?.selectedModel ?? null;
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      preferredModel
-        ? and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.model, preferredModel),
-          )
-        : and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.isDefault, true),
-          ),
-    )
-    .limit(1);
-
-  if (!policy && preferredModel) {
-    return defaultModelFirstPin(db, orgId, "__no_preference__");
-  }
-
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: null,
-    };
-  }
-
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
-  };
-}
-
 async function getStoredThreadModelPin(
   db: Db,
   threadId: string,
@@ -802,30 +718,7 @@ async function getStoredThreadModelPin(
   if (!thread?.selectedModel) {
     return null;
   }
-  return modelOnlyThreadPin(thread.selectedModel);
-}
-
-async function modelProviderPinAvailable(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelProviderId: string;
-}): Promise<boolean> {
-  const [provider] = await params.db
-    .select({ id: modelProviders.id })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, params.modelProviderId),
-        eq(modelProviders.orgId, params.orgId),
-        or(
-          eq(modelProviders.userId, params.userId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
-      ),
-    )
-    .limit(1);
-  return provider !== undefined;
+  return modelOnlyModelFirstPin(thread.selectedModel);
 }
 
 async function getFirstRunModelPin(
@@ -849,7 +742,7 @@ async function getFirstRunModelPin(
   if (!run?.selectedModel) {
     return null;
   }
-  return modelOnlyThreadPin(run.selectedModel);
+  return modelOnlyModelFirstPin(run.selectedModel);
 }
 
 async function existingModelFirstThreadPin(
@@ -868,65 +761,6 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
     modelProviderType: null,
     modelProviderCredentialScope: null,
     selectedModel: null,
-  };
-}
-
-async function resolveModelSelectionPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelSelection: NonNullable<IncomingModelSelection>;
-}): Promise<ThreadModelPin | ReturnType<typeof badRequestMessage>> {
-  const { db, orgId, userId, modelSelection } = params;
-  if (modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID) {
-    const available = await modelProviderPinAvailable({
-      db,
-      orgId,
-      userId,
-      modelProviderId: modelSelection.modelProviderId,
-    });
-    if (!available) {
-      return badRequestMessage("Unknown model provider for this workspace");
-    }
-    return {
-      modelProviderId: modelSelection.modelProviderId,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelSelection.selectedModel,
-    };
-  }
-
-  await ensureOrgModelPolicies(db, orgId, userId);
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      and(
-        eq(orgModelPolicies.orgId, orgId),
-        eq(orgModelPolicies.model, modelSelection.selectedModel),
-      ),
-    )
-    .limit(1);
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelSelection.selectedModel,
-    };
-  }
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
   };
 }
 
@@ -979,7 +813,10 @@ async function persistThreadPinIfUnset(
   }
   await db
     .update(chatThreads)
-    .set({ ...modelOnlyThreadPin(pin.selectedModel), updatedAt: nowDate() })
+    .set({
+      ...modelOnlyModelFirstPin(pin.selectedModel),
+      updatedAt: nowDate(),
+    })
     .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
     .returning({ selectedModel: chatThreads.selectedModel });
   return pin;
@@ -1020,7 +857,7 @@ async function resolveRunModelPin(params: {
         userId: params.userId,
         modelSelection: params.modelSelection,
       })
-    : await defaultModelFirstPin(params.db, params.orgId, params.userId);
+    : await resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
   if ("status" in pin) {
     return pin;
   }
@@ -1861,58 +1698,6 @@ function scheduleCreatedChatRunSideEffects(params: {
   });
 }
 
-async function resolveEffectiveModelProviderType(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelPin: ThreadModelPin;
-  readonly requestedModelProvider: string | undefined;
-}): Promise<string | null | undefined> {
-  if (params.modelPin.modelProviderType) {
-    return params.modelPin.modelProviderType;
-  }
-  if (!params.modelPin.modelProviderId) {
-    return params.requestedModelProvider;
-  }
-
-  const [provider] = await params.db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, params.modelPin.modelProviderId),
-        eq(modelProviders.orgId, params.orgId),
-        or(
-          eq(modelProviders.userId, params.userId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
-      ),
-    )
-    .limit(1);
-
-  return provider?.type ?? params.requestedModelProvider;
-}
-
-async function resolveProviderAdmission(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelPin: ThreadModelPin;
-  readonly requestedModelProvider: string | undefined;
-}): Promise<{
-  readonly effectiveModelProvider: string | null | undefined;
-  readonly error: Awaited<ReturnType<typeof checkOrgCreditsForRunAdmission>>;
-}> {
-  const effectiveModelProvider =
-    await resolveEffectiveModelProviderType(params);
-  const error = await checkOrgCreditsForRunAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    modelProviderType: effectiveModelProvider,
-  });
-  return { effectiveModelProvider, error };
-}
-
 async function buildInsufficientCreditsAssistantMessage(params: {
   readonly db: Db;
   readonly orgId: string;
@@ -2041,7 +1826,7 @@ const createNormalChatRun$ = command(
       args.body.modelProvider && args.body.modelProvider !== "default"
         ? args.body.modelProvider
         : undefined;
-    const providerAdmission = await resolveProviderAdmission({
+    const providerAdmission = await resolveModelFirstProviderAdmission({
       db: prepared.db,
       orgId: args.orgId,
       userId: args.userId,

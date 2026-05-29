@@ -31,9 +31,6 @@ export const scheduleResponseSchema = z.object({
   consecutiveFailures: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  modelProviderId: z.string().uuid().nullable().default(null),
-  selectedModel: z.string().nullable().default(null),
-  preferPersonalProvider: z.boolean().default(false),
 });
 
 export const scheduleListResponseSchema = z.object({

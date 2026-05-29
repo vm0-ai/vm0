@@ -362,9 +362,6 @@ export interface OrgScheduleEntry {
   displayName: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
-  modelProviderId: string | null;
-  selectedModel: string | null;
-  preferPersonalProvider: boolean;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -395,9 +392,6 @@ export const allOrgScheduleEntries$ = computed((get) => {
         displayName: s.displayName,
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
-        modelProviderId: s.modelProviderId,
-        selectedModel: s.selectedModel,
-        preferPersonalProvider: s.preferPersonalProvider,
       };
     });
 });

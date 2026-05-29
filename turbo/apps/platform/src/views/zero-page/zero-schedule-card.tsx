@@ -238,8 +238,6 @@ interface ZeroScheduleCardProps {
     dayOfWeek?: string;
     dayOfMonth?: string;
     editName?: string;
-    modelProviderId?: string | null;
-    selectedModel?: string | null;
   }) => Promise<void>;
   /** When provided, called to delete a schedule by name. */
   onDelete?: (name: string) => Promise<void>;
@@ -316,9 +314,6 @@ export function ZeroScheduleCard({
           loopMinutes: parsed.loopMinutes,
           dayOfWeek: "1",
           dayOfMonth: "1",
-          modelProviderId: null,
-          selectedModel: null,
-          preferPersonalProvider: false,
         },
         signal,
       ),

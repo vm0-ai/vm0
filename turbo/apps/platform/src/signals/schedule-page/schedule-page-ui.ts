@@ -50,8 +50,6 @@ export const openCreateScheduleDialog$ = command(
       ...defaults,
       timezone: prefs?.timezone ?? defaults.timezone,
       agentId,
-      modelProviderId: null,
-      selectedModel: null,
     });
     set(internalCreateDialogOpen$, true);
   },
