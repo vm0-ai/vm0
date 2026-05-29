@@ -21,6 +21,23 @@ const VALID_RULE_METHODS = new Set([
   "ANY",
 ]);
 
+function hasRawWhitespace(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]!;
+    if (
+      char === " " ||
+      char === "\t" ||
+      char === "\n" ||
+      char === "\r" ||
+      char === "\f" ||
+      char === "\v"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validatePathSegments(
   path: string,
   rule: string,
@@ -30,6 +47,11 @@ function validatePathSegments(
   if (!path.startsWith("/")) {
     throw new Error(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must start with "/"`,
+    );
+  }
+  if (hasRawWhitespace(path)) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain whitespace`,
     );
   }
   if (path.includes("?") || path.includes("#")) {

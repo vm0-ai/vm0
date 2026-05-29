@@ -390,6 +390,15 @@ describe("validateRule", () => {
     }).toThrow('path must start with "/"');
   });
 
+  it("should reject path with raw whitespace", () => {
+    expect(() => {
+      return validateRule("GET /pa th", "read", "github");
+    }).toThrow("path must not contain whitespace");
+    expect(() => {
+      return validateRule("GET /pa\tth", "read", "github");
+    }).toThrow("path must not contain whitespace");
+  });
+
   it("should reject {param+} not in last segment", () => {
     expect(() => {
       return validateRule("GET /foo/{path+}/bar", "read", "github");
@@ -472,7 +481,7 @@ describe("validateBaseUrl", () => {
   it("falls back to the generic message when scheme is present but URL is malformed", () => {
     expect(() => {
       return validateBaseUrl("https://exa mple.com", "fw");
-    }).toThrow("not a valid URL");
+    }).toThrow("must not contain whitespace");
   });
 
   it("should reject URLs with query string", () => {
@@ -592,6 +601,18 @@ describe("validateBaseUrl", () => {
     }).toThrow("must not contain fragment");
   });
 
+  it("should reject raw whitespace before URL parser normalization", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa th", "fw");
+    }).toThrow("must not contain whitespace");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\tth", "fw");
+    }).toThrow("must not contain whitespace");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com/pa th", "fw");
+    }).toThrow("must not contain whitespace");
+  });
+
   it("should reject backslash before URL parser normalization", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com\\v1", "fw");
@@ -707,6 +728,26 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("{proto}://api.example.com", "fw");
     }).toThrow("scheme must not contain parameters");
+  });
+
+  it("should reject resolved template base URLs with raw whitespace", () => {
+    const firewalls = [
+      {
+        name: "fw",
+        apis: [
+          {
+            base: "https://${{ vars.API_HOST }}/pa th",
+            auth: { headers: {} },
+          },
+        ],
+      },
+    ];
+
+    expect(() => {
+      return resolveFirewallBaseUrlVars(firewalls, {
+        API_HOST: "api.example.com",
+      });
+    }).toThrow("must not contain whitespace");
   });
 
   it("should accept mixed {param}{literal} segment in host", () => {
@@ -860,7 +901,7 @@ describe("resolveFirewallBaseUrlVars", () => {
       return resolveFirewallBaseUrlVars([zendeskFirewall], {
         ZENDESK_SUBDOMAIN: "bad value with spaces",
       });
-    }).toThrow("not a valid URL");
+    }).toThrow("must not contain whitespace");
   });
 
   it("preserves auth headers unchanged", () => {

@@ -761,6 +761,23 @@ function isAscii(value: string): boolean {
   return true;
 }
 
+function hasRawWhitespace(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]!;
+    if (
+      char === " " ||
+      char === "\t" ||
+      char === "\n" ||
+      char === "\r" ||
+      char === "\f" ||
+      char === "\v"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function validateHostPercentEncoding(
   host: string,
   base: string,
@@ -1087,6 +1104,12 @@ export function validateBaseUrl(base: string, serviceName: string): void {
 
   // Template base URLs are validated after variable resolution at compose time.
   if (hasBaseUrlVars(base)) return;
+
+  if (hasRawWhitespace(base)) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
 
   // Parameterized base URLs have their own validation path.
   if (hasBaseUrlParams(base)) {
