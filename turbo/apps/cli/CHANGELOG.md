@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.177.0](https://github.com/vm0-ai/vm0/compare/cli-v9.176.5...cli-v9.177.0) (2026-05-29)
+
+
+### Features
+
+* **cli:** add zero generate sprite command ([#15408](https://github.com/vm0-ai/vm0/issues/15408)) ([9e9479d](https://github.com/vm0-ai/vm0/commit/9e9479d69efb27c1154b5ce35a749be411a6df24))
+
 ## [9.176.5](https://github.com/vm0-ai/vm0/compare/cli-v9.176.4...cli-v9.176.5) (2026-05-29)
 
 
