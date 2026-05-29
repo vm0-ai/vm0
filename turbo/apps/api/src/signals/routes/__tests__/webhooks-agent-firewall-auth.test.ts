@@ -1538,6 +1538,11 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const firstResponsePromise = refreshRequest();
     await firstRefreshStarted.promise;
     const secondResponsePromise = refreshRequest();
+    await waitForConnectorStateLockWaiter({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorType: "notion",
+    });
     firstRefreshRelease.resolve();
 
     const responses = await Promise.all([

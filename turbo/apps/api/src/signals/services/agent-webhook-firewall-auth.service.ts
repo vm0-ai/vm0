@@ -887,12 +887,15 @@ function didLockedRefreshFailDuringRequest(args: {
   if (!args.state.needsReconnect) {
     return false;
   }
-  if (args.initialState && !args.initialState.needsReconnect) {
-    return true;
+  if (args.initialState) {
+    return (
+      !args.initialState.needsReconnect ||
+      args.initialState.updatedAtMicros !== args.state.updatedAtMicros
+    );
   }
   return (
     args.requestStartedAtMicros !== null &&
-    args.state.updatedAtMicros >= args.requestStartedAtMicros
+    args.state.updatedAtMicros > args.requestStartedAtMicros
   );
 }
 
