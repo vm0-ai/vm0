@@ -42,7 +42,6 @@ const creditCheckoutAuthed$ = command(
       return bodyResult.response;
     }
     const { credits, successUrl, cancelUrl, autoRecharge } = bodyResult.data;
-    const customAmount = bodyResult.data.customAmount === true;
 
     const appOrigin = new URL(env("APP_URL")).origin;
     if (
@@ -54,7 +53,7 @@ const creditCheckoutAuthed$ = command(
       );
     }
 
-    if (customAmount && !activeCustomCreditPriceId()) {
+    if (!activeCustomCreditPriceId()) {
       return badRequestMessage("Custom credit price not configured");
     }
 
@@ -93,7 +92,6 @@ const creditCheckoutAuthed$ = command(
       {
         orgId: auth.orgId,
         credits,
-        customAmount,
         successUrl,
         cancelUrl,
       },

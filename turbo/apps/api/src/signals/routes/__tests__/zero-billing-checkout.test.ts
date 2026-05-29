@@ -601,6 +601,22 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     return fixture;
   }
 
+  function mockCustomCreditCheckoutPrice(checkoutPriceId: string): void {
+    context.mocks.stripe.prices.retrieve.mockResolvedValue({
+      id: TEST_PRICE_CUSTOM_CREDITS,
+      currency: "usd",
+      product: "prod_test_custom_credits",
+      custom_unit_amount: {
+        minimum: 100,
+        maximum: 1_000_000,
+        preset: 10_000,
+      },
+    });
+    context.mocks.stripe.prices.create.mockResolvedValue({
+      id: checkoutPriceId,
+    });
+  }
+
   it("returns 403 for non-admin org member", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -659,7 +675,9 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const checkoutPriceId = "price_test_credit_checkout";
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    mockCustomCreditCheckoutPrice(checkoutPriceId);
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/credit",
     });
@@ -681,25 +699,30 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     expect(response.body).toStrictEqual({
       url: "https://checkout.stripe.com/session/credit",
     });
+    expect(context.mocks.stripe.prices.retrieve).toHaveBeenCalledWith(
+      TEST_PRICE_CUSTOM_CREDITS,
+    );
+    expect(context.mocks.stripe.prices.create).toHaveBeenCalledWith({
+      currency: "usd",
+      product: "prod_test_custom_credits",
+      custom_unit_amount: {
+        enabled: true,
+        minimum: 100,
+        maximum: 1_000_000,
+        preset: 2000,
+      },
+    });
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "payment",
         customer: customerId,
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              unit_amount: 2000,
-              product_data: { name: "20,000 Zero credits" },
-            },
-            quantity: 1,
-          },
-        ],
+        line_items: [{ price: checkoutPriceId, quantity: 1 }],
         allow_promotion_codes: true,
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
-          creditsAmount: "20000",
+          creditsAmountMode: "amount_subtotal",
+          requestedCreditsAmount: "20000",
         },
       }),
     );
@@ -715,6 +738,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
 
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    mockCustomCreditCheckoutPrice("price_test_zero_credit_checkout");
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/zero-credit",
     });
@@ -756,15 +780,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const checkoutPriceId = "price_test_custom_checkout";
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
-    context.mocks.stripe.prices.retrieve.mockResolvedValue({
-      id: TEST_PRICE_CUSTOM_CREDITS,
-      currency: "usd",
-      product: "prod_test_custom_credits",
-      custom_unit_amount: { minimum: 100, maximum: 1_000_000, preset: 10_000 },
-    });
-    context.mocks.stripe.prices.create.mockResolvedValue({
-      id: checkoutPriceId,
-    });
+    mockCustomCreditCheckoutPrice(checkoutPriceId);
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/custom-credit",
     });
@@ -826,7 +842,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     );
   });
 
-  it("returns 400 when custom credit price is not configured", async () => {
+  it("returns 400 when credit price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockEnv(
@@ -843,7 +859,6 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       client.create({
         body: {
           credits: 100_000,
-          customAmount: true,
           successUrl: `${APP_ORIGIN}/billing?credit=success`,
           cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
         },
