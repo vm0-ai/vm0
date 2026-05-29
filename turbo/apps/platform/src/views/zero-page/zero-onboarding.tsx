@@ -11,6 +11,9 @@ import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import upsellCrownSrc from "./assets/upsell-crown.webp";
+import trialWorkflowSrc from "./assets/trial-workflow.webp";
+import trialIllustrationSrc from "./assets/trial-illustration.webp";
+import trialWebsiteSrc from "./assets/trial-website.webp";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -56,19 +59,12 @@ import {
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconBriefcase,
-  IconChartLine,
   IconCheck,
   IconCircleCheck,
   IconCircleCheckFilled,
-  IconCode,
   IconLoader,
-  IconMessageCircle,
   IconSearch,
-  IconSettings,
-  IconTarget,
 } from "@tabler/icons-react";
-import type { ComponentType } from "react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
@@ -506,137 +502,31 @@ type TrialGalleryItem = {
   readonly id: string;
   readonly label: string;
   readonly title: string;
-  readonly render: () => React.ReactNode;
+  readonly image: string;
+  readonly imageBg: string;
 };
-
-function UseCasePreview() {
-  return (
-    <div className="zero-border rounded-2xl bg-background overflow-hidden">
-      <div className="h-24 bg-gradient-to-br from-primary/15 via-primary/5 to-muted/40 relative">
-        <div className="absolute bottom-3 left-4 right-4 flex items-center gap-2">
-          <span className="zero-badge rounded-full px-2 py-0.5 text-[10px] text-foreground">
-            Use case
-          </span>
-          <span className="text-[10px] text-muted-foreground">
-            5 min read
-          </span>
-        </div>
-      </div>
-      <div className="px-4 py-4 flex flex-col gap-2.5">
-        <p className="text-[13px] font-semibold text-foreground leading-snug">
-          How a 5-person startup ships their weekly newsletter in 20 minutes
-        </p>
-        <div className="flex flex-col gap-1.5 mt-1">
-          <span className="h-1.5 rounded-full bg-muted/60 w-full" />
-          <span className="h-1.5 rounded-full bg-muted/60 w-[92%]" />
-          <span className="h-1.5 rounded-full bg-muted/60 w-[78%]" />
-        </div>
-        <div className="flex items-center gap-2 mt-3">
-          <span className="h-6 w-6 rounded-full bg-muted/60" />
-          <span className="flex flex-col gap-1">
-            <span className="h-1.5 rounded-full bg-muted/60 w-16" />
-            <span className="h-1 rounded-full bg-muted/40 w-10" />
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function IllustrationPreview() {
-  const swatches: readonly string[] = [
-    "bg-primary/20",
-    "bg-emerald-200",
-    "bg-amber-200",
-    "bg-sky-200",
-    "bg-rose-200",
-    "bg-violet-200",
-  ];
-  return (
-    <div className="zero-border rounded-2xl bg-background overflow-hidden">
-      <div className="px-4 pt-4 pb-3 flex items-center justify-between">
-        <span className="text-[11px] font-medium text-foreground">
-          Illustrations
-        </span>
-        <span className="text-[10px] text-muted-foreground">6 styles</span>
-      </div>
-      <div className="px-4 pb-4 grid grid-cols-3 gap-2">
-        {swatches.map((tone) => {
-          return (
-            <div
-              key={tone}
-              className={`relative aspect-square rounded-lg ${tone} overflow-hidden`}
-            >
-              <div className="absolute inset-2 rounded-md bg-foreground/[0.04]" />
-              <div className="absolute bottom-2 left-2 h-2 w-2 rounded-full bg-foreground/30" />
-              <div className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-foreground/20" />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function WebsitePreview() {
-  return (
-    <div className="zero-border rounded-2xl bg-background overflow-hidden">
-      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-muted/30">
-        <span className="h-2 w-2 rounded-full bg-foreground/15" />
-        <span className="h-2 w-2 rounded-full bg-foreground/15" />
-        <span className="h-2 w-2 rounded-full bg-foreground/15" />
-        <span className="ml-2 h-3 flex-1 rounded-full bg-background/80" />
-      </div>
-      <div className="px-4 py-5 flex flex-col items-center gap-2.5">
-        <span className="h-2 w-16 rounded-full bg-muted/60" />
-        <p className="text-[13px] font-semibold text-foreground text-center leading-snug max-w-[200px]">
-          Calm AI for teams that ship.
-        </p>
-        <div className="flex items-center gap-2 mt-1">
-          <span className="h-6 rounded-md bg-primary px-3 flex items-center text-[10px] text-primary-foreground font-medium">
-            Try it free
-          </span>
-          <span className="h-6 rounded-md zero-border px-3 flex items-center text-[10px] text-foreground">
-            See how
-          </span>
-        </div>
-      </div>
-      <div className="px-4 pb-4 grid grid-cols-3 gap-2">
-        {[0, 1, 2].map((i) => {
-          return (
-            <div
-              key={i}
-              className="rounded-lg bg-muted/30 px-2 py-2.5 flex flex-col gap-1.5"
-            >
-              <span className="h-3 w-3 rounded-full bg-primary/40" />
-              <span className="h-1.5 rounded-full bg-muted/60 w-full" />
-              <span className="h-1.5 rounded-full bg-muted/60 w-3/4" />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
   {
-    id: "use-case",
-    label: "Use case",
-    title: "Real workflows your team can pick up today",
-    render: UseCasePreview,
+    id: "workflow",
+    label: "Workflow",
+    title: "Run a workflow across your tools — in Slack or on the web",
+    image: trialWorkflowSrc,
+    imageBg: "bg-gray-50",
+  },
+  {
+    id: "website",
+    label: "Website",
+    title: "Generate a polished landing page from a single brief",
+    image: trialWebsiteSrc,
+    imageBg: "bg-white",
   },
   {
     id: "illustration",
     label: "Illustration",
     title: "Editorial visuals that match your brand",
-    render: IllustrationPreview,
-  },
-  {
-    id: "website",
-    label: "Website",
-    title: "Landing pages, generated in a single prompt",
-    render: WebsitePreview,
+    image: trialIllustrationSrc,
+    imageBg: "bg-background",
   },
 ];
 
@@ -651,13 +541,21 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="w-full max-w-[320px] flex flex-col items-center"
+      className="w-full max-w-[360px] flex flex-col items-center"
     >
-      <div className="w-full">{activeItem.render()}</div>
+      <div
+        className={`w-full h-[340px] zero-border rounded-2xl overflow-hidden flex items-center justify-center ${activeItem.imageBg}`}
+      >
+        <img
+          src={activeItem.image}
+          alt={`${activeItem.label} preview`}
+          className="h-full w-full object-cover object-top"
+        />
+      </div>
       <p className="mt-6 text-xs font-medium text-muted-foreground">
         {activeItem.label}
       </p>
-      <h3 className="mt-2 text-base font-semibold text-foreground text-center leading-snug max-w-[280px]">
+      <h3 className="mt-2 text-base font-semibold text-foreground text-center leading-snug max-w-[300px]">
         {activeItem.title}
       </h3>
       <div className="mt-5 flex items-center gap-1.5">
@@ -1153,51 +1051,19 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
 
 type RoleOption = {
   readonly id: string;
-  readonly title: string;
-  readonly description: string;
-  readonly icon: ComponentType<{ size?: number; stroke?: number }>;
+  readonly label: string;
 };
 
 const ROLE_OPTIONS: readonly RoleOption[] = [
-  {
-    id: "founder",
-    title: "Founder or business owner",
-    description: "I run the business and make decisions",
-    icon: IconBriefcase,
-  },
-  {
-    id: "sales-marketing",
-    title: "Sales and marketing",
-    description: "Lead gen, outreach, content",
-    icon: IconChartLine,
-  },
-  {
-    id: "ops-support",
-    title: "Operations and support",
-    description: "Onboarding, workflows, CS",
-    icon: IconSettings,
-  },
-  {
-    id: "engineer",
-    title: "Engineer or developer",
-    description: "I write code professionally",
-    icon: IconCode,
-  },
-  {
-    id: "coach-consultant",
-    title: "Coach or consultant",
-    description: "I serve clients",
-    icon: IconTarget,
-  },
-  {
-    id: "other",
-    title: "Something else",
-    description: "Tell us more next step",
-    icon: IconMessageCircle,
-  },
+  { id: "founder", label: "Founder" },
+  { id: "sales-marketing", label: "Sales & marketing" },
+  { id: "ops-support", label: "Operations" },
+  { id: "engineer", label: "Engineer" },
+  { id: "coach-consultant", label: "Consultant" },
+  { id: "other", label: "Something else" },
 ];
 
-function RoleCard({
+function RoleChip({
   option,
   isSelected,
   onClick,
@@ -1206,37 +1072,19 @@ function RoleCard({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const Icon = option.icon;
   return (
     <button
       type="button"
       data-testid={`onboarding-role-${option.id}`}
       onClick={onClick}
       aria-pressed={isSelected}
-      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none text-left w-full ${
+      className={`rounded-lg px-3.5 h-9 text-sm transition-colors focus:outline-none ${
         isSelected
-          ? "border-[1.5px] border-primary bg-primary/[0.04]"
-          : "zero-border bg-background hover:bg-muted/30 cursor-pointer"
+          ? "bg-primary/10 text-primary font-medium border border-primary/30"
+          : "zero-border bg-background text-foreground hover:bg-muted/40"
       }`}
     >
-      <span
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden ${
-          isSelected ? "bg-primary/10 text-primary" : "bg-muted/40"
-        }`}
-      >
-        <Icon size={18} stroke={1.75} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-foreground">
-          {option.title}
-        </span>
-        <span className="block text-xs text-muted-foreground mt-0.5">
-          {option.description}
-        </span>
-      </span>
-      {isSelected && (
-        <IconCircleCheckFilled className="h-5 w-5 shrink-0 text-primary" />
-      )}
+      {option.label}
     </button>
   );
 }
@@ -1288,17 +1136,17 @@ function WorkspaceStepContent() {
           autoFocus
         />
       </div>
-      <div className="w-full mt-8">
+      <div className="w-full mt-6">
         <p className="block text-sm font-medium text-foreground mb-3">
-          What best describes your role
+          Your role
         </p>
         <div
           data-testid="onboarding-role-list"
-          className="flex flex-col gap-2.5"
+          className="flex flex-wrap gap-2"
         >
           {ROLE_OPTIONS.map((option) => {
             return (
-              <RoleCard
+              <RoleChip
                 key={option.id}
                 option={option}
                 isSelected={selectedRole === option.id}
