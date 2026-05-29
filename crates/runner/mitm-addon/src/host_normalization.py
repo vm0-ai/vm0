@@ -14,6 +14,19 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 _PUNYCODE_PREFIX = "xn--"
 _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
+_UNSAFE_UTS46_COLLISION_CHARS = frozenset(
+    (
+        "\u03f2",  # Greek lunate sigma symbol maps like sigma under UTS46.
+        "\u1e9e",  # Latin capital sharp S maps to "ss" under UTS46.
+    )
+)
+_UNSAFE_UTS46_IGNORABLE_RANGES = (
+    (0x034F, 0x034F),
+    (0x180B, 0x180D),
+    (0x180F, 0x180F),
+    (0xFE00, 0xFE0F),
+    (0xE0100, 0xE01EF),
+)
 
 
 def _is_ascii(value: str) -> bool:
@@ -22,6 +35,17 @@ def _is_ascii(value: str) -> bool:
 
 def _has_unicode_control_chars(value: str) -> bool:
     return any(category(char).startswith(_UNICODE_CONTROL_CATEGORY_PREFIX) for char in value)
+
+
+def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
+    for char in value:
+        if char in _UNSAFE_UTS46_COLLISION_CHARS:
+            return True
+        codepoint = ord(char)
+        for start, end in _UNSAFE_UTS46_IGNORABLE_RANGES:
+            if start <= codepoint <= end:
+                return True
+    return False
 
 
 def _validate_normalized_label_text(normalized_label: str) -> None:
@@ -34,6 +58,8 @@ def _validate_normalized_label_text(normalized_label: str) -> None:
 
 
 def _canonical_punycode_label(label: str) -> str:
+    if _has_unsafe_uts46_mapping_chars(label):
+        raise UnicodeError("unsafe IDNA compatibility mapping")
     normalized_label = normalize("NFKC", label).lower()
     _validate_normalized_label_text(normalized_label)
 

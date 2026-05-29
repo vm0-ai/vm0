@@ -426,6 +426,8 @@ class TestCompiledFirewallMatching:
             "xn--72g.example",
             "\u4f8b\uff1a\u5b50.example",
             "\u4f8b\uff0c\u5b50.example",
+            "\u034f.example",
+            "\ufe0f.example",
         ],
     )
     def test_compiled_rejects_request_url_with_invalid_authority_host(self, invalid_host):
@@ -657,6 +659,8 @@ class TestCompiledFirewallMatching:
             ("https://fass.de", "https://faß.de/repos/org/repo"),
             ("https://a.example", "https://\uff21.example/repos/org/repo"),
             ("https://k.example", "https://\u212a.example/repos/org/repo"),
+            ("https://ß.de", "https://\u1e9e.de/repos/org/repo"),
+            ("https://\u03c2.example", "https://\u03f2.example/repos/org/repo"),
             ("https://example.com", "https://\u200cexample.com/repos/org/repo"),
             ("https://xn--4xa.example", "https://\u03c2.example/repos/org/repo"),
         ],
@@ -690,6 +694,7 @@ class TestCompiledFirewallMatching:
         [
             ("https://faß.de", "https://fass.de/repos/org/repo"),
             ("https://\uff21.example", "https://a.example/repos/org/repo"),
+            ("https://\u1e9e.de", "https://ß.de/repos/org/repo"),
             ("https://\u200cexample.com", "https://example.com/repos/org/repo"),
             ("https://xn--3xa.example", "https://\u03c3.example/repos/org/repo"),
         ],

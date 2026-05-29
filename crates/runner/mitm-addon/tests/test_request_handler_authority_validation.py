@@ -656,6 +656,8 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "xn--ph7c.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "\u4f8b\uff1a\u5b50.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "\u4f8b\uff0c\u5b50.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u034f.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\ufe0f.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "[::1]junk", "invalid_authority", "https://api.github.com/repos"),
         (443, "[fe80::1%25eth0]", "invalid_authority", "https://api.github.com/repos"),
         (
@@ -792,6 +794,27 @@ async def test_rejects_missing_https_sni_before_firewall_auth(
             443,
             "\u212a.example",
             "\u212a.example",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "\u1e9e.de",
+            "\u1e9e.de",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "\u03f2.example",
+            "\u03f2.example",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "\u034f.example",
+            "\u034f.example",
             "https://203.0.113.10/repos",
         ),
         (

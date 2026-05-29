@@ -288,6 +288,10 @@ class TestMatchBaseUrl:
             ("https://a.example/repos", "https://\uff21.example"),
             ("https://\u212a.example/repos", "https://k.example"),
             ("https://k.example/repos", "https://\u212a.example"),
+            ("https://\u1e9e.de/repos", "https://ß.de"),
+            ("https://ß.de/repos", "https://\u1e9e.de"),
+            ("https://\u03f2.example/repos", "https://\u03c2.example"),
+            ("https://\u03c2.example/repos", "https://\u03f2.example"),
             ("https://\u200cexample.com/repos", "https://example.com"),
             ("https://example.com/repos", "https://\u200cexample.com"),
         ],
@@ -318,6 +322,8 @@ class TestMatchBaseUrl:
             ("https://xn--72g.example/repos", "https://xn--72g.example"),
             ("https://\u4f8b\uff1a\u5b50.example/repos", "https://\u4f8b\uff1a\u5b50.example"),
             ("https://\u4f8b\uff0c\u5b50.example/repos", "https://\u4f8b\uff0c\u5b50.example"),
+            ("https://\u034f.example/repos", "https://\u034f.example"),
+            ("https://\ufe0f.example/repos", "https://\ufe0f.example"),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):
