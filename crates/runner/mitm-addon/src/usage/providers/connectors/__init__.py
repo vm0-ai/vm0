@@ -36,9 +36,10 @@ _HANDLERS: dict[str, Callable[[http.HTTPFlow, str], None]] = {
 
 _ResponseParserFactory = Callable[[http.HTTPFlow], ConnectorResponseParser | None]
 
-# Response parser factories are consulted at response-header time for billable
-# connector flows that need streamed response-body state before final usage
-# reporting. A factory returns None when the specific flow needs no parser.
+# Response parser factories are consulted at response-header time for registered
+# connector firewall flows that may need streamed response-body state before
+# final usage reporting. A factory returns None when the specific flow needs no
+# parser.
 _RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
     "x": x.create_response_parser,
 }
