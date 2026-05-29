@@ -77,7 +77,10 @@ describe("zero onboarding - step 1: workspace name", () => {
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
 
-    click(screen.getByTestId("onboarding-role-founder"));
+    expect(screen.getByTestId("onboarding-role-founder")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await waitFor(() => {
       expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
     });

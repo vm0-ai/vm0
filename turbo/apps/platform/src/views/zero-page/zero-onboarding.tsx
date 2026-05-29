@@ -1266,7 +1266,7 @@ function WorkspaceStepContent() {
                 option={option}
                 isSelected={selectedRole === option.id}
                 onClick={() => {
-                  return setRole(selectedRole === option.id ? null : option.id);
+                  return setRole(option.id);
                 }}
               />
             );
