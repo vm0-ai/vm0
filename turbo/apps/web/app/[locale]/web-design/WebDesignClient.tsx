@@ -79,7 +79,7 @@ export function WebDesignClient() {
           <h1 className="hero-title">Website Design</h1>
           <p className="hero-description">
             Get your creative website from a single, short prompt. We promise it
-            works with no extra setup.
+            works with no extra setup in VM0.
           </p>
         </div>
       </section>
