@@ -280,7 +280,12 @@ describe("resolveFirewallSelections", () => {
       return collectAndValidatePermissions(
         config("https://example.com/\x00hook"),
       );
-    }).toThrow("must not contain control characters");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/\uD800hook"),
+      );
+    }).toThrow("must not contain control characters or invalid Unicode");
     expect(() => {
       return collectAndValidatePermissions(
         config("https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"),
@@ -300,7 +305,12 @@ describe("resolveFirewallSelections", () => {
       return collectAndValidatePermissions(
         config("${{ secrets.WEBHOOK_URL }}/\x00v1"),
       );
-    }).toThrow("must not contain control characters");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}/\uD800v1"),
+      );
+    }).toThrow("must not contain control characters or invalid Unicode");
     expect(() => {
       return collectAndValidatePermissions(
         config("${{ secrets.WEBHOOK_URL }}#fragment"),
@@ -454,6 +464,9 @@ describe("validateRule", () => {
     expect(() => {
       return validateRule("GET /", "p", "fw");
     }).not.toThrow();
+    expect(() => {
+      return validateRule("GET /emoji/\u{1F600}", "p", "fw");
+    }).not.toThrow();
   });
 
   it("should accept explicit empty path segments", () => {
@@ -513,13 +526,16 @@ describe("validateRule", () => {
     }).toThrow("path must not contain whitespace");
   });
 
-  it("should reject path with raw control characters", () => {
+  it("should reject path with raw control characters or invalid Unicode", () => {
     expect(() => {
       return validateRule("GET /pa\x00th", "read", "github");
-    }).toThrow("path must not contain control characters");
+    }).toThrow("path must not contain control characters or invalid Unicode");
     expect(() => {
       return validateRule("GET /pa\x7fth", "read", "github");
-    }).toThrow("path must not contain control characters");
+    }).toThrow("path must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateRule("GET /pa\uD800th", "read", "github");
+    }).toThrow("path must not contain control characters or invalid Unicode");
   });
 
   it("should reject path with raw backslash", () => {
@@ -596,6 +612,9 @@ describe("validateBaseUrl", () => {
     }).not.toThrow();
     expect(() => {
       return validateBaseUrl("https://us1.api.mailchimp.com/3.0", "mailchimp");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/emoji/\u{1F600}", "fw");
     }).not.toThrow();
   });
 
@@ -781,19 +800,22 @@ describe("validateBaseUrl", () => {
     }).toThrow("must not contain whitespace");
   });
 
-  it("should reject raw control characters before URL parser normalization", () => {
+  it("should reject raw control characters or invalid Unicode before URL parser normalization", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/pa\x00th", "fw");
-    }).toThrow("must not contain control characters");
+    }).toThrow("must not contain control characters or invalid Unicode");
     expect(() => {
       return validateBaseUrl("https://api.example.com/pa\x7fth", "fw");
-    }).toThrow("must not contain control characters");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\uD800th", "fw");
+    }).toThrow("must not contain control characters or invalid Unicode");
     expect(() => {
       return validateBaseUrl("https://{sub}.example.com/pa\x00th", "fw");
-    }).toThrow("must not contain control characters");
+    }).toThrow("must not contain control characters or invalid Unicode");
     expect(() => {
       return validateBaseUrl("https://${{ vars.API_HOST }}/\x00v1", "fw");
-    }).toThrow("must not contain control characters");
+    }).toThrow("must not contain control characters or invalid Unicode");
   });
 
   it("should reject backslash before URL parser normalization", () => {

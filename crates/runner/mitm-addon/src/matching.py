@@ -27,6 +27,8 @@ _MIN_HOST_SEGMENTS = 2
 _ASCII_MAX = 0x7F
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
+_UNICODE_SURROGATE_MIN = 0xD800
+_UNICODE_SURROGATE_MAX = 0xDFFF
 _PERCENT_ESCAPE_LENGTH = 3
 _IPV6_VERSION = 6
 _IDNA_DOT_TRANSLATION = str.maketrans(
@@ -64,7 +66,12 @@ _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 
 
 def _has_unsafe_url_codepoint(value: str) -> bool:
-    return any(ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value)
+    return any(
+        ord(char) < _ASCII_CONTROL_MAX
+        or ord(char) == _ASCII_DELETE
+        or _UNICODE_SURROGATE_MIN <= ord(char) <= _UNICODE_SURROGATE_MAX
+        for char in value
+    )
 
 
 def _has_unsafe_runtime_url_syntax(value: str) -> bool:

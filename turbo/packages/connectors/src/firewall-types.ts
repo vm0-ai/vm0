@@ -187,6 +187,10 @@ const AUTH_TEMPLATE_START = "${{";
 const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
 const ASCII_CONTROL_MAX = 0x20;
 const ASCII_DELETE = 0x7f;
+const UNICODE_HIGH_SURROGATE_MIN = 0xd800;
+const UNICODE_HIGH_SURROGATE_MAX = 0xdbff;
+const UNICODE_LOW_SURROGATE_MIN = 0xdc00;
+const UNICODE_LOW_SURROGATE_MAX = 0xdfff;
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -1021,6 +1025,28 @@ function hasUnsafeUrlCodepoint(value: string): boolean {
     if (codeUnit < ASCII_CONTROL_MAX || codeUnit === ASCII_DELETE) {
       return true;
     }
+    if (
+      UNICODE_HIGH_SURROGATE_MIN <= codeUnit &&
+      codeUnit <= UNICODE_HIGH_SURROGATE_MAX
+    ) {
+      const nextCodeUnit = value.charCodeAt(i + 1);
+      if (
+        !(
+          UNICODE_LOW_SURROGATE_MIN <= nextCodeUnit &&
+          nextCodeUnit <= UNICODE_LOW_SURROGATE_MAX
+        )
+      ) {
+        return true;
+      }
+      i += 1;
+      continue;
+    }
+    if (
+      UNICODE_LOW_SURROGATE_MIN <= codeUnit &&
+      codeUnit <= UNICODE_LOW_SURROGATE_MAX
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -1478,7 +1504,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   }
   if (hasUnsafeUrlCodepoint(rawSyntaxTarget)) {
     throw new Error(
-      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain control characters`,
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain control characters or invalid Unicode`,
     );
   }
 
@@ -1584,7 +1610,7 @@ function validateDynamicAuthBaseSuffix(
   }
   if (hasUnsafeUrlCodepoint(suffix)) {
     throw new Error(
-      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters`,
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters or invalid Unicode`,
     );
   }
   if (suffix.includes("#")) {
@@ -1632,7 +1658,7 @@ export function validateAuthBaseUrl(
   }
   if (hasUnsafeUrlCodepoint(validationUrl)) {
     throw new Error(
-      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters`,
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters or invalid Unicode`,
     );
   }
 

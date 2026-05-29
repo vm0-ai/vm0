@@ -102,12 +102,13 @@ class TestCompiledFirewallMatching:
             "https://api.example.com/a b",
             "https://api.example.com/ab ",
             "https://api.example.com/a\x7fb",
+            "https://api.example.com/a\ud800b",
             " https://api.example.com/ab",
             "\x00https://api.example.com/ab",
             "\x1fhttps://api.example.com/ab",
         ],
     )
-    def test_runtime_url_raw_whitespace_or_controls_are_not_matched(self, url):
+    def test_runtime_url_raw_whitespace_controls_or_invalid_unicode_are_not_matched(self, url):
         fws = wrap_firewalls(
             [
                 {
@@ -1718,6 +1719,7 @@ class TestCompiledFirewallMatching:
             ("GET /repos/{owner} {repo}", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner}\\{repo}", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner}\t{repo}", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/\ud800", "https://api.github.com/repos/org/repo"),
             ("GET /files/{path+}/admin", "https://api.github.com/files/readme"),
             ("GET /files/{path*}/admin", "https://api.github.com/files/readme"),
             ("GET /files/{path+}.json", "https://api.github.com/files/readme.json"),
