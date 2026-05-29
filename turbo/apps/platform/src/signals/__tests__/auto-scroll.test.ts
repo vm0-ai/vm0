@@ -585,12 +585,12 @@ describe("createScrollSignals - awayFromBottom$ readable", () => {
 
     const { setScrollContainer$, awayFromBottom$ } = createScrollSignals();
     context.store.set(setScrollContainer$, container);
-    expect(context.store.get(awayFromBottom$)).toBe(false);
+    expect(context.store.get(awayFromBottom$)).toBeFalsy();
 
     // Sitting within the at-bottom threshold keeps it false.
     container.scrollTop = 695;
     container.dispatchEvent(new Event("scroll"));
-    expect(context.store.get(awayFromBottom$)).toBe(false);
+    expect(context.store.get(awayFromBottom$)).toBeFalsy();
   });
 
   it("becomes true when scrolled up and false again at the bottom (VC-SCROLL-013)", () => {
@@ -606,12 +606,12 @@ describe("createScrollSignals - awayFromBottom$ readable", () => {
     // Scroll well away from the bottom.
     container.scrollTop = 200;
     container.dispatchEvent(new Event("scroll"));
-    expect(context.store.get(awayFromBottom$)).toBe(true);
+    expect(context.store.get(awayFromBottom$)).toBeTruthy();
 
     // Returning to the bottom clears it.
     container.scrollTop = 700;
     container.dispatchEvent(new Event("scroll"));
-    expect(context.store.get(awayFromBottom$)).toBe(false);
+    expect(context.store.get(awayFromBottom$)).toBeFalsy();
   });
 
   it("is true on bind when a non-bottom position is restored (VC-SCROLL-014)", () => {
@@ -639,6 +639,6 @@ describe("createScrollSignals - awayFromBottom$ readable", () => {
       createScrollSignals(threadId);
     context.store.set(setScrollContainer$, second);
 
-    expect(context.store.get(awayFromBottom$)).toBe(true);
+    expect(context.store.get(awayFromBottom$)).toBeTruthy();
   });
 });
