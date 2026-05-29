@@ -694,6 +694,45 @@ describe("validateBaseUrl", () => {
     }).not.toThrow();
   });
 
+  it("should reject unsafe IDNA compatibility mappings in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u212a.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://\u1e9e.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://\u03f2.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://\uff21.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+  });
+
+  it("should reject percent-encoded unsafe IDNA compatibility mappings in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://%E2%84%AA.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.%EF%BC%A1.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+  });
+
+  it("should accept canonical IDNA hosts", () => {
+    expect(() => {
+      return validateBaseUrl("https://xn--fa-hia.de", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}.xn--fa-hia.de", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u4f8b\u5b50.\u6d4b\u8bd5", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://%E2%98%83.example.com", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject malformed parameterized authorities", () => {
     expect(() => {
       return validateBaseUrl("https://user@{sub}.zendesk.com", "fw");
@@ -749,6 +788,18 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://{sub}-例.example.com", "fw");
     }).toThrow("must use ASCII literal prefix and suffix");
+  });
+
+  it("should reject unsafe IDNA compatibility mappings in parameterized host literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\u212a.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\u1e9e.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\uff21.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
   });
 
   it("should reject userinfo in static base URL", () => {

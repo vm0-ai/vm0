@@ -740,6 +740,37 @@ function errMsg(base: string, svc: string, detail: string): string {
 
 const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
+// Keep creation-time host validation aligned with mitm-addon host_normalization.py.
+const UNSAFE_UTS46_COLLISION_CHARS = new Set([
+  "\u03f2",
+  "\u04c0",
+  "\u1e9e",
+  "\u1806",
+  "\u2132",
+  "\u2183",
+  "\u3164",
+  "\uffa0",
+  "\ufffc",
+  "\ufffd",
+  "\u{2f868}",
+  "\u{2f874}",
+  "\u{2f91f}",
+  "\u{2f95f}",
+  "\u{2f9bf}",
+]);
+const UNSAFE_UTS46_COLLISION_RANGES = [
+  [0x10a0, 0x10c5],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x2ff0, 0x2ffb],
+] as const;
+const UNSAFE_UTS46_IGNORABLE_RANGES = [
+  [0x034f, 0x034f],
+  [0x180b, 0x180d],
+  [0x180f, 0x180f],
+  [0xfe00, 0xfe0f],
+  [0xe0100, 0xe01ef],
+] as const;
 
 interface ParameterizedAuthorityParts {
   readonly normalizedHost: string;
@@ -759,6 +790,34 @@ function isAscii(value: string): boolean {
     if (value.charCodeAt(i) > 0x7f) return false;
   }
   return true;
+}
+
+function codePointInRanges(
+  codePoint: number,
+  ranges: readonly (readonly [number, number])[],
+): boolean {
+  return ranges.some(([start, end]) => {
+    return start <= codePoint && codePoint <= end;
+  });
+}
+
+function hasUnsafeUts46MappingChar(value: string): boolean {
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (
+      UNSAFE_UTS46_COLLISION_CHARS.has(char) ||
+      (codePoint !== undefined &&
+        (codePointInRanges(codePoint, UNSAFE_UTS46_COLLISION_RANGES) ||
+          codePointInRanges(codePoint, UNSAFE_UTS46_IGNORABLE_RANGES)))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizesToAscii(value: string): boolean {
+  return isAscii(value.normalize("NFKD").toLowerCase());
 }
 
 function hasRawWhitespace(value: string): boolean {
@@ -843,6 +902,17 @@ function validateHostPercentEncoding(
     }
     i = end - 1;
   }
+  if (host.includes("%")) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(host);
+    } catch {
+      throw new Error(
+        errMsg(base, serviceName, "host has invalid percent encoding"),
+      );
+    }
+    validateHostHasNoUnsafeIdnaMappings(decoded, base, serviceName);
+  }
 }
 
 function rawAuthorityFromBaseUrl(base: string): string | null {
@@ -884,6 +954,54 @@ function validateHostHasNoEmptyLabels(
     );
   }
   return normalizedHost;
+}
+
+function rawHostFromAuthority(authority: string): string {
+  const withoutUserinfo = authority.slice(authority.lastIndexOf("@") + 1);
+  if (withoutUserinfo.startsWith("[")) {
+    const closeBracket = withoutUserinfo.indexOf("]");
+    return closeBracket === -1
+      ? withoutUserinfo
+      : withoutUserinfo.slice(0, closeBracket + 1);
+  }
+  const portSeparator = withoutUserinfo.lastIndexOf(":");
+  return portSeparator === -1
+    ? withoutUserinfo
+    : withoutUserinfo.slice(0, portSeparator);
+}
+
+function validateLabelHasNoUnsafeIdnaMappings(
+  label: string,
+  base: string,
+  serviceName: string,
+): void {
+  const parsed = parseSegment(label);
+  const value =
+    parsed.kind === "param" ? `${parsed.prefix}${parsed.suffix}` : label;
+  if (value === "" || isAscii(value) || value.startsWith("xn--")) return;
+  if (hasUnsafeUts46MappingChar(value) || normalizesToAscii(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host must not contain unsafe IDNA compatibility mappings",
+      ),
+    );
+  }
+}
+
+function validateHostHasNoUnsafeIdnaMappings(
+  authorityOrHost: string,
+  base: string,
+  serviceName: string,
+): void {
+  const host = rawHostFromAuthority(authorityOrHost);
+  if (host.startsWith("[") && host.endsWith("]")) return;
+  for (const label of host
+    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
+    .split(".")) {
+    validateLabelHasNoUnsafeIdnaMappings(label, base, serviceName);
+  }
 }
 
 function splitParameterizedAuthority(
@@ -1094,6 +1212,11 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   validateNoUserinfo(host, base, serviceName);
   validateHostPercentEncoding(host, base, serviceName);
   const authority = splitParameterizedAuthority(host, base, serviceName);
+  validateHostHasNoUnsafeIdnaMappings(
+    authority.normalizedHost,
+    base,
+    serviceName,
+  );
   validateParameterizedHostUrlSyntax(
     base.slice(0, schemeEnd),
     authority,
@@ -1162,6 +1285,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   if (authority !== null) {
     validateNoUserinfo(authority, base, serviceName);
     validateHostPercentEncoding(authority, base, serviceName);
+    validateHostHasNoUnsafeIdnaMappings(authority, base, serviceName);
   }
   validateStaticHostLabels(url.hostname, base, serviceName);
   if (url.hostname.includes("{") || url.hostname.includes("}")) {
