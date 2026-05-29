@@ -24,6 +24,7 @@ type BuiltInGenerationType =
   | "poster"
   | "presentation"
   | "report"
+  | "sprite"
   | "video"
   | "voice"
   | "website";
@@ -205,6 +206,11 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
     command: "zero generate website -h",
     models: "gpt-5.5",
   },
+  sprite: {
+    label: "Built-in sprite asset generation",
+    command: "zero generate sprite -h",
+    models: "gpt-image-2 (recommended) via built-in image generation",
+  },
   voice: {
     label: "Built-in voice generation",
     command: "zero generate voice --provider built-in -h",
@@ -234,6 +240,7 @@ const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   poster: "Poster",
   presentation: "Presentation",
   report: "Report",
+  sprite: "Sprite",
   text: "Text",
   video: "Video",
   voice: "Voice",
@@ -277,6 +284,7 @@ function getConnectorGenerationType(
     case "poster":
     case "presentation":
     case "report":
+    case "sprite":
     case "website":
       return null;
     case "audio":

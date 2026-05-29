@@ -8,6 +8,7 @@ import {
   reportCommand,
 } from "./artifacts";
 import { presentationCommand } from "./presentation";
+import { spriteCommand } from "./sprite";
 import { videoCommand } from "./video";
 import { websiteCommand } from "./website";
 import { voiceCommand } from "./voice";
@@ -45,6 +46,7 @@ function buildGenerateHelpText(): string {
     '  Generate docs:         zero generate docs-design --prompt "A setup guide"',
     '  Generate video:        zero generate video --prompt "A cinematic city shot"',
     '  Generate site:         zero generate website --prompt "A launch site"',
+    '  Generate sprite:       zero generate sprite --prompt "A slime monster idle loop"',
     '  Generate speech:       zero generate voice --prompt "Hello"',
     "  Show music choices:    zero generate music",
     "",
@@ -73,6 +75,7 @@ export const generateCommand = new Command()
   .addCommand(mobileAppDesignCommand)
   .addCommand(videoCommand)
   .addCommand(websiteCommand)
+  .addCommand(spriteCommand)
   .addCommand(voiceCommand)
   .addCommand(musicCommand)
   .addCommand(textCommand)
