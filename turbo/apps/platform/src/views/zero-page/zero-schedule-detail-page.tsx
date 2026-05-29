@@ -254,9 +254,6 @@ function buildSettingsSnapshot(
     description: entry.description ?? "",
     dayOfWeek: parsed.dayOfWeek ?? "1",
     dayOfMonth: parsed.dayOfMonth ?? "1",
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
 }
 
@@ -272,10 +269,7 @@ function isSettingsChanged(
     a.timezone !== b.timezone ||
     a.loopMinutes !== b.loopMinutes ||
     a.agentId !== b.agentId ||
-    a.description !== b.description ||
-    a.modelProviderId !== b.modelProviderId ||
-    a.selectedModel !== b.selectedModel ||
-    a.preferPersonalProvider !== b.preferPersonalProvider
+    a.description !== b.description
   );
 }
 
@@ -322,9 +316,6 @@ function ScheduleSettingsForm({
     description: form.description,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
   const isDirty = savedState ? isSettingsChanged(current, savedState) : false;
 
@@ -341,9 +332,6 @@ function ScheduleSettingsForm({
       loopMinutes: savedState.loopMinutes,
       agentId: savedState.agentId,
       description: savedState.description,
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
     });
   };
 

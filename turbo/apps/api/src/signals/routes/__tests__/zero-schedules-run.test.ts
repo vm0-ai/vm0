@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
@@ -22,6 +23,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { seedOrgModelProvider$ } from "./helpers/zero-model-providers";
 
 const context = testContext();
 const store = createStore();
@@ -159,6 +161,55 @@ describe("POST /api/zero/schedules/run", () => {
       /\/api\/internal\/callbacks\/schedule\/cron$/,
     );
     expect(callback?.payload).toMatchObject({ scheduleId });
+  });
+
+  it("resolves the runtime model from the model-first default route", async () => {
+    const fixture = await seedFixture();
+    const scheduleId = fixture.scheduleIds[0];
+    if (!scheduleId) {
+      throw new Error("Expected schedule fixture");
+    }
+
+    const provider = await store.set(
+      seedOrgModelProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "anthropic-api-key",
+        secretName: "ANTHROPIC_API_KEY",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-opus-4-7",
+      isDefault: true,
+      defaultProviderType: "anthropic-api-key",
+      credentialScope: "org",
+      modelProviderId: provider.id,
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+
+    const response = await rawPostRun({ scheduleId });
+
+    expect(response.status).toBe(201);
+    const body = runResponseSchema.parse(response.body);
+    const [zeroRun] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        modelProviderId: zeroRuns.modelProviderId,
+        modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.runId));
+    expect(zeroRun).toStrictEqual({
+      modelProvider: "anthropic-api-key",
+      modelProviderId: provider.id,
+      modelProviderCredentialScope: "org",
+      selectedModel: "claude-opus-4-7",
+    });
   });
 
   it("returns 404 for a non-existent schedule", async () => {
