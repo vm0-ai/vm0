@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.302.0](https://github.com/vm0-ai/vm0/compare/core-v8.301.2...core-v8.302.0) (2026-05-29)
+
+
+### Features
+
+* add Claude Opus 4.8 model ([#15330](https://github.com/vm0-ai/vm0/issues/15330)) ([e8b94fb](https://github.com/vm0-ai/vm0/commit/e8b94fb259268057d0717166c15c0b5bbc403e45))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.0
+
 ## [8.301.2](https://github.com/vm0-ai/vm0/compare/core-v8.301.1...core-v8.301.2) (2026-05-28)
 
 
