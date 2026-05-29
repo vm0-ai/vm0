@@ -392,6 +392,12 @@ def _has_raw_whitespace(value: str) -> bool:
     return any(char in _RAW_WHITESPACE_CHARS for char in value)
 
 
+def _has_unsafe_url_codepoint(value: str) -> bool:
+    return any(
+        ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value
+    ) or value.startswith(" ")
+
+
 def _merge_rewrite_query(
     base_query: str,
     orig_query: str,
@@ -443,6 +449,8 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         raise ValueError("Invalid auth.base URL: must not contain backslash")
     if _has_raw_whitespace(resolved_base):
         raise ValueError("Invalid auth.base URL: must not contain whitespace")
+    if _has_unsafe_url_codepoint(resolved_base):
+        raise ValueError("Invalid auth.base URL: must not contain control characters")
 
     parsed = urllib.parse.urlsplit(resolved_base)
     if parsed.scheme.lower() not in _VALID_REWRITE_SCHEMES:

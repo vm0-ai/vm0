@@ -100,6 +100,8 @@ class TestBuildRewriteUrl:
             ("https://example.com/hook#secret-fragment", "fragment"),
             ("https://example.com/hook\n", "whitespace"),
             ("https://example.com\\hook", "backslash"),
+            ("https://example.com/\x00hook", "control characters"),
+            ("https://example.com/\x7fhook", "control characters"),
             ("ftp://example.com/hook", "scheme"),
             ("https:///hook", "missing host"),
             ("https://user:pass@example.com/hook", "userinfo"),

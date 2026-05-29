@@ -91,6 +91,45 @@ class TestCompiledFirewallMatching:
         }
         assert empty_capture is None
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com/a\x00b",
+            "https://api.example.com/a\tb",
+            "https://api.example.com/a\nb",
+            "https://api.example.com/a\rb",
+            "https://api.example.com/a\x0cb",
+            "https://api.example.com/a\x7fb",
+            " https://api.example.com/ab",
+            "\x00https://api.example.com/ab",
+            "\x1fhttps://api.example.com/ab",
+        ],
+    )
+    def test_runtime_url_controls_or_leading_space_are_not_matched(self, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /ab"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert result is None
+
     def test_compiled_mixed_base_host_rejects_empty_capture(self):
         fws = wrap_firewalls(
             [
@@ -1671,6 +1710,7 @@ class TestCompiledFirewallMatching:
             ("get /repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
             ("INVALID /repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
             ("GET repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/\x00", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner}/{repo}?state=open", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner}/{repo}#section", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner} {repo}", "https://api.github.com/repos/org/repo"),
@@ -2002,6 +2042,8 @@ class TestCompiledFirewallMatching:
         ("base", "url"),
         [
             ("https://api.github.com/repos foo", "https://api.github.com/repos foo/org/repo"),
+            ("https://api.github.com/re\tpos", "https://api.github.com/repos/org/repo"),
+            ("\x00https://api.github.com/repos", "https://api.github.com/repos/org/repo"),
             ("https://api.github.com/repos\\foo", "https://api.github.com/repos\\foo/org/repo"),
             ("ftp://api.github.com/repos", "ftp://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com/repos {owner}", "https://api.github.com/repos org/repo"),
@@ -2550,9 +2592,11 @@ class TestCompiledFirewallMatching:
             {"base": "https:///hook"},
             {"base": "https://example.com/hook#fragment"},
             {"base": "https://user:pass@example.com/hook"},
+            {"base": "https://example.com/\x00hook"},
             {"base": "https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
             {"base": "https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"},
             {"base": "${{ secrets.WEBHOOK_URL }} /v1"},
+            {"base": "${{ secrets.WEBHOOK_URL }}/\x00v1"},
             {"base": "${{ secrets.WEBHOOK_URL }}#fragment"},
             {"base": "${{ secrets.WEBHOOK_URL }}/${{ env.WEBHOOK_TOKEN }}"},
             {"base": "${{ secrets.WEBHOOK_URL }}@evil.com"},

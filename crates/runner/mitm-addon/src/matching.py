@@ -63,6 +63,12 @@ _AUTH_REFERENCE_PREFIX_PATTERN = re.compile(
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 
 
+def _has_unsafe_url_codepoint(value: str) -> bool:
+    return any(
+        ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value
+    ) or value.startswith(" ")
+
+
 def _has_base_url_params(base: str) -> bool:
     return "{" in base and "}" in base
 
@@ -282,6 +288,7 @@ def _split_base_match_url(
     allow_query_fragment: bool = True,
     allow_malformed_authority: bool = False,
     allow_host_params: bool = False,
+    allow_unsafe_url_codepoints: bool = False,
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
@@ -291,6 +298,9 @@ def _split_base_match_url(
     callers can apply base-path prefix semantics without accidentally comparing
     query strings.
     """
+    if not allow_unsafe_url_codepoints and _has_unsafe_url_codepoint(value):
+        return None
+
     try:
         parts = urlsplit(value)
     except ValueError:
@@ -881,6 +891,7 @@ def _auth_base_for_static_url_validation(auth_base: str) -> _AuthBaseStaticValid
 def _dynamic_auth_base_suffix_is_valid(suffix: str) -> bool:
     return (
         _AUTH_TEMPLATE_START not in suffix
+        and not _has_unsafe_url_codepoint(suffix)
         and not any(char in _RAW_WHITESPACE_CHARS for char in suffix)
         and "#" not in suffix
         and (suffix == "" or suffix.startswith(("/", "?")))
@@ -1134,6 +1145,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
     raw_syntax_malformed = (
         "\\" in base
         or any(char in _RAW_WHITESPACE_CHARS for char in base)
+        or _has_unsafe_url_codepoint(base)
         or parsed.scheme.lower() not in _VALID_BASE_SCHEMES
     )
 
@@ -1142,6 +1154,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         base,
         allow_malformed_authority=True,
         allow_host_params=has_params,
+        allow_unsafe_url_codepoints=True,
     )
     if parts is None:
         return None
@@ -1232,6 +1245,7 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
         or "?" in path
         or "#" in path
         or "\\" in path
+        or _has_unsafe_url_codepoint(path)
         or any(char in _RAW_WHITESPACE_CHARS for char in path)
     ):
         return None

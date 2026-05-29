@@ -490,6 +490,24 @@ class TestMatchBaseUrl:
         result = matching.match_base_url("https://[::1", "https://api.github.com")
         assert result is None
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.github.com/re\x00pos",
+            "https://api.github.com/re\tpos",
+            "https://api.github.com/re\npos",
+            "https://api.github.com/re\rpos",
+            "https://api.github.com/re\x0cpos",
+            "https://api.github.com/re\x7fpos",
+            " https://api.github.com/repos",
+            "\x00https://api.github.com/repos",
+            "\x1fhttps://api.github.com/repos",
+        ],
+    )
+    def test_request_url_controls_or_leading_space_are_not_matched(self, url):
+        result = matching.match_base_url(url, "https://api.github.com/repos")
+        assert result is None
+
     def test_malformed_base_url_returns_none(self):
         result = matching.match_base_url("https://api.github.com/repos", "https://[::1")
         assert result is None
