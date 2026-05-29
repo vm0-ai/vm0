@@ -1631,11 +1631,13 @@ async function performElementAction(
 async function typeText(
   app: string,
   text: string,
+  snapshotId: string | null,
   nativeBackend: ComputerUseNativeBackend,
   foregroundRecovery: ComputerUseNativeForegroundRecoveryPolicy,
 ): Promise<ComputerUseCommandExecutionResult> {
   const result = await nativeBackend.typeText({
     app,
+    ...(snapshotId ? { snapshotId } : {}),
     text,
     foregroundRecovery,
   });
@@ -1652,10 +1654,16 @@ async function typeText(
 async function pressKey(
   app: string,
   key: string,
+  snapshotId: string | null,
   nativeBackend: ComputerUseNativeBackend,
   foregroundRecovery: ComputerUseNativeForegroundRecoveryPolicy,
 ): Promise<ComputerUseCommandSuccess> {
-  const result = await nativeBackend.pressKey({ app, key, foregroundRecovery });
+  const result = await nativeBackend.pressKey({
+    app,
+    ...(snapshotId ? { snapshotId } : {}),
+    key,
+    foregroundRecovery,
+  });
   const { normalizedKey, ...nativeResult } = result;
   return {
     status: "succeeded",
@@ -1888,6 +1896,7 @@ export async function executeComputerUseCommand(
     }
     if (command.kind === "keyboard.type_text") {
       const text = payloadString(command.payload, "text");
+      const snapshotId = payloadString(command.payload, "snapshotId");
       const foregroundRecovery = payloadForegroundRecoveryPolicy(
         command.payload,
       );
@@ -1901,6 +1910,7 @@ export async function executeComputerUseCommand(
               return await typeText(
                 app,
                 text,
+                snapshotId,
                 nativeBackend,
                 foregroundRecovery,
               );
@@ -1910,6 +1920,7 @@ export async function executeComputerUseCommand(
     }
     if (command.kind === "keyboard.press_key") {
       const key = payloadString(command.payload, "key");
+      const snapshotId = payloadString(command.payload, "snapshotId");
       const foregroundRecovery = payloadForegroundRecoveryPolicy(
         command.payload,
       );
@@ -1923,6 +1934,7 @@ export async function executeComputerUseCommand(
               return await pressKey(
                 app,
                 key,
+                snapshotId,
                 nativeBackend,
                 foregroundRecovery,
               );

@@ -2229,4 +2229,75 @@ describe("computer use desktop runtime", () => {
       foregroundRecovery: "on-window-unavailable",
     });
   });
+
+  it("forwards the snapshot id to the native backend for press-key", async () => {
+    const pressKey = vi.fn<ComputerUseNativeBackend["pressKey"]>();
+    pressKey.mockResolvedValue({
+      ...nativeDispatchResult(
+        "background_keyboard_event",
+        "app_process",
+        "background_app_shortcut",
+      ),
+      normalizedKey: "Command+K",
+    });
+    await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "keyboard.press_key",
+        payload: { app: "Safari", snapshotId: "snap_1", key: "Command+K" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          pressKey,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
+      },
+    );
+
+    expect(pressKey).toHaveBeenCalledWith({
+      app: "Safari",
+      snapshotId: "snap_1",
+      key: "Command+K",
+      foregroundRecovery: "on-window-unavailable",
+    });
+  });
+
+  it("forwards the snapshot id to the native backend for type-text", async () => {
+    const typeText = vi.fn<ComputerUseNativeBackend["typeText"]>();
+    typeText.mockResolvedValue(
+      nativeDispatchResult(
+        "background_keyboard_text",
+        "app_process",
+        "background_app_text",
+      ),
+    );
+    await executeComputerUseCommand(
+      {
+        id: "cmd_1",
+        kind: "keyboard.type_text",
+        payload: { app: "Safari", snapshotId: "snap_1", text: "hello" },
+      },
+      { accessibility: true, screenRecording: true },
+      {
+        platform: "darwin",
+        nativeBackend: createNativeBackend({
+          typeText,
+          getAppState: async (app, snapshotId) => {
+            return nativeAppStateWithScreenshot(app, snapshotId);
+          },
+        }),
+      },
+    );
+
+    expect(typeText).toHaveBeenCalledWith({
+      app: "Safari",
+      snapshotId: "snap_1",
+      text: "hello",
+      foregroundRecovery: "on-window-unavailable",
+    });
+  });
 });

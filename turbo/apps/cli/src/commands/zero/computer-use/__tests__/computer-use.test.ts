@@ -465,4 +465,125 @@ describe("computer-use command visibility", () => {
       screenshotBytes,
     );
   });
+
+  it("should send press-key snapshot id and key", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/write-commands",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          expect(body).toMatchObject({
+            kind: "keyboard.press_key",
+            app: "Slack",
+            snapshotId: "snap_1",
+            key: "Command+L",
+            timeoutMs: 30_000,
+          });
+          return HttpResponse.json({
+            commandId: "cmd_press",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_press",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_press",
+            kind: "keyboard.press_key",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { app: "Slack", snapshotId: "snap_1", key: "Command+L" },
+            result: {
+              app: "Slack",
+              action: { key: "Command+L", summary: "Pressed Command+L" },
+            },
+            timeoutMs: 30_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "press-key",
+      "--app",
+      "Slack",
+      "--snapshot-id",
+      "snap_1",
+      "--key",
+      "Command+L",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain('"status": "succeeded"');
+    expect(output).toContain('"summary": "Pressed Command+L"');
+  });
+
+  it("should send type-text snapshot id and text", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/computer-use/write-commands",
+        async ({ request }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          expect(body).toMatchObject({
+            kind: "keyboard.type_text",
+            app: "Slack",
+            snapshotId: "snap_1",
+            text: "Hello",
+            timeoutMs: 30_000,
+          });
+          return HttpResponse.json({
+            commandId: "cmd_type",
+            status: "queued",
+          });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_type",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_type",
+            kind: "keyboard.type_text",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { app: "Slack", snapshotId: "snap_1", text: "Hello" },
+            result: { app: "Slack", action: { summary: "Typed text" } },
+            timeoutMs: 30_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "type-text",
+      "--app",
+      "Slack",
+      "--snapshot-id",
+      "snap_1",
+      "--text",
+      "Hello",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain('"status": "succeeded"');
+    expect(output).toContain('"summary": "Typed text"');
+  });
 });

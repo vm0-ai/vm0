@@ -98,11 +98,13 @@ export interface ComputerUseNativeBackend {
   }) => Promise<ComputerUseNativeActionResult>;
   readonly typeText: (args: {
     readonly app: string;
+    readonly snapshotId?: string;
     readonly text: string;
     readonly foregroundRecovery?: ComputerUseNativeForegroundRecoveryPolicy;
   }) => Promise<ComputerUseNativeTypeTextResult>;
   readonly pressKey: (args: {
     readonly app: string;
+    readonly snapshotId?: string;
     readonly key: string;
     readonly foregroundRecovery?: ComputerUseNativeForegroundRecoveryPolicy;
   }) => Promise<ComputerUseNativePressKeyResult>;

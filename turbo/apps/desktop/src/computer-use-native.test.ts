@@ -545,11 +545,13 @@ describe("computer use native backend", () => {
       });
       await backend.typeText({
         app: "Safari",
+        snapshotId: "snap_1",
         text: "hello",
         foregroundRecovery: "never",
       });
       await backend.pressKey({
         app: "Safari",
+        snapshotId: "snap_1",
         key: "cmd+k",
         foregroundRecovery: "always",
       });
@@ -580,9 +582,11 @@ describe("computer use native backend", () => {
         foregroundRecovery: "on-window-unavailable",
       });
       expect(requests[2]?.payload).toMatchObject({
+        snapshotId: "snap_1",
         foregroundRecovery: "never",
       });
       expect(requests[3]?.payload).toMatchObject({
+        snapshotId: "snap_1",
         foregroundRecovery: "always",
       });
     } finally {

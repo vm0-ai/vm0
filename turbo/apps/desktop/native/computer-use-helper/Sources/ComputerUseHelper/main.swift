@@ -2389,17 +2389,47 @@ func snapshotWindowTarget(
     return target
 }
 
-func performWithRequiredBackgroundTarget<T>(
-    appName: String,
-    preferredScreenPoint: CGPoint? = nil,
-    _ action: (WindowTarget) throws -> T
-) throws -> T {
+func resolveBackgroundWindowTarget(appName: String) throws -> WindowTarget {
     let app = try resolveRunningApp(named: appName)
-    guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
+    guard let target = resolveWindowTarget(app: app) else {
         throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
     }
+    return target
+}
 
-    return try action(target)
+// Keyboard dispatch is addressed to a concrete window via postToPid, so it must
+// target the same window the agent inspected. When a snapshotId is supplied we
+// pin to that snapshot's window (matching click/scroll); otherwise we fall back
+// to the heuristic best window for the app. The snapshot windowFrame is not
+// enforced here because keyboard input has no screenshot-coordinate dependency,
+// so a window that merely moved should still receive the key.
+func resolveKeyboardWindowTarget(
+    appName: String,
+    snapshotId: String?,
+    session: ComputerUseRuntimeSession?
+) throws -> WindowTarget {
+    guard let snapshotId else {
+        return try resolveBackgroundWindowTarget(appName: appName)
+    }
+    guard let session else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Snapshot targeting requires a runtime session snapshot: \(snapshotId)"
+        )
+    }
+    let metadata = try session.snapshot(appName: appName, snapshotId: snapshotId)
+    let windowId = optionalInt(metadata, "windowId")
+    let windowFrame = try optionalRectPayload(metadata, "windowFrame")
+    let preferredScreenPoint = windowFrame.map { frame in
+        CGPoint(x: frame.midX, y: frame.midY)
+    } ?? .zero
+    return try snapshotWindowTarget(
+        appName: appName,
+        snapshotId: snapshotId,
+        preferredScreenPoint: preferredScreenPoint,
+        windowId: windowId,
+        windowFrame: nil
+    )
 }
 
 func showVisualPointerIfTargetPointVisible(app: NSRunningApplication, point: CGPoint) -> Bool {
@@ -4097,7 +4127,8 @@ func postParsedKeyPress(_ parsed: ParsedKeyPress, to target: WindowTarget) throw
 func performBackgroundKeyPress(
     appName: String,
     parsed: ParsedKeyPress,
-    foregroundRecovery: ForegroundRecoveryPolicy
+    foregroundRecovery: ForegroundRecoveryPolicy,
+    resolveTarget: () throws -> WindowTarget
 ) throws -> [String: Any] {
     func currentSpaceKeyPress() throws -> [String: Any] {
         return try withFrontmostPreservation(
@@ -4105,11 +4136,9 @@ func performBackgroundKeyPress(
             dispatchTarget: "app_process",
             inputRisk: "background_app_shortcut"
         ) {
-            let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
-                try postParsedKeyPress(parsed, to: target)
-                return target.pid
-            }
-            return (targetPID: targetPID, result: ["normalizedKey": parsed.normalizedKey])
+            let target = try resolveTarget()
+            try postParsedKeyPress(parsed, to: target)
+            return (targetPID: target.pid, result: ["normalizedKey": parsed.normalizedKey])
         }
     }
 
@@ -4123,7 +4152,6 @@ func performBackgroundKeyPress(
         }
     }
 
-    let app = try resolveRunningApp(named: appName)
     return try withForegroundRecovery(
         appName: appName,
         policy: foregroundRecovery,
@@ -4131,12 +4159,7 @@ func performBackgroundKeyPress(
         dispatchMode: "foreground_keyboard_event",
         dispatchTarget: "app_process",
         inputRisk: "foreground_app_shortcut",
-        resolveTarget: {
-            guard let target = resolveWindowTarget(app: app) else {
-                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
-            }
-            return target
-        }
+        resolveTarget: resolveTarget
     ) { _ in
         try postForegroundParsedKeyPress(parsed)
         return ["normalizedKey": parsed.normalizedKey]
@@ -4146,7 +4169,8 @@ func performBackgroundKeyPress(
 func performBackgroundTextInput(
     appName: String,
     inputText: String,
-    foregroundRecovery: ForegroundRecoveryPolicy
+    foregroundRecovery: ForegroundRecoveryPolicy,
+    resolveTarget: () throws -> WindowTarget
 ) throws -> [String: Any] {
     func currentSpaceTextInput() throws -> [String: Any] {
         return try withFrontmostPreservation(
@@ -4154,12 +4178,10 @@ func performBackgroundTextInput(
             dispatchTarget: "app_process",
             inputRisk: "background_app_text"
         ) {
-            let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
-                let dispatcher = AddressedEventDispatcher(target: target)
-                try dispatcher.postText(inputText)
-                return target.pid
-            }
-            return (targetPID: targetPID, result: ["characterCount": inputText.count])
+            let target = try resolveTarget()
+            let dispatcher = AddressedEventDispatcher(target: target)
+            try dispatcher.postText(inputText)
+            return (targetPID: target.pid, result: ["characterCount": inputText.count])
         }
     }
 
@@ -4173,7 +4195,6 @@ func performBackgroundTextInput(
         }
     }
 
-    let app = try resolveRunningApp(named: appName)
     return try withForegroundRecovery(
         appName: appName,
         policy: foregroundRecovery,
@@ -4181,12 +4202,7 @@ func performBackgroundTextInput(
         dispatchMode: "foreground_keyboard_text",
         dispatchTarget: "app_process",
         inputRisk: "foreground_app_text",
-        resolveTarget: {
-            guard let target = resolveWindowTarget(app: app) else {
-                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
-            }
-            return target
-        }
+        resolveTarget: resolveTarget
     ) { _ in
         try postForegroundText(inputText)
         return ["characterCount": inputText.count]
@@ -4491,28 +4507,34 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
     }
 }
 
-func handleTypeText(_ request: [String: Any]) throws -> [String: Any] {
+func handleTypeText(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
     let policy = try foregroundRecoveryPolicy(request)
+    let snapshotId = optionalString(request, "snapshotId")
     return try performBackgroundTextInput(
         appName: appName,
         inputText: inputText,
         foregroundRecovery: policy
-    )
+    ) {
+        try resolveKeyboardWindowTarget(appName: appName, snapshotId: snapshotId, session: session)
+    }
 }
 
-func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
+func handlePressKey(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let key = try requiredString(request, "key")
     let parsed = try parseKeyPress(key)
     let policy = try foregroundRecoveryPolicy(request)
+    let snapshotId = optionalString(request, "snapshotId")
 
     return try performBackgroundKeyPress(
         appName: appName,
         parsed: parsed,
         foregroundRecovery: policy
-    )
+    ) {
+        try resolveKeyboardWindowTarget(appName: appName, snapshotId: snapshotId, session: session)
+    }
 }
 
 func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
@@ -4601,9 +4623,9 @@ func handle(_ request: [String: Any], session: ComputerUseRuntimeSession?) throw
     case "element.perform_action":
         return try handleElementPerformAction(request, session: session)
     case "keyboard.type_text":
-        return try handleTypeText(request)
+        return try handleTypeText(request, session: session)
     case "keyboard.press_key":
-        return try handlePressKey(request)
+        return try handlePressKey(request, session: session)
     case "element.scroll":
         return try handleScrollElement(request, session: session)
     default:
