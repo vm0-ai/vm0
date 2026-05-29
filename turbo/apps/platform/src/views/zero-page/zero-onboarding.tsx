@@ -502,31 +502,31 @@ type TrialGalleryItem = {
   readonly id: string;
   readonly label: string;
   readonly title: string;
+  readonly subtitle: string;
   readonly image: string;
-  readonly imageBg: string;
 };
 
 const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
   {
     id: "workflow",
     label: "Workflow",
-    title: "Run a workflow across your tools — in Slack or on the web",
+    title: "Workflows that run themselves",
+    subtitle: "Pull data, draft the brief, ship it to Slack each morning",
     image: trialWorkflowSrc,
-    imageBg: "bg-gray-50",
   },
   {
     id: "website",
     label: "Website",
-    title: "Generate a polished landing page from a single brief",
+    title: "Polished web pages from a single brief",
+    subtitle: "Modern landings, brand sites, launch pages",
     image: trialWebsiteSrc,
-    imageBg: "bg-white",
   },
   {
     id: "illustration",
     label: "Illustration",
-    title: "Editorial visuals that match your brand",
+    title: "Editorial illustrations, in your style",
+    subtitle: "28 plates in the register — pick one and ship",
     image: trialIllustrationSrc,
-    imageBg: "bg-background",
   },
 ];
 
@@ -541,24 +541,30 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="w-full max-w-[360px] flex flex-col items-center"
+      className="w-full max-w-[380px] flex flex-col items-center"
     >
-      <div
-        className={`w-full h-[340px] zero-border rounded-2xl overflow-hidden flex items-center justify-center ${activeItem.imageBg}`}
-      >
+      <p className="text-[11px] font-medium text-muted-foreground mb-4">
+        Made with Zero
+      </p>
+      <div className="w-full aspect-[4/5] zero-border rounded-2xl overflow-hidden bg-background shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)]">
         <img
           src={activeItem.image}
           alt={`${activeItem.label} preview`}
           className="h-full w-full object-cover object-top"
         />
       </div>
-      <p className="mt-6 text-xs font-medium text-muted-foreground">
-        {activeItem.label}
-      </p>
-      <h3 className="mt-2 text-base font-semibold text-foreground text-center leading-snug max-w-[300px]">
-        {activeItem.title}
-      </h3>
-      <div className="mt-5 flex items-center gap-1.5">
+      <div className="mt-6 flex flex-col items-center text-center max-w-[320px]">
+        <span className="zero-badge rounded-full px-2.5 py-0.5 text-[11px] font-medium text-foreground">
+          {activeItem.label}
+        </span>
+        <h3 className="mt-3 text-base font-semibold text-foreground leading-snug">
+          {activeItem.title}
+        </h3>
+        <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+          {activeItem.subtitle}
+        </p>
+      </div>
+      <div className="mt-6 flex items-center gap-2.5">
         {TRIAL_GALLERY_ITEMS.map((item, i) => {
           const isActive = i === activeIndex;
           return (
@@ -570,10 +576,18 @@ function OnboardingTrialPanel() {
               onClick={() => {
                 setIndex(i);
               }}
-              className={`h-1.5 rounded-full transition-all ${
-                isActive ? "w-6 bg-foreground" : "w-1.5 bg-foreground/20"
-              } hover:bg-foreground/40`}
-            />
+              className={`relative h-10 w-10 rounded-lg overflow-hidden transition-all ${
+                isActive
+                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                  : "opacity-50 hover:opacity-100"
+              }`}
+            >
+              <img
+                src={item.image}
+                alt=""
+                className="h-full w-full object-cover object-top"
+              />
+            </button>
           );
         })}
       </div>
