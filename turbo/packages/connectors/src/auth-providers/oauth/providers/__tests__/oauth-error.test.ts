@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isOAuthProviderError, throwOAuthError } from "../../error";
+import { throwOAuthError } from "../../error";
 
 function makeResponse(status: number, body: string): Response {
   return new Response(body, { status, statusText: "Bad Request" });
@@ -20,31 +20,6 @@ describe("throwOAuthError", () => {
     ).rejects.toThrow(
       "Notion token refresh failed: 400 invalid_grant (The refresh token is expired)",
     );
-
-    const structuredResponse = makeResponse(
-      400,
-      JSON.stringify({
-        error: "invalid_grant",
-        error_description: "The refresh token is expired",
-      }),
-    );
-    const error = await throwOAuthError(
-      "Notion",
-      "refresh",
-      structuredResponse,
-    ).catch((e: unknown) => {
-      return e;
-    });
-    expect(isOAuthProviderError(error)).toBe(true);
-    expect(error).toMatchObject({
-      provider: "Notion",
-      operation: "refresh",
-      failureClass: "reconnect_required",
-      retryable: false,
-      upstreamStatus: 400,
-      oauthError: "invalid_grant",
-      oauthErrorDescription: "The refresh token is expired",
-    });
   });
 
   it("includes error code alone when no description", async () => {
@@ -66,63 +41,7 @@ describe("throwOAuthError", () => {
     ).rejects.toThrow(
       "GitHub token exchange failed: 500 Internal Server Error",
     );
-
-    const structuredResponse = makeResponse(500, "Internal Server Error");
-    const error = await throwOAuthError(
-      "GitHub",
-      "exchange",
-      structuredResponse,
-    ).catch((e: unknown) => {
-      return e;
-    });
-    expect(error).toMatchObject({
-      provider: "GitHub",
-      operation: "exchange",
-      failureClass: "upstream_auth_unavailable",
-      retryable: true,
-      upstreamStatus: 500,
-    });
   });
-
-  it("classifies 429 as retryable upstream auth unavailable", async () => {
-    const response = makeResponse(429, "");
-
-    const error = await throwOAuthError("Slack", "refresh", response).catch(
-      (e: unknown) => {
-        return e;
-      },
-    );
-
-    expect(error).toMatchObject({
-      provider: "Slack",
-      operation: "refresh",
-      failureClass: "upstream_auth_unavailable",
-      retryable: true,
-      upstreamStatus: 429,
-    });
-  });
-
-  it.each(["server_error", "temporarily_unavailable"])(
-    "classifies OAuth %s as retryable upstream auth unavailable",
-    async (oauthError) => {
-      const response = makeResponse(400, JSON.stringify({ error: oauthError }));
-
-      const error = await throwOAuthError("Slack", "refresh", response).catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
-
-      expect(error).toMatchObject({
-        provider: "Slack",
-        operation: "refresh",
-        failureClass: "upstream_auth_unavailable",
-        retryable: true,
-        upstreamStatus: 400,
-        oauthError,
-      });
-    },
-  );
 
   it("handles empty response body", async () => {
     const response = makeResponse(502, "");
@@ -161,17 +80,5 @@ describe("throwOAuthError", () => {
     await expect(
       throwOAuthError("Stripe", "refresh", response),
     ).rejects.toThrow("Stripe token refresh failed: 400 ");
-  });
-
-  it("rejects OAuthProviderError-shaped values with unknown failure class", () => {
-    const error = Object.assign(new Error("bad failure class"), {
-      name: "OAuthProviderError",
-      provider: "Notion",
-      operation: "refresh",
-      failureClass: "unknown",
-      retryable: true,
-    });
-
-    expect(isOAuthProviderError(error)).toBe(false);
   });
 });

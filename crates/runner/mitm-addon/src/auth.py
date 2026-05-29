@@ -50,40 +50,12 @@ class FirewallAuthApiError(Exception):
         code: str,
         message: str,
         connectors: list[str] | None = None,
-        retryable: bool | None = None,
-        provider: str | None = None,
-        source_type: str | None = None,
-        upstream_status: int | None = None,
-        refresh_error_code: str | None = None,
-        failures: list[dict] | None = None,
     ):
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
         self.connectors = connectors
-        self.retryable = retryable
-        self.provider = provider
-        self.source_type = source_type
-        self.upstream_status = upstream_status
-        self.refresh_error_code = refresh_error_code
-        self.failures = failures
-
-    def response_fields(self) -> dict[str, object]:
-        fields: dict[str, object] = {}
-        if self.retryable is not None:
-            fields["retryable"] = self.retryable
-        if self.provider is not None:
-            fields["provider"] = self.provider
-        if self.source_type is not None:
-            fields["sourceType"] = self.source_type
-        if self.upstream_status is not None:
-            fields["upstreamStatus"] = self.upstream_status
-        if self.refresh_error_code is not None:
-            fields["refreshErrorCode"] = self.refresh_error_code
-        if self.failures is not None:
-            fields["failures"] = self.failures
-        return fields
 
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -93,14 +65,8 @@ _HTTP_STATUS_SERVER_ERROR_MIN = 500
 _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     {
         "FORBIDDEN",
-        "FIREWALL_AUTH_FORBIDDEN",
         "TOKEN_REFRESH_FAILED",
         "TOKEN_ACCESS_RESOLUTION_FAILED",
-        "OAUTH_RECONNECT_REQUIRED",
-        "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
-        "OAUTH_PROVIDER_AUTH_REJECTED",
-        "OAUTH_PROVIDER_RESPONSE_INVALID",
-        "FIREWALL_AUTH_INTERNAL_ERROR",
     }
 )
 
@@ -289,53 +255,12 @@ def _string_field(values: dict, key: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _bool_field(values: dict, key: str) -> bool | None:
-    value = values.get(key)
-    return value if isinstance(value, bool) else None
-
-
-def _int_field(values: dict, key: str) -> int | None:
-    value = values.get(key)
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
 def _string_list_field(values: dict, key: str) -> list[str] | None:
     value = values.get(key)
     if not isinstance(value, list):
         return None
     result = [item for item in value if isinstance(item, str)]
     return result if len(result) == len(value) else None
-
-
-def _sanitize_failure(value: object) -> dict | None:
-    if not isinstance(value, dict):
-        return None
-
-    sanitized: dict[str, object] = {}
-    for key in ("connector", "code", "provider", "sourceType", "refreshErrorCode"):
-        field_value = _string_field(value, key)
-        if field_value is not None:
-            sanitized[key] = field_value
-    retryable = _bool_field(value, "retryable")
-    if retryable is not None:
-        sanitized["retryable"] = retryable
-    upstream_status = _int_field(value, "upstreamStatus")
-    if upstream_status is not None:
-        sanitized["upstreamStatus"] = upstream_status
-    return sanitized
-
-
-def _failure_list_field(values: dict, key: str) -> list[dict] | None:
-    value = values.get(key)
-    if not isinstance(value, list):
-        return None
-    result: list[dict] = []
-    for item in value:
-        sanitized = _sanitize_failure(item)
-        if sanitized is None:
-            return None
-        result.append(sanitized)
-    return result
 
 
 def _firewall_auth_api_error_from_envelope(
@@ -353,12 +278,6 @@ def _firewall_auth_api_error_from_envelope(
         code=code,
         message=message,
         connectors=_string_list_field(error_info, "connectors"),
-        retryable=_bool_field(error_info, "retryable"),
-        provider=_string_field(error_info, "provider"),
-        source_type=_string_field(error_info, "sourceType"),
-        upstream_status=_int_field(error_info, "upstreamStatus"),
-        refresh_error_code=_string_field(error_info, "refreshErrorCode"),
-        failures=_failure_list_field(error_info, "failures"),
     )
 
 
@@ -860,13 +779,11 @@ async def handle_firewall_request(
     except FirewallAuthApiError as e:
         log_proxy_entry(
             proxy_log_path,
-            "warn" if e.retryable else "error",
+            "error",
             f"Firewall auth API failed for {firewall_base}: {e.code}",
             type="firewall",
             firewall_base=firewall_base,
             error_code=e.code,
-            retryable=e.retryable,
-            upstream_status=e.upstream_status,
         )
         _set_matched_firewall_failure_response(
             flow,
@@ -880,7 +797,6 @@ async def handle_firewall_request(
             message=e.message,
             permission=allow.name,
             connectors=e.connectors,
-            extra_fields=e.response_fields(),
         )
         return
     except Exception as e:
