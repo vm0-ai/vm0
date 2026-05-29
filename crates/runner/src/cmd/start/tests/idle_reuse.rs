@@ -122,8 +122,8 @@ async fn job_without_session_does_not_park() {
 #[tokio::test(start_paused = true)]
 async fn successful_job_parks_in_idle_pool() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -164,8 +164,8 @@ async fn successful_job_parks_in_idle_pool() {
 #[tokio::test(start_paused = true)]
 async fn job_without_session_destroys_sandbox() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -235,8 +235,8 @@ async fn park_triggers_immediate_heartbeat() {
 #[tokio::test(start_paused = true)]
 async fn session_affinity_reuses_idle_vm() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     // Pre-seed: park a VM for session "sess-reuse" with matching profile.
     let seeded_sandbox_id =
@@ -290,8 +290,8 @@ async fn session_affinity_reuses_idle_vm() {
 #[tokio::test(start_paused = true)]
 async fn reuse_take_refreshes_provider_held_session_states() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     seed_idle_pool(&idle_pool, &budget, "sess-refresh", "vm0/default", 2, 4096).await;
 
@@ -326,7 +326,7 @@ async fn disabled_io_limiter_feature_omits_limits_on_fresh_create() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
-    config.device_rate_limits = Some(device_rate_limits());
+    config.capacity.device_rate_limits = Some(device_rate_limits());
 
     let run_handle = tokio::spawn(run(config));
     let run_id = RunId::new_v4();
@@ -360,9 +360,9 @@ async fn disabled_io_limiter_feature_reuses_unlimited_idle_vm() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
-    config.device_rate_limits = Some(device_rate_limits());
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    config.capacity.device_rate_limits = Some(device_rate_limits());
 
     let seeded_sandbox_id = seed_idle_pool_with_overrides(
         &idle_pool,
@@ -411,9 +411,9 @@ async fn missing_io_limiter_feature_reuses_unlimited_idle_vm() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
-    config.device_rate_limits = Some(device_rate_limits());
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    config.capacity.device_rate_limits = Some(device_rate_limits());
 
     let seeded_sandbox_id = seed_idle_pool_with_overrides(
         &idle_pool,
@@ -458,8 +458,8 @@ async fn enabled_io_limiter_feature_without_host_capacity_reuses_unlimited_idle_
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     let seeded_sandbox_id = seed_idle_pool_with_overrides(
         &idle_pool,
@@ -507,10 +507,10 @@ async fn device_limit_mismatch_destroys_idle_vm_and_fresh_creates() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let (mut config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let limits = device_rate_limits();
-    config.device_rate_limits = Some(limits.clone());
+    config.capacity.device_rate_limits = Some(limits.clone());
 
     let seeded_sandbox_id = seed_idle_pool_with_overrides(
         &idle_pool,
@@ -567,9 +567,9 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     ));
     let (config, env) =
         mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, Arc::clone(&overrides));
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
-    let status = Arc::clone(&config.status);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let status = Arc::clone(&config.shared.status);
     let status_path = env._temp_dir.path().join("status.json");
 
     let _seeded_sandbox_id = seed_idle_pool_with_overrides(
@@ -660,8 +660,8 @@ async fn job_without_session_reports_no_session_id() {
 #[tokio::test(start_paused = true)]
 async fn profile_mismatch_destroys_stale_vm() {
     let (config, env) = mock_run_config(two_profiles(), 16, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     // Pre-seed: park a "vm0/default" (2vcpu) VM for session "sess-mm".
     seed_idle_pool(&idle_pool, &budget, "sess-mm", "vm0/default", 2, 4096).await;
@@ -718,9 +718,9 @@ async fn profile_mismatch_status_switches_from_idle_to_active_while_job_runs() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(two_profiles(), 16, 32768, 4, overrides);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
-    let status = Arc::clone(&config.status);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let status = Arc::clone(&config.shared.status);
     let status_path = env._temp_dir.path().join("status.json");
 
     seed_idle_pool(
@@ -772,8 +772,8 @@ async fn profile_mismatch_status_switches_from_idle_to_active_while_job_runs() {
 #[tokio::test(start_paused = true)]
 async fn shutdown_drains_idle_pool() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     // Pre-seed: two idle entries holding budget.
     seed_idle_pool(&idle_pool, &budget, "sess-drain-1", "vm0/default", 2, 4096).await;
@@ -802,8 +802,8 @@ async fn job_completing_during_active_draining_is_not_parked() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     // Claim a gated job with a reusable session while Running.
@@ -879,8 +879,8 @@ async fn soft_drain_resume_opens_parking_before_running_ack() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -946,7 +946,7 @@ async fn soft_drain_resume_opens_parking_before_running_ack() {
 async fn shutdown_clears_idle_vms_in_status_json() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let status_path = env._temp_dir.path().join("status.json");
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     // Park a VM via a normal job → status.json records the idle VM.
@@ -1017,8 +1017,8 @@ async fn shutdown_clears_idle_vms_in_status_json() {
 #[tokio::test(start_paused = true)]
 async fn sequential_same_session_reuse_cycle() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     // Job 1: parks VM for session "sess-seq".
@@ -1083,8 +1083,8 @@ async fn park_evicts_via_guest_session_id() {
         stderr: Vec::new(),
     });
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
 
     // Pre-seed idle pool with session "sess-evict".
     seed_idle_pool(&idle_pool, &budget, "sess-evict", "vm0/default", 2, 4096).await;
@@ -1133,7 +1133,7 @@ async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     // Job 1: fresh create → run → park.
@@ -1190,7 +1190,7 @@ async fn park_called_when_vm_enters_idle_pool() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -1231,7 +1231,7 @@ async fn park_called_when_vm_enters_idle_pool() {
 #[tokio::test(start_paused = true)]
 async fn reuse_enabled_empty_pool_reports_pool_miss() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
 
     let run_handle = tokio::spawn(run(config));
 
