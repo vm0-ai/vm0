@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { Fraunces } from "next/font/google";
+import { IconArrowUpRight } from "@tabler/icons-react";
 import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";
+import { getAppUrl } from "../../../../src/lib/zero/url";
 import {
   type IllustrationStyle,
   getIllustrationBySlug,
@@ -34,10 +36,16 @@ export function IllustrationDetailClient({
 }) {
   const t = useTranslations("illustration");
   const slug = style.slug;
+  const appUrl = getAppUrl();
 
   const seoTitle = t(`content.${slug}.seoTitle`);
-  const description = t(`content.${slug}.description`);
-  const summary = t(`content.${slug}.summary`);
+  const lede = t(`content.${slug}.lede`);
+  const definition = t(`content.${slug}.definition`);
+  const ctaBody = t(`content.${slug}.ctaBody`);
+  const valueProps = t.raw(`content.${slug}.valueProps`) as {
+    title: string;
+    body: string;
+  }[];
   const anatomy = t.raw(`content.${slug}.anatomy`) as {
     label: string;
     body: string;
@@ -50,6 +58,10 @@ export function IllustrationDetailClient({
     prompt: string;
     note: string;
   };
+  const comparison = t.raw(`content.${slug}.comparison`) as {
+    versus: string;
+    body: string;
+  }[];
   const variationCaptions = t.raw(`content.${slug}.variationCaptions`) as Record<
     string,
     string
@@ -96,7 +108,7 @@ export function IllustrationDetailClient({
       className={`landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))] ${fraunces.variable}`}
     >
       <main className="illu-detail-main">
-        <div className="illu-wrap">
+        <article className="illu-detail-article">
           {/* Breadcrumb */}
           <nav className="illu-detail-breadcrumb" aria-label="Breadcrumb">
             <Link href="/">{t("breadcrumbHome")}</Link>
@@ -106,46 +118,62 @@ export function IllustrationDetailClient({
             <span aria-current="page">{style.title}</span>
           </nav>
 
-          {/* Hero */}
+          {/* Hero — single column, copy first then plate */}
           <header className="illu-detail-hero">
-            <div className="illu-detail-hero-copy">
-              <h1 className="illu-detail-h1">{seoTitle}</h1>
-              <p className="illu-detail-lede">{description}</p>
-              <dl className="illu-detail-meta">
+            <h1 className="illu-detail-h1">{seoTitle}</h1>
+            <p className="illu-detail-lede">{lede}</p>
+
+            <dl className="illu-detail-meta">
+              <div>
+                <dt>{t("metaVariations")}</dt>
+                <dd>{t("variationCount", { count: style.refs.length })}</dd>
+              </div>
+              {style.model && (
                 <div>
-                  <dt>{t("metaVariations")}</dt>
+                  <dt>{t("metaModel")}</dt>
+                  <dd>{style.model}</dd>
+                </div>
+              )}
+              {style.palette && (
+                <div>
+                  <dt>{t("metaPalette")}</dt>
+                  <dd>{style.palette}</dd>
+                </div>
+              )}
+              {style.registerPR && (
+                <div>
+                  <dt>{t("metaRegister")}</dt>
                   <dd>
-                    {t("variationCount", { count: style.refs.length })}
+                    <a
+                      href="https://github.com/vm0-ai/vm0-skills/pulls"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {style.registerPR}
+                    </a>
                   </dd>
                 </div>
-                {style.model && (
-                  <div>
-                    <dt>{t("metaModel")}</dt>
-                    <dd>{style.model}</dd>
-                  </div>
-                )}
-                {style.palette && (
-                  <div>
-                    <dt>{t("metaPalette")}</dt>
-                    <dd>{style.palette}</dd>
-                  </div>
-                )}
-                {style.registerPR && (
-                  <div>
-                    <dt>{t("metaRegister")}</dt>
-                    <dd>
-                      <a
-                        href="https://github.com/vm0-ai/vm0-skills/pulls"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {style.registerPR}
-                      </a>
-                    </dd>
-                  </div>
-                )}
-              </dl>
+              )}
+            </dl>
+
+            <div className="illu-detail-hero-ctas">
+              <a
+                href={appUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="illu-detail-cta-primary"
+              >
+                {t("primaryCta")}
+                <IconArrowUpRight size={16} />
+              </a>
+              <Link
+                href="/illustration"
+                className="illu-detail-cta-secondary"
+              >
+                {t("secondaryCta")}
+              </Link>
             </div>
+
             <button
               type="button"
               className="illu-detail-hero-plate"
@@ -164,15 +192,34 @@ export function IllustrationDetailClient({
             </button>
           </header>
 
-          {/* Summary */}
+          {/* Definition — Google snippet target */}
+          <section className="illu-detail-section">
+            <h2 className="illu-detail-h2">
+              {t("definitionHeading", { title: style.title })}
+            </h2>
+            <p className="illu-detail-body illu-detail-definition">
+              {definition}
+            </p>
+          </section>
+
+          {/* Value props — marketing punch */}
           <section className="illu-detail-section">
             <h2 className="illu-detail-h2">
               {t("summaryHeading", { title: style.title })}
             </h2>
-            <p className="illu-detail-body">{summary}</p>
+            <div className="illu-detail-valueprops">
+              {valueProps.map((vp) => {
+                return (
+                  <div key={vp.title} className="illu-detail-valueprop">
+                    <h3>{vp.title}</h3>
+                    <p>{vp.body}</p>
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
-          {/* Full variation grid */}
+          {/* Variation gallery — single column stack */}
           <section className="illu-detail-section">
             <h2 className="illu-detail-h2">
               {t("variationsHeading", { count: style.refs.length })}
@@ -180,7 +227,7 @@ export function IllustrationDetailClient({
             <p className="illu-detail-body illu-detail-muted">
               {t("variationsLede")}
             </p>
-            <div className="illu-detail-grid">
+            <div className="illu-detail-stack">
               {style.refs.map((ref) => {
                 const caption = variationCaptions[ref] ?? style.title;
                 return (
@@ -207,13 +254,13 @@ export function IllustrationDetailClient({
             </div>
           </section>
 
-          {/* Anatomy */}
+          {/* Anatomy — single column stack */}
           <section className="illu-detail-section">
             <h2 className="illu-detail-h2">{t("anatomyHeading")}</h2>
-            <div className="illu-detail-anatomy">
+            <div className="illu-detail-rows">
               {anatomy.map((row) => {
                 return (
-                  <div key={row.label} className="illu-detail-anatomy-row">
+                  <div key={row.label} className="illu-detail-row">
                     <h3>{row.label}</h3>
                     <p>{row.body}</p>
                   </div>
@@ -222,13 +269,15 @@ export function IllustrationDetailClient({
             </div>
           </section>
 
-          {/* When to use */}
+          {/* When to use — single column stack */}
           <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">{t("whenToUseHeading")}</h2>
-            <div className="illu-detail-personas">
+            <h2 className="illu-detail-h2">
+              {t("whenToUseHeading", { title: style.title })}
+            </h2>
+            <div className="illu-detail-rows">
               {whenToUse.map((row) => {
                 return (
-                  <div key={row.persona} className="illu-detail-persona">
+                  <div key={row.persona} className="illu-detail-row">
                     <h3>{row.persona}</h3>
                     <p>{row.body}</p>
                   </div>
@@ -237,9 +286,12 @@ export function IllustrationDetailClient({
             </div>
           </section>
 
-          {/* Recipe */}
+          {/* Recipe — slash command + sample prompt + CTA */}
           <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">{t("recipeHeading")}</h2>
+            <h2 className="illu-detail-h2">
+              {t("recipeHeading", { title: style.title })}
+            </h2>
+            <p className="illu-detail-body">{t("recipeIntro")}</p>
             {style.slashCommand && (
               <div className="illu-detail-recipe-command">
                 <span className="illu-detail-recipe-label">
@@ -250,9 +302,37 @@ export function IllustrationDetailClient({
             )}
             <div className="illu-detail-recipe-prompt">{recipe.prompt}</div>
             <p className="illu-detail-body illu-detail-muted">{recipe.note}</p>
+            <div className="illu-detail-recipe-cta">
+              <a
+                href={appUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="illu-detail-cta-primary"
+              >
+                {t("primaryCta")}
+                <IconArrowUpRight size={16} />
+              </a>
+            </div>
           </section>
 
-          {/* Related */}
+          {/* Comparison — SEO clustering */}
+          <section className="illu-detail-section">
+            <h2 className="illu-detail-h2">
+              {t("comparisonHeading", { title: style.title })}
+            </h2>
+            <div className="illu-detail-rows">
+              {comparison.map((row) => {
+                return (
+                  <div key={row.versus} className="illu-detail-row">
+                    <h3>{row.versus}</h3>
+                    <p>{row.body}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Related — horizontal row cards */}
           {relatedStyles.length > 0 && (
             <section className="illu-detail-section">
               <h2 className="illu-detail-h2">{t("relatedHeading")}</h2>
@@ -299,7 +379,32 @@ export function IllustrationDetailClient({
               })}
             </div>
           </section>
-        </div>
+
+          {/* Closing CTA */}
+          <section className="illu-detail-closing-cta">
+            <h2 className="illu-detail-h2">
+              {t("ctaSectionHeading", { title: style.title })}
+            </h2>
+            <p className="illu-detail-body">{ctaBody}</p>
+            <div className="illu-detail-hero-ctas">
+              <a
+                href={appUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="illu-detail-cta-primary"
+              >
+                {t("primaryCta")}
+                <IconArrowUpRight size={16} />
+              </a>
+              <Link
+                href="/illustration"
+                className="illu-detail-cta-secondary"
+              >
+                {t("secondaryCta")}
+              </Link>
+            </div>
+          </section>
+        </article>
       </main>
 
       <Footer />
