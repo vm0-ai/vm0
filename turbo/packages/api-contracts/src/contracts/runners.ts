@@ -207,7 +207,7 @@ export const executionContextSchema = z.object({
   secretValues: z.array(z.string()).nullable(),
   // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
   encryptedSecrets: z.string().nullable(),
-  // Maps runtime secret/env keys to connector or provider owner keys for access resolution.
+  // Maps refreshable secret keys/env aliases to their connector or provider owner.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema

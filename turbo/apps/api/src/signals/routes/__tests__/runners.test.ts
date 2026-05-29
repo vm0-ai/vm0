@@ -1191,15 +1191,17 @@ describe("POST /api/runners/*", () => {
     });
     patFixtures.push(pat);
     const encryptedSecrets = encryptedSecretsMap({
-      GMAIL_ACCESS_TOKEN: "fake-access-token",
+      CHATGPT_ACCESS_TOKEN: "fake-access-token",
     });
     const secretConnectorMap = {
-      GMAIL_ACCESS_TOKEN: "gmail",
-      GMAIL_TOKEN: "gmail",
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+      CHATGPT_TOKEN: "codex-oauth-token",
     };
     const secretConnectorMetadataMap = {
-      GMAIL_ACCESS_TOKEN: {
-        sourceType: "connector" as const,
+      CHATGPT_ACCESS_TOKEN: {
+        sourceType: "model-provider" as const,
+        sourceUserId: fixture.userId,
+        metadataKey: "codex-oauth-token",
       },
     };
     const queued = await seedQueuedRun({
