@@ -944,6 +944,17 @@ type ConnectorAuthMethodIdsByGrantKind<
     : never;
 }[ConnectorAuthMethodKeys<Type>];
 
+export type ConnectorAuthMethodIdsByAccessKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorAccessKind,
+> = {
+  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+    readonly access: { readonly kind: Kind };
+  }
+    ? Method
+    : never;
+}[ConnectorAuthMethodKeys<Type>];
+
 type ConnectorTypeWithMultipleAuthMethodsForGrantKind<
   Kind extends ConnectorGrantKind,
 > = {

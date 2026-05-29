@@ -268,6 +268,7 @@ type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
       readonly connectorType: RefreshTokenAccessConnectorType;
+      readonly authMethod: string;
       readonly clientArgs: ConnectorAuthProviderClientArgs;
       readonly context: RefreshTokenContext;
     }
@@ -751,7 +752,12 @@ function prepareRefreshTokenContext(
   if (!parsedConnectorType.success) {
     return { ok: false, reason: "not-refreshable" };
   }
-  if (!hasConnectorRefreshTokenAccessProvider(parsedConnectorType.data)) {
+  if (
+    !hasConnectorRefreshTokenAccessProvider(
+      parsedConnectorType.data,
+      connectorAccess.authMethod,
+    )
+  ) {
     return { ok: false, reason: "not-refreshable" };
   }
   const authClient = resolveConnectorAuthClientForMethod(
@@ -783,6 +789,7 @@ function prepareRefreshTokenContext(
     prepared: {
       sourceType: "connector",
       connectorType: parsedConnectorType.data,
+      authMethod: connectorAccess.authMethod,
       clientArgs: getConnectorAuthProviderClientArgs(authClient),
       context,
     },
@@ -1152,6 +1159,7 @@ async function refreshAccessTokenForSource(
       prepared.sourceType === "connector"
         ? refreshConnectorAuthProviderAccessToken({
             type: prepared.connectorType,
+            authMethod: prepared.authMethod,
             clientArgs: prepared.clientArgs,
             refreshToken: lockedState.refreshToken,
           })

@@ -3,9 +3,11 @@ import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
+  ConnectorAuthMethodIdsByAccessKind,
   RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  connectorAuthMethodSupportsRefreshTokenAccess,
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   hasConnectorAuthCodeGrant,
   isStaticConfidentialConnectorAuthClient,
@@ -118,8 +120,17 @@ type DeviceAuthConnectorAuthProviderMap = {
   readonly [Type in DeviceAuthGrantConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
+type ConnectorRefreshTokenAccessProviderEntries<
+  Type extends RefreshTokenAccessConnectorType,
+> = {
+  readonly [Method in ConnectorAuthMethodIdsByAccessKind<
+    Type,
+    "refresh-token"
+  >]: RefreshTokenAccessProvider<Type>;
+};
+
 type ConnectorRefreshTokenAccessProviderMap = {
-  readonly [Type in RefreshTokenAccessConnectorType]: RefreshTokenAccessProvider<Type>;
+  readonly [Type in RefreshTokenAccessConnectorType]: ConnectorRefreshTokenAccessProviderEntries<Type>;
 };
 
 export type ConnectorAuthProviderSecretMetadata = AuthProviderSecretMetadata;
@@ -137,8 +148,11 @@ function deviceAuthConnectorProviderFor<T extends DeviceAuthGrantConnectorType>(
 
 function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
->(type: T): ConnectorRefreshTokenAccessProviderMap[T] {
-  return CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[type];
+>(type: T, authMethod: string): RefreshTokenAccessProvider<T> | undefined {
+  const providers = CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[type] as Readonly<
+    Record<string, RefreshTokenAccessProvider<T>>
+  >;
+  return providers[authMethod];
 }
 
 function connectorRevokeProviderFor<T extends ConnectorAuthProviderType>(
@@ -231,45 +245,45 @@ const DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS: DeviceAuthConnectorAuthProviderMap =
 
 const CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS: ConnectorRefreshTokenAccessProviderMap =
   {
-    ahrefs: ahrefsProvider.access,
-    airtable: airtableProvider.access,
-    asana: asanaProvider.access,
-    base44: base44Provider.access,
-    canva: canvaProvider.access,
-    close: closeProvider.access,
-    deel: deelProvider.access,
-    docusign: docusignProvider.access,
-    dropbox: dropboxProvider.access,
-    figma: figmaProvider.access,
-    "garmin-connect": garminConnectProvider.access,
-    gmail: gmailProvider.access,
-    "google-ads": googleAdsProvider.access,
-    "google-calendar": googleCalendarProvider.access,
-    "google-docs": googleDocsProvider.access,
-    "google-drive": googleDriveProvider.access,
-    "google-meet": googleMeetProvider.access,
-    "google-sheets": googleSheetsProvider.access,
-    gumroad: gumroadProvider.access,
-    hubspot: hubspotProvider.access,
-    linear: linearProvider.access,
-    mercury: mercuryProvider.access,
-    monday: mondayProvider.access,
-    neon: neonProvider.access,
-    notion: notionProvider.access,
-    "outlook-calendar": outlookCalendarProvider.access,
-    "outlook-mail": outlookMailProvider.access,
-    posthog: posthogProvider.access,
-    reddit: redditProvider.access,
-    sentry: sentryProvider.access,
-    slock: slockProvider.access,
-    spotify: spotifyProvider.access,
-    strava: stravaProvider.access,
-    stripe: stripeProvider.access,
-    supabase: supabaseProvider.access,
-    "test-oauth": testOauthProvider.access,
-    x: xProvider.access,
-    xero: xeroProvider.access,
-    zoom: zoomProvider.access,
+    ahrefs: { oauth: ahrefsProvider.access },
+    airtable: { oauth: airtableProvider.access },
+    asana: { oauth: asanaProvider.access },
+    base44: { oauth: base44Provider.access },
+    canva: { oauth: canvaProvider.access },
+    close: { oauth: closeProvider.access },
+    deel: { oauth: deelProvider.access },
+    docusign: { oauth: docusignProvider.access },
+    dropbox: { oauth: dropboxProvider.access },
+    figma: { oauth: figmaProvider.access },
+    "garmin-connect": { oauth: garminConnectProvider.access },
+    gmail: { oauth: gmailProvider.access },
+    "google-ads": { oauth: googleAdsProvider.access },
+    "google-calendar": { oauth: googleCalendarProvider.access },
+    "google-docs": { oauth: googleDocsProvider.access },
+    "google-drive": { oauth: googleDriveProvider.access },
+    "google-meet": { oauth: googleMeetProvider.access },
+    "google-sheets": { oauth: googleSheetsProvider.access },
+    gumroad: { oauth: gumroadProvider.access },
+    hubspot: { oauth: hubspotProvider.access },
+    linear: { oauth: linearProvider.access },
+    mercury: { oauth: mercuryProvider.access },
+    monday: { oauth: mondayProvider.access },
+    neon: { oauth: neonProvider.access },
+    notion: { oauth: notionProvider.access },
+    "outlook-calendar": { oauth: outlookCalendarProvider.access },
+    "outlook-mail": { oauth: outlookMailProvider.access },
+    posthog: { oauth: posthogProvider.access },
+    reddit: { oauth: redditProvider.access },
+    sentry: { oauth: sentryProvider.access },
+    slock: { oauth: slockProvider.access },
+    spotify: { oauth: spotifyProvider.access },
+    strava: { oauth: stravaProvider.access },
+    stripe: { oauth: stripeProvider.access },
+    supabase: { oauth: supabaseProvider.access },
+    "test-oauth": { oauth: testOauthProvider.access },
+    x: { oauth: xProvider.access },
+    xero: { oauth: xeroProvider.access },
+    zoom: { oauth: zoomProvider.access },
   };
 
 export function hasConnectorAuthProvider(
@@ -295,8 +309,18 @@ export function hasConnectorDeviceAuthGrantProvider(
 
 export function hasConnectorRefreshTokenAccessProvider(
   type: string,
+  authMethod?: string,
 ): type is RefreshTokenAccessConnectorType {
-  return Object.hasOwn(CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS, type);
+  if (!Object.hasOwn(CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS, type)) {
+    return false;
+  }
+  if (authMethod === undefined) {
+    return true;
+  }
+  const providers = CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[
+    type as RefreshTokenAccessConnectorType
+  ] as Readonly<Record<string, unknown>>;
+  return Object.hasOwn(providers, authMethod);
 }
 
 export function getConnectorAuthProviderSecretMetadata(
@@ -397,10 +421,27 @@ export async function refreshConnectorAuthProviderAccessToken<
   T extends RefreshTokenAccessConnectorType,
 >(args: {
   readonly type: T;
+  readonly authMethod: string;
   readonly clientArgs: ConnectorAuthProviderClientArgs;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  return await connectorRefreshTokenAccessProviderFor(args.type).refreshToken({
+  if (
+    !connectorAuthMethodSupportsRefreshTokenAccess(args.type, args.authMethod)
+  ) {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} does not support token refresh`,
+    );
+  }
+  const access = connectorRefreshTokenAccessProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  if (!access) {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} has no refresh-token access provider`,
+    );
+  }
+  return await access.refreshToken({
     ...args.clientArgs,
     refreshToken: args.refreshToken,
   } as ConnectorAuthProviderRefreshArgs<T>);

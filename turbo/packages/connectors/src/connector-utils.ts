@@ -16,6 +16,7 @@ import {
   type ConnectorAuthProviderType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
+  type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
@@ -338,6 +339,15 @@ export function connectorAuthMethodSupportsTokenRevoke(
 ): type is TokenRevokeConnectorType {
   return (
     getConnectorAuthMethod(type, authMethod)?.revoke.kind === "token-revoke"
+  );
+}
+
+export function connectorAuthMethodSupportsRefreshTokenAccess(
+  type: ConnectorType,
+  authMethod: string,
+): type is RefreshTokenAccessConnectorType {
+  return (
+    getConnectorAuthMethod(type, authMethod)?.access.kind === "refresh-token"
   );
 }
 
