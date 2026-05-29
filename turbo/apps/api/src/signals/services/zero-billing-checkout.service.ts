@@ -256,7 +256,7 @@ export const createCreditCheckoutSession$ = command(
       signal.throwIfAborted();
       metadata = {
         ...baseMetadata,
-        creditsAmountMode: "amount_total",
+        creditsAmountMode: "amount_subtotal",
         requestedCreditsAmount: String(args.credits),
       };
       lineItems = [{ price: presetPriceId, quantity: 1 }];
@@ -279,6 +279,7 @@ export const createCreditCheckoutSession$ = command(
       mode: "payment",
       customer: customerId,
       line_items: lineItems,
+      allow_promotion_codes: true,
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       payment_intent_data: {
