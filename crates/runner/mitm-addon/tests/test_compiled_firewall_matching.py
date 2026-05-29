@@ -417,16 +417,22 @@ class TestCompiledFirewallMatching:
             "exa%20mple.com",
             "%3A%3A1",
             "2001%3Adb8%3A%3A1",
+            "[::1]junk",
             "xn--.com",
             "xn--a.com",
             "xn--zzzz.example",
+            "xn--ph7c.example",
+            "xn--lm6c.example",
+            "xn--72g.example",
+            "\u4f8b\uff1a\u5b50.example",
+            "\u4f8b\uff0c\u5b50.example",
         ],
     )
     def test_compiled_rejects_request_url_with_invalid_authority_host(self, invalid_host):
         fws = wrap_firewalls(
             [
                 {
-                    "base": f"https://{invalid_host}",
+                    "base": "https://api.github.com",
                     "auth": {"headers": {"Authorization": "Bearer token"}},
                     "permissions": [],
                 }
@@ -521,6 +527,8 @@ class TestCompiledFirewallMatching:
             ("https://api.github.com", "https://api.github.com./repos/org/repo"),
             ("https://api.github.com.:08443", "https://api.github.com:8443/repos/org/repo"),
             ("https://[2001:db8::1]:08443", "https://[2001:db8::1]:8443/repos/org/repo"),
+            ("https://[2001:0db8::1]", "https://[2001:db8::1]/repos/org/repo"),
+            ("https://[::ffff:127.0.0.1]", "https://[::ffff:7f00:1]/repos/org/repo"),
             ("https://{sub}.github.com.", "https://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com", "https://api.github.com./repos/org/repo"),
             ("https://{sub}.github.com.:08443", "https://api.github.com:8443/repos/org/repo"),
@@ -605,6 +613,16 @@ class TestCompiledFirewallMatching:
                 "https://xn--fa-hia.de/repos/org/repo",
                 {"owner": "org", "repo": "repo"},
             ),
+            (
+                "https://faß.de",
+                "https://xn--fa-hia.de/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--3xa.example",
+                "https://\u03c2.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
         ],
     )
     def test_compiled_matches_idna_authority_bases(self, base, url, expected_params):
@@ -638,7 +656,9 @@ class TestCompiledFirewallMatching:
         [
             ("https://fass.de", "https://faß.de/repos/org/repo"),
             ("https://a.example", "https://\uff21.example/repos/org/repo"),
+            ("https://k.example", "https://\u212a.example/repos/org/repo"),
             ("https://example.com", "https://\u200cexample.com/repos/org/repo"),
+            ("https://xn--4xa.example", "https://\u03c2.example/repos/org/repo"),
         ],
     )
     def test_compiled_rejects_request_idna_compatibility_aliases(self, base, url):
@@ -671,6 +691,7 @@ class TestCompiledFirewallMatching:
             ("https://faß.de", "https://fass.de/repos/org/repo"),
             ("https://\uff21.example", "https://a.example/repos/org/repo"),
             ("https://\u200cexample.com", "https://example.com/repos/org/repo"),
+            ("https://xn--3xa.example", "https://\u03c3.example/repos/org/repo"),
         ],
     )
     def test_compiled_rejects_base_idna_compatibility_aliases(self, base, url):
@@ -1672,6 +1693,7 @@ class TestCompiledFirewallMatching:
             ("https://user:pass@{sub}.github.com", "https://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com:bad", "https://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com:99999", "https://api.github.com/repos/org/repo"),
+            ("https://\u212a.example", "https://k.example/repos/org/repo"),
         ],
     )
     def test_malformed_base_authority_fails_closed_after_base_match(self, base, url):

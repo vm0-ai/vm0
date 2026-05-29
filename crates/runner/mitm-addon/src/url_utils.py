@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 from mitmproxy import http
-from mitmproxy.net.http import url as mitm_url
 
 from path_security import has_unsafe_dot_segment
 from host_normalization import normalize_idna_hostname
@@ -19,6 +18,10 @@ from host_normalization import normalize_idna_hostname
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
 _IPV6_VERSION = 6
+_MAX_PORT = 65535
+_ASCII_CONTROL_MAX = 0x20
+_ASCII_DELETE = 0x7F
+_FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|")
 
 
 @dataclass(frozen=True)
@@ -82,7 +85,29 @@ class AuthorityValidationError(Exception):
         self.fallback_url = fallback_url
 
 
+def _has_invalid_hostname_chars(host: str) -> bool:
+    return any(
+        char.isspace()
+        or ord(char) < _ASCII_CONTROL_MAX
+        or ord(char) == _ASCII_DELETE
+        or char in _FORBIDDEN_HOST_CHARS
+        for char in host
+    )
+
+
 def _normalize_hostname(host: str) -> str:
+    if ":" in host:
+        if "%" in host:
+            raise ValueError("IPv6 scope identifiers are not allowed")
+        try:
+            parsed = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError("invalid IPv6 hostname") from exc
+        if parsed.version == _IPV6_VERSION:
+            return parsed.compressed.lower()
+        raise ValueError("colon host must be IPv6")
+    if _has_invalid_hostname_chars(host):
+        raise ValueError("invalid hostname")
     return normalize_idna_hostname(host)
 
 
@@ -114,9 +139,52 @@ def _build_url(scheme: str, host: str, port: int, path: str) -> str:
     return f"{scheme}://{_host_with_port(scheme, host, port)}{path}"
 
 
+def _parse_authority_port(raw_port: str) -> int:
+    if not raw_port or not raw_port.isdigit():
+        raise ValueError("invalid authority port")
+    port = int(raw_port)
+    if port > _MAX_PORT:
+        raise ValueError("authority port out of range")
+    return port
+
+
 def _parse_host_authority(authority: str) -> tuple[str, int | None]:
-    host, port = mitm_url.parse_authority(authority, check=True)
-    return host, port
+    if not authority or any(
+        char.isspace() or ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
+        for char in authority
+    ):
+        raise ValueError("invalid authority")
+
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            raise ValueError("invalid IPv6 authority")
+        host = authority[1:close_index]
+        rest = authority[close_index + 1 :]
+        if rest == "":
+            port = None
+        elif rest.startswith(":"):
+            port = _parse_authority_port(rest[1:])
+        else:
+            raise ValueError("invalid IPv6 authority")
+        if "%" in host:
+            raise ValueError("IPv6 scope identifiers are not allowed")
+        parsed = ipaddress.ip_address(host)
+        if parsed.version != _IPV6_VERSION:
+            raise ValueError("bracketed authority must be IPv6")
+        return host, port
+
+    if any(char in _FORBIDDEN_HOST_CHARS or char == "," for char in authority):
+        raise ValueError("invalid host authority")
+    if authority.count(":") > 1:
+        raise ValueError("unbracketed IPv6 authority")
+    if ":" not in authority:
+        return authority, None
+
+    host, raw_port = authority.rsplit(":", maxsplit=1)
+    if not host:
+        raise ValueError("missing authority host")
+    return host, _parse_authority_port(raw_port)
 
 
 def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:

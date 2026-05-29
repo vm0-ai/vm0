@@ -3,6 +3,7 @@
 Pure functions with no module-level state or I/O.
 """
 
+import ipaddress
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal, NamedTuple
@@ -25,6 +26,7 @@ _MIN_HOST_SEGMENTS = 2
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
 _PERCENT_ESCAPE_LENGTH = 3
+_IPV6_VERSION = 6
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
@@ -75,6 +77,26 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
     if ":" in decoded:
         return decoded, True
     return decoded, False
+
+
+def _extract_raw_hostname(netloc: str) -> str | None:
+    authority = netloc.rsplit("@", maxsplit=1)[-1]
+    if not authority:
+        return None
+
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            return None
+        rest = authority[close_index + 1 :]
+        if rest and not rest.startswith(":"):
+            return None
+        return authority[1:close_index]
+
+    if authority.count(":") == 1:
+        host, _, _port = authority.rpartition(":")
+        return host or None
+    return authority
 
 
 class _BaseUrlParts(NamedTuple):
@@ -207,7 +229,7 @@ def _split_base_match_url(
     if has_userinfo and not allow_malformed_authority:
         return None
 
-    authority_result = _normalize_authority(parts.scheme, parts.hostname, port)
+    authority_result = _normalize_authority(parts.scheme, _extract_raw_hostname(parts.netloc), port)
     if authority_result is None:
         return None
     authority, host_malformed = authority_result
@@ -234,7 +256,13 @@ def _normalize_authority_host(host: str) -> tuple[str, bool]:
     if _has_invalid_authority_host_chars(normalized):
         return normalized.lower(), True
     if ":" in normalized:
-        return f"[{normalized}]", False
+        try:
+            parsed_ip = ipaddress.ip_address(normalized)
+        except ValueError:
+            return normalized.lower(), True
+        if parsed_ip.version != _IPV6_VERSION:
+            return normalized.lower(), True
+        return f"[{parsed_ip.compressed.lower()}]", False
     try:
         return normalize_idna_hostname(normalized), False
     except UnicodeError:

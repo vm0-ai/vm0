@@ -380,6 +380,35 @@ async def test_accepts_matching_ipv6_host_authority(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+async def test_accepts_canonical_ipv6_host_authority(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(
+        tmp_path,
+        base="https://[2001:db8::1]:8443",
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="2001:0db8::1",
+        port=8443,
+        sni="2001:0db8::1",
+        path="/repos",
+        request_headers=headers(("Host", "[2001:db8::1]:8443")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata["firewall_base"] == "https://[2001:db8::1]:8443"
+    assert flow.metadata["original_url"] == "https://[2001:db8::1]:8443/repos"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
 async def test_rejects_unbracketed_ipv6_host_authority(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -493,6 +522,20 @@ async def test_rejects_host_authority_port_mismatch(
             "https://xn--bcher-kva.example",
             "https://xn--bcher-kva.example/repos",
         ),
+        (
+            "https://xn--fa-hia.de",
+            "faß.de",
+            "xn--fa-hia.de",
+            "https://xn--fa-hia.de",
+            "https://xn--fa-hia.de/repos",
+        ),
+        (
+            "https://xn--3xa.example",
+            "\u03c2.example",
+            "xn--3xa.example",
+            "https://xn--3xa.example",
+            "https://xn--3xa.example/repos",
+        ),
     ],
 )
 async def test_accepts_authority_host_normalization_equivalence(
@@ -536,14 +579,14 @@ async def test_rejects_idna_compatibility_sni_alias_before_firewall_auth(
     fake_firewall_headers,
     headers,
 ):
-    reg_path = _write_github_firewall_registry(tmp_path, base="https://fass.de")
+    reg_path = _write_github_firewall_registry(tmp_path, base="https://a.example")
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="faß.de",
+        sni="\uff21.example",
         path="/repos",
-        request_headers=headers(("Host", "fass.de")),
+        request_headers=headers(("Host", "a.example")),
     )
 
     with (
@@ -556,7 +599,7 @@ async def test_rejects_idna_compatibility_sni_alias_before_firewall_auth(
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
     assert body["error"] == "invalid_sni"
-    assert body["sni"] == "faß.de"
+    assert body["sni"] == "\uff21.example"
     assert flow.metadata["firewall_action"] == "DENY"
     assert flow.metadata["firewall_error"] == "invalid_sni"
     assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
@@ -571,14 +614,14 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
     fake_firewall_headers,
     headers,
 ):
-    reg_path = _write_github_firewall_registry(tmp_path, base="https://fass.de")
+    reg_path = _write_github_firewall_registry(tmp_path, base="https://a.example")
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
-        sni="fass.de",
+        sni="a.example",
         path="/repos",
-        request_headers=headers(("Host", "faß.de")),
+        request_headers=headers(("Host", "\uff21.example")),
     )
 
     with (
@@ -591,11 +634,11 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
     assert body["error"] == "invalid_authority"
-    assert body["sni"] == "fass.de"
-    assert body["host_header"] == "faß.de"
+    assert body["sni"] == "a.example"
+    assert body["host_header"] == "\uff21.example"
     assert flow.metadata["firewall_action"] == "DENY"
     assert flow.metadata["firewall_error"] == "invalid_authority"
-    assert flow.metadata["original_url"] == "https://fass.de/repos"
+    assert flow.metadata["original_url"] == "https://a.example/repos"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -610,6 +653,11 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "xn--.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--a.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--zzzz.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "xn--ph7c.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u4f8b\uff1a\u5b50.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u4f8b\uff0c\u5b50.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "[::1]junk", "invalid_authority", "https://api.github.com/repos"),
+        (443, "[fe80::1%25eth0]", "invalid_authority", "https://api.github.com/repos"),
         (
             8443,
             "api.github.com:bad",
@@ -718,6 +766,41 @@ async def test_rejects_missing_https_sni_before_firewall_auth(
         ("203.0.113.10", 443, "\ud800", "\ud800", "https://203.0.113.10/repos"),
         ("203.0.113.10", 443, "xn--.com", "xn--.com", "https://203.0.113.10/repos"),
         ("203.0.113.10", 443, "xn--a.com", "xn--a.com", "https://203.0.113.10/repos"),
+        (
+            "203.0.113.10",
+            443,
+            "xn--ph7c.example",
+            "xn--ph7c.example",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "api.github.com:443",
+            "api.github.com:443",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "\u4f8b\uff1a\u5b50.example",
+            "\u4f8b\uff1a\u5b50.example",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "\u212a.example",
+            "\u212a.example",
+            "https://203.0.113.10/repos",
+        ),
+        (
+            "203.0.113.10",
+            443,
+            "fe80::1%25eth0",
+            "fe80::1%25eth0",
+            "https://203.0.113.10/repos",
+        ),
         (
             "203.0.113.10",
             443,

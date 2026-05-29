@@ -256,6 +256,8 @@ class TestMatchBaseUrl:
             ("https://api.github.com./repos", "https://api.github.com"),
             ("https://api.github.com:8443/repos", "https://api.github.com.:08443"),
             ("https://api.github.com.:8443/repos", "https://api.github.com:8443"),
+            ("https://[2001:0db8::1]/repos", "https://[2001:db8::1]"),
+            ("https://[::ffff:127.0.0.1]/repos", "https://[::ffff:7f00:1]"),
         ],
     )
     def test_static_base_authority_normalization_matches_runtime_host(self, url, base):
@@ -267,7 +269,10 @@ class TestMatchBaseUrl:
         [
             ("https://xn--fsqu00a.xn--0zwm56d/repos", "https://例子.测试"),
             ("https://例子.测试/repos", "https://xn--fsqu00a.xn--0zwm56d"),
+            ("https://faß.de/repos", "https://xn--fa-hia.de"),
+            ("https://xn--strae-oqa.de/repos", "https://straße.de"),
             ("https://xn--fa-hia.de/repos", "https://xn--fa-hia.de"),
+            ("https://\u03c2.example/repos", "https://xn--3xa.example"),
         ],
     )
     def test_static_base_idna_authority_matches_runtime_host(self, url, base):
@@ -281,6 +286,8 @@ class TestMatchBaseUrl:
             ("https://fass.de/repos", "https://faß.de"),
             ("https://\uff21.example/repos", "https://a.example"),
             ("https://a.example/repos", "https://\uff21.example"),
+            ("https://\u212a.example/repos", "https://k.example"),
+            ("https://k.example/repos", "https://\u212a.example"),
             ("https://\u200cexample.com/repos", "https://example.com"),
             ("https://example.com/repos", "https://\u200cexample.com"),
         ],
@@ -292,9 +299,25 @@ class TestMatchBaseUrl:
     @pytest.mark.parametrize(
         ("url", "base"),
         [
+            ("https://\u03c2.example/repos", "https://xn--4xa.example"),
+            ("https://\u03c3.example/repos", "https://xn--3xa.example"),
+        ],
+    )
+    def test_static_base_rejects_distinct_idna_labels(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result is None
+
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
             ("https://xn--.com/repos", "https://xn--.com"),
             ("https://xn--a.com/repos", "https://xn--a.com"),
             ("https://xn--zzzz.example/repos", "https://xn--zzzz.example"),
+            ("https://xn--ph7c.example/repos", "https://xn--ph7c.example"),
+            ("https://xn--lm6c.example/repos", "https://xn--lm6c.example"),
+            ("https://xn--72g.example/repos", "https://xn--72g.example"),
+            ("https://\u4f8b\uff1a\u5b50.example/repos", "https://\u4f8b\uff1a\u5b50.example"),
+            ("https://\u4f8b\uff0c\u5b50.example/repos", "https://\u4f8b\uff0c\u5b50.example"),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):
@@ -323,6 +346,7 @@ class TestMatchBaseUrl:
             "https://.github.com/repos",
             "https://api..github.com/repos",
             "https://./repos",
+            "https://[::1]junk/repos",
         ],
     )
     def test_static_base_malformed_request_authority_returns_none(self, url):
@@ -520,6 +544,7 @@ class TestMatchBaseUrl:
         [
             ("https://acme.xn--fsqu00a.xn--0zwm56d/api", "https://{sub}.例子.测试"),
             ("https://acme.例子.测试/api", "https://{sub}.xn--fsqu00a.xn--0zwm56d"),
+            ("https://acme.faß.de/api", "https://{sub}.xn--fa-hia.de"),
         ],
     )
     def test_parameterized_base_idna_authority_matches_runtime_host(self, url, base):
