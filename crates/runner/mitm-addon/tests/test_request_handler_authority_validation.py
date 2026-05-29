@@ -607,6 +607,9 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "", "missing_authority", "https://api.github.com/repos"),
         (8443, "", "missing_authority", "https://api.github.com:8443/repos"),
         (443, "api.github.com:bad", "invalid_authority", "https://api.github.com/repos"),
+        (443, "xn--.com", "invalid_authority", "https://api.github.com/repos"),
+        (443, "xn--a.com", "invalid_authority", "https://api.github.com/repos"),
+        (443, "xn--zzzz.example", "invalid_authority", "https://api.github.com/repos"),
         (
             8443,
             "api.github.com:bad",
@@ -713,6 +716,15 @@ async def test_rejects_missing_https_sni_before_firewall_auth(
         ("203.0.113.10", 443, "...", "...", "https://203.0.113.10/repos"),
         ("203.0.113.10", 8443, "...", "...", "https://203.0.113.10:8443/repos"),
         ("203.0.113.10", 443, "\ud800", "\ud800", "https://203.0.113.10/repos"),
+        ("203.0.113.10", 443, "xn--.com", "xn--.com", "https://203.0.113.10/repos"),
+        ("203.0.113.10", 443, "xn--a.com", "xn--a.com", "https://203.0.113.10/repos"),
+        (
+            "203.0.113.10",
+            443,
+            "xn--zzzz.example",
+            "xn--zzzz.example",
+            "https://203.0.113.10/repos",
+        ),
         ("2001:db8::1", 8443, "...", "...", "https://[2001:db8::1]:8443/repos"),
     ],
 )

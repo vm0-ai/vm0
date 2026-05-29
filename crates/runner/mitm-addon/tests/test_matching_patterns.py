@@ -267,6 +267,7 @@ class TestMatchBaseUrl:
         [
             ("https://xn--fsqu00a.xn--0zwm56d/repos", "https://例子.测试"),
             ("https://例子.测试/repos", "https://xn--fsqu00a.xn--0zwm56d"),
+            ("https://xn--fa-hia.de/repos", "https://xn--fa-hia.de"),
         ],
     )
     def test_static_base_idna_authority_matches_runtime_host(self, url, base):
@@ -285,6 +286,18 @@ class TestMatchBaseUrl:
         ],
     )
     def test_static_base_rejects_idna_compatibility_aliases(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result is None
+
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://xn--.com/repos", "https://xn--.com"),
+            ("https://xn--a.com/repos", "https://xn--a.com"),
+            ("https://xn--zzzz.example/repos", "https://xn--zzzz.example"),
+        ],
+    )
+    def test_static_base_rejects_invalid_alabel_authorities(self, url, base):
         result = matching.match_base_url(url, base)
         assert result is None
 

@@ -417,6 +417,9 @@ class TestCompiledFirewallMatching:
             "exa%20mple.com",
             "%3A%3A1",
             "2001%3Adb8%3A%3A1",
+            "xn--.com",
+            "xn--a.com",
+            "xn--zzzz.example",
         ],
     )
     def test_compiled_rejects_request_url_with_invalid_authority_host(self, invalid_host):
@@ -595,6 +598,11 @@ class TestCompiledFirewallMatching:
             (
                 "https://%E2%98%83.example.com",
                 "https://xn--n3h.example.com/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--fa-hia.de",
+                "https://xn--fa-hia.de/repos/org/repo",
                 {"owner": "org", "repo": "repo"},
             ),
         ],
