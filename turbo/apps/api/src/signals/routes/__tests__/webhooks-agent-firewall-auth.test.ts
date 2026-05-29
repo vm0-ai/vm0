@@ -1472,7 +1472,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("uses OAuth token expiry when it is earlier than billable credit lease", async () => {
+  it("uses access-token expiry when it is earlier than billable credit lease", async () => {
     const fixture = await track(seedFixture());
     await seedCreditState(fixture, { credits: 10_000 });
     await seedExpiredNotionConnector(fixture);
@@ -1562,7 +1562,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
   });
 
-  it("uses billable credit lease when it is earlier than OAuth token expiry", async () => {
+  it("uses billable credit lease when it is earlier than access-token expiry", async () => {
     const fixture = await track(seedFixture());
     await seedCreditState(fixture, { credits: 10_000 });
     await seedExpiredNotionConnector(fixture);
