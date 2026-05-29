@@ -3667,6 +3667,91 @@
           "Definieren Sie 'bereit' einmal im Voraus. 'CI grün + Changelog + keine Migrations' im Prompt festzuzurren ist die einmalige Investition; jeder folgende Release profitiert.",
           "Verketten Sie mit Auto-Merge Releases für echtes Hands-off-Shipping: Dieser Use Case erkennt Probleme, Auto-Merge liefert das Release aus, sobald alles frei ist."
         ]
+      },
+      "google-ads-keyword-audit": {
+        "title": "Google Ads-Spend prüfen und Geldverschwender stoppen",
+        "description": "Zero zieht 30 Tage Google Ads-Keyword-Daten, deckt die größten Geldverschwender und Top-Performer auf, schätzt Einsparungen und weist auf Tracking-Fallstricke hin, bevor Sie etwas pausieren.",
+        "timeSaved": "~3 Std. pro Audit gespart",
+        "headings": {
+          "scenario": "Warum ein Paid-Search-Audit einen ganzen Nachmittag verschlingt",
+          "prompt": "So bitten Sie Zero, Ihr Werbebudget zu prüfen",
+          "steps": "Wie Zero Geldverschwender und Gewinner findet",
+          "nextActions": "Aus dem Audit ein schlankeres, günstigeres Konto machen",
+          "integrations": "Erforderliche Integrationen: Google Ads, Slack und Notion",
+          "tips": "Best Practices für Werbebudget-Audits"
+        },
+        "scenario": "Die Ausgaben schleichen nach oben. Sie ahnen, dass ein Teil des Budgets in Keywords fließt, die im Dashboard solide aussehen, aber nie echte Kunden bringen. 30 Tage Keyword-Daten ziehen, Klicks mit Conversions verknüpfen, Brand von Non-Brand und Competitor Conquest trennen und herausfinden, welche Begriffe Off-ICP-Anmeldungen anziehen - das ist ein 3-Stunden-Nachmittag, den Sie seit Wochen vor sich herschieben. Sie fragen Zero, und Minuten später haben Sie einen Account-Snapshot, eine Kampagnen-Aufschlüsselung, eine Rangliste von Verschwendern und Performern, eine geschätzte Einsparung und die Tracking-Fallstricke, die Sie prüfen sollten, bevor Sie auch nur ein Keyword pausieren.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero prüfe die Google Ads-Performance der letzten 30 Tage. Audite unsere Keywords und zeige die größten Geldverschwender und Top-Performer. Schätze, wie viel wir sparen würden, wenn wir die Underperformer kappen."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero zieh die Google Ads-Keyword-Performance des letzten Monats und kennzeichne alles, was über 200 USD ausgibt und null Conversions liefert."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeweils am 1. des Monats die Google Ads-Ausgaben der letzten 30 Tage auditieren, den Report in #marketing posten und eine Kopie in die Notion-Werbebudget-Datenbank archivieren."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero prüfe die Google Ads-Performance der letzten 30 Tage. Audite unsere Keywords und zeige die größten Geldverschwender und Top-Performer. Schätze, wie viel wir sparen würden, wenn wir die Underperformer kappen."
+          },
+          {
+            "name": "Zero",
+            "text": "Google Ads-Audit - letzte 30 Tage\n\nAccount-Snapshot\n  Spend: 12.847 $ über 84 aktive Keywords, 3 Kampagnen\n  Conversions: 312 (Account-CPA 41,18 $)\n  Klicks: 4.612 - Impressions: 187.420\n\nNach Kampagne\n  Brand Search - 2.340 $ Spend, 142 Conv, CPA 16,48 $ (gesund)\n  Non-brand Search - 6.890 $ Spend, 138 Conv, CPA 49,93 $\n  Competitor Conquest - 3.617 $ Spend, 32 Conv, CPA 113,03 $ (7x Brand)\n\nTop-Geldverschwender - 2.530 $ (19,7% des Spend)\n  Zero-Conv-Burn (890 $): 4 Broad-Match-Keywords mit 0 Conv auf 890 $\n  Off-ICP-Free/Cheap-Begriffe (1.640 $): verdächtig billige Anmeldungen, mit ziemlicher Sicherheit keine qualifizierten Käufer\n\nTop-Performer - skalierungswürdig\n  [brand name] pricing [exact] - 38 Conv bei CPA 12,40 $\n  team collaboration software [phrase] - 18 Conv bei CPA 34,50 $\n\nGeschätzte Einsparung: ~2.530 $ direkt + ~2.800 $ aus Competitor-Conquest-Reallokation = 5.300-6.500 $/Monat (~40-50% des Spend)\n\nZwei Tracking-Fallstricke, bevor Sie etwas kappen:\n  1. Conversion-Wert ist pauschal 1,00 $ - Dashboard-ROAS ist bedeutungslos, bis der Kaufwert verdrahtet ist.\n  2. Vergleichen Sie die wichtigsten Off-ICP-Converter mit echten ICP-Anmeldungen in der Produkt-DB, bevor Sie pausieren.\n\nSoll ich die Negative-Keyword-Liste und ein Pausierungs-Changeset entwerfen, das Sie vor der Anwendung prüfen können?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero zieht 30 Tage Keyword-Performance",
+            "description": "Zero prüft den Status des Google Ads-Connectors und zieht dann die Keyword-Performance über alle aktiven Kampagnen: Spend, Klicks, Impressions, CTR, Conversions und CPA. Es gruppiert die Ergebnisse nach Kampagnentyp (Brand, Non-Brand, Competitor Conquest), damit die strukturellen Muster auf einen Blick sichtbar sind."
+          },
+          {
+            "title": "Zero klassifiziert Verschwender, Performer und High-CPA-Converter",
+            "description": "Zero teilt Keywords in Zero-Conversion-Burn, Off-ICP-Cheap-Signups, High-CPA-Converter und skalierungswürdige Top-Performer ein. Es deckt Broad-Match-Begriffe auf, die die falschen Käufer anziehen, kennzeichnet verdächtig billige Conversions, die wie Free-Tier-Anmeldungen aussehen, und hebt Exact-Match-Brand-Keywords hervor, die das Konto leise tragen."
+          },
+          {
+            "title": "Zero schätzt Einsparungen und nennt Tracking-Fallstricke",
+            "description": "Zero berechnet direkte Einsparungen aus dem Stopp von Verschwendern und Reallokations-Einsparungen aus der Budget-Verlagerung in die gesündeste Kampagne. Vor jeder Empfehlung weist es auf Tracking-Fallstricke hin - pauschale Conversion-Werte, nötige ICP-Abgleiche, Broad-Match-Leckage - damit Sie keine echten Käufer versehentlich pausieren."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Negative-Keyword- und Pausierungs-Changeset entwerfen",
+            "description": "Ein prüfbarer Plan, bevor das Live-Konto angefasst wird",
+            "examplePrompt": "@Zero entwirf auf Basis des Audits die Negative-Keyword-Liste und das Pausierungs-Changeset. Gruppiere nach Kampagne und begründe jede Streichung."
+          },
+          {
+            "title": "Off-ICP-Converter mit echten Anmeldungen abgleichen",
+            "description": "Vor dem Pausieren prüfen, welche billigen Conversions tatsächlich qualifizierte Käufer sind",
+            "examplePrompt": "@Zero nimm die Top-Off-ICP-Keywords aus dem Audit und prüfe in der Produktdatenbank, ob einer dieser Signups in den letzten 30 Tagen zu einem aktiven Konto geworden ist."
+          },
+          {
+            "title": "Daraus eine Routine machen",
+            "description": "Monatliches Audit planen, damit Spend-Wachstum früh auffällt",
+            "examplePrompt": "@Zero führe am 1. jeden Monats das Google Ads-Audit für die letzten 30 Tage aus, poste den Report in #marketing und archiviere eine Kopie in der Notion-Werbebudget-Datenbank."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Ads - Zero liest 30 Tage Keyword-Performance: Spend, Klicks, Impressions, CTR, Conversions und CPA über alle aktiven Kampagnen. Lesezugriff genügt für das Audit; Schreibzugriff ist nur nötig, wenn Sie Zero später das Changeset anwenden lassen."
+          },
+          {
+            "description": "Slack - Zero postet den Audit-Report in Ihren Marketing-Kanal und nimmt Folge-Prompts für das Changeset, den ICP-Abgleich oder den Zeitplan entgegen."
+          },
+          {
+            "description": "Notion - Optional. Zero archiviert jedes Monats-Audit in einer Datenbank, damit Sie Spend, CPA und Verschwendungsquote über die Zeit verfolgen können."
+          }
+        ],
+        "tips": [
+          "Verdrahten Sie echte Conversion-Werte in Google Ads, bevor Sie den CPA-Zahlen trauen. Ein pauschaler Wert von 1,00 $ macht ROAS bedeutungslos und lässt Free-Tier-Anmeldungen wie Gewinne aussehen.",
+          "Gleichen Sie Off-ICP-Converter immer erst mit Ihrer Produktdatenbank ab, bevor Sie pausieren. Ein scheinbar verschwenderisches Keyword bringt vielleicht ein paar echte Käufer - falls ja, lieber mit Match-Typen oder Negatives einengen statt streichen.",
+          "Lassen Sie das Audit monatlich laufen, nicht wöchentlich. Account-Muster brauchen 30 Tage Conversion-Daten, um stabil zu werden; wöchentliche Audits zeigen Rauschen, das in der Woche darauf wieder kippt."
+        ]
       }
     },
     "filter": {

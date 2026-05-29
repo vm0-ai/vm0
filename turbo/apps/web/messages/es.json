@@ -3667,6 +3667,91 @@
           "Define 'listo' una sola vez, desde el inicio. Codificar 'CI verde + changelog + sin migraciones' en el prompt es el costo unico; cada release futuro se beneficia.",
           "Encadenalo con Auto-Merge Releases para un shipping de verdad sin manos: este caso de uso detecta problemas, auto-merge envia el release cuando todo esta despejado."
         ]
+      },
+      "google-ads-keyword-audit": {
+        "title": "Auditar el gasto en Google Ads y recortar lo que no rinde",
+        "description": "Zero extrae los últimos 30 días de datos de palabras clave de Google Ads, identifica los mayores derrochadores y los top performers, estima el ahorro y advierte sobre fallos de tracking antes de que pauses nada.",
+        "timeSaved": "~3 hrs ahorradas por auditoría",
+        "headings": {
+          "scenario": "Por qué una auditoría de paid search te come la tarde",
+          "prompt": "Cómo pedir a Zero que audite tu gasto publicitario",
+          "steps": "Cómo Zero encuentra los derrochadores y los ganadores",
+          "nextActions": "Convertir la auditoría en una cuenta más ajustada y barata",
+          "integrations": "Integraciones necesarias: Google Ads, Slack y Notion",
+          "tips": "Buenas prácticas para auditar el gasto publicitario"
+        },
+        "scenario": "El gasto se va acumulando sin que te des cuenta. Sospechas que una parte del presupuesto se está yendo a palabras clave que parecen bien en el dashboard pero nunca traen compradores reales. Sacar 30 días de datos de keywords, cruzar clics con conversiones, separar marca de no-marca y conquista de competencia, e identificar qué términos están atrayendo registros fuera de tu ICP es una tarde de 3 horas que llevas semanas posponiendo. Le preguntas a Zero, y en minutos tienes un snapshot de cuenta, el desglose por campaña, un ranking de derrochadores y ganadores, una estimación de ahorro y las advertencias de tracking que hay que revisar antes de pausar una sola palabra clave.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero revisa el rendimiento de nuestra cuenta de Google Ads de los últimos 30 días. Audita las palabras clave y saca los mayores derrochadores y los top performers. Estima cuánto ahorraríamos si recortamos los que no rinden."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero saca el rendimiento de palabras clave de Google Ads del mes pasado y marca cualquiera que gaste más de 200 USD con cero conversiones."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada día 1 del mes audita el gasto en Google Ads de los 30 días anteriores, publica el informe en #marketing y archiva una copia en la base de datos de gasto publicitario de Notion."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero revisa el rendimiento de nuestra cuenta de Google Ads de los últimos 30 días. Audita las palabras clave y saca los mayores derrochadores y los top performers. Estima cuánto ahorraríamos si recortamos los que no rinden."
+          },
+          {
+            "name": "Zero",
+            "text": "Auditoría de Google Ads - últimos 30 días\n\nSnapshot de cuenta\n  Gasto: $12.847 en 84 palabras clave activas, 3 campañas\n  Conversiones: 312 (CPA de cuenta $41,18)\n  Clics: 4.612 - Impresiones: 187.420\n\nPor campaña\n  Brand Search - $2.340 gastados, 142 conv, CPA $16,48 (sano)\n  Non-brand Search - $6.890 gastados, 138 conv, CPA $49,93\n  Competitor Conquest - $3.617 gastados, 32 conv, CPA $113,03 (7x marca)\n\nMayores derrochadores - $2.530 (19,7% del gasto)\n  Quemado sin conversiones ($890): 4 keywords en broad match con 0 conv sobre $890\n  Términos free/cheap fuera de ICP ($1.640): registros sospechosamente baratos, casi seguro no son compradores cualificados\n\nTop performers - vale la pena escalar\n  [brand name] pricing [exact] - 38 conv a CPA $12,40\n  team collaboration software [phrase] - 18 conv a CPA $34,50\n\nAhorro estimado: ~$2.530 directo + ~$2.800 por reasignación de Competitor Conquest = $5.300-$6.500/mes (~40-50% del gasto)\n\nDos advertencias de tracking antes de recortar nada:\n  1. El valor de conversión está fijo en $1,00 - el ROAS del dashboard no tiene sentido hasta que se conecte el valor real de compra.\n  2. Cruza los top conversores fuera de ICP con los registros ICP reales en la base de datos del producto antes de pausar.\n\n¿Te preparo la lista de palabras clave negativas y un changeset de pausas para que lo revises antes de aplicarlo?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero extrae 30 días de rendimiento de palabras clave",
+            "description": "Zero comprueba el estado del conector de Google Ads y luego extrae el rendimiento por palabra clave en todas las campañas activas: gasto, clics, impresiones, CTR, conversiones y CPA. Agrupa los resultados por tipo de campaña (marca, no-marca, conquista de competencia) para que los patrones estructurales se vean de un vistazo."
+          },
+          {
+            "title": "Zero clasifica derrochadores, performers y conversores de CPA alto",
+            "description": "Zero divide las palabras clave en quemado sin conversiones, registros baratos fuera de ICP, conversores de CPA alto y top performers que vale la pena escalar. Detecta términos en broad match que atraen al comprador equivocado, marca conversiones sospechosamente baratas que parecen registros de plan gratuito y destaca las palabras clave de marca en exact match que sostienen la cuenta en silencio."
+          },
+          {
+            "title": "Zero estima ahorros y señala advertencias de tracking",
+            "description": "Zero calcula los ahorros directos por cortar derrochadores y los ahorros por reasignación al mover presupuesto a la campaña más sana. Antes de recomendar cualquier recorte, expone las advertencias de tracking - valores de conversión fijos, cruces de ICP necesarios, fugas de broad match - para que no pauses por error a compradores reales."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Preparar el changeset de palabras clave negativas y pausas",
+            "description": "Un plan revisable antes de tocar la cuenta en vivo",
+            "examplePrompt": "@Zero a partir de la auditoría, prepara la lista de palabras clave negativas y el changeset de pausas. Agrupa por campaña y explica el motivo de cada recorte."
+          },
+          {
+            "title": "Cruzar conversores fuera de ICP con registros reales",
+            "description": "Antes de pausar, verifica qué conversiones baratas son realmente compradores cualificados",
+            "examplePrompt": "@Zero coge las palabras clave fuera de ICP del top de la auditoría y comprueba en la base de datos del producto si alguno de esos registros se ha convertido en cuenta activa en los últimos 30 días."
+          },
+          {
+            "title": "Hacerlo rutina",
+            "description": "Programa una auditoría mensual para detectar el crecimiento del gasto a tiempo",
+            "examplePrompt": "@Zero el día 1 de cada mes ejecuta la auditoría de Google Ads de los 30 días anteriores, publica el informe en #marketing y archiva una copia en la base de datos de gasto publicitario de Notion."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Ads - Zero lee 30 días de rendimiento por palabra clave: gasto, clics, impresiones, CTR, conversiones y CPA en todas las campañas activas. Para la auditoría basta acceso de lectura; el acceso de escritura solo hace falta si después pides a Zero que aplique el changeset."
+          },
+          {
+            "description": "Slack - Zero publica el informe de auditoría en tu canal de marketing y acepta prompts de seguimiento para el changeset, el cruce de ICP o la programación."
+          },
+          {
+            "description": "Notion - Opcional. Zero archiva cada auditoría mensual en una base de datos para que puedas seguir la tendencia de gasto, CPA y porcentaje de desperdicio en el tiempo."
+          }
+        ],
+        "tips": [
+          "Conecta valores de conversión reales en Google Ads antes de confiar en los números de CPA. Un valor fijo de $1,00 por conversión hace que el ROAS no tenga sentido y que los registros del plan gratuito parezcan victorias.",
+          "Cruza siempre los conversores fuera de ICP con tu base de datos de producto antes de pausar. Una palabra clave que parece un derrochador puede estar trayendo unos pocos compradores reales - si los hay, mejor afinar con tipos de concordancia o negativas en vez de cortar.",
+          "Ejecuta la auditoría cada mes, no cada semana. Los patrones de cuenta necesitan 30 días de datos de conversión para estabilizarse, y las auditorías semanales muestran ruido que se invierte a la semana siguiente."
+        ]
       }
     },
     "filter": {

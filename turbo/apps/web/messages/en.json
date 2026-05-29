@@ -3667,6 +3667,91 @@
           "Define 'ready' once, up front. Encoding 'CI green + changelog + no migrations' in the prompt is the one-time cost; every future release benefits.",
           "Chain with Auto-Merge Releases for true hands-off shipping: this use case catches problems, auto-merge ships the release once everything clears."
         ]
+      },
+      "google-ads-keyword-audit": {
+        "title": "Audit Google Ads Spend and Cut the Wasters",
+        "description": "Zero pulls the last 30 days of Google Ads keyword data, surfaces top wasters and top performers, estimates savings, and flags tracking caveats before you cut anything.",
+        "timeSaved": "~3 hrs saved per audit",
+        "headings": {
+          "scenario": "Why a paid search audit eats your afternoon",
+          "prompt": "How to ask Zero to audit your ad spend",
+          "steps": "How Zero finds the wasters and the winners",
+          "nextActions": "Turn the audit into a tighter, cheaper account",
+          "integrations": "Required integrations: Google Ads, Slack, and Notion",
+          "tips": "Best practices for ad spend audits"
+        },
+        "scenario": "Spend is creeping. You suspect a chunk of the budget is going to keywords that look fine in the dashboard but never convert into real buyers. Pulling 30 days of keyword data, joining clicks with conversions, separating brand from non-brand from competitor conquest, and figuring out which terms are pulling in off-ICP signups is a 3-hour afternoon you keep pushing to next week. You ask Zero, and minutes later you have an account snapshot, a campaign breakdown, a ranked list of wasters and performers, an estimated savings number, and the tracking caveats you need to sanity-check before you pause a single keyword.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero check our Google Ads account performance for the last 30 days. Audit our keywords and surface the top wasters and top performers. Estimate how much we'd save if we cut the underperformers."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero pull last month's Google Ads keyword performance and flag anything spending over $200 with zero conversions."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero on the 1st of every month, audit Google Ads spend for the prior 30 days, post the report to #marketing, and archive a copy to the Notion ad spend database."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero check our Google Ads account performance for the last 30 days. Audit our keywords and surface the top wasters and top performers. Estimate how much we'd save if we cut the underperformers."
+          },
+          {
+            "name": "Zero",
+            "text": "Google Ads audit - last 30 days\n\nAccount snapshot\n  Spend: $12,847 across 84 active keywords, 3 campaigns\n  Conversions: 312 (account CPA $41.18)\n  Clicks: 4,612 - Impressions: 187,420\n\nBy campaign\n  Brand Search - $2,340 spent, 142 conv, CPA $16.48 (healthy)\n  Non-brand Search - $6,890 spent, 138 conv, CPA $49.93\n  Competitor Conquest - $3,617 spent, 32 conv, CPA $113.03 (7x brand)\n\nTop wasters - $2,530 (19.7% of spend)\n  Zero-conv burn ($890): 4 broad-match keywords with 0 conv on $890\n  Off-ICP free/cheap terms ($1,640): suspiciously cheap signups, almost certainly not qualified buyers\n\nTop performers - worth scaling\n  [brand name] pricing [exact] - 38 conv at CPA $12.40\n  team collaboration software [phrase] - 18 conv at CPA $34.50\n\nEstimated savings: ~$2,530 direct + ~$2,800 from Competitor Conquest reallocation = $5,300-$6,500/mo (~40-50% of spend)\n\nTwo tracking caveats before you cut anything:\n  1. Conversion value is flat $1.00 - dashboard ROAS is meaningless until purchase value is wired in.\n  2. Cross-check the top off-ICP converters against actual ICP signups in the product DB before pausing.\n\nWant me to draft the negative-keyword list and a paused-keyword change set you can review before applying?"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls 30 days of keyword performance",
+            "description": "Zero checks the Google Ads connector status, then pulls keyword-level performance across every active campaign: spend, clicks, impressions, CTR, conversions, and CPA. It groups results by campaign type (brand, non-brand, competitor conquest) so the structural patterns are visible at a glance."
+          },
+          {
+            "title": "Zero classifies wasters, performers, and high-CPA converters",
+            "description": "Zero buckets keywords into zero-conversion burn, off-ICP cheap signups, high-CPA converters, and top performers worth scaling. It surfaces broad-match terms pulling in the wrong buyers, flags suspicious cheap conversions that look like free-tier signups, and calls out exact-match brand keywords that are quietly carrying the account."
+          },
+          {
+            "title": "Zero estimates savings and flags tracking caveats",
+            "description": "Zero calculates direct savings from cutting wasters and reallocation savings from shifting budget toward the healthiest campaign. Before recommending any cuts, it surfaces tracking caveats - flat conversion values, ICP cross-checks needed, broad-match leakage - so you don't pause real buyers by mistake."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Draft the negative-keyword and paused-keyword change set",
+            "description": "Get a reviewable plan before touching the live account",
+            "examplePrompt": "@Zero draft the negative-keyword list and the paused-keyword change set based on the audit. Group by campaign and explain the reasoning for each cut."
+          },
+          {
+            "title": "Cross-check off-ICP converters against real signups",
+            "description": "Verify which cheap conversions are actually qualified buyers before pausing",
+            "examplePrompt": "@Zero take the top off-ICP keywords from the audit and check the product database for whether any of those signups became active accounts in the last 30 days."
+          },
+          {
+            "title": "Make it routine",
+            "description": "Schedule a monthly audit so spend creep gets caught early",
+            "examplePrompt": "@Zero on the 1st of every month, run the Google Ads audit for the prior 30 days, post the report to #marketing, and archive a copy to the Notion ad spend database."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google Ads - Zero reads 30 days of keyword-level performance: spend, clicks, impressions, CTR, conversions, and CPA across every active campaign. Read access is sufficient for the audit; write access is only needed if you later ask Zero to apply the change set."
+          },
+          {
+            "description": "Slack - Zero posts the audit report to your marketing channel and accepts follow-up prompts for the change set, ICP cross-check, or schedule."
+          },
+          {
+            "description": "Notion - Optional. Zero archives each monthly audit to a database so you can trend spend, CPA, and waste percentage over time."
+          }
+        ],
+        "tips": [
+          "Wire real conversion values into Google Ads before trusting the CPA numbers. A flat $1.00 per-conversion value makes ROAS meaningless and makes free-tier signups look like wins.",
+          "Always cross-check off-ICP converters against your product database before pausing. A keyword that looks like a waster may be pulling in a few real buyers - if any are real, narrow with match types or negatives instead of cutting.",
+          "Run the audit monthly, not weekly. Account-level patterns need 30 days of conversion data to stabilize, and weekly audits will surface noise that flips back the next week."
+        ]
       }
     },
     "filter": {

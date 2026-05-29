@@ -194,6 +194,12 @@ const GAMMA: ConnectorRef = {
   icon: "/assets/connectors/gamma.svg",
 };
 
+const GOOGLE_ADS: ConnectorRef = {
+  id: "google-ads",
+  label: "Google Ads",
+  icon: "/assets/connectors/google-ads.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -1631,6 +1637,39 @@ export const USE_CASES: UseCase[] = [
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "google-ads-keyword-audit",
+    color: "#d9a341",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 4,
+      hairColor: 4,
+      expression: 1,
+      intensity: "m",
+    },
+    roles: ["marketing"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_ADS, SLACK, NOTION],
+    integrations: [
+      { connector: GOOGLE_ADS, required: true },
+      { connector: SLACK, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "marketing-performance-report",
+      "competitor-intelligence",
+      "cold-outreach-pipeline",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 3,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
