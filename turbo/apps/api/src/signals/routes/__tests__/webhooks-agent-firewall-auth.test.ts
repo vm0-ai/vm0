@@ -24,6 +24,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import { upsertOrgMultiAuthModelProvider$ } from "../../services/zero-model-provider.service";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -2496,6 +2497,110 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "model-provider",
       }),
     ).resolves.toBe("rotated-concurrent-chatgpt-refresh");
+    await expect(codexProviderState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+  });
+
+  it("preserves model-provider reauth that races with runtime OAuth refresh", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCodexModelProvider(fixture);
+
+    let refreshCallCount = 0;
+    const firstRefreshStarted = deferred();
+    const firstRefreshRelease = deferred();
+
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async () => {
+        refreshCallCount += 1;
+        firstRefreshStarted.resolve();
+        await firstRefreshRelease.promise;
+        return HttpResponse.json({
+          access_token: "runtime-refreshed-chatgpt-token",
+          refresh_token: "runtime-rotated-chatgpt-refresh",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const refreshResponsePromise = accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await firstRefreshStarted.promise;
+    const reauthPromise = store.set(
+      upsertOrgMultiAuthModelProvider$,
+      {
+        orgId: fixture.orgId,
+        type: "codex-oauth-token",
+        authMethod: "auth_json",
+        secretValues: {
+          CHATGPT_ACCESS_TOKEN: "reauth-chatgpt-token",
+          CHATGPT_REFRESH_TOKEN: "reauth-chatgpt-refresh",
+          CHATGPT_ACCOUNT_ID: "reauth-chatgpt-account",
+          CHATGPT_ID_TOKEN: "reauth-chatgpt-id-token",
+        },
+        metadata: {
+          tokenExpiresAt: new Date(now() + 3_600_000),
+          workspaceName: "Reauth workspace",
+          planType: "plus",
+        },
+      },
+      context.signal,
+    );
+    firstRefreshRelease.resolve();
+
+    const [refreshResponse, reauthResult] = await Promise.all([
+      refreshResponsePromise,
+      reauthPromise,
+    ]);
+
+    if (!("provider" in reauthResult)) {
+      throw new Error("Expected model provider reauth to succeed");
+    }
+
+    expect(refreshCallCount).toBe(1);
+    expect(refreshResponse.body.headers.Authorization).toBe(
+      "Bearer runtime-refreshed-chatgpt-token",
+    );
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ACCESS_TOKEN",
+        type: "model-provider",
+      }),
+    ).resolves.toBe("reauth-chatgpt-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_REFRESH_TOKEN",
+        type: "model-provider",
+      }),
+    ).resolves.toBe("reauth-chatgpt-refresh");
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
       needsReconnect: false,
       lastRefreshErrorCode: null,
