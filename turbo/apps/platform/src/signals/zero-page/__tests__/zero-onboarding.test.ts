@@ -5,6 +5,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
   setZeroAgentName$,
+  setZeroRole$,
   setZeroWorkspaceName$,
   toggleZeroConnector$,
 } from "../zero-onboarding.ts";
@@ -20,6 +21,7 @@ interface SetupPayload {
   sound?: string;
   avatarUrl?: string;
   selectedConnectors?: string[];
+  role?: string;
 }
 
 function setupHandler(capturePayload?: (payload: SetupPayload) => void) {
@@ -87,6 +89,25 @@ describe("completeZeroOnboarding$", () => {
 
     expect(capturedPayload).toBeTruthy();
     expect(capturedPayload!.workspaceName).toBe("My Workspace");
+  });
+
+  it("should send role when user selects a role", async () => {
+    let capturedPayload: SetupPayload | null = null;
+
+    server.use(
+      setupHandler((payload) => {
+        capturedPayload = payload;
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(setZeroRole$, "founder");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload!.role).toBe("founder");
   });
 
   it("should not send workspaceName when empty", async () => {

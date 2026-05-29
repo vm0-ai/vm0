@@ -142,11 +142,9 @@ export const setZeroRole$ = command(({ set }, role: string | null) => {
   set(internalSelectedRole$, role);
 });
 
-export const setTrialGalleryIndex$ = command(
-  ({ set }, index: number) => {
-    set(internalTrialGalleryIndex$, index);
-  },
-);
+export const setTrialGalleryIndex$ = command(({ set }, index: number) => {
+  set(internalTrialGalleryIndex$, index);
+});
 
 const internalConnectorSearch$ = state("");
 

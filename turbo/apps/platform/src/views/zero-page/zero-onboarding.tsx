@@ -606,10 +606,7 @@ function TrialWebsiteSlide() {
     <div className="h-full w-full grid grid-cols-2 grid-rows-2 gap-2 p-2">
       {TRIAL_WEBSITE_TILES.map((src) => {
         return (
-          <div
-            key={src}
-            className="rounded-xl overflow-hidden bg-background"
-          >
+          <div key={src} className="rounded-xl overflow-hidden bg-background">
             <img
               src={src}
               alt=""
@@ -1246,11 +1243,7 @@ function WorkspaceStepContent() {
             return setWorkspaceName(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              workspaceName.trim() &&
-              selectedRole
-            ) {
+            if (e.key === "Enter" && workspaceName.trim() && selectedRole) {
               detach(stepNext(pageSignal), Reason.DomCallback);
             }
           }}
@@ -1273,9 +1266,7 @@ function WorkspaceStepContent() {
                 option={option}
                 isSelected={selectedRole === option.id}
                 onClick={() => {
-                  return setRole(
-                    selectedRole === option.id ? null : option.id,
-                  );
+                  return setRole(selectedRole === option.id ? null : option.id);
                 }}
               />
             );
