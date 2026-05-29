@@ -68,8 +68,10 @@ const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 const COMPUTER_USE_HELP_TEXT = `
 Workflow:
   1. Start the Zero Desktop app and make sure Computer Use is online.
-  2. Run "zero computer-use list-apps" to find the target app name or bundle id.
-  3. Run "zero computer-use get-app-state --app <app>" to get a screenshot,
+  2. Run "zero computer-use list-apps" to find the target app's bundleId.
+     --app accepts a bundle id only (e.g. com.google.Chrome); the name is for
+     display. Apps listed without a bundleId cannot be targeted.
+  3. Run "zero computer-use get-app-state --app <bundleId>" to get a screenshot,
      snapshotId, visible element indexes, and accessibility state.
   4. Prefer element actions with --snapshot-id and --element-index. Use --x/--y
      only when the target is visible in the returned screenshot but has no useful
@@ -97,22 +99,22 @@ Examples:
     zero computer-use list-apps
 
   Inspect Safari state:
-    zero computer-use get-app-state --app Safari
+    zero computer-use get-app-state --app com.apple.Safari
 
   Click element index 7 from snapshot desktop_abc:
-    zero computer-use click --app Safari --snapshot-id desktop_abc --element-index 7
+    zero computer-use click --app com.apple.Safari --snapshot-id desktop_abc --element-index 7
 
   Click screenshot coordinate (320, 240) from snapshot desktop_abc:
-    zero computer-use click --app Safari --snapshot-id desktop_abc --x 320 --y 240
+    zero computer-use click --app com.apple.Safari --snapshot-id desktop_abc --x 320 --y 240
 
   Type text into the snapshot desktop_abc window in Safari:
-    zero computer-use type-text --app Safari --snapshot-id desktop_abc --text "Hello"
+    zero computer-use type-text --app com.apple.Safari --snapshot-id desktop_abc --text "Hello"
 
   Press a keyboard shortcut in the snapshot desktop_abc window:
-    zero computer-use press-key --app Safari --snapshot-id desktop_abc --key shift+semicolon
+    zero computer-use press-key --app com.apple.Safari --snapshot-id desktop_abc --key shift+semicolon
 
   Open an app without activating the current foreground app:
-    zero computer-use open-app --app Things`;
+    zero computer-use open-app --app com.culturedcode.ThingsMac`;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -416,7 +418,10 @@ function addTargetOptions(command: Command): Command {
 }
 
 function appOption(command: Command): Command {
-  return command.requiredOption("--app <name>", "Target app name or bundle id");
+  return command.requiredOption(
+    "--app <bundleId>",
+    "Target app bundle id (e.g. com.google.Chrome); run list-apps to find it",
+  );
 }
 
 const listAppsCommand = addTargetOptions(

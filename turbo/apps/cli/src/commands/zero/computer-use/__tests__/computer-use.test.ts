@@ -170,7 +170,9 @@ describe("computer-use command visibility", () => {
 
     expect(helpOutput).toContain("Workflow:");
     expect(helpOutput).toContain("zero computer-use list-apps");
-    expect(helpOutput).toContain("zero computer-use get-app-state --app <app>");
+    expect(helpOutput).toContain(
+      "zero computer-use get-app-state --app <bundleId>",
+    );
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
     expect(helpOutput).toContain("/tmp/vm0/computer-use");
     expect(helpOutput).toContain("overwrites the same files");

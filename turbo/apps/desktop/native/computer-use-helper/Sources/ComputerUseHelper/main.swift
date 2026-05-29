@@ -1625,40 +1625,41 @@ func optionalRectPayload(_ request: [String: Any], _ key: String) throws -> CGRe
     return try rectPayload(request, key)
 }
 
-func findRunningApp(named appName: String) -> NSRunningApplication? {
-    let apps = NSWorkspace.shared.runningApplications.filter { app in
-        !app.isTerminated
+/// Resolves a running application from a bundle id.
+///
+/// `--app` accepts a bundle id only (e.g. `com.google.Chrome`). The bundle id is
+/// the stable, unique key for an application; the localized name is not and could
+/// resolve to an arbitrary process whose window tree differs from the user-facing
+/// app. Selection is delegated to the shared `selectRunningApp` policy.
+func findRunningApp(named bundleId: String) -> NSRunningApplication? {
+    let runningApplications = NSWorkspace.shared.runningApplications
+    let candidates = runningApplications.map { app in
+        RunningAppCandidate(
+            processIdentifier: Int(app.processIdentifier),
+            bundleId: app.bundleIdentifier,
+            isTerminated: app.isTerminated,
+            isRegularActivationPolicy: app.activationPolicy == .regular
+        )
     }
+    guard let selected = selectRunningApp(bundleId: bundleId, from: candidates) else {
+        return nil
+    }
+    return runningApplications.first { app in
+        Int(app.processIdentifier) == selected.processIdentifier
+    }
+}
 
-    if let exactBundle = apps.first(where: { app in
-        app.bundleIdentifier == appName
-    }) {
-        return exactBundle
-    }
-
-    let normalized = appName.lowercased()
-    if let bundleMatch = apps.first(where: { app in
-        app.bundleIdentifier?.lowercased() == normalized
-    }) {
-        return bundleMatch
-    }
-
-    if let exactName = apps.first(where: { app in
-        app.localizedName == appName
-    }) {
-        return exactName
-    }
-
-    return apps.first { app in
-        app.localizedName?.lowercased() == normalized
-    }
+/// Message shown when `--app` does not resolve to a running application.
+func appNotRunningMessage(_ bundleId: String) -> String {
+    "App is not running: \(bundleId). --app expects a bundle id "
+        + "(e.g. com.google.Chrome); run list-apps to find it."
 }
 
 func resolveRunningApp(named appName: String) throws -> NSRunningApplication {
     guard let app = findRunningApp(named: appName) else {
         throw HelperFailure(
             code: "accessibility_unavailable",
-            message: "App is not running: \(appName)"
+            message: appNotRunningMessage(appName)
         )
     }
     return app
@@ -1673,16 +1674,6 @@ func trimmedPipeOutput(_ pipe: Pipe) -> String {
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     return String(data: data, encoding: .utf8)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-}
-
-func appOpenFailureCode(_ stderr: String) -> String {
-    let normalized = stderr.lowercased()
-    if normalized.contains("unable to find application") ||
-        normalized.contains("does not exist")
-    {
-        return "app_not_found"
-    }
-    return "app_open_failed"
 }
 
 func attribute(_ element: AXUIElement, _ name: CFString) -> Any? {
@@ -2508,44 +2499,17 @@ func applicationNames(for url: URL) -> [String] {
     return names
 }
 
-func applicationURL(named appName: String) -> URL? {
-    let trimmed = appName.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty {
+/// Resolves the on-disk URL for an application from its bundle id, used to launch
+/// it when it is not already running. `--app` accepts a bundle id only.
+func applicationURL(forBundleId bundleId: String) -> URL? {
+    let trimmed = bundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
         return nil
     }
-    if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") {
-        let expanded = (trimmed as NSString).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: expanded) {
-            return URL(fileURLWithPath: expanded)
-        }
-    }
-    if trimmed.contains("."),
-       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: trimmed)
-    {
-        return url
-    }
-
-    let candidates = discoveredApplicationURLs()
-    if let exactBundleID = candidates.first(where: { url in
-        Bundle(url: url)?.bundleIdentifier?.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-    }) {
-        return exactBundleID
-    }
-    if let exactName = candidates.first(where: { url in
-        applicationNames(for: url).contains { name in
-            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-        }
-    }) {
-        return exactName
-    }
-    return candidates.first { url in
-        applicationNames(for: url).contains { name in
-            name.localizedCaseInsensitiveContains(trimmed)
-        }
-    }
+    return NSWorkspace.shared.urlForApplication(withBundleIdentifier: trimmed)
 }
 
-func applicationURL(for app: NSRunningApplication, fallbackName: String) -> URL? {
+func applicationURL(for app: NSRunningApplication, fallbackBundleId: String) -> URL? {
     if let bundleURL = app.bundleURL {
         return bundleURL
     }
@@ -2554,35 +2518,7 @@ func applicationURL(for app: NSRunningApplication, fallbackName: String) -> URL?
     {
         return url
     }
-    return applicationURL(named: fallbackName)
-}
-
-func openWithCommandInBackground(named appName: String) throws {
-    let process = Process()
-    let stdoutPipe = Pipe()
-    let stderrPipe = Pipe()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-g", "-a", appName]
-    process.standardOutput = stdoutPipe
-    process.standardError = stderrPipe
-    do {
-        try process.run()
-    } catch {
-        throw HelperFailure(
-            code: "app_open_failed",
-            message: "Unable to request opening \(appName): \(error)"
-        )
-    }
-    process.waitUntilExit()
-    _ = trimmedPipeOutput(stdoutPipe)
-    if process.terminationStatus != 0 {
-        let stderr = trimmedPipeOutput(stderrPipe)
-        let detail = stderr.isEmpty ? "" : ": \(stderr)"
-        throw HelperFailure(
-            code: appOpenFailureCode(stderr),
-            message: "Unable to open \(appName)\(detail)"
-        )
-    }
+    return applicationURL(forBundleId: fallbackBundleId)
 }
 
 func openApplication(at url: URL, named appName: String, activates: Bool) throws -> NSRunningApplication? {
@@ -2603,15 +2539,6 @@ func openApplication(at url: URL, named appName: String, activates: Bool) throws
         )
     }
     return launchResult.app
-}
-
-func openApplicationWithoutActivation(named appName: String) throws -> NSRunningApplication? {
-    guard let url = applicationURL(named: appName) else {
-        try openWithCommandInBackground(named: appName)
-        return nil
-    }
-
-    return try openApplication(at: url, named: appName, activates: false)
 }
 
 @discardableResult
@@ -2780,7 +2707,7 @@ func foregroundActivateRunningApp(appName: String, app: NSRunningApplication) th
             return "apple_script_activate_app_name"
         }
     }
-    guard let appURL = applicationURL(for: app, fallbackName: appName) else {
+    guard let appURL = applicationURL(for: app, fallbackBundleId: appName) else {
         return "apple_script_activate_failed"
     }
     _ = try openApplication(at: appURL, named: appName, activates: true)
@@ -2905,7 +2832,7 @@ func withForegroundRecovery(
         recoveryResult = try waitForForegroundRecoveredTarget(resolveTarget: resolveTarget)
     } catch let failure as HelperFailure where failure.code == "window_unavailable" {
         if (activationMethod.contains("apple_script_activate") || activationMethod.hasPrefix("skylight_set_current_space")),
-           let appURL = applicationURL(for: app, fallbackName: appName)
+           let appURL = applicationURL(for: app, fallbackBundleId: appName)
         {
             _ = try openApplication(at: appURL, named: appName, activates: true)
             activationMethod = "workspace_open_application"
@@ -3563,7 +3490,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     guard let runningApp = findRunningApp(named: appName) else {
         throw HelperFailure(
             code: "app_not_found",
-            message: "App is not running: \(appName)"
+            message: appNotRunningMessage(appName)
         )
     }
 
@@ -3653,30 +3580,26 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
             return (targetPID: runningApp.processIdentifier, result: ["windowReady": true])
         }
 
-        let appURL = runningApp.flatMap { app in
-            applicationURL(for: app, fallbackName: appName)
-        } ?? applicationURL(named: appName)
-
-        var targetApp: NSRunningApplication?
-        if let appURL {
-            targetApp = try openApplication(at: appURL, named: appName, activates: false) ??
-                runningApp ??
-                waitForRunningApp(named: appName)
-        } else {
-            try openWithCommandInBackground(named: appName)
-            targetApp = runningApp ?? waitForRunningApp(named: appName)
+        guard let appURL = runningApp.flatMap({ app in
+            applicationURL(for: app, fallbackBundleId: appName)
+        }) ?? applicationURL(forBundleId: appName) else {
+            throw HelperFailure(
+                code: "app_not_found",
+                message: "No installed app found for bundle id: \(appName). "
+                    + "--app expects a bundle id (e.g. com.google.Chrome); run list-apps to find it."
+            )
         }
+
+        var targetApp = try openApplication(at: appURL, named: appName, activates: false) ??
+            runningApp ??
+            waitForRunningApp(named: appName)
 
         guard let launchedApp = targetApp else {
             throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
         }
 
         if waitForWindowTarget(app: launchedApp, timeout: 2) == nil {
-            if let appURL {
-                targetApp = try openApplication(at: appURL, named: appName, activates: true) ?? launchedApp
-            } else {
-                _ = launchedApp.activate(options: [.activateIgnoringOtherApps])
-            }
+            targetApp = try openApplication(at: appURL, named: appName, activates: true) ?? launchedApp
         }
 
         guard let appWithWindow = targetApp else {
