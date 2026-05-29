@@ -2425,6 +2425,54 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     },
   );
 
+  it("returns upstream-auth-unavailable without marking reconnect on network refresh failure", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.error();
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+      connectors: ["notion"],
+      retryable: true,
+      provider: "notion",
+      sourceType: "connector",
+      failures: [
+        {
+          connector: "notion",
+          code: "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+          provider: "notion",
+          retryable: true,
+          sourceType: "connector",
+        },
+      ],
+    });
+    await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+  });
+
   it("returns provider-response-invalid without marking reconnect for malformed refresh responses", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredNotionConnector(fixture);
