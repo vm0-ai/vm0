@@ -245,8 +245,8 @@ interface SecretTokenLookupArgs {
 
 interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
   readonly connectorSecrets: Record<string, string>;
+  readonly accessEnvVars: readonly string[];
   readonly forceRefresh: boolean;
-  readonly initialTokenExpiresAt: number | null | undefined;
 }
 
 interface RefreshTokenContext {
@@ -255,7 +255,7 @@ interface RefreshTokenContext {
   readonly secretUserId: string;
 }
 
-interface LockedRefreshState {
+interface RefreshState {
   readonly accessToken: string | null;
   readonly refreshToken: string | null;
   readonly tokenExpiresAt: Date | null;
@@ -800,7 +800,8 @@ function currentSecond(): number {
 function shouldUseLockedCurrentAccess(args: {
   readonly refreshArgs: RefreshAccessTokenArgs;
   readonly context: RefreshTokenContext;
-  readonly state: LockedRefreshState;
+  readonly initialState: RefreshState | null;
+  readonly state: RefreshState;
 }): boolean {
   if (!args.state.accessToken) {
     return false;
@@ -812,29 +813,48 @@ function shouldUseLockedCurrentAccess(args: {
     return true;
   }
 
-  const snapshotAccessToken =
-    args.refreshArgs.connectorSecrets[args.context.accessTokenSecret];
+  const snapshotAccessTokens = [
+    args.refreshArgs.connectorSecrets[args.context.accessTokenSecret],
+    ...args.refreshArgs.accessEnvVars.map((envVar) => {
+      return args.refreshArgs.connectorSecrets[envVar];
+    }),
+  ];
   if (
-    snapshotAccessToken !== undefined &&
-    snapshotAccessToken !== args.state.accessToken
+    snapshotAccessTokens.some((accessToken) => {
+      return (
+        accessToken !== undefined && accessToken !== args.state.accessToken
+      );
+    })
   ) {
     return true;
   }
 
-  const currentExpiresAt = args.state.tokenExpiresAt
+  if (!args.initialState) {
+    return true;
+  }
+
+  if (args.initialState.accessToken !== args.state.accessToken) {
+    return true;
+  }
+
+  if (args.initialState.refreshToken !== args.state.refreshToken) {
+    return true;
+  }
+
+  const initialExpiresAt = args.initialState.tokenExpiresAt
+    ? Math.floor(args.initialState.tokenExpiresAt.getTime() / 1000)
+    : null;
+  const lockedExpiresAt = args.state.tokenExpiresAt
     ? Math.floor(args.state.tokenExpiresAt.getTime() / 1000)
     : null;
-  return (
-    args.refreshArgs.initialTokenExpiresAt !== undefined &&
-    args.refreshArgs.initialTokenExpiresAt !== currentExpiresAt
-  );
+  return initialExpiresAt !== lockedExpiresAt;
 }
 
-async function loadLockedRefreshState(
+async function loadRefreshState(
   db: Db,
   args: RefreshAccessTokenArgs,
   context: RefreshTokenContext,
-): Promise<LockedRefreshState | null> {
+): Promise<RefreshState | null> {
   const [row] =
     args.sourceType === "model-provider"
       ? await db
@@ -1003,6 +1023,9 @@ async function refreshAccessTokenForSource(
     return { ok: false, reason: preparation.reason };
   }
   const { prepared } = preparation;
+  const initialState = args.forceRefresh
+    ? await loadRefreshState(args.db, args, prepared.context)
+    : null;
 
   return await args.db.transaction(async (tx) => {
     if (prepared.sourceType === "connector") {
@@ -1019,11 +1042,7 @@ async function refreshAccessTokenForSource(
       });
     }
 
-    const lockedState = await loadLockedRefreshState(
-      tx,
-      args,
-      prepared.context,
-    );
+    const lockedState = await loadRefreshState(tx, args, prepared.context);
     if (!lockedState) {
       L.warn(`${args.connectorType} token refresh source missing`, {
         connectorType: args.connectorType,
@@ -1040,6 +1059,7 @@ async function refreshAccessTokenForSource(
       shouldUseLockedCurrentAccess({
         refreshArgs: args,
         context: prepared.context,
+        initialState,
         state: lockedState,
       })
     ) {
@@ -1658,8 +1678,8 @@ async function refreshSelectedTokens(
         sourceUserId: metadata.sourceUserId,
         metadataKey: metadata.metadataKey,
         connectorSecrets: context.secrets,
+        accessEnvVars: context.envVarsByConnector.get(connectorType) ?? [],
         forceRefresh: context.forceRefresh,
-        initialTokenExpiresAt: context.expiryMap.get(connectorType),
         connectorAccessByType: context.connectorAccessByType,
         featureSwitchContext: context.featureSwitchContext,
       });
