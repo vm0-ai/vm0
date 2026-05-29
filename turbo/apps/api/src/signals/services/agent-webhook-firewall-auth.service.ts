@@ -938,7 +938,7 @@ function didLockedRefreshFailDuringRequest(args: {
   readonly state: RefreshState;
 }): boolean {
   if (!args.state.needsReconnect) {
-    return lockedTransientFailureReasonDuringRequest(args) !== undefined;
+    return lockedRefreshFailureReasonDuringRequest(args) !== undefined;
   }
   if (args.initialState) {
     return (
@@ -952,7 +952,7 @@ function didLockedRefreshFailDuringRequest(args: {
   );
 }
 
-function lockedTransientFailureReasonDuringRequest(args: {
+function lockedRefreshFailureReasonDuringRequest(args: {
   readonly requestStartedAtMicros: bigint | null;
   readonly state: RefreshState;
 }): FirewallAuthFailureReason | undefined {
@@ -961,7 +961,9 @@ function lockedTransientFailureReasonDuringRequest(args: {
     args.state.updatedAtMicros > args.requestStartedAtMicros &&
     tokenExpiresAtNeedsRefresh(args.state.tokenExpiresAt)
   ) {
-    return "upstream_provider";
+    return args.state.needsReconnect
+      ? "reconnect_required"
+      : "upstream_provider";
   }
   return undefined;
 }
@@ -1210,7 +1212,7 @@ async function refreshAccessTokenForSource(
       })
     ) {
       return refreshFailedResult(
-        lockedTransientFailureReasonDuringRequest({
+        lockedRefreshFailureReasonDuringRequest({
           requestStartedAtMicros,
           state: lockedState,
         }),
