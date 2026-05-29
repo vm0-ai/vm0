@@ -32,7 +32,6 @@ import {
   setZeroRole$,
   trialGalleryIndex$,
   setTrialGalleryIndex$,
-  startTrialGalleryRotation$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -521,20 +520,20 @@ const TRIAL_GALLERY_COPY: readonly TrialGalleryCopy[] = [
   {
     id: "workflow",
     label: "Workflow",
-    title: "Workflows that ship themselves",
-    subtitle: "Pull data, draft the brief, ship it to Slack each morning",
+    title: "Workflows that run themselves",
+    subtitle: "Daily briefs, scheduled alerts, weekly digests",
   },
   {
     id: "website",
     label: "Website",
-    title: "Polished pages from a single brief",
-    subtitle: "Modern landings, brand sites, launch pages",
+    title: "Websites that look hand-designed",
+    subtitle: "Landing pages, brand sites, launch microsites",
   },
   {
     id: "illustration",
     label: "Illustration",
-    title: "Editorial illustrations in your style",
-    subtitle: "28 plates in the register — pick one and ship",
+    title: "Illustrations in your brand voice",
+    subtitle: "Editorial covers, hero art, mascots",
   },
 ];
 
@@ -610,12 +609,6 @@ function TrialIllustrationSlide() {
 function OnboardingTrialPanel() {
   const rawIndex = useGet(trialGalleryIndex$);
   const setIndex = useSet(setTrialGalleryIndex$);
-  const startRotation = useSet(startTrialGalleryRotation$);
-  const pageSignal = useGet(pageSignal$);
-  detach(
-    startRotation(pageSignal, TRIAL_GALLERY_COPY.length),
-    Reason.DomCallback,
-  );
 
   const slideCount = TRIAL_GALLERY_COPY.length;
   const activeIndex = ((rawIndex % slideCount) + slideCount) % slideCount;
@@ -624,7 +617,7 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col gap-5 w-full max-w-[500px]"
+      className="flex flex-col gap-5 w-full max-w-[500px] items-center"
     >
       <p className="text-xs font-medium text-muted-foreground">Made with Zero</p>
       <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden bg-muted/40">
@@ -636,11 +629,8 @@ function OnboardingTrialPanel() {
           <TrialIllustrationSlide />
         )}
       </div>
-      <div className="flex flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
-          {activeCopy.label}
-        </span>
-        <h3 className="text-lg font-semibold text-foreground leading-snug mt-1">
+      <div className="flex flex-col items-center text-center max-w-[400px]">
+        <h3 className="text-lg font-semibold text-foreground leading-snug">
           {activeCopy.title}
         </h3>
         <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
