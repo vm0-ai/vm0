@@ -717,13 +717,17 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         mode: "payment",
         customer: customerId,
         line_items: [{ price: checkoutPriceId, quantity: 1 }],
-        allow_promotion_codes: true,
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
           creditsAmountMode: "amount_subtotal",
           requestedCreditsAmount: "20000",
         },
+      }),
+    );
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        allow_promotion_codes: true,
       }),
     );
   });
@@ -821,7 +825,6 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         mode: "payment",
         customer: customerId,
         line_items: [{ price: checkoutPriceId, quantity: 1 }],
-        allow_promotion_codes: true,
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
