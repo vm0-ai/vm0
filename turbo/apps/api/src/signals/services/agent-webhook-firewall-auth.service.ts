@@ -155,7 +155,7 @@ function tokenRefreshFailed(
     status: 502,
     body: {
       error: {
-        message: `OAuth token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
+        message: `Access token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
         code: "TOKEN_REFRESH_FAILED",
         connectors: failedConnectors,
       },

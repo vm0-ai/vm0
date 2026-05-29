@@ -307,11 +307,11 @@ async def fetch_firewall_headers(
     """Resolve auth headers via server-side decryption.
 
     When secret_connector_map is provided, the auth endpoint can refresh
-    expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
+    expired access tokens and returns an expiresAt timestamp for TTL caching.
     For billable firewall auth, expiresAt is also bounded by the server-side
     credit authorization lease.
 
-    When force_refresh is True, the endpoint refreshes OAuth tokens regardless
+    When force_refresh is True, the endpoint refreshes access tokens regardless
     of DB tokenExpiresAt — used after the upstream returns 401 (#9860).
 
     Uses asyncio.to_thread to avoid blocking mitmproxy's event loop.
