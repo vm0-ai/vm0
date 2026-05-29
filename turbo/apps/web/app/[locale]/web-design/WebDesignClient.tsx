@@ -45,13 +45,13 @@ function GalleryCard({ item, appUrl }: { item: GalleryItem; appUrl: string }) {
           </div>
         </div>
       </a>
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <h2 className="text-[14px] font-medium text-[hsl(var(--foreground))]">
-          {item.title}
-        </h2>
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <pre className="max-h-[120px] overflow-auto whitespace-pre-wrap break-words rounded-[8px] bg-[hsl(var(--gray-1))] px-3 py-2.5 font-mono text-[12px] leading-[1.5] text-[hsl(var(--muted-foreground))]">
+          {item.prompt}
+        </pre>
         <a
           href={remixHref}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] bg-[#ed4e01] px-3.5 text-sm font-medium text-white transition-colors hover:bg-[#d94600]"
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] bg-[#ed4e01] px-3.5 text-sm font-medium text-white transition-colors hover:bg-[#d94600]"
         >
           <IconSparkles size={15} stroke={2} />
           Prompt remix
