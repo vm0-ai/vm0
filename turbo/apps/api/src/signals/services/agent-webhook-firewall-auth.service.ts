@@ -162,8 +162,13 @@ function tokenRefreshFailed(
   failedConnectors: readonly string[],
   failureReason?: FirewallAuthFailureReason,
 ): ResolveFirewallAuthResult {
+  const connectorList = failedConnectors.join(", ");
+  const message =
+    failureReason === "upstream_provider"
+      ? `Access token refresh failed for: ${connectorList}. The upstream provider may be temporarily unavailable.`
+      : `Access token expired and refresh failed for: ${connectorList}. The connector may need to be reconnected.`;
   const error = {
-    message: `Access token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
+    message,
     code: "TOKEN_REFRESH_FAILED",
     connectors: failedConnectors,
     ...(failureReason ? { failureReason } : {}),

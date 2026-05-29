@@ -2378,6 +2378,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.error).toMatchObject({
       code: "TOKEN_REFRESH_FAILED",
       connectors: ["notion"],
+      message:
+        "Access token refresh failed for: notion. The upstream provider may be temporarily unavailable.",
       failureReason: "upstream_provider",
     });
     await expect(notionConnectorState(fixture)).resolves.toMatchObject({
