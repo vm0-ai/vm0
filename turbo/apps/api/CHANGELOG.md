@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.85.1](https://github.com/vm0-ai/vm0/compare/api-v1.85.0...api-v1.85.1) (2026-05-29)
+
+
+### Refactoring
+
+* derive connector checks from lifecycle config ([#15328](https://github.com/vm0-ai/vm0/issues/15328)) ([d910717](https://github.com/vm0-ai/vm0/commit/d9107173fb255846c20e46d903852cf449aceae3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+    * @vm0/core bumped to 8.302.1
+    * @vm0/db bumped to 1.22.3
+
 ## [1.85.0](https://github.com/vm0-ai/vm0/compare/api-v1.84.1...api-v1.85.0) (2026-05-29)
 
 

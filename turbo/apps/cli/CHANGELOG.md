@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.176.1](https://github.com/vm0-ai/vm0/compare/cli-v9.176.0...cli-v9.176.1) (2026-05-29)
+
+
+### Refactoring
+
+* derive connector checks from lifecycle config ([#15328](https://github.com/vm0-ai/vm0/issues/15328)) ([d910717](https://github.com/vm0-ai/vm0/commit/d9107173fb255846c20e46d903852cf449aceae3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+    * @vm0/core bumped to 8.302.1
+
 ## [9.176.0](https://github.com/vm0-ai/vm0/compare/cli-v9.175.1...cli-v9.176.0) (2026-05-29)
 
 
