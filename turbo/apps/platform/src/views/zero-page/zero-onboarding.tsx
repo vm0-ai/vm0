@@ -557,6 +557,19 @@ const TRIAL_ILLUSTRATION_TILES: readonly string[] = [
   illPosterSrc,
 ];
 
+const TRIAL_ILLUSTRATION_TILE_CLASSES: readonly string[] = [
+  "col-start-1 row-start-1 row-span-2",
+  "col-start-2 row-start-1 row-span-2",
+  "col-start-3 row-start-1 row-span-2",
+  "col-start-4 row-start-1 row-span-1",
+  "col-start-1 row-start-3 row-span-2",
+  "col-start-2 row-start-3 row-span-2",
+  "col-start-3 row-start-3 row-span-1",
+  "col-start-4 row-start-2 row-span-2",
+  "col-start-4 row-start-4 row-span-1",
+  "col-start-3 row-start-4 row-span-1",
+];
+
 const TRIAL_GALLERY_THUMBS: readonly string[] = [
   trialWorkflowSrc,
   webModernSrc,
@@ -571,15 +584,21 @@ const TRIAL_WORKFLOW_CHANNELS: readonly { key: string; src: string }[] = [
 
 function TrialWorkflowSlide() {
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-3">
-      <div className="flex items-center justify-center gap-4">
+    <div className="relative h-full w-full p-1.5">
+      <img
+        src={trialWorkflowSrc}
+        alt="Workflow preview"
+        decoding="async"
+        className="block h-full w-full object-cover object-top rounded-xl"
+      />
+      <div className="zero-border absolute bottom-0 left-1/2 flex -translate-x-1/2 translate-y-1/2 items-center justify-center gap-3 rounded-full bg-background/90 px-3 py-1.5 shadow-sm backdrop-blur">
         {TRIAL_WORKFLOW_CHANNELS.map((channel) => {
           // Slack's source SVG places its mark in the centre of a padded
           // 270x270 viewBox; without scaling, the visible hash mark is much
           // smaller than Telegram + iMessage which fill their own viewBoxes
           // edge to edge. scale-[1.85] sizes Slack to match, and the
-          // remaining ~3px asymmetry around the layout box is well within
-          // the gap-4 (16px) inter-icon spacing.
+          // remaining ~3px asymmetry around the layout box is well within the
+          // icon spacing.
           const slackScale =
             channel.key === "slack" ? "scale-[1.85] -mr-px" : "";
           return (
@@ -587,16 +606,12 @@ function TrialWorkflowSlide() {
               key={channel.key}
               src={channel.src}
               alt=""
-              className={`h-9 w-9 object-contain ${slackScale}`}
+              decoding="async"
+              className={`h-7 w-7 object-contain ${slackScale}`}
             />
           );
         })}
       </div>
-      <img
-        src={trialWorkflowSrc}
-        alt="Workflow preview"
-        className="block min-h-0 max-w-[78%] max-h-full object-contain rounded-xl"
-      />
     </div>
   );
 }
@@ -610,6 +625,8 @@ function TrialWebsiteSlide() {
             <img
               src={src}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover object-top"
             />
           </div>
@@ -621,11 +638,20 @@ function TrialWebsiteSlide() {
 
 function TrialIllustrationSlide() {
   return (
-    <div className="h-full w-full p-2 overflow-hidden columns-4 gap-2 [&>*]:mb-2 [&>*]:break-inside-avoid">
-      {TRIAL_ILLUSTRATION_TILES.map((src) => {
+    <div className="grid h-full w-full grid-cols-4 grid-rows-4 gap-2 overflow-hidden p-2">
+      {TRIAL_ILLUSTRATION_TILES.map((src, index) => {
         return (
-          <div key={src} className="rounded-xl overflow-hidden bg-background">
-            <img src={src} alt="" className="block w-full h-auto" />
+          <div
+            key={src}
+            className={`overflow-hidden rounded-xl bg-background ${TRIAL_ILLUSTRATION_TILE_CLASSES[index]}`}
+          >
+            <img
+              src={src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="block h-full w-full object-cover object-center"
+            />
           </div>
         );
       })}
@@ -644,9 +670,9 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col gap-5 w-full max-w-[560px] items-center"
+      className="flex flex-col gap-6 w-full max-w-[720px] items-center"
     >
-      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden">
+      <div className="aspect-[5/4] max-h-[min(520px,calc(100dvh-260px))] w-full rounded-2xl">
         {activeIndex === 0 ? (
           <TrialWorkflowSlide />
         ) : activeIndex === 1 ? (
@@ -684,6 +710,8 @@ function OnboardingTrialPanel() {
               <img
                 src={TRIAL_GALLERY_THUMBS[i]}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 className="block w-full h-full object-cover object-center"
               />
             </button>
@@ -1032,15 +1060,14 @@ function OnboardingIllustrationPanel() {
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
   const showTrial = stepKey === "trial";
+  const panelSizeClass = showTrial
+    ? "lg:w-[48%] px-6 pb-8 pt-16 xl:px-8 xl:pb-10 xl:pt-20"
+    : "w-2/5 p-10";
 
   return (
     <div
-      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${
-        showChat
-          ? "pt-[8%]"
-          : showTrial
-            ? "justify-start pt-24"
-            : "justify-center"
+      className={`hidden lg:flex ${panelSizeClass} shrink-0 flex-col items-center relative overflow-hidden ${
+        showChat ? "pt-[8%]" : showTrial ? "justify-start" : "justify-center"
       }`}
     >
       {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
@@ -1053,7 +1080,11 @@ function OnboardingIllustrationPanel() {
         </div>
       )}
 
-      <div className="relative z-10 flex flex-col items-center">
+      <div
+        className={`relative z-10 flex flex-col items-center ${
+          showTrial ? "w-full" : ""
+        }`}
+      >
         {showChat ? (
           <ChatPreview />
         ) : showOrbit ? (
@@ -1147,7 +1178,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col min-w-0 bg-background items-center">
         <div className="flex flex-col w-full max-w-[750px] flex-1 min-h-0">
           {/* Progress bar */}
-          <div className="shrink-0 px-5 sm:px-10 pt-8 pb-4">
+          <div className="shrink-0 px-5 pb-4 pt-16 sm:px-10 lg:pt-8">
             <OnboardingProgressBar />
           </div>
 
