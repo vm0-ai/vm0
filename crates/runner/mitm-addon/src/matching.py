@@ -77,17 +77,23 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
         return host, False
 
     index = host.find("%")
+    has_percent_encoded_brace = False
     while index != -1:
         hex_start = index + 1
         hex_end = hex_start + 2
-        if hex_end > len(host) or not all(char in _HEX_DIGITS for char in host[hex_start:hex_end]):
+        hex_value = host[hex_start:hex_end]
+        if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
             return host, True
+        if hex_value.lower() in ("7b", "7d"):
+            has_percent_encoded_brace = True
         index = host.find("%", index + _PERCENT_ESCAPE_LENGTH)
 
     try:
         decoded = unquote_to_bytes(host).decode("utf-8")
     except UnicodeDecodeError:
         return host, True
+    if has_percent_encoded_brace:
+        return decoded, True
     if ":" in decoded:
         return decoded, True
     return decoded, False

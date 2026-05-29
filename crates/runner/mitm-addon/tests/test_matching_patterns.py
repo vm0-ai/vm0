@@ -512,6 +512,13 @@ class TestMatchBaseUrl:
         )
         assert result is None
 
+    def test_parameterized_base_rejects_percent_encoded_host_braces(self):
+        result = matching.match_base_url(
+            "https://acme.prod.example.com/api/v2/tickets",
+            "https://{subdomain}.%7Benv%7D.example.com",
+        )
+        assert result is None
+
     def test_parameterized_path(self):
         result = matching.match_base_url(
             "https://api.example.com/v1/acme/projects/123",

@@ -592,6 +592,18 @@ describe("validateBaseUrl", () => {
     }).toThrow("must not contain fragment");
   });
 
+  it("should reject percent-encoded braces in parameterized host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.%7Benv%7D.example.com", "fw");
+    }).toThrow("host must not contain percent-encoded braces");
+  });
+
+  it("should reject percent-encoded braces in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://%7Benv%7D.example.com", "fw");
+    }).toThrow("host must not contain braces");
+  });
+
   it("should reject param in scheme", () => {
     expect(() => {
       return validateBaseUrl("{proto}://api.example.com", "fw");

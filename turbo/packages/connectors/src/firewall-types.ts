@@ -738,6 +738,15 @@ function errMsg(base: string, svc: string, detail: string): string {
   return `Invalid base URL "${base}" in firewall "${svc}": ${detail}`;
 }
 
+function hasPercentEncodedBrace(value: string): boolean {
+  for (let i = 0; i + 2 < value.length; i += 1) {
+    if (value[i] !== "%") continue;
+    const hex = value.slice(i + 1, i + 3).toLowerCase();
+    if (hex === "7b" || hex === "7d") return true;
+  }
+  return false;
+}
+
 /**
  * Validate host segments (`.`-delimited) for parameterized base URLs.
  * Greedy params (`+`/`*`) must be the first (leftmost) host segment and
@@ -863,6 +872,11 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const slashIdx = rest.indexOf("/");
   const host = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
   const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
+  if (hasPercentEncodedBrace(host)) {
+    throw new Error(
+      errMsg(base, serviceName, "host must not contain percent-encoded braces"),
+    );
+  }
 
   const paramNames = new Set<string>();
   validateHostParams(host.split("."), paramNames, base, serviceName);
@@ -902,6 +916,11 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   if (url.hash) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
+  if (url.hostname.includes("{") || url.hostname.includes("}")) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": host must not contain braces`,
     );
   }
 }
