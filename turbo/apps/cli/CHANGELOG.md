@@ -1,5 +1,14 @@
 # Changelog
 
+## [9.176.5](https://github.com/vm0-ai/vm0/compare/cli-v9.176.4...cli-v9.176.5) (2026-05-29)
+
+
+### Bug Fixes
+
+* **cli:** simplify html generate flags ([#15393](https://github.com/vm0-ai/vm0/issues/15393)) ([b92e466](https://github.com/vm0-ai/vm0/commit/b92e46638c00132b8752540b1c971bbc9ec09493))
+* **computer-use:** require editable focus for type-text ([#15397](https://github.com/vm0-ai/vm0/issues/15397)) ([dc58393](https://github.com/vm0-ai/vm0/commit/dc58393e79f87989f59a9c0ea0b3912b41bdeea1))
+* make computer-use --app accept bundle id only ([#15401](https://github.com/vm0-ai/vm0/issues/15401)) ([674b2bf](https://github.com/vm0-ai/vm0/commit/674b2bfc219d4c28b3e0a560a20bce1a1d7f40e9)), closes [#15275](https://github.com/vm0-ai/vm0/issues/15275)
+
 ## [9.176.4](https://github.com/vm0-ai/vm0/compare/cli-v9.176.3...cli-v9.176.4) (2026-05-29)
 
 
