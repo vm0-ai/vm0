@@ -87,9 +87,8 @@ export function createPresentationGenerateCommand(
       "--prompt <text>",
       "Presentation prompt; can also be piped via stdin",
     )
-    .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
-    .option("--title <text>", "Requested deck title")
     .option("--site-slug <slug>", "Hosted site slug override")
+    .option("--title <text>", "Requested deck title")
     .option(
       "--design-system <id>",
       "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
@@ -98,6 +97,7 @@ export function createPresentationGenerateCommand(
       "--template <id>",
       "Template id from the registry, scoped to presentation (see Templates below). Accepts either 'html-ppt-pitch-deck' or 'template:html-ppt-pitch-deck'.",
     )
+    .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .option("--json", "Print metadata as JSON")
     .addHelpText("after", () => {
       const designSystems = listDesignSystems();

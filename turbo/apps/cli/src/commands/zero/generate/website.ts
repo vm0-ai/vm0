@@ -61,16 +61,16 @@ export const websiteCommand = new Command()
   .name("website")
   .description("Prepare website authoring instructions from a prompt")
   .option("--prompt <text>", "Website prompt; can also be piped via stdin")
-  .option(
-    "--template <id>",
-    "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
-  )
+  .option("--site-slug <slug>", "Hosted site slug override")
+  .option("--title <text>", "Requested site title or name")
   .option(
     "--design-system <id>",
     "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
   )
-  .option("--site-slug <slug>", "Hosted site slug override")
-  .option("--title <text>", "Requested site title or name")
+  .option(
+    "--template <id>",
+    "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
+  )
   .option("--json", "Print metadata as JSON")
   .addHelpText("after", () => {
     const designSystems = listDesignSystems();
