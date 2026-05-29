@@ -617,10 +617,9 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col gap-5 w-full max-w-[500px] items-center"
+      className="flex flex-col gap-5 w-full max-w-[560px] items-center"
     >
-      <p className="text-xs font-medium text-muted-foreground">Made with Zero</p>
-      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden bg-muted/40">
+      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden">
         {activeIndex === 0 ? (
           <TrialWorkflowSlide />
         ) : activeIndex === 1 ? (
@@ -1010,7 +1009,7 @@ function OnboardingIllustrationPanel() {
   return (
     <div
       className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${
-        showChat ? "pt-[8%]" : "justify-center"
+        showChat ? "pt-[8%]" : showTrial ? "pt-[12%]" : "justify-center"
       }`}
     >
       {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
