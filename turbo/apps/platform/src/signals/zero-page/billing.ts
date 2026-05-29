@@ -408,12 +408,16 @@ export type BuyCreditsSelection = 10 | 20 | 50 | "custom";
 
 const internalBuyCreditsSelection$ = state<BuyCreditsSelection>(20);
 const internalBuyCreditsCustomDollars$ = state("");
+const internalBuyCreditsCouponCode$ = state("");
 
 export const buyCreditsSelection$ = computed((get) => {
   return get(internalBuyCreditsSelection$);
 });
 export const buyCreditsCustomDollars$ = computed((get) => {
   return get(internalBuyCreditsCustomDollars$);
+});
+export const buyCreditsCouponCode$ = computed((get) => {
+  return get(internalBuyCreditsCouponCode$);
 });
 
 export const setBuyCreditsSelection$ = command(
@@ -423,4 +427,7 @@ export const setBuyCreditsSelection$ = command(
 );
 export const setBuyCreditsCustomDollars$ = command(({ set }, value: string) => {
   set(internalBuyCreditsCustomDollars$, value);
+});
+export const setBuyCreditsCouponCode$ = command(({ set }, value: string) => {
+  set(internalBuyCreditsCouponCode$, value);
 });
