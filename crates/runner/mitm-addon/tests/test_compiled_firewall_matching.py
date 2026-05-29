@@ -201,7 +201,7 @@ class TestCompiledFirewallMatching:
 
         assert result is None
 
-    def test_compiled_parameterized_base_preserves_empty_segments_after_base(self):
+    def test_compiled_parameterized_base_rule_does_not_collapse_empty_segments_after_base(self):
         fws = wrap_firewalls(
             [
                 {
@@ -209,6 +209,32 @@ class TestCompiledFirewallMatching:
                     "auth": {"headers": {"Authorization": "Bearer token"}},
                     "permissions": [
                         {"name": "read", "rules": ["GET /projects"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme//projects",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.path == "//projects"
+        assert result.reason == "unknown_endpoint"
+
+    def test_compiled_rule_path_can_require_empty_segments_after_base(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET //projects"]},
                     ],
                 }
             ],
@@ -294,7 +320,9 @@ class TestCompiledFirewallMatching:
 
         assert result is None
 
-    def test_compiled_parameterized_host_literal_path_preserves_empty_segments_after_base(self):
+    def test_compiled_host_literal_path_rule_preserves_empty_segments_after_base(
+        self,
+    ):
         fws = wrap_firewalls(
             [
                 {
@@ -316,9 +344,9 @@ class TestCompiledFirewallMatching:
             policies,
         )
 
-        assert isinstance(result, matching.FirewallAllow)
-        assert result.rel_path == "//foo"
-        assert result.params == {"sub": "api"}
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.path == "//foo"
+        assert result.reason == "unknown_endpoint"
 
     def test_compiled_matches_greedy_host_base_params(self):
         fws = wrap_firewalls(

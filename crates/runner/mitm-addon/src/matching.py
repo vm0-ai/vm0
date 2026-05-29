@@ -505,8 +505,8 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
     return params, pi
 
 
-def _split_base_path_segments(path: str) -> list[str]:
-    """Split base-scope paths without normalizing repeated slashes."""
+def _split_path_segments(path: str) -> list[str]:
+    """Split path patterns and request paths without normalizing repeated slashes."""
     if path in ("", "/"):
         return []
     path_without_leading_slash = path[1:] if path.startswith("/") else path
@@ -572,8 +572,8 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     base_path = base_parts.path
     clean_url_path = url_parts.path
     if base_path and base_path != "/":
-        base_path_segs = _split_base_path_segments(base_path)
-        url_path_segs = _split_base_path_segments(clean_url_path)
+        base_path_segs = _split_path_segments(base_path)
+        url_path_segs = _split_path_segments(clean_url_path)
         path_result = match_path_prefix(url_path_segs, base_path_segs)
         if path_result is None:
             return None
@@ -598,8 +598,8 @@ def match_path(path: str, pattern: str) -> dict | None:
     - {name+} matches the rest of the path (one or more segments). Must be last.
     - {name*} matches the rest of the path (zero or more segments). Must be last.
     """
-    path_segs = [s for s in path.split("/") if s]
-    pattern_segs = [s for s in pattern.split("/") if s]
+    path_segs = _split_path_segments(path)
+    pattern_segs = _split_path_segments(pattern)
 
     params: dict[str, str] = {}
     pi = 0
@@ -631,6 +631,8 @@ def match_path(path: str, pattern: str) -> dict | None:
             return None
         runtime = path_segs[pi]
         if prefix == "" and suffix == "":
+            if runtime == "":
+                return None
             params[name] = runtime
         else:
             captured = _match_segment_literal(runtime, prefix, suffix)
@@ -654,7 +656,7 @@ def _compile_segments(segments: list[str] | tuple[str, ...]) -> tuple[ParsedSegm
 
 def compile_path_pattern(pattern: str) -> CompiledPathPattern | None:
     """Compile a URL path pattern for repeated matching."""
-    segments = _compile_segments(tuple(s for s in pattern.split("/") if s))
+    segments = _compile_segments(tuple(_split_path_segments(pattern)))
     if segments is None:
         return None
     return CompiledPathPattern(segments)
@@ -835,7 +837,7 @@ def _match_compiled_path_segments(
 
 def match_compiled_path(path: str, pattern: CompiledPathPattern) -> dict | None:
     """Match a URL path against a compiled rule path pattern."""
-    return _match_compiled_path_segments([s for s in path.split("/") if s], pattern.segments)
+    return _match_compiled_path_segments(_split_path_segments(path), pattern.segments)
 
 
 def _match_compiled_path_prefix(
@@ -950,7 +952,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         if compiled_host is None:
             return None
         host_segments = compiled_host
-        compiled_path = _compile_segments(tuple(_split_base_path_segments(parts.path)))
+        compiled_path = _compile_segments(tuple(_split_path_segments(parts.path)))
         if compiled_path is None:
             return None
         path_segments = compiled_path
@@ -994,7 +996,7 @@ def _match_compiled_base_url_parts(
     base_path = base.parts.path
     clean_url_path = url_parts.path
     if base_path and base_path != "/":
-        url_path_segs = _split_base_path_segments(clean_url_path)
+        url_path_segs = _split_path_segments(clean_url_path)
         path_result = _match_compiled_path_prefix(url_path_segs, base.path_segments)
         if path_result is None:
             return None
@@ -1237,7 +1239,7 @@ def _best_compiled_rule_candidates(
     rel_path: str,
     base_params: dict[str, str],
 ) -> list[_CompiledRuleCandidate]:
-    rel_path_segs = [s for s in rel_path.split("/") if s]
+    rel_path_segs = _split_path_segments(rel_path)
     best_specificity: _PathSpecificity | None = None
     best_candidates: list[_CompiledRuleCandidate] = []
 

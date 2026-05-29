@@ -265,7 +265,7 @@ class TestCompiledFirewallRequest:
         assert result.permission == "root"
 
     def test_trailing_slash_on_url(self, headers):
-        """URL trailing slash doesn't affect matching (split filters empty segments)."""
+        """A trailing slash is a distinct path segment for permission rules."""
         fw_configs = wrap_firewalls(
             [
                 {
@@ -281,7 +281,8 @@ class TestCompiledFirewallRequest:
             fw_configs,
             network_policies=grant_all(fw_configs),
         )
-        assert isinstance(result, matching.FirewallAllow)
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
 
     def test_trailing_slash_on_base_config(self, headers):
         """Base URL with trailing slash still matches (rstrip strips it)."""

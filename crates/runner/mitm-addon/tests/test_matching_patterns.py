@@ -77,6 +77,26 @@ class TestMatchPath:
     def test_empty_path_matches_empty_pattern(self):
         assert matching.match_path("", "") == {}
 
+    @pytest.mark.parametrize("path", ["/repos//octocat", "//repos/octocat", "/repos/octocat/"])
+    def test_single_param_rejects_empty_path_segments(self, path):
+        assert matching.match_path(path, "/repos/{owner}") is None
+
+    def test_rule_path_can_require_empty_segments(self):
+        assert matching.match_path("/repos//octocat", "/repos//{owner}") == {"owner": "octocat"}
+
+    @pytest.mark.parametrize("path", ["/repos//octocat", "//repos/octocat", "/repos/octocat/"])
+    def test_compiled_single_param_rejects_empty_path_segments(self, path):
+        pattern = matching.compile_path_pattern("/repos/{owner}")
+        assert pattern is not None
+
+        assert matching.match_compiled_path(path, pattern) is None
+
+    def test_compiled_rule_path_can_require_empty_segments(self):
+        pattern = matching.compile_path_pattern("/repos//{owner}")
+        assert pattern is not None
+
+        assert matching.match_compiled_path("/repos//octocat", pattern) == {"owner": "octocat"}
+
 
 class TestMatchHost:
     def test_exact_host(self):
