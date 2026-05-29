@@ -426,6 +426,14 @@ export type ConnectorAuthMethodId = "oauth" | "api-token" | "api";
 
 type AssertNever<T extends never> = T;
 
+type IsUnion<T, U = T> = [T] extends [never]
+  ? false
+  : T extends unknown
+    ? [U] extends [T]
+      ? false
+      : true
+    : false;
+
 export type ConnectorDisplayCategory =
   | "ai-general-models"
   | "ai-image-video"
@@ -924,6 +932,33 @@ type InvalidAuthMethodRevokeKindConnectorType = {
 }[ConnectorType];
 export type ConnectorAuthMethodRevokeKindsMatchKeys =
   AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
+
+type ConnectorAuthMethodIdsByGrantKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorGrantKind,
+> = {
+  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+    readonly grant: { readonly kind: Kind };
+  }
+    ? Method
+    : never;
+}[ConnectorAuthMethodKeys<Type>];
+
+type ConnectorTypeWithMultipleAuthMethodsForGrantKind<
+  Kind extends ConnectorGrantKind,
+> = {
+  [Type in ConnectorType]: IsUnion<
+    ConnectorAuthMethodIdsByGrantKind<Type, Kind>
+  > extends true
+    ? Type
+    : never;
+}[ConnectorType];
+export type ConnectorAuthCodeGrantMethodsAreSingle = AssertNever<
+  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"auth-code">
+>;
+export type ConnectorDeviceAuthGrantMethodsAreSingle = AssertNever<
+  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"device-auth">
+>;
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {
