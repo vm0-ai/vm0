@@ -12,8 +12,16 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import upsellCrownSrc from "./assets/upsell-crown.webp";
 import trialWorkflowSrc from "./assets/trial-workflow.webp";
-import trialIllustrationSrc from "./assets/trial-illustration.webp";
-import trialWebsiteSrc from "./assets/trial-website.webp";
+import webModernSrc from "./assets/web-modern.webp";
+import webSleekSrc from "./assets/web-sleek.webp";
+import webEnergeticSrc from "./assets/web-energetic.webp";
+import webFriendlySrc from "./assets/web-friendly.webp";
+import illFolkSrc from "./assets/ill-folk.webp";
+import illFlatfolkSrc from "./assets/ill-flatfolk.webp";
+import illBotanicalSrc from "./assets/ill-botanical.webp";
+import illPapernookSrc from "./assets/ill-papernook.webp";
+import illPosterSrc from "./assets/ill-poster.webp";
+import illOpedcoverSrc from "./assets/ill-opedcover.webp";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -24,6 +32,7 @@ import {
   setZeroRole$,
   trialGalleryIndex$,
   setTrialGalleryIndex$,
+  startTrialGalleryRotation$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -493,97 +502,176 @@ function TrialStepContent() {
 // ---------------------------------------------------------------------------
 // Trial step — left-panel gallery (step 4)
 //
-// Single-active-image carousel: one tile fills the hero card; the row
-// of thumbnails below switches the active slide. Images render at
-// their native aspect ratio so nothing gets cropped.
+// Three-slide auto-rotating carousel. Each slide showcases a category of
+// output Zero can produce:
+//   - workflow: the workflow walkthrough gif
+//   - website: a 2x2 masonry of generated landing pages
+//   - illustration: a 3x2 grid of editorial illustrations
+// Thumbnails along the bottom center mark and switch the active slide.
 // ---------------------------------------------------------------------------
 
-type TrialGalleryItem = {
+type TrialGalleryCopy = {
   readonly id: string;
   readonly label: string;
   readonly title: string;
   readonly subtitle: string;
-  readonly image: string;
 };
 
-const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
+const TRIAL_GALLERY_COPY: readonly TrialGalleryCopy[] = [
   {
     id: "workflow",
     label: "Workflow",
     title: "Workflows that ship themselves",
     subtitle: "Pull data, draft the brief, ship it to Slack each morning",
-    image: trialWorkflowSrc,
   },
   {
     id: "website",
     label: "Website",
     title: "Polished pages from a single brief",
     subtitle: "Modern landings, brand sites, launch pages",
-    image: trialWebsiteSrc,
   },
   {
     id: "illustration",
     label: "Illustration",
     title: "Editorial illustrations in your style",
     subtitle: "28 plates in the register — pick one and ship",
-    image: trialIllustrationSrc,
   },
 ];
+
+const TRIAL_WEBSITE_TILES: readonly string[] = [
+  webModernSrc,
+  webSleekSrc,
+  webFriendlySrc,
+  webEnergeticSrc,
+];
+
+const TRIAL_ILLUSTRATION_TILES: readonly string[] = [
+  illFlatfolkSrc,
+  illFolkSrc,
+  illBotanicalSrc,
+  illPapernookSrc,
+  illOpedcoverSrc,
+  illPosterSrc,
+];
+
+const TRIAL_GALLERY_THUMBS: readonly string[] = [
+  trialWorkflowSrc,
+  webModernSrc,
+  illFlatfolkSrc,
+];
+
+function TrialWorkflowSlide() {
+  return (
+    <img
+      src={trialWorkflowSrc}
+      alt="Workflow preview"
+      className="h-full w-full object-cover object-center rounded-2xl"
+    />
+  );
+}
+
+function TrialWebsiteSlide() {
+  return (
+    <div className="h-full w-full grid grid-cols-2 grid-rows-2 gap-2 p-2">
+      {TRIAL_WEBSITE_TILES.map((src) => {
+        return (
+          <div
+            key={src}
+            className="rounded-xl overflow-hidden bg-background"
+          >
+            <img
+              src={src}
+              alt=""
+              className="h-full w-full object-cover object-top"
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrialIllustrationSlide() {
+  return (
+    <div className="h-full w-full grid grid-cols-3 grid-rows-2 gap-2 p-2">
+      {TRIAL_ILLUSTRATION_TILES.map((src) => {
+        return (
+          <div
+            key={src}
+            className="rounded-xl overflow-hidden bg-background"
+          >
+            <img
+              src={src}
+              alt=""
+              className="h-full w-full object-cover object-center"
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function OnboardingTrialPanel() {
   const rawIndex = useGet(trialGalleryIndex$);
   const setIndex = useSet(setTrialGalleryIndex$);
-  const activeIndex =
-    ((rawIndex % TRIAL_GALLERY_ITEMS.length) + TRIAL_GALLERY_ITEMS.length) %
-    TRIAL_GALLERY_ITEMS.length;
-  const activeItem = TRIAL_GALLERY_ITEMS[activeIndex];
+  const startRotation = useSet(startTrialGalleryRotation$);
+  const pageSignal = useGet(pageSignal$);
+  detach(
+    startRotation(pageSignal, TRIAL_GALLERY_COPY.length),
+    Reason.DomCallback,
+  );
+
+  const slideCount = TRIAL_GALLERY_COPY.length;
+  const activeIndex = ((rawIndex % slideCount) + slideCount) % slideCount;
+  const activeCopy = TRIAL_GALLERY_COPY[activeIndex];
 
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col gap-4 w-full max-w-[480px]"
+      className="flex flex-col gap-5 w-full max-w-[500px]"
     >
-      <p className="text-[11px] font-medium text-muted-foreground">
-        Made with Zero
-      </p>
-      <div className="aspect-video w-full rounded-2xl overflow-hidden bg-muted/40 flex items-center justify-center">
-        <img
-          src={activeItem.image}
-          alt={`${activeItem.label} preview`}
-          className="max-h-full max-w-full object-contain rounded-2xl"
-        />
+      <p className="text-xs font-medium text-muted-foreground">Made with Zero</p>
+      <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden bg-muted/40">
+        {activeIndex === 0 ? (
+          <TrialWorkflowSlide />
+        ) : activeIndex === 1 ? (
+          <TrialWebsiteSlide />
+        ) : (
+          <TrialIllustrationSlide />
+        )}
       </div>
       <div className="flex flex-col">
-        <span className="text-[11px] font-medium text-muted-foreground">
-          {activeItem.label}
+        <span className="text-xs font-medium text-muted-foreground">
+          {activeCopy.label}
         </span>
-        <h3 className="text-sm font-semibold text-foreground leading-snug mt-0.5">
-          {activeItem.title}
+        <h3 className="text-lg font-semibold text-foreground leading-snug mt-1">
+          {activeCopy.title}
         </h3>
-        <p className="text-xs text-muted-foreground leading-snug mt-1">
-          {activeItem.subtitle}
+        <p className="text-sm text-muted-foreground leading-relaxed mt-1.5">
+          {activeCopy.subtitle}
         </p>
       </div>
-      <div className="flex items-center gap-2.5">
-        {TRIAL_GALLERY_ITEMS.map((item, i) => {
+      <div className="flex items-center justify-center gap-2.5">
+        {TRIAL_GALLERY_COPY.map((copy, i) => {
           const isActive = i === activeIndex;
           return (
             <button
-              key={item.id}
+              key={copy.id}
               type="button"
-              aria-label={`Show ${item.label} preview`}
-              data-testid={`onboarding-trial-gallery-dot-${item.id}`}
+              aria-label={`Show ${copy.label} preview`}
+              data-testid={`onboarding-trial-gallery-dot-${copy.id}`}
               onClick={() => {
                 setIndex(i);
               }}
-              className={`relative h-11 w-11 rounded-lg overflow-hidden transition-all ${
+              className={`relative h-12 w-12 rounded-lg overflow-hidden transition-all ${
                 isActive
                   ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
                   : "opacity-50 hover:opacity-100"
               }`}
             >
               <img
-                src={item.image}
+                src={TRIAL_GALLERY_THUMBS[i]}
                 alt=""
                 className="block w-full h-full object-cover object-center"
               />

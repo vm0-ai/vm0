@@ -8,6 +8,9 @@ import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";
+import { setLoop } from "../utils.ts";
+
+const TRIAL_GALLERY_ROTATION_MS = 5000;
 
 const L = logger("ZeroOnboarding");
 
@@ -53,6 +56,7 @@ const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
 const internalSelectedRole$ = state<string | null>("founder");
 const internalTrialGalleryIndex$ = state(0);
+const internalTrialGalleryRotationStarted$ = state(false);
 
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
@@ -142,9 +146,36 @@ export const setZeroRole$ = command(({ set }, role: string | null) => {
   set(internalSelectedRole$, role);
 });
 
-export const setTrialGalleryIndex$ = command(({ set }, index: number) => {
-  set(internalTrialGalleryIndex$, index);
-});
+export const setTrialGalleryIndex$ = command(
+  ({ set }, index: number) => {
+    set(internalTrialGalleryIndex$, index);
+  },
+);
+
+/**
+ * Start a single background loop that advances the trial gallery index every
+ * few seconds. Idempotent — repeated calls after the first are no-ops, so the
+ * trial panel can call this on each render without spawning extra loops.
+ * The loop runs until the supplied page signal aborts (user navigates away).
+ */
+export const startTrialGalleryRotation$ = command(
+  async ({ get, set }, signal: AbortSignal, slideCount: number) => {
+    if (get(internalTrialGalleryRotationStarted$)) {
+      return;
+    }
+    set(internalTrialGalleryRotationStarted$, true);
+    await setLoop(
+      () => {
+        set(internalTrialGalleryIndex$, (prev) => {
+          return (prev + 1) % slideCount;
+        });
+        return false;
+      },
+      TRIAL_GALLERY_ROTATION_MS,
+      signal,
+    );
+  },
+);
 
 const internalConnectorSearch$ = state("");
 
@@ -183,6 +214,7 @@ export const resetOnboardingStep$ = command(({ set }) => {
   set(internalEagerInitialized$, false);
   set(internalSelectedRole$, "founder");
   set(internalTrialGalleryIndex$, 0);
+  set(internalTrialGalleryRotationStarted$, false);
 });
 
 /**
