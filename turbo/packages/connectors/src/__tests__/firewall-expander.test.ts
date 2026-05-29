@@ -601,7 +601,49 @@ describe("validateBaseUrl", () => {
   it("should reject percent-encoded braces in static host", () => {
     expect(() => {
       return validateBaseUrl("https://%7Benv%7D.example.com", "fw");
-    }).toThrow("host must not contain braces");
+    }).toThrow("host must not contain percent-encoded braces");
+  });
+
+  it("should reject percent-encoded dots in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}%2eexample.com", "fw");
+    }).toThrow("host must not contain percent-encoded dots");
+    expect(() => {
+      return validateBaseUrl("https://api%E3%80%82example.com", "fw");
+    }).toThrow("host must not contain percent-encoded dots");
+  });
+
+  it("should reject malformed parameterized authorities", () => {
+    expect(() => {
+      return validateBaseUrl("https://user@{sub}.zendesk.com", "fw");
+    }).toThrow("must not contain userinfo");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.zendesk.com:bad", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.zendesk.com:99999", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.api%20example.com", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.exa%mple.com", "fw");
+    }).toThrow("host has invalid percent encoding");
+  });
+
+  it("should reject non-ascii mixed host parameter literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://例-{sub}.example.com", "fw");
+    }).toThrow("must use ASCII literal prefix and suffix");
+    expect(() => {
+      return validateBaseUrl("https://{sub}-例.example.com", "fw");
+    }).toThrow("must use ASCII literal prefix and suffix");
+  });
+
+  it("should reject userinfo in static base URL", () => {
+    expect(() => {
+      return validateBaseUrl("https://user:pass@api.example.com", "fw");
+    }).toThrow("must not contain userinfo");
   });
 
   it("should reject param in scheme", () => {

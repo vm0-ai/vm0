@@ -142,11 +142,19 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallAllow)
         assert result.params == {"Org": "acme", "org": "team", "id": "123"}
 
-    def test_compiled_percent_encoded_host_braces_do_not_create_params(self):
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://{sub}.%7Benv%7D.example.com",
+            "https://{a}%2e{b}.example.com",
+            "https://{a}%E3%80%82{b}.example.com",
+        ],
+    )
+    def test_compiled_percent_encoded_host_syntax_does_not_create_params(self, base):
         fws = wrap_firewalls(
             [
                 {
-                    "base": "https://{sub}.%7Benv%7D.example.com",
+                    "base": base,
                     "auth": {"headers": {"Authorization": "Bearer token"}},
                     "permissions": [
                         {"name": "read", "rules": ["GET /projects/{id}"]},
@@ -158,7 +166,7 @@ class TestCompiledFirewallMatching:
         policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
 
         result = matching.match_compiled_firewall_request(
-            "https://acme.prod.example.com/projects/123",
+            "https://acme.team.example.com/projects/123",
             "GET",
             self._compiled(fws),
             policies,

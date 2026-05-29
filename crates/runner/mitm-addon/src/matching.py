@@ -37,6 +37,7 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 )
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
+_PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
     (
@@ -77,23 +78,31 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
         return host, False
 
     index = host.find("%")
-    has_percent_encoded_brace = False
+    has_percent_encoded_syntax = False
     while index != -1:
-        hex_start = index + 1
-        hex_end = hex_start + 2
-        hex_value = host[hex_start:hex_end]
-        if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
+        run_end = index
+        while run_end < len(host) and host[run_end] == "%":
+            hex_start = run_end + 1
+            hex_end = hex_start + 2
+            hex_value = host[hex_start:hex_end]
+            if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
+                return host, True
+            run_end += _PERCENT_ESCAPE_LENGTH
+
+        try:
+            decoded_run = unquote_to_bytes(host[index:run_end]).decode("utf-8")
+        except UnicodeDecodeError:
             return host, True
-        if hex_value.lower() in ("7b", "7d"):
-            has_percent_encoded_brace = True
-        index = host.find("%", index + _PERCENT_ESCAPE_LENGTH)
+        if any(char in _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS for char in decoded_run):
+            has_percent_encoded_syntax = True
+        index = host.find("%", run_end)
 
     try:
         decoded = unquote_to_bytes(host).decode("utf-8")
     except UnicodeDecodeError:
         return host, True
-    if has_percent_encoded_brace:
-        return decoded, True
+    if has_percent_encoded_syntax:
+        return decoded.translate(_IDNA_DOT_TRANSLATION), True
     if ":" in decoded:
         return decoded, True
     return decoded, False

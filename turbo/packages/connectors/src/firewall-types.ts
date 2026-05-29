@@ -738,13 +738,139 @@ function errMsg(base: string, svc: string, detail: string): string {
   return `Invalid base URL "${base}" in firewall "${svc}": ${detail}`;
 }
 
-function hasPercentEncodedBrace(value: string): boolean {
-  for (let i = 0; i + 2 < value.length; i += 1) {
-    if (value[i] !== "%") continue;
-    const hex = value.slice(i + 1, i + 3).toLowerCase();
-    if (hex === "7b" || hex === "7d") return true;
+const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
+
+function isHexDigit(char: string): boolean {
+  return (
+    (char >= "0" && char <= "9") ||
+    (char >= "a" && char <= "f") ||
+    (char >= "A" && char <= "F")
+  );
+}
+
+function isAscii(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) > 0x7f) return false;
   }
-  return false;
+  return true;
+}
+
+function validateHostPercentEncoding(
+  host: string,
+  base: string,
+  serviceName: string,
+): void {
+  for (let i = 0; i < host.length; i += 1) {
+    if (host[i] !== "%") continue;
+    if (
+      i + 2 >= host.length ||
+      !isHexDigit(host[i + 1]!) ||
+      !isHexDigit(host[i + 2]!)
+    ) {
+      throw new Error(
+        errMsg(base, serviceName, "host has invalid percent encoding"),
+      );
+    }
+
+    let end = i;
+    while (
+      end + 2 < host.length &&
+      host[end] === "%" &&
+      isHexDigit(host[end + 1]!) &&
+      isHexDigit(host[end + 2]!)
+    ) {
+      end += 3;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(host.slice(i, end));
+    } catch {
+      throw new Error(
+        errMsg(base, serviceName, "host has invalid percent encoding"),
+      );
+    }
+    for (const char of decoded) {
+      if (char === "{" || char === "}") {
+        throw new Error(
+          errMsg(
+            base,
+            serviceName,
+            "host must not contain percent-encoded braces",
+          ),
+        );
+      }
+      if (HOST_DOT_EQUIVALENTS.has(char)) {
+        throw new Error(
+          errMsg(
+            base,
+            serviceName,
+            "host must not contain percent-encoded dots",
+          ),
+        );
+      }
+    }
+    i = end - 1;
+  }
+}
+
+function rawAuthorityFromBaseUrl(base: string): string | null {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) return null;
+  const rest = base.slice(schemeEnd + 3);
+  const slashIdx = rest.indexOf("/");
+  return slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+}
+
+function validateNoUserinfo(
+  authority: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (authority.includes("@")) {
+    throw new Error(errMsg(base, serviceName, "must not contain userinfo"));
+  }
+}
+
+function hostSegmentForSyntaxValidation(
+  seg: string,
+  base: string,
+  svc: string,
+): string {
+  const parsed = parseSegment(seg);
+  if (parsed.kind === "literal") return seg;
+  if (parsed.kind === "error") {
+    throw new Error(errMsg(base, svc, parsed.reason));
+  }
+  if (!isAscii(parsed.prefix) || !isAscii(parsed.suffix)) {
+    throw new Error(
+      errMsg(
+        base,
+        svc,
+        `host parameter segment "${seg}" must use ASCII literal prefix and suffix`,
+      ),
+    );
+  }
+  return `${parsed.prefix}x${parsed.suffix}`;
+}
+
+function validateParameterizedHostUrlSyntax(
+  scheme: string,
+  host: string,
+  base: string,
+  serviceName: string,
+): void {
+  const syntaxHost = host
+    .split(".")
+    .map((seg) => {
+      return hostSegmentForSyntaxValidation(seg, base, serviceName);
+    })
+    .join(".");
+  try {
+    new URL(`${scheme}://${syntaxHost}`);
+  } catch {
+    throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+  }
 }
 
 /**
@@ -872,11 +998,14 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const slashIdx = rest.indexOf("/");
   const host = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
   const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
-  if (hasPercentEncodedBrace(host)) {
-    throw new Error(
-      errMsg(base, serviceName, "host must not contain percent-encoded braces"),
-    );
-  }
+  validateNoUserinfo(host, base, serviceName);
+  validateHostPercentEncoding(host, base, serviceName);
+  validateParameterizedHostUrlSyntax(
+    base.slice(0, schemeEnd),
+    host,
+    base,
+    serviceName,
+  );
 
   const paramNames = new Set<string>();
   validateHostParams(host.split("."), paramNames, base, serviceName);
@@ -917,6 +1046,11 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain fragment`,
     );
+  }
+  const authority = rawAuthorityFromBaseUrl(base);
+  if (authority !== null) {
+    validateNoUserinfo(authority, base, serviceName);
+    validateHostPercentEncoding(authority, base, serviceName);
   }
   if (url.hostname.includes("{") || url.hostname.includes("}")) {
     throw new Error(

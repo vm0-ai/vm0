@@ -512,10 +512,18 @@ class TestMatchBaseUrl:
         )
         assert result is None
 
-    def test_parameterized_base_rejects_percent_encoded_host_braces(self):
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "https://{subdomain}.%7Benv%7D.example.com",
+            "https://{subdomain}%2eexample.com",
+            "https://{subdomain}%E3%80%82example.com",
+        ],
+    )
+    def test_parameterized_base_rejects_percent_encoded_host_syntax(self, base):
         result = matching.match_base_url(
             "https://acme.prod.example.com/api/v2/tickets",
-            "https://{subdomain}.%7Benv%7D.example.com",
+            base,
         )
         assert result is None
 
