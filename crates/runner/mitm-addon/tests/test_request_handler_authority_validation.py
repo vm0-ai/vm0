@@ -529,6 +529,77 @@ async def test_accepts_authority_host_normalization_equivalence(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+async def test_rejects_idna_compatibility_sni_alias_before_firewall_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    reg_path = _write_github_firewall_registry(tmp_path, base="https://fass.de")
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="faß.de",
+        path="/repos",
+        request_headers=headers(("Host", "fass.de")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "invalid_sni"
+    assert body["sni"] == "faß.de"
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_error"] == "invalid_sni"
+    assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
+async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    reg_path = _write_github_firewall_registry(tmp_path, base="https://fass.de")
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="fass.de",
+        path="/repos",
+        request_headers=headers(("Host", "faß.de")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "invalid_authority"
+    assert body["sni"] == "fass.de"
+    assert body["host_header"] == "faß.de"
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_error"] == "invalid_authority"
+    assert flow.metadata["original_url"] == "https://fass.de/repos"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
 @pytest.mark.parametrize(
     ("request_port", "host_header", "expected_error", "expected_original_url"),
     [

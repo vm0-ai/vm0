@@ -274,6 +274,21 @@ class TestMatchBaseUrl:
         assert result == ("/repos", {})
 
     @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://faß.de/repos", "https://fass.de"),
+            ("https://fass.de/repos", "https://faß.de"),
+            ("https://\uff21.example/repos", "https://a.example"),
+            ("https://a.example/repos", "https://\uff21.example"),
+            ("https://\u200cexample.com/repos", "https://example.com"),
+            ("https://example.com/repos", "https://\u200cexample.com"),
+        ],
+    )
+    def test_static_base_rejects_idna_compatibility_aliases(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result is None
+
+    @pytest.mark.parametrize(
         "base",
         [
             "https://user@api.github.com",
@@ -497,6 +512,19 @@ class TestMatchBaseUrl:
     def test_parameterized_base_idna_authority_matches_runtime_host(self, url, base):
         result = matching.match_base_url(url, base)
         assert result == ("/api", {"sub": "acme"})
+
+    @pytest.mark.parametrize(
+        ("url", "base"),
+        [
+            ("https://api.faß.de/api", "https://{sub}.fass.de"),
+            ("https://api.fass.de/api", "https://{sub}.faß.de"),
+            ("https://api.\uff21.example/api", "https://{sub}.a.example"),
+            ("https://api.a.example/api", "https://{sub}.\uff21.example"),
+        ],
+    )
+    def test_parameterized_base_rejects_idna_compatibility_aliases(self, url, base):
+        result = matching.match_base_url(url, base)
+        assert result is None
 
     @pytest.mark.parametrize(
         "base",

@@ -625,6 +625,70 @@ class TestCompiledFirewallMatching:
         assert result.permission == "repo-read"
         assert result.params == expected_params
 
+    @pytest.mark.parametrize(
+        ("base", "url"),
+        [
+            ("https://fass.de", "https://faß.de/repos/org/repo"),
+            ("https://a.example", "https://\uff21.example/repos/org/repo"),
+            ("https://example.com", "https://\u200cexample.com/repos/org/repo"),
+        ],
+    )
+    def test_compiled_rejects_request_idna_compatibility_aliases(self, base, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert result is None
+
+    @pytest.mark.parametrize(
+        ("base", "url"),
+        [
+            ("https://faß.de", "https://fass.de/repos/org/repo"),
+            ("https://\uff21.example", "https://a.example/repos/org/repo"),
+            ("https://\u200cexample.com", "https://example.com/repos/org/repo"),
+        ],
+    )
+    def test_compiled_rejects_base_idna_compatibility_aliases(self, base, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert result is None
+
     def test_compiled_matches_parameterized_host_nonstandard_port_rejection(self):
         fws = wrap_firewalls(
             [

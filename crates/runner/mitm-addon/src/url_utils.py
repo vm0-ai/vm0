@@ -12,6 +12,7 @@ from mitmproxy import http
 from mitmproxy.net.http import url as mitm_url
 
 from path_security import has_unsafe_dot_segment
+from host_normalization import normalize_idna_hostname
 
 # Well-known IANA ports for HTTP and HTTPS.  When the connection uses the
 # default port for its scheme we omit ``:port`` from the reconstructed URL.
@@ -82,10 +83,7 @@ class AuthorityValidationError(Exception):
 
 
 def _normalize_hostname(host: str) -> str:
-    normalized = host.rstrip(".").lower()
-    if not normalized:
-        raise ValueError("empty hostname")
-    return normalized.encode("idna").decode("ascii").lower()
+    return normalize_idna_hostname(host)
 
 
 def _format_url_host(host: str) -> str:
