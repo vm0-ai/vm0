@@ -35,11 +35,7 @@ import {
   isModelProviderOAuthProviderKey,
   type ModelProviderOAuthProviderKey,
 } from "@vm0/connectors/auth-providers/model-provider-auth";
-import {
-  isOAuthProviderError,
-  type OAuthFailureClass,
-  type OAuthProviderError,
-} from "@vm0/connectors/auth-providers/oauth/error";
+import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -67,26 +63,6 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type AccessSecretSource = "connector" | "model-provider";
 type SecretType = AccessSecretSource;
-type FirewallAuthFailureCode =
-  | "OAUTH_RECONNECT_REQUIRED"
-  | "OAUTH_UPSTREAM_AUTH_UNAVAILABLE"
-  | "OAUTH_PROVIDER_AUTH_REJECTED"
-  | "OAUTH_PROVIDER_RESPONSE_INVALID"
-  | "FIREWALL_AUTH_INTERNAL_ERROR";
-
-interface RefreshFailure {
-  readonly connector: string;
-  readonly code: FirewallAuthFailureCode;
-  readonly message: string;
-  readonly retryable: boolean;
-  readonly provider: string;
-  readonly sourceType: AccessSecretSource;
-  readonly upstreamStatus?: number;
-  readonly refreshErrorCode?: string;
-}
-
-type PublicRefreshFailure = Omit<RefreshFailure, "message">;
-
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
@@ -107,20 +83,13 @@ interface RefreshResult {
   readonly expiresAt: number | null;
   readonly refreshedConnectors: readonly string[];
   readonly refreshedSecrets: readonly string[];
-  readonly refreshFailures: readonly RefreshFailure[];
+  readonly failedConnectors: readonly string[];
 }
 
-type RefreshExecutionResult =
-  | {
-      readonly connectorType: string;
-      readonly ok: true;
-      readonly status: "current" | "refreshed";
-    }
-  | {
-      readonly connectorType: string;
-      readonly ok: false;
-      readonly failure: RefreshFailure;
-    };
+interface RefreshExecutionResult {
+  readonly connectorType: string;
+  readonly status: "current" | "refreshed" | "failed";
+}
 
 interface ReferencedAuthKeys {
   readonly secrets: Set<string>;
@@ -156,12 +125,6 @@ type ResolveFirewallAuthResult =
           readonly message: string;
           readonly code: string;
           readonly connectors?: readonly string[];
-          readonly retryable?: boolean;
-          readonly provider?: string;
-          readonly sourceType?: AccessSecretSource;
-          readonly upstreamStatus?: number;
-          readonly refreshErrorCode?: string;
-          readonly failures?: readonly PublicRefreshFailure[];
         };
       };
     };
@@ -184,7 +147,22 @@ function forbiddenModelProviderOwner(): ResolveFirewallAuthResult {
     body: {
       error: {
         message: "Invalid model-provider secret owner",
-        code: "FIREWALL_AUTH_FORBIDDEN",
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+function tokenRefreshFailed(
+  failedConnectors: readonly string[],
+): ResolveFirewallAuthResult {
+  return {
+    status: 502,
+    body: {
+      error: {
+        message: `Access token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: failedConnectors,
       },
     },
   };
@@ -283,7 +261,6 @@ interface RefreshState {
   readonly refreshToken: string | null;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
-  readonly lastRefreshErrorCode: string | null;
   readonly updatedAtMicros: bigint;
 }
 
@@ -301,11 +278,6 @@ type PreparedRefreshTokenContext =
       readonly context: RefreshTokenContext;
     };
 
-type PrepareRefreshFailureReason =
-  | "client-unconfigured"
-  | "not-refreshable"
-  | "refresh-token-missing";
-
 type PrepareRefreshTokenContextResult =
   | {
       readonly ok: true;
@@ -313,14 +285,11 @@ type PrepareRefreshTokenContextResult =
     }
   | {
       readonly ok: false;
-      readonly reason: PrepareRefreshFailureReason;
+      readonly reason:
+        | "client-unconfigured"
+        | "not-refreshable"
+        | "refresh-token-missing";
     };
-
-type RefreshFailureReason =
-  | "client-unconfigured"
-  | "not-refreshable"
-  | "refresh-token-missing"
-  | "concurrent-reconnect-required";
 
 type RefreshAccessTokenResult =
   | {
@@ -330,7 +299,11 @@ type RefreshAccessTokenResult =
     }
   | {
       readonly ok: false;
-      readonly failure: RefreshFailure;
+      readonly reason:
+        | "client-unconfigured"
+        | "not-refreshable"
+        | "refresh-failed"
+        | "refresh-token-missing";
     };
 
 interface RefreshExpiredTokensArgs {
@@ -381,242 +354,6 @@ const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
-
-function mapOAuthFailureCode(
-  failureClass: OAuthFailureClass,
-): FirewallAuthFailureCode {
-  switch (failureClass) {
-    case "reconnect_required": {
-      return "OAUTH_RECONNECT_REQUIRED";
-    }
-    case "upstream_auth_unavailable": {
-      return "OAUTH_UPSTREAM_AUTH_UNAVAILABLE";
-    }
-    case "provider_auth_rejected": {
-      return "OAUTH_PROVIDER_AUTH_REJECTED";
-    }
-    case "provider_response_invalid": {
-      return "OAUTH_PROVIDER_RESPONSE_INVALID";
-    }
-  }
-}
-
-function failurePriority(code: FirewallAuthFailureCode): number {
-  switch (code) {
-    case "OAUTH_RECONNECT_REQUIRED": {
-      return 0;
-    }
-    case "OAUTH_PROVIDER_AUTH_REJECTED": {
-      return 1;
-    }
-    case "OAUTH_UPSTREAM_AUTH_UNAVAILABLE": {
-      return 2;
-    }
-    case "OAUTH_PROVIDER_RESPONSE_INVALID": {
-      return 3;
-    }
-    case "FIREWALL_AUTH_INTERNAL_ERROR": {
-      return 4;
-    }
-  }
-}
-
-function buildRefreshFailure(args: {
-  readonly connectorType: string;
-  readonly sourceType: AccessSecretSource;
-  readonly providerError: OAuthProviderError;
-}): RefreshFailure {
-  return {
-    connector: args.connectorType,
-    code: mapOAuthFailureCode(args.providerError.failureClass),
-    message: args.providerError.message,
-    retryable: args.providerError.retryable,
-    provider: args.providerError.provider,
-    sourceType: args.sourceType,
-    ...(args.providerError.upstreamStatus !== undefined
-      ? { upstreamStatus: args.providerError.upstreamStatus }
-      : {}),
-    ...(args.providerError.refreshErrorCode !== undefined
-      ? { refreshErrorCode: args.providerError.refreshErrorCode }
-      : {}),
-  };
-}
-
-function buildUnknownRefreshFailure(args: {
-  readonly connectorType: string;
-  readonly sourceType: AccessSecretSource;
-  readonly error: unknown;
-}): RefreshFailure {
-  const message =
-    args.error instanceof Error
-      ? args.error.message
-      : `${args.connectorType} OAuth refresh failed`;
-  const upstreamUnavailable = args.error instanceof TypeError;
-  return {
-    connector: args.connectorType,
-    code: upstreamUnavailable
-      ? "OAUTH_UPSTREAM_AUTH_UNAVAILABLE"
-      : "OAUTH_PROVIDER_RESPONSE_INVALID",
-    message,
-    retryable: true,
-    provider: args.connectorType,
-    sourceType: args.sourceType,
-  };
-}
-
-function buildUnpreparedRefreshFailure(args: {
-  readonly connectorType: string;
-  readonly sourceType: AccessSecretSource;
-  readonly reason: RefreshFailureReason;
-}): RefreshFailure {
-  if (
-    args.reason === "refresh-token-missing" ||
-    args.reason === "concurrent-reconnect-required"
-  ) {
-    return {
-      connector: args.connectorType,
-      code: "OAUTH_RECONNECT_REQUIRED",
-      message:
-        args.reason === "refresh-token-missing"
-          ? `${args.connectorType} OAuth refresh token is missing; reconnect required`
-          : `${args.connectorType} OAuth refresh token was rejected by another refresh; reconnect required`,
-      retryable: false,
-      provider: args.connectorType,
-      sourceType: args.sourceType,
-    };
-  }
-
-  return {
-    connector: args.connectorType,
-    code: "FIREWALL_AUTH_INTERNAL_ERROR",
-    message:
-      args.reason === "client-unconfigured"
-        ? `${args.connectorType} OAuth refresh client is not configured`
-        : `${args.connectorType} OAuth access is not refreshable`,
-    retryable: false,
-    provider: args.connectorType,
-    sourceType: args.sourceType,
-  };
-}
-
-function selectTopRefreshFailure(
-  failures: readonly RefreshFailure[],
-): RefreshFailure {
-  const [top] = [...failures].sort((left, right) => {
-    const priority = failurePriority(left.code) - failurePriority(right.code);
-    return priority === 0
-      ? left.connector.localeCompare(right.connector)
-      : priority;
-  });
-  if (!top) {
-    throw new Error("refresh failure response requires at least one failure");
-  }
-  return top;
-}
-
-function statusForRefreshFailure(failure: RefreshFailure): 424 | 502 {
-  return failure.code === "OAUTH_RECONNECT_REQUIRED" ||
-    failure.code === "OAUTH_PROVIDER_AUTH_REJECTED"
-    ? 424
-    : 502;
-}
-
-function messageForRefreshFailures(
-  topFailure: RefreshFailure,
-  connectors: readonly string[],
-): string {
-  const joined = connectors.join(", ");
-  switch (topFailure.code) {
-    case "OAUTH_RECONNECT_REQUIRED": {
-      return `OAuth credential needs reconnect for: ${joined}.`;
-    }
-    case "OAUTH_UPSTREAM_AUTH_UNAVAILABLE": {
-      return `OAuth provider auth service is temporarily unavailable for: ${joined}.`;
-    }
-    case "OAUTH_PROVIDER_AUTH_REJECTED": {
-      return `OAuth provider rejected auth refresh for: ${joined}.`;
-    }
-    case "OAUTH_PROVIDER_RESPONSE_INVALID": {
-      return `OAuth provider returned an invalid token refresh response for: ${joined}.`;
-    }
-    case "FIREWALL_AUTH_INTERNAL_ERROR": {
-      return `Firewall auth failed while refreshing OAuth tokens for: ${joined}.`;
-    }
-  }
-}
-
-function buildRefreshFailureResponse(failures: readonly RefreshFailure[]): {
-  readonly status: 424 | 502;
-  readonly body: {
-    readonly error: {
-      readonly message: string;
-      readonly code: FirewallAuthFailureCode;
-      readonly connectors: readonly string[];
-      readonly retryable: boolean;
-      readonly provider: string;
-      readonly sourceType: AccessSecretSource;
-      readonly upstreamStatus?: number;
-      readonly refreshErrorCode?: string;
-      readonly failures: readonly PublicRefreshFailure[];
-    };
-  };
-} {
-  const topFailure = selectTopRefreshFailure(failures);
-  const connectors = uniqueFailureConnectors(failures);
-  const topFailureConnectors = uniqueFailureConnectors(
-    failures.filter((failure) => {
-      return failure.code === topFailure.code;
-    }),
-  );
-  return {
-    status: statusForRefreshFailure(topFailure),
-    body: {
-      error: {
-        message: messageForRefreshFailures(topFailure, topFailureConnectors),
-        code: topFailure.code,
-        connectors,
-        retryable: topFailure.retryable,
-        provider: topFailure.provider,
-        sourceType: topFailure.sourceType,
-        ...(topFailure.upstreamStatus !== undefined
-          ? { upstreamStatus: topFailure.upstreamStatus }
-          : {}),
-        ...(topFailure.refreshErrorCode !== undefined
-          ? { refreshErrorCode: topFailure.refreshErrorCode }
-          : {}),
-        failures: failures.map(publicRefreshFailure),
-      },
-    },
-  };
-}
-
-function publicRefreshFailure(failure: RefreshFailure): PublicRefreshFailure {
-  return {
-    connector: failure.connector,
-    code: failure.code,
-    retryable: failure.retryable,
-    provider: failure.provider,
-    sourceType: failure.sourceType,
-    ...(failure.upstreamStatus !== undefined
-      ? { upstreamStatus: failure.upstreamStatus }
-      : {}),
-    ...(failure.refreshErrorCode !== undefined
-      ? { refreshErrorCode: failure.refreshErrorCode }
-      : {}),
-  };
-}
-
-function uniqueFailureConnectors(
-  failures: readonly RefreshFailure[],
-): readonly string[] {
-  return [
-    ...new Set(
-      failures.map((failure) => {
-        return failure.connector;
-      }),
-    ),
-  ];
-}
 
 function getOAuthProviderKeySourceType(
   providerKey: string,
@@ -1173,7 +910,6 @@ async function loadRefreshState(
           .select({
             tokenExpiresAt: modelProviders.tokenExpiresAt,
             needsReconnect: modelProviders.needsReconnect,
-            lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
             updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`,
           })
           .from(modelProviders)
@@ -1189,7 +925,6 @@ async function loadRefreshState(
           .select({
             tokenExpiresAt: connectors.tokenExpiresAt,
             needsReconnect: connectors.needsReconnect,
-            lastRefreshErrorCode: sql<string | null>`NULL`,
             updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`,
           })
           .from(connectors)
@@ -1230,7 +965,6 @@ async function loadRefreshState(
     refreshToken,
     tokenExpiresAt: row.tokenExpiresAt,
     needsReconnect: row.needsReconnect,
-    lastRefreshErrorCode: row.lastRefreshErrorCode,
     updatedAtMicros: BigInt(row.updatedAtMicros),
   };
 }
@@ -1302,25 +1036,23 @@ async function markRefreshSuccess(
     );
 }
 
-async function markReconnectRequired(
+async function markRefreshFailure(
   args: RefreshAccessTokenArgs,
-  params: {
-    readonly secretUserId: string;
-    readonly refreshErrorCode: string | null;
-  },
+  context: RefreshTokenContext,
+  errorCode: string | null,
 ): Promise<void> {
   if (args.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
       .set({
         needsReconnect: true,
-        lastRefreshErrorCode: params.refreshErrorCode,
+        lastRefreshErrorCode: errorCode,
         updatedAt: sql`clock_timestamp()`,
       })
       .where(
         and(
           eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, params.secretUserId),
+          eq(modelProviders.userId, context.secretUserId),
           eq(modelProviders.type, args.metadataKey ?? ""),
         ),
       );
@@ -1342,277 +1074,127 @@ async function markReconnectRequired(
     );
 }
 
-async function markRefreshFailure(
-  args: RefreshAccessTokenArgs,
-  context: RefreshTokenContext,
-  failure: RefreshFailure,
-): Promise<void> {
-  if (failure.code !== "OAUTH_RECONNECT_REQUIRED") {
-    return;
-  }
-
-  await markReconnectRequired(args, {
-    secretUserId: context.secretUserId,
-    refreshErrorCode: failure.refreshErrorCode ?? null,
-  });
-}
-
-async function markRefreshPreparationFailure(
-  args: RefreshAccessTokenArgs,
-  failure: RefreshFailure,
-): Promise<void> {
-  if (failure.code !== "OAUTH_RECONNECT_REQUIRED") {
-    return;
-  }
-
-  await markReconnectRequired(args, {
-    secretUserId: resolveSecretUserId(
-      args.sourceType,
-      args.userId,
-      args.sourceUserId,
-    ),
-    refreshErrorCode: null,
-  });
-}
-
-async function lockPreparedRefreshSource(
-  db: Db,
-  args: RefreshAccessTokenArgs,
-  prepared: PreparedRefreshTokenContext,
-): Promise<void> {
-  if (prepared.sourceType === "connector") {
-    await lockConnectorState(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      type: prepared.connectorType,
-    });
-    return;
-  }
-
-  await lockModelProviderState(db, {
-    orgId: args.orgId,
-    userId: prepared.context.secretUserId,
-    type: args.metadataKey ?? prepared.providerKey,
-  });
-}
-
-function withRefreshErrorCode(
-  failure: RefreshFailure,
-  lockedState: RefreshState,
-): RefreshFailure {
-  return lockedState.lastRefreshErrorCode !== null
-    ? { ...failure, refreshErrorCode: lockedState.lastRefreshErrorCode }
-    : failure;
-}
-
-async function resolveLockedRefreshShortCircuit(args: {
-  readonly db: Db;
-  readonly refreshArgs: RefreshAccessTokenArgs;
-  readonly prepared: PreparedRefreshTokenContext;
-  readonly lockedState: RefreshState | null;
-  readonly initialState: RefreshState | null;
-  readonly requestStartedAtMicros: bigint | null;
-}): Promise<RefreshAccessTokenResult | null> {
-  const { refreshArgs, prepared, lockedState } = args;
-  if (!lockedState) {
-    L.warn(`${refreshArgs.connectorType} token refresh source missing`, {
-      connectorType: refreshArgs.connectorType,
-      orgId: refreshArgs.orgId,
-      userId: refreshArgs.userId,
-      sourceType: refreshArgs.sourceType,
-    });
-    return {
-      ok: false,
-      failure: buildUnpreparedRefreshFailure({
-        connectorType: refreshArgs.connectorType,
-        sourceType: refreshArgs.sourceType,
-        reason: "refresh-token-missing",
-      }),
-    };
-  }
-
-  if (
-    didLockedRefreshFailDuringRequest({
-      initialState: args.initialState,
-      requestStartedAtMicros: args.requestStartedAtMicros,
-      state: lockedState,
-    })
-  ) {
-    const failure = buildUnpreparedRefreshFailure({
-      connectorType: refreshArgs.connectorType,
-      sourceType: refreshArgs.sourceType,
-      reason: "concurrent-reconnect-required",
-    });
-    return { ok: false, failure: withRefreshErrorCode(failure, lockedState) };
-  }
-
-  if (
-    lockedState.accessToken &&
-    shouldUseLockedCurrentAccess({
-      refreshArgs,
-      context: prepared.context,
-      initialState: args.initialState,
-      requestStartedAtMicros: args.requestStartedAtMicros,
-      state: lockedState,
-    })
-  ) {
-    return {
-      ok: true,
-      status: "current",
-      accessToken: lockedState.accessToken,
-    };
-  }
-
-  if (lockedState.refreshToken) {
-    return null;
-  }
-
-  L.debug(`No ${refreshArgs.connectorType} refresh token available, skipping`);
-  const failure = buildUnpreparedRefreshFailure({
-    connectorType: refreshArgs.connectorType,
-    sourceType: refreshArgs.sourceType,
-    reason: "refresh-token-missing",
-  });
-  await markRefreshFailure(
-    { ...refreshArgs, db: args.db },
-    prepared.context,
-    failure,
-  );
-  return { ok: false, failure };
-}
-
-function refreshPreparedToken(
-  prepared: PreparedRefreshTokenContext,
-  refreshToken: string,
-): Promise<{
-  readonly accessToken: string;
-  readonly refreshToken: string | null;
-  readonly expiresIn?: number;
-}> {
-  return prepared.sourceType === "connector"
-    ? refreshConnectorAuthProviderAccessToken({
-        type: prepared.connectorType,
-        clientArgs: prepared.clientArgs,
-        refreshToken,
-      })
-    : refreshModelProviderOAuthToken({
-        providerKey: prepared.providerKey,
-        currentEnv: prepared.currentEnv,
-        refreshToken,
-      });
-}
-
-async function refreshLockedTokenFromProvider(args: {
-  readonly db: Db;
-  readonly refreshArgs: RefreshAccessTokenArgs;
-  readonly prepared: PreparedRefreshTokenContext;
-  readonly refreshToken: string;
-}): Promise<RefreshAccessTokenResult> {
-  const refreshResult = await settle(
-    refreshPreparedToken(args.prepared, args.refreshToken),
-  );
-  if (!refreshResult.ok) {
-    const error = refreshResult.error;
-    const message = error instanceof Error ? error.message : "Unknown error";
-    const failure = isOAuthProviderError(error)
-      ? buildRefreshFailure({
-          connectorType: args.refreshArgs.connectorType,
-          sourceType: args.refreshArgs.sourceType,
-          providerError: error,
-        })
-      : buildUnknownRefreshFailure({
-          connectorType: args.refreshArgs.connectorType,
-          sourceType: args.refreshArgs.sourceType,
-          error,
-        });
-    L.warn(
-      `${args.refreshArgs.connectorType} token refresh failed: ${message}`,
-      {
-        connectorType: args.refreshArgs.connectorType,
-        orgId: args.refreshArgs.orgId,
-        userId: args.refreshArgs.userId,
-        errorCode: failure.refreshErrorCode,
-        failureCode: failure.code,
-        retryable: failure.retryable,
-        upstreamStatus: failure.upstreamStatus,
-      },
-    );
-
-    await markRefreshFailure(
-      { ...args.refreshArgs, db: args.db },
-      args.prepared.context,
-      failure,
-    );
-    return { ok: false, failure };
-  }
-
-  const result = refreshResult.value;
-  await markRefreshSuccess(
-    { ...args.refreshArgs, db: args.db },
-    args.prepared.context,
-    result,
-  );
-  args.refreshArgs.connectorSecrets[args.prepared.context.accessTokenSecret] =
-    result.accessToken;
-  if (result.refreshToken) {
-    args.refreshArgs.connectorSecrets[
-      args.prepared.context.refreshTokenSecret
-    ] = result.refreshToken;
-  }
-  L.debug(
-    `${args.refreshArgs.connectorType} access token refreshed successfully`,
-  );
-  return { ok: true, status: "refreshed", accessToken: result.accessToken };
-}
-
 async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
 ): Promise<RefreshAccessTokenResult> {
   const preparation = prepareRefreshTokenContext(args);
   if (!preparation.ok) {
-    const failure = buildUnpreparedRefreshFailure({
-      connectorType: args.connectorType,
-      sourceType: args.sourceType,
-      reason: preparation.reason,
-    });
-    await markRefreshPreparationFailure(args, failure);
-    return { ok: false, failure };
+    return { ok: false, reason: preparation.reason };
   }
-
+  const { prepared } = preparation;
   const requestStartedAtMicros = args.forceRefresh
     ? args.forceRefreshStartedAtMicros
     : null;
   const initialState = args.forceRefresh
-    ? await loadRefreshState(args.db, args, preparation.prepared.context)
+    ? await loadRefreshState(args.db, args, prepared.context)
     : null;
 
   return await args.db.transaction(async (tx) => {
-    await lockPreparedRefreshSource(tx, args, preparation.prepared);
-    const lockedState = await loadRefreshState(
-      tx,
-      args,
-      preparation.prepared.context,
-    );
-    const shortCircuit = await resolveLockedRefreshShortCircuit({
-      db: tx,
-      refreshArgs: args,
-      prepared: preparation.prepared,
-      lockedState,
-      initialState,
-      requestStartedAtMicros,
-    });
-    if (shortCircuit) {
-      return shortCircuit;
+    if (prepared.sourceType === "connector") {
+      await lockConnectorState(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: prepared.connectorType,
+      });
+    } else {
+      await lockModelProviderState(tx, {
+        orgId: args.orgId,
+        userId: prepared.context.secretUserId,
+        type: args.metadataKey ?? prepared.providerKey,
+      });
     }
-    if (!lockedState?.refreshToken) {
-      throw new Error("locked refresh state did not provide a refresh token");
+
+    const lockedState = await loadRefreshState(tx, args, prepared.context);
+    if (!lockedState) {
+      L.warn(`${args.connectorType} token refresh source missing`, {
+        connectorType: args.connectorType,
+        orgId: args.orgId,
+        userId: args.userId,
+        sourceType: args.sourceType,
+      });
+      return { ok: false, reason: "refresh-token-missing" };
     }
-    return await refreshLockedTokenFromProvider({
-      db: tx,
-      refreshArgs: args,
-      prepared: preparation.prepared,
-      refreshToken: lockedState.refreshToken,
-    });
+
+    const currentAccessToken = lockedState.accessToken;
+    if (
+      didLockedRefreshFailDuringRequest({
+        initialState,
+        requestStartedAtMicros,
+        state: lockedState,
+      })
+    ) {
+      return { ok: false, reason: "refresh-failed" };
+    }
+
+    if (
+      currentAccessToken &&
+      shouldUseLockedCurrentAccess({
+        refreshArgs: args,
+        context: prepared.context,
+        initialState,
+        requestStartedAtMicros,
+        state: lockedState,
+      })
+    ) {
+      return {
+        ok: true,
+        status: "current",
+        accessToken: currentAccessToken,
+      };
+    }
+
+    if (!lockedState.refreshToken) {
+      L.debug(`No ${args.connectorType} refresh token available, skipping`);
+      return { ok: false, reason: "refresh-token-missing" };
+    }
+
+    const refreshPromise =
+      prepared.sourceType === "connector"
+        ? refreshConnectorAuthProviderAccessToken({
+            type: prepared.connectorType,
+            clientArgs: prepared.clientArgs,
+            refreshToken: lockedState.refreshToken,
+          })
+        : refreshModelProviderOAuthToken({
+            providerKey: prepared.providerKey,
+            currentEnv: prepared.currentEnv,
+            refreshToken: lockedState.refreshToken,
+          });
+    const refreshResult = await settle(refreshPromise);
+
+    if (!refreshResult.ok) {
+      const error = refreshResult.error;
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const errorCode = isChatgptRefreshError(error) ? error.code : null;
+      L.warn(`${args.connectorType} token refresh failed: ${message}`, {
+        connectorType: args.connectorType,
+        orgId: args.orgId,
+        userId: args.userId,
+        errorCode,
+      });
+
+      await markRefreshFailure(
+        { ...args, db: tx },
+        prepared.context,
+        errorCode,
+      );
+      return { ok: false, reason: "refresh-failed" };
+    }
+
+    const result = refreshResult.value;
+    await markRefreshSuccess({ ...args, db: tx }, prepared.context, result);
+    args.connectorSecrets[prepared.context.accessTokenSecret] =
+      result.accessToken;
+    if (result.refreshToken) {
+      args.connectorSecrets[prepared.context.refreshTokenSecret] =
+        result.refreshToken;
+    }
+    L.debug(`${args.connectorType} access token refreshed successfully`);
+    return {
+      ok: true,
+      status: "refreshed",
+      accessToken: result.accessToken,
+    };
   });
 }
 
@@ -1670,7 +1252,7 @@ const emptyRefreshResult = Object.freeze({
   expiresAt: null,
   refreshedConnectors: [],
   refreshedSecrets: [],
-  refreshFailures: [],
+  failedConnectors: [],
 }) satisfies RefreshResult;
 
 function buildRefreshableMap(
@@ -2182,18 +1764,17 @@ async function refreshSelectedTokens(
             sourceType: metadata.sourceType,
             sourceUserId: metadata.sourceUserId,
             metadataKey: metadata.metadataKey,
-            failureCode: refreshResult.failure.code,
-            retryable: refreshResult.failure.retryable,
+            reason: refreshResult.reason,
           },
         );
-        return { connectorType, ok: false, failure: refreshResult.failure };
+        return { connectorType, status: "failed" };
       }
 
       for (const envVar of context.envVarsByConnector.get(connectorType) ??
         []) {
         context.secrets[envVar] = refreshResult.accessToken;
       }
-      return { connectorType, ok: true, status: refreshResult.status };
+      return { connectorType, status: refreshResult.status };
     }),
   );
 }
@@ -2246,11 +1827,11 @@ function summarizeRefreshResults(
   envVarsByConnector: Map<string, readonly string[]>,
 ): Pick<
   RefreshResult,
-  "refreshedConnectors" | "refreshedSecrets" | "refreshFailures"
+  "failedConnectors" | "refreshedConnectors" | "refreshedSecrets"
 > {
   const refreshedConnectors = refreshResults
     .filter((result) => {
-      return result.ok && result.status === "refreshed";
+      return result.status === "refreshed";
     })
     .map((result) => {
       return result.connectorType;
@@ -2260,15 +1841,19 @@ function summarizeRefreshResults(
       return envVarsByConnector.get(connectorType) ?? [];
     })
     .sort();
-  const refreshFailures = refreshResults
+  const failedConnectors = refreshResults
     .filter((result) => {
-      return !result.ok;
+      return result.status === "failed";
     })
     .map((result) => {
-      return result.failure;
+      return result.connectorType;
     });
 
-  return { refreshedConnectors, refreshedSecrets, refreshFailures };
+  return {
+    refreshedConnectors,
+    refreshedSecrets,
+    failedConnectors,
+  };
 }
 
 function earliestConnectorExpiry(
@@ -2340,10 +1925,7 @@ async function refreshExpiredTokens(
 
   const summary = summarizeRefreshResults(refreshResults, envVarsByConnector);
   const hasCurrentOrRefreshed = refreshResults.some((result) => {
-    return (
-      result.ok &&
-      (result.status === "current" || result.status === "refreshed")
-    );
+    return result.status === "current" || result.status === "refreshed";
   });
   const finalConnectorAccessByType = hasCurrentOrRefreshed
     ? new Map([
@@ -2604,7 +2186,7 @@ export async function resolveFirewallAuth(
   let expiresAt: number | null = null;
   let refreshedConnectors: readonly string[] = [];
   let refreshedSecrets: readonly string[] = [];
-  let refreshFailures: readonly RefreshFailure[] = [];
+  let failedConnectors: readonly string[] = [];
 
   if (body.secretConnectorMap) {
     const result = await refreshExpiredTokens({
@@ -2623,11 +2205,11 @@ export async function resolveFirewallAuth(
     expiresAt = result.expiresAt;
     refreshedConnectors = result.refreshedConnectors;
     refreshedSecrets = result.refreshedSecrets;
-    refreshFailures = result.refreshFailures;
+    failedConnectors = result.failedConnectors;
   }
 
-  if (refreshFailures.length > 0) {
-    return buildRefreshFailureResponse(refreshFailures);
+  if (failedConnectors.length > 0) {
+    return tokenRefreshFailed(failedConnectors);
   }
 
   if (hasMissingResolvedSecrets(decryptedSecrets, referenced.secrets)) {
