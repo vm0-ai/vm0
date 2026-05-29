@@ -1182,8 +1182,9 @@ function connectorTokenExpiresAt(args: {
 
 function allowedOAuthConnectorSecretNames(
   type: ConnectorAuthProviderType,
+  authMethod: ConnectorAuthMethodId,
 ): Set<string> {
-  return new Set(getConnectorSecretNames(type, "oauth"));
+  return new Set(getConnectorSecretNames(type, authMethod));
 }
 
 function isOAuthPrimaryTokenSecret(args: {
@@ -1198,6 +1199,7 @@ function isOAuthPrimaryTokenSecret(args: {
 
 function validateExtraOAuthConnectorSecrets(args: {
   readonly type: ConnectorAuthProviderType;
+  readonly authMethod: ConnectorAuthMethodId;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
@@ -1207,7 +1209,10 @@ function validateExtraOAuthConnectorSecrets(args: {
     return [];
   }
 
-  const allowedSecretNames = allowedOAuthConnectorSecretNames(args.type);
+  const allowedSecretNames = allowedOAuthConnectorSecretNames(
+    args.type,
+    args.authMethod,
+  );
   for (const [name] of extraSecrets) {
     if (
       isOAuthPrimaryTokenSecret({
@@ -1477,6 +1482,7 @@ export const upsertOAuthConnector$ = command(
     });
     const extraSecrets = validateExtraOAuthConnectorSecrets({
       type: args.type,
+      authMethod: args.authMethod,
       extraConnectorSecrets: args.extraConnectorSecrets,
       accessSecretName: secretMetadata.accessSecretName,
       refreshSecretName: secretMetadata.isRefreshable
