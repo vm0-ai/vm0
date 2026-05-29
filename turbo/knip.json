@@ -178,7 +178,14 @@
     "scripts/analyze-rewind.mjs",
     "scripts/dump-rewind-chains.mjs"
   ],
-  "ignoreDependencies": ["@commitlint/cli", "@vm0/firewalls-generator"],
+  "ignoreDependencies": [
+    "@commitlint/cli",
+    "@vm0/firewalls-generator",
+    "oxlint",
+    "oxlint-tsgolint",
+    "playwright"
+  ],
+  "ignoreBinaries": ["oxlint", "vite"],
   "ignoreWorkspaces": [],
   "ignoreUnresolved": ["\\.generated$"]
 }
