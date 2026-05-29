@@ -68,9 +68,12 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
         index = host.find("%", index + _PERCENT_ESCAPE_LENGTH)
 
     try:
-        return unquote_to_bytes(host).decode("utf-8"), False
+        decoded = unquote_to_bytes(host).decode("utf-8")
     except UnicodeDecodeError:
         return host, True
+    if ":" in decoded:
+        return decoded, True
+    return decoded, False
 
 
 class _BaseUrlParts(NamedTuple):
