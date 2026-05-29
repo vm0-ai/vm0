@@ -180,6 +180,9 @@ const AUTH_SECRET_PATTERN =
 const AUTH_REFERENCE_PATTERN =
   /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 const AUTH_REFERENCE_PATTERN_G = new RegExp(AUTH_REFERENCE_PATTERN.source, "g");
+const AUTH_REFERENCE_PREFIX_PATTERN = new RegExp(
+  `^${AUTH_REFERENCE_PATTERN.source}`,
+);
 const AUTH_TEMPLATE_START = "${{";
 const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
 
@@ -1511,21 +1514,57 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   }
 }
 
-function authBaseForStaticUrlValidation(authBase: string): string | null {
-  if (!authBase.includes(AUTH_TEMPLATE_START)) return authBase;
+interface AuthBaseStaticValidationTarget {
+  readonly url: string | null;
+  readonly dynamicPrefixSuffix: string;
+}
+
+function authBaseForStaticUrlValidation(
+  authBase: string,
+): AuthBaseStaticValidationTarget {
+  if (!authBase.includes(AUTH_TEMPLATE_START)) {
+    return { url: authBase, dynamicPrefixSuffix: "" };
+  }
 
   const replaced = authBase.replace(
     AUTH_REFERENCE_PATTERN_G,
     AUTH_TEMPLATE_URL_PLACEHOLDER,
   );
-  if (replaced.includes(AUTH_TEMPLATE_START)) return authBase;
-  if (
-    authBase.startsWith(AUTH_TEMPLATE_START) ||
-    replaced === AUTH_TEMPLATE_URL_PLACEHOLDER
-  ) {
-    return null;
+  if (replaced.includes(AUTH_TEMPLATE_START)) {
+    return { url: authBase, dynamicPrefixSuffix: "" };
   }
-  return replaced;
+  const prefixMatch = AUTH_REFERENCE_PREFIX_PATTERN.exec(authBase);
+  if (prefixMatch) {
+    return {
+      url: null,
+      dynamicPrefixSuffix: authBase
+        .slice(prefixMatch[0].length)
+        .replace(AUTH_REFERENCE_PATTERN_G, AUTH_TEMPLATE_URL_PLACEHOLDER),
+    };
+  }
+  return { url: replaced, dynamicPrefixSuffix: "" };
+}
+
+function validateDynamicAuthBaseSuffix(
+  authBase: string,
+  suffix: string,
+  serviceName: string,
+): void {
+  if (suffix.includes(AUTH_TEMPLATE_START)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": contains unsupported template reference`,
+    );
+  }
+  if (hasRawWhitespace(suffix)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
+  if (suffix.includes("#")) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
 }
 
 export function validateAuthBaseUrl(
@@ -1540,7 +1579,13 @@ export function validateAuthBaseUrl(
 
   // Auth base URLs may be fully or partially secret/var-backed; resolved
   // values are only available in the sandbox when auth is applied.
-  const validationUrl = authBaseForStaticUrlValidation(authBase);
+  const target = authBaseForStaticUrlValidation(authBase);
+  validateDynamicAuthBaseSuffix(
+    authBase,
+    target.dynamicPrefixSuffix,
+    serviceName,
+  );
+  const validationUrl = target.url;
   if (validationUrl === null) return;
   if (validationUrl.includes(AUTH_TEMPLATE_START)) {
     throw new Error(

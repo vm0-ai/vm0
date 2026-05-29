@@ -286,6 +286,21 @@ describe("resolveFirewallSelections", () => {
         config("https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"),
       );
     }).toThrow("contains unsupported template reference");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }} /v1"),
+      );
+    }).toThrow("must not contain whitespace");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}#fragment"),
+      );
+    }).toThrow("must not contain fragment");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}/${{ env.WEBHOOK_TOKEN }}"),
+      );
+    }).toThrow("contains unsupported template reference");
   });
 
   it("collectAndValidatePermissions accepts static and templated auth.base URLs", () => {
@@ -295,6 +310,8 @@ describe("resolveFirewallSelections", () => {
       "${{ secrets.WEBHOOK_BASE_URL }}/v1",
       "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}",
       "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK_TOKEN }}",
+      "${{ secrets.WEBHOOK_BASE_URL }}/${{ vars.WEBHOOK_PATH }}",
+      "${{ secrets.WEBHOOK_BASE_URL }}?token=static",
     ];
 
     for (const authBase of validAuthBases) {

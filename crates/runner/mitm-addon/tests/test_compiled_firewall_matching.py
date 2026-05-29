@@ -2552,6 +2552,9 @@ class TestCompiledFirewallMatching:
             {"base": "https://user:pass@example.com/hook"},
             {"base": "https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
             {"base": "https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"},
+            {"base": "${{ secrets.WEBHOOK_URL }} /v1"},
+            {"base": "${{ secrets.WEBHOOK_URL }}#fragment"},
+            {"base": "${{ secrets.WEBHOOK_URL }}/${{ env.WEBHOOK_TOKEN }}"},
             {"query": None},
             {"query": "api_key"},
             {"query": {"api_key": 123}},
@@ -2600,6 +2603,8 @@ class TestCompiledFirewallMatching:
             {"base": "${{ secrets.WEBHOOK_BASE_URL }}/v1"},
             {"base": "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
             {"base": "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK_TOKEN }}"},
+            {"base": "${{ secrets.WEBHOOK_BASE_URL }}/${{ vars.WEBHOOK_PATH }}"},
+            {"base": "${{ secrets.WEBHOOK_BASE_URL }}?token=static"},
         ],
     )
     def test_valid_auth_base_config_can_match(self, auth_config):

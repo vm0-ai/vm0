@@ -57,6 +57,9 @@ _VALID_BASE_SCHEMES = frozenset(("http", "https"))
 _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 _AUTH_TEMPLATE_START = "${{"
 _AUTH_REFERENCE_PATTERN = re.compile(r"\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}")
+_AUTH_REFERENCE_PREFIX_PATTERN = re.compile(
+    r"^\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}"
+)
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 
 
@@ -853,22 +856,43 @@ def _is_string_record(value: object) -> bool:
     )
 
 
-def _auth_base_for_static_url_validation(auth_base: str) -> str | None:
+class _AuthBaseStaticValidationTarget(NamedTuple):
+    url: str | None
+    dynamic_prefix_suffix: str
+
+
+def _auth_base_for_static_url_validation(auth_base: str) -> _AuthBaseStaticValidationTarget:
     if _AUTH_TEMPLATE_START not in auth_base:
-        return auth_base
+        return _AuthBaseStaticValidationTarget(auth_base, "")
 
     replaced = _AUTH_REFERENCE_PATTERN.sub(_AUTH_TEMPLATE_URL_PLACEHOLDER, auth_base)
     if _AUTH_TEMPLATE_START in replaced:
-        return auth_base
-    if auth_base.startswith(_AUTH_TEMPLATE_START) or replaced == _AUTH_TEMPLATE_URL_PLACEHOLDER:
-        return None
-    return replaced
+        return _AuthBaseStaticValidationTarget(auth_base, "")
+    prefix_match = _AUTH_REFERENCE_PREFIX_PATTERN.match(auth_base)
+    if prefix_match is not None:
+        suffix = _AUTH_REFERENCE_PATTERN.sub(
+            _AUTH_TEMPLATE_URL_PLACEHOLDER,
+            auth_base[prefix_match.end() :],
+        )
+        return _AuthBaseStaticValidationTarget(None, suffix)
+    return _AuthBaseStaticValidationTarget(replaced, "")
+
+
+def _dynamic_auth_base_suffix_is_valid(suffix: str) -> bool:
+    return (
+        _AUTH_TEMPLATE_START not in suffix
+        and not any(char in _RAW_WHITESPACE_CHARS for char in suffix)
+        and "#" not in suffix
+    )
 
 
 def _static_auth_base_is_valid(auth_base: str) -> bool:
     if "\\" in auth_base:
         return False
-    validation_url = _auth_base_for_static_url_validation(auth_base)
+    target = _auth_base_for_static_url_validation(auth_base)
+    if not _dynamic_auth_base_suffix_is_valid(target.dynamic_prefix_suffix):
+        return False
+    validation_url = target.url
     if validation_url is None:
         return True
     if _AUTH_TEMPLATE_START in validation_url:
