@@ -740,6 +740,9 @@ function errMsg(base: string, svc: string, detail: string): string {
 
 const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
+const FORBIDDEN_NORMALIZED_LABEL_CHARS = new Set("#%,/:<>?@[\\]^|[]".split(""));
+const WHITESPACE_PATTERN = /\s/u;
+const UNICODE_CONTROL_PATTERN = /\p{C}/u;
 // Keep creation-time host validation aligned with mitm-addon host_normalization.py.
 const UNSAFE_UTS46_COLLISION_CHARS = new Set([
   "\u03f2",
@@ -818,6 +821,20 @@ function hasUnsafeUts46MappingChar(value: string): boolean {
 
 function normalizesToAscii(value: string): boolean {
   return isAscii(value.normalize("NFKD").toLowerCase());
+}
+
+function hasForbiddenNormalizedLabelChar(value: string): boolean {
+  for (const char of value.normalize("NFKD")) {
+    if (
+      FORBIDDEN_NORMALIZED_LABEL_CHARS.has(char) ||
+      HOST_DOT_EQUIVALENTS.has(char) ||
+      WHITESPACE_PATTERN.test(char) ||
+      UNICODE_CONTROL_PATTERN.test(char)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasRawWhitespace(value: string): boolean {
@@ -978,7 +995,16 @@ function validateLabelHasNoUnsafeIdnaMappings(
   const parsed = parseSegment(label);
   const value =
     parsed.kind === "param" ? `${parsed.prefix}${parsed.suffix}` : label;
-  if (value === "" || isAscii(value) || value.startsWith("xn--")) return;
+  if (value === "" || isAscii(value)) return;
+  if (hasForbiddenNormalizedLabelChar(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host must not contain characters that normalize to forbidden host syntax",
+      ),
+    );
+  }
   if (hasUnsafeUts46MappingChar(value) || normalizesToAscii(value)) {
     throw new Error(
       errMsg(

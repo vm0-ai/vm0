@@ -718,6 +718,30 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must not contain unsafe IDNA compatibility mappings");
   });
 
+  it("should reject host characters that normalize to forbidden syntax", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u4f8b\uff0c\u5b50.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl(
+        "https://%E4%BE%8B%EF%BC%8C%E5%AD%90.example",
+        "fw",
+      );
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\u4f8b\uff0c\u5b50.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://a\u00adb.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://a\u200bb.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://a%E2%80%8Bb.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+  });
+
   it("should accept canonical IDNA hosts", () => {
     expect(() => {
       return validateBaseUrl("https://xn--fa-hia.de", "fw");
