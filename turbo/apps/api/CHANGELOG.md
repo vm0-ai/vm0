@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.88.2](https://github.com/vm0-ai/vm0/compare/api-v1.88.1...api-v1.88.2) (2026-05-29)
+
+
+### Bug Fixes
+
+* avoid stale access after refresh failure ([#15422](https://github.com/vm0-ai/vm0/issues/15422)) ([3675d03](https://github.com/vm0-ai/vm0/commit/3675d03631954d96ea6201687b61e50d3f721c0f))
+
 ## [1.88.1](https://github.com/vm0-ai/vm0/compare/api-v1.88.0...api-v1.88.1) (2026-05-29)
 
 

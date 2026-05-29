@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.395.1](https://github.com/vm0-ai/vm0/compare/app-v0.395.0...app-v0.395.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* improve onboarding trial gallery images ([#15430](https://github.com/vm0-ai/vm0/issues/15430)) ([5d49d8e](https://github.com/vm0-ai/vm0/commit/5d49d8e734f4870f638149f2d788c2090871153c))
+
 ## [0.395.0](https://github.com/vm0-ai/vm0/compare/app-v0.394.0...app-v0.395.0) (2026-05-29)
 
 

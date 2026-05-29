@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.105.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.6...runner-rs-v0.105.7) (2026-05-29)
+
+
+### Bug Fixes
+
+* clarify mitm body capture invariant error ([#15429](https://github.com/vm0-ai/vm0/issues/15429)) ([c563be6](https://github.com/vm0-ai/vm0/commit/c563be6669217266490bbf1008a89ba6b3364fe0))
+
+
+### Documentation
+
+* document mitm registry cache fallback ([#15428](https://github.com/vm0-ai/vm0/issues/15428)) ([04c23a9](https://github.com/vm0-ai/vm0/commit/04c23a9c6cfa02f5d379eaebc4c62e0e6588d2bf))
+
+
+### Refactoring
+
+* move connector response parser dispatch ([#15431](https://github.com/vm0-ai/vm0/issues/15431)) ([f0411d6](https://github.com/vm0-ai/vm0/commit/f0411d65034678e8acc6e8db22d16dba1d1df55f))
+
 ## [0.105.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.5...runner-rs-v0.105.6) (2026-05-29)
 
 
