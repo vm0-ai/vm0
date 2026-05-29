@@ -186,6 +186,7 @@ jobs:
 
       - name: Run workflow script tests
         run: |
+          shopt -s nullglob
           script_files=(
             .github/scripts/*.sh
             .github/scripts/tests/*.sh
