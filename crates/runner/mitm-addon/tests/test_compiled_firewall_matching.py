@@ -675,6 +675,11 @@ class TestCompiledFirewallMatching:
                 "https://\u1c85.example/repos/org/repo",
                 {"owner": "org", "repo": "repo"},
             ),
+            (
+                "https://xn--4xa.example",
+                "https://\U0001d6d3.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
         ],
     )
     def test_compiled_matches_idna_authority_bases(self, base, url, expected_params):
@@ -714,6 +719,9 @@ class TestCompiledFirewallMatching:
             ("https://a\u03c2.example", "https://a\u03a3.example/repos/org/repo"),
             ("https://example.com", "https://\u200cexample.com/repos/org/repo"),
             ("https://xn--4xa.example", "https://\u03c2.example/repos/org/repo"),
+            ("https://\u2d00.example", "https://\u10a0.example/repos/org/repo"),
+            ("https://\u04cf.example", "https://\u04c0.example/repos/org/repo"),
+            ("https://\u03c2.example", "https://\U0001d6d3.example/repos/org/repo"),
         ],
     )
     def test_compiled_rejects_request_idna_compatibility_aliases(self, base, url):
@@ -749,6 +757,8 @@ class TestCompiledFirewallMatching:
             ("https://a\u03a3.example", "https://a\u03c2.example/repos/org/repo"),
             ("https://\u200cexample.com", "https://example.com/repos/org/repo"),
             ("https://xn--3xa.example", "https://\u03c3.example/repos/org/repo"),
+            ("https://\u10a0.example", "https://\u2d00.example/repos/org/repo"),
+            ("https://\u04c0.example", "https://\u04cf.example/repos/org/repo"),
         ],
     )
     def test_compiled_rejects_base_idna_compatibility_aliases(self, base, url):

@@ -282,6 +282,8 @@ class TestMatchBaseUrl:
             ("https://\u0345.example/repos", "https://xn--uxa.example"),
             ("https://\u1c82.example/repos", "https://xn--n1a.example"),
             ("https://\u1c85.example/repos", "https://xn--r1a.example"),
+            ("https://\U0001d6d3.example/repos", "https://xn--4xa.example"),
+            ("https://a\u0754.example/repos", "https://xn--a-63c.example"),
         ],
     )
     def test_static_base_idna_authority_matches_runtime_host(self, url, base):
@@ -305,6 +307,11 @@ class TestMatchBaseUrl:
             ("https://a\u03c2.example/repos", "https://a\u03a3.example"),
             ("https://\u200cexample.com/repos", "https://example.com"),
             ("https://example.com/repos", "https://\u200cexample.com"),
+            ("https://\u10a0.example/repos", "https://\u2d00.example"),
+            ("https://\u2d00.example/repos", "https://\u10a0.example"),
+            ("https://\u04c0.example/repos", "https://\u04cf.example"),
+            ("https://\u04cf.example/repos", "https://\u04c0.example"),
+            ("https://\U0001d6d3.example/repos", "https://\u03c2.example"),
         ],
     )
     def test_static_base_rejects_idna_compatibility_aliases(self, url, base):
@@ -340,6 +347,12 @@ class TestMatchBaseUrl:
             ("https://xn--f09a.example/repos", "https://xn--f09a.example"),
             ("https://xn--hsg.example/repos", "https://xn--hsg.example"),
             ("https://xn--43f.example/repos", "https://xn--43f.example"),
+            ("https://\u00a8.example/repos", "https://\u00a8.example"),
+            ("https://xn-- -ccb.example/repos", "https://xn-- -ccb.example"),
+            ("https://\ufe12.example/repos", "https://\ufe12.example"),
+            ("https://\ufffc.example/repos", "https://\ufffc.example"),
+            ("https://\u0754\u3d20.example/repos", "https://\u0754\u3d20.example"),
+            ("https://a\u0754b.example/repos", "https://a\u0754b.example"),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):
@@ -567,6 +580,7 @@ class TestMatchBaseUrl:
             ("https://acme.xn--fsqu00a.xn--0zwm56d/api", "https://{sub}.例子.测试"),
             ("https://acme.例子.测试/api", "https://{sub}.xn--fsqu00a.xn--0zwm56d"),
             ("https://acme.faß.de/api", "https://{sub}.xn--fa-hia.de"),
+            ("https://acme.\U0001d6d3.example/api", "https://{sub}.xn--4xa.example"),
         ],
     )
     def test_parameterized_base_idna_authority_matches_runtime_host(self, url, base):
@@ -580,6 +594,8 @@ class TestMatchBaseUrl:
             ("https://api.fass.de/api", "https://{sub}.faß.de"),
             ("https://api.\uff21.example/api", "https://{sub}.a.example"),
             ("https://api.a.example/api", "https://{sub}.\uff21.example"),
+            ("https://api.\u10a0.example/api", "https://{sub}.\u2d00.example"),
+            ("https://api.\U0001d6d3.example/api", "https://{sub}.\u03c2.example"),
         ],
     )
     def test_parameterized_base_rejects_idna_compatibility_aliases(self, url, base):

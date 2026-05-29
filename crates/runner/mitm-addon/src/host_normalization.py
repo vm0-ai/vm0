@@ -1,6 +1,6 @@
 """Shared hostname normalization helpers."""
 
-from unicodedata import category, normalize
+from unicodedata import bidirectional, category, normalize
 
 _ASCII_MAX = 0x7F
 _DNS_LABEL_MAX_LENGTH = 63
@@ -14,11 +14,40 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 _PUNYCODE_PREFIX = "xn--"
 _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
 _UNICODE_MARK_CATEGORY_PREFIX = "M"
+_BIDI_ARABIC_NUMBER = "AN"
+_BIDI_EUROPEAN_NUMBER = "EN"
+_BIDI_NONSPACING_MARK = "NSM"
+_BIDI_RTL_CLASSES = frozenset(("R", "AL"))
+_BIDI_RTL_ALLOWED_CLASSES = frozenset(
+    (
+        "R",
+        "AL",
+        _BIDI_ARABIC_NUMBER,
+        _BIDI_EUROPEAN_NUMBER,
+        "ES",
+        "CS",
+        "ET",
+        "ON",
+        "BN",
+        _BIDI_NONSPACING_MARK,
+    )
+)
+_BIDI_RTL_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER, _BIDI_EUROPEAN_NUMBER))
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
+_FORBIDDEN_NORMALIZED_LABEL_DOTS = frozenset(".\u3002\uff0e\uff61")
 _GREEK_CAPITAL_SIGMA = "\u03a3"
 _GREEK_COMBINING_YPOGEGRAMMENI = "\u0345"
 _GREEK_SMALL_IOTA = "\u03b9"
 _GREEK_SMALL_SIGMA = "\u03c3"
+_GREEK_MATHEMATICAL_FINAL_SIGMA_TRANSLATION = str.maketrans(
+    {
+        "\U0001d6d3": _GREEK_SMALL_SIGMA,
+        "\U0001d70d": _GREEK_SMALL_SIGMA,
+        "\U0001d747": _GREEK_SMALL_SIGMA,
+        "\U0001d781": _GREEK_SMALL_SIGMA,
+        "\U0001d7bb": _GREEK_SMALL_SIGMA,
+    }
+)
 _CHEROKEE_UPPER_START = 0x13A0
 _CHEROKEE_UPPER_END = 0x13FF
 _CHEROKEE_SMALL_START = 0xAB70
@@ -28,8 +57,26 @@ _CYRILLIC_EXTENDED_C_END = 0x1C88
 _UNSAFE_UTS46_COLLISION_CHARS = frozenset(
     (
         "\u03f2",  # Greek lunate sigma symbol maps like sigma under UTS46.
+        "\u04c0",  # Uppercase palochka lowercases to a distinct valid label.
         "\u1e9e",  # Latin capital sharp S maps to "ss" under UTS46.
+        "\u1806",  # Rejected by WHATWG; punycode would otherwise be stable.
+        "\u2132",  # Lowercases to U+214E, which WHATWG treats as distinct.
+        "\u2183",  # Lowercases to U+2184, which WHATWG treats as distinct.
+        "\u3164",  # Rejected Hangul filler that aliases other filler labels.
+        "\uffa0",  # Rejected halfwidth Hangul filler alias.
+        "\ufffc",  # Object replacement character is not a valid domain label.
+        "\ufffd",  # Replacement character is not a valid domain label.
+        "\U0002f868",  # Rejected CJK compatibility ideograph alias.
+        "\U0002f874",  # Rejected CJK compatibility ideograph alias.
+        "\U0002f91f",  # Rejected CJK compatibility ideograph alias.
+        "\U0002f95f",  # Rejected CJK compatibility ideograph alias.
+        "\U0002f9bf",  # Rejected CJK compatibility ideograph alias.
     )
+)
+_UNSAFE_UTS46_COLLISION_RANGES = (
+    (0x10A0, 0x10C5),  # Georgian capitals are rejected; lowercase aliases are valid.
+    (0x115F, 0x1160),  # Hangul fillers rejected by WHATWG.
+    (0x2FF0, 0x2FFB),  # Ideographic description chars rejected by WHATWG.
 )
 _UNSAFE_UTS46_IGNORABLE_RANGES = (
     (0x034F, 0x034F),
@@ -48,11 +95,22 @@ def _has_unicode_control_chars(value: str) -> bool:
     return any(category(char).startswith(_UNICODE_CONTROL_CATEGORY_PREFIX) for char in value)
 
 
+def _effective_bidi_class_at_label_end(value: str) -> str:
+    for char in reversed(value):
+        char_bidi = bidirectional(char)
+        if char_bidi != _BIDI_NONSPACING_MARK:
+            return char_bidi
+    return bidirectional(value[-1])
+
+
 def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
     for char in value:
         if char in _UNSAFE_UTS46_COLLISION_CHARS:
             return True
         codepoint = ord(char)
+        for start, end in _UNSAFE_UTS46_COLLISION_RANGES:
+            if start <= codepoint <= end:
+                return True
         for start, end in _UNSAFE_UTS46_IGNORABLE_RANGES:
             if start <= codepoint <= end:
                 return True
@@ -60,7 +118,9 @@ def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
 
 
 def _normalize_label_text(label: str) -> str:
-    normalized = normalize("NFKD", label).replace(
+    normalized = normalize(
+        "NFKD", label.translate(_GREEK_MATHEMATICAL_FINAL_SIGMA_TRANSLATION)
+    ).replace(
         _GREEK_COMBINING_YPOGEGRAMMENI,
         _GREEK_SMALL_IOTA,
     )
@@ -82,15 +142,50 @@ def _normalize_label_text(label: str) -> str:
     return "".join(chars)
 
 
+def _validate_normalized_label_bidi(normalized_label: str) -> None:
+    label_bidi_classes = tuple(bidirectional(char) for char in normalized_label)
+    first_rtl_index = next(
+        (
+            index
+            for index, char_bidi in enumerate(label_bidi_classes)
+            if char_bidi in _BIDI_RTL_CLASSES
+        ),
+        None,
+    )
+    if first_rtl_index is None:
+        return
+
+    if first_rtl_index > 0:
+        if any(
+            char_bidi != _BIDI_NONSPACING_MARK
+            for char_bidi in label_bidi_classes[first_rtl_index + 1 :]
+        ):
+            raise UnicodeError("invalid IDNA label")
+        return
+
+    bidi_classes = set(label_bidi_classes)
+    if not bidi_classes <= _BIDI_RTL_ALLOWED_CLASSES:
+        raise UnicodeError("invalid IDNA label")
+    if _effective_bidi_class_at_label_end(normalized_label) not in _BIDI_RTL_END_CLASSES:
+        raise UnicodeError("invalid IDNA label")
+    if _BIDI_ARABIC_NUMBER in bidi_classes and _BIDI_EUROPEAN_NUMBER in bidi_classes:
+        raise UnicodeError("invalid IDNA label")
+
+
 def _validate_normalized_label_text(normalized_label: str) -> None:
-    if not normalized_label or "." in normalized_label:
+    if not normalized_label or any(
+        char in _FORBIDDEN_NORMALIZED_LABEL_DOTS for char in normalized_label
+    ):
         raise UnicodeError("invalid IDNA label")
     if category(normalized_label[0]).startswith(_UNICODE_MARK_CATEGORY_PREFIX):
+        raise UnicodeError("invalid IDNA label")
+    if any(char.isspace() for char in normalized_label):
         raise UnicodeError("invalid IDNA label")
     if any(char in _FORBIDDEN_NORMALIZED_LABEL_CHARS for char in normalized_label):
         raise UnicodeError("invalid IDNA label")
     if _has_unicode_control_chars(normalized_label):
         raise UnicodeError("invalid IDNA label")
+    _validate_normalized_label_bidi(normalized_label)
 
 
 def _canonical_punycode_label(label: str) -> str:
