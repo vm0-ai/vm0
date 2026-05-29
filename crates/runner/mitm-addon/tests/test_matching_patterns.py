@@ -284,6 +284,11 @@ class TestMatchBaseUrl:
             ("https://\u1c85.example/repos", "https://xn--r1a.example"),
             ("https://\U0001d6d3.example/repos", "https://xn--4xa.example"),
             ("https://a\u0754.example/repos", "https://xn--a-63c.example"),
+            ("https://\u0663\u067a.example/repos", "https://xn--cib0c.example"),
+            ("https://\u0663\u067a\u0663.example/repos", "https://xn--ciba2e.example"),
+            ("https://1\u067a1.example/repos", "https://xn--11-g0d.example"),
+            ("https://a\u0663.example/repos", "https://xn--a-fqc.example"),
+            ("https://a1\u0663.example/repos", "https://xn--a1-iyd.example"),
         ],
     )
     def test_static_base_idna_authority_matches_runtime_host(self, url, base):
@@ -353,6 +358,18 @@ class TestMatchBaseUrl:
             ("https://\ufffc.example/repos", "https://\ufffc.example"),
             ("https://\u0754\u3d20.example/repos", "https://\u0754\u3d20.example"),
             ("https://a\u0754b.example/repos", "https://a\u0754b.example"),
+            ("https://\u25a5\u33d5\u067a.example/repos", "https://\u25a5\u33d5\u067a.example"),
+            ("https://1a\u067a.example/repos", "https://1a\u067a.example"),
+            ("https://\u28a8\u17b5.example/repos", "https://\u28a8\u17b5.example"),
+            ("https://\u0663a.example/repos", "https://\u0663a.example"),
+            ("https://\u0663!.example/repos", "https://\u0663!.example"),
+            ("https://a\u0663\u067a.example/repos", "https://a\u0663\u067a.example"),
+            ("https://\u0663\u067aa.example/repos", "https://\u0663\u067aa.example"),
+            ("https://a\u0663b.example/repos", "https://a\u0663b.example"),
+            ("https://a\u0663\u0664.example/repos", "https://a\u0663\u0664.example"),
+            ("https://!a\u0663.example/repos", "https://!a\u0663.example"),
+            ("https://1\u0663.example/repos", "https://1\u0663.example"),
+            ("https://!\u0663!.example/repos", "https://!\u0663!.example"),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):

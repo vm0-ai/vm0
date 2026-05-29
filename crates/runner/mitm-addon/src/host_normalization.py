@@ -16,6 +16,7 @@ _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
 _UNICODE_MARK_CATEGORY_PREFIX = "M"
 _BIDI_ARABIC_NUMBER = "AN"
 _BIDI_EUROPEAN_NUMBER = "EN"
+_BIDI_LEFT_TO_RIGHT = "L"
 _BIDI_NONSPACING_MARK = "NSM"
 _BIDI_RTL_CLASSES = frozenset(("R", "AL"))
 _BIDI_RTL_ALLOWED_CLASSES = frozenset(
@@ -33,6 +34,7 @@ _BIDI_RTL_ALLOWED_CLASSES = frozenset(
     )
 )
 _BIDI_RTL_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER, _BIDI_EUROPEAN_NUMBER))
+_BIDI_ARABIC_NUMBER_END_CLASSES = _BIDI_RTL_CLASSES | frozenset((_BIDI_ARABIC_NUMBER,))
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
 _FORBIDDEN_NORMALIZED_LABEL_DOTS = frozenset(".\u3002\uff0e\uff61")
 _GREEK_CAPITAL_SIGMA = "\u03a3"
@@ -76,6 +78,7 @@ _UNSAFE_UTS46_COLLISION_CHARS = frozenset(
 _UNSAFE_UTS46_COLLISION_RANGES = (
     (0x10A0, 0x10C5),  # Georgian capitals are rejected; lowercase aliases are valid.
     (0x115F, 0x1160),  # Hangul fillers rejected by WHATWG.
+    (0x17B4, 0x17B5),  # Khmer inherent vowels are invalid IDNA label characters.
     (0x2FF0, 0x2FFB),  # Ideographic description chars rejected by WHATWG.
 )
 _UNSAFE_UTS46_IGNORABLE_RANGES = (
@@ -101,6 +104,13 @@ def _effective_bidi_class_at_label_end(value: str) -> str:
         if char_bidi != _BIDI_NONSPACING_MARK:
             return char_bidi
     return bidirectional(value[-1])
+
+
+def _first_effective_bidi_class(value: tuple[str, ...]) -> str | None:
+    for char_bidi in value:
+        if char_bidi != _BIDI_NONSPACING_MARK:
+            return char_bidi
+    return None
 
 
 def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
@@ -144,6 +154,19 @@ def _normalize_label_text(label: str) -> str:
 
 def _validate_normalized_label_bidi(normalized_label: str) -> None:
     label_bidi_classes = tuple(bidirectional(char) for char in normalized_label)
+
+    first_label_bidi = _first_effective_bidi_class(label_bidi_classes)
+    if first_label_bidi == _BIDI_ARABIC_NUMBER:
+        if _BIDI_LEFT_TO_RIGHT in label_bidi_classes:
+            raise UnicodeError("invalid IDNA label")
+        if _BIDI_EUROPEAN_NUMBER in label_bidi_classes:
+            raise UnicodeError("invalid IDNA label")
+        if (
+            _effective_bidi_class_at_label_end(normalized_label)
+            not in _BIDI_ARABIC_NUMBER_END_CLASSES
+        ):
+            raise UnicodeError("invalid IDNA label")
+
     first_rtl_index = next(
         (
             index
@@ -153,22 +176,58 @@ def _validate_normalized_label_bidi(normalized_label: str) -> None:
         None,
     )
     if first_rtl_index is None:
+        if _BIDI_ARABIC_NUMBER in label_bidi_classes:
+            if _BIDI_LEFT_TO_RIGHT not in label_bidi_classes:
+                if _BIDI_EUROPEAN_NUMBER in label_bidi_classes:
+                    raise UnicodeError("invalid IDNA label")
+                if _effective_bidi_class_at_label_end(normalized_label) != _BIDI_ARABIC_NUMBER:
+                    raise UnicodeError("invalid IDNA label")
+                return
+
+            if first_label_bidi != _BIDI_LEFT_TO_RIGHT:
+                raise UnicodeError("invalid IDNA label")
+            arabic_number_indexes = tuple(
+                index
+                for index, char_bidi in enumerate(label_bidi_classes)
+                if char_bidi == _BIDI_ARABIC_NUMBER
+            )
+            if len(arabic_number_indexes) != 1:
+                raise UnicodeError("invalid IDNA label")
+            if any(
+                char_bidi != _BIDI_NONSPACING_MARK
+                for char_bidi in label_bidi_classes[arabic_number_indexes[0] + 1 :]
+            ):
+                raise UnicodeError("invalid IDNA label")
         return
 
+    if _BIDI_ARABIC_NUMBER in label_bidi_classes and _BIDI_EUROPEAN_NUMBER in label_bidi_classes:
+        raise UnicodeError("invalid IDNA label")
+
     if first_rtl_index > 0:
-        if any(
-            char_bidi != _BIDI_NONSPACING_MARK
-            for char_bidi in label_bidi_classes[first_rtl_index + 1 :]
-        ):
+        prefix_bidi_classes = label_bidi_classes[:first_rtl_index]
+        suffix_bidi_classes = label_bidi_classes[first_rtl_index + 1 :]
+        first_prefix_bidi = _first_effective_bidi_class(prefix_bidi_classes)
+        if _BIDI_LEFT_TO_RIGHT in prefix_bidi_classes:
+            if _BIDI_ARABIC_NUMBER in prefix_bidi_classes:
+                raise UnicodeError("invalid IDNA label")
+            if first_prefix_bidi != _BIDI_LEFT_TO_RIGHT:
+                raise UnicodeError("invalid IDNA label")
+            if any(char_bidi != _BIDI_NONSPACING_MARK for char_bidi in suffix_bidi_classes):
+                raise UnicodeError("invalid IDNA label")
+            return
+
+        if _BIDI_LEFT_TO_RIGHT in suffix_bidi_classes:
             raise UnicodeError("invalid IDNA label")
-        return
+        if set(label_bidi_classes) <= _BIDI_RTL_ALLOWED_CLASSES and (
+            _effective_bidi_class_at_label_end(normalized_label) in _BIDI_RTL_END_CLASSES
+        ):
+            return
+        raise UnicodeError("invalid IDNA label")
 
     bidi_classes = set(label_bidi_classes)
     if not bidi_classes <= _BIDI_RTL_ALLOWED_CLASSES:
         raise UnicodeError("invalid IDNA label")
     if _effective_bidi_class_at_label_end(normalized_label) not in _BIDI_RTL_END_CLASSES:
-        raise UnicodeError("invalid IDNA label")
-    if _BIDI_ARABIC_NUMBER in bidi_classes and _BIDI_EUROPEAN_NUMBER in bidi_classes:
         raise UnicodeError("invalid IDNA label")
 
 

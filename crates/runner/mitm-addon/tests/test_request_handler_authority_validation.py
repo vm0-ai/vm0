@@ -606,6 +606,27 @@ async def test_rejects_host_authority_port_mismatch(
             "https://xn--a-63c.example",
             "https://xn--a-63c.example/repos",
         ),
+        (
+            "https://xn--cib0c.example",
+            "\u0663\u067a.example",
+            "xn--cib0c.example",
+            "https://xn--cib0c.example",
+            "https://xn--cib0c.example/repos",
+        ),
+        (
+            "https://xn--ciba2e.example",
+            "\u0663\u067a\u0663.example",
+            "xn--ciba2e.example",
+            "https://xn--ciba2e.example",
+            "https://xn--ciba2e.example/repos",
+        ),
+        (
+            "https://xn--a1-iyd.example",
+            "a1\u0663.example",
+            "xn--a1-iyd.example",
+            "https://xn--a1-iyd.example",
+            "https://xn--a1-iyd.example/repos",
+        ),
     ],
 )
 async def test_accepts_authority_host_normalization_equivalence(
@@ -740,6 +761,15 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "\ufffc.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "\u0754\u3d20.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "a\u0754b.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u25a5\u33d5\u067a.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u28a8\u17b5.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u0663a.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u0663!.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "\u0663\u067aa.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "a\u0663b.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "a\u0663\u0664.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "1\u0663.example", "invalid_authority", "https://api.github.com/repos"),
+        (443, "!\u0663!.example", "invalid_authority", "https://api.github.com/repos"),
         (443, "[::1]junk", "invalid_authority", "https://api.github.com/repos"),
         (443, "[fe80::1%25eth0]", "invalid_authority", "https://api.github.com/repos"),
         (
