@@ -19,11 +19,7 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
     sample: "ref-l1-lupo.png",
     width: 1024,
     height: 1536,
-    refs: [
-      "ref-l1-lupo.png",
-      "ref-l1-petit-pain.png",
-      "ref-l2-fleur-fern.png",
-    ],
+    refs: ["ref-l1-lupo.png", "ref-l1-petit-pain.png", "ref-l2-fleur-fern.png"],
   },
   {
     slug: "tiny-wanderer",
