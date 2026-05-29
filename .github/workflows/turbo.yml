@@ -224,6 +224,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           WEB_CHANGED: ${{ steps.detect.outputs.web-changed }}
+          API_CHANGED: ${{ steps.detect.outputs.api-changed }}
           CLI_CHANGED: ${{ steps.detect.outputs.cli-changed }}
           CRATES_CHANGED: ${{ steps.detect.outputs.crates-changed }}
           CI_CHANGED: ${{ steps.detect.outputs.ci-changed }}

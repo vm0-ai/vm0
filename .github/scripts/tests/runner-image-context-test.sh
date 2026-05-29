@@ -83,13 +83,19 @@ assert_fails "turbo-consumer requires EVENT_NAME" \
   WEB_CHANGED=true \
   "$CONTEXT" turbo-consumer
 
-for flag in WEB_CHANGED CLI_CHANGED CRATES_CHANGED CI_CHANGED E2E_CHANGED; do
+for flag in WEB_CHANGED API_CHANGED CLI_CHANGED CRATES_CHANGED CI_CHANGED E2E_CHANGED; do
   out=$(run_clean \
     EVENT_NAME=pull_request \
     "${flag}=true" \
     "$CONTEXT" turbo-consumer)
   assert_contains "$out" "turbo-runner-consumer-needed=true"
 done
+
+out=$(run_clean \
+  EVENT_NAME=merge_group \
+  API_CHANGED=true \
+  "$CONTEXT" turbo-consumer)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
 
 out=$(run_clean \
   EVENT_NAME=push \
