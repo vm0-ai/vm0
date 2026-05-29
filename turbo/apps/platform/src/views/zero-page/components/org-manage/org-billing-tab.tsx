@@ -41,6 +41,7 @@ import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";
+import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
   billingSubPage$,
   setBillingSubPage$,
@@ -674,6 +675,8 @@ export function OrgBillingTab() {
           )}
         </div>
       </section>
+
+      {status && <BuyCreditsSection currentTier={currentTier} />}
 
       {status && (
         <AutoRechargeSection
