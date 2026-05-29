@@ -707,6 +707,24 @@ class TestAddCaptureFields:
         ):
             add_capture_fields(flow, entry)
 
+    def test_non_empty_stream_buffer_requires_dict_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = ["truncated"]
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated.*type=list",
+        ):
+            add_capture_fields(flow, entry)
+
     def test_non_empty_compressed_stream_buffer_requires_state(self, real_flow):
         flow = real_flow(
             method="POST",

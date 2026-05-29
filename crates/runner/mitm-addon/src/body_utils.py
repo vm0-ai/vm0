@@ -456,10 +456,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
             if stream_buf:
                 if not isinstance(stream_state, dict) or "truncated" not in stream_state:
-                    state_keys = (
-                        sorted(str(key) for key in stream_state)
+                    state_description = (
+                        f"keys={sorted(str(key) for key in stream_state)}"
                         if isinstance(stream_state, dict)
-                        else []
+                        else f"type={type(stream_state).__name__}"
                     )
                     raise RuntimeError(
                         "Invalid response body capture metadata: stream_buffer is "
@@ -467,7 +467,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                         "stream_buffer_state is missing the truncated flag. "
                         "response_streaming.configure_response_stream() must set "
                         "stream_buffer and stream_buffer_state together "
-                        f"(stream_buffer_state keys={state_keys})."
+                        f"(stream_buffer_state {state_description})."
                     )
                 stream_truncated = bool(stream_state["truncated"])
             elif stream_state:
