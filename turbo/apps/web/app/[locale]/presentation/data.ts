@@ -52,7 +52,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `nike` and template `html-ppt-zhangzara-coral`, create an Air Max Day 2026 brand campaign deck. Story arc, athlete ambassadors, drop calendar, retail activations, social moments. Make it feel bold, kinetic, street.",
     embedUrl: "https://air-max-day-2026-campaign-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a7f2c881-2c92-4b26-8ad0-e347aa6ada14/05.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9b0ccacc-9e9a-4c9d-bd01-fab56b24f5a5/05.jpg",
   },
   {
     slug: "crypto-liquidity-flow-research",
@@ -107,7 +107,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `renault` and template `html-ppt-zhangzara-cartesian`, create a Renault 5 E-Tech retro-launch deck. Heritage timeline, battery options, charging network, color palette, French market positioning. Make it feel warm, design-forward, French.",
     embedUrl: "https://renault-5-etech-retro-launch-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/01f92cd9-6b11-47ea-8d82-12c9e3be1d11/11.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/67056cf8-b935-4eab-bbf9-d63f906aace2/11.jpg",
   },
   {
     slug: "openai-gpt-6-conf-talk",
@@ -242,7 +242,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `airbnb` and template `html-ppt-zhangzara-soft-editorial`, create an Airbnb Icons 2027 host pitch deck. Story collections, guest personas, photography moodboard, host requirements, payout economics. Make it feel warm, editorial, hospitable.",
     embedUrl: "https://airbnb-icons-2027-host-pitch-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1c2348e1-de43-4acd-9802-7b8b5760bcd1/26.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/90cfa844-955d-4759-9a19-285bb0f13bd3/26.jpg",
   },
   {
     slug: "airtable-cobuilder-arch",
@@ -305,7 +305,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `composio` and template `html-ppt-knowledge-arch-blueprint`, create a Composio agent-tooling reference architecture for an enterprise prospect. Tool registry, auth proxy, sandboxing layer, observability, integration matrix. Make it feel architectural, technical, clean.",
     embedUrl: "https://composio-agent-tooling-arch-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b549413b-061d-4730-88c7-c766c27fba2e/33.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0062e788-a1d0-4c71-9f30-d20f1a3c05a3/33.jpg",
   },
   {
     slug: "cursor-1-0-developer-conf",
@@ -395,7 +395,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `kraken` and template `html-ppt-hermes-cyber-terminal`, create a Kraken Pro trading platform internal post-mortem on a flash-crash incident. Timeline, order book state, throttle decisions, customer comms, remediation. Make it feel terminal, candid, technical.",
     embedUrl: "https://kraken-pro-flash-crash-postmortem-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/54d22103-67e7-4b63-a3ec-42cb6a3bb04d/43.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a1e56c73-d52c-42e2-925b-6d402cc170b2/43.jpg",
   },
   {
     slug: "levels-metabolic-q-report",
@@ -423,7 +423,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `lingo` and template `html-ppt-course-module`, create a Lingo localization-ops onboarding training module for translators. Workflow walkthrough, glossary, QA checks, payout calendar, certification path. Make it feel warm, instructional, friendly.",
     embedUrl: "https://lingo-localization-ops-training-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ee5bff80-0546-4dad-8a18-4d8c909e64a1/46.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8a0ae449-2f40-40dd-b449-9a4abd2f9037/46.jpg",
   },
   {
     slug: "loom-ai-workflows-launch",
@@ -459,7 +459,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `mintlify` and template `html-ppt-course-module`, create a Mintlify docs-writing workshop deck for new technical writers. Module outline, examples, exercise prompts, peer review, certification. Make it feel warm, editorial, instructional.",
     embedUrl: "https://mintlify-docs-writing-workshop-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/affc2cb8-e29c-406b-859a-ed5ada07808e/50.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/50c6bf39-0fe5-4419-87bc-a146fefab1f2/50.jpg",
   },
   {
     slug: "miro-innovation-workshop",
@@ -495,7 +495,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `perplexity` and template `html-ppt-product-launch`, create a Perplexity Pages and Comet browser launch keynote. New page editor, agent browsing, pricing tiers, partner publishers, growth. Make it feel sleek, modern, research.",
     embedUrl: "https://perplexity-pages-comet-keynote-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cf11f784-c3b5-44b0-8f8c-aac37fc64b94/54.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cdfe86fd-b14a-4571-a763-25d7ab97211f/54.jpg",
   },
   {
     slug: "pinterest-predicts-2027",
@@ -685,7 +685,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `webflow` and template `html-ppt-zhangzara-creative-mode`, create a Webflow Conf 2026 keynote deck. Designer 2 release, AI site builder, CMS upgrades, partner showcase, ecosystem stats. Make it feel colorful, design, energetic.",
     embedUrl: "https://webflow-conf-2026-keynote-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e3015970-2511-4431-8aa4-864c1248b91f/75.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/82705e3b-4ca9-4353-9628-78ef9a566ab2/75.jpg",
   },
   {
     slug: "wechat-miniprogram-2027",
@@ -712,7 +712,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `xiaohongshu` and template `html-ppt-xhs-post`, create a 小红书 2027 春夏种草趋势报告. 趋势卡片、爆款笔记拆解、博主合作建议、品牌进入策略、案例集. Make it feel 马卡龙, 生活方式, 中文.",
     embedUrl: "https://xhs-2027-spring-summer-trends-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/143681e9-ba38-4385-8fc9-0f0070d0292d/78.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/681c6b00-6191-4945-9724-e39caef0e8e1/78.jpg",
   },
   {
     slug: "xhs-creator-annual-review",
@@ -721,7 +721,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `xiaohongshu` and template `html-ppt-xhs-pastel-card`, create a 小红书博主个人成长年报. 内容选题复盘、粉丝画像、合作品牌清单、明年计划、感谢清单. Make it feel 柔和, 慢生活, 治愈.",
     embedUrl: "https://xhs-creator-annual-review-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4be2fc56-0fd7-48ce-9b69-16c0cf1142bd/79.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/02a8b28b-f905-4cff-9d5b-3b37f21fd23d/79.jpg",
   },
   {
     slug: "zapier-central-orchestration-arch",
@@ -730,7 +730,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `zapier` and template `html-ppt-knowledge-arch-blueprint`, create a Zapier Central agent-orchestration reference architecture for ops teams. Trigger graph, agent skills, data store, governance, rollout plan. Make it feel architectural, friendly, automation.",
     embedUrl: "https://zapier-central-orchestration-arch-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ae6425a3-0878-424d-a2b0-0e32813e4154/80.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3e3cd579-f1f0-47e7-b5a4-4daf68981039/80.jpg",
   },
   {
     slug: "saas-revops-weekly-metrics",
@@ -766,7 +766,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `editorial` and template `html-ppt-taste-editorial`, create a New York Magazine year-in-review staff readout. Hero stories, traffic anatomy, subscriber growth, editorial wins, 2027 commissions. Make it feel editorial, considered, refined.",
     embedUrl: "https://nym-year-in-review-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/175b83e6-802c-4eed-8571-edc5591e246c/84.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4152c201-0a30-40e8-9106-5f6238386dfc/84.jpg",
   },
   {
     slug: "indie-author-book-launch",
@@ -784,7 +784,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `agentic` and template `html-ppt-graphify-dark-graph`, create an internal agent-system architecture readout for an enterprise platform team. Agent graph, tool registry, eval harness, observability, rollout plan. Make it feel dark, graph-driven, technical.",
     embedUrl: "https://agent-system-architecture-readout-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6e016ec1-f6f7-4b5f-90f5-245139741ec5/86.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6cd9a0f3-44bb-42ca-8ce1-2704dc924f57/86.jpg",
   },
   {
     slug: "creative-portfolio-capsule-pitch",
@@ -912,7 +912,7 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
       "/gen presentation with design system `playstation` and template `html-ppt-zhangzara-8-bit-orbit`, create a PS6 dev-summit roadmap deck for studio partners. Console specs, dev-kit timeline, marquee titles, store policy updates, partner programs. Make it feel arcade, neon, gaming.",
     embedUrl: "https://ps6-dev-summit-roadmap-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0f330fa2-02ad-471a-80e0-8e7fefba92b2/100.jpg",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/caabca48-9d75-4865-a071-67d1cea65fc0/100.jpg",
   },
 ];
 

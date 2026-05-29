@@ -33,14 +33,14 @@ function PresentationCard({
           onOpen(item);
         }}
         aria-label={`Open ${item.title}`}
-        className="group relative block aspect-[16/10] w-full overflow-hidden bg-[hsl(var(--gray-1))]"
+        className="group relative block aspect-[1280/633] w-full overflow-hidden bg-[hsl(var(--gray-1))]"
       >
         <Image
           src={item.previewImage}
           alt={item.title}
           fill
           sizes="(min-width: 1024px) 368px, (min-width: 640px) 50vw, 100vw"
-          className="object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]"
+          className="object-contain transition-transform duration-300 group-hover:scale-[1.03]"
         />
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
           <div className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-[hsl(var(--foreground))] shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
@@ -96,7 +96,7 @@ function PresentationLightbox({
         onClick={(event) => {
           event.stopPropagation();
         }}
-        className="flex max-h-[92vh] w-full max-w-[1100px] flex-col overflow-hidden rounded-[16px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.35)]"
+        className="flex max-h-[92vh] w-full max-w-[1100px] flex-col overflow-y-auto rounded-[16px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.35)]"
       >
         <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--gray-1))] px-4 py-3">
           <h2 className="truncate text-[15px] font-medium text-[hsl(var(--foreground))]">
@@ -112,7 +112,7 @@ function PresentationLightbox({
           </button>
         </div>
 
-        <div className="relative min-h-[50vh] flex-1 bg-[hsl(var(--gray-1))]">
+        <div className="relative aspect-[1280/633] w-full bg-[hsl(var(--gray-1))]">
           <iframe
             src={item.embedUrl}
             title={item.title}
