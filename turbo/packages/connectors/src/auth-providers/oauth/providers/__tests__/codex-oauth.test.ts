@@ -159,6 +159,37 @@ describe("connector/providers/codex-oauth", () => {
       });
     });
 
+    it("classifies standard OAuth invalid_grant 401 as reconnect required", async () => {
+      const handler = http.post(TOKEN_URL, () => {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "The refresh token expired",
+          },
+          { status: 401 },
+        );
+      });
+      server.use(handler);
+
+      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
+        (e: unknown) => {
+          return e;
+        },
+      );
+
+      expect(isChatgptRefreshError(error)).toBe(false);
+      expect(isOAuthProviderError(error)).toBe(true);
+      expect(error).toMatchObject({
+        provider: "ChatGPT",
+        operation: "refresh",
+        failureClass: "reconnect_required",
+        retryable: false,
+        upstreamStatus: 401,
+        oauthError: "invalid_grant",
+        oauthErrorDescription: "The refresh token expired",
+      });
+    });
+
     it("classifies 5xx as retryable upstream auth unavailable", async () => {
       const handler = http.post(TOKEN_URL, () => {
         return new HttpResponse("Bad Gateway", { status: 502 });

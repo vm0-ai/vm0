@@ -90,6 +90,41 @@ const refreshErrorBodySchema = z.object({
     .optional(),
 });
 
+const standardOAuthErrorBodySchema = z.object({
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+});
+
+function parseChatgptRefreshErrorBody(
+  body: string,
+): { readonly code: ChatgptRefreshErrorCode; readonly message: string } | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return { code: "refresh_token_other", message: body };
+  }
+
+  const standard = standardOAuthErrorBodySchema.safeParse(json);
+  if (standard.success && standard.data.error) {
+    return null;
+  }
+
+  const parsed = refreshErrorBodySchema.safeParse(json);
+  if (!parsed.success) {
+    return { code: "refresh_token_other", message: body };
+  }
+
+  const errCode = parsed.data.error?.code;
+  const code =
+    errCode === "refresh_token_expired" ||
+    errCode === "refresh_token_reused" ||
+    errCode === "refresh_token_invalidated"
+      ? errCode
+      : "refresh_token_other";
+  return { code, message: parsed.data.error?.message ?? body };
+}
+
 /**
  * Refresh a ChatGPT access token. Refresh tokens rotate on each call -
  * the new refresh_token (when present) is returned and must be persisted by
@@ -113,23 +148,22 @@ export async function refreshChatgptToken(
 
   if (response.status === 401) {
     const body = await response.text();
-    let code: ChatgptRefreshErrorCode = "refresh_token_other";
-    let message = body;
-    try {
-      const parsed = refreshErrorBodySchema.parse(JSON.parse(body));
-      const errCode = parsed.error?.code;
-      if (
-        errCode === "refresh_token_expired" ||
-        errCode === "refresh_token_reused" ||
-        errCode === "refresh_token_invalidated"
-      ) {
-        code = errCode;
-      }
-      message = parsed.error?.message ?? body;
-    } catch {
-      // body wasn't JSON - keep raw text as message, code stays "refresh_token_other"
+    const chatgptError = parseChatgptRefreshErrorBody(body);
+    if (!chatgptError) {
+      return await throwOAuthError(
+        "ChatGPT",
+        "refresh",
+        new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        }),
+      );
     }
-    throw createChatgptRefreshError(code, `ChatGPT refresh failed: ${message}`);
+    throw createChatgptRefreshError(
+      chatgptError.code,
+      `ChatGPT refresh failed: ${chatgptError.message}`,
+    );
   }
 
   if (!response.ok) {
