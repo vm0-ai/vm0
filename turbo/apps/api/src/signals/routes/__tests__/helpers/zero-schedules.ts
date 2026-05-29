@@ -33,9 +33,6 @@ export interface ScheduleSeed {
   readonly timezone?: string;
   readonly retryStartedAt?: Date | null;
   readonly consecutiveFailures?: number;
-  readonly modelProviderId?: string | null;
-  readonly selectedModel?: string | null;
-  readonly preferPersonalProvider?: boolean;
 }
 
 export interface SchedulesScenarioValues {
@@ -104,9 +101,6 @@ async function seedSchedule(
     enabled: args.seed.enabled ?? true,
     retryStartedAt: args.seed.retryStartedAt ?? null,
     consecutiveFailures: args.seed.consecutiveFailures ?? 0,
-    modelProviderId: args.seed.modelProviderId ?? null,
-    selectedModel: args.seed.selectedModel ?? null,
-    preferPersonalProvider: args.seed.preferPersonalProvider ?? false,
   });
   return scheduleId;
 }

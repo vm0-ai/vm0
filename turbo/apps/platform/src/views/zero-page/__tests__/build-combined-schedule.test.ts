@@ -18,9 +18,6 @@ function makeEntry(
     displayName: null,
     nextRunAt: null,
     lastRunAt: null,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
     ...overrides,
   };
 }

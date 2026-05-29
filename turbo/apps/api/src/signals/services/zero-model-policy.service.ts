@@ -16,6 +16,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
 import { nowDate } from "../external/time";
@@ -149,6 +150,92 @@ export async function ensureOrgModelPolicies(
     });
 
   return sortRowsByCatalog(await loadRows(db, orgId));
+}
+
+/**
+ * Resolved model pin for a run that carries no explicit model selection.
+ * Mirrors the shape consumed by createZeroRun$ (modelProviderId,
+ * selectedModelOverride, modelProviderCredentialScope, body.modelProvider).
+ */
+export interface ResolvedModelPin {
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+}
+
+const NO_PREFERENCE_USER_ID = "__no_preference__";
+
+function emptyModelPin(): ResolvedModelPin {
+  return {
+    modelProviderId: null,
+    modelProviderType: null,
+    modelProviderCredentialScope: null,
+    selectedModel: null,
+  };
+}
+
+/**
+ * Resolve the model for a run with no explicit selection: prefer the user's
+ * default model (org_members_metadata.selected_model), and fall back to the
+ * org's default model policy (is_default = true) when the user has no
+ * preference or their preferred model is no longer a configured policy.
+ *
+ * Shared by web chat (default thread pin) and schedules so both paths resolve
+ * the same user → org default.
+ */
+export async function resolveDefaultModelPin(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<ResolvedModelPin> {
+  const [preference] = await db
+    .select({ selectedModel: orgMembersMetadata.selectedModel })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  const preferredModel = preference?.selectedModel ?? null;
+  const [policy] = await db
+    .select({
+      model: orgModelPolicies.model,
+      defaultProviderType: orgModelPolicies.defaultProviderType,
+      credentialScope: orgModelPolicies.credentialScope,
+      modelProviderId: orgModelPolicies.modelProviderId,
+    })
+    .from(orgModelPolicies)
+    .where(
+      preferredModel
+        ? and(
+            eq(orgModelPolicies.orgId, orgId),
+            eq(orgModelPolicies.model, preferredModel),
+          )
+        : and(
+            eq(orgModelPolicies.orgId, orgId),
+            eq(orgModelPolicies.isDefault, true),
+          ),
+    )
+    .limit(1);
+
+  if (!policy && preferredModel) {
+    return resolveDefaultModelPin(db, orgId, NO_PREFERENCE_USER_ID);
+  }
+
+  if (!policy) {
+    return emptyModelPin();
+  }
+
+  return {
+    modelProviderId: policy.modelProviderId ?? null,
+    modelProviderType: policy.defaultProviderType,
+    modelProviderCredentialScope: parseCredentialScope(policy.credentialScope),
+    selectedModel: policy.model,
+  };
 }
 
 async function listOrgProviderRoutes(

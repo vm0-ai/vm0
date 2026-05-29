@@ -116,9 +116,6 @@ export interface ScheduleFormValues {
   loopMinutes: number;
   dayOfWeek: string;
   dayOfMonth: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
-  preferPersonalProvider: boolean;
 }
 
 interface ScheduleFormDialogProps {
@@ -495,9 +492,6 @@ function buildDefaults(
     loopMinutes: 15,
     dayOfWeek: "1",
     dayOfMonth: "1",
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
   return { ...defaults, ...initialValues };
 }
@@ -522,9 +516,6 @@ function checkDirty(
     current.loopMinutes !== init.loopMinutes ||
     current.dayOfWeek !== init.dayOfWeek ||
     current.dayOfMonth !== init.dayOfMonth ||
-    current.modelProviderId !== init.modelProviderId ||
-    current.selectedModel !== init.selectedModel ||
-    current.preferPersonalProvider !== init.preferPersonalProvider ||
     (opts.hasAgents && current.agentId !== init.agentId)
   );
 }
@@ -558,12 +549,7 @@ function ScheduleFormDialogInner({
   const showConfirmVal = useGet(showConfirm$);
   const setShowConfirmVal = useSet(setShowConfirm$);
 
-  const init = {
-    ...baseInit,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
-  };
+  const init = baseInit;
 
   const current: ScheduleFormValues = {
     prompt: form.prompt,
@@ -577,9 +563,6 @@ function ScheduleFormDialogInner({
     loopMinutes: form.loopMinutes,
     dayOfWeek: form.dayOfWeek,
     dayOfMonth: form.dayOfMonth,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
 
   const isDirty = checkDirty(current, init, mode, {

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
@@ -159,6 +161,56 @@ describe("POST /api/zero/schedules/run", () => {
       /\/api\/internal\/callbacks\/schedule\/cron$/,
     );
     expect(callback?.payload).toMatchObject({ scheduleId });
+  });
+
+  it("resolves the org default model when the schedule runs", async () => {
+    const fixture = await seedFixture();
+    const scheduleId = fixture.scheduleIds[0];
+    if (!scheduleId) {
+      throw new Error("Expected schedule fixture");
+    }
+
+    // The org has a default model policy but the user has no personal
+    // preference, so the schedule run should resolve to the org default.
+    const db = store.set(writeDb$);
+    await db.insert(orgModelPolicies).values({
+      orgId: fixture.orgId,
+      model: "claude-sonnet-4-6",
+      isDefault: true,
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+    });
+    await db.insert(vm0ApiKeys).values({
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: `vm0-key-${fixture.composeId}`,
+      label: fixture.composeId,
+    });
+
+    const response = await rawPostRun({ scheduleId });
+
+    // The run has already resolved and persisted its model snapshot, so the
+    // platform-managed key and policy can be removed before assertions to
+    // avoid leaking the globally-scoped vm0 key into other tests.
+    await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.composeId));
+    await db
+      .delete(orgModelPolicies)
+      .where(eq(orgModelPolicies.orgId, fixture.orgId));
+
+    expect(response.status).toBe(201);
+    const body = runResponseSchema.parse(response.body);
+
+    const [run] = await db
+      .select({
+        selectedModel: zeroRuns.selectedModel,
+        modelProvider: zeroRuns.modelProvider,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.runId));
+    expect(run?.selectedModel).toBe("claude-sonnet-4-6");
+    expect(run?.modelProvider).toBe("vm0");
   });
 
   it("returns 404 for a non-existent schedule", async () => {

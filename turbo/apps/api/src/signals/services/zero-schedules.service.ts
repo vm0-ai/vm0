@@ -29,6 +29,7 @@ import { isValidTimeZone, settle } from "../utils";
 import { decryptStoredSecretsMap } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
+import { resolveDefaultModelPin } from "./zero-model-policy.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
 const log = logger("api:zero:schedules");
@@ -70,9 +71,6 @@ async function scheduleResponse(
     consecutiveFailures: schedule.consecutiveFailures,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
 }
 
@@ -441,9 +439,6 @@ async function updateExistingSchedule(
       nextRunAt: args.nextRunAt,
       consecutiveFailures: 0,
       updatedAt: args.currentTime,
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
     })
     .where(eq(zeroAgentSchedules.id, args.existingId))
     .returning();
@@ -488,9 +483,6 @@ async function insertNewSchedule(
       consecutiveFailures: 0,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
     })
     .returning();
 
@@ -1071,6 +1063,17 @@ export const runScheduleNow$ = command(
       }
     }
 
+    // Schedules carry no model of their own: resolve the model the same way
+    // web chat's default thread pin does — the user's default model, falling
+    // back to the org default model. When neither is configured the pin is
+    // empty and the run inherits the agent/framework default.
+    const modelPin = await resolveDefaultModelPin(
+      db,
+      schedule.orgId,
+      schedule.userId,
+    );
+    signal.throwIfAborted();
+
     const result = await set(
       createZeroRun$,
       {
@@ -1083,9 +1086,16 @@ export const runScheduleNow$ = command(
         body: {
           prompt: schedule.prompt,
           agentId: schedule.agentId,
+          ...(modelPin.modelProviderType
+            ? { modelProvider: modelPin.modelProviderType }
+            : {}),
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "schedule",
+        modelProviderId: modelPin.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          modelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: modelPin.selectedModel ?? undefined,
         appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
         callbacks: buildScheduleCallbacks(schedule),
         zeroRunMetadata: { scheduleId: schedule.id },

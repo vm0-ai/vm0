@@ -13,7 +13,6 @@ import {
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 import { agentComposes } from "./agent-compose";
-import { modelProviders } from "./model-provider";
 
 /**
  * Zero Agent Schedules table
@@ -66,18 +65,6 @@ export const zeroAgentSchedules = pgTable(
     encryptedSecrets: text("encrypted_secrets"),
 
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
-
-    // Per-schedule model provider override (null = inherit from agent or org default)
-    modelProviderId: uuid("model_provider_id").references(
-      () => {
-        return modelProviders.id;
-      },
-      { onDelete: "set null" },
-    ),
-    selectedModel: varchar("selected_model", { length: 255 }),
-    preferPersonalProvider: boolean("prefer_personal_provider")
-      .notNull()
-      .default(false),
 
     // State
     enabled: boolean("enabled").default(true).notNull(),

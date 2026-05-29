@@ -53,9 +53,6 @@ function defaultSchedule(
     volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
     ...overrides,
   };
 }

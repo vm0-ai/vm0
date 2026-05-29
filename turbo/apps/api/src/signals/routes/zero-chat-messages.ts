@@ -51,7 +51,10 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
-import { ensureOrgModelPolicies } from "../services/zero-model-policy.service";
+import {
+  ensureOrgModelPolicies,
+  resolveDefaultModelPin,
+} from "../services/zero-model-policy.service";
 import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
@@ -729,67 +732,6 @@ async function activeRunExistsForThread(
   return run !== undefined;
 }
 
-async function defaultModelFirstPin(
-  db: Db,
-  orgId: string,
-  userId: string,
-): Promise<ThreadModelPin> {
-  const [preference] = await db
-    .select({ selectedModel: orgMembersMetadata.selectedModel })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  const preferredModel = preference?.selectedModel ?? null;
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      preferredModel
-        ? and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.model, preferredModel),
-          )
-        : and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.isDefault, true),
-          ),
-    )
-    .limit(1);
-
-  if (!policy && preferredModel) {
-    return defaultModelFirstPin(db, orgId, "__no_preference__");
-  }
-
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: null,
-    };
-  }
-
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
-  };
-}
-
 async function getStoredThreadModelPin(
   db: Db,
   threadId: string,
@@ -1020,7 +962,7 @@ async function resolveRunModelPin(params: {
         userId: params.userId,
         modelSelection: params.modelSelection,
       })
-    : await defaultModelFirstPin(params.db, params.orgId, params.userId);
+    : await resolveDefaultModelPin(params.db, params.orgId, params.userId);
   if ("status" in pin) {
     return pin;
   }
