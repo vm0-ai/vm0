@@ -788,9 +788,8 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
 
 /// Delete stale log files (older than [`JOB_LOG_MAX_AGE`]).
 ///
-/// Covers per-job logs (`network-*.jsonl`, `proxy-*.jsonl`, `system-*.log`,
-/// `metrics-*.jsonl`, `sandbox-ops-*.jsonl`) and runner instance logs
-/// (`runner-*.log`).
+/// Covers log names matched by [`LogPaths::is_gc_eligible_log`], including
+/// per-job logs and runner instance logs.
 /// Returns `(files_removed, bytes_freed)`.
 async fn gc_job_logs(home: &HomePaths, dry_run: bool) -> RunnerResult<(u64, u64)> {
     let logs_dir = home.logs_dir();

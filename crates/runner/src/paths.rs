@@ -406,10 +406,9 @@ impl LogPaths {
 
     /// Whether `name` matches any GC-eligible log file pattern.
     ///
-    /// Includes per-job logs (`network-*`, `proxy-*`, `system-*`,
-    /// `metrics-*`, `sandbox-ops-*`), runner instance logs (`runner-*.log`),
-    /// and stale `.vm0tmp-*` copies of those files left behind by a killed
-    /// runner.
+    /// Includes per-job log patterns declared by `PER_RUN_LOG_PATTERNS`,
+    /// runner instance logs (`runner-*.log`), and stale `.vm0tmp-*` copies
+    /// of those files left behind by a killed runner.
     pub fn is_gc_eligible_log(name: &str) -> bool {
         Self::is_final_gc_eligible_log(name) || Self::is_gc_eligible_log_temp(name)
     }
