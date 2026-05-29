@@ -571,23 +571,23 @@ const TRIAL_WORKFLOW_CHANNELS: readonly { key: string; src: string }[] = [
 
 function TrialWorkflowSlide() {
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-3">
-      <div className="flex items-center justify-center gap-2.5">
+    <div className="h-full w-full flex flex-col items-center justify-center gap-4 p-3">
+      <div className="flex items-center justify-center gap-5">
         {TRIAL_WORKFLOW_CHANNELS.map((channel) => {
           return (
-            <span
+            <img
               key={channel.key}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-background zero-border"
-            >
-              <img src={channel.src} alt="" className="h-5 w-5" />
-            </span>
+              src={channel.src}
+              alt=""
+              className="h-11 w-11 object-contain"
+            />
           );
         })}
       </div>
       <img
         src={trialWorkflowSrc}
         alt="Workflow preview"
-        className="min-h-0 flex-1 max-w-full object-contain rounded-xl"
+        className="block min-h-0 w-full flex-1 object-cover object-top rounded-xl"
       />
     </div>
   );
@@ -616,7 +616,7 @@ function TrialWebsiteSlide() {
 
 function TrialIllustrationSlide() {
   return (
-    <div className="h-full w-full p-2 overflow-hidden columns-3 gap-2 [&>*]:mb-2 [&>*]:break-inside-avoid">
+    <div className="h-full w-full p-2 overflow-hidden columns-4 gap-2 [&>*]:mb-2 [&>*]:break-inside-avoid">
       {TRIAL_ILLUSTRATION_TILES.map((src) => {
         return (
           <div key={src} className="rounded-xl overflow-hidden bg-background">
