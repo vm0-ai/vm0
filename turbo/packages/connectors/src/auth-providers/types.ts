@@ -1,7 +1,9 @@
 import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthProviderType,
+  ConnectorType,
   DeviceAuthGrantConnectorType,
+  RefreshTokenAccessConnectorType,
 } from "../connectors";
 import type {
   AuthUrlResult,
@@ -50,7 +52,7 @@ export interface NoneAccessProvider {
 }
 
 export interface RefreshTokenAccessProvider<
-  T extends ConnectorAuthProviderType,
+  T extends RefreshTokenAccessConnectorType,
 > {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
@@ -60,9 +62,10 @@ export interface RefreshTokenAccessProvider<
   ): Promise<OAuthRefreshResult>;
 }
 
-export type ConnectorAuthProviderAccess<T extends ConnectorAuthProviderType> =
-  | NoneAccessProvider
-  | RefreshTokenAccessProvider<T>;
+export type ConnectorAuthProviderAccess<T extends ConnectorType> =
+  T extends RefreshTokenAccessConnectorType
+    ? NoneAccessProvider | RefreshTokenAccessProvider<T>
+    : NoneAccessProvider;
 
 interface NoneRevokeProvider {
   readonly kind: "none";

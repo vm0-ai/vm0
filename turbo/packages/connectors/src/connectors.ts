@@ -996,6 +996,8 @@ export type ConnectorAuthProviderType = ConnectorTypesByGrantKind<
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
 export type DeviceAuthGrantConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
+export type RefreshTokenAccessConnectorType =
+  ConnectorTypesByAccessKind<"refresh-token">;
 export type TokenRevokeConnectorType =
   ConnectorTypesByRevokeKind<"token-revoke">;
 

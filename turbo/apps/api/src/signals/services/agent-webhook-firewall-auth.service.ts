@@ -12,7 +12,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type ConnectorAuthProviderType,
+  type RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
@@ -23,7 +23,7 @@ import {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorAuthProviderClientArgs,
-  hasConnectorAuthProvider,
+  hasConnectorRefreshTokenAccessProvider,
   refreshConnectorAuthProviderAccessToken,
   type ConnectorAuthProviderClientArgs,
   type ProviderEnv,
@@ -267,7 +267,7 @@ interface RefreshState {
 type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
-      readonly connectorType: ConnectorAuthProviderType;
+      readonly connectorType: RefreshTokenAccessConnectorType;
       readonly clientArgs: ConnectorAuthProviderClientArgs;
       readonly context: RefreshTokenContext;
     }
@@ -751,7 +751,7 @@ function prepareRefreshTokenContext(
   if (!parsedConnectorType.success) {
     return { ok: false, reason: "not-refreshable" };
   }
-  if (!hasConnectorAuthProvider(parsedConnectorType.data)) {
+  if (!hasConnectorRefreshTokenAccessProvider(parsedConnectorType.data)) {
     return { ok: false, reason: "not-refreshable" };
   }
   const authClient = resolveConnectorAuthClientForMethod(

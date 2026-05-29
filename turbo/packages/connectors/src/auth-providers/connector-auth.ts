@@ -3,6 +3,7 @@ import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
+  RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
@@ -18,8 +19,9 @@ import {
 import type {
   AuthCodeConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
-  ConnectorAuthProviderAccess,
   ConnectorAuthProviderRevoke,
+  NoneAccessProvider,
+  RefreshTokenAccessProvider,
 } from "./types";
 import {
   type AuthUrlResult,
@@ -117,6 +119,10 @@ type DeviceAuthConnectorAuthProviderMap = {
   readonly [Type in DeviceAuthGrantConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
+type ConnectorRefreshTokenAccessProviderMap = {
+  readonly [Type in RefreshTokenAccessConnectorType]: RefreshTokenAccessProvider<Type>;
+};
+
 export type ConnectorAuthProviderSecretMetadata = AuthProviderSecretMetadata;
 
 export interface ConnectorAuthProviderClientArgs {
@@ -130,16 +136,24 @@ function deviceAuthConnectorProviderFor<T extends DeviceAuthGrantConnectorType>(
   return DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type];
 }
 
-function connectorAccessProviderFor<T extends ConnectorAuthProviderType>(
+function expectRefreshTokenAccessProvider<
+  T extends RefreshTokenAccessConnectorType,
+>(
   type: T,
-): ConnectorAuthProviderAccess<T> {
-  if (hasConnectorAuthCodeGrant(type)) {
-    return AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[type]
-      .access as ConnectorAuthProviderAccess<T>;
+  provider: {
+    readonly access: NoneAccessProvider | RefreshTokenAccessProvider<T>;
+  },
+): RefreshTokenAccessProvider<T> {
+  if (provider.access.kind === "refresh-token") {
+    return provider.access;
   }
+  throw new Error(`${type} connector does not use refresh-token access`);
+}
 
-  return deviceAuthConnectorProviderFor(type)
-    .access as ConnectorAuthProviderAccess<T>;
+function connectorRefreshTokenAccessProviderFor<
+  T extends RefreshTokenAccessConnectorType,
+>(type: T): ConnectorRefreshTokenAccessProviderMap[T] {
+  return CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[type];
 }
 
 function connectorRevokeProviderFor<T extends ConnectorAuthProviderType>(
@@ -230,6 +244,79 @@ const DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS: DeviceAuthConnectorAuthProviderMap =
     "test-oauth-device": testOauthDeviceProvider,
   };
 
+const CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS: ConnectorRefreshTokenAccessProviderMap =
+  {
+    ahrefs: expectRefreshTokenAccessProvider("ahrefs", ahrefsProvider),
+    airtable: expectRefreshTokenAccessProvider("airtable", airtableProvider),
+    asana: expectRefreshTokenAccessProvider("asana", asanaProvider),
+    base44: expectRefreshTokenAccessProvider("base44", base44Provider),
+    canva: expectRefreshTokenAccessProvider("canva", canvaProvider),
+    close: expectRefreshTokenAccessProvider("close", closeProvider),
+    deel: expectRefreshTokenAccessProvider("deel", deelProvider),
+    docusign: expectRefreshTokenAccessProvider("docusign", docusignProvider),
+    dropbox: expectRefreshTokenAccessProvider("dropbox", dropboxProvider),
+    figma: expectRefreshTokenAccessProvider("figma", figmaProvider),
+    "garmin-connect": expectRefreshTokenAccessProvider(
+      "garmin-connect",
+      garminConnectProvider,
+    ),
+    gmail: expectRefreshTokenAccessProvider("gmail", gmailProvider),
+    "google-ads": expectRefreshTokenAccessProvider(
+      "google-ads",
+      googleAdsProvider,
+    ),
+    "google-calendar": expectRefreshTokenAccessProvider(
+      "google-calendar",
+      googleCalendarProvider,
+    ),
+    "google-docs": expectRefreshTokenAccessProvider(
+      "google-docs",
+      googleDocsProvider,
+    ),
+    "google-drive": expectRefreshTokenAccessProvider(
+      "google-drive",
+      googleDriveProvider,
+    ),
+    "google-meet": expectRefreshTokenAccessProvider(
+      "google-meet",
+      googleMeetProvider,
+    ),
+    "google-sheets": expectRefreshTokenAccessProvider(
+      "google-sheets",
+      googleSheetsProvider,
+    ),
+    gumroad: expectRefreshTokenAccessProvider("gumroad", gumroadProvider),
+    hubspot: expectRefreshTokenAccessProvider("hubspot", hubspotProvider),
+    linear: expectRefreshTokenAccessProvider("linear", linearProvider),
+    mercury: expectRefreshTokenAccessProvider("mercury", mercuryProvider),
+    monday: expectRefreshTokenAccessProvider("monday", mondayProvider),
+    neon: expectRefreshTokenAccessProvider("neon", neonProvider),
+    notion: expectRefreshTokenAccessProvider("notion", notionProvider),
+    "outlook-calendar": expectRefreshTokenAccessProvider(
+      "outlook-calendar",
+      outlookCalendarProvider,
+    ),
+    "outlook-mail": expectRefreshTokenAccessProvider(
+      "outlook-mail",
+      outlookMailProvider,
+    ),
+    posthog: expectRefreshTokenAccessProvider("posthog", posthogProvider),
+    reddit: expectRefreshTokenAccessProvider("reddit", redditProvider),
+    sentry: expectRefreshTokenAccessProvider("sentry", sentryProvider),
+    slock: expectRefreshTokenAccessProvider("slock", slockProvider),
+    spotify: expectRefreshTokenAccessProvider("spotify", spotifyProvider),
+    strava: expectRefreshTokenAccessProvider("strava", stravaProvider),
+    stripe: expectRefreshTokenAccessProvider("stripe", stripeProvider),
+    supabase: expectRefreshTokenAccessProvider("supabase", supabaseProvider),
+    "test-oauth": expectRefreshTokenAccessProvider(
+      "test-oauth",
+      testOauthProvider,
+    ),
+    x: expectRefreshTokenAccessProvider("x", xProvider),
+    xero: expectRefreshTokenAccessProvider("xero", xeroProvider),
+    zoom: expectRefreshTokenAccessProvider("zoom", zoomProvider),
+  };
+
 export function hasConnectorAuthProvider(
   type: string,
 ): type is ConnectorAuthProviderType {
@@ -249,6 +336,12 @@ export function hasConnectorDeviceAuthGrantProvider(
   type: string,
 ): type is DeviceAuthGrantConnectorType {
   return Object.hasOwn(DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS, type);
+}
+
+export function hasConnectorRefreshTokenAccessProvider(
+  type: string,
+): type is RefreshTokenAccessConnectorType {
+  return Object.hasOwn(CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS, type);
 }
 
 export function getConnectorAuthProviderSecretMetadata(
@@ -346,24 +439,16 @@ export async function pollConnectorDeviceAuthorization<
 }
 
 export async function refreshConnectorAuthProviderAccessToken<
-  T extends ConnectorAuthProviderType,
+  T extends RefreshTokenAccessConnectorType,
 >(args: {
   readonly type: T;
   readonly clientArgs: ConnectorAuthProviderClientArgs;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  const access = connectorAccessProviderFor(args.type);
-
-  switch (access.kind) {
-    case "none":
-      throw new Error(`${args.type} connector does not support token refresh`);
-
-    case "refresh-token":
-      return await access.refreshToken({
-        ...args.clientArgs,
-        refreshToken: args.refreshToken,
-      } as ConnectorAuthProviderRefreshArgs<T>);
-  }
+  return await connectorRefreshTokenAccessProviderFor(args.type).refreshToken({
+    ...args.clientArgs,
+    refreshToken: args.refreshToken,
+  } as ConnectorAuthProviderRefreshArgs<T>);
 }
 
 export async function revokeConnectorAuthProviderAccessToken<
