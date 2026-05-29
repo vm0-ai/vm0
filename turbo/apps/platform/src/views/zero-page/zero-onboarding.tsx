@@ -580,7 +580,8 @@ function TrialWorkflowSlide() {
           // edge to edge. scale-[1.85] sizes Slack to match, and the
           // remaining ~3px asymmetry around the layout box is well within
           // the gap-4 (16px) inter-icon spacing.
-          const slackScale = channel.key === "slack" ? "scale-[1.85]" : "";
+          const slackScale =
+            channel.key === "slack" ? "scale-[1.85] -mr-px" : "";
           return (
             <img
               key={channel.key}
