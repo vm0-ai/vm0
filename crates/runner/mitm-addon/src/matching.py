@@ -23,10 +23,18 @@ _MULTI_PARAM_BRACE_COUNT = 2
 # yields exactly two tokens.  Rows that fail this shape are malformed.
 _RULE_TOKEN_COUNT = 2
 _MIN_HOST_SEGMENTS = 2
+_ASCII_MAX = 0x7F
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
 _PERCENT_ESCAPE_LENGTH = 3
 _IPV6_VERSION = 6
+_IDNA_DOT_TRANSLATION = str.maketrans(
+    {
+        "\u3002": ".",
+        "\uff0e": ".",
+        "\uff61": ".",
+    }
+)
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
@@ -85,6 +93,10 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
     return decoded, False
 
 
+def _is_ascii(value: str) -> bool:
+    return all(ord(char) <= _ASCII_MAX for char in value)
+
+
 def _extract_raw_hostname(netloc: str) -> str | None:
     authority = netloc.rsplit("@", maxsplit=1)[-1]
     if not authority:
@@ -103,6 +115,45 @@ def _extract_raw_hostname(netloc: str) -> str | None:
         host, _, _port = authority.rpartition(":")
         return host or None
     return authority
+
+
+def _normalize_host_pattern_dots(host: str) -> str:
+    normalized = host.translate(_IDNA_DOT_TRANSLATION)
+    if normalized.endswith("."):
+        normalized = normalized[:-1]
+        if not normalized or normalized.endswith("."):
+            raise UnicodeError("empty IDNA label")
+    return normalized
+
+
+def _format_param_segment(parsed: "SegmentParam") -> str:
+    return f"{parsed.prefix.lower()}{{{parsed.name}{parsed.greedy}}}{parsed.suffix.lower()}"
+
+
+def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
+    normalized = _normalize_host_pattern_dots(host)
+    labels: list[str] = []
+    malformed = False
+
+    for label in normalized.split("."):
+        parsed = _parse_segment(label)
+        if isinstance(parsed, SegmentLiteral):
+            try:
+                labels.append(normalize_idna_hostname(parsed.value))
+            except (UnicodeError, ValueError):
+                labels.append(parsed.value.lower())
+                malformed = True
+            continue
+        if isinstance(parsed, SegmentError):
+            labels.append(label.lower())
+            malformed = True
+            continue
+
+        if not _is_ascii(parsed.prefix) or not _is_ascii(parsed.suffix):
+            malformed = True
+        labels.append(_format_param_segment(parsed))
+
+    return ".".join(labels), malformed
 
 
 class _BaseUrlParts(NamedTuple):
@@ -277,6 +328,8 @@ def _normalize_authority_host(host: str, *, allow_host_params: bool = False) -> 
             return normalized.lower(), True
         return f"[{parsed_ip.compressed.lower()}]", False
     try:
+        if allow_host_params and _has_base_url_params(normalized):
+            return _normalize_parameterized_authority_host(normalized)
         return normalize_idna_hostname(normalized), False
     except (UnicodeError, ValueError):
         return normalized.lower(), True

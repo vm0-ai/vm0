@@ -117,6 +117,31 @@ class TestCompiledFirewallMatching:
 
         assert result is None
 
+    def test_compiled_host_param_name_preserves_case(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://{Org}.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /projects/{id}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://acme.example.com/v1/team/projects/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"Org": "acme", "org": "team", "id": "123"}
+
     def test_compiled_parameterized_base_treats_encoded_slash_as_segment_content(self):
         fws = wrap_firewalls(
             [

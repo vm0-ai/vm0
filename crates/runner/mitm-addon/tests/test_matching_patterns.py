@@ -488,6 +488,16 @@ class TestMatchBaseUrl:
         assert rel_path == "/api/v2/tickets"
         assert params == {"subdomain": "acme"}
 
+    def test_parameterized_base_host_param_name_preserves_case(self):
+        result = matching.match_base_url(
+            "https://acme.zendesk.com/api/v2/tickets",
+            "https://{Subdomain}.zendesk.com",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/api/v2/tickets"
+        assert params == {"Subdomain": "acme"}
+
     def test_parameterized_base_with_query_is_rejected(self):
         result = matching.match_base_url(
             "https://acme.zendesk.com/api/v2/tickets",
