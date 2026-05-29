@@ -417,9 +417,10 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     buffer metadata exists.
 
     Non-empty ``stream_buffer`` values must have a matching
-    ``stream_buffer_state`` with a ``truncated`` flag. Missing or malformed
-    state is an internal metadata invariant violation and raises ``RuntimeError``
-    instead of silently falling back.
+    ``stream_buffer_state`` with a ``truncated`` flag. Empty stream buffers do
+    not require the flag, but present state must still be a mapping. Missing or
+    malformed state is an internal metadata invariant violation and raises
+    ``RuntimeError`` instead of silently falling back.
 
     Truncation from the streaming buffer is carried as ``already_truncated`` into
     ``_set_body_fields()``, where it is combined with the decompressed body size.
@@ -470,6 +471,12 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
                         f"(stream_buffer_state {state_description})."
                     )
                 stream_truncated = bool(stream_state["truncated"])
+            elif stream_state is not None and not isinstance(stream_state, dict):
+                raise RuntimeError(
+                    "Invalid response body capture metadata: stream_buffer is "
+                    "empty but stream_buffer_state is not a mapping "
+                    f"(stream_buffer_state type={type(stream_state).__name__})."
+                )
             elif stream_state:
                 stream_truncated = bool(stream_state.get("truncated", False))
             body = decompress_body(
