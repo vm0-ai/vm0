@@ -123,6 +123,22 @@ describe("proxy middleware: public routes", () => {
     expect(clerkState.protectedPaths).toEqual([]);
   });
 
+  it("keeps locale-prefixed sprite gallery public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/sprite");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-less sprite gallery public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/sprite");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
   it("keeps locale-prefixed showcase public", async () => {
     const request = new NextRequest("https://www.vm0.ai/en/showcase");
 
