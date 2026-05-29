@@ -511,6 +511,13 @@ function PlanActionButtons({
   );
 }
 
+function shouldShowBuyCreditsSection(
+  hasBillingStatus: boolean,
+  currentTier: BillingTier,
+): boolean {
+  return hasBillingStatus && currentTier !== "pro-suspend";
+}
+
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const billingScrollTarget = useGet(billingScrollTarget$);
@@ -549,6 +556,10 @@ export function OrgBillingTab() {
     currentTier === "pro-suspend"
       ? "No active plan"
       : `${formatTierLabel(currentTier)} plan`;
+  const showBuyCredits = shouldShowBuyCreditsSection(
+    status !== null,
+    currentTier,
+  );
 
   if (pricingOpen) {
     return (
@@ -680,7 +691,7 @@ export function OrgBillingTab() {
         </div>
       </section>
 
-      {status && (
+      {showBuyCredits && (
         <div
           ref={(el) => {
             if (el && billingScrollTarget === "buy-credits") {

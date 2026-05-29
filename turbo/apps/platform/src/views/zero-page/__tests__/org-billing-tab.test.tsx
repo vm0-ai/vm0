@@ -220,6 +220,26 @@ describe("org billing tab - buy credits section", () => {
     expect(screen.getByText("Quick buy $20.00")).toBeInTheDocument();
   });
 
+  it("hides buy credits for suspended workspaces", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      cancelAtPeriodEnd: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Buy credits")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quick buy $20.00")).not.toBeInTheDocument();
+  });
+
   it("starts custom amount credit checkout", async () => {
     let capturedBody: unknown = null;
     server.use(
