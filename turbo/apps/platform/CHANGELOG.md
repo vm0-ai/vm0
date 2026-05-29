@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.392.1](https://github.com/vm0-ai/vm0/compare/app-v0.392.0...app-v0.392.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* unify credit checkout pricing ([#15380](https://github.com/vm0-ai/vm0/issues/15380)) ([9e65342](https://github.com/vm0-ai/vm0/commit/9e65342d6e605579499d42f23f938ecc631f3a5d))
+
 ## [0.392.0](https://github.com/vm0-ai/vm0/compare/app-v0.391.0...app-v0.392.0) (2026-05-29)
 
 

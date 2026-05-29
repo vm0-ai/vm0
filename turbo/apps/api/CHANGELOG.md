@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.87.1](https://github.com/vm0-ai/vm0/compare/api-v1.87.0...api-v1.87.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* show negative org credit balances ([#15383](https://github.com/vm0-ai/vm0/issues/15383)) ([cfd3cb7](https://github.com/vm0-ai/vm0/commit/cfd3cb769b6b1164fcdcd46fe728f7826836c07d))
+* unify credit checkout pricing ([#15380](https://github.com/vm0-ai/vm0/issues/15380)) ([9e65342](https://github.com/vm0-ai/vm0/commit/9e65342d6e605579499d42f23f938ecc631f3a5d))
+
 ## [1.87.0](https://github.com/vm0-ai/vm0/compare/api-v1.86.0...api-v1.87.0) (2026-05-29)
 
 
