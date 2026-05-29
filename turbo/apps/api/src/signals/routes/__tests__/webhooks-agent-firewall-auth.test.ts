@@ -414,28 +414,47 @@ function configureDynamicTestOAuthRefresh(
 async function seedExpiredCodexModelProvider(
   fixture: FirewallFixture,
 ): Promise<void> {
+  await seedCodexModelProvider(fixture, {
+    accessToken: "stale-chatgpt-token",
+    refreshToken: "chatgpt-refresh-token",
+    tokenExpiresAt: new Date(now() - 60_000),
+    needsReconnect: true,
+    lastRefreshErrorCode: "refresh_token_expired",
+  });
+}
+
+async function seedCodexModelProvider(
+  fixture: FirewallFixture,
+  args: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+    readonly tokenExpiresAt: Date;
+    readonly needsReconnect: boolean;
+    readonly lastRefreshErrorCode: string | null;
+  },
+): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(modelProviders).values({
     orgId: fixture.orgId,
     userId: ORG_SENTINEL_USER_ID,
     type: "codex-oauth-token",
     authMethod: "auth_json",
-    tokenExpiresAt: new Date(now() - 60_000),
-    needsReconnect: true,
-    lastRefreshErrorCode: "refresh_token_expired",
+    tokenExpiresAt: args.tokenExpiresAt,
+    needsReconnect: args.needsReconnect,
+    lastRefreshErrorCode: args.lastRefreshErrorCode,
   });
   await seedSecret({
     orgId: fixture.orgId,
     userId: ORG_SENTINEL_USER_ID,
     name: "CHATGPT_ACCESS_TOKEN",
-    value: "stale-chatgpt-token",
+    value: args.accessToken,
     type: "model-provider",
   });
   await seedSecret({
     orgId: fixture.orgId,
     userId: ORG_SENTINEL_USER_ID,
     name: "CHATGPT_REFRESH_TOKEN",
-    value: "chatgpt-refresh-token",
+    value: args.refreshToken,
     type: "model-provider",
   });
 }
@@ -2165,6 +2184,87 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "model-provider",
       }),
     ).resolves.toBe("fresh-chatgpt-token");
+  });
+
+  it("loads a missing model-provider access secret when the stored token is current", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-chatgpt-token",
+      refreshToken: "current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-chatgpt-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects missing model-provider access secrets outside env bindings", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-chatgpt-token",
+      refreshToken: "current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("UNBOUND_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            UNBOUND_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            UNBOUND_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
   });
 
   it("rejects model-provider refresh metadata for another user before billable credit auth", async () => {

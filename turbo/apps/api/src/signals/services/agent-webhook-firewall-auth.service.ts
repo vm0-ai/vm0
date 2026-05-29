@@ -1,5 +1,9 @@
 import { Buffer } from "node:buffer";
 
+import {
+  getModelProviderEnvBindings,
+  modelProviderTypeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
   getConnectorOAuthClient,
@@ -1128,6 +1132,35 @@ function connectorAccessSecretName(
   }
 }
 
+function modelProviderAccessSecretName(args: {
+  readonly key: string;
+  readonly connectorType: string;
+  readonly metadata: SecretConnectorMetadata;
+}): string | undefined {
+  const secretMetadata = getModelProviderOAuthSecretMetadata(
+    args.connectorType,
+  );
+  if (!secretMetadata?.isRefreshable) {
+    return undefined;
+  }
+
+  const providerType =
+    args.metadata.metadataKey ??
+    modelProviderTypeForOAuthProviderKey(args.connectorType);
+  const parsedProviderType = providerType
+    ? modelProviderTypeSchema.safeParse(providerType)
+    : undefined;
+  if (!parsedProviderType?.success) {
+    return undefined;
+  }
+
+  const envBindings = getModelProviderEnvBindings(parsedProviderType.data);
+  return envBindings?.[args.key] ===
+    `${CONNECTOR_SECRET_REF_PREFIX}${secretMetadata.accessSecretName}`
+    ? secretMetadata.accessSecretName
+    : undefined;
+}
+
 async function syncStaticConnectorAccessSecrets(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -1211,7 +1244,7 @@ async function syncStaticConnectorAccessSecrets(args: {
   }
 }
 
-function canResolveMissingConnectorAccessSecret(args: {
+function canResolveMissingAccessSecret(args: {
   readonly key: string;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly secretConnectorMetadataMap:
@@ -1224,10 +1257,17 @@ function canResolveMissingConnectorAccessSecret(args: {
   if (!connectorType) {
     return false;
   }
-  const sourceType = resolveRefreshMetadata(connectorType, metadata).sourceType;
-  if (sourceType !== "connector") {
-    return false;
+  const refreshMetadata = resolveRefreshMetadata(connectorType, metadata);
+  if (refreshMetadata.sourceType === "model-provider") {
+    return (
+      modelProviderAccessSecretName({
+        key: args.key,
+        connectorType,
+        metadata: refreshMetadata,
+      }) !== undefined
+    );
   }
+
   const accessMetadata =
     args.connectorAccessByType.get(connectorType)?.accessMetadata;
   if (accessMetadata?.kind !== "refresh-token") {
@@ -1304,7 +1344,7 @@ function hasMissingUnresolvableSecrets(args: {
   return [...args.referencedKeys].some((key) => {
     return (
       !Object.hasOwn(args.secrets, key) &&
-      !canResolveMissingConnectorAccessSecret({
+      !canResolveMissingAccessSecret({
         key,
         secretConnectorMap: args.secretConnectorMap,
         secretConnectorMetadataMap: args.secretConnectorMetadataMap,
