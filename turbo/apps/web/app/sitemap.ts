@@ -6,6 +6,10 @@ import { getBlogBaseUrl } from "./lib/blog/config";
 import { getDocsAvailableLocales, getDocsPages } from "./lib/docs";
 import { USE_CASES } from "./[locale]/use-cases/data";
 import { MODEL_SLUGS } from "./[locale]/models/data";
+import {
+  ILLUSTRATION_STYLES,
+  hasDetailPage,
+} from "./[locale]/illustration/data";
 
 const baseUrl = "https://www.vm0.ai";
 
@@ -166,6 +170,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         lastModified: BUILD_DATE,
         changeFrequency: "monthly",
         priority: 0.7,
+        alternates: { languages: alternates },
+      });
+    }
+  }
+
+  // Localized illustration style detail pages
+  for (const style of ILLUSTRATION_STYLES) {
+    if (!hasDetailPage(style)) continue;
+    const alternates = buildAlternates(`/illustration/${style.slug}`);
+    for (const locale of locales) {
+      urls.push({
+        url: `${baseUrl}/${locale}/illustration/${style.slug}`,
+        lastModified: BUILD_DATE,
+        changeFrequency: "monthly",
+        priority: 0.6,
         alternates: { languages: alternates },
       });
     }

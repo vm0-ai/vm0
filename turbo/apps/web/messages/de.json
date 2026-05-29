@@ -3685,6 +3685,104 @@
     "stepTakeItFurther": "Schritt 3: Weiterführende Aktionen",
     "tipsForBetterResults": "Tipps für bessere Ergebnisse"
   },
+  "illustration": {
+    "breadcrumbHome": "Start",
+    "breadcrumbIllustration": "Illustration",
+    "openLightbox": "Hauptbild im Lightbox öffnen",
+    "metaVariations": "Varianten",
+    "metaModel": "Gerendert mit",
+    "metaPalette": "Palette",
+    "metaRegister": "Quell-Register",
+    "variationCount": "{count, plural, one {# Variante} other {# Varianten}}",
+    "summaryHeading": "Wie {title} aussieht",
+    "variationsHeading": "{count, plural, one {Die Variante} other {Alle {count} Varianten}}",
+    "variationsLede": "Jedes Bild, das der Stil derzeit produzieren kann, direkt aus der festgeschriebenen Spec im vm0-skills-Register. Klicke auf einen Rahmen, um ihn in voller Größe zu sehen.",
+    "anatomyHeading": "Anatomie des Stils",
+    "whenToUseHeading": "Wann er passt",
+    "recipeHeading": "So rufst du diesen Stil in Zero auf",
+    "recipeCommandLabel": "Slash-Befehl",
+    "relatedHeading": "Nächste Verwandte im Register",
+    "faqHeading": "Häufig gestellte Fragen",
+    "content": {
+      "cozy-parlor": {
+        "seoTitle": "Cozy Parlor — Aquarell- und Tusche-Illustrationsstil mit anthropomorphen Tieren",
+        "description": "Ein handgemalter Editorial-Stil von VM0: ein einzelnes anthropomorphes Tier, beleuchtet von einem warmen Akzentton, in einem gemusterten kühl-weißen Interieur. Sicher gesetzte Tuschelinien, weiche Aquarellwäschen.",
+        "summary": "Cozy Parlor ist das warme, erzählerische Ende des VM0-Registers. Jede Komposition zeigt ein einzelnes anthropomorphes Tier — Frosch, Igel, Maus, Otter — in einem ruhigen Raum: einer Leseecke, einem Plattenzimmer, einer Bäckereiküche, einem Atelier. Die Tusche ist sicher und ununterbrochen; das Aquarell liegt darunter in kühlen, neutralen Wäschen, sodass das Papier selbst als Licht wirkt. Ein einziger heißer Akzent — eine Kerze, ein Wasserkessel, ein Plattencover — fängt den Blick und setzt die Stimmung. Erreich danach, wenn du Bilder willst, die sich wie der Auftakt eines Kapitels anfühlen, nicht wie ein Hero-Banner: langsam, von innen leuchtend, unverwechselbar von Hand gemacht.",
+        "anatomy": [
+          {
+            "label": "Papier und Grund",
+            "body": "Kühl-weißes Aquarellpapier, niemals bernsteinfarben oder cremig. Leichter Bütten­rand optional. Das Papier ist der hellste Wert im Bild — Akzente gehen warm, Wäschen bleiben neutral."
+          },
+          {
+            "label": "Linienführung",
+            "body": "Einzügige Tusche mit einem Brush Pen. Sicher gesetzte, ununterbrochene Kontur. Keine Schraffuren, keine Doppellinien an der Außenkante."
+          },
+          {
+            "label": "Palette",
+            "body": "Neutrale kühle Wäschen (Schiefer, Staub, Salbei) tragen den Raum. Ein gesättigter heißer Akzent — meist Kerzenorange, Terracotta oder Tomate — konzentriert auf ein einziges Requisit."
+          },
+          {
+            "label": "Besetzung",
+            "body": "Ein Tier pro Szene, immer anthropomorphisiert: angekleidet, stehend, mit beschäftigten Händen. Variiere die Art über eine Serie hinweg; verwende nie denselben Charakter zweimal."
+          },
+          {
+            "label": "Requisiten und Muster",
+            "body": "Eine gemusterte Fläche (Tapete, Teppich, Fliesen) trägt den Raum. Zwei oder drei große Requisiten identifizieren die Tätigkeit. Der Hintergrund ist angedeutet, nie randvoll gerendert."
+          },
+          {
+            "label": "Stimmung",
+            "body": "Still, beobachtend, leicht nostalgisch. Geschlossene oder halbgeschlossene Augen; nie aufgeregt, nie neutral."
+          }
+        ],
+        "whenToUse": [
+          {
+            "persona": "Long-Form-Blogcover",
+            "body": "Greif zu Cozy Parlor, wenn der Artikel reflektierend ist — ein Postmortem, eine Erinnerung, eine langsam erzählte Produktgeschichte. Der Einzelfigur-Rahmen trägt den Titel, ohne ihm Konkurrenz zu machen."
+          },
+          {
+            "persona": "Empty States, die nicht leer wirken sollen",
+            "body": "Ein Cozy-Parlor-Bild in einem leeren Posteingang, Archiv oder einer leeren Bibliothek lässt den Screen pausiert wirken statt kaputt. Das gemusterte Interieur gibt dem Nutzer etwas, worauf er schauen kann, während er überlegt, was er tut."
+          },
+          {
+            "persona": "Editoriale Marketingkarten",
+            "body": "Für Notion-Style-Newsletter, Jahresrückblicke oder jede Karte, die sich wie eine Magazinseite anfühlen soll — der heiße Akzent funktioniert auch als Crop-fähiger Fokuspunkt."
+          }
+        ],
+        "recipe": {
+          "prompt": "/cozy-parlor ein Igel in einem Fair-Isle-Pullover blättert durch eine Wand voller Schallplatten, kerzenoranger Akzent auf der Plattenspieler-Lampe, schieferblaue Wände, Terracotta-Teppich, ein einzelnes Fenster außerhalb des Bildausschnitts angedeutet",
+          "note": "Briefe in fünf Teilen: Besetzung (welches Tier + was es trägt), Tätigkeit (was es mit den Händen macht), Akzent (welches Requisit den heißen Ton trägt), Raumpalette (zwei neutrale Wäschen) und ein Umgebungshinweis (Lichtquelle, Tageszeit). Die festgeschriebene Spec übernimmt Tusche, Papier und Komposition."
+        },
+        "variationCaptions": {
+          "ref-frog-letters.jpg": "Ein Frosch liest Briefe bei Kerzenlicht in einem schieferblauen Wohnzimmer",
+          "ref-hedgehog-records.jpg": "Ein Igel stöbert in Schallplatten in einem terracotta-akzentuierten Plattenzimmer",
+          "ref-mouse-baker.jpg": "Eine Maus zieht Sauerteig aus dem Ofen einer gefliesten Küche",
+          "ref-otter-painter.jpg": "Ein Otter an der Staffelei eines sonnendurchfluteten Ateliers, mit Pinseln in der Hand"
+        },
+        "faq": [
+          {
+            "question": "Warum anthropomorphe Tiere statt menschlicher Figuren?",
+            "answer": "Tiere lassen die Szene Stimmung tragen, ohne ein konkretes Alter, eine Ethnie oder ein Geschlecht zu erben — dasselbe Bild wirkt für jedes Publikum warm. Sie halten Cozy Parlor außerdem visuell getrennt von VM0-Stilen mit menschlichen Figuren wie Painterly Botanical und Light Pop Portrait."
+          },
+          {
+            "question": "Kann ich denselben Charakter über eine Serie hinweg festschreiben?",
+            "answer": "Lieber nicht. Die Besetzung ist in diesem Stil ein Per-Szene-Regler — wenn derselbe Igel auf jedem Bild auftaucht, wird das Register zu einer Maskottchen-Marke. Variiere die Art und lass das gemusterte Interieur die Wiedererkennung tragen."
+          },
+          {
+            "question": "Was bedeutet die Hot-Accent-Regel in der Praxis?",
+            "answer": "Wähle ein Requisit — eine Kerze, einen Kessel, einen Lampenschirm, ein Plattencover, einen Schal — und konzentriere die gesamte Sättigung darauf. Jede andere Farbe im Bild ist eine neutrale Wäsche. Wenn zwei Dinge leuchten, weiß das Auge nicht, wo es landen soll."
+          },
+          {
+            "question": "Welches Modell rendert Cozy Parlor?",
+            "answer": "gpt-image-1.5. Der Skill liegt als /cozy-parlor im vm0-skills-Register (PR #236) und läuft end-to-end in Zero — Briefing rein, fertiges Bild raus."
+          },
+          {
+            "question": "Funktioniert er auch für quadratische oder Querformate?",
+            "answer": "Am besten im Hochformat (festgelegter Default ist 2:3), weil die Einzelfigur vertikalen Raum braucht. Quadrat funktioniert für engere Editorial-Karten; Querformat bricht die gemütliche Innenraum-Wirkung tendenziell."
+          }
+        ]
+      }
+    }
+  },
   "landing": {
     "hero": {
       "title": "Zero, Ihr vertrauenswürdiger KI-Teamkollege für echte Arbeit.",

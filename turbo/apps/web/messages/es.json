@@ -3685,6 +3685,104 @@
     "stepTakeItFurther": "Paso 3: Llévalo más lejos",
     "tipsForBetterResults": "Consejos para mejores resultados"
   },
+  "illustration": {
+    "breadcrumbHome": "Inicio",
+    "breadcrumbIllustration": "Ilustración",
+    "openLightbox": "Abrir la lámina principal en lightbox",
+    "metaVariations": "Variaciones",
+    "metaModel": "Renderizado con",
+    "metaPalette": "Paleta",
+    "metaRegister": "Registro de origen",
+    "variationCount": "{count, plural, one {# variación} other {# variaciones}}",
+    "summaryHeading": "Cómo se ve {title}",
+    "variationsHeading": "{count, plural, one {La variación} other {Las {count} variaciones}}",
+    "variationsLede": "Cada lámina que el estilo puede producir hoy, directamente desde la spec bloqueada en el registro vm0-skills. Haz clic en cualquier marco para verlo a tamaño completo.",
+    "anatomyHeading": "Anatomía del estilo",
+    "whenToUseHeading": "Cuándo conviene",
+    "recipeHeading": "Cómo invocar este estilo en Zero",
+    "recipeCommandLabel": "Comando slash",
+    "relatedHeading": "Los más cercanos del registro",
+    "faqHeading": "Preguntas frecuentes",
+    "content": {
+      "cozy-parlor": {
+        "seoTitle": "Cozy Parlor — Estilo de ilustración en acuarela y tinta con animales antropomórficos",
+        "description": "Un estilo editorial pintado a mano de VM0: un solo animal antropomórfico iluminado por un único acento cálido dentro de un interior estampado en blanco frío, dibujado en tinta firme y lavado en acuarela suave.",
+        "summary": "Cozy Parlor es el extremo cálido y narrativo del registro de VM0. Cada lámina pone en escena a un único animal antropomórfico — rana, erizo, ratón, nutria — dentro de un interior tranquilo: un rincón de lectura, una sala de discos, la cocina de una panadería, el estudio de un pintor. La tinta es firme y continua; la acuarela vive por debajo en lavados fríos y neutros, de modo que el propio papel se lee como luz. Un solo acento cálido (una vela, una tetera, una funda de disco) ancla la mirada y fija el ambiente. Úsalo cuando quieras una imagen que se sienta como el inicio de un capítulo y no como un banner de portada — lenta, encendida desde dentro, inconfundiblemente hecha a mano.",
+        "anatomy": [
+          {
+            "label": "Papel y soporte",
+            "body": "Papel de acuarela blanco frío, nunca ámbar ni crema. Borde deckle leve opcional. El papel es el valor más claro de la composición: los acentos van hacia el cálido, los lavados permanecen neutros."
+          },
+          {
+            "label": "Trazo",
+            "body": "Tinta de una sola pasada con pincel marcador. Contorno firme y continuo. Sin tramados, sin tramados cruzados, sin dobles líneas en el perímetro."
+          },
+          {
+            "label": "Paleta",
+            "body": "Lavados fríos y neutros (pizarra, polvo, salvia) para la habitación. Un único acento cálido y saturado — habitualmente naranja vela, terracota o tomate — concentrado en un solo objeto."
+          },
+          {
+            "label": "Reparto",
+            "body": "Un solo animal por escena, siempre antropomorfizado: vestido, de pie, con las manos ocupadas. Cambia de especie a lo largo de una serie; nunca repitas el mismo personaje."
+          },
+          {
+            "label": "Objetos y patrón",
+            "body": "Una superficie con patrón (papel pintado, alfombra, baldosa) sostiene la habitación. Dos o tres objetos grandes identifican la actividad. El fondo se sugiere, nunca se renderiza de borde a borde."
+          },
+          {
+            "label": "Atmósfera",
+            "body": "Tranquila, observadora, ligeramente nostálgica. Expresiones con ojos cerrados o entornados; nunca exaltadas, nunca neutras."
+          }
+        ],
+        "whenToUse": [
+          {
+            "persona": "Portadas de artículos de fondo",
+            "body": "Tira de Cozy Parlor cuando el artículo sea reflexivo — un postmortem, una memoria, una historia de producto contada con calma. El encuadre de un solo personaje sostiene el título sin competir con él."
+          },
+          {
+            "persona": "Estados vacíos que deben sentirse habitados",
+            "body": "Pon una lámina de Cozy Parlor en una bandeja de entrada vacía por primera vez, en un archivo o una biblioteca, y la pantalla se lee como pausada en vez de rota. El interior estampado le da al usuario algo en lo que descansar la mirada mientras decide qué hacer."
+          },
+          {
+            "persona": "Tarjetas editoriales de marketing",
+            "body": "Para newsletters al estilo Notion, retrospectivas anuales o cualquier tarjeta que deba parecerse a una página de revista — el objeto que lleva el acento cálido funciona también como punto focal recortable."
+          }
+        ],
+        "recipe": {
+          "prompt": "/cozy-parlor un erizo con un jersey fair-isle hojea una pared de vinilos, acento naranja vela en la lámpara del tocadiscos, paredes azul pizarra, alfombra terracota, una sola ventana sugerida fuera de cuadro",
+          "note": "Brief en cinco partes: reparto (qué animal y cómo va vestido), actividad (qué hace con las manos), acento (qué objeto carga el color cálido), paleta de habitación (dos lavados neutros) y una pista ambiental (fuente de luz, hora del día). La spec bloqueada se encarga de la tinta, el papel y la composición."
+        },
+        "variationCaptions": {
+          "ref-frog-letters.jpg": "Una rana lee cartas a la luz de una vela en una sala azul pizarra",
+          "ref-hedgehog-records.jpg": "Un erizo hojea vinilos en una sala de discos con acento terracota",
+          "ref-mouse-baker.jpg": "Un ratón saca masa madre del horno de una cocina con suelo de baldosa",
+          "ref-otter-painter.jpg": "Una nutria ante el caballete de un estudio bañado en sol, pinceles en la mano"
+        },
+        "faq": [
+          {
+            "question": "¿Por qué animales antropomórficos en lugar de personajes humanos?",
+            "answer": "Los animales permiten que la escena cargue con la atmósfera sin heredar una edad, una etnia o un género concretos: la misma lámina se lee con calidez para cualquier público. Además mantienen Cozy Parlor visualmente distinto de los estilos de VM0 con figuras humanas como Painterly Botanical o Light Pop Portrait."
+          },
+          {
+            "question": "¿Puedo fijar el mismo personaje a lo largo de una serie?",
+            "answer": "Mejor no. En este estilo el reparto es un dial por escena: reutilizar el mismo erizo en todas las láminas aplana el registro hasta convertirlo en una marca con mascota. Varía la especie y deja que el interior estampado sostenga la continuidad."
+          },
+          {
+            "question": "¿Qué significa la regla del acento cálido en la práctica?",
+            "answer": "Elige un objeto — una vela, una tetera, una pantalla de lámpara, una funda de disco, una bufanda — y vuelca en él toda la saturación. Cualquier otro color del cuadro es un lavado neutro. Si brillan dos cosas, la mirada no sabe dónde aterrizar."
+          },
+          {
+            "question": "¿Qué modelo renderiza Cozy Parlor?",
+            "answer": "gpt-image-1.5. El skill se publica como /cozy-parlor en el registro vm0-skills (PR #236) y corre de punta a punta dentro de Zero — entra el brief, sale la lámina terminada."
+          },
+          {
+            "question": "¿Funciona en cuadrado o en formato apaisado?",
+            "answer": "Mejor en vertical (el valor por defecto bloqueado es 2:3) porque el encuadre de un solo personaje necesita aire vertical. El cuadrado funciona para tarjetas editoriales más ajustadas; el apaisado tiende a romper la sensación de interior íntimo."
+          }
+        ]
+      }
+    }
+  },
   "landing": {
     "hero": {
       "title": "Zero, tu compañero de IA de confianza para trabajo real.",

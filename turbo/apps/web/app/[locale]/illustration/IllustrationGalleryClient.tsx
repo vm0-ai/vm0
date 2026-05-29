@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "../../../navigation";
 import { Footer } from "../../components/Footer";
-import { ILLUSTRATION_STYLES, type IllustrationStyle } from "./data";
+import {
+  ILLUSTRATION_STYLES,
+  hasDetailPage,
+  type IllustrationStyle,
+} from "./data";
 
 const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
 
@@ -139,7 +144,15 @@ function IllustrationCard({ style, onOpen }: CardProps) {
       </button>
 
       <div className="illu-tile-caption">
-        <h3>{style.title}</h3>
+        <h3>
+          {hasDetailPage(style) ? (
+            <Link href={`/illustration/${style.slug}`} className="illu-tile-link">
+              {style.title}
+            </Link>
+          ) : (
+            style.title
+          )}
+        </h3>
         <span className="illu-tile-count">
           <em>{style.refs.length} variations</em>
         </span>

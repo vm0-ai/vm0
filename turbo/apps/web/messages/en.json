@@ -3685,6 +3685,104 @@
     "stepTakeItFurther": "Step 3: Take it further",
     "tipsForBetterResults": "Tips for better results"
   },
+  "illustration": {
+    "breadcrumbHome": "Home",
+    "breadcrumbIllustration": "Illustration",
+    "openLightbox": "Open hero plate in lightbox",
+    "metaVariations": "Variations",
+    "metaModel": "Rendered with",
+    "metaPalette": "Palette",
+    "metaRegister": "Source register",
+    "variationCount": "{count, plural, one {# variation} other {# variations}}",
+    "summaryHeading": "What {title} looks like",
+    "variationsHeading": "{count, plural, one {The variation} other {All {count} variations}}",
+    "variationsLede": "Every plate the style can currently produce, straight from the locked spec in vm0-skills. Click any frame to inspect it full-size.",
+    "anatomyHeading": "Anatomy of the style",
+    "whenToUseHeading": "When to reach for it",
+    "recipeHeading": "How to invoke this style in Zero",
+    "recipeCommandLabel": "Slash command",
+    "relatedHeading": "Closest neighbours in the register",
+    "faqHeading": "Frequently asked",
+    "content": {
+      "cozy-parlor": {
+        "seoTitle": "Cozy Parlor — Watercolor + Ink Anthropomorphic Animal Illustration Style",
+        "description": "A hand-painted editorial style from VM0: one anthropomorphic animal lit by a single hot accent inside a patterned cool-white interior, drawn in confident ink and washed in soft watercolor.",
+        "summary": "Cozy Parlor is the warm, narrative end of the VM0 register. Every plate stages a single anthropomorphic animal — frog, hedgehog, mouse, otter — inside a quiet interior: a reading nook, a record room, a baker's kitchen, a painter's studio. The ink is confident and unbroken; the watercolor sits underneath it in cool, neutral washes so the paper itself reads as light. One hot accent (a candle, a teakettle, a record sleeve) anchors the eye and sets the mood. Use it when you want artwork that feels like a chapter opener rather than a hero banner — slow, lit-from-within, and unmistakably hand-made.",
+        "anatomy": [
+          {
+            "label": "Paper + ground",
+            "body": "Cool-white watercolor paper, never amber or cream. Faint deckle edges optional. The paper is the lightest value in the piece — accents push warm, washes stay neutral."
+          },
+          {
+            "label": "Line work",
+            "body": "Single-pass ink with a tapering brush pen. Confident, unbroken contour. No hatching, no cross-hatching, no double lines on the perimeter."
+          },
+          {
+            "label": "Palette",
+            "body": "Neutral cool washes (slate, dust, sage) for the room. One saturated hot accent — usually candlelight orange, terracotta, or tomato — concentrated in a single prop."
+          },
+          {
+            "label": "Cast",
+            "body": "One animal per scene, always anthropomorphised: dressed, standing, hands occupied. Vary the species across a series; never reuse the same character."
+          },
+          {
+            "label": "Props + pattern",
+            "body": "Patterned surface (wallpaper, rug, tile) carries the room. Two or three large props identify the activity. Background is implied, never rendered edge-to-edge."
+          },
+          {
+            "label": "Mood",
+            "body": "Quiet, observed, slightly nostalgic. Closed-eye or half-closed-eye expressions; never excited, never neutral."
+          }
+        ],
+        "whenToUse": [
+          {
+            "persona": "Long-form blog covers",
+            "body": "Reach for Cozy Parlor when the article is reflective — a postmortem, a memoir, a slow-roll product story. The single-character framing carries the title without competing with it."
+          },
+          {
+            "persona": "Empty states that should feel lived-in",
+            "body": "Drop a Cozy Parlor plate into a first-time-empty inbox, archive, or library and the screen reads as paused rather than broken. The patterned interior gives the user something to look at while they decide what to do."
+          },
+          {
+            "persona": "Editorial marketing cards",
+            "body": "For Notion-style newsletters, year-in-review posts, or any card that wants to feel like a magazine page rather than an ad — the hot-accent prop doubles as a focal point you can crop to."
+          }
+        ],
+        "recipe": {
+          "prompt": "/cozy-parlor a hedgehog in a fair-isle sweater browsing a wall of vinyl records, candlelight orange accent on the turntable lamp, slate-blue walls, terracotta rug, single window implied off-frame",
+          "note": "Brief in five parts: cast (which animal + what it wears), activity (what it's doing with its hands), accent (which single prop carries the hot color), room palette (two neutral washes), and one ambient cue (light source, time of day). The locked spec handles ink, paper, and composition."
+        },
+        "variationCaptions": {
+          "ref-frog-letters.jpg": "A frog reading letters by candlelight in a slate-blue parlor",
+          "ref-hedgehog-records.jpg": "A hedgehog browsing vinyl records in a terracotta-accented record room",
+          "ref-mouse-baker.jpg": "A mouse pulling sourdough from the oven of a tile-floored kitchen",
+          "ref-otter-painter.jpg": "An otter at the easel of a sun-painter's studio, brushes in hand"
+        },
+        "faq": [
+          {
+            "question": "Why anthropomorphic animals instead of human characters?",
+            "answer": "Animals let the scene carry mood without inheriting a specific age, ethnicity, or gender — the same plate reads warmly to every audience. They also keep Cozy Parlor visually distinct from VM0's human-figure styles like Painterly Botanical and Light Pop Portrait."
+          },
+          {
+            "question": "Can I lock the same character across a series?",
+            "answer": "Don't. Cast is a per-scene dial in this style — reusing the same hedgehog across every plate flattens the register into a mascot brand. Vary the species and let the patterned interior do the carrying."
+          },
+          {
+            "question": "What does the hot accent rule mean in practice?",
+            "answer": "Pick one prop — a candle, kettle, lampshade, record sleeve, scarf — and pour all the saturation into it. Every other color in the frame is a neutral wash. If two things glow, the eye doesn't know where to land."
+          },
+          {
+            "question": "Which model renders Cozy Parlor?",
+            "answer": "gpt-image-1.5. The skill ships as /cozy-parlor in the vm0-skills register (PR #236) and runs end-to-end inside Zero — brief in, finished plate out."
+          },
+          {
+            "question": "Does it work for square or landscape canvases?",
+            "answer": "Best in portrait (the locked default is 2:3) because the single-character framing needs vertical room. Square works for tighter editorial cards; landscape tends to break the cozy interior feel."
+          }
+        ]
+      }
+    }
+  },
   "landing": {
     "hero": {
       "title": "Zero, your trustworthy AI teammate for real work.",

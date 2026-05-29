@@ -8,6 +8,27 @@ export interface IllustrationStyle {
   width: number;
   height: number;
   refs: readonly string[];
+  /**
+   * Detail-page metadata. Optional so styles without a /illustration/[slug]
+   * page can still ship — the gallery card simply omits the link.
+   */
+  model?: string;
+  palette?: string;
+  slashCommand?: string;
+  registerPR?: string;
+  relatedSlugs?: readonly string[];
+}
+
+export function getIllustrationBySlug(
+  slug: string,
+): IllustrationStyle | undefined {
+  return ILLUSTRATION_STYLES.find((s) => {
+    return s.slug === slug;
+  });
+}
+
+export function hasDetailPage(style: IllustrationStyle): boolean {
+  return Boolean(style.relatedSlugs && style.relatedSlugs.length > 0);
 }
 
 export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
@@ -61,6 +82,11 @@ export const ILLUSTRATION_STYLES: readonly IllustrationStyle[] = [
       "ref-mouse-baker.jpg",
       "ref-otter-painter.jpg",
     ],
+    model: "gpt-image-1.5",
+    palette: "Cool-white paper · ink · one hot accent",
+    slashCommand: "/cozy-parlor",
+    registerPR: "vm0-skills #236",
+    relatedSlugs: ["sunlit-gouache", "painterly-botanical", "folk-storybook"],
   },
   {
     slug: "iberian-vignette",
