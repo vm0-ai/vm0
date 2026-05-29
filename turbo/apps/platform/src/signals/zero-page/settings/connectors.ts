@@ -1072,7 +1072,7 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 
 function assertConnectorUsesOAuthAuthCode(type: ConnectorType): void {
   if (!hasConnectorAuthCodeGrant(type)) {
-    throw new Error(`${type} does not use authorization-code OAuth`);
+    throw new Error(`${type} does not use an auth-code grant`);
   }
 }
 
