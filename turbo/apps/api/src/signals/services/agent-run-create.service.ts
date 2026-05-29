@@ -1776,14 +1776,21 @@ function resolveStoredConnectorState(
       connectorType,
       authMethod,
     );
-    if (accessMetadata?.kind !== "refresh-token") {
-      continue;
-    }
-    const secretName = accessMetadata.accessToken;
-    secretConnectorMap[secretName] = connectorType;
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
-        secretConnectorMap[envName] = connectorType;
+    if (accessMetadata?.kind === "refresh-token") {
+      const secretName = accessMetadata.accessToken;
+      secretConnectorMap[secretName] = connectorType;
+      for (const [envName, valueRef] of Object.entries(envBindings)) {
+        if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
+          secretConnectorMap[envName] = connectorType;
+        }
+      }
+    } else if (accessMetadata?.kind === "static") {
+      for (const [envName, valueRef] of Object.entries(
+        accessMetadata.envBindings,
+      )) {
+        if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+          secretConnectorMap[envName] = connectorType;
+        }
       }
     }
   }

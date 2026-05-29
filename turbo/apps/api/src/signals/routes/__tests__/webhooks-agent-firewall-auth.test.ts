@@ -1472,6 +1472,76 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("rejects encrypted static connector secrets after the connector is removed", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("rejects encrypted connector secrets outside the selected access method", async () => {
+    const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "stripe",
+      authMethod: "api-token",
+      externalId: "stripe-account",
+      externalUsername: "stripe-account",
+      externalEmail: "stripe@example.com",
+      oauthScopes: JSON.stringify([]),
+      tokenExpiresAt: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_ACCESS_TOKEN: "stale-oauth-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_ACCESS_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
   it("uses access-token expiry when it is earlier than billable credit lease", async () => {
     const fixture = await track(seedFixture());
     await seedCreditState(fixture, { credits: 10_000 });

@@ -53,11 +53,6 @@ import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
 type AccessSecretSource = "connector" | "model-provider";
 type SecretType = AccessSecretSource;
-type RefreshTokenAccessMetadata = Extract<
-  ConnectorAuthMethodAccessMetadata,
-  { readonly kind: "refresh-token" }
->;
-
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
@@ -1096,12 +1091,26 @@ function getOwnConnectorOwner(
 
 function isSelectedAccessSecretKey(
   key: string,
-  accessMetadata: RefreshTokenAccessMetadata,
+  accessMetadata: ConnectorAuthMethodAccessMetadata,
 ): boolean {
-  return (
-    key === accessMetadata.accessToken ||
-    accessMetadata.envBindings[key] === `$secrets.${accessMetadata.accessToken}`
-  );
+  switch (accessMetadata.kind) {
+    case "refresh-token": {
+      return (
+        key === accessMetadata.accessToken ||
+        accessMetadata.envBindings[key] ===
+          `$secrets.${accessMetadata.accessToken}`
+      );
+    }
+    case "static": {
+      return (
+        Object.hasOwn(accessMetadata.envBindings, key) &&
+        accessMetadata.envBindings[key]?.startsWith("$secrets.") === true
+      );
+    }
+    case "none": {
+      return false;
+    }
+  }
 }
 
 function canResolveMissingConnectorAccessSecret(args: {
@@ -1176,9 +1185,11 @@ function hasUnavailableConnectorSource(args: {
       connectorType,
       args.secretConnectorMetadataMap?.[key],
     ).sourceType;
+    const accessMetadata =
+      args.connectorAccessByType.get(connectorType)?.accessMetadata;
     return (
       sourceType === "connector" &&
-      !args.connectorAccessByType.has(connectorType)
+      (!accessMetadata || !isSelectedAccessSecretKey(key, accessMetadata))
     );
   });
 }

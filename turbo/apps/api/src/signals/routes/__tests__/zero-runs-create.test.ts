@@ -1398,6 +1398,10 @@ describe("POST /api/zero/runs", () => {
     ).toMatchObject({
       AXIOM_TOKEN: "xaat-approved",
     });
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      AXIOM_TOKEN: "axiom",
+    });
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
   it("omits missing optional API-token connector env fields", async () => {
@@ -1454,7 +1458,9 @@ describe("POST /api/zero/runs", () => {
     ).toMatchObject({
       GITLAB_TOKEN: "glpat-token",
     });
-    expect(executionContext.secretConnectorMap).toBeNull();
+    expect(executionContext.secretConnectorMap).toStrictEqual({
+      GITLAB_TOKEN: "gitlab",
+    });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
