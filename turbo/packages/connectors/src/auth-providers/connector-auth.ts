@@ -219,7 +219,7 @@ const DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS: DeviceAuthConnectorOAuthProviderMap
     "test-oauth-device": testOauthDeviceProvider,
   };
 
-function hasConnectorAuthProvider(
+export function hasConnectorAuthProvider(
   type: string,
 ): type is ConnectorAuthProviderType {
   return (
@@ -334,7 +334,7 @@ export async function pollConnectorOAuthDeviceAuth<
   } as ConnectorOAuthDeviceAuthPollArgs<T>);
 }
 
-async function refreshConnectorProviderAccessToken<
+export async function refreshConnectorAuthProviderAccessToken<
   T extends ConnectorAuthProviderType,
 >(args: {
   readonly type: T;
@@ -353,21 +353,6 @@ async function refreshConnectorProviderAccessToken<
         refreshToken: args.refreshToken,
       } as ConnectorOAuthRefreshArgs<T>);
   }
-}
-
-export async function refreshConnectorAccessToken(args: {
-  readonly type: ConnectorType;
-  readonly oauthClient: ConnectorOAuthClient;
-  readonly refreshToken: string;
-}): Promise<OAuthRefreshResult> {
-  if (!hasConnectorAuthProvider(args.type)) {
-    throw new Error(`${args.type} connector does not have an auth provider`);
-  }
-  return await refreshConnectorProviderAccessToken({
-    type: args.type,
-    oauthClient: args.oauthClient,
-    refreshToken: args.refreshToken,
-  });
 }
 
 export async function revokeConnectorOAuthToken<

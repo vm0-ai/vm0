@@ -9,7 +9,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
-  type ConnectorType,
+  type ConnectorAuthProviderType,
 } from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
@@ -19,7 +19,8 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  refreshConnectorAccessToken,
+  hasConnectorAuthProvider,
+  refreshConnectorAuthProviderAccessToken,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -247,7 +248,7 @@ interface RefreshTokenContext {
 type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
-      readonly connectorType: ConnectorType;
+      readonly connectorType: ConnectorAuthProviderType;
       readonly oauthClient: ConnectorOAuthClient;
       readonly context: RefreshTokenContext;
     }
@@ -797,6 +798,9 @@ function prepareRefreshTokenContext(
   if (!parsedConnectorType.success) {
     return { ok: false, reason: "not-refreshable" };
   }
+  if (!hasConnectorAuthProvider(parsedConnectorType.data)) {
+    return { ok: false, reason: "not-refreshable" };
+  }
   const oauthClient = getConnectorOAuthClient(
     parsedConnectorType.data,
     (name) => {
@@ -954,7 +958,7 @@ async function refreshAccessTokenForSource(
 
   const refreshPromise =
     prepared.sourceType === "connector"
-      ? refreshConnectorAccessToken({
+      ? refreshConnectorAuthProviderAccessToken({
           type: prepared.connectorType,
           oauthClient: prepared.oauthClient,
           refreshToken: prepared.context.currentRefreshToken,
