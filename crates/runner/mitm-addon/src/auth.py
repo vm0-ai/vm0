@@ -54,7 +54,6 @@ class FirewallAuthApiError(Exception):
         super().__init__(message)
         self.status = status
         self.code = code
-        self.message = message
         self.connectors = connectors
 
 
@@ -247,34 +246,26 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     return req
 
 
-def _string_field(values: dict, key: str) -> str | None:
-    value = values.get(key)
-    return value if isinstance(value, str) else None
-
-
-def _string_list_field(values: dict, key: str) -> list[str] | None:
-    value = values.get(key)
-    if not isinstance(value, list):
-        return None
-    result = [item for item in value if isinstance(item, str)]
-    return result if len(result) == len(value) else None
-
-
 def _firewall_auth_api_error_from_envelope(
     status: int,
     error_info: dict,
 ) -> FirewallAuthApiError | None:
-    code = _string_field(error_info, "code")
-    message = _string_field(error_info, "message")
-    if code is None or message is None:
+    code = error_info.get("code")
+    message = error_info.get("message")
+    if not isinstance(code, str) or not isinstance(message, str):
         return None
     if code not in _STRUCTURED_FIREWALL_AUTH_ERROR_CODES:
         return None
+    connectors = error_info.get("connectors")
+    if isinstance(connectors, list) and all(isinstance(item, str) for item in connectors):
+        parsed_connectors = connectors
+    else:
+        parsed_connectors = None
     return FirewallAuthApiError(
         status=status,
         code=code,
         message=message,
-        connectors=_string_list_field(error_info, "connectors"),
+        connectors=parsed_connectors,
     )
 
 
@@ -791,7 +782,7 @@ async def handle_firewall_request(
                 else "ALLOW"
             ),
             error_code=e.code,
-            message=e.message,
+            message=str(e),
             permission=allow.name,
             connectors=e.connectors,
         )

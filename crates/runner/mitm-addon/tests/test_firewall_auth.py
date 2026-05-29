@@ -1299,7 +1299,7 @@ class TestFetchFirewallHeaders:
 
         assert exc_info.value.status == status
         assert exc_info.value.code == code
-        assert exc_info.value.message == message
+        assert str(exc_info.value) == message
         assert exc_info.value.connectors == connectors
 
     @pytest.mark.parametrize(
