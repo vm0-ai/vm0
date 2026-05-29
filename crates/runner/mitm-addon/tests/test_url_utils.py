@@ -24,6 +24,30 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/base/a/b/c"
 
+    def test_base_treats_single_terminal_slash_as_optional(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/base/",
+            "/a",
+            "",
+        )
+        assert url == "https://example.com/base/a"
+
+    def test_base_preserves_repeated_terminal_empty_segments(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/base//",
+            "/a",
+            "",
+        )
+        assert url == "https://example.com/base//a"
+
+    def test_root_base_preserves_repeated_terminal_empty_segments(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com//",
+            "/a",
+            "",
+        )
+        assert url == "https://example.com//a"
+
     def test_base_with_query_no_orig_query(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",

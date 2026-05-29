@@ -377,6 +377,10 @@ def _encode_query_pairs(query: dict[str, str] | None) -> list[_QueryPair]:
     return _split_query_pairs(urllib.parse.urlencode(query))
 
 
+def _strip_optional_terminal_slash(path: str) -> str:
+    return path[:-1] if path.endswith("/") else path
+
+
 def _merge_rewrite_query(
     base_query: str,
     orig_query: str,
@@ -416,7 +420,11 @@ def build_rewrite_url(
     base_parsed = urllib.parse.urlsplit(resolved_base)
 
     # Append rel_path to the base path portion
-    base_path = base_parsed.path.rstrip("/") + rel_path if rel_path != "/" else base_parsed.path
+    base_path = (
+        _strip_optional_terminal_slash(base_parsed.path) + rel_path
+        if rel_path != "/"
+        else base_parsed.path
+    )
 
     merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)
 
