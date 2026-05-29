@@ -64,7 +64,7 @@ export interface RefreshTokenAccessProvider<
 
 export type ConnectorAuthProviderAccess<T extends ConnectorType> =
   T extends RefreshTokenAccessConnectorType
-    ? NoneAccessProvider | RefreshTokenAccessProvider<T>
+    ? RefreshTokenAccessProvider<T>
     : NoneAccessProvider;
 
 interface NoneRevokeProvider {

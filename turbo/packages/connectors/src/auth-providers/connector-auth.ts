@@ -20,7 +20,6 @@ import type {
   AuthCodeConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
   ConnectorAuthProviderRevoke,
-  NoneAccessProvider,
   RefreshTokenAccessProvider,
 } from "./types";
 import {
@@ -136,20 +135,6 @@ function deviceAuthConnectorProviderFor<T extends DeviceAuthGrantConnectorType>(
   return DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type];
 }
 
-function expectRefreshTokenAccessProvider<
-  T extends RefreshTokenAccessConnectorType,
->(
-  type: T,
-  provider: {
-    readonly access: NoneAccessProvider | RefreshTokenAccessProvider<T>;
-  },
-): RefreshTokenAccessProvider<T> {
-  if (provider.access.kind === "refresh-token") {
-    return provider.access;
-  }
-  throw new Error(`${type} connector does not use refresh-token access`);
-}
-
 function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
 >(type: T): ConnectorRefreshTokenAccessProviderMap[T] {
@@ -246,75 +231,45 @@ const DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS: DeviceAuthConnectorAuthProviderMap =
 
 const CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS: ConnectorRefreshTokenAccessProviderMap =
   {
-    ahrefs: expectRefreshTokenAccessProvider("ahrefs", ahrefsProvider),
-    airtable: expectRefreshTokenAccessProvider("airtable", airtableProvider),
-    asana: expectRefreshTokenAccessProvider("asana", asanaProvider),
-    base44: expectRefreshTokenAccessProvider("base44", base44Provider),
-    canva: expectRefreshTokenAccessProvider("canva", canvaProvider),
-    close: expectRefreshTokenAccessProvider("close", closeProvider),
-    deel: expectRefreshTokenAccessProvider("deel", deelProvider),
-    docusign: expectRefreshTokenAccessProvider("docusign", docusignProvider),
-    dropbox: expectRefreshTokenAccessProvider("dropbox", dropboxProvider),
-    figma: expectRefreshTokenAccessProvider("figma", figmaProvider),
-    "garmin-connect": expectRefreshTokenAccessProvider(
-      "garmin-connect",
-      garminConnectProvider,
-    ),
-    gmail: expectRefreshTokenAccessProvider("gmail", gmailProvider),
-    "google-ads": expectRefreshTokenAccessProvider(
-      "google-ads",
-      googleAdsProvider,
-    ),
-    "google-calendar": expectRefreshTokenAccessProvider(
-      "google-calendar",
-      googleCalendarProvider,
-    ),
-    "google-docs": expectRefreshTokenAccessProvider(
-      "google-docs",
-      googleDocsProvider,
-    ),
-    "google-drive": expectRefreshTokenAccessProvider(
-      "google-drive",
-      googleDriveProvider,
-    ),
-    "google-meet": expectRefreshTokenAccessProvider(
-      "google-meet",
-      googleMeetProvider,
-    ),
-    "google-sheets": expectRefreshTokenAccessProvider(
-      "google-sheets",
-      googleSheetsProvider,
-    ),
-    gumroad: expectRefreshTokenAccessProvider("gumroad", gumroadProvider),
-    hubspot: expectRefreshTokenAccessProvider("hubspot", hubspotProvider),
-    linear: expectRefreshTokenAccessProvider("linear", linearProvider),
-    mercury: expectRefreshTokenAccessProvider("mercury", mercuryProvider),
-    monday: expectRefreshTokenAccessProvider("monday", mondayProvider),
-    neon: expectRefreshTokenAccessProvider("neon", neonProvider),
-    notion: expectRefreshTokenAccessProvider("notion", notionProvider),
-    "outlook-calendar": expectRefreshTokenAccessProvider(
-      "outlook-calendar",
-      outlookCalendarProvider,
-    ),
-    "outlook-mail": expectRefreshTokenAccessProvider(
-      "outlook-mail",
-      outlookMailProvider,
-    ),
-    posthog: expectRefreshTokenAccessProvider("posthog", posthogProvider),
-    reddit: expectRefreshTokenAccessProvider("reddit", redditProvider),
-    sentry: expectRefreshTokenAccessProvider("sentry", sentryProvider),
-    slock: expectRefreshTokenAccessProvider("slock", slockProvider),
-    spotify: expectRefreshTokenAccessProvider("spotify", spotifyProvider),
-    strava: expectRefreshTokenAccessProvider("strava", stravaProvider),
-    stripe: expectRefreshTokenAccessProvider("stripe", stripeProvider),
-    supabase: expectRefreshTokenAccessProvider("supabase", supabaseProvider),
-    "test-oauth": expectRefreshTokenAccessProvider(
-      "test-oauth",
-      testOauthProvider,
-    ),
-    x: expectRefreshTokenAccessProvider("x", xProvider),
-    xero: expectRefreshTokenAccessProvider("xero", xeroProvider),
-    zoom: expectRefreshTokenAccessProvider("zoom", zoomProvider),
+    ahrefs: ahrefsProvider.access,
+    airtable: airtableProvider.access,
+    asana: asanaProvider.access,
+    base44: base44Provider.access,
+    canva: canvaProvider.access,
+    close: closeProvider.access,
+    deel: deelProvider.access,
+    docusign: docusignProvider.access,
+    dropbox: dropboxProvider.access,
+    figma: figmaProvider.access,
+    "garmin-connect": garminConnectProvider.access,
+    gmail: gmailProvider.access,
+    "google-ads": googleAdsProvider.access,
+    "google-calendar": googleCalendarProvider.access,
+    "google-docs": googleDocsProvider.access,
+    "google-drive": googleDriveProvider.access,
+    "google-meet": googleMeetProvider.access,
+    "google-sheets": googleSheetsProvider.access,
+    gumroad: gumroadProvider.access,
+    hubspot: hubspotProvider.access,
+    linear: linearProvider.access,
+    mercury: mercuryProvider.access,
+    monday: mondayProvider.access,
+    neon: neonProvider.access,
+    notion: notionProvider.access,
+    "outlook-calendar": outlookCalendarProvider.access,
+    "outlook-mail": outlookMailProvider.access,
+    posthog: posthogProvider.access,
+    reddit: redditProvider.access,
+    sentry: sentryProvider.access,
+    slock: slockProvider.access,
+    spotify: spotifyProvider.access,
+    strava: stravaProvider.access,
+    stripe: stripeProvider.access,
+    supabase: supabaseProvider.access,
+    "test-oauth": testOauthProvider.access,
+    x: xProvider.access,
+    xero: xeroProvider.access,
+    zoom: zoomProvider.access,
   };
 
 export function hasConnectorAuthProvider(
