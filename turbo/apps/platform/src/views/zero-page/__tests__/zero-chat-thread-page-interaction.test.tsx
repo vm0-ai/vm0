@@ -6,7 +6,13 @@ import { http, HttpResponse } from "msw";
 import {
   zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  chatMessagesContract,
+  chatThreadMessagesContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { server } from "../../../mocks/server.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
@@ -40,6 +46,24 @@ async function findButtonByText(text: string): Promise<HTMLElement> {
     expect(queryButtonByText(text)).toBeDefined();
   });
   return queryButtonByText(text)!;
+}
+
+function paidBillingStatus(credits: number): BillingStatusResponse {
+  return {
+    tier: "pro",
+    credits,
+    subscriptionStatus: "active",
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    hasSubscription: true,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: {
+      expiringNextCycle: 0,
+      nextExpiryDate: null,
+    },
+    creditBreakdown: [],
+    creditGrants: [],
+  };
 }
 
 beforeEach(() => {
@@ -307,6 +331,72 @@ describe("zero chat thread page - insufficient credits card", () => {
         ),
       });
     });
+  });
+
+  it("refreshes stale positive billing status after an insufficient-credit send", async () => {
+    const user = userEvent.setup();
+    let billingRequestCount = 0;
+    let currentCredits = 20_000;
+    let showInsufficientCreditMessages = false;
+    server.use(
+      mockApi(zeroBillingStatusContract.get, ({ respond }) => {
+        billingRequestCount++;
+        return respond(200, paidBillingStatus(currentCredits));
+      }),
+    );
+    mockChatLifecycle({ threadId: THREAD_ID });
+    server.use(
+      mockApi(chatMessagesContract.send, ({ respond }) => {
+        currentCredits = 0;
+        showInsufficientCreditMessages = true;
+        return respond(201, {
+          runId: null,
+          threadId: THREAD_ID,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+        return respond(200, {
+          messages: showInsufficientCreditMessages
+            ? [
+                {
+                  id: "msg-insufficient-user",
+                  role: "user",
+                  content: "blocked by credits",
+                  error: "insufficient_credits",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "msg-insufficient-assistant",
+                  role: "assistant",
+                  content: "Insufficient credits.",
+                  error: "insufficient_credits",
+                  createdAt: "2026-03-10T00:00:01Z",
+                },
+              ]
+            : [],
+          hasHistoryBefore: false,
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const textarea = (await screen.findByPlaceholderText(
+      PLACEHOLDER,
+    )) as HTMLTextAreaElement;
+    await waitFor(() => {
+      expect(billingRequestCount).toBeGreaterThanOrEqual(1);
+    });
+
+    await sendMessageInUI(user, textarea, "blocked by credits");
+
+    await expect(
+      screen.findByText("You're out of credits"),
+    ).resolves.toBeInTheDocument();
+    await expect(screen.findByText("$100")).resolves.toBeInTheDocument();
+    expect(screen.queryByText("Credits available")).not.toBeInTheDocument();
+    expect(billingRequestCount).toBeGreaterThanOrEqual(2);
   });
 
   it("shows a success state when credits are available again", async () => {

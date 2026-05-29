@@ -3033,7 +3033,7 @@ function PaidCreditCheckoutActions({
 }
 
 function InsufficientCreditsCard() {
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const billingLoadable = useLoadable(billingStatusAsync$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const [creditCheckoutLoadable, creditCheckout] =
     useLoadableSet(startCreditCheckout$);
