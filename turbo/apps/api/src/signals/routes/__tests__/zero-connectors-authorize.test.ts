@@ -683,7 +683,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     expect(revokeBody).toContain('"access_token":"gh-access-token"');
   });
 
-  it("skips provider revoke for OAuth connectors without revoke support", async () => {
+  it("skips provider revoke for connectors without revoke support", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
@@ -983,7 +983,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "github OAuth not configured",
+        message: "github connector auth client not configured",
         code: "INTERNAL_SERVER_ERROR",
       },
     });

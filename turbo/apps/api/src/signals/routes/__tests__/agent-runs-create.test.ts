@@ -1202,7 +1202,7 @@ describe("POST /api/agent/runs", () => {
     ).toBeTruthy();
   });
 
-  it("accepts OAuth connector-provided env secrets during compose validation", async () => {
+  it("accepts connector-provided env secrets during compose validation", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     await db.insert(connectors).values({

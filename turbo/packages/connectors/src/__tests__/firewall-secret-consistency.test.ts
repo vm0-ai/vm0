@@ -160,7 +160,7 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
  * Verify that every builtin firewall's placeholder names match the
  * secret-backed environment names exposed by the connector that references it.
  *
- * OAuth connectors expose environment names via derived env bindings (e.g. SLACK_TOKEN).
+ * Connector auth-provider methods expose environment names via derived env bindings (e.g. SLACK_TOKEN).
  * API-token connectors expose manual grant fields.
  * The firewall's `placeholders` keys must be a subset of these secret names,
  * otherwise the proxy won't find the secret to inject.

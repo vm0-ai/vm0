@@ -389,7 +389,10 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {
-      return jsonResponse({ error: `${type} OAuth not configured` }, 500);
+      return jsonResponse(
+        { error: `${type} connector auth client not configured` },
+        500,
+      );
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
@@ -461,7 +464,9 @@ const startConnectorOauthInner$ = command(
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {
-      return internalServerError(`${type} OAuth not configured`);
+      return internalServerError(
+        `${type} connector auth client not configured`,
+      );
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,

@@ -268,7 +268,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
     });
   });
 
-  it("deletes an OAuth connector row", async () => {
+  it("deletes a connector row", async () => {
     const fixture = await track(seedFixture());
     await seedOAuthConnector(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -286,7 +286,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
     await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
   });
 
-  it("deletes OAuth connector secrets", async () => {
+  it("deletes connector token secrets", async () => {
     const fixture = await track(seedFixture());
     await seedSlockOAuthConnectorState(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId);

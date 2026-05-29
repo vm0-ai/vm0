@@ -5,8 +5,8 @@ import {
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import {
+  getConnectorAuthMethodGrantScopes,
   resolveConnectorAuthClientForMethod,
-  getConnectorOAuthScopes,
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
@@ -43,7 +43,7 @@ import {
   verifyGithubConnectSignature,
 } from "../services/github-oauth.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
-import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import { settle } from "../utils";
 import type { RouteEntry } from "../route";
 import {
@@ -53,6 +53,7 @@ import {
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_TYPE = "github" satisfies AuthCodeGrantConnectorType;
+const GITHUB_CONNECTOR_AUTH_METHOD = "oauth";
 const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
 const L = logger("GithubOAuthRoute");
 
@@ -89,8 +90,8 @@ function githubUserOauthClient():
   | StaticConfidentialConnectorAuthClient
   | undefined {
   const authClient = resolveConnectorAuthClientForMethod(
-    "github",
-    "oauth",
+    GITHUB_CONNECTOR_TYPE,
+    GITHUB_CONNECTOR_AUTH_METHOD,
     optionalEnv,
   );
   if (!authClient) {
@@ -380,18 +381,21 @@ const connectGithubUserAfterSetup$ = command(
       });
 
       await set(
-        upsertOAuthConnector$,
+        upsertConnectorTokenConnection$,
         {
           orgId: args.orgId,
           userId: vm0UserId,
-          type: "github",
-          authMethod: "oauth",
+          type: GITHUB_CONNECTOR_TYPE,
+          authMethod: GITHUB_CONNECTOR_AUTH_METHOD,
           accessToken,
           userInfo,
           oauthScopes:
             scopes.length > 0
               ? scopes
-              : getConnectorOAuthScopes(GITHUB_CONNECTOR_TYPE),
+              : getConnectorAuthMethodGrantScopes(
+                  GITHUB_CONNECTOR_TYPE,
+                  GITHUB_CONNECTOR_AUTH_METHOD,
+                ),
         },
         signal,
       );
@@ -760,15 +764,18 @@ const callbackGithubUserOauth$ = command(
     }
 
     await set(
-      upsertOAuthConnector$,
+      upsertConnectorTokenConnection$,
       {
         orgId: state.orgId,
         userId: state.vm0UserId,
-        type: "github",
-        authMethod: "oauth",
+        type: GITHUB_CONNECTOR_TYPE,
+        authMethod: GITHUB_CONNECTOR_AUTH_METHOD,
         accessToken: token.accessToken,
         userInfo: token.userInfo,
-        oauthScopes: getConnectorOAuthScopes(GITHUB_CONNECTOR_TYPE),
+        oauthScopes: getConnectorAuthMethodGrantScopes(
+          GITHUB_CONNECTOR_TYPE,
+          GITHUB_CONNECTOR_AUTH_METHOD,
+        ),
         extraConnectorSecrets: token.extraConnectorSecrets,
       },
       signal,

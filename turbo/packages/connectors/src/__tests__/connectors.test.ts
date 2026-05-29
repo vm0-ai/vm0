@@ -44,7 +44,7 @@ import {
   getConnectorDeviceAuthGrantConfig,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
-  getConnectorOAuthScopes,
+  getConnectorGrantScopes,
   getConnectorManualGrantFieldNames,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
@@ -227,7 +227,7 @@ type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
 >;
 
 describe("hasRequiredScopes", () => {
-  it("returns true for non-OAuth connector type", () => {
+  it("returns true for connector type without grant scopes", () => {
     expect(hasRequiredScopes("cloudinary", null)).toBe(true);
     expect(
       hasRequiredConnectorAuthMethodScopes("cloudinary", "api-token", null),
@@ -505,7 +505,7 @@ describe("connector provider capability checks", () => {
     });
   });
 
-  it("does not expose refresh-token access providers for non-refreshable OAuth connectors", () => {
+  it("does not expose refresh-token access providers for non-refreshable auth methods", () => {
     expect(hasConnectorRefreshTokenAccessProvider("github")).toBe(false);
     expect(
       getConnectorAuthMethodAccessMetadata("github", "oauth")?.kind,
@@ -569,7 +569,7 @@ describe("connector provider capability checks", () => {
     expect(body).toBe(JSON.stringify({ access_token: "gh-access-token" }));
   });
 
-  it("returns unsupported for OAuth connectors without revoke support", async () => {
+  it("returns unsupported for connectors without revoke support", async () => {
     const oauthClient = getOauthAuthClient("notion", (name) => {
       if (name === "NOTION_OAUTH_CLIENT_ID") {
         return "test-notion-client";
@@ -1606,10 +1606,10 @@ describe("getConnectorEnvBindings", () => {
     expect(firewall.apis[0]?.permissions).toStrictEqual([]);
   });
 
-  it("OAuth connectors have consistent secrets and envBindings naming", () => {
+  it("authorization-grant auth methods have consistent secrets and envBindings naming", () => {
     // All naming derives from a single prefix XXX:
     //   oauth secrets:      XXX_ACCESS_TOKEN (required), XXX_REFRESH_TOKEN (optional)
-    //   envBindings: values -> declared OAuth connector secrets
+    //   envBindings: values -> declared connector secrets
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
       if (!hasConnectorAuthorizationGrant(type)) continue;
@@ -1766,7 +1766,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     expect(runtimeAvailableTypes).toContain("test-oauth-device");
   });
 
-  it("includes OAuth connectors only when client id and secret are configured", () => {
+  it("includes auth-code connectors only when client id and secret are configured", () => {
     const env = new Map([
       ["AIRTABLE_OAUTH_CLIENT_ID", "airtable-client-id"],
       ["AIRTABLE_OAUTH_CLIENT_SECRET", "airtable-client-secret"],
@@ -1901,7 +1901,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
     );
   });
 
-  it("includes active OAuth connectors when their runtime env is configured", () => {
+  it("includes active authorization-grant connectors when their runtime env is configured", () => {
     const activeOAuthTypes = connectorTypeSchema.options.filter(
       hasConnectorAuthorizationGrant,
     );
@@ -1931,10 +1931,10 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 });
 
-describe("getConnectorOAuthScopes - google-meet scopes", () => {
+describe("getConnectorGrantScopes - google-meet scopes", () => {
   it("uses meetings.space.readonly for google meet oauth scopes", () => {
     const grant = getConnectorAuthCodeGrantConfig("google-meet");
-    const scopes = getConnectorOAuthScopes("google-meet");
+    const scopes = getConnectorGrantScopes("google-meet");
     expect(scopes).toStrictEqual(grant?.scopes);
     expect(scopes).toContain(
       "https://www.googleapis.com/auth/meetings.space.readonly",
@@ -1944,7 +1944,7 @@ describe("getConnectorOAuthScopes - google-meet scopes", () => {
     );
 
     scopes.push("test-mutated-scope");
-    expect(getConnectorOAuthScopes("google-meet")).not.toContain(
+    expect(getConnectorGrantScopes("google-meet")).not.toContain(
       "test-mutated-scope",
     );
   });
@@ -1976,7 +1976,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
     });
   });
 
-  it("returns device-auth grant config for device OAuth connectors", () => {
+  it("returns device-auth grant config for device-auth connectors", () => {
     expectTypeOf(
       getConnectorDeviceAuthGrantConfig("test-oauth-device"),
     ).toEqualTypeOf<ConnectorDeviceAuthGrantConfig>();
@@ -2022,16 +2022,16 @@ describe("connector OAuth lifecycle grant helpers", () => {
     });
   });
 
-  it("returns undefined for connectors without OAuth grants", () => {
+  it("returns undefined for connectors without authorization grants", () => {
     expect(hasConnectorAuthorizationGrant("axiom")).toBe(false);
-    expect(getConnectorOAuthScopes("axiom")).toStrictEqual([]);
+    expect(getConnectorGrantScopes("axiom")).toStrictEqual([]);
     expect(getConnectorAuthCodeGrantConfig("base44")).toBeUndefined();
     expect(getConnectorDeviceAuthGrantConfig("github")).toBeUndefined();
   });
 });
 
-describe("connector OAuth authorization-code config", () => {
-  it("declares the current auth-code OAuth connectors with auth-code grants", () => {
+describe("connector authorization-code grant config", () => {
+  it("declares the current auth-code grant connectors with auth-code grants", () => {
     for (const type of connectorTypeSchema.options) {
       if (!hasConnectorAuthCodeGrant(type)) {
         continue;

@@ -1464,7 +1464,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
-  it("injects authorized OAuth connector secrets and refresh metadata", async () => {
+  it("injects authorized connector token secrets and refresh metadata", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({
@@ -1549,7 +1549,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
-  it("maps static OAuth connector env aliases", async () => {
+  it("maps static connector env aliases", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -1864,7 +1864,7 @@ describe("POST /api/zero/runs", () => {
     });
   });
 
-  it("adds the Google Ads developer token for authorized OAuth connector runs", async () => {
+  it("adds the Google Ads developer token for authorized connector runs", async () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
     const fx = await fixture();
     const db = store.set(writeDb$);

@@ -217,14 +217,14 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   }
 }
 
-type ConnectorGrantConfigWithScopes =
+type ConnectorScopeBearingGrantConfig =
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig;
 
-function isConnectorGrantConfigWithScopes(
+function isConnectorScopeBearingGrantConfig(
   method: ConnectorAuthMethodConfig,
 ): method is ConnectorAuthMethodConfig & {
-  readonly grant: ConnectorGrantConfigWithScopes;
+  readonly grant: ConnectorScopeBearingGrantConfig;
 } {
   switch (method.grant.kind) {
     case "auth-code":
@@ -236,17 +236,17 @@ function isConnectorGrantConfigWithScopes(
   }
 }
 
-function getConnectorOAuthGrantConfig(
+function getConnectorScopeBearingGrantConfig(
   type: ConnectorAuthProviderType,
-): ConnectorGrantConfigWithScopes;
-function getConnectorOAuthGrantConfig(
+): ConnectorScopeBearingGrantConfig;
+function getConnectorScopeBearingGrantConfig(
   type: ConnectorType,
-): ConnectorGrantConfigWithScopes | undefined;
-function getConnectorOAuthGrantConfig(
+): ConnectorScopeBearingGrantConfig | undefined;
+function getConnectorScopeBearingGrantConfig(
   type: ConnectorType,
-): ConnectorGrantConfigWithScopes | undefined {
+): ConnectorScopeBearingGrantConfig | undefined {
   for (const method of connectorAuthMethodValues(type)) {
-    if (isConnectorGrantConfigWithScopes(method)) {
+    if (isConnectorScopeBearingGrantConfig(method)) {
       return method.grant;
     }
   }
@@ -320,8 +320,8 @@ export function getConnectorDeviceAuthGrantConfig(
   return undefined;
 }
 
-export function getConnectorOAuthScopes(type: ConnectorType): string[] {
-  return [...connectorGrantScopes(getConnectorOAuthGrantConfig(type))];
+export function getConnectorGrantScopes(type: ConnectorType): string[] {
+  return [...connectorGrantScopes(getConnectorScopeBearingGrantConfig(type))];
 }
 
 export function getConnectorAuthMethodGrantScopes(
@@ -807,7 +807,7 @@ export function hasRequiredScopes(
   storedScopes: string[] | null,
 ): boolean {
   return hasRequiredGrantScopes(
-    getConnectorOAuthScopes(connectorType),
+    getConnectorGrantScopes(connectorType),
     storedScopes,
   );
 }
@@ -831,7 +831,7 @@ export function getScopeDiff(
   connectorType: ConnectorType,
   storedScopes: string[] | null,
 ): ScopeDiff {
-  return scopeDiff(getConnectorOAuthScopes(connectorType), storedScopes);
+  return scopeDiff(getConnectorGrantScopes(connectorType), storedScopes);
 }
 
 export function getConnectorAuthMethodScopeDiff(

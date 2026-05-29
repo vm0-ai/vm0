@@ -706,7 +706,7 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(session.id)).intervalSeconds).toBe(10);
   });
 
-  it("completes a session through OAuth connector persistence without leaking tokens", async () => {
+  it("completes a session through connector token persistence without leaking tokens", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,

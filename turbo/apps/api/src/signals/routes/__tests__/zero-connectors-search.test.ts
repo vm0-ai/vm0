@@ -234,7 +234,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth"]);
   });
 
-  it("shows Base44 as an OAuth connector without a feature switch", async () => {
+  it("shows Base44 as a connector without a feature switch", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);
@@ -253,7 +253,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(connector?.authMethods).toStrictEqual(["oauth"]);
   });
 
-  it("shows Slock as an OAuth connector without a feature switch", async () => {
+  it("shows Slock as a connector without a feature switch", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorsSearchContract);

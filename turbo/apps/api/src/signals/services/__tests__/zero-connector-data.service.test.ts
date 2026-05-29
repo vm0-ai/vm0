@@ -71,7 +71,7 @@ describe("zeroConnectorList", () => {
     expect(list.connectorProvidedEnvNames).not.toContain("OPENAI_TOKEN");
   });
 
-  it("returns OAuth connector env names only when the access secret exists", async () => {
+  it("returns connector token env names only when the access secret exists", async () => {
     const orgId = `org_${randomUUID()}`;
     const userWithoutSecret = `user_${randomUUID()}`;
     const userWithSecret = `user_${randomUUID()}`;
@@ -168,7 +168,7 @@ describe("zeroConnectorList", () => {
     expect(list.configuredTypes).toContain("amplitude");
   });
 
-  it("keeps a stored oauth connector visible when another auth method is ungated", async () => {
+  it("keeps a stored connector auth-provider connection visible when another auth method is ungated", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 

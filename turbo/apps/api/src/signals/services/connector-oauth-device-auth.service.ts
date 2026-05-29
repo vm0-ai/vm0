@@ -41,7 +41,7 @@ import {
 } from "./crypto.utils";
 import { userConnectorAvailability } from "./connector-availability.service";
 import {
-  upsertOAuthConnector$,
+  upsertConnectorTokenConnection$,
   zeroConnectorByType,
 } from "./zero-connector-data.service";
 
@@ -590,7 +590,7 @@ async function completeSessionResponse(args: {
   const connector = await args.connectorLoader();
   args.signal.throwIfAborted();
   if (!connector) {
-    throw new Error("Completed OAuth connector not found");
+    throw new Error("Completed connector not found");
   }
   return { status: 200, body: { status: "complete", connector } };
 }
@@ -910,7 +910,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       signal,
       persistConnector: async ({ result }) => {
         const connectorResult = await set(
-          upsertOAuthConnector$,
+          upsertConnectorTokenConnection$,
           {
             orgId: args.orgId,
             userId: args.userId,

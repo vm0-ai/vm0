@@ -40,7 +40,7 @@ import {
   testUserOrgId,
   ensureTestOrg$,
 } from "../services/cli-auth.service";
-import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import { upsertOrgMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
 import {
   isCodexAuthJsonFreePlanError,
@@ -240,7 +240,7 @@ const createTestConnector$ = command(
       throw new Error(`${grantConnectorType} connector has no auth method`);
     }
     await set(
-      upsertOAuthConnector$,
+      upsertConnectorTokenConnection$,
       {
         orgId,
         userId,

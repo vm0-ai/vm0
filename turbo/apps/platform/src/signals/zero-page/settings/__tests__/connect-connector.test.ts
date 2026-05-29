@@ -449,7 +449,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
-  it("rejects device-auth OAuth connectors before opening popup or starting auth-code OAuth", async () => {
+  it("rejects device-auth connectors before opening popup or starting auth-code flow", async () => {
     detachedSetupPage({
       context,
       path: "/",

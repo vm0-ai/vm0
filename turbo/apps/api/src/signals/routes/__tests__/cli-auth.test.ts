@@ -1859,7 +1859,7 @@ describe("CLI auth routes", () => {
       ).resolves.toBeUndefined();
     });
 
-    it("seeds OAuth connector token state for the test user org", async () => {
+    it("seeds connector token state for the test user org", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-org" });

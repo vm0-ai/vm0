@@ -1499,7 +1499,7 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(session?.errorMessage).toContain("GitHub user API failed");
   });
 
-  it("stores a GitHub OAuth connector and completes the CLI session", async () => {
+  it("stores a GitHub connector token connection and completes the CLI session", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -2173,7 +2173,7 @@ describe("GET /api/connectors/:type/callback", () => {
   });
 
   it.each(providerSuccessCases)(
-    "stores $type OAuth connector data through the API callback route",
+    "stores $type connector token data through the API callback route",
     async (providerCase) => {
       const orgId = `org_${randomUUID()}`;
       const userId = `user_${randomUUID()}`;
