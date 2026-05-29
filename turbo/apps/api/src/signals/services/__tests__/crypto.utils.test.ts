@@ -112,16 +112,11 @@ describe("stored secret encryption", () => {
     resetSecretKmsClientForTests();
   });
 
-  it("keeps legacy AES when KMS is not configured", async () => {
-    const encrypted = await encryptStoredSecretValue("secret-value");
+  it("requires KMS configuration when writing stored secrets", async () => {
+    clearMockedEnv();
 
-    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "legacy",
-      hasLegacy: true,
-      hasKms: false,
-    });
-    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
-      "secret-value",
+    await expect(encryptStoredSecretValue("secret-value")).rejects.toThrow(
+      "SECRETS_KMS_KEY_ID is required for KMS secret encryption",
     );
     expect(fakeKmsClient.calls).toHaveLength(0);
   });
@@ -161,13 +156,13 @@ describe("stored secret encryption", () => {
     );
   });
 
-  it("keeps reading legacy-only ciphertext by default until cleanup finishes", async () => {
+  it("rejects legacy-only stored ciphertext by default", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const encrypted = encryptSecretValue("secret-value");
 
-    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
-      "secret-value",
+    await expect(decryptStoredSecretValue(encrypted)).rejects.toThrow(
+      "Stored secret ciphertext does not include KMS data",
     );
   });
 
@@ -236,16 +231,11 @@ describe("stored secret encryption", () => {
     });
   });
 
-  it("keeps persistent secrets legacy-only when KMS is not configured", async () => {
-    const encrypted = await encryptPersistentSecretValue("bot-token", {});
+  it("requires KMS configuration when writing persistent secrets", async () => {
+    clearMockedEnv();
 
-    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "legacy",
-      hasLegacy: true,
-      hasKms: false,
-    });
-    await expect(decryptPersistentSecretValue(encrypted, {})).resolves.toBe(
-      "bot-token",
+    await expect(encryptPersistentSecretValue("bot-token", {})).rejects.toThrow(
+      "SECRETS_KMS_KEY_ID is required for KMS secret encryption",
     );
     expect(fakeKmsClient.calls).toHaveLength(0);
   });

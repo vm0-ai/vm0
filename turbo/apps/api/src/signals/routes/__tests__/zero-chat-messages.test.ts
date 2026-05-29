@@ -37,10 +37,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
-import {
-  decryptSecretValue,
-  decryptSecretsMap,
-} from "../../services/crypto.utils";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
@@ -49,7 +45,11 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import {
+  decryptSecretForTests,
+  decryptSecretsMapForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -298,7 +298,7 @@ async function runExecutionSecrets(runId: string) {
     .from(runnerJobQueue)
     .where(eq(runnerJobQueue.runId, runId))
     .limit(1);
-  return decryptSecretsMap(
+  return decryptSecretsMapForTests(
     encryptedSecretsFromExecutionContext(job?.executionContext),
   );
 }
@@ -534,7 +534,7 @@ describe("POST /api/zero/chat/messages", () => {
     expect(callback?.url).toBe(
       "http://localhost:3000/api/internal/callbacks/chat",
     );
-    expect(decryptSecretValue(callback!.encryptedSecret)).toHaveLength(64);
+    expect(decryptSecretForTests(callback!.encryptedSecret)).toHaveLength(64);
     expect(callback?.payload).toStrictEqual({
       threadId: response.body.threadId,
       agentId: fixture.agentId,
@@ -1326,7 +1326,9 @@ describe("POST /api/zero/chat/messages", () => {
       ANTHROPIC_API_KEY: anthropicPlaceholder,
       ANTHROPIC_MODEL: "claude-sonnet-4-6",
     });
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(decrypted?.ANTHROPIC_API_KEY).toStrictEqual(expect.any(String));
     expect(decrypted?.ANTHROPIC_API_KEY).not.toBe(anthropicPlaceholder);
     expect(executionContext.billableFirewalls).toContain(
@@ -1382,7 +1384,9 @@ describe("POST /api/zero/chat/messages", () => {
       ANTHROPIC_MODEL: "deepseek-v4-pro",
     });
     expect(executionContext.environment.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       DEEPSEEK_API_KEY: "selected-deepseek-key",
     });
   });
@@ -1495,7 +1499,9 @@ describe("POST /api/zero/chat/messages", () => {
     expect(executionContext.environment.ANTHROPIC_MODEL).toBe(
       "deepseek-v4-pro",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       DEEPSEEK_API_KEY: "org-deepseek-key",
     });
   });
@@ -1614,7 +1620,9 @@ describe("POST /api/zero/chat/messages", () => {
     expect(executionContext.environment.ANTHROPIC_MODEL).toBe(
       "claude-sonnet-4-6",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       ANTHROPIC_API_KEY: "org-anthropic-key",
     });
   });
@@ -1668,7 +1676,9 @@ describe("POST /api/zero/chat/messages", () => {
       OPENAI_MODEL: "gpt-5.5",
     });
     expect(executionContext.environment.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       OPENAI_API_KEY: "vm0-key-gpt-5.5",
     });
   });

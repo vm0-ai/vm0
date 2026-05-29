@@ -22,7 +22,7 @@ import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptPersistentSecretValue } from "../../services/crypto.utils";
 import { signGithubConnectParams } from "../../services/github-oauth.service";
 import {
   deleteUsageInsightFixture$,
@@ -817,9 +817,12 @@ describe("GitHub OAuth API routes", () => {
     expect(installations[0]!.defaultComposeId).toBe(fixture.composeId);
     expect(installations[0]!.targetId).toBe(targetId);
     expect(installations[0]!.adminGithubUserId).toBe(targetId);
-    expect(decryptSecretValue(installations[0]!.encryptedAccessToken!)).toBe(
-      "ghs_remote_installation_token",
-    );
+    await expect(
+      decryptPersistentSecretValue(installations[0]!.encryptedAccessToken!, {
+        orgId: installations[0]!.orgId,
+        userId: fixture.userId,
+      }),
+    ).resolves.toBe("ghs_remote_installation_token");
     const links = await findLinksForUser(fixture.userId);
     expect(links).toHaveLength(1);
   });
@@ -994,9 +997,12 @@ describe("GitHub OAuth API routes", () => {
       orgId: fixture.orgId,
       defaultComposeId: fixture.composeId,
     });
-    expect(decryptSecretValue(installations[0]!.encryptedAccessToken!)).toBe(
-      "ghs_callback_installation_token",
-    );
+    await expect(
+      decryptPersistentSecretValue(installations[0]!.encryptedAccessToken!, {
+        orgId: installations[0]!.orgId,
+        userId: fixture.userId,
+      }),
+    ).resolves.toBe("ghs_callback_installation_token");
     const links = await findLinksForUser(fixture.userId);
     expect(links).toHaveLength(1);
     expect(links[0]!.githubUserId).toBe(targetId);
@@ -1038,9 +1044,12 @@ describe("GitHub OAuth API routes", () => {
     expect(location.searchParams.get("github")).toBe("connected");
     const installations = await findInstallationByRemoteId(installationId);
     expect(installations).toHaveLength(1);
-    expect(decryptSecretValue(installations[0]!.encryptedAccessToken!)).toBe(
-      "ghs_setup_code_installation_token",
-    );
+    await expect(
+      decryptPersistentSecretValue(installations[0]!.encryptedAccessToken!, {
+        orgId: installations[0]!.orgId,
+        userId: fixture.userId,
+      }),
+    ).resolves.toBe("ghs_setup_code_installation_token");
     const links = await findLinksForUser(fixture.userId);
     expect(links).toHaveLength(1);
     expect(links[0]!.githubUserId).toBe(githubUserId);

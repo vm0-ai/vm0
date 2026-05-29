@@ -9,7 +9,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptStoredSecretValue } from "../../services/crypto.utils";
 import {
   deleteUserModelProviders$,
   type UserModelProviderFixture,
@@ -154,7 +154,9 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
           eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
         ),
       );
-    expect(decryptSecretValue(row!.encryptedValue)).toBe("sk-ant-test");
+    await expect(decryptStoredSecretValue(row!.encryptedValue)).resolves.toBe(
+      "sk-ant-test",
+    );
   });
 
   it("updates an existing personal provider with 200", async () => {

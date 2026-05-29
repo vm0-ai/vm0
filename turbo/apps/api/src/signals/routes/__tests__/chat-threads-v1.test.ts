@@ -25,10 +25,6 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  decryptSecretValue,
-  decryptSecretsMap,
-} from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import {
@@ -36,6 +32,10 @@ import {
   signSandboxJwtForTests,
   verifyZeroToken,
 } from "../../auth/tokens";
+import {
+  decryptSecretForTests,
+  decryptSecretsMapForTests,
+} from "./helpers/encrypt-secret";
 
 interface PatFixture {
   readonly token: string;
@@ -911,7 +911,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
     expect(callback.url).toBe(
       "http://localhost:3000/api/internal/callbacks/chat",
     );
-    expect(decryptSecretValue(callback.encryptedSecret)).toHaveLength(64);
+    expect(decryptSecretForTests(callback.encryptedSecret)).toHaveLength(64);
     expect(callback.payload).toStrictEqual({
       threadId: response.body.threadId,
       agentId: agent.composeId,
@@ -978,7 +978,7 @@ describe("POST /api/v1/chat-threads/messages", () => {
         ? (job.executionContext as { encryptedSecrets: string })
             .encryptedSecrets
         : null;
-    const secrets = decryptSecretsMap(encryptedSecrets);
+    const secrets = decryptSecretsMapForTests(encryptedSecrets);
     expect(secrets?.ZERO_TOKEN).toMatch(/^vm0_sandbox_/);
     const zeroAuth = verifyZeroToken(secrets!.ZERO_TOKEN!);
     expect(zeroAuth?.userId).toBe(pat.userId);

@@ -17,9 +17,9 @@ import { testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { decryptSecretsMap } from "../../services/crypto.utils";
 import { clearAllDetached } from "../../utils";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { decryptSecretsMapForTests } from "./helpers/encrypt-secret";
 import {
   clearSlackWebhookAgentHeadVersion$,
   countSlackWebhookConnections$,
@@ -1258,7 +1258,9 @@ describe("POST /api/zero/slack/events", () => {
       ),
       OPENAI_MODEL: "gpt-5.5",
     });
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       OPENAI_API_KEY: "vm0-key-gpt-5.5",
     });
   });

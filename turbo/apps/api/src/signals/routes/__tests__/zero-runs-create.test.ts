@@ -50,7 +50,6 @@ import {
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { mockNow } from "../../../lib/time";
-import { decryptSecretsMap } from "../../services/crypto.utils";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
@@ -61,7 +60,10 @@ import {
   deleteOrgModelProviders$,
   seedOrgModelProvider$,
 } from "./helpers/zero-model-providers";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import {
+  decryptSecretsMapForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 import {
   deleteUsageInsightFixture$,
   seedUsageInsightFixture$,
@@ -546,7 +548,9 @@ describe("POST /api/zero/runs", () => {
     ]);
     expect(executionContext.environment.ZERO_AGENT_ID).toBe(agent.agentId);
 
-    const secrets = decryptSecretsMap(executionContext.encryptedSecrets);
+    const secrets = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(secrets?.ZERO_TOKEN).toBeDefined();
     const auth = verifyZeroToken(secrets!.ZERO_TOKEN!);
     expect(auth).toMatchObject({
@@ -668,7 +672,7 @@ describe("POST /api/zero/runs", () => {
       [FeatureSwitchKey.ComputerUse]: true,
       [FeatureSwitchKey.SandboxIoLimiters]: true,
     });
-    const zeroToken = decryptSecretsMap(
+    const zeroToken = decryptSecretsMapForTests(
       executionContext.encryptedSecrets ?? null,
     )?.ZERO_TOKEN;
     expect(zeroToken).toBeDefined();
@@ -812,7 +816,9 @@ describe("POST /api/zero/runs", () => {
       ),
       ANTHROPIC_MODEL: "claude-opus-4-6",
     });
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     // Local dev databases may already have dev-seeded exact keys.
     if (!hasExistingExactKey) {
       expect(decrypted?.ANTHROPIC_API_KEY).toBe("sk-vm0-managed");
@@ -886,7 +892,9 @@ describe("POST /api/zero/runs", () => {
       ANTHROPIC_MODEL: "MiniMax-M2.7",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
     });
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     // Local dev databases may already have dev-seeded vendor keys.
     if (existingVendorKeys.length === 0) {
       expect(decrypted?.MINIMAX_API_KEY).toBe("sk-vm0-fallback");
@@ -984,7 +992,9 @@ describe("POST /api/zero/runs", () => {
       ),
       OPENAI_MODEL: "gpt-5.4",
     });
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(decrypted).toMatchObject({
       CHATGPT_ACCESS_TOKEN: "chatgpt-access",
       CHATGPT_ACCOUNT_ID: "workspace-id",
@@ -1084,7 +1094,9 @@ describe("POST /api/zero/runs", () => {
     expect(
       executionContext.environment.CLAUDE_CODE_OAUTH_TOKEN,
     ).toBeUndefined();
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       ANTHROPIC_API_KEY: "test-secret-value",
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
@@ -1213,7 +1225,9 @@ describe("POST /api/zero/runs", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment.EXTERNAL_TOKEN).toBe("user-secret");
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       SHARED_TOKEN: "user-secret",
     });
   });
@@ -1257,7 +1271,9 @@ describe("POST /api/zero/runs", () => {
       readonly firewalls?: readonly { readonly name: string }[];
     };
     expect(executionContext.environment.AXIOM_TOKEN).toBe("xaat-user-secret");
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       AXIOM_TOKEN: "xaat-user-secret",
     });
     expect(
@@ -1305,7 +1321,7 @@ describe("POST /api/zero/runs", () => {
       readonly firewalls?: readonly { readonly name: string }[];
     };
     expect(
-      decryptSecretsMap(executionContext.encryptedSecrets)?.AXIOM_TOKEN,
+      decryptSecretsMapForTests(executionContext.encryptedSecrets)?.AXIOM_TOKEN,
     ).toBeUndefined();
     expect(
       executionContext.firewalls?.some((firewall) => {
@@ -1366,7 +1382,9 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.environment.AXIOM_TOKEN).toBe(
       "xaat-c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       AXIOM_TOKEN: "xaat-approved",
     });
   });
@@ -1418,7 +1436,9 @@ describe("POST /api/zero/runs", () => {
       connectorSecretPlaceholder("gitlab", "GITLAB_TOKEN"),
     );
     expect(executionContext.environment.GITLAB_HOST).toBeUndefined();
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       GITLAB_TOKEN: "glpat-token",
     });
   });
@@ -1482,7 +1502,9 @@ describe("POST /api/zero/runs", () => {
       readonly firewalls: readonly { readonly name: string }[];
       readonly billableFirewalls: readonly string[];
     };
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(executionContext.environment.X_TOKEN).toBe(
       connectorSecretPlaceholder("x", "X_TOKEN"),
     );
@@ -1566,7 +1588,9 @@ describe("POST /api/zero/runs", () => {
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
     };
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(decrypted).toMatchObject({ X_TOKEN: "x-access" });
     expect(decrypted).not.toHaveProperty("COMPUTER_CONNECTOR_BRIDGE_TOKEN");
   });
@@ -1636,7 +1660,9 @@ describe("POST /api/zero/runs", () => {
     );
     expect(executionContext.environment).not.toHaveProperty("LARK_TOKEN");
     expect(executionContext.environment).not.toHaveProperty("LARK_APP_ID");
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(decrypted).toMatchObject({ BASE44_TOKEN: "base44-access" });
     expect(decrypted).not.toHaveProperty("BASE44_REFRESH_TOKEN");
     expect(executionContext.secretConnectorMap).toMatchObject({
@@ -1724,7 +1750,9 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.environment.SLOCK_SERVER_ID).toBe(
       slockFirewall.placeholders?.SLOCK_SERVER_ID,
     );
-    const decrypted = decryptSecretsMap(executionContext.encryptedSecrets);
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
     expect(decrypted).toMatchObject({
       SLOCK_TOKEN: "slock-access",
       SLOCK_SERVER_ID: "slock-server-id",
@@ -1787,7 +1815,9 @@ describe("POST /api/zero/runs", () => {
       readonly secretConnectorMap: Record<string, string> | null;
       readonly firewalls: readonly { readonly name: string }[];
     };
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       GOOGLE_ADS_TOKEN: "google-ads-access",
       GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
     });
@@ -1866,7 +1896,9 @@ describe("POST /api/zero/runs", () => {
     expect(firewall?.apis[0]?.auth?.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${secretKey} }}`,
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       [secretKey]: "custom-secret",
     });
     expect(

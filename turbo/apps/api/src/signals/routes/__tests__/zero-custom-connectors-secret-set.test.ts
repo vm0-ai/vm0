@@ -10,7 +10,7 @@ import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-s
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptStoredSecretValue } from "../../services/crypto.utils";
 import {
   deleteCustomConnectorOrg$,
   seedCustomConnectorOrg$,
@@ -47,7 +47,7 @@ describe("PUT /api/zero/custom-connectors/:id/secret", () => {
     });
   });
 
-  it("stores per-user secret and round-trips through decryptSecretValue", async () => {
+  it("stores per-user secret and round-trips through decryptStoredSecretValue", async () => {
     const fixture = await track(
       store.set(seedCustomConnectorOrg$, {}, context.signal),
     );
@@ -75,7 +75,9 @@ describe("PUT /api/zero/custom-connectors/:id/secret", () => {
     expect(row).toBeDefined();
     expect(row!.userId).toBe(fixture.userId);
     expect(row!.orgId).toBe(fixture.orgId);
-    expect(decryptSecretValue(row!.encryptedValue)).toBe("sk_live_xyz");
+    await expect(decryptStoredSecretValue(row!.encryptedValue)).resolves.toBe(
+      "sk_live_xyz",
+    );
 
     const listClient = setupApp({ context })(zeroCustomConnectorsContract);
     const listResponse = await accept(
@@ -130,6 +132,8 @@ describe("PUT /api/zero/custom-connectors/:id/secret", () => {
       .from(orgCustomConnectorSecrets)
       .where(eq(orgCustomConnectorSecrets.userId, memberUserId));
     expect(row).toBeDefined();
-    expect(decryptSecretValue(row!.encryptedValue)).toBe("member-token");
+    await expect(decryptStoredSecretValue(row!.encryptedValue)).resolves.toBe(
+      "member-token",
+    );
   });
 });

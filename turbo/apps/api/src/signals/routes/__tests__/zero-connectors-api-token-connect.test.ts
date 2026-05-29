@@ -17,7 +17,7 @@ import { afterEach } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
-import { encryptSecretValue } from "../../services/crypto.utils";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -300,14 +300,14 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
         orgId: fixture.orgId,
         userId: fixture.userId,
         name: "STRIPE_ACCESS_TOKEN",
-        encryptedValue: encryptSecretValue("stripe-access-token"),
+        encryptedValue: encryptSecretForTests("stripe-access-token"),
         type: "connector",
       },
       {
         orgId: fixture.orgId,
         userId: fixture.userId,
         name: "STRIPE_REFRESH_TOKEN",
-        encryptedValue: encryptSecretValue("stripe-refresh-token"),
+        encryptedValue: encryptSecretForTests("stripe-refresh-token"),
         type: "connector",
       },
     ]);
