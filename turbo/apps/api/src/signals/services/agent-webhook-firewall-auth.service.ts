@@ -451,9 +451,6 @@ function refreshFailureReasonFromError(
   ) {
     return "upstream_provider";
   }
-  if (error instanceof TypeError) {
-    return "upstream_provider";
-  }
   return undefined;
 }
 
@@ -1910,14 +1907,13 @@ function summarizeRefreshResults(
     .map((result) => {
       return result.connectorType;
     });
+  const failedResults = refreshResults.filter((result) => {
+    return result.status === "failed";
+  });
   const failureReasons = new Set(
-    refreshResults
-      .filter((result) => {
-        return result.status === "failed" && result.failureReason;
-      })
-      .map((result) => {
-        return result.failureReason;
-      }),
+    failedResults.map((result) => {
+      return result.failureReason;
+    }),
   );
   const failureReason =
     failureReasons.size === 1 ? [...failureReasons][0] : undefined;

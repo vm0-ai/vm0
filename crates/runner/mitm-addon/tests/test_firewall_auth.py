@@ -1242,7 +1242,15 @@ class TestFetchFirewallHeaders:
             assert "Insufficient credits" in str(exc_info.value)
 
     @pytest.mark.parametrize(
-        ("status", "reason", "code", "message", "connectors", "failure_reason"),
+        (
+            "status",
+            "reason",
+            "code",
+            "message",
+            "connectors",
+            "failure_reason",
+            "expected_failure_reason",
+        ),
         [
             (
                 424,
@@ -1251,12 +1259,14 @@ class TestFetchFirewallHeaders:
                 "Token access resolution failed for: notion.",
                 ["notion"],
                 None,
+                None,
             ),
             (
                 403,
                 "Forbidden",
                 "FORBIDDEN",
                 "Invalid model-provider secret owner",
+                None,
                 None,
                 None,
             ),
@@ -1267,9 +1277,24 @@ class TestFetchFirewallHeaders:
                 "Access token expired and refresh failed for: codex-oauth-token.",
                 ["codex-oauth-token"],
                 "upstream_provider",
+                "upstream_provider",
+            ),
+            (
+                502,
+                "Bad Gateway",
+                "TOKEN_REFRESH_FAILED",
+                "Access token expired and refresh failed for: notion.",
+                ["notion"],
+                "provider_rate_limited",
+                None,
             ),
         ],
-        ids=["token-access-resolution", "forbidden", "token-refresh"],
+        ids=[
+            "token-access-resolution",
+            "forbidden",
+            "token-refresh",
+            "unknown-failure-reason",
+        ],
     )
     def test_current_structured_error_raises_custom_error(
         self,
@@ -1279,6 +1304,7 @@ class TestFetchFirewallHeaders:
         message: str,
         connectors: list[str] | None,
         failure_reason: str | None,
+        expected_failure_reason: str | None,
     ):
         """Current auth endpoint errors should preserve their code and connectors."""
         error_info: dict[str, object] = {
@@ -1309,7 +1335,7 @@ class TestFetchFirewallHeaders:
         assert exc_info.value.code == code
         assert str(exc_info.value) == message
         assert exc_info.value.connectors == connectors
-        assert exc_info.value.failure_reason == failure_reason
+        assert exc_info.value.failure_reason == expected_failure_reason
 
     @pytest.mark.parametrize(
         "error_body",
