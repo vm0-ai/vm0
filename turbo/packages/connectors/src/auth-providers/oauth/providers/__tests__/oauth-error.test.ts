@@ -64,6 +64,26 @@ describe("throwOAuthError", () => {
     expect(isOAuthProviderHttpError(error) ? error.status : null).toBe(502);
   });
 
+  it("preserves the standard OAuth error code", async () => {
+    const response = makeResponse(
+      400,
+      JSON.stringify({
+        error: "invalid_grant",
+        error_description: "The refresh token is expired",
+      }),
+    );
+
+    const error = await throwOAuthError("Notion", "refresh", response).catch(
+      (e: unknown) => {
+        return e;
+      },
+    );
+
+    expect(isOAuthProviderHttpError(error) ? error.oauthError : null).toBe(
+      "invalid_grant",
+    );
+  });
+
   it("truncates long response bodies", async () => {
     const longBody = "x".repeat(600);
     const response = makeResponse(400, longBody);

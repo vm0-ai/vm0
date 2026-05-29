@@ -531,7 +531,10 @@ async function seedCodexModelProvider(
   });
 }
 
-async function notionConnectorState(fixture: FirewallFixture): Promise<{
+async function connectorState(
+  fixture: FirewallFixture,
+  connectorType: string,
+): Promise<{
   readonly needsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
 }> {
@@ -546,14 +549,21 @@ async function notionConnectorState(fixture: FirewallFixture): Promise<{
       and(
         eq(connectors.orgId, fixture.orgId),
         eq(connectors.userId, fixture.userId),
-        eq(connectors.type, "notion"),
+        eq(connectors.type, connectorType),
       ),
     )
     .limit(1);
   if (!row) {
-    throw new Error("notion connector state not found");
+    throw new Error(`${connectorType} connector state not found`);
   }
   return row;
+}
+
+function notionConnectorState(fixture: FirewallFixture): Promise<{
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
+}> {
+  return connectorState(fixture, "notion");
 }
 
 async function codexProviderState(fixture: FirewallFixture): Promise<{
@@ -1945,8 +1955,12 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.error).toMatchObject({
       code: "TOKEN_REFRESH_FAILED",
       connectors: ["test-oauth"],
+      failureReason: "reconnect_required",
     });
     expect(dynamicOAuth.refreshes).toStrictEqual([]);
+    await expect(connectorState(fixture, "test-oauth")).resolves.toMatchObject({
+      needsReconnect: true,
+    });
   });
 
   it("keeps missing static connector access secrets as missing configuration", async () => {
@@ -2291,7 +2305,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.expiresAt).toBeLessThanOrEqual(after + 30);
   });
 
-  it("returns token-refresh-failed and marks connector reconnect when refresh fails", async () => {
+  it("classifies connector invalid_grant refresh failures as reconnect required", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredNotionConnector(fixture);
     server.use(
@@ -2324,9 +2338,50 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.error).toMatchObject({
       code: "TOKEN_REFRESH_FAILED",
       connectors: ["notion"],
+      failureReason: "reconnect_required",
     });
     await expect(notionConnectorState(fixture)).resolves.toMatchObject({
       needsReconnect: true,
+    });
+  });
+
+  it("classifies upstream connector refresh failures without marking reconnect", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json(
+          { error: "temporarily_unavailable" },
+          { status: 502 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["notion"],
+      failureReason: "upstream_provider",
+    });
+    await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
     });
   });
 
@@ -3158,7 +3213,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     server.use(
       http.post("https://api.notion.com/v1/oauth/token", () => {
         return HttpResponse.json(
-          { error: "invalid_grant", error_description: "revoked" },
+          { error: "invalid_request", error_description: "bad request" },
           { status: 400 },
         );
       }),

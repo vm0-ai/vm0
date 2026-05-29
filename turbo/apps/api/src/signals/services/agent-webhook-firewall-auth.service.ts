@@ -445,11 +445,13 @@ function refreshFailureReasonFromError(
       ? "reconnect_required"
       : undefined;
   }
-  if (
-    isOAuthProviderHttpError(error) &&
-    (error.status >= 500 || error.status === 429)
-  ) {
-    return "upstream_provider";
+  if (isOAuthProviderHttpError(error)) {
+    if (error.oauthError === "invalid_grant") {
+      return "reconnect_required";
+    }
+    if (error.status >= 500 || error.status === 429) {
+      return "upstream_provider";
+    }
   }
   return undefined;
 }
@@ -1125,6 +1127,14 @@ async function markRefreshFailure(
     );
 }
 
+async function markRefreshTokenMissing(
+  args: RefreshAccessTokenArgs,
+  context: RefreshTokenContext,
+): Promise<RefreshAccessTokenResult> {
+  await markRefreshFailure(args, context, null, "reconnect_required");
+  return refreshTokenMissingResult();
+}
+
 async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
 ): Promise<RefreshAccessTokenResult> {
@@ -1165,7 +1175,7 @@ async function refreshAccessTokenForSource(
         userId: args.userId,
         sourceType: args.sourceType,
       });
-      return refreshTokenMissingResult();
+      return markRefreshTokenMissing({ ...args, db: tx }, prepared.context);
     }
 
     const currentAccessToken = lockedState.accessToken;
@@ -1198,7 +1208,7 @@ async function refreshAccessTokenForSource(
 
     if (!lockedState.refreshToken) {
       L.debug(`No ${args.connectorType} refresh token available, skipping`);
-      return refreshTokenMissingResult();
+      return markRefreshTokenMissing({ ...args, db: tx }, prepared.context);
     }
 
     const refreshPromise =
