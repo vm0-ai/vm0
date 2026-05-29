@@ -33,10 +33,10 @@ _UTF8_LEAD_MAX_1BYTE = 0x80  # ASCII: 0xxxxxxx
 _UTF8_LEAD_MAX_2BYTE = 0xE0  # 2-byte lead: 110xxxxx
 _UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
 
-# Decompression cap for legacy/test one-shot usage extraction fallbacks.
-# Production billable JSON paths use streaming decompression plus selective
-# extraction; this remains larger than STREAM_BUFFER_LIMIT for direct helper
-# calls while still bounding decompression bombs.
+# Decompression cap for production model-provider and connector JSON usage
+# fallback paths. Keep this larger than STREAM_BUFFER_LIMIT so diagnostic
+# fallbacks can parse complete usage payloads while still bounding
+# decompression bombs.
 LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
 
 # Python's brotli binding has no max-output API, and one process() call can
@@ -277,6 +277,10 @@ def decompress_json_usage_body(
         return body, None
     if encoding == "zstd":
         try:
+            # First use stream_reader().read(max_output) as the bounded-output
+            # primary path. For zstd, an incomplete frame can read as empty
+            # without proving whether the frame is a valid empty payload, so
+            # only the empty-output case needs a second state check below.
             with zstandard.ZstdDecompressor().stream_reader(data) as reader:
                 body = reader.read(max_output)
         except zstandard.ZstdError as exc:
@@ -286,6 +290,10 @@ def decompress_json_usage_body(
             return b"", "invalid compressed body"
         if data and not body:
             try:
+                # A fresh decompressobj exposes eof, which distinguishes a
+                # complete empty zstd frame from an incomplete prefix. The
+                # gzip/deflate and brotli branches already get equivalent
+                # completion signals through their codec-specific helpers.
                 obj = zstandard.ZstdDecompressor().decompressobj()
                 obj.decompress(data)
             except zstandard.ZstdError:
@@ -395,12 +403,28 @@ def _set_body_fields(
 
 
 def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
-    """Add request/response headers and bodies to a log entry.
+    """Add capture-mode request/response fields to ``log_entry`` in place.
 
     # [NETWORK_LOG_FIELDS] — capture-only fields in the shared network log schema.
     # Fields: request_headers, request_body, request_body_encoding,
     #         request_body_truncated, response_headers, response_body,
     #         response_body_encoding, response_body_truncated
+
+    Response bodies prefer the streaming metadata populated by
+    ``response_streaming.configure_response_stream()`` because that path keeps a
+    bounded raw wire-byte buffer and records whether it was truncated. The
+    mitmproxy ``flow.response.content`` fallback is used only when no stream
+    buffer metadata exists.
+
+    Non-empty ``stream_buffer`` values must have a matching
+    ``stream_buffer_state`` with a ``truncated`` flag. Missing or malformed
+    state is an internal metadata invariant violation and raises ``RuntimeError``
+    instead of silently falling back.
+
+    Truncation from the streaming buffer is carried as ``already_truncated`` into
+    ``_set_body_fields()``, where it is combined with the decompressed body size.
+    A ``None`` body means no response body could be obtained; ``b""`` is a valid
+    empty body and normally produces no body fields.
     """
     # Request headers (always available)
     log_entry["request_headers"] = _redact_headers(flow.request.headers)
@@ -431,8 +455,20 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         if stream_buf is not None:
             # stream_buffer may already be truncated at STREAM_BUFFER_LIMIT.
             if stream_buf:
-                if not stream_state:
-                    raise KeyError("truncated")
+                if not isinstance(stream_state, dict) or "truncated" not in stream_state:
+                    state_keys = (
+                        sorted(str(key) for key in stream_state)
+                        if isinstance(stream_state, dict)
+                        else []
+                    )
+                    raise RuntimeError(
+                        "Invalid response body capture metadata: stream_buffer is "
+                        f"present and non-empty (len={len(stream_buf)}) but "
+                        "stream_buffer_state is missing the truncated flag. "
+                        "response_streaming.configure_response_stream() must set "
+                        "stream_buffer and stream_buffer_state together "
+                        f"(stream_buffer_state keys={state_keys})."
+                    )
                 stream_truncated = bool(stream_state["truncated"])
             elif stream_state:
                 stream_truncated = bool(stream_state.get("truncated", False))

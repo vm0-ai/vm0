@@ -683,7 +683,10 @@ class TestAddCaptureFields:
         )
         flow.metadata["stream_buffer"] = bytearray(body)
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_stream_buffer_requires_non_empty_state(self, real_flow):
@@ -698,7 +701,10 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {}
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_compressed_stream_buffer_requires_state(self, real_flow):
@@ -712,7 +718,10 @@ class TestAddCaptureFields:
         )
         flow.metadata["stream_buffer"] = bytearray(gzip.compress(b""))
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_compressed_stream_buffer_requires_truncated_state(self, real_flow):
@@ -728,7 +737,10 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(compressed)
         flow.metadata["stream_buffer_state"] = {"total_bytes": len(compressed)}
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_stream_buffer_requires_truncated_state(self, real_flow):
@@ -743,7 +755,10 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"total_bytes": len(body)}
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_stream_buffer_truncated_marks_truncation(self, real_flow):
