@@ -1441,6 +1441,36 @@ class TestFetchFirewallHeaders:
 
         assert exc_info.value is http_error
 
+    def test_current_token_refresh_failed_error_raises_custom_error(self):
+        """Current API TOKEN_REFRESH_FAILED responses should not collapse to auth_failed."""
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Access token expired and refresh failed for: codex-oauth-token.",
+                    "code": "TOKEN_REFRESH_FAILED",
+                    "connectors": ["codex-oauth-token"],
+                }
+            }
+        ).encode()
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            502,
+            "Bad Gateway",
+            error_body,
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value.status == 502
+        assert exc_info.value.code == "TOKEN_REFRESH_FAILED"
+        assert exc_info.value.connectors == ["codex-oauth-token"]
+
     def test_http_error_body_read_failure_reraises_http_error(self):
         http_error = urllib.error.HTTPError(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
