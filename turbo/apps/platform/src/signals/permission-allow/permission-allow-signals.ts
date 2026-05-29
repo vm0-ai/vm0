@@ -428,7 +428,7 @@ export const submitAccessRequest$ = command(
   },
 );
 
-export const reloadPermissionAccessRequests$ = command(({ set }) => {
+const reloadPermissionAccessRequests$ = command(({ set }) => {
   set(internalRequestsReload$, (prev) => {
     return prev + 1;
   });
