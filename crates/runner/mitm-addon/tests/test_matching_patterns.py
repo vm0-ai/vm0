@@ -275,6 +275,13 @@ class TestMatchBaseUrl:
             ("https://\u03c2.example/repos", "https://xn--3xa.example"),
             ("https://a\u03a3.example/repos", "https://xn--a-0mb.example"),
             ("https://a\u03f9.example/repos", "https://xn--a-0mb.example"),
+            ("https://\u13be.example/repos", "https://xn--09d.example"),
+            ("https://\uab8e.example/repos", "https://xn--09d.example"),
+            ("https://\u1fb3.example/repos", "https://xn--mxaq.example"),
+            ("https://\u1f86.example/repos", "https://xn--uxa190l.example"),
+            ("https://\u0345.example/repos", "https://xn--uxa.example"),
+            ("https://\u1c82.example/repos", "https://xn--n1a.example"),
+            ("https://\u1c85.example/repos", "https://xn--r1a.example"),
         ],
     )
     def test_static_base_idna_authority_matches_runtime_host(self, url, base):
@@ -330,6 +337,9 @@ class TestMatchBaseUrl:
             ("https://\u0301.example/repos", "https://\u0301.example"),
             ("https://\ufe0f.example/repos", "https://\ufe0f.example"),
             ("https://xn--rld.example/repos", "https://xn--rld.example"),
+            ("https://xn--f09a.example/repos", "https://xn--f09a.example"),
+            ("https://xn--hsg.example/repos", "https://xn--hsg.example"),
+            ("https://xn--43f.example/repos", "https://xn--43f.example"),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):

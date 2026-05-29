@@ -430,6 +430,9 @@ class TestCompiledFirewallMatching:
             "\u0301.example",
             "\ufe0f.example",
             "xn--rld.example",
+            "xn--f09a.example",
+            "xn--hsg.example",
+            "xn--43f.example",
         ],
     )
     def test_compiled_rejects_request_url_with_invalid_authority_host(self, invalid_host):
@@ -635,6 +638,41 @@ class TestCompiledFirewallMatching:
             (
                 "https://xn--a-0mb.example",
                 "https://a\u03f9.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--09d.example",
+                "https://\u13be.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--09d.example",
+                "https://\uab8e.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--mxaq.example",
+                "https://\u1fb3.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--uxa190l.example",
+                "https://\u1f86.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--uxa.example",
+                "https://\u0345.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--n1a.example",
+                "https://\u1c82.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--r1a.example",
+                "https://\u1c85.example/repos/org/repo",
                 {"owner": "org", "repo": "repo"},
             ),
         ],

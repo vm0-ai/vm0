@@ -16,7 +16,15 @@ _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
 _UNICODE_MARK_CATEGORY_PREFIX = "M"
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
 _GREEK_CAPITAL_SIGMA = "\u03a3"
+_GREEK_COMBINING_YPOGEGRAMMENI = "\u0345"
+_GREEK_SMALL_IOTA = "\u03b9"
 _GREEK_SMALL_SIGMA = "\u03c3"
+_CHEROKEE_UPPER_START = 0x13A0
+_CHEROKEE_UPPER_END = 0x13FF
+_CHEROKEE_SMALL_START = 0xAB70
+_CHEROKEE_SMALL_END = 0xABBF
+_CYRILLIC_EXTENDED_C_START = 0x1C80
+_CYRILLIC_EXTENDED_C_END = 0x1C88
 _UNSAFE_UTS46_COLLISION_CHARS = frozenset(
     (
         "\u03f2",  # Greek lunate sigma symbol maps like sigma under UTS46.
@@ -52,8 +60,26 @@ def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
 
 
 def _normalize_label_text(label: str) -> str:
-    normalized = normalize("NFKC", label)
-    return normalized.replace(_GREEK_CAPITAL_SIGMA, _GREEK_SMALL_SIGMA).lower()
+    normalized = normalize("NFKD", label).replace(
+        _GREEK_COMBINING_YPOGEGRAMMENI,
+        _GREEK_SMALL_IOTA,
+    )
+    normalized = normalize("NFC", normalized)
+    chars: list[str] = []
+    for char in normalized:
+        codepoint = ord(char)
+        if (
+            _CHEROKEE_UPPER_START <= codepoint <= _CHEROKEE_UPPER_END
+            or _CHEROKEE_SMALL_START <= codepoint <= _CHEROKEE_SMALL_END
+        ):
+            chars.append(char.upper())
+        elif _CYRILLIC_EXTENDED_C_START <= codepoint <= _CYRILLIC_EXTENDED_C_END:
+            chars.append(char.casefold())
+        elif char == _GREEK_CAPITAL_SIGMA:
+            chars.append(_GREEK_SMALL_SIGMA)
+        else:
+            chars.append(char.lower())
+    return "".join(chars)
 
 
 def _validate_normalized_label_text(normalized_label: str) -> None:
