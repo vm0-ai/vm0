@@ -174,6 +174,7 @@ export const zeroBillingStatusContract = c.router({
     responses: {
       200: billingStatusResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Get billing status for current org",

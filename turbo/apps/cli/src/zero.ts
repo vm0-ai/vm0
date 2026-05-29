@@ -54,7 +54,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
-  credit: null,
+  credit: "billing:write",
   model: null,
   "model-provider": null,
   logs: "agent-run:read",
@@ -130,8 +130,12 @@ export function buildZeroHelpText(
 ): string {
   const examples = [
     "  Check a connector?     zero doctor check-connector --env-name <ENV_NAME>",
-    "  Check credits?         zero doctor credit",
-    "  Buy credits?           zero credit 20000",
+    ...(payload && !payload.capabilities.includes("billing:read")
+      ? []
+      : ["  Check credits?         zero doctor credit"]),
+    ...(shouldHideCommand("credit", payload)
+      ? []
+      : ["  Buy credits?           zero credit 20000"]),
     "  Send a Slack message?  zero slack message send --help",
     "  Upload GitHub?        zero github upload-file --help",
     "  Download GitHub?      zero github download-file --help",

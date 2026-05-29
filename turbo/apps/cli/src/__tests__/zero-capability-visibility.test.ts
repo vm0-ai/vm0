@@ -19,6 +19,7 @@ function buildCommands(): Command[] {
     new Command("model-provider"),
     new Command("agent"),
     new Command("connector"),
+    new Command("credit"),
     new Command("logs"),
     new Command("preference"),
     new Command("run"),
@@ -152,6 +153,7 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toEqual([
       "org",
       "connector",
+      "credit",
       "logs",
       "preference",
       "run",
@@ -414,6 +416,53 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("maps");
+  });
+
+  it("should show credit when billing:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("credit");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide credit when billing:write capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("credit");
+  });
+
+  it("should show billing help examples only for billing capabilities", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:read", "billing:write"],
+    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+
+    expect(help).toContain("Check credits?");
+    expect(help).toContain("Buy credits?");
+  });
+
+  it("should hide billing help examples when billing capabilities are missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+
+    expect(help).not.toContain("Check credits?");
+    expect(help).not.toContain("Buy credits?");
   });
 
   it("should show the maps help example when maps:read capability is present", () => {
