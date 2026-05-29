@@ -1565,6 +1565,11 @@ function validateDynamicAuthBaseSuffix(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
     );
   }
+  if (suffix !== "" && !suffix.startsWith("/") && !suffix.startsWith("?")) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": dynamic URL suffix must start with "/" or "?"`,
+    );
+  }
 }
 
 export function validateAuthBaseUrl(

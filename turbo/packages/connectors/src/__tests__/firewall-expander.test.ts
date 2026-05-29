@@ -301,6 +301,21 @@ describe("resolveFirewallSelections", () => {
         config("${{ secrets.WEBHOOK_URL }}/${{ env.WEBHOOK_TOKEN }}"),
       );
     }).toThrow("contains unsupported template reference");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}@evil.com"),
+      );
+    }).toThrow('dynamic URL suffix must start with "/" or "?"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}:443"),
+      );
+    }).toThrow('dynamic URL suffix must start with "/" or "?"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}&token=static"),
+      );
+    }).toThrow('dynamic URL suffix must start with "/" or "?"');
   });
 
   it("collectAndValidatePermissions accepts static and templated auth.base URLs", () => {

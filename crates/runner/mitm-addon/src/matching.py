@@ -883,6 +883,7 @@ def _dynamic_auth_base_suffix_is_valid(suffix: str) -> bool:
         _AUTH_TEMPLATE_START not in suffix
         and not any(char in _RAW_WHITESPACE_CHARS for char in suffix)
         and "#" not in suffix
+        and (suffix == "" or suffix.startswith(("/", "?")))
     )
 
 
