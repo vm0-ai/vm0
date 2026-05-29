@@ -283,6 +283,7 @@ interface RefreshState {
   readonly refreshToken: string | null;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
   readonly updatedAtMicros: bigint;
 }
 
@@ -1172,6 +1173,7 @@ async function loadRefreshState(
           .select({
             tokenExpiresAt: modelProviders.tokenExpiresAt,
             needsReconnect: modelProviders.needsReconnect,
+            lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
             updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`,
           })
           .from(modelProviders)
@@ -1187,6 +1189,7 @@ async function loadRefreshState(
           .select({
             tokenExpiresAt: connectors.tokenExpiresAt,
             needsReconnect: connectors.needsReconnect,
+            lastRefreshErrorCode: sql<string | null>`NULL`,
             updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`,
           })
           .from(connectors)
@@ -1227,6 +1230,7 @@ async function loadRefreshState(
     refreshToken,
     tokenExpiresAt: row.tokenExpiresAt,
     needsReconnect: row.needsReconnect,
+    lastRefreshErrorCode: row.lastRefreshErrorCode,
     updatedAtMicros: BigInt(row.updatedAtMicros),
   };
 }
@@ -1371,6 +1375,196 @@ async function markRefreshPreparationFailure(
   });
 }
 
+async function lockPreparedRefreshSource(
+  db: Db,
+  args: RefreshAccessTokenArgs,
+  prepared: PreparedRefreshTokenContext,
+): Promise<void> {
+  if (prepared.sourceType === "connector") {
+    await lockConnectorState(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      type: prepared.connectorType,
+    });
+    return;
+  }
+
+  await lockModelProviderState(db, {
+    orgId: args.orgId,
+    userId: prepared.context.secretUserId,
+    type: args.metadataKey ?? prepared.providerKey,
+  });
+}
+
+function withRefreshErrorCode(
+  failure: RefreshFailure,
+  lockedState: RefreshState,
+): RefreshFailure {
+  return lockedState.lastRefreshErrorCode !== null
+    ? { ...failure, refreshErrorCode: lockedState.lastRefreshErrorCode }
+    : failure;
+}
+
+async function resolveLockedRefreshShortCircuit(args: {
+  readonly db: Db;
+  readonly refreshArgs: RefreshAccessTokenArgs;
+  readonly prepared: PreparedRefreshTokenContext;
+  readonly lockedState: RefreshState | null;
+  readonly initialState: RefreshState | null;
+  readonly requestStartedAtMicros: bigint | null;
+}): Promise<RefreshAccessTokenResult | null> {
+  const { refreshArgs, prepared, lockedState } = args;
+  if (!lockedState) {
+    L.warn(`${refreshArgs.connectorType} token refresh source missing`, {
+      connectorType: refreshArgs.connectorType,
+      orgId: refreshArgs.orgId,
+      userId: refreshArgs.userId,
+      sourceType: refreshArgs.sourceType,
+    });
+    return {
+      ok: false,
+      failure: buildUnpreparedRefreshFailure({
+        connectorType: refreshArgs.connectorType,
+        sourceType: refreshArgs.sourceType,
+        reason: "refresh-token-missing",
+      }),
+    };
+  }
+
+  if (
+    didLockedRefreshFailDuringRequest({
+      initialState: args.initialState,
+      requestStartedAtMicros: args.requestStartedAtMicros,
+      state: lockedState,
+    })
+  ) {
+    const failure = buildUnpreparedRefreshFailure({
+      connectorType: refreshArgs.connectorType,
+      sourceType: refreshArgs.sourceType,
+      reason: "concurrent-reconnect-required",
+    });
+    return { ok: false, failure: withRefreshErrorCode(failure, lockedState) };
+  }
+
+  if (
+    lockedState.accessToken &&
+    shouldUseLockedCurrentAccess({
+      refreshArgs,
+      context: prepared.context,
+      initialState: args.initialState,
+      requestStartedAtMicros: args.requestStartedAtMicros,
+      state: lockedState,
+    })
+  ) {
+    return {
+      ok: true,
+      status: "current",
+      accessToken: lockedState.accessToken,
+    };
+  }
+
+  if (lockedState.refreshToken) {
+    return null;
+  }
+
+  L.debug(`No ${refreshArgs.connectorType} refresh token available, skipping`);
+  const failure = buildUnpreparedRefreshFailure({
+    connectorType: refreshArgs.connectorType,
+    sourceType: refreshArgs.sourceType,
+    reason: "refresh-token-missing",
+  });
+  await markRefreshFailure(
+    { ...refreshArgs, db: args.db },
+    prepared.context,
+    failure,
+  );
+  return { ok: false, failure };
+}
+
+function refreshPreparedToken(
+  prepared: PreparedRefreshTokenContext,
+  refreshToken: string,
+): Promise<{
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly expiresIn?: number;
+}> {
+  return prepared.sourceType === "connector"
+    ? refreshConnectorAuthProviderAccessToken({
+        type: prepared.connectorType,
+        clientArgs: prepared.clientArgs,
+        refreshToken,
+      })
+    : refreshModelProviderOAuthToken({
+        providerKey: prepared.providerKey,
+        currentEnv: prepared.currentEnv,
+        refreshToken,
+      });
+}
+
+async function refreshLockedTokenFromProvider(args: {
+  readonly db: Db;
+  readonly refreshArgs: RefreshAccessTokenArgs;
+  readonly prepared: PreparedRefreshTokenContext;
+  readonly refreshToken: string;
+}): Promise<RefreshAccessTokenResult> {
+  const refreshResult = await settle(
+    refreshPreparedToken(args.prepared, args.refreshToken),
+  );
+  if (!refreshResult.ok) {
+    const error = refreshResult.error;
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const failure = isOAuthProviderError(error)
+      ? buildRefreshFailure({
+          connectorType: args.refreshArgs.connectorType,
+          sourceType: args.refreshArgs.sourceType,
+          providerError: error,
+        })
+      : buildUnknownRefreshFailure({
+          connectorType: args.refreshArgs.connectorType,
+          sourceType: args.refreshArgs.sourceType,
+          error,
+        });
+    L.warn(
+      `${args.refreshArgs.connectorType} token refresh failed: ${message}`,
+      {
+        connectorType: args.refreshArgs.connectorType,
+        orgId: args.refreshArgs.orgId,
+        userId: args.refreshArgs.userId,
+        errorCode: failure.refreshErrorCode,
+        failureCode: failure.code,
+        retryable: failure.retryable,
+        upstreamStatus: failure.upstreamStatus,
+      },
+    );
+
+    await markRefreshFailure(
+      { ...args.refreshArgs, db: args.db },
+      args.prepared.context,
+      failure,
+    );
+    return { ok: false, failure };
+  }
+
+  const result = refreshResult.value;
+  await markRefreshSuccess(
+    { ...args.refreshArgs, db: args.db },
+    args.prepared.context,
+    result,
+  );
+  args.refreshArgs.connectorSecrets[args.prepared.context.accessTokenSecret] =
+    result.accessToken;
+  if (result.refreshToken) {
+    args.refreshArgs.connectorSecrets[
+      args.prepared.context.refreshTokenSecret
+    ] = result.refreshToken;
+  }
+  L.debug(
+    `${args.refreshArgs.connectorType} access token refreshed successfully`,
+  );
+  return { ok: true, status: "refreshed", accessToken: result.accessToken };
+}
+
 async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
 ): Promise<RefreshAccessTokenResult> {
@@ -1382,155 +1576,43 @@ async function refreshAccessTokenForSource(
       reason: preparation.reason,
     });
     await markRefreshPreparationFailure(args, failure);
-    return {
-      ok: false,
-      failure,
-    };
+    return { ok: false, failure };
   }
-  const { prepared } = preparation;
+
   const requestStartedAtMicros = args.forceRefresh
     ? args.forceRefreshStartedAtMicros
     : null;
   const initialState = args.forceRefresh
-    ? await loadRefreshState(args.db, args, prepared.context)
+    ? await loadRefreshState(args.db, args, preparation.prepared.context)
     : null;
 
   return await args.db.transaction(async (tx) => {
-    if (prepared.sourceType === "connector") {
-      await lockConnectorState(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        type: prepared.connectorType,
-      });
-    } else {
-      await lockModelProviderState(tx, {
-        orgId: args.orgId,
-        userId: prepared.context.secretUserId,
-        type: args.metadataKey ?? prepared.providerKey,
-      });
+    await lockPreparedRefreshSource(tx, args, preparation.prepared);
+    const lockedState = await loadRefreshState(
+      tx,
+      args,
+      preparation.prepared.context,
+    );
+    const shortCircuit = await resolveLockedRefreshShortCircuit({
+      db: tx,
+      refreshArgs: args,
+      prepared: preparation.prepared,
+      lockedState,
+      initialState,
+      requestStartedAtMicros,
+    });
+    if (shortCircuit) {
+      return shortCircuit;
     }
-
-    const lockedState = await loadRefreshState(tx, args, prepared.context);
-    if (!lockedState) {
-      L.warn(`${args.connectorType} token refresh source missing`, {
-        connectorType: args.connectorType,
-        orgId: args.orgId,
-        userId: args.userId,
-        sourceType: args.sourceType,
-      });
-      return {
-        ok: false,
-        failure: buildUnpreparedRefreshFailure({
-          connectorType: args.connectorType,
-          sourceType: args.sourceType,
-          reason: "refresh-token-missing",
-        }),
-      };
+    if (!lockedState?.refreshToken) {
+      throw new Error("locked refresh state did not provide a refresh token");
     }
-
-    const currentAccessToken = lockedState.accessToken;
-    if (
-      didLockedRefreshFailDuringRequest({
-        initialState,
-        requestStartedAtMicros,
-        state: lockedState,
-      })
-    ) {
-      return {
-        ok: false,
-        failure: buildUnpreparedRefreshFailure({
-          connectorType: args.connectorType,
-          sourceType: args.sourceType,
-          reason: "concurrent-reconnect-required",
-        }),
-      };
-    }
-
-    if (
-      currentAccessToken &&
-      shouldUseLockedCurrentAccess({
-        refreshArgs: args,
-        context: prepared.context,
-        initialState,
-        requestStartedAtMicros,
-        state: lockedState,
-      })
-    ) {
-      return {
-        ok: true,
-        status: "current",
-        accessToken: currentAccessToken,
-      };
-    }
-
-    if (!lockedState.refreshToken) {
-      L.debug(`No ${args.connectorType} refresh token available, skipping`);
-      return {
-        ok: false,
-        failure: buildUnpreparedRefreshFailure({
-          connectorType: args.connectorType,
-          sourceType: args.sourceType,
-          reason: "refresh-token-missing",
-        }),
-      };
-    }
-
-    const refreshPromise =
-      prepared.sourceType === "connector"
-        ? refreshConnectorAuthProviderAccessToken({
-            type: prepared.connectorType,
-            clientArgs: prepared.clientArgs,
-            refreshToken: lockedState.refreshToken,
-          })
-        : refreshModelProviderOAuthToken({
-            providerKey: prepared.providerKey,
-            currentEnv: prepared.currentEnv,
-            refreshToken: lockedState.refreshToken,
-          });
-    const refreshResult = await settle(refreshPromise);
-
-    if (!refreshResult.ok) {
-      const error = refreshResult.error;
-      const message = error instanceof Error ? error.message : "Unknown error";
-      const failure = isOAuthProviderError(error)
-        ? buildRefreshFailure({
-            connectorType: args.connectorType,
-            sourceType: args.sourceType,
-            providerError: error,
-          })
-        : buildUnknownRefreshFailure({
-            connectorType: args.connectorType,
-            sourceType: args.sourceType,
-            error,
-          });
-      L.warn(`${args.connectorType} token refresh failed: ${message}`, {
-        connectorType: args.connectorType,
-        orgId: args.orgId,
-        userId: args.userId,
-        errorCode: failure.refreshErrorCode,
-        failureCode: failure.code,
-        retryable: failure.retryable,
-        upstreamStatus: failure.upstreamStatus,
-      });
-
-      await markRefreshFailure({ ...args, db: tx }, prepared.context, failure);
-      return { ok: false, failure };
-    }
-
-    const result = refreshResult.value;
-    await markRefreshSuccess({ ...args, db: tx }, prepared.context, result);
-    args.connectorSecrets[prepared.context.accessTokenSecret] =
-      result.accessToken;
-    if (result.refreshToken) {
-      args.connectorSecrets[prepared.context.refreshTokenSecret] =
-        result.refreshToken;
-    }
-    L.debug(`${args.connectorType} access token refreshed successfully`);
-    return {
-      ok: true,
-      status: "refreshed",
-      accessToken: result.accessToken,
-    };
+    return await refreshLockedTokenFromProvider({
+      db: tx,
+      refreshArgs: args,
+      prepared: preparation.prepared,
+      refreshToken: lockedState.refreshToken,
+    });
   });
 }
 
@@ -2168,7 +2250,7 @@ function summarizeRefreshResults(
 > {
   const refreshedConnectors = refreshResults
     .filter((result) => {
-      return result.ok;
+      return result.ok && result.status === "refreshed";
     })
     .map((result) => {
       return result.connectorType;
