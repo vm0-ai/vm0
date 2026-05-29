@@ -1022,12 +1022,18 @@ mod tests {
 
     #[test]
     fn cli_failure_reason_classifies_codex_session_limit() {
-        let reason = classify_cli_failure_reason(
-            AgentFramework::Codex,
+        for message in [
             "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits. Resets 12:50pm (Asia/Shanghai).",
-        );
+            "SESSION LIMIT reached. Please try again after the reset window.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::Codex, message);
 
-        assert_eq!(reason, Some(FailureReason::UsageLimit));
+            assert_eq!(
+                reason,
+                Some(FailureReason::UsageLimit),
+                "message: {message}"
+            );
+        }
     }
 
     #[test]
