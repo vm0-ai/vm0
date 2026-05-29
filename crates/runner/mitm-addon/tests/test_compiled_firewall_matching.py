@@ -399,6 +399,39 @@ class TestCompiledFirewallMatching:
         )
         assert result is None
 
+    def test_compiled_parameterized_base_preserves_repeated_terminal_empty_segments(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1/{org}//",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /projects"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+        compiled_firewalls = self._compiled(fws)
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme/projects",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        assert result is None
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme//projects",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"org": "acme"}
+
     @pytest.mark.parametrize(
         "url",
         [
@@ -544,6 +577,39 @@ class TestCompiledFirewallMatching:
             policies,
         )
         assert compiled is None
+
+    def test_compiled_static_base_preserves_repeated_terminal_empty_segments(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1//",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /foo"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/foo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        assert result is None
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1//foo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.rel_path == "/foo"
 
     @pytest.mark.parametrize(
         "invalid_host",

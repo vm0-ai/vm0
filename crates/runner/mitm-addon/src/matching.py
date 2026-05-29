@@ -590,6 +590,10 @@ def _has_non_empty_segment(path_segs: list[str], start: int) -> bool:
     return any(path_segs[index] != "" for index in range(start, len(path_segs)))
 
 
+def _strip_optional_terminal_slash(base: str) -> str:
+    return base[:-1] if base.endswith("/") else base
+
+
 def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     """Match a request URL against a (possibly parameterized) base URL.
 
@@ -605,7 +609,10 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     # host casing cannot bypass static firewall bases, while paths remain
     # case-sensitive.
     if not _has_base_url_params(base):
-        base_parts = _split_base_match_url(base.rstrip("/"), allow_query_fragment=False)
+        base_parts = _split_base_match_url(
+            _strip_optional_terminal_slash(base),
+            allow_query_fragment=False,
+        )
         if base_parts is None:
             return None
         if url_parts.scheme.lower() != base_parts.scheme.lower():
@@ -624,7 +631,7 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
 
     # Parameterized base URL: parse into scheme, host pattern, path pattern
     base_parts = _split_base_match_url(
-        base.rstrip("/"),
+        _strip_optional_terminal_slash(base),
         allow_query_fragment=False,
         allow_host_params=True,
     )
@@ -1040,7 +1047,7 @@ def _match_compiled_host(
 
 
 def _compile_base(raw_base: str) -> _CompiledBase | None:
-    base = raw_base.rstrip("/")
+    base = _strip_optional_terminal_slash(raw_base)
     if not base:
         return None
 

@@ -231,6 +231,22 @@ class TestMatchBaseUrl:
         result = matching.match_base_url("https://api.github.com", "https://api.github.com")
         assert result == ("/", {})
 
+    def test_static_base_treats_single_terminal_slash_as_optional(self):
+        result = matching.match_base_url(
+            "https://api.example.com/v1/foo",
+            "https://api.example.com/v1/",
+        )
+        assert result == ("/foo", {})
+
+    def test_static_base_preserves_repeated_terminal_empty_segments(self):
+        base = "https://api.example.com/v1//"
+
+        result = matching.match_base_url("https://api.example.com/v1/foo", base)
+        assert result is None
+
+        result = matching.match_base_url("https://api.example.com/v1//foo", base)
+        assert result == ("/foo", {})
+
     def test_static_base_query_only_case_insensitive_authority(self):
         result = matching.match_base_url(
             "https://API.GitHub.com?tab=repos", "https://api.github.com"
@@ -570,6 +586,15 @@ class TestMatchBaseUrl:
 
         result = matching.match_base_url("https://api.example.com/v1/acme/projects", base)
         assert result is None
+
+    def test_parameterized_base_preserves_repeated_terminal_empty_segments(self):
+        base = "https://api.example.com/v1/{org}//"
+
+        result = matching.match_base_url("https://api.example.com/v1/acme/projects", base)
+        assert result is None
+
+        result = matching.match_base_url("https://api.example.com/v1/acme//projects", base)
+        assert result == ("/projects", {"org": "acme"})
 
     @pytest.mark.parametrize(
         "url",
