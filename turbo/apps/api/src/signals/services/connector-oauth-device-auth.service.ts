@@ -6,18 +6,19 @@ import type {
   ConnectorOauthDeviceAuthSessionStartResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
+  ConnectorAuthMethodId,
   ConnectorType,
   DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  getConnectorAuthMethodIdForGrantKind,
   getConnectorOAuthClient,
-  hasConnectorOAuthGrant,
+  hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
   pollConnectorOAuthDeviceAuth,
   startConnectorOAuthDeviceAuth,
 } from "@vm0/connectors/auth-providers";
@@ -93,6 +94,11 @@ type PollClaimedSessionArgs = {
   readonly persistConnector: (args: {
     readonly result: OAuthDeviceAuthCompleteResult;
   }) => Promise<ConnectorResponse>;
+};
+
+type ResolvedDeviceAuthType = {
+  readonly type: DeviceAuthGrantConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
 };
 
 const connectorOauthDeviceAuthDisabled = Object.freeze({
@@ -179,21 +185,24 @@ function isFreshPollingSession(
 function resolveDeviceAuthType(
   type: ConnectorType,
 ):
-  | DeviceAuthGrantConnectorType
+  | ResolvedDeviceAuthType
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof internalServerError> {
-  if (!hasConnectorOAuthGrant(type)) {
-    return badRequestMessage(`${type} connector does not use OAuth`);
-  }
-  if (!hasConnectorOAuthProvider(type)) {
-    return internalServerError(`${type} OAuth provider is not configured`);
-  }
   if (!hasConnectorDeviceAuthGrant(type)) {
+    if (!hasConnectorAuthCodeGrant(type)) {
+      return badRequestMessage(
+        `${type} connector does not use an auth-code or device-auth grant`,
+      );
+    }
     return badRequestMessage(
-      `${type} connector does not support OAuth device authorization`,
+      `${type} connector does not support a device-auth grant`,
     );
   }
-  return type;
+  const authMethod = getConnectorAuthMethodIdForGrantKind(type, "device-auth");
+  if (!authMethod) {
+    throw new Error(`${type} connector has no device-auth auth method`);
+  }
+  return { type, authMethod };
 }
 
 function resolveRequiredOAuthClient(
@@ -680,7 +689,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     signal: AbortSignal,
   ) => {
     const resolvedType = resolveDeviceAuthType(args.type);
-    if (typeof resolvedType !== "string") {
+    if ("status" in resolvedType) {
       return resolvedType;
     }
 
@@ -689,17 +698,22 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     );
     signal.throwIfAborted();
 
-    if (!availability.isAuthMethodAvailable(resolvedType, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        resolvedType.type,
+        resolvedType.authMethod,
+      )
+    ) {
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const oauthClient = resolveRequiredOAuthClient(resolvedType);
+    const oauthClient = resolveRequiredOAuthClient(resolvedType.type);
     if ("status" in oauthClient) {
       return oauthClient;
     }
 
     const startResult = await startConnectorOAuthDeviceAuth({
-      type: resolvedType,
+      type: resolvedType.type,
       oauthClient,
     });
     signal.throwIfAborted();
@@ -711,7 +725,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
     const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
-        connectorType: resolvedType,
+        connectorType: resolvedType.type,
         deviceCode: startResult.deviceCode,
       }),
       {
@@ -726,13 +740,13 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
-        type: resolvedType,
+        type: resolvedType.type,
       });
       await markActiveSessionsSuperseded({
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
-        type: resolvedType,
+        type: resolvedType.type,
         now,
       });
       return await tx
@@ -740,7 +754,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         .values({
           orgId: args.orgId,
           userId: args.userId,
-          connectorType: resolvedType,
+          connectorType: resolvedType.type,
           status: "awaiting_user_authorization",
           sessionTokenHash: sessionTokenHash(sessionToken),
           encryptedProviderState,
@@ -765,7 +779,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     const body: ConnectorOauthDeviceAuthSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
-      type: resolvedType,
+      type: resolvedType.type,
       status: "pending",
       userCode: startResult.userCode,
       verificationUri: startResult.verificationUri,
@@ -790,7 +804,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     signal: AbortSignal,
   ) => {
     const resolvedType = resolveDeviceAuthType(args.type);
-    if (typeof resolvedType !== "string") {
+    if ("status" in resolvedType) {
       return resolvedType;
     }
 
@@ -799,11 +813,16 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     );
     signal.throwIfAborted();
 
-    if (!availability.isAuthMethodAvailable(resolvedType, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        resolvedType.type,
+        resolvedType.authMethod,
+      )
+    ) {
       return connectorOauthDeviceAuthDisabled;
     }
 
-    const oauthClient = resolveRequiredOAuthClient(resolvedType);
+    const oauthClient = resolveRequiredOAuthClient(resolvedType.type);
     if ("status" in oauthClient) {
       return oauthClient;
     }
@@ -813,7 +832,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       writeDb,
       orgId: args.orgId,
       userId: args.userId,
-      type: resolvedType,
+      type: resolvedType.type,
       sessionId: args.sessionId,
       sessionToken: args.sessionToken,
       signal,
@@ -829,7 +848,7 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
             zeroConnectorByType({
               orgId: args.orgId,
               userId: args.userId,
-              type: resolvedType,
+              type: resolvedType.type,
               includeHiddenStoredConnector: true,
             }),
           );
@@ -874,19 +893,21 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
       writeDb,
       orgId: args.orgId,
       userId: args.userId,
-      type: resolvedType,
+      type: resolvedType.type,
       oauthClient,
       session: claimedSession,
       claimStartedAt,
       signal,
       persistConnector: async ({ result }) => {
-        const secretMetadata = getConnectorOAuthSecretMetadata(resolvedType);
+        const secretMetadata = getConnectorOAuthSecretMetadata(
+          resolvedType.type,
+        );
         const connectorResult = await set(
           upsertOAuthConnector$,
           {
             orgId: args.orgId,
             userId: args.userId,
-            type: resolvedType,
+            type: resolvedType.type,
             accessToken: result.token.accessToken,
             userInfo: result.token.userInfo,
             oauthScopes: result.token.scopes,

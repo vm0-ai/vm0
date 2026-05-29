@@ -24,19 +24,19 @@ describe("formatRunErrorForExternalSurface", () => {
     ).toBe("Cannot continue session with this provider");
   });
 
-  it("appends Compare plans link for admins on insufficient credits", () => {
+  it("appends Add credits link for admins on insufficient credits", () => {
     expect(
       formatRunErrorForExternalSurface({
         code: "INSUFFICIENT_CREDITS",
         message: "Insufficient credits. Please add credits to continue.",
         insufficientCredits: {
           canManageBilling: true,
-          comparePlansUrl:
-            "https://app.example.test/?settings=billing&billingView=plans",
+          addCreditsUrl:
+            "https://app.example.test/?settings=billing&billingView=credits",
         },
       }),
     ).toBe(
-      "Insufficient credits. Please add credits to continue.\n\nCompare plans: https://app.example.test/?settings=billing&billingView=plans",
+      "Insufficient credits. Please add credits to continue.\n\nAdd credits: https://app.example.test/?settings=billing&billingView=credits",
     );
   });
 
@@ -47,8 +47,8 @@ describe("formatRunErrorForExternalSurface", () => {
         message: "Insufficient credits. Please add credits to continue.",
         insufficientCredits: {
           canManageBilling: false,
-          comparePlansUrl:
-            "https://app.example.test/?settings=billing&billingView=plans",
+          addCreditsUrl:
+            "https://app.example.test/?settings=billing&billingView=credits",
         },
       }),
     ).toBe(INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE);

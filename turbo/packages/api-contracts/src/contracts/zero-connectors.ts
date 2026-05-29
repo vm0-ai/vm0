@@ -228,8 +228,8 @@ export const zeroConnectorsSearchContract = c.router({
 });
 
 /**
- * Zero contract for POST /api/zero/connectors/:type/sessions
- * Proxies to POST /api/connectors/:type/sessions (OAuth device flow)
+ * Zero contract for POST /api/zero/connectors/:type/sessions.
+ * Creates an auth-code connector handoff session.
  */
 export const zeroConnectorSessionsContract = c.router({
   create: {
@@ -244,7 +244,7 @@ export const zeroConnectorSessionsContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "Create connector session for device flow (zero proxy)",
+    summary: "Create connector session for auth-code handoff",
   },
 });
 

@@ -72,6 +72,7 @@ import {
   patchThreadMeta$,
   readThreadMeta$,
 } from "../external/idb-thread-meta-store.ts";
+import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -1687,6 +1688,7 @@ function createSendMessage(deps: SendMessageDeps) {
       });
 
       if (sendResult.body.runId === null) {
+        set(reloadBillingStatus$);
         await set(fetchNextPage$, signal);
         signal.throwIfAborted();
         set(scrollToBottom$);

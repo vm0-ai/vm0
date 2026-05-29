@@ -18,7 +18,6 @@ import {
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
 import {
-  connectorAuthMethodHasOAuthGrant,
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
   hasConnectorAuthCodeGrant,
@@ -131,14 +130,6 @@ function connectorOAuthDeviceAuthFlowIsActive(
   );
 }
 
-function connectedConnectorHasOAuthGrant(
-  item: ConnectorTypeWithStatus,
-): boolean {
-  return item.connector
-    ? connectorAuthMethodHasOAuthGrant(item.type, item.connector.authMethod)
-    : false;
-}
-
 // ---------------------------------------------------------------------------
 // Manual credentials form (shown inside connect modal)
 // ---------------------------------------------------------------------------
@@ -148,7 +139,6 @@ function ManualCredentialForm({
   authMethod,
   method,
   grant,
-  item,
   onSuccess,
   showPermissionDialogOnConnect,
   submit,
@@ -158,7 +148,6 @@ function ManualCredentialForm({
   authMethod: ConnectorAuthMethodId;
   method: ConnectorAuthMethodConfig;
   grant: ConnectorManualGrantConfig;
-  item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
   submit: SubmitManualCredentialsFn;
@@ -193,11 +182,6 @@ function ManualCredentialForm({
 
   return (
     <div className="flex flex-col gap-3">
-      {item.connected && connectedConnectorHasOAuthGrant(item) && (
-        <p className="text-xs text-amber-600">
-          This will replace your current OAuth connection.
-        </p>
-      )}
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
       {secretEntries.map(([name, secretConfig]) => {
         return (
@@ -269,13 +253,11 @@ function getOAuthAuthCodeProgressContent({
 
 function OAuthAuthCodeConnectButton({
   item,
-  label,
   onSuccess,
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   signal,
 }: ConnectModalContentProps & {
-  label: string;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
@@ -297,7 +279,7 @@ function OAuthAuthCodeConnectButton({
       }}
       className="w-full"
     >
-      Sign in with {label}
+      {item.connected ? "Authorize" : "Connect"}
     </Button>
   );
 }
@@ -306,7 +288,6 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthAuthCodeConnectButton
       item={props.item}
-      label={CONNECTOR_TYPES[props.item.type].label}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
@@ -477,7 +458,6 @@ function ManualCredentialConnectMethodContent(
       authMethod={props.authMethod}
       method={props.method}
       grant={props.method.grant}
-      item={props.item}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       submit={props.submitManualCredentials}

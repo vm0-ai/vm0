@@ -25,11 +25,6 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
-  decryptSecretValue,
-  encryptSecretValue,
-  encryptSecretsMap,
-} from "../../services/crypto.utils";
-import {
   deleteUsageInsightFixture$,
   seedCompose$,
   seedRun$,
@@ -37,6 +32,10 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  decryptSecretForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -76,11 +75,7 @@ function authHeaders(fixture: {
 }
 
 function encryptedSecrets(values: Record<string, string>): string {
-  const encrypted = encryptSecretsMap(values);
-  if (!encrypted) {
-    throw new Error("encryptSecretsMap returned null for non-empty secrets");
-  }
-  return encrypted;
+  return encryptSecretForTests(JSON.stringify(values));
 }
 
 function secretTemplate(name: string): string {
@@ -152,7 +147,7 @@ async function seedSecret(args: {
     orgId: args.orgId,
     userId: args.userId,
     name: args.name,
-    encryptedValue: encryptSecretValue(args.value),
+    encryptedValue: encryptSecretForTests(args.value),
     type: args.type,
   });
 }
@@ -222,7 +217,7 @@ async function readSecret(args: {
       ),
     )
     .limit(1);
-  return row ? decryptSecretValue(row.encryptedValue) : null;
+  return row ? decryptSecretForTests(row.encryptedValue) : null;
 }
 
 async function seedNotionConnector(
@@ -302,6 +297,62 @@ async function seedExpiredTestOAuthConnector(
   });
 }
 
+async function seedStripeApiTokenConnector(
+  fixture: FirewallFixture,
+  args: { readonly token?: string } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "stripe",
+    authMethod: "api-token",
+    externalId: "stripe-account",
+    externalUsername: "stripe-account",
+    externalEmail: "stripe@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt: null,
+  });
+
+  if (args.token !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "STRIPE_TOKEN",
+      value: args.token,
+      type: "connector",
+    });
+  }
+}
+
+async function seedGithubOAuthStaticAccessConnector(
+  fixture: FirewallFixture,
+  args: { readonly accessToken?: string } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "github",
+    authMethod: "oauth",
+    externalId: "github-user",
+    externalUsername: "github-user",
+    externalEmail: "github@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt: null,
+  });
+
+  if (args.accessToken !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "GITHUB_ACCESS_TOKEN",
+      value: args.accessToken,
+      type: "connector",
+    });
+  }
+}
+
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
@@ -363,28 +414,47 @@ function configureDynamicTestOAuthRefresh(
 async function seedExpiredCodexModelProvider(
   fixture: FirewallFixture,
 ): Promise<void> {
+  await seedCodexModelProvider(fixture, {
+    accessToken: "stale-chatgpt-token",
+    refreshToken: "chatgpt-refresh-token",
+    tokenExpiresAt: new Date(now() - 60_000),
+    needsReconnect: true,
+    lastRefreshErrorCode: "refresh_token_expired",
+  });
+}
+
+async function seedCodexModelProvider(
+  fixture: FirewallFixture,
+  args: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+    readonly tokenExpiresAt: Date;
+    readonly needsReconnect: boolean;
+    readonly lastRefreshErrorCode: string | null;
+  },
+): Promise<void> {
   const db = store.set(writeDb$);
   await db.insert(modelProviders).values({
     orgId: fixture.orgId,
     userId: ORG_SENTINEL_USER_ID,
     type: "codex-oauth-token",
     authMethod: "auth_json",
-    tokenExpiresAt: new Date(now() - 60_000),
-    needsReconnect: true,
-    lastRefreshErrorCode: "refresh_token_expired",
+    tokenExpiresAt: args.tokenExpiresAt,
+    needsReconnect: args.needsReconnect,
+    lastRefreshErrorCode: args.lastRefreshErrorCode,
   });
   await seedSecret({
     orgId: fixture.orgId,
     userId: ORG_SENTINEL_USER_ID,
     name: "CHATGPT_ACCESS_TOKEN",
-    value: "stale-chatgpt-token",
+    value: args.accessToken,
     type: "model-provider",
   });
   await seedSecret({
     orgId: fixture.orgId,
     userId: ORG_SENTINEL_USER_ID,
     name: "CHATGPT_REFRESH_TOKEN",
-    value: "chatgpt-refresh-token",
+    value: args.refreshToken,
     type: "model-provider",
   });
 }
@@ -1138,13 +1208,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1156,9 +1226,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-notion-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["notion"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "NOTION_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["NOTION_TOKEN"]);
     expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
     await expect(
       readSecret({
@@ -1192,13 +1260,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            TEST_OAUTH_ACCESS_TOKEN: "stale-test-oauth-token",
+            TEST_OAUTH_TOKEN: "stale-test-oauth-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
           },
           secretConnectorMap: {
-            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+            TEST_OAUTH_TOKEN: "test-oauth",
           },
         },
         headers: authHeaders(fixture),
@@ -1217,9 +1285,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-test-oauth-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "TEST_OAUTH_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["TEST_OAUTH_TOKEN"]);
     await expect(
       readSecret({
         orgId: fixture.orgId,
@@ -1238,7 +1304,459 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBe("new-test-oauth-refresh-token");
   });
 
-  it("uses OAuth token expiry when it is earlier than billable credit lease", async () => {
+  it("resolves a missing selected connector access secret through refresh metadata", async () => {
+    const dynamicOAuth = useDynamicTestOAuthRefresh();
+    restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
+    const fixture = await track(seedFixture());
+    await seedExpiredTestOAuthConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-test-oauth-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["TEST_OAUTH_TOKEN"]);
+  });
+
+  it("loads a missing selected connector access secret when the stored token is current", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-notion-token",
+      refreshToken: "current-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-notion-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+    expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+  });
+
+  it("returns an access resolution failure when current selected connector access storage is missing", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-notion-token",
+      refreshToken: "current-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+    const db = store.set(writeDb$);
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "NOTION_ACCESS_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_ACCESS_RESOLUTION_FAILED",
+      connectors: ["notion"],
+    });
+  });
+
+  it("does not use stale encrypted connector access when current selected access storage is missing", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-notion-token",
+      refreshToken: "current-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+    });
+    const db = store.set(writeDb$);
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "NOTION_ACCESS_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_ACCESS_RESOLUTION_FAILED",
+      connectors: ["notion"],
+    });
+  });
+
+  it("does not bypass missing selected connector access when the connector row is absent", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("does not use stale encrypted connector access when the connector row is absent", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("returns a refresh failure when selected connector refresh tokens are missing", async () => {
+    const dynamicOAuth = useDynamicTestOAuthRefresh();
+    restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
+    const fixture = await track(seedFixture());
+    await seedExpiredTestOAuthConnector(fixture);
+    const db = store.set(writeDb$);
+    await db
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.orgId, fixture.orgId),
+          eq(secrets.userId, fixture.userId),
+          eq(secrets.name, "TEST_OAUTH_REFRESH_TOKEN"),
+          eq(secrets.type, "connector"),
+        ),
+      );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            TEST_OAUTH_TOKEN: "test-oauth",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["test-oauth"],
+    });
+    expect(dynamicOAuth.refreshes).toStrictEqual([]);
+  });
+
+  it("keeps missing static connector access secrets as missing configuration", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("loads current static connector access instead of stale encrypted access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture, {
+      token: "current-stripe-token",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-stripe-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("loads current static connector env aliases", async () => {
+    const fixture = await track(seedFixture());
+    await seedGithubOAuthStaticAccessConnector(fixture, {
+      accessToken: "current-github-token",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            GITHUB_TOKEN: "stale-github-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("GITHUB_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            GITHUB_TOKEN: "github",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-github-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects static connector raw access secret names", async () => {
+    const fixture = await track(seedFixture());
+    await seedGithubOAuthStaticAccessConnector(fixture, {
+      accessToken: "current-github-token",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            GITHUB_ACCESS_TOKEN: "stale-github-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("GITHUB_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            GITHUB_ACCESS_TOKEN: "github",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("rejects stale encrypted static connector access when current storage is missing", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("rejects encrypted static connector secrets after the connector is removed", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("rejects encrypted connector secrets outside the selected access method", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_ACCESS_TOKEN: "stale-oauth-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_ACCESS_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("uses access-token expiry when it is earlier than billable credit lease", async () => {
     const fixture = await track(seedFixture());
     await seedCreditState(fixture, { credits: 10_000 });
     await seedExpiredNotionConnector(fixture);
@@ -1256,13 +1774,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
           firewallBillable: true,
         },
@@ -1297,13 +1815,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1328,7 +1846,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
   });
 
-  it("uses billable credit lease when it is earlier than OAuth token expiry", async () => {
+  it("uses billable credit lease when it is earlier than access-token expiry", async () => {
     const fixture = await track(seedFixture());
     await seedCreditState(fixture, { credits: 10_000 });
     await seedExpiredNotionConnector(fixture);
@@ -1346,13 +1864,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
           firewallBillable: true,
         },
@@ -1385,13 +1903,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1428,13 +1946,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-buffered-notion-token",
+            NOTION_TOKEN: "stale-buffered-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1446,9 +1964,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-buffered-notion-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["notion"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "NOTION_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["NOTION_TOKEN"]);
   });
 
   it("uses the current DB token when connector expiry is still valid", async () => {
@@ -1464,13 +1980,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-snapshot-notion-token",
+            NOTION_TOKEN: "stale-snapshot-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1506,13 +2022,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-null-expiry-notion-token",
+            NOTION_TOKEN: "stale-null-expiry-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(nullExpiryFixture),
@@ -1545,13 +2061,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-force-notion-token",
+            NOTION_TOKEN: "stale-force-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
           forceRefresh: true,
         },
@@ -1668,6 +2184,130 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "model-provider",
       }),
     ).resolves.toBe("fresh-chatgpt-token");
+  });
+
+  it("loads a missing model-provider access secret when the stored token is current", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-chatgpt-token",
+      refreshToken: "current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-chatgpt-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects missing model-provider access secrets outside env bindings", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-chatgpt-token",
+      refreshToken: "current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("UNBOUND_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            UNBOUND_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            UNBOUND_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("rejects encrypted model-provider access secrets outside env bindings", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-chatgpt-token",
+      refreshToken: "current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            UNBOUND_TOKEN: "stale-unbound-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("UNBOUND_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            UNBOUND_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            UNBOUND_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
   });
 
   it("rejects model-provider refresh metadata for another user before billable credit auth", async () => {

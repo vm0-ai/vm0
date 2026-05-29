@@ -158,10 +158,17 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 export function formatRunErrorForExternalSurface(params: {
   readonly code: string;
   readonly message: string;
-  readonly insufficientCredits?: {
-    readonly canManageBilling: boolean;
-    readonly comparePlansUrl: string;
-  };
+  readonly insufficientCredits?:
+    | {
+        readonly canManageBilling: boolean;
+        readonly addCreditsUrl: string;
+        readonly comparePlansUrl?: string;
+      }
+    | {
+        readonly canManageBilling: boolean;
+        readonly comparePlansUrl: string;
+        readonly addCreditsUrl?: string;
+      };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
   const chatgptCodexUsageLimitMessage =
@@ -177,7 +184,10 @@ export function formatRunErrorForExternalSurface(params: {
     if (!params.insufficientCredits.canManageBilling) {
       return INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE;
     }
-    return `${errorMessage}\n\nCompare plans: ${params.insufficientCredits.comparePlansUrl}`;
+    const addCreditsUrl =
+      params.insufficientCredits.addCreditsUrl ??
+      params.insufficientCredits.comparePlansUrl;
+    return `${errorMessage}\n\nAdd credits: ${addCreditsUrl}`;
   }
 
   return isGenericRunErrorForDisplay(errorMessage)

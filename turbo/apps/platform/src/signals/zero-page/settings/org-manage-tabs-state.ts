@@ -26,14 +26,25 @@ export type OrgManageTab =
   | "invoices";
 
 const internalActiveTab$ = state<OrgManageTab>("general");
+const internalBillingScrollTarget$ = state<"buy-credits" | null>(null);
 
 export const orgManageTab$ = computed((get) => {
   return get(internalActiveTab$);
 });
 
+export const billingScrollTarget$ = computed((get) => {
+  return get(internalBillingScrollTarget$);
+});
+
 export const setActiveOrgManageTab$ = command(({ set }, tab: OrgManageTab) => {
   set(internalActiveTab$, tab);
 });
+
+export const setBillingScrollTarget$ = command(
+  ({ set }, target: "buy-credits" | null) => {
+    set(internalBillingScrollTarget$, target);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // org-general-tab: ProfileSection

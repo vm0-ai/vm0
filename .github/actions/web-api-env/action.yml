@@ -68,11 +68,15 @@ runs:
 
         vars_json="${REPO_VARS_JSON:-}"
         secrets_json="${REPO_SECRETS_JSON:-}"
+        doppler_secrets_json="${DOPPLER_SECRETS_JSON:-}"
         if [[ -z "$vars_json" ]]; then
           vars_json="{}"
         fi
         if [[ -z "$secrets_json" ]]; then
           secrets_json="{}"
+        fi
+        if [[ -z "$doppler_secrets_json" ]]; then
+          doppler_secrets_json="{}"
         fi
         env_file="${RUNNER_TEMP}/web-api-${INPUT_APP}-${INPUT_ENVIRONMENT}.env"
         : > "$env_file"
@@ -89,6 +93,10 @@ runs:
 
         repo_secret() {
           json_get "$secrets_json" "$1"
+        }
+
+        doppler_secret() {
+          json_get "$doppler_secrets_json" "$1"
         }
 
         first_non_empty() {
@@ -113,6 +121,23 @@ runs:
 
         add_secret() {
           add_env "$1" "$(repo_secret "$2")"
+        }
+
+        add_oauth_client_config_key() {
+          local key="$1"
+          local value
+          value="$(doppler_secret "$key")"
+          if [[ -z "$value" ]]; then
+            echo "::error::${key} is missing from Doppler OAuth config"
+            exit 1
+          fi
+          add_env "$key" "$value"
+        }
+
+        add_oauth_client_config() {
+          local prefix="$1"
+          add_oauth_client_config_key "${prefix}_OAUTH_CLIENT_ID"
+          add_oauth_client_config_key "${prefix}_OAUTH_CLIENT_SECRET"
         }
 
         if [[ -n "$INPUT_DATABASE_URL" ]]; then
@@ -211,8 +236,6 @@ runs:
           add_env VM0_DEBUG "*"
         fi
         add_var CLAUDE_CODE_VERSION_URL CLAUDE_CODE_VERSION_URL
-        add_var SLACK_OAUTH_CLIENT_ID SLACK_OAUTH_CLIENT_ID
-        add_secret SLACK_OAUTH_CLIENT_SECRET SLACK_OAUTH_CLIENT_SECRET
         add_secret SLACK_SIGNING_SECRET SLACK_SIGNING_SECRET
         add_secret TELEGRAM_OFFICIAL_BOT_TOKEN TELEGRAM_OFFICIAL_BOT_TOKEN
         add_var TELEGRAM_OFFICIAL_BOT_USERNAME TELEGRAM_OFFICIAL_BOT_USERNAME
@@ -235,77 +258,51 @@ runs:
         add_secret SENTRY_AUTH_TOKEN SENTRY_AUTH_TOKEN
         add_var SENTRY_ORG SENTRY_ORG
 
-        add_var GH_OAUTH_CLIENT_ID GH_OAUTH_CLIENT_ID
-        add_secret GH_OAUTH_CLIENT_SECRET GH_OAUTH_CLIENT_SECRET
-        add_var NOTION_OAUTH_CLIENT_ID NOTION_OAUTH_CLIENT_ID
-        add_secret NOTION_OAUTH_CLIENT_SECRET NOTION_OAUTH_CLIENT_SECRET
-        add_var GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_ID
-        add_secret GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_CLIENT_SECRET
+        oauth_client_config_prefixes=(
+          GH
+          SLACK
+          NOTION
+          GOOGLE
+          MICROSOFT
+          LINEAR
+          FIGMA
+          DEEL
+          DOCUSIGN
+          DROPBOX
+          NEON
+          REDDIT
+          STRAVA
+          X
+          VERCEL
+          SENTRY
+          INTERVALS_ICU
+          SUPABASE
+          XERO
+          MONDAY
+          WEBFLOW
+          CANVA
+          HUBSPOT
+          CLOSE
+          META_ADS
+          AHREFS
+          AIRTABLE
+          TODOIST
+          ASANA
+          POSTHOG
+          GUMROAD
+          MERCURY
+          SPOTIFY
+          STRIPE
+        )
+        for prefix in "${oauth_client_config_prefixes[@]}"; do
+          add_oauth_client_config "$prefix"
+        done
+
         add_secret GOOGLE_ADS_DEVELOPER_TOKEN GOOGLE_ADS_DEVELOPER_TOKEN
         add_secret GOOGLE_ADS_LOGIN_CUSTOMER_ID GOOGLE_ADS_LOGIN_CUSTOMER_ID
         add_secret ZERO_MAPS_GOOGLE_MAPS_TOKEN ZERO_MAPS_GOOGLE_MAPS_TOKEN
-        add_var MICROSOFT_OAUTH_CLIENT_ID MICROSOFT_OAUTH_CLIENT_ID
-        add_secret MICROSOFT_OAUTH_CLIENT_SECRET MICROSOFT_OAUTH_CLIENT_SECRET
-        add_var LINEAR_OAUTH_CLIENT_ID LINEAR_OAUTH_CLIENT_ID
-        add_secret LINEAR_OAUTH_CLIENT_SECRET LINEAR_OAUTH_CLIENT_SECRET
-        add_var FIGMA_OAUTH_CLIENT_ID FIGMA_OAUTH_CLIENT_ID
-        add_secret FIGMA_OAUTH_CLIENT_SECRET FIGMA_OAUTH_CLIENT_SECRET
-        add_var DEEL_OAUTH_CLIENT_ID DEEL_OAUTH_CLIENT_ID
-        add_secret DEEL_OAUTH_CLIENT_SECRET DEEL_OAUTH_CLIENT_SECRET
-        add_var DOCUSIGN_OAUTH_CLIENT_ID DOCUSIGN_OAUTH_CLIENT_ID
-        add_secret DOCUSIGN_OAUTH_CLIENT_SECRET DOCUSIGN_OAUTH_CLIENT_SECRET
-        add_var DROPBOX_OAUTH_CLIENT_ID DROPBOX_OAUTH_CLIENT_ID
-        add_secret DROPBOX_OAUTH_CLIENT_SECRET DROPBOX_OAUTH_CLIENT_SECRET
-        add_var NEON_OAUTH_CLIENT_ID NEON_OAUTH_CLIENT_ID
-        add_secret NEON_OAUTH_CLIENT_SECRET NEON_OAUTH_CLIENT_SECRET
-        add_var REDDIT_OAUTH_CLIENT_ID REDDIT_OAUTH_CLIENT_ID
-        add_secret REDDIT_OAUTH_CLIENT_SECRET REDDIT_OAUTH_CLIENT_SECRET
-        add_var STRAVA_OAUTH_CLIENT_ID STRAVA_OAUTH_CLIENT_ID
-        add_secret STRAVA_OAUTH_CLIENT_SECRET STRAVA_OAUTH_CLIENT_SECRET
-        add_var X_OAUTH_CLIENT_ID X_OAUTH_CLIENT_ID
-        add_secret X_OAUTH_CLIENT_SECRET X_OAUTH_CLIENT_SECRET
-        add_var VERCEL_OAUTH_CLIENT_ID VERCEL_OAUTH_CLIENT_ID
-        add_secret VERCEL_OAUTH_CLIENT_SECRET VERCEL_OAUTH_CLIENT_SECRET
         add_var VERCEL_INTEGRATION_SLUG VERCEL_INTEGRATION_SLUG
-        add_var SENTRY_OAUTH_CLIENT_ID SENTRY_OAUTH_CLIENT_ID
-        add_secret SENTRY_OAUTH_CLIENT_SECRET SENTRY_OAUTH_CLIENT_SECRET
-        add_var INTERVALS_ICU_OAUTH_CLIENT_ID INTERVALS_ICU_OAUTH_CLIENT_ID
-        add_secret INTERVALS_ICU_OAUTH_CLIENT_SECRET INTERVALS_ICU_OAUTH_CLIENT_SECRET
-        add_var SUPABASE_OAUTH_CLIENT_ID SUPABASE_OAUTH_CLIENT_ID
-        add_secret SUPABASE_OAUTH_CLIENT_SECRET SUPABASE_OAUTH_CLIENT_SECRET
-        add_var XERO_OAUTH_CLIENT_ID XERO_OAUTH_CLIENT_ID
-        add_secret XERO_OAUTH_CLIENT_SECRET XERO_OAUTH_CLIENT_SECRET
-        add_var MONDAY_OAUTH_CLIENT_ID MONDAY_OAUTH_CLIENT_ID
-        add_secret MONDAY_OAUTH_CLIENT_SECRET MONDAY_OAUTH_CLIENT_SECRET
         add_var MONDAY_OAUTH_APP_ID MONDAY_OAUTH_APP_ID
-        add_var WEBFLOW_OAUTH_CLIENT_ID WEBFLOW_OAUTH_CLIENT_ID
-        add_secret WEBFLOW_OAUTH_CLIENT_SECRET WEBFLOW_OAUTH_CLIENT_SECRET
-        add_var CANVA_OAUTH_CLIENT_ID CANVA_OAUTH_CLIENT_ID
-        add_secret CANVA_OAUTH_CLIENT_SECRET CANVA_OAUTH_CLIENT_SECRET
-        add_var HUBSPOT_OAUTH_CLIENT_ID HUBSPOT_OAUTH_CLIENT_ID
-        add_secret HUBSPOT_OAUTH_CLIENT_SECRET HUBSPOT_OAUTH_CLIENT_SECRET
-        add_var CLOSE_OAUTH_CLIENT_ID CLOSE_OAUTH_CLIENT_ID
-        add_secret CLOSE_OAUTH_CLIENT_SECRET CLOSE_OAUTH_CLIENT_SECRET
-        add_var META_ADS_OAUTH_CLIENT_ID META_ADS_OAUTH_CLIENT_ID
-        add_secret META_ADS_OAUTH_CLIENT_SECRET META_ADS_OAUTH_CLIENT_SECRET
-        add_var AHREFS_OAUTH_CLIENT_ID AHREFS_OAUTH_CLIENT_ID
-        add_secret AHREFS_OAUTH_CLIENT_SECRET AHREFS_OAUTH_CLIENT_SECRET
-        add_var AIRTABLE_OAUTH_CLIENT_ID AIRTABLE_OAUTH_CLIENT_ID
-        add_secret AIRTABLE_OAUTH_CLIENT_SECRET AIRTABLE_OAUTH_CLIENT_SECRET
-        add_var TODOIST_OAUTH_CLIENT_ID TODOIST_OAUTH_CLIENT_ID
-        add_secret TODOIST_OAUTH_CLIENT_SECRET TODOIST_OAUTH_CLIENT_SECRET
-        add_var ASANA_OAUTH_CLIENT_ID ASANA_OAUTH_CLIENT_ID
-        add_secret ASANA_OAUTH_CLIENT_SECRET ASANA_OAUTH_CLIENT_SECRET
-        add_var POSTHOG_OAUTH_CLIENT_ID POSTHOG_OAUTH_CLIENT_ID
-        add_secret POSTHOG_OAUTH_CLIENT_SECRET POSTHOG_OAUTH_CLIENT_SECRET
-        add_var GUMROAD_OAUTH_CLIENT_ID GUMROAD_OAUTH_CLIENT_ID
-        add_secret GUMROAD_OAUTH_CLIENT_SECRET GUMROAD_OAUTH_CLIENT_SECRET
-        add_var MERCURY_OAUTH_CLIENT_ID MERCURY_OAUTH_CLIENT_ID
-        add_secret MERCURY_OAUTH_CLIENT_SECRET MERCURY_OAUTH_CLIENT_SECRET
-        add_var SPOTIFY_OAUTH_CLIENT_ID SPOTIFY_OAUTH_CLIENT_ID
-        add_secret SPOTIFY_OAUTH_CLIENT_SECRET SPOTIFY_OAUTH_CLIENT_SECRET
-        add_var STRIPE_OAUTH_CLIENT_ID STRIPE_OAUTH_CLIENT_ID
-        add_secret STRIPE_OAUTH_CLIENT_SECRET STRIPE_OAUTH_CLIENT_SECRET
         add_secret STRIPE_SECRET_KEY STRIPE_SECRET_KEY
         add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
         add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET

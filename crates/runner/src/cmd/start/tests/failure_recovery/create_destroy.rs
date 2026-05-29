@@ -10,7 +10,7 @@ async fn active_destroy_panic_still_reports_completion_and_releases_budget() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_destroy_panic("simulated destroy panic");
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -41,8 +41,8 @@ async fn failed_job_with_session_not_parked() {
         1,
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -79,9 +79,9 @@ async fn cancelled_job_not_parked() {
         gate,
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -124,9 +124,9 @@ async fn create_failure_completes_and_cleans_run_state() {
         message: "create failed".into(),
     }));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 

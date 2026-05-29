@@ -24,6 +24,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   getConnectorAuthMethod,
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodEnvBindings,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -35,7 +36,6 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
 import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   expandHostWildcardsInBaseUrl,
@@ -275,6 +275,9 @@ interface PermissionManifest {
 }
 
 interface StoredExecutionSecrets {
+  // Runtime secret namespace encrypted into executionContext.encryptedSecrets.
+  // Keys are the `NAME` in `${{ secrets.NAME }}`; connector/model-provider
+  // entries use env aliases, not backing storage secret names.
   readonly secrets: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | null;
   readonly secretConnectorMetadataMap: Record<
@@ -286,6 +289,7 @@ interface StoredExecutionSecrets {
 interface BuiltStoredExecutionContext {
   readonly context: StoredExecutionContext;
   readonly secretNames: readonly string[];
+  // Plain secret values used for run-context redaction; values, not names.
   readonly secretValues: readonly string[];
 }
 
@@ -1091,10 +1095,11 @@ function modelProviderRefreshMaps(
   }
 
   const accessSecretName = metadata.accessSecretName;
-  const secretConnectorMap: Record<string, string> = {
-    [accessSecretName]: providerType,
-  };
+  const secretConnectorMap: Record<string, string> = {};
   const envBindings = getModelProviderEnvBindings(providerType);
+  // Firewall auth templates reference runtime env aliases (for example, the
+  // `CHATGPT_ACCESS_TOKEN` in `${{ secrets.CHATGPT_ACCESS_TOKEN }}`), so the
+  // refresh map is keyed by envName, not by the backing provider storage key.
   for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
     if (valueRef === `$secrets.${accessSecretName}`) {
       secretConnectorMap[envName] = providerType;
@@ -1512,16 +1517,16 @@ async function buildReferencedSecrets(args: {
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
-function compactRecord(
-  values: Record<string, string>,
-): Record<string, string> | undefined {
+function compactRecord<T>(
+  values: Record<string, T>,
+): Record<string, T> | undefined {
   return Object.keys(values).length > 0 ? values : undefined;
 }
 
-function mergeRecords(
-  ...records: readonly (Record<string, string> | undefined)[]
-): Record<string, string> | undefined {
-  const merged: Record<string, string> = {};
+function mergeRecords<T>(
+  ...records: readonly (Record<string, T> | undefined)[]
+): Record<string, T> | undefined {
+  const merged: Record<string, T> = {};
   for (const record of records) {
     if (record) {
       Object.assign(merged, record);
@@ -1559,6 +1564,7 @@ interface StoredConnectorRuntimeRow {
 
 interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
+  readonly authMethod: string;
   readonly envBindings: Record<string, string>;
   readonly optionalSecretNames: ReadonlySet<string>;
   readonly optionalVariableNames: ReadonlySet<string>;
@@ -1630,6 +1636,7 @@ function connectorEnvBindingSets(
     }
     return {
       connectorType: row.connectorType,
+      authMethod: row.authMethod,
       envBindings: getConnectorAuthMethodEnvBindings(
         row.connectorType,
         row.authMethod,
@@ -1741,6 +1748,7 @@ function resolveStoredConnectorState(
 
   for (const {
     connectorType,
+    authMethod,
     envBindings,
     optionalSecretNames,
     optionalVariableNames,
@@ -1769,20 +1777,36 @@ function resolveStoredConnectorState(
       }
     }
 
-    const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
-    if (!secretMetadata?.isRefreshable) {
-      continue;
-    }
-    const secretName = secretMetadata.accessSecretName;
-    secretConnectorMap[secretName] = connectorType;
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
-        secretConnectorMap[envName] = connectorType;
+    const accessMetadata = getConnectorAuthMethodAccessMetadata(
+      connectorType,
+      authMethod,
+    );
+    // Firewall auth templates can only reference env aliases from envBindings;
+    // store the alias that points at the access secret, not the backing secret name.
+    if (accessMetadata?.kind === "refresh-token") {
+      const secretName = accessMetadata.accessToken;
+      for (const [envName, valueRef] of Object.entries(envBindings)) {
+        if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
+          secretConnectorMap[envName] = connectorType;
+        }
+      }
+    } else if (accessMetadata?.kind === "static") {
+      for (const [envName, valueRef] of Object.entries(
+        accessMetadata.envBindings,
+      )) {
+        if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+          secretConnectorMap[envName] = connectorType;
+        }
       }
     }
   }
 
-  return { secrets, vars, secretConnectorMap, environment };
+  return {
+    secrets,
+    vars,
+    secretConnectorMap,
+    environment,
+  };
 }
 
 async function loadStoredConnectorContext(
@@ -2994,7 +3018,10 @@ function buildStoredExecutionSecrets(args: {
       platformSecrets,
     ],
   });
-
+  // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
+  // auth and environment expansion. Stored connectors and model providers enter
+  // this map under env binding aliases; raw DB storage names stay behind the
+  // access metadata used during refresh/lookup.
   return {
     secrets: mergeRecords(
       args.connectorContext.secrets,

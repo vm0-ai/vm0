@@ -1,5 +1,66 @@
 # Changelog
 
+## [12.401.0](https://github.com/vm0-ai/vm0/compare/web-v12.400.1...web-v12.401.0) (2026-05-29)
+
+
+### Features
+
+* **web:** add /presentation gallery page ([#15372](https://github.com/vm0-ai/vm0/issues/15372)) ([3fc6da3](https://github.com/vm0-ai/vm0/commit/3fc6da3afe3e3c55cbf20c8819134055f89f5ab5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/core bumped to 8.302.3
+    * @vm0/db bumped to 1.22.5
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.7
+
+## [12.400.1](https://github.com/vm0-ai/vm0/compare/web-v12.400.0...web-v12.400.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* **web:** repair illustration gallery asset paths ([#15369](https://github.com/vm0-ai/vm0/issues/15369)) ([b7b9ffa](https://github.com/vm0-ai/vm0/commit/b7b9ffab20d0ba04c0986fe5e8a22ac79323538c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+    * @vm0/db bumped to 1.22.4
+
+## [12.400.0](https://github.com/vm0-ai/vm0/compare/web-v12.399.1...web-v12.400.0) (2026-05-29)
+
+
+### Features
+
+* add Claude Opus 4.8 model page ([#15338](https://github.com/vm0-ai/vm0/issues/15338)) ([3d743b8](https://github.com/vm0-ai/vm0/commit/3d743b8c4a41d82b417fe951b380775f1388786a))
+
+## [12.399.1](https://github.com/vm0-ai/vm0/compare/web-v12.399.0...web-v12.399.1) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/core bumped to 8.302.1
+    * @vm0/db bumped to 1.22.3
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.6
+
+## [12.399.0](https://github.com/vm0-ai/vm0/compare/web-v12.398.0...web-v12.399.0) (2026-05-29)
+
+
+### Features
+
+* **web:** add 3 new illustration styles to gallery ([#15305](https://github.com/vm0-ai/vm0/issues/15305)) ([65b2d41](https://github.com/vm0-ai/vm0/commit/65b2d41058832f99bf4fc61b2f7e00aa2c6a941a))
+
 ## [12.398.0](https://github.com/vm0-ai/vm0/compare/web-v12.397.3...web-v12.398.0) (2026-05-29)
 
 

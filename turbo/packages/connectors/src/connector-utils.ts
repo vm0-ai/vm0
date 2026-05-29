@@ -8,12 +8,15 @@ import {
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorEnvBindings,
   type ConnectorGenerationType,
+  type ConnectorGrantConfig,
+  type ConnectorGrantKind,
   type ConnectorOAuthClientConfig,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type OAuthGrantConnectorType,
+  type ConnectorAuthProviderType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
+  type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
@@ -67,6 +70,18 @@ export function getConnectorAuthMethod(
   )) {
     if (methodId === authMethod) {
       return method;
+    }
+  }
+  return undefined;
+}
+
+export function getConnectorAuthMethodIdForGrantKind(
+  type: ConnectorType,
+  grantKind: ConnectorGrantKind,
+): ConnectorAuthMethodId | undefined {
+  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === grantKind) {
+      return authMethod;
     }
   }
   return undefined;
@@ -144,6 +159,52 @@ function connectorAccessEnvBindings(
   }
 }
 
+export type ConnectorAuthMethodAccessMetadata =
+  | {
+      readonly kind: "static";
+      readonly envBindings: ConnectorEnvBindings;
+    }
+  | {
+      readonly kind: "refresh-token";
+      readonly accessToken: string;
+      readonly refreshToken: string;
+      readonly envBindings: ConnectorEnvBindings;
+    }
+  | {
+      readonly kind: "none";
+      readonly envBindings: ConnectorEnvBindings;
+    };
+
+export function getConnectorAuthMethodAccessMetadata(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodAccessMetadata | undefined {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return undefined;
+  }
+
+  switch (method.access.kind) {
+    case "static":
+      return {
+        kind: "static",
+        envBindings: method.access.envBindings,
+      };
+    case "refresh-token":
+      return {
+        kind: "refresh-token",
+        accessToken: method.access.accessToken,
+        refreshToken: method.access.refreshToken,
+        envBindings: method.access.envBindings,
+      };
+    case "none":
+      return {
+        kind: "none",
+        envBindings: {},
+      };
+  }
+}
+
 function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   switch (method.grant.kind) {
     case "auth-code":
@@ -155,14 +216,14 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   }
 }
 
-type ConnectorOAuthGrantConfig =
+type ConnectorGrantConfigWithScopes =
   | ConnectorAuthCodeGrantConfig
   | ConnectorDeviceAuthGrantConfig;
 
-function isConnectorOAuthGrantConfig(
+function isConnectorGrantConfigWithScopes(
   method: ConnectorAuthMethodConfig,
 ): method is ConnectorAuthMethodConfig & {
-  readonly grant: ConnectorOAuthGrantConfig;
+  readonly grant: ConnectorGrantConfigWithScopes;
 } {
   switch (method.grant.kind) {
     case "auth-code":
@@ -175,41 +236,42 @@ function isConnectorOAuthGrantConfig(
 }
 
 function getConnectorOAuthGrantConfig(
-  type: OAuthGrantConnectorType,
-): ConnectorOAuthGrantConfig;
+  type: ConnectorAuthProviderType,
+): ConnectorGrantConfigWithScopes;
 function getConnectorOAuthGrantConfig(
   type: ConnectorType,
-): ConnectorOAuthGrantConfig | undefined;
+): ConnectorGrantConfigWithScopes | undefined;
 function getConnectorOAuthGrantConfig(
   type: ConnectorType,
-): ConnectorOAuthGrantConfig | undefined {
+): ConnectorGrantConfigWithScopes | undefined {
   for (const method of connectorAuthMethodValues(type)) {
-    if (isConnectorOAuthGrantConfig(method)) {
+    if (isConnectorGrantConfigWithScopes(method)) {
       return method.grant;
     }
   }
   return undefined;
 }
 
-export function hasConnectorOAuthGrant(
-  type: ConnectorType,
-): type is OAuthGrantConnectorType {
-  return getConnectorOAuthGrantConfig(type) !== undefined;
-}
-
-export function connectorAuthMethodHasOAuthGrant(
+export function connectorAuthMethodHasGrantKind(
   type: ConnectorType,
   authMethod: string,
+  grantKind: ConnectorGrantKind,
 ): boolean {
   const method = getConnectorAuthMethod(type, authMethod);
-  switch (method?.grant.kind) {
+  return method?.grant.kind === grantKind;
+}
+
+function connectorGrantScopes(
+  grant: ConnectorGrantConfig | undefined,
+): readonly string[] {
+  switch (grant?.kind) {
     case "auth-code":
     case "device-auth":
-      return true;
+      return grant.scopes;
     case "manual":
     case "managed":
     case undefined:
-      return false;
+      return [];
   }
 }
 
@@ -258,7 +320,25 @@ export function getConnectorDeviceAuthGrantConfig(
 }
 
 export function getConnectorOAuthScopes(type: ConnectorType): string[] {
-  return [...(getConnectorOAuthGrantConfig(type)?.scopes ?? [])];
+  return [...connectorGrantScopes(getConnectorOAuthGrantConfig(type))];
+}
+
+export function getConnectorAuthMethodGrantScopes(
+  type: ConnectorType,
+  authMethod: string,
+): string[] {
+  return [
+    ...connectorGrantScopes(getConnectorAuthMethod(type, authMethod)?.grant),
+  ];
+}
+
+export function connectorAuthMethodSupportsTokenRevoke(
+  type: ConnectorType,
+  authMethod: string,
+): type is TokenRevokeConnectorType {
+  return (
+    getConnectorAuthMethod(type, authMethod)?.revoke.kind === "token-revoke"
+  );
 }
 
 export function getConnectorGenerationTypes(
@@ -397,7 +477,7 @@ export function isStaticConfidentialConnectorOAuthClient(
 }
 
 function getConnectorOAuthClientConfig(
-  type: OAuthGrantConnectorType,
+  type: ConnectorAuthProviderType,
 ): ConnectorOAuthClientConfig;
 function getConnectorOAuthClientConfig(
   type: ConnectorType,
@@ -656,21 +736,14 @@ export function hasConnectorDeviceAuthGrant(
   return getConnectorDeviceAuthGrantConfig(type) !== undefined;
 }
 
-/**
- * Check if stored OAuth scopes cover all required scopes for a connector type.
- * Returns true if no OAuth config exists (non-OAuth connector) or all required scopes are present.
- * Returns false if storedScopes is null (legacy connector) or missing any required scope.
- */
-export function hasRequiredScopes(
-  connectorType: ConnectorType,
+function hasRequiredGrantScopes(
+  requiredScopes: readonly string[],
   storedScopes: string[] | null,
 ): boolean {
-  const scopes = getConnectorOAuthGrantConfig(connectorType)?.scopes;
-  if (!scopes) return true;
-  if (scopes.length === 0) return true;
+  if (requiredScopes.length === 0) return true;
   if (!storedScopes) return false;
   const storedSet = new Set(storedScopes);
-  return scopes.every((s) => {
+  return requiredScopes.every((s) => {
     return storedSet.has(s);
   });
 }
@@ -685,13 +758,10 @@ export interface ScopeDiff {
   storedScopes: string[];
 }
 
-export function getScopeDiff(
-  connectorType: ConnectorType,
+function scopeDiff(
+  currentScopes: readonly string[],
   storedScopes: string[] | null,
 ): ScopeDiff {
-  const currentScopes = [
-    ...(getConnectorOAuthGrantConfig(connectorType)?.scopes ?? []),
-  ];
   const stored = storedScopes ?? [];
   const storedSet = new Set(stored);
   const currentSet = new Set(currentScopes);
@@ -703,9 +773,56 @@ export function getScopeDiff(
     removedScopes: stored.filter((s) => {
       return !currentSet.has(s);
     }),
-    currentScopes,
+    currentScopes: [...currentScopes],
     storedScopes: stored,
   };
+}
+
+/**
+ * Check if stored scopes cover all currently required scopes for the first
+ * scope-bearing grant on a connector type.
+ */
+export function hasRequiredScopes(
+  connectorType: ConnectorType,
+  storedScopes: string[] | null,
+): boolean {
+  return hasRequiredGrantScopes(
+    getConnectorOAuthScopes(connectorType),
+    storedScopes,
+  );
+}
+
+export function hasRequiredConnectorAuthMethodScopes(
+  connectorType: ConnectorType,
+  authMethod: string,
+  storedScopes: string[] | null,
+): boolean {
+  return hasRequiredGrantScopes(
+    getConnectorAuthMethodGrantScopes(connectorType, authMethod),
+    storedScopes,
+  );
+}
+
+/**
+ * Compute the diff between currently required scopes and stored scopes for the
+ * first scope-bearing grant on a connector type.
+ */
+export function getScopeDiff(
+  connectorType: ConnectorType,
+  storedScopes: string[] | null,
+): ScopeDiff {
+  return scopeDiff(getConnectorOAuthScopes(connectorType), storedScopes);
+}
+
+export function getConnectorAuthMethodScopeDiff(
+  connectorType: ConnectorType,
+  authMethod: string,
+  storedScopes: string[] | null,
+): ScopeDiff {
+  return scopeDiff(
+    getConnectorAuthMethodGrantScopes(connectorType, authMethod),
+    storedScopes,
+  );
 }
 
 /**

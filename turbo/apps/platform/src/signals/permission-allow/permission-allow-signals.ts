@@ -16,8 +16,12 @@ import {
 import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$, replaceSearchParams$ } from "../route.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, reloadAgentById$ } from "../agent.ts";
+
+const PERMISSION_ACCESS_REQUESTS_CHANGED_TOPIC =
+  "permissionAccessRequestsChanged";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -421,5 +425,30 @@ export const submitAccessRequest$ = command(
     const requestId = await set(createAccessRequest$, params, signal);
     set(internalReason$, "");
     set(updateRequestIdInUrl$, requestId);
+  },
+);
+
+const reloadPermissionAccessRequests$ = command(({ set }) => {
+  set(internalRequestsReload$, (prev) => {
+    return prev + 1;
+  });
+  set(internalAgentReload$, (prev) => {
+    return prev + 1;
+  });
+  set(reloadAgentById$);
+});
+
+export const subscribePermissionAccessRequestsChanged$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const onChanged$ = command(({ set }) => {
+      set(reloadPermissionAccessRequests$);
+      return false;
+    });
+    await set(
+      setAblyLoop$,
+      PERMISSION_ACCESS_REQUESTS_CHANGED_TOPIC,
+      onChanged$,
+      signal,
+    );
   },
 );

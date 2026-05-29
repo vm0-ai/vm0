@@ -180,7 +180,7 @@ const firewallAuthResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),
   base: z.string().optional(),
   query: z.record(z.string(), z.string()).optional(),
-  // Effective addon cache expiry as Unix seconds. OAuth token expiry is the
+  // Effective addon cache expiry as Unix seconds. Access token expiry is the
   // normal source; billable firewall auth can shorten it to force credit
   // re-authorization. Null means non-expiring only for non-billable auth.
   expiresAt: z.number().nullable(),
@@ -192,18 +192,24 @@ const firewallAuthResponseSchema = z.object({
 export const webhookFirewallAuthContract = c.router({
   /**
    * POST /api/webhooks/agent/firewall/auth
-   * Resolve firewall auth templates and refresh OAuth tokens on demand.
+   * Resolve firewall auth templates and refresh access tokens on demand.
    */
   resolve: {
     method: "POST",
     path: "/api/webhooks/agent/firewall/auth",
     headers: authHeadersSchema,
     body: z.object({
+      // Encrypted runtime secret namespace. After decryption, keys are the
+      // `NAME` in `${{ secrets.NAME }}`.
       encryptedSecrets: z.string().min(1),
       authHeaders: z.record(z.string(), z.string()),
       authBase: z.string().optional(),
       authQuery: z.record(z.string(), z.string()).optional(),
+      // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
+      // to the connector or provider owner that can refresh/resolve access.
       secretConnectorMap: z.record(z.string(), z.string()).optional(),
+      // Same keys as secretConnectorMap; adds source details when the owner
+      // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound

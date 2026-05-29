@@ -475,9 +475,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
         {},
         context.signal,
       ),
-    ).rejects.toThrow(
-      "test-oauth-device does not use authorization-code OAuth",
-    );
+    ).rejects.toThrow("test-oauth-device does not use an auth-code grant");
 
     expect(open).not.toHaveBeenCalled();
     expect(startCalled).toBeFalsy();

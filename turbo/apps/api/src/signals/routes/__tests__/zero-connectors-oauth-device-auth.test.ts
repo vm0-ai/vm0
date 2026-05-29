@@ -20,12 +20,12 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
   decryptPersistentSecretValue,
-  decryptSecretValue,
-  encryptSecretValue,
-  inspectPersistentSecretCiphertext,
+  decryptStoredSecretValue,
+  encryptPersistentSecretValue,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
+import { isKmsSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -109,15 +109,16 @@ async function cleanupUser(userId: string, orgId: string) {
     );
 }
 
-function encryptedProviderState(args: {
+async function encryptedProviderState(args: {
   readonly connectorType?: "test-oauth-device" | "slock";
   readonly deviceCode: string;
-}): string {
-  return encryptSecretValue(
+}): Promise<string> {
+  return await encryptPersistentSecretValue(
     JSON.stringify({
       connectorType: args.connectorType ?? "test-oauth-device",
       deviceCode: args.deviceCode,
     }),
+    {},
   );
 }
 
@@ -330,7 +331,7 @@ async function createSession(args: {
       connectorType: args.connectorType ?? "test-oauth-device",
       status: args.status ?? "awaiting_user_authorization",
       sessionTokenHash: sessionTokenHash(sessionToken),
-      encryptedProviderState: encryptedProviderState({
+      encryptedProviderState: await encryptedProviderState({
         connectorType: args.connectorType ?? "test-oauth-device",
         deviceCode: args.deviceCode,
       }),
@@ -394,7 +395,7 @@ async function connectorSecretValue(
         eq(secrets.name, name),
       ),
     );
-  return secret ? decryptSecretValue(secret.encryptedValue) : null;
+  return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
 }
 
 describe("OAuth device authorization connector routes", () => {
@@ -460,13 +461,7 @@ describe("OAuth device authorization connector routes", () => {
       sessionTokenHash(response.body.sessionToken),
     );
     expect(session.encryptedProviderState).not.toContain("test-device:");
-    expect(
-      inspectPersistentSecretCiphertext(session.encryptedProviderState),
-    ).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
+    expect(isKmsSecretForTests(session.encryptedProviderState)).toBeTruthy();
     const decryptedProviderState = await decryptPersistentSecretValue(
       session.encryptedProviderState,
       {
@@ -596,7 +591,7 @@ describe("OAuth device authorization connector routes", () => {
     });
   });
 
-  it("rejects authorization-code OAuth connectors", async () => {
+  it("rejects auth-code grant connectors", async () => {
     await setupUser();
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
@@ -612,7 +607,27 @@ describe("OAuth device authorization connector routes", () => {
     );
 
     expect(response.body.error.message).toBe(
-      "github connector does not support OAuth device authorization",
+      "github connector does not support a device-auth grant",
+    );
+  });
+
+  it("rejects connector without an auth-code or device-auth grants", async () => {
+    await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "cloudinary" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "cloudinary connector does not use an auth-code or device-auth grant",
     );
   });
 

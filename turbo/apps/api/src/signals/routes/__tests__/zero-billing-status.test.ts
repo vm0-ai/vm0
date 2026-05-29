@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
@@ -13,10 +16,45 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { signSandboxJwtForTests } from "../../auth/tokens";
+import { writeDb$ } from "../../external/db";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities: readonly ZeroCapability[];
+}): string {
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: args.capabilities,
+    iat: seconds,
+    exp: seconds + 600,
+  });
+}
+
+async function seedMemberRole(
+  fixture: BillingStatusFixture,
+  role: "admin" | "member" = "member",
+): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(orgMembersCache).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    role,
+  });
+}
 
 describe("GET /api/zero/billing/status", () => {
   const track = createFixtureTracker<BillingStatusFixture>((fixture) => {
@@ -68,6 +106,63 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.subscriptionStatus).toBeNull();
     expect(response.body.currentPeriodEnd).toBeNull();
+  });
+
+  it("preserves negative org credit balances", async () => {
+    const fixture = await track(
+      store.set(seedBillingStatusOrg$, { credits: -1234 }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.credits).toBe(-1234);
+  });
+
+  it("returns billing status for zero tokens with billing read capability", async () => {
+    const fixture = await track(
+      store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
+    );
+    await seedMemberRole(fixture);
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["billing:read"],
+    });
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: `Bearer ${token}` } }),
+      [200],
+    );
+
+    expect(response.body.credits).toBe(100_000);
+  });
+
+  it("returns 403 for zero tokens without billing read capability", async () => {
+    const token = zeroToken({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      capabilities: [],
+    });
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: `Bearer ${token}` } }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Missing required capability: billing:read",
+      code: "FORBIDDEN",
+    });
   });
 
   it("returns correct data for subscribed org", async () => {

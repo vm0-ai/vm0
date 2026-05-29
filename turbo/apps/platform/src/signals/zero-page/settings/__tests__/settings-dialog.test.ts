@@ -10,7 +10,10 @@ import {
   settingsActiveSection$,
   settingsDialogOpen$,
 } from "../settings-dialog.ts";
-import { billingSubPage$ } from "../org-manage-tabs-state.ts";
+import {
+  billingScrollTarget$,
+  billingSubPage$,
+} from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
 import {
   resetMockOrg,
@@ -65,6 +68,25 @@ describe("checkUnifiedSettingsParam$", () => {
     expect(store.get(searchParams$).has("billingView")).toBeFalsy();
   });
 
+  it("opens billing on Buy credits when ?settings=billing&billingView=credits", async () => {
+    const { store, signal } = context;
+    setupAuth(signal);
+    createPushStateMock(signal);
+    mockLocation(
+      { pathname: "/", search: "?settings=billing&billingView=credits" },
+      signal,
+    );
+
+    await store.set(checkUnifiedSettingsParam$, signal);
+
+    expect(store.get(settingsDialogOpen$)).toBeTruthy();
+    expect(store.get(settingsActiveSection$)).toBe("billing");
+    expect(store.get(billingSubPage$)).toBeFalsy();
+    expect(store.get(billingScrollTarget$)).toBe("buy-credits");
+    expect(store.get(searchParams$).has("settings")).toBeFalsy();
+    expect(store.get(searchParams$).has("billingView")).toBeFalsy();
+  });
+
   it("keeps non-admins on the home page when opening Compare plans link", async () => {
     const { store, signal } = context;
     setupAuth(signal);
@@ -79,6 +101,25 @@ describe("checkUnifiedSettingsParam$", () => {
 
     expect(store.get(settingsDialogOpen$)).toBeFalsy();
     expect(store.get(billingSubPage$)).toBeFalsy();
+    expect(store.get(searchParams$).has("settings")).toBeFalsy();
+    expect(store.get(searchParams$).has("billingView")).toBeFalsy();
+  });
+
+  it("keeps non-admins on the home page when opening Buy credits link", async () => {
+    const { store, signal } = context;
+    setupAuth(signal);
+    setMockOrg({ role: "member" });
+    createPushStateMock(signal);
+    mockLocation(
+      { pathname: "/", search: "?settings=billing&billingView=credits" },
+      signal,
+    );
+
+    await store.set(checkUnifiedSettingsParam$, signal);
+
+    expect(store.get(settingsDialogOpen$)).toBeFalsy();
+    expect(store.get(billingSubPage$)).toBeFalsy();
+    expect(store.get(billingScrollTarget$)).toBeNull();
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
     expect(store.get(searchParams$).has("billingView")).toBeFalsy();
   });

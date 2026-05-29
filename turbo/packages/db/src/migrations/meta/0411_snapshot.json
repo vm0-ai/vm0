@@ -1,5 +1,5 @@
 {
-  "id": "04479488-c4ec-4998-8d64-62eb1113a3e1",
+  "id": "3053d076-dee7-4b22-92b2-d5393a22fbaa",
   "prevId": "2d56a77c-cb76-4223-9340-63c167670091",
   "version": "7",
   "dialect": "postgresql",
@@ -6691,12 +6691,6 @@
         },
         "timezone": {
           "name": "timezone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "onboarding_role": {
-          "name": "onboarding_role",
           "type": "text",
           "primaryKey": false,
           "notNull": false

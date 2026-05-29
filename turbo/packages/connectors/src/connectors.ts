@@ -940,12 +940,14 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-export type OAuthGrantConnectorType = ConnectorTypesByGrantKind<
+export type ConnectorAuthProviderType = ConnectorTypesByGrantKind<
   "auth-code" | "device-auth"
 >;
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
 export type DeviceAuthGrantConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
+export type TokenRevokeConnectorType =
+  ConnectorTypesByRevokeKind<"token-revoke">;
 
 export type ConnectorInvalidDefaultAuthMethodType<
   Configs extends Record<string, ConnectorConfig>,

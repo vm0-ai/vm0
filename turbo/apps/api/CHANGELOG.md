@@ -1,5 +1,77 @@
 # Changelog
 
+## [1.87.2](https://github.com/vm0-ai/vm0/compare/api-v1.87.1...api-v1.87.2) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/connectors bumped to 1.37.7
+    * @vm0/core bumped to 8.302.3
+    * @vm0/db bumped to 1.22.5
+
+## [1.87.1](https://github.com/vm0-ai/vm0/compare/api-v1.87.0...api-v1.87.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* show negative org credit balances ([#15383](https://github.com/vm0-ai/vm0/issues/15383)) ([cfd3cb7](https://github.com/vm0-ai/vm0/commit/cfd3cb769b6b1164fcdcd46fe728f7826836c07d))
+* unify credit checkout pricing ([#15380](https://github.com/vm0-ai/vm0/issues/15380)) ([9e65342](https://github.com/vm0-ai/vm0/commit/9e65342d6e605579499d42f23f938ecc631f3a5d))
+
+## [1.87.0](https://github.com/vm0-ai/vm0/compare/api-v1.86.0...api-v1.87.0) (2026-05-29)
+
+
+### Features
+
+* **platform:** add buy credits section to billing settings ([#15365](https://github.com/vm0-ai/vm0/issues/15365)) ([2816d0d](https://github.com/vm0-ai/vm0/commit/2816d0d0b05eb5436c82cc9bac1451255e356756))
+
+
+### Bug Fixes
+
+* allow zero tokens to manage credit checkout ([#15358](https://github.com/vm0-ai/vm0/issues/15358)) ([b220f32](https://github.com/vm0-ai/vm0/commit/b220f32577741af5e30017b72b884f0172b29ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+    * @vm0/db bumped to 1.22.4
+
+## [1.86.0](https://github.com/vm0-ai/vm0/compare/api-v1.85.1...api-v1.86.0) (2026-05-29)
+
+
+### Features
+
+* add permission request realtime refresh ([#15356](https://github.com/vm0-ai/vm0/issues/15356)) ([e2868a9](https://github.com/vm0-ai/vm0/commit/e2868a99aee635fbe288872fa20c30f0a3fd384d))
+
+
+### Bug Fixes
+
+* allow promo codes for credit checkouts ([#15361](https://github.com/vm0-ai/vm0/issues/15361)) ([a04e585](https://github.com/vm0-ai/vm0/commit/a04e5851bc7afe5126450a67e3f49886c3d07e1e))
+* harden auto recharge setup ([#15364](https://github.com/vm0-ai/vm0/issues/15364)) ([e75d12c](https://github.com/vm0-ai/vm0/commit/e75d12c927037591842954858c033603e19e9ab2))
+* require kms secret envelopes ([#15339](https://github.com/vm0-ai/vm0/issues/15339)) ([bc95653](https://github.com/vm0-ai/vm0/commit/bc95653928fe2516c8e030c23590faaea3f12fd3))
+
+## [1.85.1](https://github.com/vm0-ai/vm0/compare/api-v1.85.0...api-v1.85.1) (2026-05-29)
+
+
+### Refactoring
+
+* derive connector checks from lifecycle config ([#15328](https://github.com/vm0-ai/vm0/issues/15328)) ([d910717](https://github.com/vm0-ai/vm0/commit/d9107173fb255846c20e46d903852cf449aceae3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+    * @vm0/core bumped to 8.302.1
+    * @vm0/db bumped to 1.22.3
+
 ## [1.85.0](https://github.com/vm0-ai/vm0/compare/api-v1.84.1...api-v1.85.0) (2026-05-29)
 
 

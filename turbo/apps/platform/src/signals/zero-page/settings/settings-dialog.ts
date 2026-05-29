@@ -4,6 +4,7 @@ import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import {
   initProfileName$,
+  setBillingScrollTarget$,
   setBillingSubPage$,
 } from "./org-manage-tabs-state.ts";
 
@@ -125,10 +126,13 @@ export const checkUnifiedSettingsParam$ = command(
       const section = value;
       const opensBillingPlans =
         section === "billing" && billingView === "plans";
+      const opensBuyCredits =
+        section === "billing" && billingView === "credits";
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
-      if (!isAdmin && opensBillingPlans) {
+      if (!isAdmin && (opensBillingPlans || opensBuyCredits)) {
         set(setBillingSubPage$, false);
+        set(setBillingScrollTarget$, null);
       } else {
         const resolved =
           !isAdmin && isAdminOnlySettingsSection(section)
@@ -136,6 +140,10 @@ export const checkUnifiedSettingsParam$ = command(
             : section;
         set(internalActiveSection$, resolved);
         set(setBillingSubPage$, opensBillingPlans && resolved === "billing");
+        set(
+          setBillingScrollTarget$,
+          opensBuyCredits && resolved === "billing" ? "buy-credits" : null,
+        );
         await set(setSettingsDialogOpen$, true, signal);
       }
     }

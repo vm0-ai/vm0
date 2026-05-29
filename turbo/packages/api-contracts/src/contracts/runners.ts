@@ -135,6 +135,7 @@ export const secretConnectorMetadataSchema = z.object({
   metadataKey: z.string().optional(),
 });
 
+// Keyed by the same firewall auth secret env aliases as secretConnectorMap.
 export const secretConnectorMetadataMapSchema = z.record(
   z.string(),
   secretConnectorMetadataSchema,
@@ -150,10 +151,15 @@ export const storedExecutionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
-  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
-  // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
+  // AES-256-GCM encrypted Record<string, string>. Keys are the runtime secret
+  // names used by `${{ secrets.NAME }}`; connector/model-provider keys are env
+  // aliases, not backing storage secret names.
+  encryptedSecrets: z.string().nullable(),
+  // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
+  // their connector or provider owner. Keys are env aliases, not storage secret names.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  // Same keys as secretConnectorMap; adds source details when the owner alone
+  // is not enough to locate access storage (for example, personal model providers).
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
     .nullable()
     .optional(),
@@ -204,12 +210,19 @@ export const executionContextSchema = z.object({
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
+  // Plain secret values used by the runner for redaction. These are values, not
+  // names, and are base64-encoded only when exported through VM0_SECRET_VALUES.
   secretValues: z.array(z.string()).nullable(),
-  // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
+  // AES-256-GCM encrypted Record<string, string>, passed through to mitm-addon
+  // for auth resolution. Keys are runtime secret names used by
+  // `${{ secrets.NAME }}`; connector/model-provider keys are env aliases, not
+  // backing storage secret names.
   encryptedSecrets: z.string().nullable(),
-  // Maps secret names to OAuth connector types for runtime token refresh
+  // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
+  // their connector or provider owner. Keys are env aliases, not storage secret names.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  // Same keys as secretConnectorMap; adds source details when the owner alone
+  // is not enough to locate access storage (for example, personal model providers).
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
     .nullable()
     .optional(),

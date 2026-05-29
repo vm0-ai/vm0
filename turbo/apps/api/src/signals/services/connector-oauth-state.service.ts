@@ -1,4 +1,4 @@
-import type { OAuthGrantConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorAuthProviderType } from "@vm0/connectors/connectors";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { and, eq, gt, isNull } from "drizzle-orm";
 
@@ -21,7 +21,7 @@ export async function getConnectorOAuthStateStatus(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorType: OAuthGrantConnectorType;
+    readonly connectorType: ConnectorAuthProviderType;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateStatus> {
@@ -55,7 +55,7 @@ export async function claimConnectorOAuthState(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorType: OAuthGrantConnectorType;
+    readonly connectorType: ConnectorAuthProviderType;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateClaimResult> {

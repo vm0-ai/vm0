@@ -6,8 +6,9 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  connectorAuthMethodHasOAuthGrant,
+  connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
+  getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNames,
@@ -15,12 +16,10 @@ import {
   getConnectorSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
-  getScopeDiff,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import {
   getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
   revokeConnectorOAuthToken,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -29,7 +28,8 @@ import {
   connectorTypeSchema,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type OAuthGrantConnectorType,
+  type ConnectorAuthProviderType,
+  type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -118,8 +118,8 @@ interface EncryptedOAuthConnectorSecret {
   readonly description: string;
 }
 
-interface PendingOAuthRevoke {
-  readonly type: OAuthGrantConnectorType;
+interface PendingConnectorTokenRevoke {
+  readonly type: TokenRevokeConnectorType;
   readonly encryptedAccessToken: string;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -197,13 +197,13 @@ function throwCapturedAbort(error: unknown): void {
 
 async function finalizeConnectorStateChangeAfterCommit(args: {
   readonly userId: string;
-  readonly pendingOAuthRevoke: PendingOAuthRevoke | null;
+  readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
   readonly signal: AbortSignal;
   readonly postCommitAbort: unknown;
 }): Promise<void> {
   let postCommitAbort = args.postCommitAbort;
-  if (args.pendingOAuthRevoke) {
-    await revokePendingOAuthToken({ pending: args.pendingOAuthRevoke });
+  if (args.pendingTokenRevoke) {
+    await revokePendingConnectorToken({ pending: args.pendingTokenRevoke });
     if (args.signal.aborted) {
       postCommitAbort ??= args.signal.reason;
     }
@@ -503,18 +503,14 @@ export function zeroConnectorByType(args: {
   });
 }
 
-async function loadPendingOAuthRevoke(args: {
+async function loadPendingConnectorTokenRevoke(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorType;
+  readonly type: TokenRevokeConnectorType;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<PendingOAuthRevoke | null> {
-  if (!hasConnectorOAuthProvider(args.type)) {
-    return null;
-  }
-
+}): Promise<PendingConnectorTokenRevoke | null> {
   const connectorType = args.type;
   const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
   const accessTokenName = secretMetadata.accessSecretName;
@@ -544,8 +540,8 @@ async function loadPendingOAuthRevoke(args: {
   };
 }
 
-async function revokePendingOAuthToken(args: {
-  readonly pending: PendingOAuthRevoke;
+async function revokePendingConnectorToken(args: {
+  readonly pending: PendingConnectorTokenRevoke;
 }): Promise<void> {
   const oauthClient = getConnectorOAuthClient(args.pending.type, optionalEnv);
   if (!oauthClient) {
@@ -659,22 +655,22 @@ export const deleteZeroConnectorLocalState$ = command(
       signal.throwIfAborted();
 
       if (!existing) {
-        return { deleted: false, pendingOAuthRevoke: null };
+        return { deleted: false, pendingTokenRevoke: null };
       }
 
-      const pendingOAuthRevoke = connectorAuthMethodHasOAuthGrant(
-        args.type,
-        existing.authMethod,
-      )
-        ? await loadPendingOAuthRevoke({
-            db: tx,
-            orgId: args.orgId,
-            userId: args.userId,
-            type: args.type,
-            featureSwitchContext,
-            signal,
-          })
-        : null;
+      let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
+      if (
+        connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)
+      ) {
+        pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
+          db: tx,
+          orgId: args.orgId,
+          userId: args.userId,
+          type: args.type,
+          featureSwitchContext,
+          signal,
+        });
+      }
       signal.throwIfAborted();
 
       await tx.delete(connectors).where(eq(connectors.id, existing.id));
@@ -693,7 +689,7 @@ export const deleteZeroConnectorLocalState$ = command(
         signal,
       });
 
-      return { deleted: true, pendingOAuthRevoke };
+      return { deleted: true, pendingTokenRevoke };
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
@@ -706,7 +702,7 @@ export const deleteZeroConnectorLocalState$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
-      pendingOAuthRevoke: deleteResult.pendingOAuthRevoke,
+      pendingTokenRevoke: deleteResult.pendingTokenRevoke,
       signal,
       postCommitAbort,
     });
@@ -941,7 +937,7 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly signal: AbortSignal;
   },
-): Promise<PendingOAuthRevoke | null> {
+): Promise<PendingConnectorTokenRevoke | null> {
   const [existing] = await db
     .select({ id: connectors.id, authMethod: connectors.authMethod })
     .from(connectors)
@@ -959,19 +955,17 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
     return null;
   }
 
-  const pendingOAuthRevoke = connectorAuthMethodHasOAuthGrant(
-    args.type,
-    existing.authMethod,
-  )
-    ? await loadPendingOAuthRevoke({
-        db,
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-        featureSwitchContext: args.featureSwitchContext,
-        signal: args.signal,
-      })
-    : null;
+  let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
+  if (connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)) {
+    pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
+      db,
+      orgId: args.orgId,
+      userId: args.userId,
+      type: args.type,
+      featureSwitchContext: args.featureSwitchContext,
+      signal: args.signal,
+    });
+  }
 
   await deleteConnectorScopedSecretNames(db, {
     orgId: args.orgId,
@@ -986,7 +980,7 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
     signal: args.signal,
   });
 
-  return pendingOAuthRevoke;
+  return pendingTokenRevoke;
 }
 
 export const connectApiTokenConnector$ = command(
@@ -1020,7 +1014,7 @@ export const connectApiTokenConnector$ = command(
       omittedApiTokenFieldNames(preparedResult.prepared);
 
     const writeDb = set(writeDb$);
-    let pendingOAuthRevoke: PendingOAuthRevoke | null = null;
+    let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
     let connectorRow: StoredConnectorRow | null = null;
     let postCommitAbort: unknown = null;
 
@@ -1032,7 +1026,7 @@ export const connectApiTokenConnector$ = command(
       });
       signal.throwIfAborted();
 
-      pendingOAuthRevoke =
+      pendingTokenRevoke =
         await cleanupExistingStoredConnectorForApiTokenConnect(tx, {
           orgId: args.orgId,
           userId: args.userId,
@@ -1104,7 +1098,7 @@ export const connectApiTokenConnector$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
-      pendingOAuthRevoke,
+      pendingTokenRevoke,
       signal,
       postCommitAbort,
     });
@@ -1177,7 +1171,7 @@ function connectorTokenExpiresAt(args: {
 }
 
 function allowedOAuthConnectorSecretNames(
-  type: OAuthGrantConnectorType,
+  type: ConnectorAuthProviderType,
 ): Set<string> {
   return new Set(getConnectorSecretNames(type, "oauth"));
 }
@@ -1193,7 +1187,7 @@ function isOAuthPrimaryTokenSecret(args: {
 }
 
 function validateExtraOAuthConnectorSecrets(args: {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: ConnectorAuthProviderType;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
   readonly accessSecretName: string;
   readonly refreshSecretName: string | undefined;
@@ -1227,7 +1221,7 @@ function validateExtraOAuthConnectorSecrets(args: {
 }
 
 async function encryptExtraOAuthConnectorSecrets(args: {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: ConnectorAuthProviderType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
@@ -1248,7 +1242,7 @@ async function encryptExtraOAuthConnectorSecrets(args: {
 }
 
 async function encryptOAuthConnectorSecretSet(args: {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: ConnectorAuthProviderType;
   readonly accessSecretName: string;
   readonly accessToken: string;
   readonly refreshSecretName: string | undefined;
@@ -1342,7 +1336,7 @@ async function upsertOAuthConnectorRow(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: OAuthGrantConnectorType;
+    readonly type: ConnectorAuthProviderType;
     readonly userInfo: ExternalUserInfo;
     readonly oauthScopes: readonly string[];
     readonly tokenExpiresAt: Date | null;
@@ -1401,7 +1395,7 @@ async function deleteObsoleteConnectorScopedStateForOAuthConnect(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: OAuthGrantConnectorType;
+    readonly type: ConnectorAuthProviderType;
     readonly existingAuthMethod: string | null;
     readonly signal: AbortSignal;
   },
@@ -1446,7 +1440,7 @@ export const upsertOAuthConnector$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: OAuthGrantConnectorType;
+      readonly type: ConnectorAuthProviderType;
       readonly accessToken: string;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
@@ -1551,7 +1545,7 @@ export const upsertOAuthConnector$ = command(
 
     await finalizeConnectorStateChangeAfterCommit({
       userId: args.userId,
-      pendingOAuthRevoke: null,
+      pendingTokenRevoke: null,
       signal,
       postCommitAbort,
     });
@@ -1575,7 +1569,11 @@ export function zeroConnectorScopeDiff(args: {
     if (!connector) {
       return null;
     }
-    return getScopeDiff(args.type, connector.oauthScopes);
+    return getConnectorAuthMethodScopeDiff(
+      args.type,
+      connector.authMethod,
+      connector.oauthScopes,
+    );
   });
 }
 

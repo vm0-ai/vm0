@@ -106,6 +106,38 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     expect(rows).toStrictEqual([]);
   });
 
+  it("rejects connector sessions for connectors without an auth-code grant", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionsContract);
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "test-oauth-device connector does not use an auth-code grant",
+      code: "BAD_REQUEST",
+    });
+
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({ id: connectorSessions.id })
+      .from(connectorSessions)
+      .where(
+        and(
+          eq(connectorSessions.userId, userId),
+          eq(connectorSessions.type, "test-oauth-device"),
+        ),
+      );
+    expect(rows).toStrictEqual([]);
+  });
+
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroConnectorSessionsContract);
     const response = await accept(

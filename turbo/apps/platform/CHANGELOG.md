@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.392.2](https://github.com/vm0-ai/vm0/compare/app-v0.392.1...app-v0.392.2) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/connectors bumped to 1.37.7
+    * @vm0/core bumped to 8.302.3
+
+## [0.392.1](https://github.com/vm0-ai/vm0/compare/app-v0.392.0...app-v0.392.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* unify credit checkout pricing ([#15380](https://github.com/vm0-ai/vm0/issues/15380)) ([9e65342](https://github.com/vm0-ai/vm0/commit/9e65342d6e605579499d42f23f938ecc631f3a5d))
+
+## [0.392.0](https://github.com/vm0-ai/vm0/compare/app-v0.391.0...app-v0.392.0) (2026-05-29)
+
+
+### Features
+
+* load more chats in sidebar ([#15368](https://github.com/vm0-ai/vm0/issues/15368)) ([205b90d](https://github.com/vm0-ai/vm0/commit/205b90daf6ae2aac626ce579d092eca99a532453))
+* **platform:** add buy credits section to billing settings ([#15365](https://github.com/vm0-ai/vm0/issues/15365)) ([2816d0d](https://github.com/vm0-ai/vm0/commit/2816d0d0b05eb5436c82cc9bac1451255e356756))
+
+
+### Bug Fixes
+
+* refresh billing after insufficient credits ([#15374](https://github.com/vm0-ai/vm0/issues/15374)) ([55795e2](https://github.com/vm0-ai/vm0/commit/55795e299beff67a8f0bc92800cf8b40e45c655f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+
+## [0.391.0](https://github.com/vm0-ai/vm0/compare/app-v0.390.1...app-v0.391.0) (2026-05-29)
+
+
+### Features
+
+* add permission request realtime refresh ([#15356](https://github.com/vm0-ai/vm0/issues/15356)) ([e2868a9](https://github.com/vm0-ai/vm0/commit/e2868a99aee635fbe288872fa20c30f0a3fd384d))
+
+
+### Bug Fixes
+
+* **platform:** state-aware OAuth CTA copy ([#14930](https://github.com/vm0-ai/vm0/issues/14930)) ([4804db6](https://github.com/vm0-ai/vm0/commit/4804db6446de19a448b7f9a9d52cb32129f43ddd))
+* show activity logs under zero debug ([#15354](https://github.com/vm0-ai/vm0/issues/15354)) ([af7ff22](https://github.com/vm0-ai/vm0/commit/af7ff222eee5f9c3a7c557c6a4a65b99b98addbf))
+
+## [0.390.1](https://github.com/vm0-ai/vm0/compare/app-v0.390.0...app-v0.390.1) (2026-05-29)
+
+
+### Refactoring
+
+* derive connector checks from lifecycle config ([#15328](https://github.com/vm0-ai/vm0/issues/15328)) ([d910717](https://github.com/vm0-ai/vm0/commit/d9107173fb255846c20e46d903852cf449aceae3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+    * @vm0/core bumped to 8.302.1
+
 ## [0.390.0](https://github.com/vm0-ai/vm0/compare/app-v0.389.4...app-v0.390.0) (2026-05-29)
 
 

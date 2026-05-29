@@ -54,10 +54,12 @@ interface ComputerUsePerformActionOptions extends ComputerUseAppOptions {
 }
 
 interface ComputerUseTypeTextOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
   readonly text: string;
 }
 
 interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
   readonly key: string;
 }
 
@@ -85,6 +87,10 @@ Notes:
   set-value when you need deterministic accessibility value assignment.
   press-key accepts xdotool-style names such as shift+semicolon, Control_L+J,
   ctrl+alt+n, and BackSpace, plus existing macOS-style forms such as Command+L.
+  type-text and press-key accept the same --snapshot-id as the element actions:
+  pass it to deliver keyboard input to that snapshot's window. Without it, the
+  most relevant window for the app is picked, which is ambiguous for multi-window
+  apps.
 
 Examples:
   List available apps:
@@ -99,11 +105,11 @@ Examples:
   Click screenshot coordinate (320, 240) from snapshot desktop_abc:
     zero computer-use click --app Safari --snapshot-id desktop_abc --x 320 --y 240
 
-  Type text into the current focus in Safari:
-    zero computer-use type-text --app Safari --text "Hello"
+  Type text into the snapshot desktop_abc window in Safari:
+    zero computer-use type-text --app Safari --snapshot-id desktop_abc --text "Hello"
 
-  Press a keyboard shortcut:
-    zero computer-use press-key --app Safari --key shift+semicolon
+  Press a keyboard shortcut in the snapshot desktop_abc window:
+    zero computer-use press-key --app Safari --snapshot-id desktop_abc --key shift+semicolon
 
   Open an app without activating the current foreground app:
     zero computer-use open-app --app Things`;
@@ -530,11 +536,13 @@ const typeTextCommand = appOption(
     new Command()
       .name("type-text")
       .description("Type literal keyboard input into the target app")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
       .requiredOption("--text <text>", "Text to type")
       .action(
         withErrorHandler(async (options: ComputerUseTypeTextOptions) => {
           await runWriteCommand("keyboard.type_text", options, {
             app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
             text: options.text,
           });
         }),
@@ -547,6 +555,7 @@ const pressKeyCommand = appOption(
     new Command()
       .name("press-key")
       .description("Send a background key or key combination to the target app")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
       .requiredOption(
         "--key <key>",
         "Key or xdotool-style combination, for example Command+K, shift+semicolon, or Control_L+J",
@@ -555,6 +564,7 @@ const pressKeyCommand = appOption(
         withErrorHandler(async (options: ComputerUsePressKeyOptions) => {
           await runWriteCommand("keyboard.press_key", options, {
             app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
             key: options.key,
           });
         }),

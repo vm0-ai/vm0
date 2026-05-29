@@ -4,12 +4,16 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingCreditCheckoutContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -33,6 +37,27 @@ function setZeroPrice(): void {
   );
 }
 
+function currentSecond(): number {
+  return Math.floor(now() / 1000);
+}
+
+function zeroToken(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly capabilities: readonly ZeroCapability[];
+}): string {
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: args.capabilities,
+    iat: seconds,
+    exp: seconds + 600,
+  });
+}
+
 async function seedOrgRow(values?: {
   readonly onboardingPaymentPending?: boolean;
   readonly stripeCustomerId?: string;
@@ -53,7 +78,17 @@ async function seedOrgRow(values?: {
 
 async function deleteOrgRow(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
+  await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
+}
+
+async function seedMemberRole(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly role: "admin" | "member";
+}): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(orgMembersCache).values(args);
 }
 
 describe("POST /api/zero/billing/checkout", () => {
@@ -566,6 +601,22 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     return fixture;
   }
 
+  function mockCustomCreditCheckoutPrice(checkoutPriceId: string): void {
+    context.mocks.stripe.prices.retrieve.mockResolvedValue({
+      id: TEST_PRICE_CUSTOM_CREDITS,
+      currency: "usd",
+      product: "prod_test_custom_credits",
+      custom_unit_amount: {
+        minimum: 100,
+        maximum: 1_000_000,
+        preset: 10_000,
+      },
+    });
+    context.mocks.stripe.prices.create.mockResolvedValue({
+      id: checkoutPriceId,
+    });
+  }
+
   it("returns 403 for non-admin org member", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -592,12 +643,41 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     });
   });
 
+  it("returns 403 for zero tokens without billing write capability", async () => {
+    const token = zeroToken({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      capabilities: ["billing:read"],
+    });
+
+    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "Missing required capability: billing:write",
+      code: "FORBIDDEN",
+    });
+  });
+
   it("creates one-time credit checkout for free-tier admins", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const checkoutPriceId = "price_test_credit_checkout";
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    mockCustomCreditCheckoutPrice(checkoutPriceId);
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/credit",
     });
@@ -619,25 +699,80 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     expect(response.body).toStrictEqual({
       url: "https://checkout.stripe.com/session/credit",
     });
+    expect(context.mocks.stripe.prices.retrieve).toHaveBeenCalledWith(
+      TEST_PRICE_CUSTOM_CREDITS,
+    );
+    expect(context.mocks.stripe.prices.create).toHaveBeenCalledWith({
+      currency: "usd",
+      product: "prod_test_custom_credits",
+      custom_unit_amount: {
+        enabled: true,
+        minimum: 100,
+        maximum: 1_000_000,
+        preset: 2000,
+      },
+    });
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "payment",
         customer: customerId,
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              unit_amount: 2000,
-              product_data: { name: "20,000 Zero credits" },
-            },
-            quantity: 1,
-          },
-        ],
+        line_items: [{ price: checkoutPriceId, quantity: 1 }],
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
-          creditsAmount: "20000",
+          creditsAmountMode: "amount_subtotal",
+          requestedCreditsAmount: "20000",
         },
+      }),
+    );
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        allow_promotion_codes: true,
+      }),
+    );
+  });
+
+  it("creates credit checkout for zero tokens with billing write capability", async () => {
+    const fixture = await trackedSeed();
+    await seedMemberRole({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      role: "admin",
+    });
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    mockCustomCreditCheckoutPrice("price_test_zero_credit_checkout");
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/zero-credit",
+    });
+    const token = zeroToken({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      capabilities: ["billing:write"],
+    });
+
+    const client = setupApp({ context })(zeroBillingCreditCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/zero-credit",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "payment",
+        customer: customerId,
       }),
     );
   });
@@ -649,15 +784,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const checkoutPriceId = "price_test_custom_checkout";
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
-    context.mocks.stripe.prices.retrieve.mockResolvedValue({
-      id: TEST_PRICE_CUSTOM_CREDITS,
-      currency: "usd",
-      product: "prod_test_custom_credits",
-      custom_unit_amount: { minimum: 100, maximum: 1_000_000, preset: 10_000 },
-    });
-    context.mocks.stripe.prices.create.mockResolvedValue({
-      id: checkoutPriceId,
-    });
+    mockCustomCreditCheckoutPrice(checkoutPriceId);
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/custom-credit",
     });
@@ -701,7 +828,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
         metadata: {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
-          creditsAmountMode: "amount_total",
+          creditsAmountMode: "amount_subtotal",
           requestedCreditsAmount: "150000",
         },
         payment_intent_data: {
@@ -710,7 +837,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
             type: "credit_purchase",
             purpose: "credit_purchase",
             orgId: fixture.orgId,
-            creditsAmountMode: "amount_total",
+            creditsAmountMode: "amount_subtotal",
             requestedCreditsAmount: "150000",
           },
         },
@@ -718,7 +845,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     );
   });
 
-  it("returns 400 when custom credit price is not configured", async () => {
+  it("returns 400 when credit price is not configured", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockEnv(
@@ -735,7 +862,6 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       client.create({
         body: {
           credits: 100_000,
-          customAmount: true,
           successUrl: `${APP_ORIGIN}/billing?credit=success`,
           cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
         },

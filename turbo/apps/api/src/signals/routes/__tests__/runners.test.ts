@@ -23,8 +23,8 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { signPatJwtForTests, verifySandboxToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { encryptSecretValue } from "../../services/crypto.utils";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -75,7 +75,7 @@ function runnerHeartbeatBody(runnerId: string) {
 }
 
 function encryptedSecretsMap(values: Record<string, string>): string {
-  return encryptSecretValue(JSON.stringify(values));
+  return encryptSecretForTests(JSON.stringify(values));
 }
 
 function modelProviderSecretPlaceholder(
@@ -1191,15 +1191,17 @@ describe("POST /api/runners/*", () => {
     });
     patFixtures.push(pat);
     const encryptedSecrets = encryptedSecretsMap({
-      GMAIL_ACCESS_TOKEN: "fake-access-token",
+      CHATGPT_ACCESS_TOKEN: "fake-access-token",
     });
     const secretConnectorMap = {
-      GMAIL_ACCESS_TOKEN: "gmail",
-      GMAIL_TOKEN: "gmail",
+      CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+      CHATGPT_TOKEN: "codex-oauth-token",
     };
     const secretConnectorMetadataMap = {
-      GMAIL_ACCESS_TOKEN: {
-        sourceType: "connector" as const,
+      CHATGPT_ACCESS_TOKEN: {
+        sourceType: "model-provider" as const,
+        sourceUserId: fixture.userId,
+        metadataKey: "codex-oauth-token",
       },
     };
     const queued = await seedQueuedRun({

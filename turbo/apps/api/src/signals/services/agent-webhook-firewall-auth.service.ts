@@ -1,11 +1,19 @@
 import { Buffer } from "node:buffer";
 
+import {
+  getModelProviderEnvBindings,
+  modelProviderTypeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
   getConnectorOAuthClient,
-  type ConnectorOAuthClient,
+  getConnectorAuthMethodAccessMetadata,
+  type ConnectorAuthMethodAccessMetadata,
 } from "@vm0/connectors/connector-utils";
-import type { OAuthGrantConnectorType } from "@vm0/connectors/connectors";
+import {
+  connectorTypeSchema,
+  type ConnectorAuthProviderType,
+} from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
   replaceBasicAuthTemplates,
@@ -14,9 +22,10 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
-  refreshConnectorOAuthToken,
+  getConnectorAuthProviderClientArgs,
+  hasConnectorAuthProvider,
+  refreshConnectorAuthProviderAccessToken,
+  type ConnectorAuthProviderClientArgs,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -48,9 +57,8 @@ import {
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { resolveOrgCreditAvailability } from "./zero-run-admission.service";
 
-type OAuthSecretSource = "connector" | "model-provider";
-type SecretType = OAuthSecretSource;
-
+type AccessSecretSource = "connector" | "model-provider";
+type SecretType = AccessSecretSource;
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
@@ -76,7 +84,18 @@ interface RefreshResult {
 
 interface RefreshExecutionResult {
   readonly connectorType: string;
-  readonly ok: boolean;
+  readonly status: "refreshed" | "failed";
+}
+
+interface ReferencedAuthKeys {
+  readonly secrets: Set<string>;
+  readonly vars: Set<string>;
+}
+
+interface FirewallAuthResolutionContext {
+  readonly referenced: ReferencedAuthKeys;
+  readonly vars: Record<string, string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
 }
 
 interface ResolveResult {
@@ -105,6 +124,60 @@ type ResolveFirewallAuthResult =
         };
       };
     };
+
+function connectorNotConfigured(): ResolveFirewallAuthResult {
+  return {
+    status: 424,
+    body: {
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    },
+  };
+}
+
+function forbiddenModelProviderOwner(): ResolveFirewallAuthResult {
+  return {
+    status: 403,
+    body: {
+      error: {
+        message: "Invalid model-provider secret owner",
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+function tokenRefreshFailed(
+  failedConnectors: readonly string[],
+): ResolveFirewallAuthResult {
+  return {
+    status: 502,
+    body: {
+      error: {
+        message: `Access token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: failedConnectors,
+      },
+    },
+  };
+}
+
+function tokenAccessResolutionFailed(
+  failedConnectors: readonly string[],
+): ResolveFirewallAuthResult {
+  return {
+    status: 502,
+    body: {
+      error: {
+        message: `Token access resolution failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
+        code: "TOKEN_ACCESS_RESOLUTION_FAILED",
+        connectors: failedConnectors,
+      },
+    },
+  };
+}
 
 function mergeExpiresAt(
   expiresAt: number | null,
@@ -159,14 +232,15 @@ interface SecretTokenLookupArgs {
   readonly connectorType: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly sourceType: OAuthSecretSource;
+  readonly sourceType: AccessSecretSource;
   readonly sourceUserId?: string;
+  readonly metadataKey?: string;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
   readonly connectorSecrets: Record<string, string>;
-  readonly metadataKey?: string;
 }
 
 interface RefreshTokenContext {
@@ -179,8 +253,8 @@ interface RefreshTokenContext {
 type PreparedRefreshTokenContext =
   | {
       readonly sourceType: "connector";
-      readonly connectorType: OAuthGrantConnectorType;
-      readonly oauthClient: ConnectorOAuthClient;
+      readonly connectorType: ConnectorAuthProviderType;
+      readonly clientArgs: ConnectorAuthProviderClientArgs;
       readonly context: RefreshTokenContext;
     }
   | {
@@ -190,6 +264,33 @@ type PreparedRefreshTokenContext =
       readonly context: RefreshTokenContext;
     };
 
+type PrepareRefreshTokenContextResult =
+  | {
+      readonly ok: true;
+      readonly prepared: PreparedRefreshTokenContext;
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "client-unconfigured"
+        | "not-refreshable"
+        | "refresh-token-missing";
+    };
+
+type RefreshAccessTokenResult =
+  | {
+      readonly ok: true;
+      readonly accessToken: string;
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "client-unconfigured"
+        | "not-refreshable"
+        | "refresh-failed"
+        | "refresh-token-missing";
+    };
+
 interface SyncRefreshTokensArgs {
   readonly db: Db;
   readonly connectorTypes: readonly string[];
@@ -197,18 +298,22 @@ interface SyncRefreshTokensArgs {
   readonly userId: string;
   readonly secrets: Record<string, string>;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
 interface RefreshExpiredTokensArgs {
   readonly db: Db;
   readonly auth: SandboxAuth;
+  readonly orgId: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly secrets: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
   readonly secretConnectorMetadataMap?:
     | Record<string, SecretConnectorMetadata>
     | undefined;
   readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
   readonly forceRefresh: boolean;
 }
 
@@ -219,8 +324,14 @@ interface RefreshBatchContext {
   readonly userId: string;
   readonly secrets: Record<string, string>;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
   readonly envVarsByConnector: Map<string, readonly string[]>;
   readonly featureSwitchContext: FeatureSwitchContext;
+}
+
+interface ConnectorAccessState {
+  readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
+  readonly tokenExpiresAt: number | null;
 }
 
 interface BasicArgContext extends BasicAuthTemplateArg {
@@ -231,11 +342,14 @@ interface BasicArgContext extends BasicAuthTemplateArg {
 
 const L = logger("webhook:firewall-auth");
 const ORG_SENTINEL_USER_ID = "__org__";
+const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
-function getOAuthProviderKeySourceType(providerKey: string): OAuthSecretSource {
+function getOAuthProviderKeySourceType(
+  providerKey: string,
+): AccessSecretSource {
   return isModelProviderOAuthProviderKey(providerKey)
     ? "model-provider"
     : "connector";
@@ -248,7 +362,7 @@ function modelProviderTypeForOAuthProviderKey(
 }
 
 function resolveSecretUserId(
-  sourceType: OAuthSecretSource,
+  sourceType: AccessSecretSource,
   userId: string,
   sourceUserId?: string,
 ): string {
@@ -356,37 +470,46 @@ async function upsertSecretValue(
     });
 }
 
-function getRefreshSecretNameForSource(
-  connectorType: string,
-  sourceType: OAuthSecretSource,
-): string | undefined {
-  if (sourceType === "model-provider") {
-    const metadata = getModelProviderOAuthSecretMetadata(connectorType);
+function getRefreshSecretNameForSource(args: {
+  readonly connectorType: string;
+  readonly sourceType: AccessSecretSource;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): string | undefined {
+  if (args.sourceType === "model-provider") {
+    const metadata = getModelProviderOAuthSecretMetadata(args.connectorType);
     return metadata?.isRefreshable ? metadata.refreshSecretName : undefined;
   }
 
-  const metadata = getConnectorOAuthSecretMetadata(connectorType);
-  return metadata?.isRefreshable ? metadata.refreshSecretName : undefined;
+  const accessMetadata = args.connectorAccessByType.get(
+    args.connectorType,
+  )?.accessMetadata;
+  return accessMetadata?.kind === "refresh-token"
+    ? accessMetadata.refreshToken
+    : undefined;
 }
 
-function getAccessSecretNameForSource(
-  connectorType: string,
-  sourceType: OAuthSecretSource,
-): string | undefined {
-  if (sourceType === "model-provider") {
-    return getModelProviderOAuthSecretMetadata(connectorType)?.accessSecretName;
+function getAccessSecretNameForSource(args: {
+  readonly connectorType: string;
+  readonly sourceType: AccessSecretSource;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): string | undefined {
+  if (args.sourceType === "model-provider") {
+    return getModelProviderOAuthSecretMetadata(args.connectorType)
+      ?.accessSecretName;
   }
 
-  return getConnectorOAuthSecretMetadata(connectorType)?.accessSecretName;
+  const accessMetadata = args.connectorAccessByType.get(
+    args.connectorType,
+  )?.accessMetadata;
+  return accessMetadata?.kind === "refresh-token"
+    ? accessMetadata.accessToken
+    : undefined;
 }
 
 async function getConnectorRefreshToken(
   args: SecretTokenLookupArgs,
 ): Promise<{ readonly secretName: string; readonly token: string } | null> {
-  const secretName = getRefreshSecretNameForSource(
-    args.connectorType,
-    args.sourceType,
-  );
+  const secretName = getRefreshSecretNameForSource(args);
   if (!secretName) {
     return null;
   }
@@ -409,10 +532,7 @@ async function getConnectorRefreshToken(
 async function getConnectorAccessToken(
   args: SecretTokenLookupArgs,
 ): Promise<string | null> {
-  const secretName = getAccessSecretNameForSource(
-    args.connectorType,
-    args.sourceType,
-  );
+  const secretName = getAccessSecretNameForSource(args);
   if (!secretName) {
     return null;
   }
@@ -447,6 +567,8 @@ async function syncRefreshTokensFromDb(
         userId: args.userId,
         sourceType: metadata.sourceType,
         sourceUserId: metadata.sourceUserId,
+        metadataKey: metadata.metadataKey,
+        connectorAccessByType: args.connectorAccessByType,
         featureSwitchContext: args.featureSwitchContext,
       });
     }),
@@ -459,13 +581,13 @@ async function syncRefreshTokensFromDb(
   }
 }
 
-async function getConnectorExpiry(
+async function loadConnectorAccessStates(
   db: Db,
   orgId: string,
   userId: string,
   connectorTypes: readonly string[],
-): Promise<Map<string, number | null>> {
-  const result = new Map<string, number | null>();
+): Promise<Map<string, ConnectorAccessState>> {
+  const result = new Map<string, ConnectorAccessState>();
   if (connectorTypes.length === 0) {
     return result;
   }
@@ -473,6 +595,7 @@ async function getConnectorExpiry(
   const rows = await db
     .select({
       type: connectors.type,
+      authMethod: connectors.authMethod,
       tokenExpiresAt: connectors.tokenExpiresAt,
     })
     .from(connectors)
@@ -485,12 +608,23 @@ async function getConnectorExpiry(
     );
 
   for (const row of rows) {
-    result.set(
-      row.type,
-      row.tokenExpiresAt
+    const parsed = connectorTypeSchema.safeParse(row.type);
+    if (!parsed.success) {
+      continue;
+    }
+    const accessMetadata = getConnectorAuthMethodAccessMetadata(
+      parsed.data,
+      row.authMethod,
+    );
+    if (!accessMetadata) {
+      continue;
+    }
+    result.set(row.type, {
+      accessMetadata,
+      tokenExpiresAt: row.tokenExpiresAt
         ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
         : null,
-    );
+    });
   }
   return result;
 }
@@ -535,47 +669,61 @@ async function getModelProviderExpiry(
   return result;
 }
 
-async function getExpiryByProviderKey(
-  db: Db,
-  orgId: string,
-  userId: string,
-  connectorTypes: readonly string[],
-  metadataByConnector: Map<string, SecretConnectorMetadata>,
-): Promise<Map<string, number | null>> {
-  const connectorOnly = connectorTypes.filter((connectorType) => {
-    return getOAuthProviderKeySourceType(connectorType) === "connector";
+async function getExpiryByProviderKey(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorTypes: readonly string[];
+  readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): Promise<Map<string, number | null>> {
+  const connectorOnly = args.connectorTypes.filter((connectorType) => {
+    return (
+      resolveRefreshMetadata(
+        connectorType,
+        args.metadataByConnector.get(connectorType),
+      ).sourceType === "connector"
+    );
   });
-  const modelProviderOAuthProviderKeys = connectorTypes.filter(
+  const modelProviderOAuthProviderKeys = args.connectorTypes.filter(
     (connectorType) => {
-      return getOAuthProviderKeySourceType(connectorType) === "model-provider";
+      return (
+        resolveRefreshMetadata(
+          connectorType,
+          args.metadataByConnector.get(connectorType),
+        ).sourceType === "model-provider"
+      );
     },
   );
 
-  const [connectorExpiry, modelProviderEntries] = await Promise.all([
-    getConnectorExpiry(db, orgId, userId, connectorOnly),
-    Promise.all(
-      modelProviderOAuthProviderKeys.map(async (providerKey) => {
-        const metadata = resolveRefreshMetadata(
-          providerKey,
-          metadataByConnector.get(providerKey),
-        );
-        const metadataKey =
-          metadata.metadataKey ??
-          modelProviderTypeForOAuthProviderKey(providerKey) ??
-          providerKey;
-        const expiryMap = await getModelProviderExpiry(
-          db,
-          orgId,
-          userId,
-          [metadataKey],
-          { sourceUserId: metadata.sourceUserId },
-        );
-        return [providerKey, expiryMap.get(metadataKey) ?? null] as const;
-      }),
-    ),
-  ]);
+  const modelProviderEntries = await Promise.all(
+    modelProviderOAuthProviderKeys.map(async (providerKey) => {
+      const metadata = resolveRefreshMetadata(
+        providerKey,
+        args.metadataByConnector.get(providerKey),
+      );
+      const metadataKey =
+        metadata.metadataKey ??
+        modelProviderTypeForOAuthProviderKey(providerKey) ??
+        providerKey;
+      const expiryMap = await getModelProviderExpiry(
+        args.db,
+        args.orgId,
+        args.userId,
+        [metadataKey],
+        { sourceUserId: metadata.sourceUserId },
+      );
+      return [providerKey, expiryMap.get(metadataKey) ?? null] as const;
+    }),
+  );
 
-  const merged = new Map<string, number | null>(connectorExpiry);
+  const merged = new Map<string, number | null>();
+  for (const connectorType of connectorOnly) {
+    const state = args.connectorAccessByType.get(connectorType);
+    if (state) {
+      merged.set(connectorType, state.tokenExpiresAt);
+    }
+  }
   for (const [providerKey, expiry] of modelProviderEntries) {
     merged.set(providerKey, expiry);
   }
@@ -584,16 +732,16 @@ async function getExpiryByProviderKey(
 
 function prepareRefreshTokenContext(
   args: RefreshAccessTokenArgs,
-): PreparedRefreshTokenContext | null {
+): PrepareRefreshTokenContextResult {
   if (args.sourceType === "model-provider") {
     if (!isModelProviderOAuthProviderKey(args.connectorType)) {
-      return null;
+      return { ok: false, reason: "not-refreshable" };
     }
     const secretMetadata = getModelProviderOAuthSecretMetadata(
       args.connectorType,
     );
     if (!secretMetadata.isRefreshable) {
-      return null;
+      return { ok: false, reason: "not-refreshable" };
     }
     if (!args.metadataKey) {
       throw new Error(
@@ -605,7 +753,7 @@ function prepareRefreshTokenContext(
     const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
     if (!currentRefreshToken) {
       L.debug(`No ${args.connectorType} refresh token available, skipping`);
-      return null;
+      return { ok: false, reason: "refresh-token-missing" };
     }
 
     const env = currentProviderEnv();
@@ -618,7 +766,7 @@ function prepareRefreshTokenContext(
       L.debug(
         `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
       );
-      return null;
+      return { ok: false, reason: "client-unconfigured" };
     }
 
     const context: RefreshTokenContext = {
@@ -633,42 +781,56 @@ function prepareRefreshTokenContext(
     };
 
     return {
-      sourceType: args.sourceType,
-      providerKey: args.connectorType,
-      currentEnv: env,
-      context,
+      ok: true,
+      prepared: {
+        sourceType: args.sourceType,
+        providerKey: args.connectorType,
+        currentEnv: env,
+        context,
+      },
     };
   }
 
-  if (!hasConnectorOAuthProvider(args.connectorType)) {
-    L.debug(`${args.connectorType} is not an OAuth connector type, skipping`);
-    return null;
+  const accessMetadata = args.connectorAccessByType.get(
+    args.connectorType,
+  )?.accessMetadata;
+  if (accessMetadata?.kind !== "refresh-token") {
+    L.debug(
+      `${args.connectorType} does not use refresh-token access, skipping`,
+    );
+    return { ok: false, reason: "not-refreshable" };
   }
-  const secretMetadata = getConnectorOAuthSecretMetadata(args.connectorType);
-  if (!secretMetadata.isRefreshable) {
-    return null;
+  const parsedConnectorType = connectorTypeSchema.safeParse(args.connectorType);
+  if (!parsedConnectorType.success) {
+    return { ok: false, reason: "not-refreshable" };
   }
-  const oauthClient = getConnectorOAuthClient(args.connectorType, (name) => {
-    return optionalEnv(name);
-  });
+  if (!hasConnectorAuthProvider(parsedConnectorType.data)) {
+    return { ok: false, reason: "not-refreshable" };
+  }
+  const oauthClient = getConnectorOAuthClient(
+    parsedConnectorType.data,
+    (name) => {
+      return optionalEnv(name);
+    },
+  );
   if (!oauthClient) {
     L.debug(
-      `${args.connectorType} OAuth client not configured, skipping token refresh`,
+      `${args.connectorType} connector client not configured, skipping token refresh`,
     );
-    return null;
+    return { ok: false, reason: "client-unconfigured" };
   }
 
-  const refreshTokenSecret = secretMetadata.refreshSecretName;
+  const refreshTokenSecret = accessMetadata.refreshToken;
   const currentRefreshToken = args.connectorSecrets[refreshTokenSecret];
   if (!currentRefreshToken) {
     L.debug(`No ${args.connectorType} refresh token available, skipping`);
-    return null;
+    return { ok: false, reason: "refresh-token-missing" };
   }
 
   const context: RefreshTokenContext = {
     refreshTokenSecret,
     currentRefreshToken,
-    accessTokenSecret: secretMetadata.accessSecretName,
+    accessTokenSecret: accessMetadata.accessToken,
     secretUserId: resolveSecretUserId(
       args.sourceType,
       args.userId,
@@ -677,10 +839,13 @@ function prepareRefreshTokenContext(
   };
 
   return {
-    sourceType: "connector",
-    connectorType: args.connectorType,
-    oauthClient,
-    context,
+    ok: true,
+    prepared: {
+      sourceType: "connector",
+      connectorType: parsedConnectorType.data,
+      clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
+      context,
+    },
   };
 }
 
@@ -788,19 +953,20 @@ async function markRefreshFailure(
     );
 }
 
-async function refreshConnectorAccessToken(
+async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
-): Promise<string | null> {
-  const prepared = prepareRefreshTokenContext(args);
-  if (!prepared) {
-    return null;
+): Promise<RefreshAccessTokenResult> {
+  const preparation = prepareRefreshTokenContext(args);
+  if (!preparation.ok) {
+    return { ok: false, reason: preparation.reason };
   }
+  const { prepared } = preparation;
 
   const refreshPromise =
     prepared.sourceType === "connector"
-      ? refreshConnectorOAuthToken({
+      ? refreshConnectorAuthProviderAccessToken({
           type: prepared.connectorType,
-          oauthClient: prepared.oauthClient,
+          clientArgs: prepared.clientArgs,
           refreshToken: prepared.context.currentRefreshToken,
         })
       : refreshModelProviderOAuthToken({
@@ -822,7 +988,7 @@ async function refreshConnectorAccessToken(
     });
 
     await markRefreshFailure(args, prepared.context, errorCode);
-    return null;
+    return { ok: false, reason: "refresh-failed" };
   }
 
   const result = refreshResult.value;
@@ -834,7 +1000,7 @@ async function refreshConnectorAccessToken(
       result.refreshToken;
   }
   L.debug(`${args.connectorType} access token refreshed successfully`);
-  return result.accessToken;
+  return { ok: true, accessToken: result.accessToken };
 }
 
 function buildMetadataByConnector(
@@ -896,16 +1062,396 @@ const emptyRefreshResult = Object.freeze({
 
 function buildRefreshableMap(
   secretConnectorMap: Record<string, string>,
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined,
+  connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>,
   referencedKeys: Set<string>,
 ): Map<string, string> {
   const refreshable = new Map<string, string>();
   for (const key of referencedKeys) {
     const connectorType = secretConnectorMap[key];
-    if (connectorType) {
+    if (!connectorType) {
+      continue;
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      secretConnectorMetadataMap?.[key],
+    );
+    const refreshSecretName = getRefreshSecretNameForSource({
+      connectorType,
+      sourceType: metadata.sourceType,
+      connectorAccessByType,
+    });
+    if (refreshSecretName) {
       refreshable.set(key, connectorType);
     }
   }
   return refreshable;
+}
+
+function getOwnConnectorOwner(
+  secretConnectorMap: Record<string, string> | undefined,
+  key: string,
+): string | undefined {
+  return secretConnectorMap && Object.hasOwn(secretConnectorMap, key)
+    ? secretConnectorMap[key]
+    : undefined;
+}
+
+function isSelectedAccessSecretKey(
+  key: string,
+  accessMetadata: ConnectorAuthMethodAccessMetadata,
+): boolean {
+  return connectorAccessSecretName(key, accessMetadata) !== undefined;
+}
+
+function connectorAccessSecretName(
+  key: string,
+  accessMetadata: ConnectorAuthMethodAccessMetadata,
+): string | undefined {
+  switch (accessMetadata.kind) {
+    case "refresh-token": {
+      if (
+        accessMetadata.envBindings[key] ===
+        `${CONNECTOR_SECRET_REF_PREFIX}${accessMetadata.accessToken}`
+      ) {
+        return accessMetadata.accessToken;
+      }
+      return undefined;
+    }
+    case "static": {
+      const valueRef = accessMetadata.envBindings[key];
+      return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true
+        ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
+        : undefined;
+    }
+    case "none": {
+      return undefined;
+    }
+  }
+}
+
+function modelProviderAccessSecretName(args: {
+  readonly key: string;
+  readonly connectorType: string;
+  readonly metadata: SecretConnectorMetadata;
+}): string | undefined {
+  const secretMetadata = getModelProviderOAuthSecretMetadata(
+    args.connectorType,
+  );
+  if (!secretMetadata?.isRefreshable) {
+    return undefined;
+  }
+
+  const providerType =
+    args.metadata.metadataKey ??
+    modelProviderTypeForOAuthProviderKey(args.connectorType);
+  const parsedProviderType = providerType
+    ? modelProviderTypeSchema.safeParse(providerType)
+    : undefined;
+  if (!parsedProviderType?.success) {
+    return undefined;
+  }
+
+  const envBindings = getModelProviderEnvBindings(parsedProviderType.data);
+  return envBindings?.[args.key] ===
+    `${CONNECTOR_SECRET_REF_PREFIX}${secretMetadata.accessSecretName}`
+    ? secretMetadata.accessSecretName
+    : undefined;
+}
+
+async function syncStaticConnectorAccessSecrets(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly secrets: Record<string, string>;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<void> {
+  if (!args.secretConnectorMap) {
+    return;
+  }
+
+  const lookups = [...args.referencedKeys].flatMap((key) => {
+    const connectorType = getOwnConnectorOwner(args.secretConnectorMap, key);
+    if (!connectorType) {
+      return [];
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "connector") {
+      return [];
+    }
+    const accessMetadata =
+      args.connectorAccessByType.get(connectorType)?.accessMetadata;
+    if (accessMetadata?.kind !== "static") {
+      return [];
+    }
+    const secretName = connectorAccessSecretName(key, accessMetadata);
+    return secretName ? [{ key, secretName }] : [];
+  });
+  if (lookups.length === 0) {
+    return;
+  }
+
+  const rows = await args.db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.type, "connector"),
+        inArray(secretsTable.name, [
+          ...new Set(
+            lookups.map((lookup) => {
+              return lookup.secretName;
+            }),
+          ),
+        ]),
+      ),
+    );
+
+  const valuesByName = new Map<string, string>();
+  for (const row of rows) {
+    valuesByName.set(
+      row.name,
+      await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      ),
+    );
+  }
+
+  for (const { key, secretName } of lookups) {
+    const value = valuesByName.get(secretName);
+    if (value === undefined) {
+      delete args.secrets[key];
+    } else {
+      args.secrets[key] = value;
+    }
+  }
+}
+
+function canResolveMissingAccessSecret(args: {
+  readonly key: string;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): boolean {
+  const connectorType = getOwnConnectorOwner(args.secretConnectorMap, args.key);
+  const metadata = args.secretConnectorMetadataMap?.[args.key];
+  if (!connectorType) {
+    return false;
+  }
+  const refreshMetadata = resolveRefreshMetadata(connectorType, metadata);
+  if (refreshMetadata.sourceType === "model-provider") {
+    return (
+      modelProviderAccessSecretName({
+        key: args.key,
+        connectorType,
+        metadata: refreshMetadata,
+      }) !== undefined
+    );
+  }
+
+  const accessMetadata =
+    args.connectorAccessByType.get(connectorType)?.accessMetadata;
+  if (accessMetadata?.kind !== "refresh-token") {
+    return false;
+  }
+  return isSelectedAccessSecretKey(args.key, accessMetadata);
+}
+
+function referencedConnectorTypes(args: {
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+}): readonly string[] {
+  if (!args.secretConnectorMap) {
+    return [];
+  }
+  const connectorTypes = new Set<string>();
+  for (const key of args.referencedKeys) {
+    const connectorType = args.secretConnectorMap[key];
+    if (!connectorType) {
+      continue;
+    }
+    const sourceType = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    ).sourceType;
+    if (sourceType === "connector") {
+      connectorTypes.add(connectorType);
+    }
+  }
+  return [...connectorTypes];
+}
+
+function hasUnavailableAccessSource(args: {
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): boolean {
+  if (!args.secretConnectorMap) {
+    return false;
+  }
+  return [...args.referencedKeys].some((key) => {
+    const connectorType = args.secretConnectorMap?.[key];
+    if (!connectorType) {
+      return false;
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType === "model-provider") {
+      return (
+        modelProviderAccessSecretName({
+          key,
+          connectorType,
+          metadata,
+        }) === undefined
+      );
+    }
+
+    const accessMetadata =
+      args.connectorAccessByType.get(connectorType)?.accessMetadata;
+    return !accessMetadata || !isSelectedAccessSecretKey(key, accessMetadata);
+  });
+}
+
+function hasMissingUnresolvableSecrets(args: {
+  readonly secrets: Record<string, string>;
+  readonly referencedKeys: Set<string>;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}): boolean {
+  return [...args.referencedKeys].some((key) => {
+    return (
+      !Object.hasOwn(args.secrets, key) &&
+      !canResolveMissingAccessSecret({
+        key,
+        secretConnectorMap: args.secretConnectorMap,
+        secretConnectorMetadataMap: args.secretConnectorMetadataMap,
+        connectorAccessByType: args.connectorAccessByType,
+      })
+    );
+  });
+}
+
+async function prepareFirewallAuthResolutionContext(args: {
+  readonly db: Db;
+  readonly auth: SandboxAuth;
+  readonly body: FirewallAuthBody;
+  readonly orgId: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly secrets: Record<string, string>;
+}): Promise<
+  | { readonly ok: true; readonly context: FirewallAuthResolutionContext }
+  | { readonly ok: false; readonly response: ResolveFirewallAuthResult }
+> {
+  const referenced = collectReferencedKeys(
+    args.body.authHeaders,
+    args.body.authBase,
+    args.body.authQuery,
+  );
+  const vars = args.body.vars ?? {};
+  const connectorAccessByType = await loadConnectorAccessStates(
+    args.db,
+    args.orgId,
+    args.auth.userId,
+    referencedConnectorTypes({
+      secretConnectorMap: args.body.secretConnectorMap,
+      secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+      referencedKeys: referenced.secrets,
+    }),
+  );
+  await syncStaticConnectorAccessSecrets({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: referenced.secrets,
+    connectorAccessByType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  if (
+    hasUnavailableAccessSource({
+      secretConnectorMap: args.body.secretConnectorMap,
+      secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+      referencedKeys: referenced.secrets,
+      connectorAccessByType,
+    })
+  ) {
+    return { ok: false, response: connectorNotConfigured() };
+  }
+
+  const hasMissingSecrets = hasMissingUnresolvableSecrets({
+    secrets: args.secrets,
+    referencedKeys: referenced.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    connectorAccessByType,
+  });
+  const hasMissingVars = [...referenced.vars].some((key) => {
+    return !Object.hasOwn(vars, key);
+  });
+  if (hasMissingSecrets || hasMissingVars) {
+    return { ok: false, response: connectorNotConfigured() };
+  }
+
+  return {
+    ok: true,
+    context: { referenced, vars, connectorAccessByType },
+  };
+}
+
+function hasMissingResolvedSecrets(
+  secrets: Record<string, string>,
+  referencedKeys: Set<string>,
+): boolean {
+  return [...referencedKeys].some((key) => {
+    return !Object.hasOwn(secrets, key);
+  });
+}
+
+function missingResolvedConnectorOwners(args: {
+  readonly secrets: Record<string, string>;
+  readonly referencedKeys: Set<string>;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+}): readonly string[] {
+  const owners = new Set<string>();
+  for (const key of args.referencedKeys) {
+    if (Object.hasOwn(args.secrets, key)) {
+      continue;
+    }
+    owners.add(args.secretConnectorMap?.[key] ?? key);
+  }
+  return [...owners].sort();
 }
 
 async function findRefreshRunOrgId(
@@ -925,7 +1471,12 @@ async function decryptFirewallAuthSecrets(
   auth: SandboxAuth,
   encryptedSecrets: string,
 ): Promise<
-  | { readonly ok: true; readonly secrets: Record<string, string> | null }
+  | {
+      readonly ok: true;
+      readonly orgId: string;
+      readonly featureSwitchContext: FeatureSwitchContext;
+      readonly secrets: Record<string, string> | null;
+    }
   | {
       readonly ok: false;
       readonly response: ReturnType<typeof badRequestMessage>;
@@ -947,6 +1498,8 @@ async function decryptFirewallAuthSecrets(
   );
   return {
     ok: true,
+    orgId,
+    featureSwitchContext,
     secrets: decryptedResult.ok ? decryptedResult.value : null,
   };
 }
@@ -994,7 +1547,7 @@ async function refreshSelectedTokens(
         connectorType,
         context.metadataByConnector.get(connectorType),
       );
-      const freshToken = await refreshConnectorAccessToken({
+      const refreshResult = await refreshAccessTokenForSource({
         db: context.db,
         connectorType,
         orgId: context.orgId,
@@ -1003,25 +1556,27 @@ async function refreshSelectedTokens(
         sourceUserId: metadata.sourceUserId,
         metadataKey: metadata.metadataKey,
         connectorSecrets: context.secrets,
+        connectorAccessByType: context.connectorAccessByType,
         featureSwitchContext: context.featureSwitchContext,
       });
-      if (!freshToken) {
+      if (!refreshResult.ok) {
         L.warn(
           `[${context.auth.runId}] Failed to refresh ${connectorType} token`,
           {
             sourceType: metadata.sourceType,
             sourceUserId: metadata.sourceUserId,
             metadataKey: metadata.metadataKey,
+            reason: refreshResult.reason,
           },
         );
-        return { connectorType, ok: false };
+        return { connectorType, status: "failed" };
       }
 
       for (const envVar of context.envVarsByConnector.get(connectorType) ??
         []) {
-        context.secrets[envVar] = freshToken;
+        context.secrets[envVar] = refreshResult.accessToken;
       }
-      return { connectorType, ok: true };
+      return { connectorType, status: "refreshed" };
     }),
   );
 }
@@ -1045,6 +1600,8 @@ async function syncSkippedTokens(
           userId: context.userId,
           sourceType: metadata.sourceType,
           sourceUserId: metadata.sourceUserId,
+          metadataKey: metadata.metadataKey,
+          connectorAccessByType: context.connectorAccessByType,
           featureSwitchContext: context.featureSwitchContext,
         }),
       };
@@ -1053,8 +1610,12 @@ async function syncSkippedTokens(
   for (const { connectorType, token } of currentTokens) {
     if (!token) {
       L.warn(
-        `[${context.auth.runId}] No DB token for skipped connector ${connectorType}, using encryptedSecrets value`,
+        `[${context.auth.runId}] No DB token for skipped connector ${connectorType}, marking access unresolved`,
       );
+      for (const envVar of context.envVarsByConnector.get(connectorType) ??
+        []) {
+        delete context.secrets[envVar];
+      }
       continue;
     }
     for (const envVar of context.envVarsByConnector.get(connectorType) ?? []) {
@@ -1068,11 +1629,11 @@ function summarizeRefreshResults(
   envVarsByConnector: Map<string, readonly string[]>,
 ): Pick<
   RefreshResult,
-  "refreshedConnectors" | "refreshedSecrets" | "failedConnectors"
+  "failedConnectors" | "refreshedConnectors" | "refreshedSecrets"
 > {
   const refreshedConnectors = refreshResults
     .filter((result) => {
-      return result.ok;
+      return result.status === "refreshed";
     })
     .map((result) => {
       return result.connectorType;
@@ -1084,13 +1645,17 @@ function summarizeRefreshResults(
     .sort();
   const failedConnectors = refreshResults
     .filter((result) => {
-      return !result.ok;
+      return result.status === "failed";
     })
     .map((result) => {
       return result.connectorType;
     });
 
-  return { refreshedConnectors, refreshedSecrets, failedConnectors };
+  return {
+    refreshedConnectors,
+    refreshedSecrets,
+    failedConnectors,
+  };
 }
 
 function earliestConnectorExpiry(
@@ -1113,36 +1678,27 @@ async function refreshExpiredTokens(
 ): Promise<RefreshResult> {
   const refreshable = buildRefreshableMap(
     args.secretConnectorMap,
+    args.secretConnectorMetadataMap,
+    args.connectorAccessByType,
     args.referencedKeys,
   );
   if (refreshable.size === 0) {
     return emptyRefreshResult;
   }
 
-  const orgId = await findRefreshRunOrgId(args.db, args.auth);
-  if (!orgId) {
-    L.warn(`[${args.auth.runId}] Run not found for token refresh`);
-    return emptyRefreshResult;
-  }
-
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    args.db,
-    orgId,
-    args.auth.userId,
-  );
-
   const connectorTypes = [...new Set(refreshable.values())];
   const metadataByConnector = buildMetadataByConnector(
     refreshable,
     args.secretConnectorMetadataMap,
   );
-  const expiryMap = await getExpiryByProviderKey(
-    args.db,
-    orgId,
-    args.auth.userId,
+  const expiryMap = await getExpiryByProviderKey({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
     connectorTypes,
     metadataByConnector,
-  );
+    connectorAccessByType: args.connectorAccessByType,
+  });
   const toRefresh = connectorTypesNeedingRefresh({
     connectorTypes,
     expiryMap,
@@ -1153,22 +1709,24 @@ async function refreshExpiredTokens(
   await syncRefreshTokensFromDb({
     db: args.db,
     connectorTypes: toRefresh,
-    orgId,
+    orgId: args.orgId,
     userId: args.auth.userId,
     secrets: args.secrets,
     metadataByConnector,
-    featureSwitchContext,
+    connectorAccessByType: args.connectorAccessByType,
+    featureSwitchContext: args.featureSwitchContext,
   });
 
   const context = {
     db: args.db,
     auth: args.auth,
-    orgId,
+    orgId: args.orgId,
     userId: args.auth.userId,
     secrets: args.secrets,
     metadataByConnector,
+    connectorAccessByType: args.connectorAccessByType,
     envVarsByConnector,
-    featureSwitchContext,
+    featureSwitchContext: args.featureSwitchContext,
   } satisfies RefreshBatchContext;
   const refreshResults = await refreshSelectedTokens(context, toRefresh);
   const skippedTypes = connectorTypes.filter((connectorType) => {
@@ -1177,15 +1735,28 @@ async function refreshExpiredTokens(
   await syncSkippedTokens(context, skippedTypes);
 
   const summary = summarizeRefreshResults(refreshResults, envVarsByConnector);
+  const finalConnectorAccessByType =
+    summary.refreshedConnectors.length > 0
+      ? new Map([
+          ...args.connectorAccessByType,
+          ...(await loadConnectorAccessStates(
+            args.db,
+            args.orgId,
+            args.auth.userId,
+            connectorTypes,
+          )),
+        ])
+      : args.connectorAccessByType;
   const finalExpiryMap =
     summary.refreshedConnectors.length > 0
-      ? await getExpiryByProviderKey(
-          args.db,
-          orgId,
-          args.auth.userId,
+      ? await getExpiryByProviderKey({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.auth.userId,
           connectorTypes,
           metadataByConnector,
-        )
+          connectorAccessByType: finalConnectorAccessByType,
+        })
       : expiryMap;
 
   return {
@@ -1198,7 +1769,7 @@ function collectReferencedKeys(
   authHeaders: Record<string, string>,
   authBase?: string,
   authQuery?: Record<string, string>,
-): { readonly secrets: Set<string>; readonly vars: Set<string> } {
+): ReferencedAuthKeys {
   const secretKeys = new Set<string>();
   const varKeys = new Set<string>();
   const addKey = (namespace: string, key: string): void => {
@@ -1384,30 +1955,18 @@ export async function resolveFirewallAuth(
     return badRequestMessage("Failed to decrypt secrets");
   }
 
-  const referenced = collectReferencedKeys(
-    body.authHeaders,
-    body.authBase,
-    body.authQuery,
-  );
-  const vars = body.vars ?? {};
-
-  const hasMissingSecrets = [...referenced.secrets].some((key) => {
-    return !Object.hasOwn(decryptedSecrets, key);
+  const prepared = await prepareFirewallAuthResolutionContext({
+    db,
+    auth,
+    body,
+    orgId: decrypted.orgId,
+    featureSwitchContext: decrypted.featureSwitchContext,
+    secrets: decryptedSecrets,
   });
-  const hasMissingVars = [...referenced.vars].some((key) => {
-    return !Object.hasOwn(vars, key);
-  });
-  if (hasMissingSecrets || hasMissingVars) {
-    return {
-      status: 424,
-      body: {
-        error: {
-          message: "Connector not configured",
-          code: "CONNECTOR_NOT_CONFIGURED",
-        },
-      },
-    };
+  if (!prepared.ok) {
+    return prepared.response;
   }
+  const { connectorAccessByType, referenced, vars } = prepared.context;
 
   if (
     body.secretConnectorMap &&
@@ -1418,15 +1977,7 @@ export async function resolveFirewallAuth(
       referenced.secrets,
     )
   ) {
-    return {
-      status: 403,
-      body: {
-        error: {
-          message: "Invalid model-provider secret owner",
-          code: "FORBIDDEN",
-        },
-      },
-    };
+    return forbiddenModelProviderOwner();
   }
 
   const billableCacheExpiry = await resolveBillableFirewallCacheExpiry({
@@ -1451,6 +2002,9 @@ export async function resolveFirewallAuth(
       secretConnectorMap: body.secretConnectorMap,
       secretConnectorMetadataMap: body.secretConnectorMetadataMap,
       referencedKeys: referenced.secrets,
+      connectorAccessByType,
+      orgId: decrypted.orgId,
+      featureSwitchContext: decrypted.featureSwitchContext,
       forceRefresh: body.forceRefresh ?? false,
     });
     expiresAt = result.expiresAt;
@@ -1460,16 +2014,17 @@ export async function resolveFirewallAuth(
   }
 
   if (failedConnectors.length > 0) {
-    return {
-      status: 502,
-      body: {
-        error: {
-          message: `OAuth token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
-          code: "TOKEN_REFRESH_FAILED",
-          connectors: failedConnectors,
-        },
-      },
-    };
+    return tokenRefreshFailed(failedConnectors);
+  }
+
+  if (hasMissingResolvedSecrets(decryptedSecrets, referenced.secrets)) {
+    return tokenAccessResolutionFailed(
+      missingResolvedConnectorOwners({
+        secrets: decryptedSecrets,
+        referencedKeys: referenced.secrets,
+        secretConnectorMap: body.secretConnectorMap,
+      }),
+    );
   }
 
   const resolved = resolveTemplates(

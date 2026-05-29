@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.0...guest-agent-v0.33.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* classify codex session limits as usage limits ([#15371](https://github.com/vm0-ai/vm0/issues/15371)) ([f37823f](https://github.com/vm0-ai/vm0/commit/f37823f8e5d8bbb2f2a278bf3e85365b0a91ed52))
+
 ## [0.33.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.26...guest-agent-v0.33.0) (2026-05-28)
 
 

@@ -306,12 +306,22 @@ async def fetch_firewall_headers(
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
+    encrypted_secrets is the encrypted runtime secret namespace. After API-side
+    decryption, keys are the `NAME` in `${{ secrets.NAME }}` and values are the
+    real secret values.
+
+    secret_connector_map maps firewall auth secret env aliases (the `NAME` in
+    `${{ secrets.NAME }}`) to the connector or provider owner that can
+    refresh/resolve access. secret_connector_metadata_map uses the same keys to
+    add source details when the owner alone is not enough to locate access
+    storage.
+
     When secret_connector_map is provided, the auth endpoint can refresh
-    expired OAuth tokens and returns an expiresAt timestamp for TTL caching.
+    expired access tokens and returns an expiresAt timestamp for TTL caching.
     For billable firewall auth, expiresAt is also bounded by the server-side
     credit authorization lease.
 
-    When force_refresh is True, the endpoint refreshes OAuth tokens regardless
+    When force_refresh is True, the endpoint refreshes access tokens regardless
     of DB tokenExpiresAt — used after the upstream returns 401 (#9860).
 
     Uses asyncio.to_thread to avoid blocking mitmproxy's event loop.

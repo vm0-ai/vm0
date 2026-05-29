@@ -571,7 +571,7 @@ export {
   type TriggerSource,
   type LogsFilters,
   type ConnectorType,
-  type OAuthGrantConnectorType,
+  type ConnectorAuthProviderType,
   type ConnectorConfig,
   type ConnectorEnvBindings,
   type ConnectorAuthMethodConfig,

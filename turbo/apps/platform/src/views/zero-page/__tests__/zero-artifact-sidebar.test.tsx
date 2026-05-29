@@ -221,3 +221,65 @@ describe("chatArtifactSidebar: fullscreen toggle", () => {
     expect(search()).not.toContain("artifact-fullscreen=");
   });
 });
+
+describe("chatArtifactSidebar: image preview zoom controls", () => {
+  function renderImageSidebar() {
+    setup("/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fphoto.png");
+    renderWithStore(
+      <ArtifactSidebar
+        artifactRef={{
+          source: "url",
+          url: "https://example.com/photo.png",
+          kind: "image",
+          filename: "photo.png",
+        }}
+      />,
+    );
+  }
+
+  it("renders the zoom toolbar on the image body at 100%", () => {
+    renderImageSidebar();
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-controls"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-level").textContent,
+    ).toBe("100%");
+  });
+
+  it("zooms in, zooms out, and resets back to 100%", () => {
+    renderImageSidebar();
+    const zoomIn = screen.getByTestId("artifact-sidebar-image-zoom-in");
+    const zoomOut = screen.getByTestId("artifact-sidebar-image-zoom-out");
+    const reset = screen.getByTestId("artifact-sidebar-image-zoom-reset");
+    const level = screen.getByTestId("artifact-sidebar-image-zoom-level");
+
+    fireEvent.click(zoomIn);
+    expect(level.textContent).toBe("125%");
+    fireEvent.click(zoomIn);
+    expect(level.textContent).toBe("150%");
+
+    fireEvent.click(reset);
+    expect(level.textContent).toBe("100%");
+
+    fireEvent.click(zoomOut);
+    expect(level.textContent).toBe("75%");
+  });
+
+  it("disables zoom out at min zoom and zoom in at max zoom", () => {
+    renderImageSidebar();
+    const zoomIn = screen.getByTestId("artifact-sidebar-image-zoom-in");
+    const zoomOut = screen.getByTestId("artifact-sidebar-image-zoom-out");
+
+    // Step is 0.25; min is 0.5 (so 2 outs from 1 reaches min), max is 3 (8 ins).
+    for (let i = 0; i < 2; i += 1) {
+      fireEvent.click(zoomOut);
+    }
+    expect(zoomOut).toBeDisabled();
+
+    for (let i = 0; i < 10; i += 1) {
+      fireEvent.click(zoomIn);
+    }
+    expect(zoomIn).toBeDisabled();
+  });
+});

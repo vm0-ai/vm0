@@ -17,10 +17,10 @@ import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { encryptSecretValue } from "../../services/crypto.utils";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testContext } from "../../../__tests__/test-helpers";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -313,8 +313,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
-      error:
-        "test-oauth-device connector does not use authorization-code OAuth",
+      error: "test-oauth-device connector does not use an auth-code grant",
     });
   });
 
@@ -654,7 +653,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       userId,
       name: "GITHUB_ACCESS_TOKEN",
       type: "connector",
-      encryptedValue: encryptSecretValue("gh-access-token"),
+      encryptedValue: encryptSecretForTests("gh-access-token"),
     });
 
     let revokeAuthorization: string | null = null;
@@ -930,7 +929,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("returns 400 when starting OAuth for a non-OAuth connector", async () => {
+  it("returns 400 when starting OAuth for a connector without an auth-code grant", async () => {
     const response = await requestOauthStart("serpapi", {
       authenticated: true,
     });
@@ -938,7 +937,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "serpapi connector does not use OAuth",
+        message: "serpapi connector does not use an auth-code grant",
         code: "BAD_REQUEST",
       },
     });
@@ -957,8 +956,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message:
-          "test-oauth-device connector does not use authorization-code OAuth",
+        message: "test-oauth-device connector does not use an auth-code grant",
         code: "BAD_REQUEST",
       },
     });

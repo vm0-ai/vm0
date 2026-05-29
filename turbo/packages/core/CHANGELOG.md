@@ -1,5 +1,39 @@
 # Changelog
 
+## [8.302.3](https://github.com/vm0-ai/vm0/compare/core-v8.302.2...core-v8.302.3) (2026-05-29)
+
+
+### Refactoring
+
+* resolve connector access from selected auth method ([#15355](https://github.com/vm0-ai/vm0/issues/15355)) ([1c24b75](https://github.com/vm0-ai/vm0/commit/1c24b7553c4f86cbd70082ed454efb4853ac7cb2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/connectors bumped to 1.37.7
+
+## [8.302.2](https://github.com/vm0-ai/vm0/compare/core-v8.302.1...core-v8.302.2) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+
+## [8.302.1](https://github.com/vm0-ai/vm0/compare/core-v8.302.0...core-v8.302.1) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+
 ## [8.302.0](https://github.com/vm0-ai/vm0/compare/core-v8.301.2...core-v8.302.0) (2026-05-29)
 
 

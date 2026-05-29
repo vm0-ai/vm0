@@ -362,7 +362,9 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidApiKey);
     }
-    if matches!(framework, AgentFramework::Codex) && normalized.contains("usage limit") {
+    if matches!(framework, AgentFramework::Codex)
+        && (normalized.contains("usage limit") || normalized.contains("session limit"))
+    {
         return Some(FailureReason::UsageLimit);
     }
     None
@@ -1019,6 +1021,22 @@ mod tests {
     }
 
     #[test]
+    fn cli_failure_reason_classifies_codex_session_limit() {
+        for message in [
+            "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits. Resets 12:50pm (Asia/Shanghai).",
+            "SESSION LIMIT reached. Please try again after the reset window.",
+        ] {
+            let reason = classify_cli_failure_reason(AgentFramework::Codex, message);
+
+            assert_eq!(
+                reason,
+                Some(FailureReason::UsageLimit),
+                "message: {message}"
+            );
+        }
+    }
+
+    #[test]
     fn cli_failure_reason_classifies_codex_invalid_api_key_code() {
         let reason = classify_cli_failure_reason(
             AgentFramework::Codex,
@@ -1077,6 +1095,16 @@ mod tests {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "Claude usage limit reached. Visit https://claude.ai/settings/usage.",
+        );
+
+        assert_eq!(reason, None);
+    }
+
+    #[test]
+    fn cli_failure_reason_ignores_non_codex_session_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage.",
         );
 
         assert_eq!(reason, None);

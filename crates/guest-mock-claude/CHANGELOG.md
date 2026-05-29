@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.7...guest-mock-claude-v0.18.0) (2026-05-29)
+
+
+### Features
+
+* add echo jsonl mode to mock claude ([#15366](https://github.com/vm0-ai/vm0/issues/15366)) ([ed31ac4](https://github.com/vm0-ai/vm0/commit/ed31ac4daae9777731ef3a86b04265d606d2c98e))
+
 ## [0.17.7](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.6...guest-mock-claude-v0.17.7) (2026-05-28)
 
 

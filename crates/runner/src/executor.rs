@@ -2055,7 +2055,8 @@ fn build_env_json_with_host_env(
     // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_CoffeeSafeLocal...)
     // are injected by the web API into `context.environment` directly.
 
-    // Secret values (base64-encoded, comma-separated)
+    // Plain secret values (base64-encoded, comma-separated) for redaction.
+    // These are values, not names; base64 is only transport encoding.
     // Always include the sandbox token so it gets redacted in logs.
     {
         use base64::Engine as _;

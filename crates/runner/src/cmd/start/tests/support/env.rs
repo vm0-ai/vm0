@@ -173,32 +173,53 @@ fn build_mock_run_config_with_runtime(
         )));
 
     let config = RunConfig {
-        id: "test-runner".into(),
-        name: "test".into(),
-        group: "test-group".into(),
-        profiles,
-        runtime,
-        home: home.clone(),
-        budget: Arc::new(ResourceBudget::new(
-            budget_vcpu,
-            budget_memory_mb,
-            1.0,
-            max_concurrent,
-        )),
-        device_rate_limits: None,
-        idle_pool: Arc::clone(&idle_pool),
-        parking_gate: parking_gate.clone(),
-        status: Arc::new(StatusTracker::new(
-            temp_dir.path().join("status.json"),
-            max_concurrent,
-            None,
-            None,
-        )),
-        mitm,
-        mitm_crash_rx,
-        provider,
-        cancel_tokens: Arc::clone(&cancel_tokens),
-        cancel: cancel.clone(),
+        runner: RunnerInfo {
+            id: "test-runner".into(),
+            name: "test".into(),
+            group: "test-group".into(),
+            profiles,
+        },
+        paths: RunPaths {
+            home: home.clone(),
+            base_dir: temp_dir.path().to_path_buf(),
+        },
+        sandbox_runtime: SandboxRuntimeConfig {
+            runtime,
+            firecracker: config::FirecrackerConfig {
+                binary: PathBuf::new(),
+                kernel: PathBuf::new(),
+            },
+        },
+        capacity: CapacityPolicy {
+            budget: Arc::new(ResourceBudget::new(
+                budget_vcpu,
+                budget_memory_mb,
+                1.0,
+                max_concurrent,
+            )),
+            min_vcpu,
+            min_memory_mb,
+            device_rate_limits: None,
+        },
+        shared: RunnerSharedState {
+            idle_pool: Arc::clone(&idle_pool),
+            parking_gate: parking_gate.clone(),
+            status: Arc::new(StatusTracker::new(
+                temp_dir.path().join("status.json"),
+                max_concurrent,
+                None,
+                None,
+            )),
+        },
+        provider: ProviderState {
+            provider,
+            cancel_tokens: Arc::clone(&cancel_tokens),
+            cancel: cancel.clone(),
+        },
+        proxy: ProxyState {
+            mitm,
+            mitm_crash_rx,
+        },
         exec_config: Arc::new(executor::ExecutorConfig {
             api_url: api_url.to_string(),
             registry,
@@ -212,24 +233,25 @@ fn build_mock_run_config_with_runtime(
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             home,
         }),
-        firecracker: config::FirecrackerConfig {
-            binary: PathBuf::new(),
-            kernel: PathBuf::new(),
+        shutdown: ShutdownHandles {
+            kmsg_handle: kmsg_log::KmsgHandle::noop(),
+            dns_handle: crate::dns::DnsProxy::noop(),
+            memory_prefetch: prefetch::MemoryPrefetchTasks::empty(),
         },
-        base_dir: temp_dir.path().to_path_buf(),
-        min_vcpu,
-        min_memory_mb,
-        kmsg_handle: kmsg_log::KmsgHandle::noop(),
-        dns_handle: crate::dns::DnsProxy::noop(),
-        memory_prefetch: prefetch::MemoryPrefetchTasks::empty(),
-        orphan_reap_process_discovery: None,
-        signal_source: SignalSource::Override(SignalController {
-            mode_rx,
-            lifecycle: lifecycle.clone(),
-            handler_task: None,
-        }),
-        outer_job_panic: None,
-        test_observer: start_observer.clone(),
+        signals: SignalState {
+            signal_source: SignalSource::Override(SignalController {
+                mode_rx,
+                lifecycle: lifecycle.clone(),
+                handler_task: None,
+            }),
+        },
+        orphan_reap: OrphanReapState {
+            process_discovery: None,
+        },
+        test_hooks: RunTestHooks {
+            outer_job_panic: None,
+            test_observer: start_observer.clone(),
+        },
     };
 
     let env = MockRunEnv {

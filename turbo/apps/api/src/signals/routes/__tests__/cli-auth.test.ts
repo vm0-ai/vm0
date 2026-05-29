@@ -37,7 +37,7 @@ import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -524,7 +524,7 @@ describe("CLI auth routes", () => {
       )
       .limit(1);
 
-    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+    return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
   async function findConnectorSecret(args: {
@@ -546,7 +546,7 @@ describe("CLI auth routes", () => {
       )
       .limit(1);
 
-    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+    return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
   async function readConnectorState(args: {
@@ -1825,7 +1825,7 @@ describe("CLI auth routes", () => {
       });
     });
 
-    it("rejects connector types that do not use OAuth", async () => {
+    it("rejects connector types without an auth-code or device-auth grant", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-non-oauth" });
@@ -1844,7 +1844,8 @@ describe("CLI auth routes", () => {
       );
 
       expect(response.body).toStrictEqual({
-        error: "cloudinary connector does not use OAuth",
+        error:
+          "cloudinary connector does not use an auth-code or device-auth grant",
       });
       await expect(
         readConnectorState({ orgId, userId, type: "cloudinary" }),

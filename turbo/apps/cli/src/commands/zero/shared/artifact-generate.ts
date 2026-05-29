@@ -19,9 +19,8 @@ import type { GenerationType } from "../generate/lib/lister";
 interface ArtifactOptions {
   prompt?: string;
   provider?: string;
-  site?: string;
+  siteSlug?: string;
   title?: string;
-  audience?: string;
   designSystem?: string;
   template?: string;
   all?: boolean;
@@ -90,9 +89,8 @@ export function createArtifactGenerateCommand(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
-    .option("--site <slug>", "Hosted site slug; defaults to generated name")
+    .option("--site-slug <slug>", "Hosted site slug override")
     .option("--title <text>", "Requested artifact title or name")
-    .option("--audience <text>", "Audience context")
     .option(
       "--design-system <id>",
       "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
@@ -185,7 +183,7 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
           kind: toGenerationTarget(config.target),
           prompt,
           slugSource: options.title,
-          site: options.site,
+          siteSlug: options.siteSlug,
           details: [...config.details(options), ...extraDetails],
           artifactRules: config.artifactRules,
         });

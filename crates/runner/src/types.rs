@@ -57,15 +57,20 @@ pub struct ExecutionContext {
     pub environment: Option<HashMap<String, String>>,
     #[serde(default)]
     pub resume_session: Option<ResumeSession>,
+    // Plain secret values used only for redaction. These are values, not names.
     #[serde(default)]
     pub secret_values: Option<Vec<String>>,
-    // Forwarded to mitm-addon via proxy registry for auth resolution
+    // Encrypted runtime secret namespace forwarded to mitm-addon for auth
+    // resolution. Decrypted keys match `${{ secrets.NAME }}` names; connector
+    // and model-provider keys are env aliases, not storage secret names.
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
-    // Maps secret names to OAuth connector types for runtime token refresh
+    // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
+    // to their connector or provider owner. Keys are env aliases, not storage secret names.
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
-    // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh
+    // Same keys as secret_connector_map; adds source details when the owner
+    // alone is not enough to locate access storage.
     #[serde(default)]
     pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,
@@ -444,7 +449,7 @@ mod tests {
             "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
             "secretValues": ["s1", "s2"],
             "encryptedSecrets": "enc-blob",
-            "secretConnectorMap": {"github": "oauth"},
+            "secretConnectorMap": {"GITHUB_TOKEN": "github"},
             "secretConnectorMetadataMap": {
                 "CHATGPT_ACCESS_TOKEN": {
                     "sourceType": "model-provider",

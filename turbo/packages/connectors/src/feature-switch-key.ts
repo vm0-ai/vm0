@@ -24,7 +24,6 @@ export enum FeatureSwitchKey {
   MetaAdsConnector = "metaAdsConnector",
   StripeConnector = "stripeConnector",
   PosthogConnector = "posthogConnector",
-  PwaOfflineCache = "pwaOfflineCache",
   MailchimpConnector = "mailchimpConnector",
   ResendConnector = "resendConnector",
   DataExport = "dataExport",
@@ -49,7 +48,6 @@ export enum FeatureSwitchKey {
   ApiBackend = "apiBackend",
 
   ZapierConnector = "zapierConnector",
-  HostedSites = "hostedSites",
   SandboxIoLimiters = "sandboxIoLimiters",
   ChatArtifactSidebar = "chatArtifactSidebar",
 }

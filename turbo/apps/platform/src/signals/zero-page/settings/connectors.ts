@@ -11,10 +11,9 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
-  connectorAuthMethodHasOAuthGrant,
   getConfiguredConnectorAuthMethods,
   getConnectorTags,
-  hasRequiredScopes,
+  hasRequiredConnectorAuthMethodScopes,
   isGoogleOAuthConnector,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
@@ -79,7 +78,7 @@ export interface ConnectorTypeWithStatus {
   availableAuthMethods: ConnectorAuthMethodId[];
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;
-  /** True if stored OAuth scopes don't cover all currently required scopes. */
+  /** True if stored grant scopes don't cover all currently required scopes. */
   scopeMismatch: boolean;
   /** True if OAuth token refresh failed and user needs to reconnect. */
   needsReconnect: boolean;
@@ -163,13 +162,13 @@ function buildConnectorTypeStatus(params: {
     return !!method?.featureFlag && method.showExperimentalLabel !== false;
   });
   const connected = params.connector !== null;
-  const connectedAuthMethodHasOAuthGrant =
-    params.connector !== null &&
-    connectorAuthMethodHasOAuthGrant(params.type, params.connector.authMethod);
   const scopeMismatch =
     params.connector !== null &&
-    connectedAuthMethodHasOAuthGrant &&
-    !hasRequiredScopes(params.type, params.connector.oauthScopes);
+    !hasRequiredConnectorAuthMethodScopes(
+      params.type,
+      params.connector.authMethod,
+      params.connector.oauthScopes,
+    );
 
   return {
     type: params.type,
@@ -1073,7 +1072,7 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 
 function assertConnectorUsesOAuthAuthCode(type: ConnectorType): void {
   if (!hasConnectorAuthCodeGrant(type)) {
-    throw new Error(`${type} does not use authorization-code OAuth`);
+    throw new Error(`${type} does not use an auth-code grant`);
   }
 }
 

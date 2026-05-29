@@ -1,6 +1,6 @@
 import type {
   AuthCodeGrantConnectorType,
-  OAuthGrantConnectorType,
+  ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
 } from "../connectors";
 import type {
@@ -47,14 +47,16 @@ export interface NoneAccessProvider {
   getAccessSecretName(): string;
 }
 
-export interface RefreshTokenAccessProvider<T extends OAuthGrantConnectorType> {
+export interface RefreshTokenAccessProvider<
+  T extends ConnectorAuthProviderType,
+> {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
   getRefreshSecretName(): string;
   refreshToken(args: ConnectorOAuthRefreshArgs<T>): Promise<OAuthRefreshResult>;
 }
 
-export type OAuthConnectorAccessProvider<T extends OAuthGrantConnectorType> =
+export type ConnectorAuthProviderAccess<T extends ConnectorAuthProviderType> =
   | NoneAccessProvider
   | RefreshTokenAccessProvider<T>;
 
@@ -62,12 +64,12 @@ interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-interface TokenRevokeProvider<T extends OAuthGrantConnectorType> {
+interface TokenRevokeProvider<T extends ConnectorAuthProviderType> {
   readonly kind: "token-revoke";
   revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
 }
 
-export type OAuthConnectorRevokeProvider<T extends OAuthGrantConnectorType> =
+export type ConnectorAuthProviderRevoke<T extends ConnectorAuthProviderType> =
   | NoneRevokeProvider
   | TokenRevokeProvider<T>;
 
@@ -81,16 +83,16 @@ export type AuthCodeConnectorAuthProvider<
   T extends AuthCodeGrantConnectorType,
 > = AuthProvider<
   AuthCodeGrantProvider<T>,
-  OAuthConnectorAccessProvider<T>,
-  OAuthConnectorRevokeProvider<T>
+  ConnectorAuthProviderAccess<T>,
+  ConnectorAuthProviderRevoke<T>
 >;
 
 export type DeviceAuthConnectorAuthProvider<
   T extends DeviceAuthGrantConnectorType,
 > = AuthProvider<
   DeviceAuthGrantProvider<T>,
-  OAuthConnectorAccessProvider<T>,
-  OAuthConnectorRevokeProvider<T>
+  ConnectorAuthProviderAccess<T>,
+  ConnectorAuthProviderRevoke<T>
 >;
 
 export type ModelProviderGrantProvider = NoneGrantProvider;

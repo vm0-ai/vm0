@@ -116,8 +116,8 @@ function usage(): string {
   vm0-computer scroll --app APP (--element-index N | --element ID) --direction up|down|left|right [--snapshot-id ID] [--pages N] [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer set-value --app APP (--element-index N | --element ID) --value VALUE [--timeout SECONDS] [--daemon-dir DIR]
   vm0-computer perform-action --app APP (--element-index N | --element ID) --action ACTION [--timeout SECONDS] [--daemon-dir DIR]
-  vm0-computer type-text --app APP --text TEXT [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]
-  vm0-computer press-key --app APP --key KEY [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]`;
+  vm0-computer type-text --app APP --text TEXT [--snapshot-id ID] [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]
+  vm0-computer press-key --app APP --key KEY [--snapshot-id ID] [--foreground-recovery never|on-window-unavailable|always] [--timeout SECONDS] [--daemon-dir DIR]`;
 }
 
 function fail(message: string, code = 1): never {

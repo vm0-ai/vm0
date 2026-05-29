@@ -22,6 +22,7 @@ interface CheckoutSessionInput {
   readonly subscription: string | { readonly id: string } | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
+  readonly amount_subtotal?: number | null;
   readonly amount_total?: number | null;
   readonly payment_status?: string | null;
 }
@@ -110,6 +111,13 @@ const CREDITS_PER_DOLLAR = 1000;
 
 function creditPurchaseAmount(session: CheckoutSessionInput): number {
   const metadata = session.metadata ?? {};
+  if (metadata.creditsAmountMode === "amount_subtotal") {
+    const amountSubtotal = session.amount_subtotal ?? session.amount_total;
+    if (amountSubtotal === undefined || amountSubtotal === null) {
+      return Number.NaN;
+    }
+    return Math.floor((amountSubtotal * CREDITS_PER_DOLLAR) / 100);
+  }
   if (metadata.creditsAmountMode === "amount_total") {
     const amountTotal = session.amount_total;
     if (amountTotal === undefined || amountTotal === null) {

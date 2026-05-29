@@ -43,6 +43,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { mockStripeClient } from "../../external/stripe-client";
 import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
@@ -614,6 +615,9 @@ function mockStripeWebhookEnv(): void {
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   mockEnv("ZERO_PRICE", STRIPE_PRICE_MAP);
   mockEnv("ZERO_ONE_TIME_CAMPAIGN", STRIPE_ONE_TIME_CAMPAIGN);
+  mockStripeClient(
+    context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
+  );
 }
 
 function invoiceLinesWithSubscriptionPeriod(periodEnd: number): {
@@ -2269,7 +2273,46 @@ describe("POST /api/webhooks/stripe", () => {
       });
     });
 
-    it("grants custom credit purchase credits from the checkout total", async () => {
+    it("grants custom credit purchase credits from the checkout subtotal before discounts", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+      const sessionId = stripeId("cs");
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: sessionId,
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          payment_status: "paid",
+          amount_subtotal: 10_000,
+          amount_total: 5000,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: fixture.orgId,
+            creditsAmountMode: "amount_subtotal",
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await selectStripeBilling(fixture)).credits).toBe(
+        creditsBefore + 100_000,
+      );
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        source: "auto_recharge",
+        stripeInvoiceId: sessionId,
+        amount: 100_000,
+        remaining: 100_000,
+      });
+    });
+
+    it("keeps processing older custom credit checkout sessions from the checkout total", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2297,14 +2340,6 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits).toBe(
         creditsBefore + 100_000,
       );
-      const records = await selectStripeCreditExpiresRecords(fixture);
-      expect(records).toHaveLength(1);
-      expect(records[0]).toMatchObject({
-        source: "auto_recharge",
-        stripeInvoiceId: sessionId,
-        amount: 100_000,
-        remaining: 100_000,
-      });
     });
   });
 

@@ -5,17 +5,15 @@ import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/con
 import {
   hasConnectorAuthCodeGrant,
   getConnectorOAuthClient,
-  getConnectorOAuthScopes,
+  getConnectorAuthCodeGrantConfig,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type AuthCodeGrantConnectorType,
-  type OAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorOAuthCode,
   getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
   type OAuthTokenResult,
 } from "@vm0/connectors/auth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -197,7 +195,7 @@ async function exchangeTokenForConnector(args: {
 function getRequestedScopes(
   connectorType: AuthCodeGrantConnectorType,
 ): readonly string[] {
-  return getConnectorOAuthScopes(connectorType);
+  return getConnectorAuthCodeGrantConfig(connectorType).scopes;
 }
 
 function resolveOAuthConnectorType(
@@ -213,23 +211,13 @@ function resolveOAuthConnectorType(
   }
 
   const connectorType = typeResult.data;
-  if (!hasConnectorOAuthProvider(connectorType)) {
-    return {
-      ok: false,
-      response: redirectWithError(
-        origin,
-        type,
-        `${type} connector does not use OAuth`,
-      ),
-    };
-  }
   if (!hasConnectorAuthCodeGrant(connectorType)) {
     return {
       ok: false,
       response: redirectWithError(
         origin,
         type,
-        `${type} connector does not use authorization-code OAuth`,
+        `${type} connector does not use an auth-code grant`,
       ),
     };
   }
@@ -325,7 +313,7 @@ async function markConnectorSessionError(
 
 async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
-  readonly connectorType: OAuthGrantConnectorType;
+  readonly connectorType: AuthCodeGrantConnectorType;
   readonly identity: CallbackIdentity;
   readonly token: OAuthTokenResult;
   readonly signal: AbortSignal;

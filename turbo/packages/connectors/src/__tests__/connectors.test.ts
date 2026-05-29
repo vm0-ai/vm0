@@ -25,10 +25,17 @@ import {
   type AuthCodeGrantConnectorType,
 } from "../connectors";
 import {
+  connectorAuthMethodSupportsTokenRevoke,
+  connectorAuthMethodHasGrantKind,
   getAvailableConnectorAuthMethods,
+  getConnectorAuthMethodGrantScopes,
+  getConnectorAuthMethodIdForGrantKind,
+  getConnectorAuthMethodScopeDiff,
   getConfiguredConnectorAuthMethods,
   hasRequiredScopes,
+  hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
@@ -40,7 +47,6 @@ import {
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
   getConnectorVariableNames,
-  hasConnectorOAuthGrant,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorOAuthClient,
@@ -50,10 +56,12 @@ import {
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorOAuthAuthUrl,
-  hasConnectorOAuthProvider,
+  getConnectorAuthProviderClientArgs,
+  hasConnectorAuthCodeGrantProvider,
+  hasConnectorDeviceAuthGrantProvider,
   getConnectorOAuthSecretMetadata,
   pollConnectorOAuthDeviceAuth,
-  refreshConnectorOAuthToken,
+  refreshConnectorAuthProviderAccessToken,
   revokeConnectorOAuthToken,
   startConnectorOAuthDeviceAuth,
 } from "../auth-providers/connector-auth";
@@ -69,6 +77,10 @@ function getApiTokenManualGrantFields(
     return undefined;
   }
   return method.grant.fields;
+}
+
+function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
+  return hasConnectorAuthCodeGrant(type) || hasConnectorDeviceAuthGrant(type);
 }
 
 const server = setupServer();
@@ -209,6 +221,9 @@ type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {
     expect(hasRequiredScopes("cloudinary", null)).toBe(true);
+    expect(
+      hasRequiredConnectorAuthMethodScopes("cloudinary", "api-token", null),
+    ).toBe(true);
   });
 
   it("returns true when connector has empty required scopes", () => {
@@ -247,6 +262,68 @@ describe("hasRequiredScopes", () => {
         "user",
       ]),
     ).toBe(true);
+  });
+
+  it("checks required scopes from the selected auth method grant", () => {
+    expect(getConnectorAuthMethodIdForGrantKind("github", "auth-code")).toBe(
+      "oauth",
+    );
+    expect(
+      getConnectorAuthMethodIdForGrantKind("test-oauth-device", "device-auth"),
+    ).toBe("oauth");
+    expect(getConnectorAuthMethodIdForGrantKind("stripe", "manual")).toBe(
+      "api-token",
+    );
+    expect(
+      getConnectorAuthMethodIdForGrantKind("github", "manual"),
+    ).toBeUndefined();
+
+    expect(
+      connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
+    ).toBe(true);
+    expect(getConnectorAuthMethodGrantScopes("github", "oauth")).toStrictEqual([
+      "repo",
+      "project",
+      "workflow",
+    ]);
+    expect(hasRequiredConnectorAuthMethodScopes("github", "oauth", null)).toBe(
+      false,
+    );
+    expect(
+      hasRequiredConnectorAuthMethodScopes("github", "oauth", [
+        "repo",
+        "project",
+        "workflow",
+      ]),
+    ).toBe(true);
+    expect(
+      hasRequiredConnectorAuthMethodScopes("test-oauth-device", "oauth", []),
+    ).toBe(false);
+    expect(
+      hasRequiredConnectorAuthMethodScopes("test-oauth-device", "oauth", [
+        "read",
+      ]),
+    ).toBe(true);
+  });
+
+  it("does not require OAuth scopes for selected manual grants", () => {
+    expect(
+      connectorAuthMethodHasGrantKind("stripe", "api-token", "manual"),
+    ).toBe(true);
+    expect(
+      getConnectorAuthMethodGrantScopes("stripe", "api-token"),
+    ).toStrictEqual([]);
+    expect(
+      hasRequiredConnectorAuthMethodScopes("stripe", "api-token", null),
+    ).toBe(true);
+    expect(
+      getConnectorAuthMethodScopeDiff("stripe", "api-token", null),
+    ).toStrictEqual({
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: [],
+      storedScopes: [],
+    });
   });
 });
 
@@ -343,17 +420,35 @@ describe("connector auth method config", () => {
   });
 });
 
-describe("hasConnectorOAuthProvider", () => {
-  it("matches exactly the connector types that declare OAuth grants", () => {
-    const oauthConnectorTypes = new Set<ConnectorType>(
-      connectorTypeSchema.options.filter(hasConnectorOAuthGrant),
+describe("connector grant provider capability checks", () => {
+  it("matches exactly the connector types that declare auth-code and device-auth grants", () => {
+    const authCodeGrantTypes = new Set<ConnectorType>(
+      connectorTypeSchema.options.filter(hasConnectorAuthCodeGrant),
+    );
+    const deviceAuthGrantTypes = new Set<ConnectorType>(
+      connectorTypeSchema.options.filter(hasConnectorDeviceAuthGrant),
     );
 
     for (const type of connectorTypeSchema.options) {
-      expect(hasConnectorOAuthProvider(type)).toBe(
-        oauthConnectorTypes.has(type),
+      expect(hasConnectorAuthCodeGrantProvider(type)).toBe(
+        authCodeGrantTypes.has(type),
+      );
+      expect(hasConnectorDeviceAuthGrantProvider(type)).toBe(
+        deviceAuthGrantTypes.has(type),
       );
     }
+  });
+
+  it("detects token revoke support from provider capability", () => {
+    expect(connectorAuthMethodSupportsTokenRevoke("github", "oauth")).toBe(
+      true,
+    );
+    expect(connectorAuthMethodSupportsTokenRevoke("notion", "oauth")).toBe(
+      false,
+    );
+    expect(connectorAuthMethodSupportsTokenRevoke("stripe", "api-token")).toBe(
+      false,
+    );
   });
 
   it("exposes connector OAuth secret metadata without provider access", () => {
@@ -385,12 +480,12 @@ describe("hasConnectorOAuthProvider", () => {
     }
 
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAuthProviderAccessToken({
         type: "github",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "refresh-token",
       }),
-    ).rejects.toThrow("github OAuth provider does not support refresh");
+    ).rejects.toThrow("github connector does not support token refresh");
   });
 
   it("revokes OAuth tokens through the provider registry", async () => {
@@ -879,9 +974,9 @@ describe("hasConnectorOAuthProvider", () => {
     });
 
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAuthProviderAccessToken({
         type: "base44",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "base44-refresh-rotation",
       }),
     ).resolves.toStrictEqual({
@@ -890,9 +985,9 @@ describe("hasConnectorOAuthProvider", () => {
       expiresIn: 3600,
     });
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAuthProviderAccessToken({
         type: "base44",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "base44-refresh-without-rotation",
       }),
     ).resolves.toStrictEqual({
@@ -1211,9 +1306,9 @@ describe("hasConnectorOAuthProvider", () => {
       },
     });
 
-    const refreshResult = await refreshConnectorOAuthToken({
+    const refreshResult = await refreshConnectorAuthProviderAccessToken({
       type: "slock",
-      oauthClient,
+      clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
       refreshToken: "slock-refresh-token",
     });
     expect(refreshResult).toStrictEqual({
@@ -1230,9 +1325,9 @@ describe("hasConnectorOAuthProvider", () => {
     );
 
     await expect(
-      refreshConnectorOAuthToken({
+      refreshConnectorAuthProviderAccessToken({
         type: "slock",
-        oauthClient,
+        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "slock-refresh-malformed",
       }),
     ).resolves.toStrictEqual({
@@ -1314,6 +1409,72 @@ describe("getConnectorAuthMethodEnvBindings", () => {
 
   it("returns empty env bindings for an unknown auth method", () => {
     expect(getConnectorAuthMethodEnvBindings("ahrefs", "missing")).toEqual({});
+  });
+});
+
+describe("getConnectorAuthMethodAccessMetadata", () => {
+  it("returns refresh-token access metadata for the selected OAuth method", () => {
+    expect(getConnectorAuthMethodAccessMetadata("stripe", "oauth")).toEqual({
+      kind: "refresh-token",
+      accessToken: "STRIPE_ACCESS_TOKEN",
+      refreshToken: "STRIPE_REFRESH_TOKEN",
+      envBindings: {
+        STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
+      },
+    });
+  });
+
+  it("returns static access metadata for the selected API-token method", () => {
+    expect(getConnectorAuthMethodAccessMetadata("stripe", "api-token")).toEqual(
+      {
+        kind: "static",
+        envBindings: {
+          STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
+        },
+      },
+    );
+  });
+
+  it("returns undefined for an unknown auth method", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("stripe", "missing"),
+    ).toBeUndefined();
+  });
+
+  it("keeps OAuth provider secret metadata aligned with OAuth access metadata", () => {
+    for (const type of connectorTypeSchema.options) {
+      if (!hasConnectorAuthorizationGrant(type)) {
+        continue;
+      }
+
+      const providerMetadata = getConnectorOAuthSecretMetadata(type);
+      if (!providerMetadata) {
+        throw new Error(`${type}: OAuth provider metadata is missing`);
+      }
+
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        type,
+        "oauth",
+      );
+
+      if (providerMetadata.isRefreshable) {
+        expect(
+          accessMetadata,
+          `${type}: refreshable OAuth provider must use refresh-token access`,
+        ).toEqual(
+          expect.objectContaining({
+            kind: "refresh-token",
+            accessToken: providerMetadata.accessSecretName,
+            refreshToken: providerMetadata.refreshSecretName,
+          }),
+        );
+      } else {
+        expect(
+          accessMetadata,
+          `${type}: non-refreshable OAuth provider must not use refresh-token access`,
+        ).not.toEqual(expect.objectContaining({ kind: "refresh-token" }));
+      }
+    }
   });
 });
 
@@ -1410,7 +1571,7 @@ describe("getConnectorEnvBindings", () => {
     //   envBindings: values -> declared OAuth connector secrets
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
-      if (!hasConnectorOAuthGrant(type)) continue;
+      if (!hasConnectorAuthorizationGrant(type)) continue;
 
       const oauthSecrets = getConnectorSecretNames(type, "oauth");
       const prefix = oauthSecrets
@@ -1506,7 +1667,7 @@ describe("getConnectorEnvBindings", () => {
 
   it("api-token-only connectors expose all secrets via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
-      if (hasConnectorOAuthGrant(type)) continue;
+      if (hasConnectorAuthorizationGrant(type)) continue;
       const fields = getApiTokenManualGrantFields(type);
       if (!fields) continue;
 
@@ -1704,7 +1865,7 @@ describe("getRuntimeAvailableConnectorTypes", () => {
 
   it("includes active OAuth connectors when their runtime env is configured", () => {
     const activeOAuthTypes = connectorTypeSchema.options.filter(
-      hasConnectorOAuthGrant,
+      hasConnectorAuthorizationGrant,
     );
 
     const runtimeAvailableTypes = getRuntimeAvailableConnectorTypes(() => {
@@ -1815,7 +1976,7 @@ describe("connector OAuth lifecycle grant helpers", () => {
   });
 
   it("returns undefined for connectors without OAuth grants", () => {
-    expect(hasConnectorOAuthGrant("axiom")).toBe(false);
+    expect(hasConnectorAuthorizationGrant("axiom")).toBe(false);
     expect(getConnectorOAuthScopes("axiom")).toStrictEqual([]);
     expect(getConnectorAuthCodeGrantConfig("base44")).toBeUndefined();
     expect(getConnectorDeviceAuthGrantConfig("github")).toBeUndefined();

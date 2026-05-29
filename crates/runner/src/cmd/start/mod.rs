@@ -27,7 +27,7 @@
 //! - the first heartbeat and idle-cleanup ticks are deferred;
 //! - teardown drops discovery before provider shutdown.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -488,79 +488,144 @@ pub async fn run_start(
     });
 
     let config = RunConfig {
-        id: runner_id,
-        name,
-        group: group_name,
-        profiles: runner_config.profiles,
-        runtime,
-        home,
-        budget,
-        device_rate_limits,
-        idle_pool,
-        parking_gate,
-        status,
-        mitm,
-        mitm_crash_rx,
-        provider,
-        cancel_tokens,
-        cancel,
+        runner: RunnerInfo {
+            id: runner_id,
+            name,
+            group: group_name,
+            profiles: runner_config.profiles,
+        },
+        paths: RunPaths {
+            home,
+            base_dir: runner_config.base_dir,
+        },
+        sandbox_runtime: SandboxRuntimeConfig {
+            runtime,
+            firecracker: runner_config.firecracker,
+        },
+        capacity: CapacityPolicy {
+            budget,
+            min_vcpu,
+            min_memory_mb,
+            device_rate_limits,
+        },
+        shared: RunnerSharedState {
+            idle_pool,
+            parking_gate,
+            status,
+        },
+        provider: ProviderState {
+            provider,
+            cancel_tokens,
+            cancel,
+        },
+        proxy: ProxyState {
+            mitm,
+            mitm_crash_rx,
+        },
         exec_config,
-        firecracker: runner_config.firecracker,
-        base_dir: runner_config.base_dir,
-        min_vcpu,
-        min_memory_mb,
-        kmsg_handle,
-        dns_handle,
-        memory_prefetch,
-        signal_source: SignalSource::Real(signals),
-        orphan_reap_process_discovery: None,
+        shutdown: ShutdownHandles {
+            kmsg_handle,
+            dns_handle,
+            memory_prefetch,
+        },
+        signals: SignalState {
+            signal_source: SignalSource::Real(signals),
+        },
+        orphan_reap: OrphanReapState {
+            process_discovery: None,
+        },
         #[cfg(test)]
-        outer_job_panic: None,
-        #[cfg(test)]
-        test_observer: StartLoopTestObserver::default(),
+        test_hooks: RunTestHooks {
+            outer_job_panic: None,
+            test_observer: StartLoopTestObserver::default(),
+        },
     };
 
     run(config).await
 }
 
 struct RunConfig {
+    runner: RunnerInfo,
+    paths: RunPaths,
+    sandbox_runtime: SandboxRuntimeConfig,
+    capacity: CapacityPolicy,
+    shared: RunnerSharedState,
+    provider: ProviderState,
+    proxy: ProxyState,
+    exec_config: Arc<ExecutorConfig>,
+    shutdown: ShutdownHandles,
+    signals: SignalState,
+    orphan_reap: OrphanReapState,
+    #[cfg(test)]
+    test_hooks: RunTestHooks,
+}
+
+struct RunnerInfo {
     id: String,
     name: String,
     group: String,
-    profiles: std::collections::BTreeMap<String, ProfileConfig>,
-    runtime: Box<dyn SandboxRuntime>,
+    profiles: BTreeMap<String, ProfileConfig>,
+}
+
+struct RunPaths {
     home: HomePaths,
+    base_dir: PathBuf,
+}
+
+struct SandboxRuntimeConfig {
+    runtime: Box<dyn SandboxRuntime>,
+    firecracker: config::FirecrackerConfig,
+}
+
+struct CapacityPolicy {
     budget: Arc<ResourceBudget>,
+    min_vcpu: u32,
+    min_memory_mb: u32,
     device_rate_limits: Option<sandbox::DeviceRateLimits>,
+}
+
+struct RunnerSharedState {
     idle_pool: SharedIdlePool,
     parking_gate: ParkingGate,
     status: Arc<StatusTracker>,
-    mitm: proxy::MitmProxy,
-    mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
+}
+
+struct ProviderState {
     provider: Arc<dyn JobProvider>,
     /// Per-job cancel tokens shared with the provider for cancel events
     /// (Ably for ApiProvider, `.cancel` files for LocalProvider).
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     cancel: CancellationToken,
-    exec_config: Arc<ExecutorConfig>,
-    firecracker: config::FirecrackerConfig,
-    base_dir: std::path::PathBuf,
-    min_vcpu: u32,
-    min_memory_mb: u32,
+}
+
+struct ProxyState {
+    mitm: proxy::MitmProxy,
+    mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
+}
+
+struct ShutdownHandles {
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
     memory_prefetch: prefetch::MemoryPrefetchTasks,
-    /// Deterministic process snapshot for orphan-reaper tests. Production leaves
-    /// this unset and scans `/proc`.
-    orphan_reap_process_discovery: Option<OrphanReapProcessDiscovery>,
+}
+
+struct SignalState {
     /// How the run's mode channel is driven. Production supplies the signal
     /// streams registered at the top of `run_start`; tests supply a
     /// pre-built `SignalController` so they can drive mode transitions
     /// through the lifecycle controller.
     signal_source: SignalSource,
-    #[cfg(test)]
+}
+
+struct OrphanReapState {
+    /// Deterministic process snapshot for orphan-reaper tests. Production leaves
+    /// this unset and scans `/proc`.
+    process_discovery: Option<OrphanReapProcessDiscovery>,
+}
+
+#[cfg(test)]
+struct RunTestHooks {
     outer_job_panic: Option<OuterJobPanicPoint>,
-    #[cfg(test)]
     test_observer: StartLoopTestObserver,
 }
 
@@ -842,40 +907,37 @@ fn maybe_panic_outer_job(
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
-        id: runner_id,
-        name,
-        group,
-        profiles,
+        runner,
+        paths,
+        sandbox_runtime,
+        capacity,
+        shared,
+        provider: provider_state,
+        proxy,
+        exec_config,
+        shutdown,
+        signals,
+        orphan_reap,
+        #[cfg(test)]
+        test_hooks,
+    } = config;
+    let SandboxRuntimeConfig {
         mut runtime,
-        home,
-        budget,
-        device_rate_limits,
-        idle_pool,
-        parking_gate,
-        status,
+        firecracker,
+    } = sandbox_runtime;
+    let ProxyState {
         mut mitm,
         mut mitm_crash_rx,
-        provider,
-        cancel_tokens,
-        cancel,
-        exec_config,
-        firecracker,
-        base_dir,
-        min_vcpu,
-        min_memory_mb,
-        kmsg_handle,
-        dns_handle,
-        mut memory_prefetch,
-        orphan_reap_process_discovery,
-        signal_source,
-        #[cfg(test)]
-        outer_job_panic,
-        #[cfg(test)]
-        test_observer,
-    } = config;
+    } = proxy;
 
-    let mut factories =
-        start_factories(&profiles, &firecracker, &base_dir, &home, runtime.as_mut()).await?;
+    let mut factories = start_factories(
+        &runner.profiles,
+        &firecracker,
+        &paths.base_dir,
+        &paths.home,
+        runtime.as_mut(),
+    )
+    .await?;
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
@@ -883,13 +945,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // "factory still referenced" warnings from Arc::try_unwrap.
     let mut destroy_tasks: JoinSet<()> = JoinSet::new();
 
-    status.write_initial().await;
+    shared.status.write_initial().await;
     info!(
-        name = %name,
-        group = %group,
-        effective_vcpu = budget.effective_vcpu(),
-        effective_memory_mb = budget.effective_memory_mb(),
-        max_concurrent = budget.max_concurrent(),
+        name = %runner.name,
+        group = %runner.group,
+        effective_vcpu = capacity.budget.effective_vcpu(),
+        effective_memory_mb = capacity.budget.effective_memory_mb(),
+        max_concurrent = capacity.budget.max_concurrent(),
         "runner started"
     );
 
@@ -905,12 +967,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Signal handling / mode channel
     // -----------------------------------------------------------------------
-    let signal = match signal_source {
+    let signal = match signals.signal_source {
         SignalSource::Real(signals) => SignalController::spawn(
-            cancel.clone(),
-            Arc::clone(&cancel_tokens),
+            provider_state.cancel.clone(),
+            Arc::clone(&provider_state.cancel_tokens),
             signals,
-            parking_gate.clone(),
+            shared.parking_gate.clone(),
         ),
         SignalSource::Override(controller) => controller,
     };
@@ -963,38 +1025,44 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let hb_ctx = HeartbeatContext::new(
-        &idle_pool, &runner_id, &name, &group, &profiles, &budget, &*provider,
+        &shared.idle_pool,
+        &runner.id,
+        &runner.name,
+        &runner.group,
+        &runner.profiles,
+        &capacity.budget,
+        &*provider_state.provider,
     );
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
     // (10s) cancels discover() on every tick, restarting its internal poll
     // sleep (30s) from scratch — so poll never fires. See #8747.
-    let mut discover_fut = Box::pin(provider.discover());
+    let mut discover_fut = Box::pin(provider_state.provider.discover());
 
     let mut current_mode = RunnerMode::Running;
     let spawn_ctx = SpawnContext {
-        provider: Arc::clone(&provider),
+        provider: Arc::clone(&provider_state.provider),
         exec_config: Arc::clone(&exec_config),
-        idle_pool: Arc::clone(&idle_pool),
-        status: Arc::clone(&status),
-        cancel_tokens: Arc::clone(&cancel_tokens),
+        idle_pool: Arc::clone(&shared.idle_pool),
+        status: Arc::clone(&shared.status),
+        cancel_tokens: Arc::clone(&provider_state.cancel_tokens),
         orphaned_active_runs: orphaned_active_runs.clone(),
-        parking_gate: parking_gate.clone(),
+        parking_gate: shared.parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
-        device_rate_limits: device_rate_limits.clone(),
+        device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
-        outer_job_panic,
+        outer_job_panic: test_hooks.outer_job_panic,
         #[cfg(test)]
-        test_observer: test_observer.clone(),
+        test_observer: test_hooks.test_observer.clone(),
     };
     let mut draining_idle_pool_drained = false;
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
-            status.set_mode(mode).await;
+            shared.status.set_mode(mode).await;
         }
         match mode {
             // Stopped should not normally reach here — teardown sets it and
@@ -1008,7 +1076,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     // Soft drain entry. Destroy the idle pool once (releases
                     // budget — matches pre-split teardown behavior), then keep
                     // servicing the shared reactor while jobs finish.
-                    drain_idle_pool(&idle_pool, &status, "draining").await;
+                    drain_idle_pool(&shared.idle_pool, &shared.status, "draining").await;
                     draining_idle_pool_drained = true;
                 }
                 if jobs.is_empty() {
@@ -1035,8 +1103,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
         let can_discover = if matches!(mode, RunnerMode::Running) {
-            if !budget.can_afford(min_vcpu, min_memory_mb) {
-                let expired = evict_expired_idle_entries(&idle_pool, &status).await;
+            if !capacity
+                .budget
+                .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
+            {
+                let expired = evict_expired_idle_entries(&shared.idle_pool, &shared.status).await;
                 if !expired.is_empty() {
                     info!(
                         count = expired.len(),
@@ -1050,7 +1121,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 // parking discovery. NOTE: evict_oldest is session-blind — it
                 // may destroy the VM the next job wants to reuse. A proper fix
                 // requires knowing session_id before claim, tracked separately.
-                if let Some(evicted) = evict_oldest_idle_entry(&idle_pool, &status).await {
+                if let Some(evicted) =
+                    evict_oldest_idle_entry(&shared.idle_pool, &shared.status).await
+                {
                     info!(
                         session_id = %evicted.session_id(),
                         profile = %evicted.profile_name(),
@@ -1064,13 +1137,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     continue;
                 }
             }
-            budget.can_afford(min_vcpu, min_memory_mb)
+            capacity
+                .budget
+                .can_afford(capacity.min_vcpu, capacity.min_memory_mb)
         } else {
             false
         };
         #[cfg(test)]
         if matches!(mode, RunnerMode::Running) && !can_discover {
-            test_observer.notify_budget_exhausted_reactor();
+            test_hooks.test_observer.notify_budget_exhausted_reactor();
         }
         tokio::select! {
             // Job discovery via provider (Ably wakeups + HTTP poll).
@@ -1079,17 +1154,17 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             discovered = &mut discover_fut, if can_discover => {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
-                discover_fut = Box::pin(provider.discover());
+                discover_fut = Box::pin(provider_state.provider.discover());
                 handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
-                        profiles: &profiles,
+                        profiles: &runner.profiles,
                         factories: &factories,
-                        budget: &budget,
-                        idle_pool: &idle_pool,
-                        status: &status,
+                        budget: &capacity.budget,
+                        idle_pool: &shared.idle_pool,
+                        status: &shared.status,
                         mode_rx: &mode_rx,
-                        cancel_tokens: &cancel_tokens,
+                        cancel_tokens: &provider_state.cancel_tokens,
                         spawn_ctx: &spawn_ctx,
                         destroy_tasks: &mut destroy_tasks,
                         jobs: &mut jobs,
@@ -1108,8 +1183,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 }
                 handle_stopping_signal(
                     "signal-handler-task",
-                    &cancel,
-                    &cancel_tokens,
+                    &provider_state.cancel,
+                    &provider_state.cancel_tokens,
                     &lifecycle,
                 ).await;
             }
@@ -1117,30 +1192,30 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // normal Running mode can retain completed JoinSet entries and
             // stale cancel tokens until drain, budget exhaustion, or shutdown.
             result = jobs.join_next(), if !jobs.is_empty() => {
-                handle_job_result(result, &cancel_tokens).await;
+                handle_job_result(result, &provider_state.cancel_tokens).await;
                 if !orphaned_active_runs.is_empty() {
                     reap_orphaned_active_runs(
                         &orphaned_active_runs,
-                        &idle_pool,
-                        &status,
+                        &shared.idle_pool,
+                        &shared.status,
                         OrphanReapMode::Immediate,
-                        orphan_reap_process_discovery.as_ref(),
+                        orphan_reap.process_discovery.as_ref(),
                     ).await;
                 }
             }
             Some(()) = usage_flush_rx.recv() => {
                 #[cfg(test)]
-                test_observer.notify_usage_flush_requested();
+                test_hooks.test_observer.notify_usage_flush_requested();
                 mitm.request_usage_flush();
             }
             // Reconcile active runs left visible after an outer job-task panic.
             _ = orphan_reap_tick.tick(), if !orphaned_active_runs.is_empty() => {
                 reap_orphaned_active_runs(
                     &orphaned_active_runs,
-                    &idle_pool,
-                    &status,
+                    &shared.idle_pool,
+                    &shared.status,
                     OrphanReapMode::ConfirmAbsent,
-                    orphan_reap_process_discovery.as_ref(),
+                    orphan_reap.process_discovery.as_ref(),
                 ).await;
             }
             // Reap completed destroy tasks
@@ -1162,14 +1237,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             () = sleep_until_retry(&mitm_retry.restart_at) => {}
             // Idle pool cleanup: evict expired VMs and update status
             _ = idle_cleanup.tick(), if can_discover => {
-                let expired = cleanup_expired_idle_entries(&idle_pool, &status).await;
+                let expired = cleanup_expired_idle_entries(&shared.idle_pool, &shared.status).await;
                 #[cfg(test)]
                 let expired_count = expired.len();
                 for entry in expired {
                     spawn_idle_destroy_job(&mut destroy_tasks, entry, "idle_expired");
                 }
                 #[cfg(test)]
-                test_observer.record(StartLoopEvent::IdleCleanupProcessed { expired_count });
+                test_hooks
+                    .test_observer
+                    .record(StartLoopEvent::IdleCleanupProcessed { expired_count });
             }
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
@@ -1188,6 +1265,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
+    let ShutdownHandles {
+        kmsg_handle,
+        dns_handle,
+        mut memory_prefetch,
+    } = shutdown;
     let teardown = TeardownTimer::start();
     memory_prefetch.cancel();
     teardown.event("memory_prefetch_cancelled");
@@ -1203,29 +1285,29 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // consistent with the empty pool.
     lifecycle.close_parking();
     let phase = teardown.phase_start("drain_idle_pool");
-    drain_idle_pool(&idle_pool, &status, "shutdown").await;
+    drain_idle_pool(&shared.idle_pool, &shared.status, "shutdown").await;
     teardown.phase_complete("drain_idle_pool", phase);
 
     let phase = teardown.phase_start("provider_shutdown");
-    provider.shutdown().await;
+    provider_state.provider.shutdown().await;
     teardown.phase_complete("provider_shutdown", phase);
 
     // Send final heartbeat with Stopping so the server stops routing jobs
     // to this runner immediately, without waiting for TTL expiry.
     let phase = teardown.phase_start("final_heartbeat");
     {
-        let pool = idle_pool.lock().await;
+        let pool = shared.idle_pool.lock().await;
         let state = collect_heartbeat_state(
-            &runner_id,
-            &name,
-            &group,
-            &profiles,
-            &budget,
+            &runner.id,
+            &runner.name,
+            &runner.group,
+            &runner.profiles,
+            &capacity.budget,
             &pool,
             RunnerMode::Stopping,
         );
         drop(pool);
-        provider.heartbeat(&state).await;
+        provider_state.provider.heartbeat(&state).await;
     }
     teardown.phase_complete("final_heartbeat", phase);
 
@@ -1238,20 +1320,20 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
             tokio::select! {
                 result = jobs.join_next() => {
-                    handle_job_result(result, &cancel_tokens).await;
+                    handle_job_result(result, &provider_state.cancel_tokens).await;
                     if !orphaned_active_runs.is_empty() {
                         reap_orphaned_active_runs(
                             &orphaned_active_runs,
-                            &idle_pool,
-                            &status,
+                            &shared.idle_pool,
+                            &shared.status,
                             OrphanReapMode::Immediate,
-                            orphan_reap_process_discovery.as_ref(),
+                            orphan_reap.process_discovery.as_ref(),
                         ).await;
                     }
                 }
                 Some(()) = usage_flush_rx.recv() => {
                     #[cfg(test)]
-                    test_observer.notify_usage_flush_requested();
+                    test_hooks.test_observer.notify_usage_flush_requested();
                     mitm.request_usage_flush();
                 }
                 Some(result) = destroy_tasks.join_next() => {
@@ -1275,10 +1357,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let phase = teardown.phase_start("orphan_reap_shutdown_final");
         reap_orphaned_active_runs(
             &orphaned_active_runs,
-            &idle_pool,
-            &status,
+            &shared.idle_pool,
+            &shared.status,
             OrphanReapMode::ShutdownFinal,
-            orphan_reap_process_discovery.as_ref(),
+            orphan_reap.process_discovery.as_ref(),
         )
         .await;
         teardown.phase_complete("orphan_reap_shutdown_final", phase);
@@ -1321,7 +1403,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // remains bounded best-effort, and timeout is the abnormal data-loss path.
     let phase = teardown.phase_start("wait_usage_flush");
     if let Some(usage_flush_target) = mitm.usage_flush_target() {
-        let addon_dir = base_dir.join("mitm-addon");
+        let addon_dir = paths.base_dir.join("mitm-addon");
         match proxy::write_usage_flush_request(&addon_dir, &usage_flush_target).await {
             Ok(usage_flush_request) => {
                 info!("requesting proxy usage flush");
@@ -1373,7 +1455,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     teardown.phase_complete("memory_prefetch_drain", phase);
 
     let phase = teardown.phase_start("status_stopped");
-    status.set_mode(RunnerMode::Stopped).await;
+    shared.status.set_mode(RunnerMode::Stopped).await;
     teardown.phase_complete("status_stopped", phase);
     info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 

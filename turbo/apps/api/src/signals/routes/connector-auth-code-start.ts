@@ -1,23 +1,23 @@
 import {
+  getConnectorAuthMethodIdForGrantKind,
   getConnectorOAuthClient,
-  hasConnectorOAuthGrant,
   hasConnectorAuthCodeGrant,
   type ConnectorEnvReader,
   type ConnectorOAuthClient,
 } from "@vm0/connectors/connector-utils";
 import type {
-  ConnectorType,
   AuthCodeGrantConnectorType,
+  ConnectorAuthMethodId,
+  ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorOAuthAuthUrl,
-  hasConnectorOAuthProvider,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 
-type PrepareResolvedConnectorOAuthStartResult =
+type PrepareResolvedConnectorAuthCodeStartResult =
   | {
       readonly ok: true;
       readonly state: string;
@@ -29,46 +29,43 @@ type PrepareResolvedConnectorOAuthStartResult =
       readonly reason: "oauth_not_configured";
     };
 
-type ResolveConnectorOAuthStartTypeResult =
+type ResolveConnectorAuthCodeStartTypeResult =
   | {
       readonly ok: true;
       readonly type: AuthCodeGrantConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
     }
   | {
       readonly ok: false;
-      readonly reason:
-        | "connector_does_not_use_oauth"
-        | "oauth_provider_not_configured"
-        | "unsupported_oauth_flow";
+      readonly reason: "missing_auth_code_grant";
     };
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
-export function resolveConnectorOAuthStartType(
+export function resolveConnectorAuthCodeStartType(
   type: ConnectorType,
-): ResolveConnectorOAuthStartTypeResult {
-  if (!hasConnectorOAuthGrant(type)) {
-    return { ok: false, reason: "connector_does_not_use_oauth" };
-  }
-  if (!hasConnectorOAuthProvider(type)) {
-    return { ok: false, reason: "oauth_provider_not_configured" };
-  }
+): ResolveConnectorAuthCodeStartTypeResult {
   if (!hasConnectorAuthCodeGrant(type)) {
-    return { ok: false, reason: "unsupported_oauth_flow" };
+    return { ok: false, reason: "missing_auth_code_grant" };
   }
-  return { ok: true, type };
+  const authMethod = getConnectorAuthMethodIdForGrantKind(type, "auth-code");
+  if (!authMethod) {
+    throw new Error(`${type} connector has no auth-code auth method`);
+  }
+  return { ok: true, type, authMethod };
 }
 
-// Prepare only synchronous OAuth start data. Callers must resolve the route's
-// ConnectorType first so non-OAuth connectors keep their route-specific errors,
-// then build the provider authorization URL at the normal async commit point.
-export function prepareResolvedConnectorOAuthStart(args: {
+// Prepare only synchronous auth-code start data. Callers must resolve the route's
+// ConnectorType first so connectors without interactive grants keep their
+// route-specific errors, then build the provider authorization URL at the
+// normal async commit point.
+export function prepareResolvedConnectorAuthCodeStart(args: {
   readonly type: AuthCodeGrantConnectorType;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
-}): PrepareResolvedConnectorOAuthStartResult {
+}): PrepareResolvedConnectorAuthCodeStartResult {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
   const oauthClient = getConnectorOAuthClient(args.type, args.readEnv);
@@ -84,7 +81,7 @@ export function prepareResolvedConnectorOAuthStart(args: {
   };
 }
 
-export async function buildResolvedConnectorOAuthAuthResult(args: {
+export async function buildResolvedConnectorAuthCodeAuthUrl(args: {
   readonly type: AuthCodeGrantConnectorType;
   readonly oauthClient: ConnectorOAuthClient;
   readonly redirectUri: string;

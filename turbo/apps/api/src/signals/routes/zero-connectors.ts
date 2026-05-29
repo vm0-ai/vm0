@@ -56,10 +56,10 @@ import {
   connectorOAuthRedirectResponse,
 } from "./connector-oauth-route-state";
 import {
-  buildResolvedConnectorOAuthAuthResult,
-  prepareResolvedConnectorOAuthStart,
-  resolveConnectorOAuthStartType,
-} from "./connector-oauth-start";
+  buildResolvedConnectorAuthCodeAuthUrl,
+  prepareResolvedConnectorAuthCodeStart,
+  resolveConnectorAuthCodeStartType,
+} from "./connector-auth-code-start";
 
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
 const CONNECTOR_SESSION_POLL_INTERVAL_SECONDS = 5;
@@ -166,20 +166,13 @@ function connectorOAuthStartRedirectResponse(args: {
   return response;
 }
 
-function connectorDoesNotUseOAuthResponse(type: string) {
-  return jsonResponse({ error: `${type} connector does not use OAuth` }, 400);
-}
-
-function unsupportedOAuthFlowMessage(type: string): string {
-  return `${type} connector does not use authorization-code OAuth`;
-}
-
-function unsupportedOAuthFlowResponse(type: string) {
-  return jsonResponse({ error: unsupportedOAuthFlowMessage(type) }, 400);
-}
-
-function missingOAuthProviderResponse(type: string) {
-  return jsonResponse({ error: `${type} OAuth provider not configured` }, 500);
+function connectorMissingAuthCodeGrantResponse(type: string) {
+  return jsonResponse(
+    {
+      error: `${type} connector does not use an auth-code grant`,
+    },
+    400,
+  );
 }
 
 function internalServerError(message: string) {
@@ -358,15 +351,9 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return jsonResponse(auth.body, auth.status);
     }
 
-    const startType = resolveConnectorOAuthStartType(type);
-    if (!startType.ok) {
-      if (startType.reason === "connector_does_not_use_oauth") {
-        return connectorDoesNotUseOAuthResponse(type);
-      }
-      if (startType.reason === "unsupported_oauth_flow") {
-        return unsupportedOAuthFlowResponse(type);
-      }
-      return missingOAuthProviderResponse(type);
+    const authCodeStartType = resolveConnectorAuthCodeStartType(type);
+    if (!authCodeStartType.ok) {
+      return connectorMissingAuthCodeGrantResponse(type);
     }
 
     if (!auth.orgId) {
@@ -386,20 +373,25 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(startType.type, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        authCodeStartType.type,
+        authCodeStartType.authMethod,
+      )
+    ) {
       return jsonResponse({ error: `${type} connector is not available` }, 403);
     }
 
-    const prepared = prepareResolvedConnectorOAuthStart({
-      type: startType.type,
+    const prepared = prepareResolvedConnectorAuthCodeStart({
+      type: authCodeStartType.type,
       origin,
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {
       return jsonResponse({ error: `${type} OAuth not configured` }, 500);
     }
-    const authResult = await buildResolvedConnectorOAuthAuthResult({
-      type: startType.type,
+    const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
+      type: authCodeStartType.type,
       oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
@@ -434,15 +426,11 @@ const startConnectorOauthInner$ = command(
     const auth = get(authContext$);
     const type = params.type;
 
-    const startType = resolveConnectorOAuthStartType(type);
-    if (!startType.ok) {
-      if (startType.reason === "connector_does_not_use_oauth") {
-        return badRequestMessage(`${type} connector does not use OAuth`);
-      }
-      if (startType.reason === "unsupported_oauth_flow") {
-        return badRequestMessage(unsupportedOAuthFlowMessage(type));
-      }
-      return internalServerError(`${type} OAuth provider not configured`);
+    const authCodeStartType = resolveConnectorAuthCodeStartType(type);
+    if (!authCodeStartType.ok) {
+      return badRequestMessage(
+        `${type} connector does not use an auth-code grant`,
+      );
     }
 
     if (!auth.orgId) {
@@ -455,21 +443,26 @@ const startConnectorOauthInner$ = command(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(startType.type, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        authCodeStartType.type,
+        authCodeStartType.authMethod,
+      )
+    ) {
       return connectorUnavailable(type);
     }
 
     const origin = getConnectorOAuthOrigin(request);
-    const prepared = prepareResolvedConnectorOAuthStart({
-      type: startType.type,
+    const prepared = prepareResolvedConnectorAuthCodeStart({
+      type: authCodeStartType.type,
       origin,
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {
       return internalServerError(`${type} OAuth not configured`);
     }
-    const authResult = await buildResolvedConnectorOAuthAuthResult({
-      type: startType.type,
+    const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
+      type: authCodeStartType.type,
       oauthClient: prepared.oauthClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
@@ -486,7 +479,7 @@ const startConnectorOauthInner$ = command(
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
-      type: startType.type,
+      type: authCodeStartType.type,
       userId: auth.userId,
       orgId: auth.orgId,
       redirectUri: prepared.redirectUri,
@@ -511,11 +504,23 @@ const createConnectorSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorSessionsContract.create));
+    const authCodeStartType = resolveConnectorAuthCodeStartType(params.type);
+    if (!authCodeStartType.ok) {
+      return badRequestMessage(
+        `${params.type} connector does not use an auth-code grant`,
+      );
+    }
+
     const availability = await get(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(params.type, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        authCodeStartType.type,
+        authCodeStartType.authMethod,
+      )
+    ) {
       return connectorUnavailable(params.type);
     }
 
@@ -529,7 +534,7 @@ const createConnectorSessionInner$ = command(
       .insert(connectorSessions)
       .values({
         code,
-        type: params.type,
+        type: authCodeStartType.type,
         userId: auth.userId,
         status: "pending",
         expiresAt,
@@ -546,9 +551,9 @@ const createConnectorSessionInner$ = command(
       body: {
         id: session.id,
         code,
-        type: params.type,
+        type: authCodeStartType.type,
         status: "pending" as const,
-        verificationUrl: `/api/connectors/${params.type}/authorize?session=${session.id}`,
+        verificationUrl: `/api/connectors/${authCodeStartType.type}/authorize?session=${session.id}`,
         expiresIn: CONNECTOR_SESSION_TTL_SECONDS,
         interval: CONNECTOR_SESSION_POLL_INTERVAL_SECONDS,
       },

@@ -8,7 +8,6 @@ export const ROUTES = {
   activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",
-  chatList: "/chats",
   chat: "/chats/:threadId",
   schedules: "/schedules",
   scheduleDetail: "/schedules/:scheduleId",

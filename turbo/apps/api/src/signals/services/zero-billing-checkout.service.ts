@@ -31,7 +31,6 @@ type CheckoutCompletionResult =
 interface CreateCreditCheckoutSessionArgs {
   readonly orgId: string;
   readonly credits: number;
-  readonly customAmount?: boolean;
   readonly successUrl: string;
   readonly cancelUrl: string;
 }
@@ -239,46 +238,27 @@ export const createCreditCheckoutSession$ = command(
       purpose: "credit_purchase",
       orgId: args.orgId,
     };
-    let metadata: Stripe.MetadataParam;
-    let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
-    if (args.customAmount === true) {
-      const customCreditPriceId = activeCustomCreditPriceId();
-      if (!customCreditPriceId) {
-        throw new Error("Custom credit price not configured");
-      }
-      const presetAmountCents =
-        Math.ceil(args.credits / CREDITS_PER_DOLLAR) * 100;
-      const presetPriceId = await createPresetCustomCreditPrice(
-        stripe,
-        customCreditPriceId,
-        presetAmountCents,
-      );
-      signal.throwIfAborted();
-      metadata = {
-        ...baseMetadata,
-        creditsAmountMode: "amount_total",
-        requestedCreditsAmount: String(args.credits),
-      };
-      lineItems = [{ price: presetPriceId, quantity: 1 }];
-    } else {
-      metadata = { ...baseMetadata, creditsAmount: String(args.credits) };
-      lineItems = [
-        {
-          price_data: {
-            currency: "usd",
-            unit_amount: Math.ceil(args.credits / CREDITS_PER_DOLLAR) * 100,
-            product_data: {
-              name: `${args.credits.toLocaleString()} Zero credits`,
-            },
-          },
-          quantity: 1,
-        },
-      ];
+    const customCreditPriceId = activeCustomCreditPriceId();
+    if (!customCreditPriceId) {
+      throw new Error("Custom credit price not configured");
     }
+    const presetAmountCents =
+      Math.ceil(args.credits / CREDITS_PER_DOLLAR) * 100;
+    const presetPriceId = await createPresetCustomCreditPrice(
+      stripe,
+      customCreditPriceId,
+      presetAmountCents,
+    );
+    signal.throwIfAborted();
+    const metadata: Stripe.MetadataParam = {
+      ...baseMetadata,
+      creditsAmountMode: "amount_subtotal",
+      requestedCreditsAmount: String(args.credits),
+    };
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer: customerId,
-      line_items: lineItems,
+      line_items: [{ price: presetPriceId, quantity: 1 }],
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       payment_intent_data: {

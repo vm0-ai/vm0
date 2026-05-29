@@ -1,5 +1,66 @@
 # Changelog
 
+## [9.176.4](https://github.com/vm0-ai/vm0/compare/cli-v9.176.3...cli-v9.176.4) (2026-05-29)
+
+
+### Bug Fixes
+
+* **cli:** clean up generate artifact flags ([#15389](https://github.com/vm0-ai/vm0/issues/15389)) ([12581b7](https://github.com/vm0-ai/vm0/commit/12581b76cb5057f46fd63df5691fba4dce369167))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/connectors bumped to 1.37.7
+    * @vm0/core bumped to 8.302.3
+
+## [9.176.3](https://github.com/vm0-ai/vm0/compare/cli-v9.176.2...cli-v9.176.3) (2026-05-29)
+
+
+### Bug Fixes
+
+* allow zero tokens to manage credit checkout ([#15358](https://github.com/vm0-ai/vm0/issues/15358)) ([b220f32](https://github.com/vm0-ai/vm0/commit/b220f32577741af5e30017b72b884f0172b29ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+
+## [9.176.2](https://github.com/vm0-ai/vm0/compare/cli-v9.176.1...cli-v9.176.2) (2026-05-29)
+
+
+### Bug Fixes
+
+* harden auto recharge setup ([#15364](https://github.com/vm0-ai/vm0/issues/15364)) ([e75d12c](https://github.com/vm0-ai/vm0/commit/e75d12c927037591842954858c033603e19e9ab2))
+
+## [9.176.1](https://github.com/vm0-ai/vm0/compare/cli-v9.176.0...cli-v9.176.1) (2026-05-29)
+
+
+### Refactoring
+
+* derive connector checks from lifecycle config ([#15328](https://github.com/vm0-ai/vm0/issues/15328)) ([d910717](https://github.com/vm0-ai/vm0/commit/d9107173fb255846c20e46d903852cf449aceae3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+    * @vm0/core bumped to 8.302.1
+
+## [9.176.0](https://github.com/vm0-ai/vm0/compare/cli-v9.175.1...cli-v9.176.0) (2026-05-29)
+
+
+### Features
+
+* register ink-storefront image style ([#15272](https://github.com/vm0-ai/vm0/issues/15272)) ([35e2f13](https://github.com/vm0-ai/vm0/commit/35e2f1325bde2d8ccbad685252e1090b5989d5c8))
+
 ## [9.175.1](https://github.com/vm0-ai/vm0/compare/cli-v9.175.0...cli-v9.175.1) (2026-05-29)
 
 

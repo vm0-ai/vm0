@@ -11,7 +11,7 @@ interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
   readonly prompt: string;
   readonly slugSource?: string;
-  readonly site?: string;
+  readonly siteSlug?: string;
   readonly details: readonly string[];
   readonly artifactRules: readonly string[];
 }
@@ -92,13 +92,14 @@ function outputDirForSite(site: string): string {
 export function createHtmlArtifactAuthoringPacket(
   options: HtmlArtifactAuthoringOptions,
 ): HtmlArtifactAuthoringPacket {
-  const site = options.site ?? slugify(options.slugSource ?? options.prompt);
+  const site =
+    options.siteSlug ?? slugify(options.slugSource ?? options.prompt);
   const outputDir = outputDirForSite(site);
   const hostCommand = `zero host ${outputDir} --site ${site}${
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const candidateSlice = selectResourceCandidates();
+  const candidateSlice = selectResourceCandidates(options.kind);
   const selectionSchema = {
     skills: "string[]",
     template: "string",

@@ -41,8 +41,11 @@ import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";
+import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
+  billingScrollTarget$,
   billingSubPage$,
+  setBillingScrollTarget$,
   setBillingSubPage$,
   selectedTarget$,
   setSelectedTarget$,
@@ -508,9 +511,18 @@ function PlanActionButtons({
   );
 }
 
+function shouldShowBuyCreditsSection(
+  hasBillingStatus: boolean,
+  currentTier: BillingTier,
+): boolean {
+  return hasBillingStatus && currentTier !== "pro-suspend";
+}
+
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
+  const billingScrollTarget = useGet(billingScrollTarget$);
   const setBillingSubPage = useSet(setBillingSubPage$);
+  const setBillingScrollTarget = useSet(setBillingScrollTarget$);
   const setPricingOpen = (v: boolean) => {
     return setBillingSubPage(v);
   };
@@ -544,6 +556,10 @@ export function OrgBillingTab() {
     currentTier === "pro-suspend"
       ? "No active plan"
       : `${formatTierLabel(currentTier)} plan`;
+  const showBuyCredits = shouldShowBuyCreditsSection(
+    status !== null,
+    currentTier,
+  );
 
   if (pricingOpen) {
     return (
@@ -674,6 +690,21 @@ export function OrgBillingTab() {
           )}
         </div>
       </section>
+
+      {showBuyCredits && (
+        <div
+          ref={(el) => {
+            if (el && billingScrollTarget === "buy-credits") {
+              window.setTimeout(() => {
+                el.scrollIntoView({ block: "start", behavior: "smooth" });
+                setBillingScrollTarget(null);
+              }, 0);
+            }
+          }}
+        >
+          <BuyCreditsSection />
+        </div>
+      )}
 
       {status && (
         <AutoRechargeSection

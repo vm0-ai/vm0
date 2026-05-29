@@ -35,10 +35,12 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
-import { decryptSecretValue } from "../../services/crypto.utils";
 import { clearAllDetached } from "../../utils";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import {
+  decryptSecretForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -1045,7 +1047,7 @@ describe("POST /api/telegram/register", () => {
     if (!installation) {
       throw new Error("Expected Telegram installation to exist");
     }
-    expect(decryptSecretValue(installation.encryptedBotToken)).toBe(
+    expect(decryptSecretForTests(installation.encryptedBotToken)).toBe(
       NEW_BOT_TOKEN,
     );
   });

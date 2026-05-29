@@ -399,3 +399,28 @@ export const invoicesAsync$ = computed(async (get) => {
   const result = await accept(client.get(), [200]);
   return result.body;
 });
+
+// ---------------------------------------------------------------------------
+// Buy credits form state (Billing page > Buy credits section)
+// ---------------------------------------------------------------------------
+
+export type BuyCreditsSelection = 10 | 20 | 50 | "custom";
+
+const internalBuyCreditsSelection$ = state<BuyCreditsSelection>(20);
+const internalBuyCreditsCustomDollars$ = state("");
+
+export const buyCreditsSelection$ = computed((get) => {
+  return get(internalBuyCreditsSelection$);
+});
+export const buyCreditsCustomDollars$ = computed((get) => {
+  return get(internalBuyCreditsCustomDollars$);
+});
+
+export const setBuyCreditsSelection$ = command(
+  ({ set }, value: BuyCreditsSelection) => {
+    set(internalBuyCreditsSelection$, value);
+  },
+);
+export const setBuyCreditsCustomDollars$ = command(({ set }, value: string) => {
+  set(internalBuyCreditsCustomDollars$, value);
+});
