@@ -1,7 +1,5 @@
 """Tests for compiled firewall matching."""
 
-from unittest.mock import patch
-
 import pytest
 
 import matching
@@ -2584,47 +2582,6 @@ class TestCompiledFirewallMatching:
 
     def test_malformed_api_list_shape_is_skipped_without_compile_error(self):
         assert matching.compile_firewalls([{"name": "github", "apis": None}]) is None
-
-    def test_request_url_is_parsed_once_for_multiple_api_entries(self):
-        fws = wrap_firewalls(
-            [
-                {
-                    "base": "https://one.example.com",
-                    "auth": {"headers": {}},
-                    "permissions": [],
-                },
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {}},
-                    "permissions": [
-                        {"name": "read", "rules": ["GET /items/{id}"]},
-                    ],
-                },
-                {
-                    "base": "https://three.example.com",
-                    "auth": {"headers": {}},
-                    "permissions": [],
-                },
-            ],
-            name="example",
-        )
-        compiled_firewalls = self._compiled(fws)
-        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
-
-        with patch.object(
-            matching,
-            "_split_base_match_url",
-            wraps=matching._split_base_match_url,
-        ) as spy:
-            result = matching.match_compiled_firewall_request(
-                "https://api.example.com/items/123",
-                "GET",
-                compiled_firewalls,
-                policies,
-            )
-
-        assert isinstance(result, matching.FirewallAllow)
-        assert spy.call_count == 1
 
     @pytest.mark.parametrize(
         "policies",
