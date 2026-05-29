@@ -15,7 +15,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-01-finance-trading-terminal-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a7904f22-5113-4fd3-a936-d36b7472b0b6/01-finance-trading-terminal.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/54ffa35d-e0ba-4606-a672-64e3aaacf190/01-finance-trading-terminal.png",
   },
   {
     slug: "02-finance-stripe",
@@ -24,7 +24,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `stripe` and template `finance-report`, Monthly revenue report for a payments startup: MRR, churn, expansion revenue, and cohort revenue retention",
     embedUrl: "https://gen-report-02-finance-stripe-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bf670c7d-5b4f-4c35-a324-37b75b2b7b9e/02-finance-stripe.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c2082dfd-1e6a-471b-9390-bad720d2dac9/02-finance-stripe.png",
   },
   {
     slug: "03-finance-corporate",
@@ -33,7 +33,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `corporate` and template `finance-report`, FY25 annual financial report for a manufacturing company: revenue, COGS, EBITDA, capex, and free cash flow",
     embedUrl: "https://gen-report-03-finance-corporate-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/aa720a2a-ce21-483e-8ce4-a8a5624f3a5d/03-finance-corporate.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ecc39e5e-3007-47e3-847d-1b76277d99bc/03-finance-corporate.png",
   },
   {
     slug: "04-finance-editorial",
@@ -42,7 +42,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `editorial` and template `finance-report`, Quarterly investor update: P&L summary, cash position, KPI highlights, and a narrative outlook section",
     embedUrl: "https://gen-report-04-finance-editorial-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e345e8dc-6150-4b37-8adc-ea415b6f8c41/04-finance-editorial.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bc8b1f6e-be2b-49f1-a442-cab6c9b7e964/04-finance-editorial.png",
   },
   {
     slug: "05-finance-coinbase",
@@ -51,7 +51,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `coinbase` and template `finance-report`, Crypto exchange quarterly report: trading volume, fee revenue, treasury composition, and token holdings",
     embedUrl: "https://gen-report-05-finance-coinbase-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cad8efae-25ed-42fa-9057-af6646e34215/05-finance-coinbase.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1db57d10-e84a-4343-8858-80cc731c94cf/05-finance-coinbase.png",
   },
   {
     slug: "06-finance-vercel",
@@ -60,7 +60,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `vercel` and template `finance-report`, Developer-tools company quarterly financials: usage-based revenue, gross margin, and R&D spend breakdown",
     embedUrl: "https://gen-report-06-finance-vercel-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/7fd2e7a1-3bb1-41d2-85a5-32eae6f5aa50/06-finance-vercel.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/513a6a4c-a518-4e0e-86fc-6496f06a3964/06-finance-vercel.png",
   },
   {
     slug: "07-finance-mono",
@@ -69,7 +69,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mono` and template `finance-report`, Lean monthly burn report for an early-stage startup: cash in, cash out, runway, and default-alive analysis",
     embedUrl: "https://gen-report-07-finance-mono-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4f689875-bf12-4dd0-bc53-1651e3601c3e/07-finance-mono.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5f558c34-c000-453a-a587-7d701fa1fdfe/07-finance-mono.png",
   },
   {
     slug: "08-finance-ibm",
@@ -78,7 +78,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `ibm` and template `finance-report`, Enterprise division financial report: segment revenue, operating margin, backlog, and full-year guidance",
     embedUrl: "https://gen-report-08-finance-ibm-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b43ec9e0-9c25-4c0c-9eba-0974e8091e57/08-finance-ibm.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/83bd5792-c4d4-4af1-b7bb-9ea10ef025f2/08-finance-ibm.png",
   },
   {
     slug: "09-finance-dashboard",
@@ -87,7 +87,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `dashboard` and template `finance-report`, SaaS finance dashboard report: MRR, ARR waterfall, CAC payback, and the magic number",
     embedUrl: "https://gen-report-09-finance-dashboard-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bda40116-d401-427c-8835-2f0e21f8b979/09-finance-dashboard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/269d5b5d-fe7a-48b9-9b24-3747d6509d11/09-finance-dashboard.png",
   },
   {
     slug: "10-finance-mastercard",
@@ -96,7 +96,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mastercard` and template `finance-report`, Fintech quarterly report: transaction volume, interchange revenue, active cards, and fraud rate",
     embedUrl: "https://gen-report-10-finance-mastercard-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a38f8168-223a-4e53-ad60-69ba268f33fe/10-finance-mastercard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/03c2e0c9-5700-43e2-9a1c-0f865e5c0cec/10-finance-mastercard.png",
   },
   {
     slug: "11-weekly-linear-app",
@@ -105,7 +105,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `linear-app` and template `weekly-update`, Engineering team weekly: shipped features, in-flight epics, blockers, sprint velocity, and asks",
     embedUrl: "https://gen-report-11-weekly-linear-app-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4d473e47-8f4e-4505-b06f-3ddb061bf29a/11-weekly-linear-app.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5f4ce96d-12bd-453c-a796-08c1c5bd6c1b/11-weekly-linear-app.png",
   },
   {
     slug: "12-weekly-notion",
@@ -114,7 +114,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `notion` and template `weekly-update`, Product team weekly update deck: launches, experiments running, key metrics, and decisions needed",
     embedUrl: "https://gen-report-12-weekly-notion-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/27fbd56f-c22f-4547-a795-83a7e4df3b7c/12-weekly-notion.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cfd7975c-1668-431c-b2df-200cf6da02a7/12-weekly-notion.png",
   },
   {
     slug: "13-weekly-slack",
@@ -123,7 +123,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `slack` and template `weekly-update`, Growth team weekly: campaigns shipped, in-flight tests, blockers, and funnel metrics",
     embedUrl: "https://gen-report-13-weekly-slack-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/62bbfe85-8276-488d-a102-7a286ff11348/13-weekly-slack.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/488cdc1d-db67-47f0-98f9-0834e549f8fd/13-weekly-slack.png",
   },
   {
     slug: "14-weekly-github",
@@ -132,7 +132,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `github` and template `weekly-update`, Open-source maintainer weekly: PRs merged, issues triaged, releases cut, and community asks",
     embedUrl: "https://gen-report-14-weekly-github-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ce707840-00ce-43be-8d7a-9b1c3e14df43/14-weekly-github.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/82c4a19a-302c-44bd-bcfc-fc36a8bf80f6/14-weekly-github.png",
   },
   {
     slug: "15-weekly-framer",
@@ -141,7 +141,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `framer` and template `weekly-update`, Design team weekly: shipped designs, in-review explorations, research findings, and asks",
     embedUrl: "https://gen-report-15-weekly-framer-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f4361885-50ad-4a60-90f4-5ddd8de06279/15-weekly-framer.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/256c1509-f856-4654-88b0-e13bf0b75be8/15-weekly-framer.png",
   },
   {
     slug: "16-weekly-raycast",
@@ -150,7 +150,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `raycast` and template `weekly-update`, Founder weekly update to investors: shipped, metrics, hiring progress, and asks",
     embedUrl: "https://gen-report-16-weekly-raycast-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b1adec10-7ff5-4fa0-899c-6f5a039a0fec/16-weekly-raycast.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/009e1961-1f92-4ce6-85c2-5d74e6246108/16-weekly-raycast.png",
   },
   {
     slug: "17-weekly-superhuman",
@@ -159,7 +159,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `superhuman` and template `weekly-update`, Sales team weekly: deals closed, pipeline movement, blockers, and quota attainment",
     embedUrl: "https://gen-report-17-weekly-superhuman-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1ca9a3cb-2c06-42a4-bb56-692e74374767/17-weekly-superhuman.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c20314a1-374e-4143-8a6f-33aae4589cde/17-weekly-superhuman.png",
   },
   {
     slug: "18-weekly-cursor",
@@ -168,7 +168,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `cursor` and template `weekly-update`, AI infra team weekly: model evals shipped, training runs in flight, GPU blockers, and metrics",
     embedUrl: "https://gen-report-18-weekly-cursor-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ac51fa14-050f-4c32-b671-f436aa250735/18-weekly-cursor.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9c42ce1b-53e4-47aa-933e-3848aea8dfd4/18-weekly-cursor.png",
   },
   {
     slug: "19-weekly-vercel",
@@ -177,7 +177,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `vercel` and template `weekly-update`, Platform team weekly: deploys, reliability incidents, in-progress migrations, and SLOs",
     embedUrl: "https://gen-report-19-weekly-vercel-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a3ef533e-faa6-41ee-9988-be17ddbe679f/19-weekly-vercel.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8ff30440-fc2f-48ea-8390-7206968fc658/19-weekly-vercel.png",
   },
   {
     slug: "20-clinical-clean",
@@ -186,7 +186,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `clean` and template `clinical-case-report`, 54-year-old male with acute chest pain: SOAP note, ECG findings, troponin trend, and STEMI management plan",
     embedUrl: "https://gen-report-20-clinical-clean-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e258f971-1d78-4fca-9e27-07223a43a514/20-clinical-clean.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1e165938-a3f2-4f5a-864e-3b8fcca31ae1/20-clinical-clean.png",
   },
   {
     slug: "21-clinical-publication",
@@ -196,7 +196,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-21-clinical-publication-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/441d081a-d812-4e46-9f65-5d2f646f428a/21-clinical-publication.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/03c995a4-836f-4916-8e51-6b11c0568b2a/21-clinical-publication.png",
   },
   {
     slug: "22-clinical-minimal",
@@ -205,7 +205,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `minimal` and template `clinical-case-report`, New diagnosis of type 2 diabetes: history, HbA1c, metabolic panel, and treatment plan",
     embedUrl: "https://gen-report-22-clinical-minimal-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/22363664-c158-4bbd-bb13-dd61643b1fdb/22-clinical-minimal.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cf96790a-206a-4ecf-88ea-3ef70fe2d229/22-clinical-minimal.png",
   },
   {
     slug: "23-clinical-paper",
@@ -214,7 +214,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `paper` and template `clinical-case-report`, Post-operative pulmonary embolism case: vitals, D-dimer, CT-PA findings, and anticoagulation plan",
     embedUrl: "https://gen-report-23-clinical-paper-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ef12e052-c0dd-4df1-bde1-9a1d48dabb45/23-clinical-paper.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/323cccf9-618c-485f-bf99-09ccd174753c/23-clinical-paper.png",
   },
   {
     slug: "24-clinical-refined",
@@ -223,7 +223,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `refined` and template `clinical-case-report`, Rheumatoid arthritis flare: joint exam, inflammatory markers, imaging, and biologic escalation",
     embedUrl: "https://gen-report-24-clinical-refined-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cc565554-db58-47c4-8eee-66b987f96e38/24-clinical-refined.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/90271c87-9f66-49d0-9382-8ae3c57bde37/24-clinical-refined.png",
   },
   {
     slug: "25-clinical-professional",
@@ -233,7 +233,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-25-clinical-professional-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/691d106d-c011-4eaf-95b5-4d172c7eb908/25-clinical-professional.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b03afc26-4896-461a-98a1-d2394ce3e6a4/25-clinical-professional.png",
   },
   {
     slug: "26-clinical-material",
@@ -242,7 +242,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `material` and template `clinical-case-report`, Migraine with aura differential workup: neuro exam, MRI, and medication strategy",
     embedUrl: "https://gen-report-26-clinical-material-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f9e21035-5656-4f24-a3e6-987c8374fd72/26-clinical-material.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e1439746-eb7d-4388-a7c9-446ce52ac25f/26-clinical-material.png",
   },
   {
     slug: "27-clinical-editorial",
@@ -251,7 +251,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `editorial` and template `clinical-case-report`, Narrative case report of a rare autoimmune presentation prepared for grand rounds",
     embedUrl: "https://gen-report-27-clinical-editorial-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ebd40214-c6d8-41c4-830d-20c9a1f91a4f/27-clinical-editorial.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5b114832-1843-4097-a365-84c56d604bb9/27-clinical-editorial.png",
   },
   {
     slug: "28-critique-artistic",
@@ -260,7 +260,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `artistic` and template `critique`, Design critique of a fintech landing page across philosophy, hierarchy, detail, functionality, and innovation",
     embedUrl: "https://gen-report-28-critique-artistic-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1eddcd44-1a49-42f1-b4e8-849387948530/28-critique-artistic.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/10ff738f-33f9-4713-903c-8b07a397beed/28-critique-artistic.png",
   },
   {
     slug: "29-critique-dramatic",
@@ -269,7 +269,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `dramatic` and template `critique`, Expert design review of an AI product dashboard with a radar chart and scored evidence",
     embedUrl: "https://gen-report-29-critique-dramatic-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/75534084-7633-413b-a544-fd00253201e0/29-critique-dramatic.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3fb489ee-0aa6-46cd-942e-ffc5ad3b0283/29-critique-dramatic.png",
   },
   {
     slug: "30-critique-bold",
@@ -278,7 +278,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `bold` and template `critique`, Critique of a SaaS pricing page: visual hierarchy, clarity, and conversion design",
     embedUrl: "https://gen-report-30-critique-bold-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8e52a41c-7d94-494f-bd8a-9059bf319d2c/30-critique-bold.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/077dbddb-f4f2-4d0e-91aa-032e6f977d9e/30-critique-bold.png",
   },
   {
     slug: "31-critique-brutalism",
@@ -287,7 +287,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `brutalism` and template `critique`, Design teardown of a portfolio website with 0-10 scoring across five dimensions",
     embedUrl: "https://gen-report-31-critique-brutalism-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fc85a694-71a7-4a20-bd6c-1b8dd0843835/31-critique-brutalism.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/165cd7e7-3538-4aa1-a101-49a13a84606a/31-critique-brutalism.png",
   },
   {
     slug: "32-critique-expressive",
@@ -296,7 +296,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `expressive` and template `critique`, Critique of a mobile onboarding flow's visual and interaction design",
     embedUrl: "https://gen-report-32-critique-expressive-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/dfa5a0b2-6365-4d97-85ec-f1b19ee97bb0/32-critique-expressive.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/7bd114fd-b6cc-4d36-8dcb-b39dbe55c82a/32-critique-expressive.png",
   },
   {
     slug: "33-critique-cosmic",
@@ -305,7 +305,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `cosmic` and template `critique`, Review of a data-visualization-heavy analytics product UI",
     embedUrl: "https://gen-report-33-critique-cosmic-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f060c5de-62b7-4426-b7c1-f77fc5264c24/33-critique-cosmic.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a53becde-ed26-495c-82bc-1e097e005b95/33-critique-cosmic.png",
   },
   {
     slug: "34-critique-neobrutalism",
@@ -315,7 +315,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-34-critique-neobrutalism-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a073852d-3946-48dc-9cee-ddac54e6d9a4/34-critique-neobrutalism.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8e77e916-6db0-4fe3-ab4d-e83127916f66/34-critique-neobrutalism.png",
   },
   {
     slug: "35-critique-dithered",
@@ -324,7 +324,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `dithered` and template `critique`, Retro-styled critique of a game studio's web presence",
     embedUrl: "https://gen-report-35-critique-dithered-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ee8259fe-7caf-4746-b977-ce85a4a58e7c/35-critique-dithered.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3abfbc1a-9769-49d6-a5cb-6f077e37a3c3/35-critique-dithered.png",
   },
   {
     slug: "36-dcf-trading-terminal",
@@ -334,7 +334,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-36-dcf-trading-terminal-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c6cf037b-686e-4463-9261-86a05533cd72/36-dcf-trading-terminal.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/00e96971-b805-4a4d-84ae-cdb590fe1b23/36-dcf-trading-terminal.png",
   },
   {
     slug: "37-dcf-corporate",
@@ -343,7 +343,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `corporate` and template `dcf-valuation`, DCF intrinsic value analysis of a mature consumer-goods company",
     embedUrl: "https://gen-report-37-dcf-corporate-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/47cab9d0-dd76-4a25-a605-2cfb6106bf0d/37-dcf-corporate.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0bba1225-ad39-4ae8-98ec-a95810012302/37-dcf-corporate.png",
   },
   {
     slug: "38-dcf-professional",
@@ -352,7 +352,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `professional` and template `dcf-valuation`, DCF model for a semiconductor company: FCF projections, discount rate, and scenario analysis",
     embedUrl: "https://gen-report-38-dcf-professional-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/46b0548b-7e7d-4934-b3ad-cd350873e619/38-dcf-professional.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e0612622-e415-4588-8268-8a25d2a0bd9e/38-dcf-professional.png",
   },
   {
     slug: "39-dcf-mono",
@@ -361,7 +361,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mono` and template `dcf-valuation`, Lean DCF for an early profitable startup with an explicit assumptions table",
     embedUrl: "https://gen-report-39-dcf-mono-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/354b5050-0e9d-4727-91b1-8d55cbd6be9c/39-dcf-mono.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b7ae85c5-9977-4826-9a35-eecb78fc57df/39-dcf-mono.png",
   },
   {
     slug: "40-dcf-editorial",
@@ -370,7 +370,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `editorial` and template `dcf-valuation`, Narrative DCF valuation memo for a media company",
     embedUrl: "https://gen-report-40-dcf-editorial-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6b5b7f8c-b561-46f9-b67b-447c0b6620cc/40-dcf-editorial.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b6fcd381-a5b8-4509-a2e0-de54ad3169d8/40-dcf-editorial.png",
   },
   {
     slug: "41-dcf-ibm",
@@ -379,7 +379,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `ibm` and template `dcf-valuation`, Enterprise software DCF: segment FCF, WACC build-up, and a sensitivity grid",
     embedUrl: "https://gen-report-41-dcf-ibm-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cebf980f-463a-418e-96ea-7956d16e568b/41-dcf-ibm.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e13d44b5-f969-4718-809e-a7dbc0cf595e/41-dcf-ibm.png",
   },
   {
     slug: "42-dcf-stripe",
@@ -388,7 +388,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `stripe` and template `dcf-valuation`, Fintech DCF valuation with revenue ramp and margin expansion scenarios",
     embedUrl: "https://gen-report-42-dcf-stripe-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f1d94999-beb8-4678-ad26-61e8244b0928/42-dcf-stripe.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b024badc-b8a0-4755-a63e-ac1931ad83cb/42-dcf-stripe.png",
   },
   {
     slug: "43-dcf-dashboard",
@@ -397,7 +397,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `dashboard` and template `dcf-valuation`, DCF dashboard report with sensitivity heatmaps",
     embedUrl: "https://gen-report-43-dcf-dashboard-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/205c4077-7d16-4dee-9209-a2086b4bfd3e/43-dcf-dashboard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9678772a-30c0-4765-b825-830b44b11770/43-dcf-dashboard.png",
   },
   {
     slug: "44-ppt-corporate",
@@ -406,7 +406,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `corporate` and template `html-ppt-weekly-report`, Company-wide weekly business review: 8-cell KPI grid, shipped list, and 8-week trend",
     embedUrl: "https://gen-report-44-ppt-corporate-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/19d18a7b-3bee-44be-8cb1-a4166b113997/44-ppt-corporate.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1e830047-2eed-41ad-a62c-ae1a147d35e6/44-ppt-corporate.png",
   },
   {
     slug: "45-ppt-enterprise",
@@ -415,7 +415,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `enterprise` and template `html-ppt-weekly-report`, Regional sales weekly status deck with a KPI grid and next-week plan",
     embedUrl: "https://gen-report-45-ppt-enterprise-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/34805cb6-b246-4ff0-a814-a5d81c84a4b3/45-ppt-enterprise.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4c838ef7-dbfe-446c-9c6a-e09148e329c4/45-ppt-enterprise.png",
   },
   {
     slug: "46-ppt-ant",
@@ -424,7 +424,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `ant` and template `html-ppt-weekly-report`, Engineering org weekly report: delivery metrics, incidents, and roadmap progress",
     embedUrl: "https://gen-report-46-ppt-ant-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/fae1d121-1e01-4820-af85-93126b540e1e/46-ppt-ant.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f33b4dc3-6e62-4ee4-9a11-abb2cb668421/46-ppt-ant.png",
   },
   {
     slug: "47-ppt-professional",
@@ -433,7 +433,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `professional` and template `html-ppt-weekly-report`, Marketing weekly status deck: campaign KPIs, pipeline, and content shipped",
     embedUrl: "https://gen-report-47-ppt-professional-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c315929d-5729-4930-b300-9e5f6c371959/47-ppt-professional.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c27e24f1-c1d1-4447-b0d5-aa28d56fae52/47-ppt-professional.png",
   },
   {
     slug: "48-ppt-cisco",
@@ -442,7 +442,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `cisco` and template `html-ppt-weekly-report`, IT operations weekly review: uptime, ticket volume, projects, and risks",
     embedUrl: "https://gen-report-48-ppt-cisco-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/202f5945-5e25-4109-a0f6-76ca9ea66476/48-ppt-cisco.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/54ad7667-6d3b-4754-9870-d80af7838b7d/48-ppt-cisco.png",
   },
   {
     slug: "49-ppt-ibm",
@@ -451,7 +451,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `ibm` and template `html-ppt-weekly-report`, Consulting engagement weekly status with milestones and budget burn",
     embedUrl: "https://gen-report-49-ppt-ibm-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/301169b7-368e-408b-957a-3f71552d5b56/49-ppt-ibm.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f7519758-9209-4d15-a469-30c609ced3c8/49-ppt-ibm.png",
   },
   {
     slug: "50-ppt-vodafone",
@@ -460,7 +460,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `vodafone` and template `html-ppt-weekly-report`, Telecom product weekly business review with subscriber metrics",
     embedUrl: "https://gen-report-50-ppt-vodafone-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5db18f93-8dc1-4ea2-a300-3e2dd00efac3/50-ppt-vodafone.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/558d34c6-7f72-44df-9f02-8e38c65014ff/50-ppt-vodafone.png",
   },
   {
     slug: "51-ppt-webex",
@@ -469,7 +469,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `webex` and template `html-ppt-weekly-report`, Cross-functional weekly sync deck with per-team status cells",
     embedUrl: "https://gen-report-51-ppt-webex-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/208e6522-9551-4f33-ac03-3ceb804cb424/51-ppt-webex.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0a63edd6-b7f2-4f59-aa96-3a7ae9257343/51-ppt-webex.png",
   },
   {
     slug: "52-ppt-mastercard",
@@ -478,7 +478,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mastercard` and template `html-ppt-weekly-report`, Payments product weekly review: volume, approval rate, and roadmap",
     embedUrl: "https://gen-report-52-ppt-mastercard-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a4b3ce01-2342-4cc4-a038-c359b8c8c854/52-ppt-mastercard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bf64bba4-c67e-47d4-9bb3-3d2909dc38d4/52-ppt-mastercard.png",
   },
   {
     slug: "53-pitch-corporate",
@@ -487,7 +487,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `corporate` and template `ib-pitch-book`, Sell-side pitch book for a SaaS company: trading comps, precedent transactions, valuation football field, and DCF sensitivity",
     embedUrl: "https://gen-report-53-pitch-corporate-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a0546d36-a459-4b65-a1a8-1cf28e9d996e/53-pitch-corporate.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/40962d9c-884e-431b-b1f6-cbf6f7dc39ba/53-pitch-corporate.png",
   },
   {
     slug: "54-pitch-premium",
@@ -496,7 +496,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `premium` and template `ib-pitch-book`, M&A pitch book for a luxury consumer brand acquisition",
     embedUrl: "https://gen-report-54-pitch-premium-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5ddb3893-8a5e-47b2-a33b-d66d719c9190/54-pitch-premium.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/81176ef8-7bdf-4b11-9cf3-c96d9c5e0a32/54-pitch-premium.png",
   },
   {
     slug: "55-pitch-professional",
@@ -505,7 +505,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `professional` and template `ib-pitch-book`, Strategic options pitch book for a mid-market manufacturer",
     embedUrl: "https://gen-report-55-pitch-professional-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/59374544-d9d3-4f91-9ae9-2511028162c8/55-pitch-professional.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/af77592e-4402-437d-9ae9-28e7b483cd5c/55-pitch-professional.png",
   },
   {
     slug: "56-pitch-luxury",
@@ -514,7 +514,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `luxury` and template `ib-pitch-book`, Board materials for a private equity take-private analysis",
     embedUrl: "https://gen-report-56-pitch-luxury-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e009abdd-ea40-4b17-a6bd-07b5375db86d/56-pitch-luxury.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/23ce967f-6f2b-47a8-9b21-c5f003d325ce/56-pitch-luxury.png",
   },
   {
     slug: "57-pitch-editorial",
@@ -523,7 +523,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `editorial` and template `ib-pitch-book`, Capital raise pitch book with a narrative thesis and valuation range",
     embedUrl: "https://gen-report-57-pitch-editorial-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f2704b0e-db0c-4c6c-bc3f-2c381c55a0af/57-pitch-editorial.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/609a2b2e-838d-4483-958e-b80ae7da2ba7/57-pitch-editorial.png",
   },
   {
     slug: "58-pitch-ibm",
@@ -532,7 +532,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `ibm` and template `ib-pitch-book`, Enterprise tech merger pitch book with synergy analysis",
     embedUrl: "https://gen-report-58-pitch-ibm-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f009d185-fcb5-452b-85fb-794c34035ee1/58-pitch-ibm.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6537dc97-9a69-4de0-be6e-30bb2e142fa1/58-pitch-ibm.png",
   },
   {
     slug: "59-pitch-elegant",
@@ -541,7 +541,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `elegant` and template `ib-pitch-book`, IPO readiness pitch book: comps, valuation range, and use of proceeds",
     embedUrl: "https://gen-report-59-pitch-elegant-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0d5a57c1-a7cc-40fe-ae63-06ceec148bdc/59-pitch-elegant.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/43c51c7b-fe2c-4c5e-9de1-ab4c6bfee92a/59-pitch-elegant.png",
   },
   {
     slug: "60-pitch-mono",
@@ -550,7 +550,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mono` and template `ib-pitch-book`, Lean restructuring pitch book with a strategic-options matrix",
     embedUrl: "https://gen-report-60-pitch-mono-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/cf02d200-23de-4131-a4c0-aeaaa34b38ba/60-pitch-mono.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d3fbfed5-c3d8-4820-94f2-255a78b57f80/60-pitch-mono.png",
   },
   {
     slug: "61-invoice-stripe",
@@ -559,7 +559,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `stripe` and template `invoice`, SaaS subscription invoice with line items, proration, tax, and a payment link",
     embedUrl: "https://gen-report-61-invoice-stripe-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/799df9cc-ae67-4a03-9f0d-7b9b9628d09a/61-invoice-stripe.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/27e314b7-ac9b-44e8-bfb1-63548a4e28aa/61-invoice-stripe.png",
   },
   {
     slug: "62-invoice-clean",
@@ -568,7 +568,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `clean` and template `invoice`, Freelance design services invoice with hourly line items and totals",
     embedUrl: "https://gen-report-62-invoice-clean-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/3d042e40-2b16-4f0a-bf9f-9d148790fd56/62-invoice-clean.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/399ba0ae-5ecf-472f-92da-798d89a29bde/62-invoice-clean.png",
   },
   {
     slug: "63-invoice-minimal",
@@ -577,7 +577,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `minimal` and template `invoice`, Consulting retainer invoice with a milestone breakdown",
     embedUrl: "https://gen-report-63-invoice-minimal-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5be9cf6d-1217-491d-9e09-1e6850ca8b4c/63-invoice-minimal.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/792a097e-dc30-42a8-84df-99d82bffe889/63-invoice-minimal.png",
   },
   {
     slug: "64-invoice-wise",
@@ -586,7 +586,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `wise` and template `invoice`, Cross-border contractor invoice with multi-currency amounts and bank details",
     embedUrl: "https://gen-report-64-invoice-wise-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/649c166e-a682-441c-9bad-1fc1f43f8436/64-invoice-wise.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/2fbbd350-daf7-4ca6-8943-f0eeb9464fa3/64-invoice-wise.png",
   },
   {
     slug: "65-invoice-paper",
@@ -595,7 +595,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `paper` and template `invoice`, Print-ready agency invoice with itemized deliverables and VAT",
     embedUrl: "https://gen-report-65-invoice-paper-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1312c5cc-ad54-460b-853f-60a6f2d68b77/65-invoice-paper.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4996cef4-2545-4ab7-8c23-e81919957f7b/65-invoice-paper.png",
   },
   {
     slug: "66-invoice-professional",
@@ -605,7 +605,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-66-invoice-professional-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c9f9cbeb-53d3-46ff-9e0a-3d026c20be46/66-invoice-professional.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/99f94089-73f1-48d9-ba74-5cc341d7113a/66-invoice-professional.png",
   },
   {
     slug: "67-invoice-refined",
@@ -614,7 +614,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `refined` and template `invoice`, Photography studio invoice with package line items",
     embedUrl: "https://gen-report-67-invoice-refined-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d338580b-a5df-411e-b9ef-867e7c75d77d/67-invoice-refined.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e8ed32c3-5659-4801-b34e-0a63db3f932a/67-invoice-refined.png",
   },
   {
     slug: "68-invoice-simple",
@@ -623,7 +623,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `simple` and template `invoice`, Small-business product invoice with quantity, unit price, and sales tax",
     embedUrl: "https://gen-report-68-invoice-simple-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/35bfcce8-a3f3-45f2-8ce9-eda77c4d8019/68-invoice-simple.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9dcf81f8-59b6-40c7-bb7f-43bbd55b3f7d/68-invoice-simple.png",
   },
   {
     slug: "69-last30-theverge",
@@ -632,7 +632,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `theverge` and template `last30days`, Last 30 days in AI agents: top launches, debates, and community trends",
     embedUrl: "https://gen-report-69-last30-theverge-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4ca6d41f-5de7-436d-a2df-dd9bbe9ae696/69-last30-theverge.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bb113930-1f84-4423-b2cb-2214541d249c/69-last30-theverge.png",
   },
   {
     slug: "70-last30-wired",
@@ -641,7 +641,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `wired` and template `last30days`, 30-day trend report on the humanoid robotics space",
     embedUrl: "https://gen-report-70-last30-wired-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/42d7f3a6-7416-4619-9cb8-100d97b66952/70-last30-wired.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/43c8146d-0a0a-4b75-acac-3db43702cee5/70-last30-wired.png",
   },
   {
     slug: "71-last30-perplexity",
@@ -650,7 +650,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `perplexity` and template `last30days`, Recent 30-day developments in open-source LLMs",
     embedUrl: "https://gen-report-71-last30-perplexity-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/646b269e-9c9c-4e3e-91bd-945d958adf88/71-last30-perplexity.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0fd4eeff-9009-422c-bb9d-50cb0885163a/71-last30-perplexity.png",
   },
   {
     slug: "72-last30-publication",
@@ -659,7 +659,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `publication` and template `last30days`, Last 30 days in crypto and DeFi: narratives, launches, and sentiment",
     embedUrl: "https://gen-report-72-last30-publication-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d0f2c9e5-b970-49cc-aea3-ed62a2516fd5/72-last30-publication.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9290d77a-12ca-4115-a52d-61454b5f42b6/72-last30-publication.png",
   },
   {
     slug: "73-last30-editorial",
@@ -668,7 +668,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `editorial` and template `last30days`, 30-day roundup of developer-tooling community discourse",
     embedUrl: "https://gen-report-73-last30-editorial-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a1463152-7d94-41fc-ae7a-4f9b2cf57b75/73-last30-editorial.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/53544c97-848a-435b-a470-01e7da8d1430/73-last30-editorial.png",
   },
   {
     slug: "74-last30-posthog",
@@ -677,7 +677,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `posthog` and template `last30days`, Recent product-analytics and growth community trends over the last 30 days",
     embedUrl: "https://gen-report-74-last30-posthog-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/731cc1f9-a524-492a-82a0-820821e76cf3/74-last30-posthog.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/aefc7b83-f8e4-4f1b-950f-8e7ec3ae948c/74-last30-posthog.png",
   },
   {
     slug: "75-last30-mono",
@@ -686,7 +686,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mono` and template `last30days`, Last 30 days in the AI coding-agent ecosystem",
     embedUrl: "https://gen-report-75-last30-mono-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/7fd76294-f669-4abd-a0dd-f9e30d4b8bff/75-last30-mono.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/c48d06e5-ad35-46f3-bf8f-9b1aae0e5c36/75-last30-mono.png",
   },
   {
     slug: "76-last30-x-ai",
@@ -695,7 +695,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `x-ai` and template `last30days`, 30-day trend report on AI safety and alignment discourse",
     embedUrl: "https://gen-report-76-last30-x-ai-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8f276042-3aed-40d4-8739-7f506e1062ec/76-last30-x-ai.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/6e37aebe-cae5-4be3-95cd-a6d296b520e6/76-last30-x-ai.png",
   },
   {
     slug: "77-live-dashboard",
@@ -704,7 +704,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `dashboard` and template `live-artifact`, Live revenue dashboard backed by Stripe data: MRR, churn, and new customers, refreshable",
     embedUrl: "https://gen-report-77-live-dashboard-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/95f08782-2cc8-444c-b206-5a496d1df62e/77-live-dashboard.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1e381e20-75f4-4b62-8e34-875dadca30d1/77-live-dashboard.png",
   },
   {
     slug: "78-live-mission-control",
@@ -714,7 +714,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-78-live-mission-control-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0bb0386e-10aa-4879-8493-9c43d08fc967/78-live-mission-control.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e6418c65-ce89-43e4-9fc9-25b2022262ef/78-live-mission-control.png",
   },
   {
     slug: "79-live-hud",
@@ -723,7 +723,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `hud` and template `live-artifact`, Live KPI HUD for a startup: signups, activation, and revenue with auto-refresh",
     embedUrl: "https://gen-report-79-live-hud-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/65e7de3e-c0b1-4510-aea2-d31bf62cdab2/79-live-hud.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9b5e2881-163a-4dfe-a5ca-8dd2666bb22c/79-live-hud.png",
   },
   {
     slug: "80-live-trading-terminal",
@@ -733,7 +733,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-80-live-trading-terminal-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d6a3ce09-03f8-48cc-86be-1b83bcf57679/80-live-trading-terminal.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/2961e0d5-b79f-4e3f-8a46-6902d3548051/80-live-trading-terminal.png",
   },
   {
     slug: "81-live-clickhouse",
@@ -742,7 +742,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `clickhouse` and template `live-artifact`, Live analytics report over an event stream with refreshable queries",
     embedUrl: "https://gen-report-81-live-clickhouse-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/abff0d0e-6c8d-44a2-8b54-a7f31ef9bc5f/81-live-clickhouse.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/44704687-2697-41e2-ab4b-d4b5f0c80c36/81-live-clickhouse.png",
   },
   {
     slug: "82-live-sentry",
@@ -751,7 +751,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `sentry` and template `live-artifact`, Live error-monitoring artifact: error rate, top issues, and release health",
     embedUrl: "https://gen-report-82-live-sentry-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4e835f0b-5b9b-4b4e-ac7c-34a0988d92e5/82-live-sentry.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1b4640aa-cb34-4839-9e42-ac37354c91b2/82-live-sentry.png",
   },
   {
     slug: "83-live-posthog",
@@ -760,7 +760,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `posthog` and template `live-artifact`, Live product-funnel artifact backed by analytics data",
     embedUrl: "https://gen-report-83-live-posthog-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/9645b107-cea0-4a08-8a7b-c1a2d433ebe4/83-live-posthog.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/db267293-f9de-4a8f-91c6-c3deaf2c56be/83-live-posthog.png",
   },
   {
     slug: "84-live-mono",
@@ -769,7 +769,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mono` and template `live-artifact`, Minimal live metrics artifact with auto-refreshing counters",
     embedUrl: "https://gen-report-84-live-mono-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/59ff3438-6d7d-42f1-bfa8-3399f9e48bc7/84-live-mono.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/61a15bad-a13f-4d78-bc17-2ea288c90116/84-live-mono.png",
   },
   {
     slug: "85-tweaks-framer",
@@ -778,7 +778,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `framer` and template `tweaks`, Landing page wrapped with a live control panel for accent color, type scale, density, and motion",
     embedUrl: "https://gen-report-85-tweaks-framer-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/1877b56c-af89-4c1d-a8fd-d2cb49cafcac/85-tweaks-framer.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/771293e8-b5dc-46eb-b5c9-85d7a85cba3d/85-tweaks-framer.png",
   },
   {
     slug: "86-tweaks-shadcn",
@@ -787,7 +787,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `shadcn` and template `tweaks`, Component showcase with live theme, density, and radius controls",
     embedUrl: "https://gen-report-86-tweaks-shadcn-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0bda6c75-eeb6-4af2-95cc-9114f5b022b6/86-tweaks-shadcn.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/a9747347-a334-4220-8b5d-225224a143e5/86-tweaks-shadcn.png",
   },
   {
     slug: "87-tweaks-linear-app",
@@ -796,7 +796,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `linear-app` and template `tweaks`, Dashboard with live parameterized controls for theme and motion",
     embedUrl: "https://gen-report-87-tweaks-linear-app-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0827d652-02aa-4d06-9fde-5d5493dfce8d/87-tweaks-linear-app.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5ac049fb-34c2-4272-b8bf-9fe27ee968dd/87-tweaks-linear-app.png",
   },
   {
     slug: "88-tweaks-raycast",
@@ -805,7 +805,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `raycast` and template `tweaks`, Settings-style artifact with a live customization panel",
     embedUrl: "https://gen-report-88-tweaks-raycast-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/729139bd-3b7b-49d8-8021-50fee0c3792d/88-tweaks-raycast.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/69419ed5-4eb4-44df-a5e9-e2a14d05d0a0/88-tweaks-raycast.png",
   },
   {
     slug: "89-tweaks-vercel",
@@ -814,7 +814,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `vercel` and template `tweaks`, Marketing page with real-time CSS variable tweaks and localStorage persistence",
     embedUrl: "https://gen-report-89-tweaks-vercel-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/8249a3ff-ff4d-4824-a073-7fb67ade6765/89-tweaks-vercel.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/d4b26cde-5e85-45fd-a0a8-3e6eaf5e3fba/89-tweaks-vercel.png",
   },
   {
     slug: "90-tweaks-figma",
@@ -823,7 +823,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `figma` and template `tweaks`, Design-token playground with live accent and scale controls",
     embedUrl: "https://gen-report-90-tweaks-figma-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/97dd9395-3128-4457-b8c0-82c554e3da00/90-tweaks-figma.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/5243fb69-0c80-435a-963d-80d2e6e997f3/90-tweaks-figma.png",
   },
   {
     slug: "91-tweaks-arc",
@@ -832,7 +832,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `arc` and template `tweaks`, Browser-style page with translucency and warmth controls",
     embedUrl: "https://gen-report-91-tweaks-arc-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/71883870-eae1-497a-9b17-e5cb53cfe117/91-tweaks-arc.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/76583bab-e6c4-4692-af8c-d82359c17b22/91-tweaks-arc.png",
   },
   {
     slug: "92-tweaks-sleek",
@@ -841,7 +841,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `sleek` and template `tweaks`, Minimal page with a live density and theme switcher",
     embedUrl: "https://gen-report-92-tweaks-sleek-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/00409223-e031-441f-b10e-330bc5d2db0f/92-tweaks-sleek.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/bd7b97d5-5a97-46a8-a661-e8b71bd095cc/92-tweaks-sleek.png",
   },
   {
     slug: "93-xresearch-x-ai",
@@ -850,7 +850,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `x-ai` and template `x-research`, X sentiment research on a major AI model launch: themes, top posts, and sentiment breakdown",
     embedUrl: "https://gen-report-93-xresearch-x-ai-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4b9cf030-21bc-4ee5-a81e-e7519cde760b/93-xresearch-x-ai.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/291d5474-87fe-4669-9e41-44e28e3b926e/93-xresearch-x-ai.png",
   },
   {
     slug: "94-xresearch-mono",
@@ -859,7 +859,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `mono` and template `x-research`, X public discourse research on a developer-tools product",
     embedUrl: "https://gen-report-94-xresearch-mono-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/af7648f7-94f9-4e0a-9c8e-391666d6952d/94-xresearch-mono.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e5141100-7b7c-47bb-a218-0d577c8cc71d/94-xresearch-mono.png",
   },
   {
     slug: "95-xresearch-theverge",
@@ -868,7 +868,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `theverge` and template `x-research`, X sentiment on a consumer hardware launch with an engagement breakdown",
     embedUrl: "https://gen-report-95-xresearch-theverge-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/0d25c770-79fd-4edd-9482-9e900893fde7/95-xresearch-theverge.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f2cdc1b5-6f35-4660-a3fa-bd37b36b4488/95-xresearch-theverge.png",
   },
   {
     slug: "96-xresearch-perplexity",
@@ -878,7 +878,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-96-xresearch-perplexity-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/79ed98b6-5a1e-4a0b-9f19-4c3f0a58cfb7/96-xresearch-perplexity.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/b44e06f1-7b34-4b2e-9308-589cebf96060/96-xresearch-perplexity.png",
   },
   {
     slug: "97-xresearch-wired",
@@ -887,7 +887,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `wired` and template `x-research`, X discourse analysis of a tech-policy debate",
     embedUrl: "https://gen-report-97-xresearch-wired-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/ff5d78de-9063-46d9-8adc-c305f3057060/97-xresearch-wired.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/873cebb4-3546-439b-a11f-03e07f2d0f64/97-xresearch-wired.png",
   },
   {
     slug: "98-xresearch-posthog",
@@ -896,7 +896,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
       "/gen report with design system `posthog` and template `x-research`, X sentiment research on a SaaS pricing change",
     embedUrl: "https://gen-report-98-xresearch-posthog-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f8b765aa-2d63-418c-9b57-5fe0d7378479/98-xresearch-posthog.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/e5dcdf79-72ce-4e97-8545-d04325a942d5/98-xresearch-posthog.png",
   },
   {
     slug: "99-xresearch-publication",
@@ -906,7 +906,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-99-xresearch-publication-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4a1768f4-81d8-4c47-9300-61436dd97afc/99-xresearch-publication.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/4672c0af-1c5a-45e3-ab01-8231b2dc2e9a/99-xresearch-publication.png",
   },
   {
     slug: "100-xresearch-editorial",
@@ -916,7 +916,7 @@ export const REPORT_ITEMS: readonly ReportItem[] = [
     embedUrl:
       "https://gen-report-100-xresearch-editorial-715f6d07.sites.vm0.io",
     previewImage:
-      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/597751ca-f0eb-4452-a0c1-9159e3b2b02f/100-xresearch-editorial.png",
+      "https://cdn.vm0.io/artifacts/user_35iyIuFrcCRvYzXGomnWn44jBoo/f3053f00-261a-4d6d-8ab2-b8bad02b1485/100-xresearch-editorial.png",
   },
 ];
 
