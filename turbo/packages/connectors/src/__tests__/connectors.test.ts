@@ -36,7 +36,7 @@ import {
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
@@ -88,7 +88,7 @@ const server = setupServer();
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 
 function getOauthAuthClient(type: ConnectorType, readEnv: ConnectorEnvReader) {
-  return getConnectorAuthMethodClient(type, "oauth", readEnv);
+  return resolveConnectorAuthClientForMethod(type, "oauth", readEnv);
 }
 
 beforeAll(() => {

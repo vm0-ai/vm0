@@ -476,7 +476,7 @@ export function isStaticConfidentialConnectorAuthClient(
   );
 }
 
-export function getConnectorAuthMethodClientConfig(
+export function getConnectorAuthClientConfigForMethod(
   type: ConnectorType,
   authMethod: string,
 ): ConnectorAuthClientConfig | undefined {
@@ -529,12 +529,12 @@ export function resolveConnectorAuthClient(
   };
 }
 
-export function getConnectorAuthMethodClient(
+export function resolveConnectorAuthClientForMethod(
   type: ConnectorType,
   authMethod: string,
   readEnv: ConnectorEnvReader,
 ): ConnectorAuthClient | undefined {
-  const clientConfig = getConnectorAuthMethodClientConfig(type, authMethod);
+  const clientConfig = getConnectorAuthClientConfigForMethod(type, authMethod);
   if (!clientConfig) {
     return undefined;
   }
@@ -550,7 +550,7 @@ function hasRuntimeAvailableAuthMethod(
     switch (method?.grant.kind) {
       case "auth-code":
       case "device-auth": {
-        if (getConnectorAuthMethodClient(type, authMethod, readEnv)) {
+        if (resolveConnectorAuthClientForMethod(type, authMethod, readEnv)) {
           return true;
         }
         break;

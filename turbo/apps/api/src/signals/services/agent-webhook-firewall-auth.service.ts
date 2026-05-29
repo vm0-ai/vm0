@@ -6,7 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodAccessMetadata,
   type ConnectorAuthMethodAccessMetadata,
 } from "@vm0/connectors/connector-utils";
@@ -808,7 +808,7 @@ function prepareRefreshTokenContext(
   if (!hasConnectorAuthProvider(parsedConnectorType.data)) {
     return { ok: false, reason: "not-refreshable" };
   }
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     parsedConnectorType.data,
     connectorAccess.authMethod,
     (name) => {

@@ -8,7 +8,7 @@ import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zer
 import {
   connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
@@ -547,7 +547,7 @@ async function loadPendingConnectorTokenRevoke(args: {
 async function revokePendingConnectorToken(args: {
   readonly pending: PendingConnectorTokenRevoke;
 }): Promise<void> {
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     args.pending.type,
     args.pending.authMethod,
     optionalEnv,

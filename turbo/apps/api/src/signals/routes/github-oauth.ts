@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import {
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorOAuthScopes,
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
@@ -88,7 +88,7 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
 function githubUserOauthClient():
   | StaticConfidentialConnectorAuthClient
   | undefined {
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     "github",
     "oauth",
     optionalEnv,

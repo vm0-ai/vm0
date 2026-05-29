@@ -12,7 +12,7 @@ import {
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 import {
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
@@ -370,7 +370,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   readonly readEnv: ConnectorEnvReader;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     "github",
     "oauth",
     args.readEnv,

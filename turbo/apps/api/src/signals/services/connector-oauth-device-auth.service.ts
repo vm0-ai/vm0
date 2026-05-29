@@ -11,7 +11,7 @@ import type {
   DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
@@ -209,7 +209,7 @@ function resolveRequiredAuthClient(
   type: DeviceAuthGrantConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorAuthClient | ReturnType<typeof internalServerError> {
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     type,
     authMethod,
     optionalEnv,

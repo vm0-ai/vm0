@@ -1,5 +1,5 @@
 import {
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
   type ConnectorAuthClient,
@@ -69,7 +69,7 @@ export function prepareResolvedConnectorAuthCodeStart(args: {
 }): PrepareResolvedConnectorAuthCodeStartResult {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     args.type,
     args.authMethod,
     args.readEnv,

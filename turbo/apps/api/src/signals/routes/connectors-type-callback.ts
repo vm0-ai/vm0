@@ -3,7 +3,7 @@ import { unescape as decodeCookieComponent } from "node:querystring";
 import { command } from "ccstate";
 import { connectorsTypeCallbackContract } from "@vm0/api-contracts/contracts/connectors-type-callback";
 import {
-  getConnectorAuthMethodClient,
+  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
@@ -181,7 +181,7 @@ async function exchangeTokenForConnector(args: {
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  const authClient = getConnectorAuthMethodClient(
+  const authClient = resolveConnectorAuthClientForMethod(
     args.connectorType,
     args.authMethod,
     optionalEnv,
