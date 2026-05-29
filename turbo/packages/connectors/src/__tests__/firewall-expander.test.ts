@@ -479,6 +479,12 @@ describe("validateBaseUrl", () => {
     }).toThrow('URL must include a scheme (e.g. "https://not-a-url")');
   });
 
+  it("should reject URLs with missing authority", () => {
+    expect(() => {
+      return validateBaseUrl("https:///v1", "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
   it("suggests adding https:// when the scheme is missing", () => {
     expect(() => {
       return validateBaseUrl("attia-n8n.duckdns.org/api/v1", "n8n");
@@ -536,6 +542,15 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/v1/{org}/projects", "fw");
     }).not.toThrow();
+  });
+
+  it("should reject parameterized base URL with bracketed host", () => {
+    expect(() => {
+      return validateBaseUrl("https://[2001:db8::1]/v1/{org}", "fw");
+    }).toThrow("host must have at least two segments");
+    expect(() => {
+      return validateBaseUrl("https://[::ffff:127.0.0.1]/v1/{org}", "fw");
+    }).toThrow("host must have at least two segments");
   });
 
   it("should accept parameterized base URL with explicit empty path segments", () => {

@@ -1089,6 +1089,13 @@ function validateHostHasNoEmptyLabels(
   return normalizedHost;
 }
 
+function splitAuthorityHostSegments(host: string): string[] {
+  if (host.startsWith("[") && host.endsWith("]")) {
+    return [host];
+  }
+  return host.split(".");
+}
+
 function rawHostFromAuthority(authority: string): string {
   const withoutUserinfo = authority.slice(authority.lastIndexOf("@") + 1);
   if (withoutUserinfo.startsWith("[")) {
@@ -1231,8 +1238,7 @@ function validateParameterizedHostUrlSyntax(
   base: string,
   serviceName: string,
 ): void {
-  const syntaxHost = authority.normalizedHost
-    .split(".")
+  const syntaxHost = splitAuthorityHostSegments(authority.normalizedHost)
     .map((seg) => {
       return hostSegmentForSyntaxValidation(seg, base, serviceName);
     })
@@ -1386,7 +1392,7 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
 
   const paramNames = new Set<string>();
   validateHostParams(
-    authority.normalizedHost.split("."),
+    splitAuthorityHostSegments(authority.normalizedHost),
     paramNames,
     base,
     serviceName,
@@ -1443,6 +1449,11 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   }
   const authority = rawAuthorityFromBaseUrl(base);
   if (authority !== null) {
+    if (authority === "") {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
     validateNoUserinfo(authority, base, serviceName);
     validateHostPercentEncoding(authority, base, serviceName);
     validateHostHasNoUnsafeIdnaMappings(authority, base, serviceName);
