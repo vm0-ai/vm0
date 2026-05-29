@@ -259,7 +259,7 @@ interface RefreshState {
   readonly accessToken: string | null;
   readonly refreshToken: string | null;
   readonly tokenExpiresAt: Date | null;
-  readonly updatedAt: Date;
+  readonly updatedAtMicros: bigint;
 }
 
 type PreparedRefreshTokenContext =
@@ -798,22 +798,22 @@ function currentSecond(): number {
   return Math.floor(nowDate().getTime() / 1000);
 }
 
-async function currentDatabaseTimestamp(db: Db): Promise<Date> {
-  const result = await db.execute<{ now: Date | string }>(
-    sql`SELECT clock_timestamp() AS now`,
+async function currentDatabaseTimestampMicros(db: Db): Promise<bigint> {
+  const result = await db.execute<{ now: bigint | number | string }>(
+    sql`SELECT (EXTRACT(EPOCH FROM clock_timestamp()) * 1000000)::bigint AS now`,
   );
   const row = result.rows[0];
   if (!row) {
     throw new Error("Failed to read database timestamp");
   }
-  return row.now instanceof Date ? row.now : new Date(row.now);
+  return BigInt(row.now);
 }
 
 function shouldUseLockedCurrentAccess(args: {
   readonly refreshArgs: RefreshAccessTokenArgs;
   readonly context: RefreshTokenContext;
   readonly initialState: RefreshState | null;
-  readonly requestStartedAt: Date | null;
+  readonly requestStartedAtMicros: bigint | null;
   readonly state: RefreshState;
 }): boolean {
   if (!args.state.accessToken) {
@@ -843,8 +843,8 @@ function shouldUseLockedCurrentAccess(args: {
   }
 
   if (
-    args.requestStartedAt &&
-    args.state.updatedAt.getTime() > args.requestStartedAt.getTime()
+    args.requestStartedAtMicros !== null &&
+    args.state.updatedAtMicros > args.requestStartedAtMicros
   ) {
     return true;
   }
@@ -869,7 +869,7 @@ function shouldUseLockedCurrentAccess(args: {
     : null;
   return (
     initialExpiresAt !== lockedExpiresAt ||
-    args.initialState.updatedAt.getTime() !== args.state.updatedAt.getTime()
+    args.initialState.updatedAtMicros !== args.state.updatedAtMicros
   );
 }
 
@@ -883,7 +883,7 @@ async function loadRefreshState(
       ? await db
           .select({
             tokenExpiresAt: modelProviders.tokenExpiresAt,
-            updatedAt: modelProviders.updatedAt,
+            updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`,
           })
           .from(modelProviders)
           .where(
@@ -897,7 +897,7 @@ async function loadRefreshState(
       : await db
           .select({
             tokenExpiresAt: connectors.tokenExpiresAt,
-            updatedAt: connectors.updatedAt,
+            updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`,
           })
           .from(connectors)
           .where(
@@ -936,7 +936,7 @@ async function loadRefreshState(
     accessToken,
     refreshToken,
     tokenExpiresAt: row.tokenExpiresAt,
-    updatedAt: row.updatedAt,
+    updatedAtMicros: BigInt(row.updatedAtMicros),
   };
 }
 
@@ -972,7 +972,6 @@ async function markRefreshSuccess(
     nowDate().getTime() +
       (result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
-  const refreshedAt = await currentDatabaseTimestamp(args.db);
   if (args.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
@@ -980,7 +979,7 @@ async function markRefreshSuccess(
         tokenExpiresAt: expiresAt,
         needsReconnect: false,
         lastRefreshErrorCode: null,
-        updatedAt: refreshedAt,
+        updatedAt: sql`clock_timestamp()`,
       })
       .where(
         and(
@@ -997,7 +996,7 @@ async function markRefreshSuccess(
     .set({
       tokenExpiresAt: expiresAt,
       needsReconnect: false,
-      updatedAt: refreshedAt,
+      updatedAt: sql`clock_timestamp()`,
     })
     .where(
       and(
@@ -1054,8 +1053,8 @@ async function refreshAccessTokenForSource(
     return { ok: false, reason: preparation.reason };
   }
   const { prepared } = preparation;
-  const requestStartedAt = args.forceRefresh
-    ? await currentDatabaseTimestamp(args.db)
+  const requestStartedAtMicros = args.forceRefresh
+    ? await currentDatabaseTimestampMicros(args.db)
     : null;
   const initialState = args.forceRefresh
     ? await loadRefreshState(args.db, args, prepared.context)
@@ -1094,7 +1093,7 @@ async function refreshAccessTokenForSource(
         refreshArgs: args,
         context: prepared.context,
         initialState,
-        requestStartedAt,
+        requestStartedAtMicros,
         state: lockedState,
       })
     ) {
