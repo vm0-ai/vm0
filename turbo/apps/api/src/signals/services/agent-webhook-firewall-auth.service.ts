@@ -40,7 +40,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
@@ -259,6 +259,7 @@ interface RefreshState {
   readonly accessToken: string | null;
   readonly refreshToken: string | null;
   readonly tokenExpiresAt: Date | null;
+  readonly updatedAt: Date;
 }
 
 type PreparedRefreshTokenContext =
@@ -797,10 +798,22 @@ function currentSecond(): number {
   return Math.floor(nowDate().getTime() / 1000);
 }
 
+async function currentDatabaseTimestamp(db: Db): Promise<Date> {
+  const result = await db.execute<{ now: Date | string }>(
+    sql`SELECT clock_timestamp() AS now`,
+  );
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error("Failed to read database timestamp");
+  }
+  return row.now instanceof Date ? row.now : new Date(row.now);
+}
+
 function shouldUseLockedCurrentAccess(args: {
   readonly refreshArgs: RefreshAccessTokenArgs;
   readonly context: RefreshTokenContext;
   readonly initialState: RefreshState | null;
+  readonly requestStartedAt: Date | null;
   readonly state: RefreshState;
 }): boolean {
   if (!args.state.accessToken) {
@@ -829,6 +842,13 @@ function shouldUseLockedCurrentAccess(args: {
     return true;
   }
 
+  if (
+    args.requestStartedAt &&
+    args.state.updatedAt.getTime() > args.requestStartedAt.getTime()
+  ) {
+    return true;
+  }
+
   if (!args.initialState) {
     return true;
   }
@@ -847,7 +867,10 @@ function shouldUseLockedCurrentAccess(args: {
   const lockedExpiresAt = args.state.tokenExpiresAt
     ? Math.floor(args.state.tokenExpiresAt.getTime() / 1000)
     : null;
-  return initialExpiresAt !== lockedExpiresAt;
+  return (
+    initialExpiresAt !== lockedExpiresAt ||
+    args.initialState.updatedAt.getTime() !== args.state.updatedAt.getTime()
+  );
 }
 
 async function loadRefreshState(
@@ -858,7 +881,10 @@ async function loadRefreshState(
   const [row] =
     args.sourceType === "model-provider"
       ? await db
-          .select({ tokenExpiresAt: modelProviders.tokenExpiresAt })
+          .select({
+            tokenExpiresAt: modelProviders.tokenExpiresAt,
+            updatedAt: modelProviders.updatedAt,
+          })
           .from(modelProviders)
           .where(
             and(
@@ -869,7 +895,10 @@ async function loadRefreshState(
           )
           .limit(1)
       : await db
-          .select({ tokenExpiresAt: connectors.tokenExpiresAt })
+          .select({
+            tokenExpiresAt: connectors.tokenExpiresAt,
+            updatedAt: connectors.updatedAt,
+          })
           .from(connectors)
           .where(
             and(
@@ -907,6 +936,7 @@ async function loadRefreshState(
     accessToken,
     refreshToken,
     tokenExpiresAt: row.tokenExpiresAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -942,6 +972,7 @@ async function markRefreshSuccess(
     nowDate().getTime() +
       (result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
+  const refreshedAt = await currentDatabaseTimestamp(args.db);
   if (args.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
@@ -949,7 +980,7 @@ async function markRefreshSuccess(
         tokenExpiresAt: expiresAt,
         needsReconnect: false,
         lastRefreshErrorCode: null,
-        updatedAt: nowDate(),
+        updatedAt: refreshedAt,
       })
       .where(
         and(
@@ -966,7 +997,7 @@ async function markRefreshSuccess(
     .set({
       tokenExpiresAt: expiresAt,
       needsReconnect: false,
-      updatedAt: nowDate(),
+      updatedAt: refreshedAt,
     })
     .where(
       and(
@@ -1023,6 +1054,9 @@ async function refreshAccessTokenForSource(
     return { ok: false, reason: preparation.reason };
   }
   const { prepared } = preparation;
+  const requestStartedAt = args.forceRefresh
+    ? await currentDatabaseTimestamp(args.db)
+    : null;
   const initialState = args.forceRefresh
     ? await loadRefreshState(args.db, args, prepared.context)
     : null;
@@ -1060,6 +1094,7 @@ async function refreshAccessTokenForSource(
         refreshArgs: args,
         context: prepared.context,
         initialState,
+        requestStartedAt,
         state: lockedState,
       })
     ) {
