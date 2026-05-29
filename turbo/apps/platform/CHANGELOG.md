@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.393.0](https://github.com/vm0-ai/vm0/compare/app-v0.392.2...app-v0.393.0) (2026-05-29)
+
+
+### Features
+
+* add zoom toolbar to sidebar image preview ([#15350](https://github.com/vm0-ai/vm0/issues/15350)) ([859874d](https://github.com/vm0-ai/vm0/commit/859874d749063be4681bf09d878dfb50476b7723)), closes [#15348](https://github.com/vm0-ai/vm0/issues/15348)
+
 ## [0.392.2](https://github.com/vm0-ai/vm0/compare/app-v0.392.1...app-v0.392.2) (2026-05-29)
 
 
