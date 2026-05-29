@@ -34,6 +34,27 @@ describe("matchFirewallPath", () => {
     ).toBeNull();
   });
 
+  it("fails greedy + when only empty segments remain", () => {
+    expect(
+      matchFirewallPath("/repos/a/b/git/", "/repos/{owner}/{repo}/git/{rest+}"),
+    ).toBeNull();
+    expect(
+      matchFirewallPath(
+        "/repos/a/b/git//",
+        "/repos/{owner}/{repo}/git/{rest+}",
+      ),
+    ).toBeNull();
+  });
+
+  it("preserves empty segments before non-empty greedy + rest", () => {
+    expect(
+      matchFirewallPath(
+        "/repos/a/b/git//heads/main",
+        "/repos/{owner}/{repo}/git/{rest+}",
+      ),
+    ).toEqual({ owner: "a", repo: "b", rest: "/heads/main" });
+  });
+
   it("matches greedy * (zero or more) with segments", () => {
     expect(matchFirewallPath("/anything/here", "/{path*}")).toEqual({
       path: "anything/here",

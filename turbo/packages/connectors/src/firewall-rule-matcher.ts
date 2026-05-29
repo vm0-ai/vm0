@@ -19,6 +19,13 @@ function matchMixedSegment(
   return runtime.slice(prefix.length, runtime.length - suffix.length);
 }
 
+function hasNonEmptySegment(segments: string[], start: number): boolean {
+  for (let i = start; i < segments.length; i++) {
+    if (segments[i] !== "") return true;
+  }
+  return false;
+}
+
 /**
  * Match a URL path against a rule path pattern.
  *
@@ -57,7 +64,9 @@ export function matchFirewallPath(
     }
     const { name, prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (pi >= pathSegs.length) return null;
+      if (pi >= pathSegs.length || !hasNonEmptySegment(pathSegs, pi)) {
+        return null;
+      }
       params[name] = pathSegs.slice(pi).join("/");
       return params;
     }

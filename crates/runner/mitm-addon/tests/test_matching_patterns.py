@@ -38,6 +38,13 @@ class TestMatchPath:
         result = matching.match_path("/", "/{path+}")
         assert result is None
 
+    @pytest.mark.parametrize("path", ["/api/v1/", "/api/v1//"])
+    def test_greedy_param_rejects_only_empty_remaining_segments(self, path):
+        assert matching.match_path(path, "/api/v1/{rest+}") is None
+
+    def test_greedy_param_preserves_empty_segments_before_non_empty_rest(self):
+        assert matching.match_path("/api/v1//report", "/api/v1/{rest+}") == {"rest": "/report"}
+
     def test_greedy_after_literal(self):
         result = matching.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
         assert result == {"rest": "anything/here"}
@@ -96,6 +103,19 @@ class TestMatchPath:
         assert pattern is not None
 
         assert matching.match_compiled_path("/repos//octocat", pattern) == {"owner": "octocat"}
+
+    @pytest.mark.parametrize("path", ["/api/v1/", "/api/v1//"])
+    def test_compiled_greedy_param_rejects_only_empty_remaining_segments(self, path):
+        pattern = matching.compile_path_pattern("/api/v1/{rest+}")
+        assert pattern is not None
+
+        assert matching.match_compiled_path(path, pattern) is None
+
+    def test_compiled_greedy_param_preserves_empty_segments_before_non_empty_rest(self):
+        pattern = matching.compile_path_pattern("/api/v1/{rest+}")
+        assert pattern is not None
+
+        assert matching.match_compiled_path("/api/v1//report", pattern) == {"rest": "/report"}
 
 
 class TestMatchHost:

@@ -515,6 +515,10 @@ def _split_path_segments(path: str) -> list[str]:
     return path_without_leading_slash.split("/")
 
 
+def _has_non_empty_segment(path_segs: list[str], start: int) -> bool:
+    return any(path_segs[index] != "" for index in range(start, len(path_segs)))
+
+
 def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     """Match a request URL against a (possibly parameterized) base URL.
 
@@ -620,7 +624,7 @@ def match_path(path: str, pattern: str) -> dict | None:
         prefix = parsed["prefix"]
         suffix = parsed["suffix"]
         if greedy == "+":
-            if pi >= len(path_segs):
+            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
                 return None
             params[name] = "/".join(path_segs[pi:])
             return params
@@ -808,7 +812,7 @@ def _match_compiled_path_segments(
             return None
 
         if parsed.greedy == "+":
-            if pi >= len(path_segs):
+            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
                 return None
             params[parsed.name] = "/".join(path_segs[pi:])
             return params

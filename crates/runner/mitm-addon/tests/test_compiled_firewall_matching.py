@@ -170,6 +170,63 @@ class TestCompiledFirewallMatching:
     @pytest.mark.parametrize(
         "url",
         [
+            "https://api.example.com/files/",
+            "https://api.example.com/files//",
+        ],
+    )
+    def test_compiled_plus_greedy_rule_rejects_only_empty_remaining_segments(self, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /files/{path+}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
+
+    def test_compiled_plus_greedy_rule_preserves_empty_segments_before_non_empty_rest(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /files/{path+}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/files//report",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.params == {"path": "/report"}
+
+    @pytest.mark.parametrize(
+        "url",
+        [
             "https://api.example.com//v1//acme/projects",
             "https://api.example.com/v1//acme/projects",
         ],
