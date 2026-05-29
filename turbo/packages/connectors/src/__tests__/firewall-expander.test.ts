@@ -278,6 +278,11 @@ describe("resolveFirewallSelections", () => {
     }).toThrow("must not contain userinfo");
     expect(() => {
       return collectAndValidatePermissions(
+        config("https://example.com/\x00hook"),
+      );
+    }).toThrow("must not contain control characters");
+    expect(() => {
+      return collectAndValidatePermissions(
         config("https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"),
       );
     }).toThrow('URL must include "://" after the scheme');
@@ -291,6 +296,11 @@ describe("resolveFirewallSelections", () => {
         config("${{ secrets.WEBHOOK_URL }} /v1"),
       );
     }).toThrow("must not contain whitespace");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}/\x00v1"),
+      );
+    }).toThrow("must not contain control characters");
     expect(() => {
       return collectAndValidatePermissions(
         config("${{ secrets.WEBHOOK_URL }}#fragment"),
@@ -501,6 +511,15 @@ describe("validateRule", () => {
     expect(() => {
       return validateRule("GET /pa\tth", "read", "github");
     }).toThrow("path must not contain whitespace");
+  });
+
+  it("should reject path with raw control characters", () => {
+    expect(() => {
+      return validateRule("GET /pa\x00th", "read", "github");
+    }).toThrow("path must not contain control characters");
+    expect(() => {
+      return validateRule("GET /pa\x7fth", "read", "github");
+    }).toThrow("path must not contain control characters");
   });
 
   it("should reject path with raw backslash", () => {
@@ -760,6 +779,21 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://{sub}.example.com/pa th", "fw");
     }).toThrow("must not contain whitespace");
+  });
+
+  it("should reject raw control characters before URL parser normalization", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\x00th", "fw");
+    }).toThrow("must not contain control characters");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\x7fth", "fw");
+    }).toThrow("must not contain control characters");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com/pa\x00th", "fw");
+    }).toThrow("must not contain control characters");
+    expect(() => {
+      return validateBaseUrl("https://${{ vars.API_HOST }}/\x00v1", "fw");
+    }).toThrow("must not contain control characters");
   });
 
   it("should reject backslash before URL parser normalization", () => {

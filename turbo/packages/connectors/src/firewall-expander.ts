@@ -21,6 +21,8 @@ const VALID_RULE_METHODS = new Set([
   "OPTIONS",
   "ANY",
 ]);
+const ASCII_CONTROL_MAX = 0x20;
+const ASCII_DELETE = 0x7f;
 
 function hasRawWhitespace(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
@@ -33,6 +35,16 @@ function hasRawWhitespace(value: string): boolean {
       char === "\f" ||
       char === "\v"
     ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasUnsafeUrlCodepoint(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const codeUnit = value.charCodeAt(i);
+    if (codeUnit < ASCII_CONTROL_MAX || codeUnit === ASCII_DELETE) {
       return true;
     }
   }
@@ -53,6 +65,11 @@ function validatePathSegments(
   if (hasRawWhitespace(path)) {
     throw new Error(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain whitespace`,
+    );
+  }
+  if (hasUnsafeUrlCodepoint(path)) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must not contain control characters`,
     );
   }
   if (path.includes("\\")) {

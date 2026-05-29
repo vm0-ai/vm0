@@ -185,6 +185,8 @@ const AUTH_REFERENCE_PREFIX_PATTERN = new RegExp(
 );
 const AUTH_TEMPLATE_START = "${{";
 const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
+const ASCII_CONTROL_MAX = 0x20;
+const ASCII_DELETE = 0x7f;
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -1013,6 +1015,20 @@ function hasRawWhitespace(value: string): boolean {
   return false;
 }
 
+function hasUnsafeUrlCodepoint(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const codeUnit = value.charCodeAt(i);
+    if (codeUnit < ASCII_CONTROL_MAX || codeUnit === ASCII_DELETE) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function baseUrlRawSyntaxTarget(base: string): string {
+  return base.replace(BASE_URL_VARS_PATTERN_G, AUTH_TEMPLATE_URL_PLACEHOLDER);
+}
+
 function validateHostPercentEncoding(
   host: string,
   base: string,
@@ -1454,14 +1470,20 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     );
   }
 
-  // Template base URLs are validated after variable resolution at compose time.
-  if (hasBaseUrlVars(base)) return;
-
-  if (hasRawWhitespace(base)) {
+  const rawSyntaxTarget = baseUrlRawSyntaxTarget(base);
+  if (hasRawWhitespace(rawSyntaxTarget)) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain whitespace`,
     );
   }
+  if (hasUnsafeUrlCodepoint(rawSyntaxTarget)) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain control characters`,
+    );
+  }
+
+  // Template base URLs are validated after variable resolution at compose time.
+  if (hasBaseUrlVars(base)) return;
 
   validateUrlSchemeDelimiter(base, serviceName, "base URL");
 
@@ -1560,6 +1582,11 @@ function validateDynamicAuthBaseSuffix(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain whitespace`,
     );
   }
+  if (hasUnsafeUrlCodepoint(suffix)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters`,
+    );
+  }
   if (suffix.includes("#")) {
     throw new Error(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
@@ -1601,6 +1628,11 @@ export function validateAuthBaseUrl(
   if (hasRawWhitespace(validationUrl)) {
     throw new Error(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
+  if (hasUnsafeUrlCodepoint(validationUrl)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters`,
     );
   }
 
