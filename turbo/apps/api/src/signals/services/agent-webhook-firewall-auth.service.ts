@@ -247,6 +247,7 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
   readonly connectorSecrets: Record<string, string>;
   readonly accessEnvVars: readonly string[];
   readonly forceRefresh: boolean;
+  readonly forceRefreshStartedAtMicros: bigint | null;
 }
 
 interface RefreshTokenContext {
@@ -317,6 +318,7 @@ interface RefreshExpiredTokensArgs {
   readonly referencedKeys: Set<string>;
   readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
   readonly forceRefresh: boolean;
+  readonly forceRefreshStartedAtMicros: bigint | null;
 }
 
 interface RefreshBatchContext {
@@ -326,6 +328,7 @@ interface RefreshBatchContext {
   readonly userId: string;
   readonly secrets: Record<string, string>;
   readonly forceRefresh: boolean;
+  readonly forceRefreshStartedAtMicros: bigint | null;
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
   readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
   readonly envVarsByConnector: Map<string, readonly string[]>;
@@ -1053,7 +1056,7 @@ async function refreshAccessTokenForSource(
   }
   const { prepared } = preparation;
   const requestStartedAtMicros = args.forceRefresh
-    ? await currentDatabaseTimestampMicros(args.db)
+    ? args.forceRefreshStartedAtMicros
     : null;
   const initialState = args.forceRefresh
     ? await loadRefreshState(args.db, args, prepared.context)
@@ -1713,6 +1716,7 @@ async function refreshSelectedTokens(
         connectorSecrets: context.secrets,
         accessEnvVars: context.envVarsByConnector.get(connectorType) ?? [],
         forceRefresh: context.forceRefresh,
+        forceRefreshStartedAtMicros: context.forceRefreshStartedAtMicros,
         connectorAccessByType: context.connectorAccessByType,
         featureSwitchContext: context.featureSwitchContext,
       });
@@ -1870,6 +1874,7 @@ async function refreshExpiredTokens(
     userId: args.auth.userId,
     secrets: args.secrets,
     forceRefresh: args.forceRefresh,
+    forceRefreshStartedAtMicros: args.forceRefreshStartedAtMicros,
     metadataByConnector,
     connectorAccessByType: args.connectorAccessByType,
     envVarsByConnector,
@@ -2089,6 +2094,10 @@ export async function resolveFirewallAuth(
   auth: SandboxAuth,
   body: FirewallAuthBody,
 ): Promise<ResolveFirewallAuthResult> {
+  const forceRefreshStartedAtMicros =
+    body.forceRefresh === true
+      ? await currentDatabaseTimestampMicros(db)
+      : null;
   const decrypted = await decryptFirewallAuthSecrets(
     db,
     auth,
@@ -2154,6 +2163,7 @@ export async function resolveFirewallAuth(
       orgId: decrypted.orgId,
       featureSwitchContext: decrypted.featureSwitchContext,
       forceRefresh: body.forceRefresh ?? false,
+      forceRefreshStartedAtMicros,
     });
     expiresAt = result.expiresAt;
     refreshedConnectors = result.refreshedConnectors;
