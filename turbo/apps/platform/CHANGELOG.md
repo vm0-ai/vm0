@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.395.0](https://github.com/vm0-ai/vm0/compare/app-v0.394.0...app-v0.395.0) (2026-05-29)
+
+
+### Features
+
+* **platform:** add feature-gated scroll-to-bottom button to chat thread ([#15411](https://github.com/vm0-ai/vm0/issues/15411)) ([a4d336b](https://github.com/vm0-ai/vm0/commit/a4d336bcf77f6f9f5e9a986e8ce84f2fff7b2ff8))
+
+
+### Bug Fixes
+
+* use chat model selection for schedules ([#15409](https://github.com/vm0-ai/vm0/issues/15409)) ([8e7747f](https://github.com/vm0-ai/vm0/commit/8e7747fb053101fd3677ab140cdc55aa41172006))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.1
+    * @vm0/connectors bumped to 1.38.0
+    * @vm0/core bumped to 8.303.0
+
 ## [0.394.0](https://github.com/vm0-ai/vm0/compare/app-v0.393.0...app-v0.394.0) (2026-05-29)
 
 

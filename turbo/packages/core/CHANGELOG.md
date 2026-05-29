@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.303.0](https://github.com/vm0-ai/vm0/compare/core-v8.302.4...core-v8.303.0) (2026-05-29)
+
+
+### Features
+
+* **platform:** add feature-gated scroll-to-bottom button to chat thread ([#15411](https://github.com/vm0-ai/vm0/issues/15411)) ([a4d336b](https://github.com/vm0-ai/vm0/commit/a4d336bcf77f6f9f5e9a986e8ce84f2fff7b2ff8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.1
+    * @vm0/connectors bumped to 1.38.0
+
 ## [8.302.4](https://github.com/vm0-ai/vm0/compare/core-v8.302.3...core-v8.302.4) (2026-05-29)
 
 

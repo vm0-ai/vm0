@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.88.1](https://github.com/vm0-ai/vm0/compare/api-v1.88.0...api-v1.88.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* disable GitHub label session continuity ([#15417](https://github.com/vm0-ai/vm0/issues/15417)) ([32f8d31](https://github.com/vm0-ai/vm0/commit/32f8d310f880fce20dfc863d0c1955f80bf43f2a))
+* serialize runtime oauth refresh ([#15405](https://github.com/vm0-ai/vm0/issues/15405)) ([d05156c](https://github.com/vm0-ai/vm0/commit/d05156c3a4877119212dcac29f95f0d86b755f8d))
+* use chat model selection for schedules ([#15409](https://github.com/vm0-ai/vm0/issues/15409)) ([8e7747f](https://github.com/vm0-ai/vm0/commit/8e7747fb053101fd3677ab140cdc55aa41172006))
+
+
+### Refactoring
+
+* rename connector auth provider apis ([#15421](https://github.com/vm0-ai/vm0/issues/15421)) ([15e7958](https://github.com/vm0-ai/vm0/commit/15e7958aab5442657a125b33dab229f47d1033d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.1
+    * @vm0/connectors bumped to 1.38.0
+    * @vm0/core bumped to 8.303.0
+    * @vm0/db bumped to 1.23.1
+
 ## [1.88.0](https://github.com/vm0-ai/vm0/compare/api-v1.87.2...api-v1.88.0) (2026-05-29)
 
 
