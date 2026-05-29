@@ -591,7 +591,7 @@ function TrialWorkflowSlide() {
       <img
         src={trialWorkflowSrc}
         alt="Workflow preview"
-        className="block min-h-0 w-full flex-1 object-cover object-top rounded-xl"
+        className="block min-h-0 max-w-[78%] max-h-full object-contain rounded-xl"
       />
     </div>
   );
