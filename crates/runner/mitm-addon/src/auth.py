@@ -50,11 +50,13 @@ class FirewallAuthApiError(Exception):
         code: str,
         message: str,
         connectors: list[str] | None = None,
+        failure_reason: str | None = None,
     ):
         super().__init__(message)
         self.status = status
         self.code = code
         self.connectors = connectors
+        self.failure_reason = failure_reason
 
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -68,6 +70,7 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
         "TOKEN_ACCESS_RESOLUTION_FAILED",
     }
 )
+_FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
 
 
 @dataclass
@@ -147,6 +150,7 @@ def _set_matched_firewall_failure_response(
     message: str,
     permission: str,
     connectors: list[str] | None = None,
+    failure_reason: str | None = None,
 ) -> None:
     """Set the common matched-firewall auth/forward failure response."""
     # `firewall_action` records the firewall permission decision
@@ -165,6 +169,8 @@ def _set_matched_firewall_failure_response(
     }
     if connectors:
         body["connectors"] = connectors
+    if failure_reason:
+        body["failureReason"] = failure_reason
     flow.response = http.Response.make(
         status,
         json.dumps(body).encode(),
@@ -261,11 +267,18 @@ def _firewall_auth_api_error_from_envelope(
         parsed_connectors = connectors
     else:
         parsed_connectors = None
+    failure_reason = error_info.get("failureReason")
+    parsed_failure_reason = (
+        failure_reason
+        if isinstance(failure_reason, str) and failure_reason in _FIREWALL_AUTH_FAILURE_REASONS
+        else None
+    )
     return FirewallAuthApiError(
         status=status,
         code=code,
         message=message,
         connectors=parsed_connectors,
+        failure_reason=parsed_failure_reason,
     )
 
 
@@ -785,6 +798,7 @@ async def handle_firewall_request(
             message=str(e),
             permission=allow.name,
             connectors=e.connectors,
+            failure_reason=e.failure_reason,
         )
         return
     except Exception as e:

@@ -1,5 +1,21 @@
 const MAX_BODY_LENGTH = 500;
 
+export class OAuthProviderHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "OAuthProviderHttpError";
+    this.status = status;
+  }
+}
+
+export function isOAuthProviderHttpError(
+  value: unknown,
+): value is OAuthProviderHttpError {
+  return value instanceof OAuthProviderHttpError;
+}
+
 /**
  * Read the response body from a failed OAuth request and throw an error
  * with full diagnostic context (status code, error reason, description).
@@ -47,5 +63,8 @@ export async function throwOAuthError(
     }
   }
 
-  throw new Error(`${provider} token ${operation} failed: ${status}${detail}`);
+  throw new OAuthProviderHttpError(
+    `${provider} token ${operation} failed: ${status}${detail}`,
+    status,
+  );
 }

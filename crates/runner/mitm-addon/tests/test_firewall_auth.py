@@ -735,6 +735,7 @@ class TestHandleFirewallRequest:
             code="TOKEN_REFRESH_FAILED",
             message="Access token expired and refresh failed for: codex-oauth-token.",
             connectors=["codex-oauth-token"],
+            failure_reason="upstream_provider",
         )
 
         with (
@@ -757,6 +758,7 @@ class TestHandleFirewallRequest:
         assert body["message"] == "Access token expired and refresh failed for: codex-oauth-token."
         assert body["permission"] == "github"
         assert body["connectors"] == ["codex-oauth-token"]
+        assert body["failureReason"] == "upstream_provider"
 
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
@@ -1240,7 +1242,7 @@ class TestFetchFirewallHeaders:
             assert "Insufficient credits" in str(exc_info.value)
 
     @pytest.mark.parametrize(
-        ("status", "reason", "code", "message", "connectors"),
+        ("status", "reason", "code", "message", "connectors", "failure_reason"),
         [
             (
                 424,
@@ -1248,12 +1250,14 @@ class TestFetchFirewallHeaders:
                 "TOKEN_ACCESS_RESOLUTION_FAILED",
                 "Token access resolution failed for: notion.",
                 ["notion"],
+                None,
             ),
             (
                 403,
                 "Forbidden",
                 "FORBIDDEN",
                 "Invalid model-provider secret owner",
+                None,
                 None,
             ),
             (
@@ -1262,6 +1266,7 @@ class TestFetchFirewallHeaders:
                 "TOKEN_REFRESH_FAILED",
                 "Access token expired and refresh failed for: codex-oauth-token.",
                 ["codex-oauth-token"],
+                "upstream_provider",
             ),
         ],
         ids=["token-access-resolution", "forbidden", "token-refresh"],
@@ -1273,6 +1278,7 @@ class TestFetchFirewallHeaders:
         code: str,
         message: str,
         connectors: list[str] | None,
+        failure_reason: str | None,
     ):
         """Current auth endpoint errors should preserve their code and connectors."""
         error_info: dict[str, object] = {
@@ -1281,6 +1287,8 @@ class TestFetchFirewallHeaders:
         }
         if connectors is not None:
             error_info["connectors"] = connectors
+        if failure_reason is not None:
+            error_info["failureReason"] = failure_reason
         error_body = json.dumps({"error": error_info}).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
@@ -1301,6 +1309,7 @@ class TestFetchFirewallHeaders:
         assert exc_info.value.code == code
         assert str(exc_info.value) == message
         assert exc_info.value.connectors == connectors
+        assert exc_info.value.failure_reason == failure_reason
 
     @pytest.mark.parametrize(
         "error_body",

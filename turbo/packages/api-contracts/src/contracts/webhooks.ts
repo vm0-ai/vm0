@@ -173,6 +173,9 @@ const firewallAuthErrorSchema = z.object({
     message: z.string(),
     code: z.string(),
     connectors: z.array(z.string()).optional(),
+    failureReason: z
+      .enum(["upstream_provider", "reconnect_required"])
+      .optional(),
   }),
 });
 

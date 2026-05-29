@@ -3089,10 +3089,55 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.error).toMatchObject({
       code: "TOKEN_REFRESH_FAILED",
       connectors: ["codex-oauth-token"],
+      failureReason: "reconnect_required",
     });
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
       needsReconnect: true,
       lastRefreshErrorCode: "refresh_token_expired",
+    });
+  });
+
+  it("marks upstream ChatGPT refresh failures with failureReason", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCodexModelProvider(fixture);
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        return HttpResponse.json(
+          { error: "temporarily_unavailable" },
+          { status: 502 },
+        );
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["codex-oauth-token"],
+      failureReason: "upstream_provider",
     });
   });
 });
