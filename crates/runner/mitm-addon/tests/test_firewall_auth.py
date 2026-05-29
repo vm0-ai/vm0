@@ -1410,14 +1410,24 @@ class TestFetchFirewallHeaders:
 
         assert exc_info.value is http_error
 
-    def test_unrecognized_error_envelope_reraises_http_error(self):
-        error_body = json.dumps(
-            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
-        ).encode()
+    @pytest.mark.parametrize(
+        ("status", "reason", "code"),
+        [
+            (400, "Bad Request", "BAD_REQUEST"),
+            (403, "Forbidden", "FORBIDDEN"),
+        ],
+    )
+    def test_unrecognized_error_envelope_reraises_http_error(
+        self,
+        status: int,
+        reason: str,
+        code: str,
+    ):
+        error_body = json.dumps({"error": {"message": reason, "code": code}}).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            400,
-            "Bad Request",
+            status,
+            reason,
             error_body,
         )
 

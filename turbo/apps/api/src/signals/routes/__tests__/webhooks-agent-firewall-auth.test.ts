@@ -3353,7 +3353,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body).toStrictEqual({
       error: {
         message: "Invalid model-provider secret owner",
-        code: "FORBIDDEN",
+        code: "FIREWALL_AUTH_FORBIDDEN",
       },
     });
   });

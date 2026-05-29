@@ -184,7 +184,7 @@ function forbiddenModelProviderOwner(): ResolveFirewallAuthResult {
     body: {
       error: {
         message: "Invalid model-provider secret owner",
-        code: "FORBIDDEN",
+        code: "FIREWALL_AUTH_FORBIDDEN",
       },
     },
   };
