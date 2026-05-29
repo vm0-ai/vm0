@@ -1012,7 +1012,7 @@ function OnboardingIllustrationPanel() {
         showChat
           ? "pt-[8%]"
           : showTrial
-            ? "justify-start pt-16"
+            ? "justify-start pt-24"
             : "justify-center"
       }`}
     >
