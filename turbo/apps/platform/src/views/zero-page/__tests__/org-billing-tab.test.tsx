@@ -11,7 +11,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 import { reloadBillingStatus$ } from "../../../signals/zero-page/billing.ts";
-import { pathname$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   zeroBillingStatusContract,
@@ -328,32 +327,6 @@ describe("org billing tab - buy credits section", () => {
     });
     expect(capturedBody).toBeNull();
     errorSpy.mockRestore();
-  });
-
-  it("navigates coupon codes to the redeem campaign route", async () => {
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-
-    await openBillingTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("Pro plan")).toBeInTheDocument();
-    });
-
-    await fill(screen.getByLabelText("Coupon code"), "ZERO100");
-    const redeemButton = queryAllByRoleFast("button").find((el) => {
-      return el.textContent?.trim() === "Redeem";
-    });
-    expect(redeemButton).toBeDefined();
-    click(redeemButton!);
-
-    await waitFor(() => {
-      expect(context.store.get(pathname$)).toBe("/redeem/ZERO100");
-    });
   });
 });
 

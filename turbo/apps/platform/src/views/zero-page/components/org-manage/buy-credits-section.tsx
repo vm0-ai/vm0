@@ -3,14 +3,10 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { Button, Input } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { detachedNavigateTo$ } from "../../../../signals/route.ts";
-import { ROUTES } from "../../../../signals/route-paths.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import {
-  buyCreditsCouponCode$,
   buyCreditsCustomDollars$,
   buyCreditsSelection$,
-  setBuyCreditsCouponCode$,
   setBuyCreditsCustomDollars$,
   setBuyCreditsSelection$,
   startCreditCheckout$,
@@ -187,16 +183,12 @@ export function BuyCreditsSection() {
   const [checkoutLoadable, checkout] = useLoadableSet(startCreditCheckout$);
   const selection = useGet(buyCreditsSelection$);
   const customDollars = useGet(buyCreditsCustomDollars$);
-  const couponCode = useGet(buyCreditsCouponCode$);
   const setSelection = useSet(setBuyCreditsSelection$);
   const setCustomDollars = useSet(setBuyCreditsCustomDollars$);
-  const setCouponCode = useSet(setBuyCreditsCouponCode$);
-  const navigate = useSet(detachedNavigateTo$);
 
   const redirecting = checkoutLoadable.state === "loading";
   const buyDollars = resolveBuyDollars(selection, customDollars);
   const buyInvalid = buyDollars === null;
-  const trimmedCouponCode = couponCode.trim();
   const buyLabel = redirecting
     ? "Redirecting..."
     : buyDollars === null
@@ -217,14 +209,6 @@ export function BuyCreditsSection() {
       selection === "custom" ? { credits, customAmount: true } : { credits };
     const newTab = e.metaKey || e.ctrlKey;
     detach(checkout(payload, newTab, pageSignal), Reason.DomCallback);
-  };
-  const handleRedeem = () => {
-    if (trimmedCouponCode === "") {
-      return;
-    }
-    navigate(ROUTES.redeemCampaign, {
-      pathParams: { campaign: trimmedCouponCode },
-    });
   };
 
   return (
@@ -249,29 +233,7 @@ export function BuyCreditsSection() {
           />
         </div>
         <div className="h-0 zero-border-t mx-5" />
-        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-            <Input
-              type="text"
-              value={couponCode}
-              onChange={(e) => {
-                setCouponCode(e.target.value);
-              }}
-              placeholder="Enter coupon code"
-              aria-label="Coupon code"
-              className="h-9 w-full sm:w-[220px]"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 px-4 text-sm font-medium"
-              disabled={trimmedCouponCode === ""}
-              onClick={handleRedeem}
-            >
-              Redeem
-            </Button>
-          </div>
+        <div className="flex justify-end px-5 py-4">
           <Button
             type="button"
             size="sm"
