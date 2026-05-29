@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.399.0](https://github.com/vm0-ai/vm0/compare/web-v12.398.0...web-v12.399.0) (2026-05-29)
+
+
+### Features
+
+* **web:** add 3 new illustration styles to gallery ([#15305](https://github.com/vm0-ai/vm0/issues/15305)) ([65b2d41](https://github.com/vm0-ai/vm0/commit/65b2d41058832f99bf4fc61b2f7e00aa2c6a941a))
+
 ## [12.398.0](https://github.com/vm0-ai/vm0/compare/web-v12.397.3...web-v12.398.0) (2026-05-29)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.176.0](https://github.com/vm0-ai/vm0/compare/cli-v9.175.1...cli-v9.176.0) (2026-05-29)
+
+
+### Features
+
+* register ink-storefront image style ([#15272](https://github.com/vm0-ai/vm0/issues/15272)) ([35e2f13](https://github.com/vm0-ai/vm0/commit/35e2f1325bde2d8ccbad685252e1090b5989d5c8))
+
 ## [9.175.1](https://github.com/vm0-ai/vm0/compare/cli-v9.175.0...cli-v9.175.1) (2026-05-29)
 
 
