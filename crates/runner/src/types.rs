@@ -110,10 +110,6 @@ pub struct SecretConnectorMetadata {
     pub source_user_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata_key: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auth_method: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub access_kind: Option<String>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -454,11 +450,6 @@ mod tests {
                     "sourceType": "model-provider",
                     "sourceUserId": "user-123",
                     "metadataKey": "codex-oauth-token"
-                },
-                "GMAIL_ACCESS_TOKEN": {
-                    "sourceType": "connector",
-                    "authMethod": "oauth",
-                    "accessKind": "refresh-token"
                 }
             },
             "debugNoMockClaude": true,
@@ -488,14 +479,6 @@ mod tests {
         assert_eq!(
             metadata["CHATGPT_ACCESS_TOKEN"].source_user_id.as_deref(),
             Some("user-123")
-        );
-        assert_eq!(
-            metadata["GMAIL_ACCESS_TOKEN"].auth_method.as_deref(),
-            Some("oauth")
-        );
-        assert_eq!(
-            metadata["GMAIL_ACCESS_TOKEN"].access_kind.as_deref(),
-            Some("refresh-token")
         );
         assert!(ctx.debug_no_mock_claude.unwrap());
         assert!(ctx.debug_no_mock_codex.unwrap());

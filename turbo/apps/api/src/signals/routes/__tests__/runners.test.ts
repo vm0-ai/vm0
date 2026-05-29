@@ -1200,8 +1200,6 @@ describe("POST /api/runners/*", () => {
     const secretConnectorMetadataMap = {
       GMAIL_ACCESS_TOKEN: {
         sourceType: "connector" as const,
-        authMethod: "oauth",
-        accessKind: "refresh-token" as const,
       },
     };
     const queued = await seedQueuedRun({

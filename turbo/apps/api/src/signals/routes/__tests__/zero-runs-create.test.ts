@@ -888,8 +888,6 @@ describe("POST /api/zero/runs", () => {
         string,
         {
           readonly sourceType: string;
-          readonly authMethod?: string;
-          readonly accessKind?: string;
         }
       > | null;
     };
@@ -1520,8 +1518,6 @@ describe("POST /api/zero/runs", () => {
         string,
         {
           readonly sourceType: string;
-          readonly authMethod?: string;
-          readonly accessKind?: string;
         }
       > | null;
       readonly firewalls: readonly { readonly name: string }[];
@@ -1539,18 +1535,7 @@ describe("POST /api/zero/runs", () => {
       X_ACCESS_TOKEN: "x",
       X_TOKEN: "x",
     });
-    expect(executionContext.secretConnectorMetadataMap).toMatchObject({
-      X_ACCESS_TOKEN: {
-        sourceType: "connector",
-        authMethod: "oauth",
-        accessKind: "refresh-token",
-      },
-      X_TOKEN: {
-        sourceType: "connector",
-        authMethod: "oauth",
-        accessKind: "refresh-token",
-      },
-    });
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
     expect(
       executionContext.firewalls.map((firewall) => {
         return firewall.name;
@@ -1685,8 +1670,6 @@ describe("POST /api/zero/runs", () => {
         string,
         {
           readonly sourceType: string;
-          readonly authMethod?: string;
-          readonly accessKind?: string;
         }
       > | null;
       readonly firewalls: readonly {
@@ -1714,18 +1697,7 @@ describe("POST /api/zero/runs", () => {
       BASE44_ACCESS_TOKEN: "base44",
       BASE44_TOKEN: "base44",
     });
-    expect(executionContext.secretConnectorMetadataMap).toMatchObject({
-      BASE44_ACCESS_TOKEN: {
-        sourceType: "connector",
-        authMethod: "oauth",
-        accessKind: "refresh-token",
-      },
-      BASE44_TOKEN: {
-        sourceType: "connector",
-        authMethod: "oauth",
-        accessKind: "refresh-token",
-      },
-    });
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
     const firewall = executionContext.firewalls.find((candidate) => {
       return candidate.name === "base44";
     });
@@ -1795,8 +1767,6 @@ describe("POST /api/zero/runs", () => {
         string,
         {
           readonly sourceType: string;
-          readonly authMethod?: string;
-          readonly accessKind?: string;
         }
       > | null;
       readonly firewalls: readonly {
@@ -1828,18 +1798,7 @@ describe("POST /api/zero/runs", () => {
       SLOCK_ACCESS_TOKEN: "slock",
       SLOCK_TOKEN: "slock",
     });
-    expect(executionContext.secretConnectorMetadataMap).toStrictEqual({
-      SLOCK_ACCESS_TOKEN: {
-        sourceType: "connector",
-        authMethod: "oauth",
-        accessKind: "refresh-token",
-      },
-      SLOCK_TOKEN: {
-        sourceType: "connector",
-        authMethod: "oauth",
-        accessKind: "refresh-token",
-      },
-    });
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
     const firewall = executionContext.firewalls.find((candidate) => {
       return candidate.name === "slock";
     });

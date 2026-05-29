@@ -1195,13 +1195,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           secretConnectorMap: {
             TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
           },
-          secretConnectorMetadataMap: {
-            TEST_OAUTH_ACCESS_TOKEN: {
-              sourceType: "connector",
-              authMethod: "oauth",
-              accessKind: "refresh-token",
-            },
-          },
         },
         headers: authHeaders(fixture),
       }),
@@ -1256,13 +1249,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           secretConnectorMap: {
             TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
           },
-          secretConnectorMetadataMap: {
-            TEST_OAUTH_ACCESS_TOKEN: {
-              sourceType: "connector",
-              authMethod: "oauth",
-              accessKind: "refresh-token",
-            },
-          },
         },
         headers: authHeaders(fixture),
       }),
@@ -1295,13 +1281,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           },
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
-          },
-          secretConnectorMetadataMap: {
-            NOTION_ACCESS_TOKEN: {
-              sourceType: "connector",
-              authMethod: "oauth",
-              accessKind: "refresh-token",
-            },
           },
         },
         headers: authHeaders(fixture),
@@ -1346,13 +1325,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           secretConnectorMap: {
             NOTION_ACCESS_TOKEN: "notion",
           },
-          secretConnectorMetadataMap: {
-            NOTION_ACCESS_TOKEN: {
-              sourceType: "connector",
-              authMethod: "oauth",
-              accessKind: "refresh-token",
-            },
-          },
         },
         headers: authHeaders(fixture),
       }),
@@ -1365,14 +1337,42 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("does not bypass missing selected connector access without explicit metadata", async () => {
+  it("does not bypass missing selected connector access when the connector row is absent", async () => {
     const fixture = await track(seedFixture());
-    await seedExpiredNotionConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_ACCESS_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("does not use stale encrypted connector access when the connector row is absent", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_ACCESS_TOKEN: "stale-notion-token",
+          }),
           authHeaders: {
             Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
           },
@@ -1420,13 +1420,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           secretConnectorMap: {
             TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
           },
-          secretConnectorMetadataMap: {
-            TEST_OAUTH_ACCESS_TOKEN: {
-              sourceType: "connector",
-              authMethod: "oauth",
-              accessKind: "refresh-token",
-            },
-          },
         },
         headers: authHeaders(fixture),
       }),
@@ -1442,6 +1435,18 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("keeps missing static connector access secrets as missing configuration", async () => {
     const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "stripe",
+      authMethod: "api-token",
+      externalId: "stripe-account",
+      externalUsername: "stripe-account",
+      externalEmail: "stripe@example.com",
+      oauthScopes: JSON.stringify([]),
+      tokenExpiresAt: null,
+    });
 
     const response = await accept(
       firewallClient().resolve({
@@ -1452,13 +1457,6 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
           },
           secretConnectorMap: {
             STRIPE_TOKEN: "stripe",
-          },
-          secretConnectorMetadataMap: {
-            STRIPE_TOKEN: {
-              sourceType: "connector",
-              authMethod: "api-token",
-              accessKind: "static",
-            },
           },
         },
         headers: authHeaders(fixture),

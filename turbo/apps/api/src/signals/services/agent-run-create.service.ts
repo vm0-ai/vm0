@@ -347,9 +347,6 @@ interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
-  readonly secretConnectorMetadataMap:
-    | Record<string, SecretConnectorMetadata>
-    | undefined;
   readonly connectorTypes: readonly ConnectorType[];
   readonly storedEnvironment: Record<string, string> | undefined;
 }
@@ -1555,24 +1552,6 @@ function filterSecretConnectorMap(args: {
   return compactRecord(filtered);
 }
 
-function filterSecretConnectorMetadataMap(args: {
-  readonly secretConnectorMap: Record<string, string> | undefined;
-  readonly secretConnectorMetadataMap:
-    | Record<string, SecretConnectorMetadata>
-    | undefined;
-}): Record<string, SecretConnectorMetadata> | undefined {
-  if (!args.secretConnectorMap || !args.secretConnectorMetadataMap) {
-    return undefined;
-  }
-
-  const filtered = Object.fromEntries(
-    Object.entries(args.secretConnectorMetadataMap).filter(([key]) => {
-      return Object.hasOwn(args.secretConnectorMap ?? {}, key);
-    }),
-  );
-  return compactRecord(filtered);
-}
-
 interface StoredConnectorRuntimeRow {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
@@ -1595,7 +1574,6 @@ interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
-  readonly secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
   readonly environment: Record<string, string>;
 }
 
@@ -1604,7 +1582,6 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
     secrets: undefined,
     vars: undefined,
     secretConnectorMap: undefined,
-    secretConnectorMetadataMap: undefined,
     connectorTypes: [],
     storedEnvironment: undefined,
   };
@@ -1762,8 +1739,6 @@ function resolveStoredConnectorState(
   const secrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
-  const secretConnectorMetadataMap: Record<string, SecretConnectorMetadata> =
-    {};
   const environment: Record<string, string> = {};
 
   for (const {
@@ -1805,17 +1780,10 @@ function resolveStoredConnectorState(
       continue;
     }
     const secretName = accessMetadata.accessToken;
-    const connectorMetadata = {
-      sourceType: "connector",
-      authMethod,
-      accessKind: accessMetadata.kind,
-    } satisfies SecretConnectorMetadata;
     secretConnectorMap[secretName] = connectorType;
-    secretConnectorMetadataMap[secretName] = connectorMetadata;
     for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
         secretConnectorMap[envName] = connectorType;
-        secretConnectorMetadataMap[envName] = connectorMetadata;
       }
     }
   }
@@ -1824,7 +1792,6 @@ function resolveStoredConnectorState(
     secrets,
     vars,
     secretConnectorMap,
-    secretConnectorMetadataMap,
     environment,
   };
 }
@@ -1886,9 +1853,6 @@ async function loadStoredConnectorContext(
       secrets: compactRecord(resolved.secrets),
       vars: compactRecord(resolved.vars),
       secretConnectorMap: compactRecord(resolved.secretConnectorMap),
-      secretConnectorMetadataMap: compactRecord(
-        resolved.secretConnectorMetadataMap,
-      ),
       connectorTypes: allowedConnectorRows.map((row) => {
         return row.connectorType;
       }),
@@ -3041,12 +3005,6 @@ function buildStoredExecutionSecrets(args: {
       platformSecrets,
     ],
   });
-  const filteredConnectorMetadataMap = filterSecretConnectorMetadataMap({
-    secretConnectorMap: filteredConnectorMap,
-    secretConnectorMetadataMap:
-      args.connectorContext.secretConnectorMetadataMap,
-  });
-
   return {
     secrets: mergeRecords(
       args.connectorContext.secrets,
@@ -3061,10 +3019,7 @@ function buildStoredExecutionSecrets(args: {
         args.modelProvider?.secretConnectorMap,
       ) ?? null,
     secretConnectorMetadataMap:
-      mergeRecords(
-        filteredConnectorMetadataMap,
-        args.modelProvider?.secretConnectorMetadataMap,
-      ) ?? null,
+      args.modelProvider?.secretConnectorMetadataMap ?? null,
   };
 }
 

@@ -133,8 +133,6 @@ export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider"]),
   sourceUserId: z.string().optional(),
   metadataKey: z.string().optional(),
-  authMethod: z.string().optional(),
-  accessKind: z.enum(["static", "refresh-token", "none"]).optional(),
 });
 
 export const secretConnectorMetadataMapSchema = z.record(
