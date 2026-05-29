@@ -1663,6 +1663,13 @@ class TestCompiledFirewallMatching:
             ("https://api-{sub+}.example.com", "https://api-us.example.com/repos/org/repo"),
             ("https://api.example.com/{path+}", "https://api.example.com/root/repos/org/repo"),
             ("https://api.example.com/{path*}", "https://api.example.com/root/repos/org/repo"),
+            ("https://api.example.com/{}", "https://api.example.com/acme/repos/org/repo"),
+            ("https://api.example.com/{+}", "https://api.example.com/acme/repos/org/repo"),
+            (
+                "https://api.example.com/{org}{repo}",
+                "https://api.example.com/acmerepo/repos/org/repo",
+            ),
+            ("https://{}.example.com", "https://api.example.com/repos/org/repo"),
             (
                 "https://api.example.com/{org}/{org}",
                 "https://api.example.com/acme/acme/repos/org/repo",

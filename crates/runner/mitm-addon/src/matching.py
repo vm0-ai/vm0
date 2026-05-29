@@ -142,6 +142,7 @@ class _CompiledBase(NamedTuple):
     parts: _BaseUrlParts
     has_params: bool
     has_query_or_fragment: bool
+    param_parse_malformed: bool
     host_segments: tuple[ParsedSegment, ...]
     path_segments: tuple[ParsedSegment, ...]
 
@@ -658,6 +659,21 @@ def _compile_segments(segments: list[str] | tuple[str, ...]) -> tuple[ParsedSegm
     return parsed
 
 
+def _compile_base_segments_for_match(
+    segments: list[str] | tuple[str, ...],
+) -> tuple[tuple[ParsedSegment, ...], bool]:
+    parsed: list[ParsedSegment] = []
+    has_malformed_segment = False
+    for index, segment in enumerate(segments):
+        parsed_segment = _parse_segment(segment)
+        if isinstance(parsed_segment, SegmentError):
+            has_malformed_segment = True
+            parsed.append(SegmentParam("", f"__malformed_base_segment_{index}", "", ""))
+        else:
+            parsed.append(parsed_segment)
+    return tuple(parsed), has_malformed_segment
+
+
 def compile_path_pattern(pattern: str) -> CompiledPathPattern | None:
     """Compile a URL path pattern for repeated matching."""
     segments = _compile_segments(tuple(_split_path_segments(pattern)))
@@ -951,21 +967,24 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
 
     host_segments: tuple[ParsedSegment, ...] = ()
     path_segments: tuple[ParsedSegment, ...] = ()
+    param_parse_malformed = False
     if has_params:
-        compiled_host = _compile_segments(tuple(reversed(parts.authority.split("."))))
-        if compiled_host is None:
-            return None
+        compiled_host, host_parse_malformed = _compile_base_segments_for_match(
+            tuple(reversed(parts.authority.split(".")))
+        )
         host_segments = compiled_host
-        compiled_path = _compile_segments(tuple(_split_path_segments(parts.path)))
-        if compiled_path is None:
-            return None
+        compiled_path, path_parse_malformed = _compile_base_segments_for_match(
+            tuple(_split_path_segments(parts.path))
+        )
         path_segments = compiled_path
+        param_parse_malformed = host_parse_malformed or path_parse_malformed
 
     return _CompiledBase(
         base,
         parts,
         has_params,
         has_query_or_fragment,
+        param_parse_malformed,
         host_segments,
         path_segments,
     )
@@ -1062,6 +1081,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                 continue
             base_malformed = (
                 base.has_query_or_fragment
+                or base.param_parse_malformed
                 or base.parts.host_malformed
                 or base.parts.has_userinfo
                 or base.parts.port_malformed
