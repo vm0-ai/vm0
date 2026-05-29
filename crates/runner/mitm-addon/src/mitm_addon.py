@@ -633,10 +633,10 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers.
     # Also request a force-refresh so the next /firewall/auth fetch refreshes
-    # the OAuth token regardless of DB tokenExpiresAt — the provider just told
+    # the access token regardless of DB tokenExpiresAt — the provider just told
     # us the token is no longer valid, overriding whatever the DB believes.
     # request_force_refresh enforces a cooldown so a persistent non-token 401
-    # can't amplify into a loop of provider OAuth refresh calls (#9860).
+    # can't amplify into a loop of provider refresh calls (#9860).
     if (
         flow.response
         and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED

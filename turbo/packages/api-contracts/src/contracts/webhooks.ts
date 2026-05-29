@@ -180,7 +180,7 @@ const firewallAuthResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),
   base: z.string().optional(),
   query: z.record(z.string(), z.string()).optional(),
-  // Effective addon cache expiry as Unix seconds. OAuth token expiry is the
+  // Effective addon cache expiry as Unix seconds. Access token expiry is the
   // normal source; billable firewall auth can shorten it to force credit
   // re-authorization. Null means non-expiring only for non-billable auth.
   expiresAt: z.number().nullable(),
@@ -192,7 +192,7 @@ const firewallAuthResponseSchema = z.object({
 export const webhookFirewallAuthContract = c.router({
   /**
    * POST /api/webhooks/agent/firewall/auth
-   * Resolve firewall auth templates and refresh OAuth tokens on demand.
+   * Resolve firewall auth templates and refresh access tokens on demand.
    */
   resolve: {
     method: "POST",
