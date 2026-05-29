@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.392.0](https://github.com/vm0-ai/vm0/compare/app-v0.391.0...app-v0.392.0) (2026-05-29)
+
+
+### Features
+
+* load more chats in sidebar ([#15368](https://github.com/vm0-ai/vm0/issues/15368)) ([205b90d](https://github.com/vm0-ai/vm0/commit/205b90daf6ae2aac626ce579d092eca99a532453))
+* **platform:** add buy credits section to billing settings ([#15365](https://github.com/vm0-ai/vm0/issues/15365)) ([2816d0d](https://github.com/vm0-ai/vm0/commit/2816d0d0b05eb5436c82cc9bac1451255e356756))
+
+
+### Bug Fixes
+
+* refresh billing after insufficient credits ([#15374](https://github.com/vm0-ai/vm0/issues/15374)) ([55795e2](https://github.com/vm0-ai/vm0/commit/55795e299beff67a8f0bc92800cf8b40e45c655f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+
 ## [0.391.0](https://github.com/vm0-ai/vm0/compare/app-v0.390.1...app-v0.391.0) (2026-05-29)
 
 

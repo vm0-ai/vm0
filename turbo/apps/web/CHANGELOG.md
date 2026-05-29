@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.400.1](https://github.com/vm0-ai/vm0/compare/web-v12.400.0...web-v12.400.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* **web:** repair illustration gallery asset paths ([#15369](https://github.com/vm0-ai/vm0/issues/15369)) ([b7b9ffa](https://github.com/vm0-ai/vm0/commit/b7b9ffab20d0ba04c0986fe5e8a22ac79323538c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+    * @vm0/db bumped to 1.22.4
+
 ## [12.400.0](https://github.com/vm0-ai/vm0/compare/web-v12.399.1...web-v12.400.0) (2026-05-29)
 
 

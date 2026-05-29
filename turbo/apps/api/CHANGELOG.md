@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.87.0](https://github.com/vm0-ai/vm0/compare/api-v1.86.0...api-v1.87.0) (2026-05-29)
+
+
+### Features
+
+* **platform:** add buy credits section to billing settings ([#15365](https://github.com/vm0-ai/vm0/issues/15365)) ([2816d0d](https://github.com/vm0-ai/vm0/commit/2816d0d0b05eb5436c82cc9bac1451255e356756))
+
+
+### Bug Fixes
+
+* allow zero tokens to manage credit checkout ([#15358](https://github.com/vm0-ai/vm0/issues/15358)) ([b220f32](https://github.com/vm0-ai/vm0/commit/b220f32577741af5e30017b72b884f0172b29ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+    * @vm0/db bumped to 1.22.4
+
 ## [1.86.0](https://github.com/vm0-ai/vm0/compare/api-v1.85.1...api-v1.86.0) (2026-05-29)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.176.3](https://github.com/vm0-ai/vm0/compare/cli-v9.176.2...cli-v9.176.3) (2026-05-29)
+
+
+### Bug Fixes
+
+* allow zero tokens to manage credit checkout ([#15358](https://github.com/vm0-ai/vm0/issues/15358)) ([b220f32](https://github.com/vm0-ai/vm0/commit/b220f32577741af5e30017b72b884f0172b29ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+
 ## [9.176.2](https://github.com/vm0-ai/vm0/compare/cli-v9.176.1...cli-v9.176.2) (2026-05-29)
 
 

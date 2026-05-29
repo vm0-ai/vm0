@@ -1253,7 +1253,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.33.0"
+version = "0.33.1"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.17.7"
+version = "0.18.0"
 dependencies = [
  "libc",
  "serde_json",
@@ -2547,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.105.4"
+version = "0.105.5"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
