@@ -13,9 +13,9 @@ import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import upsellCrownSrc from "./assets/upsell-crown.webp";
 import trialWorkflowSrc from "./assets/trial-workflow.webp";
 import webModernSrc from "./assets/web-modern.webp";
-import webSleekSrc from "./assets/web-sleek.webp";
+import webCafeSrc from "./assets/web-cafe.webp";
 import webEnergeticSrc from "./assets/web-energetic.webp";
-import webFriendlySrc from "./assets/web-friendly.webp";
+import webFantasySrc from "./assets/web-fantasy.webp";
 import illFolkSrc from "./assets/ill-folk.webp";
 import illFlatfolkSrc from "./assets/ill-flatfolk.webp";
 import illBotanicalSrc from "./assets/ill-botanical.webp";
@@ -540,8 +540,8 @@ const TRIAL_GALLERY_COPY: readonly TrialGalleryCopy[] = [
 
 const TRIAL_WEBSITE_TILES: readonly string[] = [
   webModernSrc,
-  webSleekSrc,
-  webFriendlySrc,
+  webCafeSrc,
+  webFantasySrc,
   webEnergeticSrc,
 ];
 
@@ -562,11 +562,13 @@ const TRIAL_GALLERY_THUMBS: readonly string[] = [
 
 function TrialWorkflowSlide() {
   return (
-    <img
-      src={trialWorkflowSrc}
-      alt="Workflow preview"
-      className="h-full w-full object-cover object-center rounded-2xl"
-    />
+    <div className="h-full w-full flex items-center justify-center p-2">
+      <img
+        src={trialWorkflowSrc}
+        alt="Workflow preview"
+        className="max-h-full max-w-full object-contain rounded-xl"
+      />
+    </div>
   );
 }
 
@@ -593,18 +595,11 @@ function TrialWebsiteSlide() {
 
 function TrialIllustrationSlide() {
   return (
-    <div className="h-full w-full grid grid-cols-3 grid-rows-2 gap-2 p-2">
+    <div className="h-full w-full p-2 overflow-hidden columns-3 gap-2 [&>*]:mb-2 [&>*]:break-inside-avoid">
       {TRIAL_ILLUSTRATION_TILES.map((src) => {
         return (
-          <div
-            key={src}
-            className="rounded-xl overflow-hidden bg-background"
-          >
-            <img
-              src={src}
-              alt=""
-              className="h-full w-full object-cover object-center"
-            />
+          <div key={src} className="rounded-xl overflow-hidden bg-background">
+            <img src={src} alt="" className="block w-full h-auto" />
           </div>
         );
       })}
