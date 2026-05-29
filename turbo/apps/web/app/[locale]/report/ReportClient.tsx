@@ -27,15 +27,18 @@ function ReportCard({ item, appUrl }: { item: ReportItem; appUrl: string }) {
         className="group block"
         style={{ textDecoration: "none" }}
       >
-        <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--gray-1))]">
-          <Image
-            src={item.previewImage}
-            alt={item.title}
-            fill
-            sizes="(min-width: 880px) 832px, calc(100vw - 48px)"
-            className="object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]"
-          />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
+        <div className="relative max-h-[640px] overflow-hidden bg-[hsl(var(--gray-1))] sm:max-h-[720px]">
+          <div className="max-h-[640px] overflow-y-auto overscroll-contain sm:max-h-[720px]">
+            <Image
+              src={item.previewImage}
+              alt={item.title}
+              width={item.previewWidth}
+              height={item.previewHeight}
+              sizes="(min-width: 880px) 832px, calc(100vw - 48px)"
+              className="block h-auto w-full"
+            />
+          </div>
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
             <div className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-[hsl(var(--foreground))] shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
               <IconExternalLink size={16} stroke={2} />
               View
