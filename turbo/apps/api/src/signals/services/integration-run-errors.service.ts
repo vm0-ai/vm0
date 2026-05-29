@@ -4,9 +4,9 @@ import type { Setter } from "ccstate";
 import { env } from "../../lib/env";
 import { getMemberRoleAndUpdateCache$ } from "./auth.service";
 
-function comparePlansUrl(): string {
+function addCreditsUrl(): string {
   const appUrl = env("APP_URL").replace(/\/$/, "");
-  return `${appUrl}/?settings=billing&billingView=plans`;
+  return `${appUrl}/?settings=billing&billingView=credits`;
 }
 
 export async function formatIntegrationRunError(args: {
@@ -37,7 +37,7 @@ export async function formatIntegrationRunError(args: {
     message: args.message,
     insufficientCredits: {
       canManageBilling: membership?.role === "admin",
-      comparePlansUrl: comparePlansUrl(),
+      addCreditsUrl: addCreditsUrl(),
     },
   });
 }

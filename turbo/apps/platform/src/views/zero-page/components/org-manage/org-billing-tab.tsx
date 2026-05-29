@@ -43,7 +43,9 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { AutoRechargeSection } from "../../billing-dialog.tsx";
 import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
+  billingScrollTarget$,
   billingSubPage$,
+  setBillingScrollTarget$,
   setBillingSubPage$,
   selectedTarget$,
   setSelectedTarget$,
@@ -511,7 +513,9 @@ function PlanActionButtons({
 
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
+  const billingScrollTarget = useGet(billingScrollTarget$);
   const setBillingSubPage = useSet(setBillingSubPage$);
+  const setBillingScrollTarget = useSet(setBillingScrollTarget$);
   const setPricingOpen = (v: boolean) => {
     return setBillingSubPage(v);
   };
@@ -676,7 +680,20 @@ export function OrgBillingTab() {
         </div>
       </section>
 
-      {status && <BuyCreditsSection currentTier={currentTier} />}
+      {status && (
+        <div
+          ref={(el) => {
+            if (el && billingScrollTarget === "buy-credits") {
+              window.setTimeout(() => {
+                el.scrollIntoView({ block: "start", behavior: "smooth" });
+                setBillingScrollTarget(null);
+              }, 0);
+            }
+          }}
+        >
+          <BuyCreditsSection />
+        </div>
+      )}
 
       {status && (
         <AutoRechargeSection

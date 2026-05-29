@@ -10,7 +10,6 @@ import {
   setBuyCreditsCustomDollars$,
   setBuyCreditsSelection$,
   startCreditCheckout$,
-  type BillingTier,
   type BuyCreditsSelection,
   type CreditCheckoutSelection,
 } from "../../../../signals/zero-page/billing.ts";
@@ -179,21 +178,13 @@ function resolveBuyDollars(
   return valid ? value : null;
 }
 
-export function BuyCreditsSection({
-  currentTier,
-}: {
-  currentTier: BillingTier;
-}) {
+export function BuyCreditsSection() {
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCreditCheckout$);
   const selection = useGet(buyCreditsSelection$);
   const customDollars = useGet(buyCreditsCustomDollars$);
   const setSelection = useSet(setBuyCreditsSelection$);
   const setCustomDollars = useSet(setBuyCreditsCustomDollars$);
-
-  if (currentTier === "free" || currentTier === "pro-suspend") {
-    return null;
-  }
 
   const redirecting = checkoutLoadable.state === "loading";
   const buyDollars = resolveBuyDollars(selection, customDollars);

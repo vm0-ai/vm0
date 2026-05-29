@@ -15,6 +15,7 @@ import {
   zeroBillingStatusContract,
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -196,6 +197,72 @@ describe("org billing tab - pricing sub-page navigation", () => {
     for (const btn of currentPlanButtons) {
       expect(btn).toBeDisabled();
     }
+  });
+});
+
+describe("org billing tab - buy credits section", () => {
+  afterEach(() => {
+    if (!window.location.href.startsWith("http://localhost")) {
+      window.location.href = "http://localhost/";
+    }
+  });
+
+  it("shows buy credits for free workspaces", async () => {
+    setMockBillingStatus({ tier: "free", credits: 0 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Buy credits")).toBeInTheDocument();
+    expect(screen.getByText("Quick buy $20.00")).toBeInTheDocument();
+  });
+
+  it("starts custom amount credit checkout", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=custom",
+        });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Custom"));
+    await fill(screen.getByLabelText("Custom dollar amount"), "123");
+
+    const buyButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Quick buy $123.00";
+    });
+    expect(buyButton).toBeDefined();
+    click(buyButton!);
+
+    await waitFor(() => {
+      expect(capturedBody).toMatchObject({
+        credits: 123_000,
+        customAmount: true,
+      });
+    });
+    expect(capturedBody).toMatchObject({
+      successUrl: expect.stringContaining(
+        "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+      ),
+    });
   });
 });
 
