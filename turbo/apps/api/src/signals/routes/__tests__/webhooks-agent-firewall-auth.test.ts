@@ -531,7 +531,10 @@ async function seedCodexModelProvider(
   });
 }
 
-async function notionConnectorState(fixture: FirewallFixture): Promise<{
+async function connectorState(
+  fixture: FirewallFixture,
+  connectorType: string,
+): Promise<{
   readonly needsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
 }> {
@@ -546,14 +549,21 @@ async function notionConnectorState(fixture: FirewallFixture): Promise<{
       and(
         eq(connectors.orgId, fixture.orgId),
         eq(connectors.userId, fixture.userId),
-        eq(connectors.type, "notion"),
+        eq(connectors.type, connectorType),
       ),
     )
     .limit(1);
   if (!row) {
-    throw new Error("notion connector state not found");
+    throw new Error(`${connectorType} connector state not found`);
   }
   return row;
+}
+
+async function notionConnectorState(fixture: FirewallFixture): Promise<{
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
+}> {
+  return await connectorState(fixture, "notion");
 }
 
 async function codexProviderState(fixture: FirewallFixture): Promise<{
@@ -1909,7 +1919,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("returns a refresh failure when selected connector refresh tokens are missing", async () => {
+  it("returns reconnect-required when selected connector refresh tokens are missing", async () => {
     const dynamicOAuth = useDynamicTestOAuthRefresh();
     restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
     const fixture = await track(seedFixture());
@@ -1939,11 +1949,11 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         },
         headers: authHeaders(fixture),
       }),
-      [502],
+      [424],
     );
 
     expect(response.body.error).toMatchObject({
-      code: "FIREWALL_AUTH_INTERNAL_ERROR",
+      code: "OAUTH_RECONNECT_REQUIRED",
       connectors: ["test-oauth"],
       retryable: false,
       provider: "test-oauth",
@@ -1951,7 +1961,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       failures: [
         {
           connector: "test-oauth",
-          code: "FIREWALL_AUTH_INTERNAL_ERROR",
+          code: "OAUTH_RECONNECT_REQUIRED",
           retryable: false,
           provider: "test-oauth",
           sourceType: "connector",
@@ -1959,6 +1969,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       ],
     });
     expect(dynamicOAuth.refreshes).toStrictEqual([]);
+    await expect(connectorState(fixture, "test-oauth")).resolves.toMatchObject({
+      needsReconnect: true,
+    });
   });
 
   it("keeps missing static connector access secrets as missing configuration", async () => {
@@ -2505,6 +2518,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
 
     expect(response.body.error).toMatchObject({
+      message: "OAuth credential needs reconnect for: notion.",
       code: "OAUTH_RECONNECT_REQUIRED",
       connectors: ["notion", "codex-oauth-token"],
       retryable: false,

@@ -300,6 +300,11 @@ type PreparedRefreshTokenContext =
       readonly context: RefreshTokenContext;
     };
 
+type PrepareRefreshFailureReason =
+  | "client-unconfigured"
+  | "not-refreshable"
+  | "refresh-token-missing";
+
 type PrepareRefreshTokenContextResult =
   | {
       readonly ok: true;
@@ -307,10 +312,7 @@ type PrepareRefreshTokenContextResult =
     }
   | {
       readonly ok: false;
-      readonly reason:
-        | "client-unconfigured"
-        | "not-refreshable"
-        | "refresh-token-missing";
+      readonly reason: PrepareRefreshFailureReason;
     };
 
 type RefreshFailureReason =
@@ -473,7 +475,10 @@ function buildUnpreparedRefreshFailure(args: {
     return {
       connector: args.connectorType,
       code: "OAUTH_RECONNECT_REQUIRED",
-      message: `${args.connectorType} OAuth refresh token is unavailable; reconnect required`,
+      message:
+        args.reason === "refresh-token-missing"
+          ? `${args.connectorType} OAuth refresh token is missing; reconnect required`
+          : `${args.connectorType} OAuth refresh token was rejected by another refresh; reconnect required`,
       retryable: false,
       provider: args.connectorType,
       sourceType: args.sourceType,
@@ -1293,27 +1298,25 @@ async function markRefreshSuccess(
     );
 }
 
-async function markRefreshFailure(
+async function markReconnectRequired(
   args: RefreshAccessTokenArgs,
-  context: RefreshTokenContext,
-  failure: RefreshFailure,
+  params: {
+    readonly secretUserId: string;
+    readonly refreshErrorCode: string | null;
+  },
 ): Promise<void> {
-  if (failure.code !== "OAUTH_RECONNECT_REQUIRED") {
-    return;
-  }
-
   if (args.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
       .set({
         needsReconnect: true,
-        lastRefreshErrorCode: failure.refreshErrorCode ?? null,
+        lastRefreshErrorCode: params.refreshErrorCode,
         updatedAt: sql`clock_timestamp()`,
       })
       .where(
         and(
           eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, context.secretUserId),
+          eq(modelProviders.userId, params.secretUserId),
           eq(modelProviders.type, args.metadataKey ?? ""),
         ),
       );
@@ -1335,18 +1338,53 @@ async function markRefreshFailure(
     );
 }
 
+async function markRefreshFailure(
+  args: RefreshAccessTokenArgs,
+  context: RefreshTokenContext,
+  failure: RefreshFailure,
+): Promise<void> {
+  if (failure.code !== "OAUTH_RECONNECT_REQUIRED") {
+    return;
+  }
+
+  await markReconnectRequired(args, {
+    secretUserId: context.secretUserId,
+    refreshErrorCode: failure.refreshErrorCode ?? null,
+  });
+}
+
+async function markRefreshPreparationFailure(
+  args: RefreshAccessTokenArgs,
+  failure: RefreshFailure,
+): Promise<void> {
+  if (failure.code !== "OAUTH_RECONNECT_REQUIRED") {
+    return;
+  }
+
+  await markReconnectRequired(args, {
+    secretUserId: resolveSecretUserId(
+      args.sourceType,
+      args.userId,
+      args.sourceUserId,
+    ),
+    refreshErrorCode: null,
+  });
+}
+
 async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
 ): Promise<RefreshAccessTokenResult> {
   const preparation = prepareRefreshTokenContext(args);
   if (!preparation.ok) {
+    const failure = buildUnpreparedRefreshFailure({
+      connectorType: args.connectorType,
+      sourceType: args.sourceType,
+      reason: preparation.reason,
+    });
+    await markRefreshPreparationFailure(args, failure);
     return {
       ok: false,
-      failure: buildUnpreparedRefreshFailure({
-        connectorType: args.connectorType,
-        sourceType: args.sourceType,
-        reason: preparation.reason,
-      }),
+      failure,
     };
   }
   const { prepared } = preparation;
