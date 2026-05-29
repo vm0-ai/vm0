@@ -23,6 +23,7 @@ import {
   createSlackClient,
   postMessage,
 } from "../external/slack-message-client";
+import { publishUserSignal } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { waitUntil } from "../context/wait-until";
 import { tapError } from "../utils";
@@ -34,6 +35,8 @@ type PermissionAccessRequestRow = typeof permissionAccessRequests.$inferSelect;
 type ForbiddenResponse = NonNullable<ReturnType<typeof requireAgentPermission>>;
 
 const log = logger("zero-permission-access-requests");
+const PERMISSION_ACCESS_REQUESTS_CHANGED_TOPIC =
+  "permissionAccessRequestsChanged";
 
 interface ListPermissionAccessRequestsArgs {
   readonly orgId: string;
@@ -272,6 +275,30 @@ async function notifyRequesterOfResolution(
   );
 }
 
+function publishPermissionAccessRequestsChanged(
+  userIds: readonly string[],
+  payload: { readonly requestId: string; readonly status: string },
+): void {
+  const uniqueUserIds = [...new Set(userIds)];
+  if (uniqueUserIds.length === 0) {
+    return;
+  }
+  waitUntil(
+    tapError(
+      publishUserSignal(
+        uniqueUserIds,
+        PERMISSION_ACCESS_REQUESTS_CHANGED_TOPIC,
+        payload,
+      ),
+      (error) => {
+        log.error("Failed to publish permission access request change", {
+          error,
+        });
+      },
+    ),
+  );
+}
+
 async function requesterNameMap(
   client: ReturnType<typeof clerk$.read>,
   userIds: readonly string[],
@@ -492,6 +519,10 @@ export const createPermissionAccessRequest$ = command(
         },
       ),
     );
+    publishPermissionAccessRequestsChanged([agent.owner], {
+      requestId: row.id,
+      status: row.status,
+    });
 
     return { kind: "ok", request: formatPermissionAccessRequest(row) };
   },
@@ -610,6 +641,13 @@ export const resolvePermissionAccessRequest$ = command(
           });
         },
       ),
+    );
+    publishPermissionAccessRequestsChanged(
+      [existing.requesterUserId, args.userId],
+      {
+        requestId: args.requestId,
+        status: updated.status,
+      },
     );
 
     return { kind: "ok", request: formatPermissionAccessRequest(updated) };

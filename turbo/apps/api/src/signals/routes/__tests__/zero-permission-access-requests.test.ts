@@ -316,6 +316,34 @@ describe("POST /api/zero/permission-access-requests", () => {
     expect(response.body.createdAt).toStrictEqual(expect.any(String));
   });
 
+  it("publishes a permission request refresh when creating a request", async () => {
+    const fixture = await track(
+      store.set(seedPermissionAccessOrg$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.ownerUserId, fixture.orgId);
+
+    const response = await accept(
+      createApiClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          connectorRef: "github",
+          permission: "issues:read",
+        },
+      }),
+      [201],
+    );
+    await clearAllDetached();
+
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "permissionAccessRequestsChanged",
+      {
+        requestId: response.body.id,
+        status: "pending",
+      },
+    );
+  });
+
   it("deduplicates pending requests by updating the reason", async () => {
     const fixture = await track(
       store.set(seedPermissionAccessOrg$, {}, context.signal),
@@ -930,6 +958,14 @@ describe("PUT /api/zero/permission-access-requests", () => {
     await expect(readAgentPolicies(fixture.agentId)).resolves.toStrictEqual({
       github: { "issues:read": "allow" },
     });
+    await clearAllDetached();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "permissionAccessRequestsChanged",
+      {
+        requestId: request.id,
+        status: "approved",
+      },
+    );
   });
 
   it("approves a deny request and stores a deny policy", async () => {
