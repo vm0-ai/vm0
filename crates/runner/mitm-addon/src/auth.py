@@ -188,7 +188,7 @@ def request_force_refresh(cache_key: tuple[str, str]) -> None:
       re-add the marker; after the fetch completes and writes the cache, a
       later cache miss would then consume the stale marker and trigger an
       unnecessary second refresh. The trade-off is that a failed fetch
-      (webhook down, structured refresh failure, etc.) still burns the
+      (webhook down, ``TOKEN_REFRESH_FAILED``, etc.) still burns the
       cooldown — intentional, because if the refresh grant itself is broken,
       retrying faster than once per cooldown wouldn't help and would hammer
       the provider.
