@@ -22,6 +22,7 @@ _MAX_PORT = 65535
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
 _FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
+_VALID_REWRITE_SCHEMES = frozenset(("http", "https"))
 
 
 @dataclass(frozen=True)
@@ -381,6 +382,13 @@ def _strip_optional_terminal_slash(path: str) -> str:
     return path[:-1] if path.endswith("/") else path
 
 
+def _has_raw_whitespace(value: str) -> bool:
+    return any(
+        char.isspace() or ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
+        for char in value
+    )
+
+
 def _merge_rewrite_query(
     base_query: str,
     orig_query: str,
@@ -396,6 +404,36 @@ def _merge_rewrite_query(
     auth_pairs = _encode_query_pairs(resolved_query)
 
     return _join_query_sources(filtered_base_pairs, filtered_orig_pairs, auth_pairs)
+
+
+def _validated_rewrite_base(resolved_base: str) -> urllib.parse.SplitResult:
+    if "\\" in resolved_base:
+        raise ValueError("Invalid auth.base URL: must not contain backslash")
+    if _has_raw_whitespace(resolved_base):
+        raise ValueError("Invalid auth.base URL: must not contain whitespace")
+
+    parsed = urllib.parse.urlsplit(resolved_base)
+    if parsed.scheme.lower() not in _VALID_REWRITE_SCHEMES:
+        raise ValueError("Invalid auth.base URL: scheme must be http or https")
+    if not parsed.netloc:
+        raise ValueError("Invalid auth.base URL: missing host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Invalid auth.base URL: userinfo is not allowed")
+    if parsed.fragment:
+        raise ValueError("Invalid auth.base URL: must not contain fragment")
+
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid auth.base URL: missing host")
+    try:
+        _normalize_hostname(host)
+    except (UnicodeError, ValueError) as exc:
+        raise ValueError("Invalid auth.base URL: invalid host") from exc
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    return parsed
 
 
 def build_rewrite_url(
@@ -417,9 +455,7 @@ def build_rewrite_url(
     if has_unsafe_dot_segment(rel_path):
         raise ValueError("Unsafe rewrite path: dot segments are not allowed")
 
-    base_parsed = urllib.parse.urlsplit(resolved_base)
-    if base_parsed.fragment:
-        raise ValueError("Invalid auth.base URL: must not contain fragment")
+    base_parsed = _validated_rewrite_base(resolved_base)
 
     # Append rel_path to the base path portion
     base_path = (

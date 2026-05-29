@@ -56,10 +56,24 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=secret"
 
-    def test_base_with_fragment_rejected(self):
-        with pytest.raises(ValueError, match="fragment"):
+    @pytest.mark.parametrize(
+        ("base", "message"),
+        [
+            ("https://example.com/hook#secret-fragment", "fragment"),
+            ("https://example.com/hook\n", "whitespace"),
+            ("https://example.com\\hook", "backslash"),
+            ("ftp://example.com/hook", "scheme"),
+            ("https:///hook", "missing host"),
+            ("https://user:pass@example.com/hook", "userinfo"),
+            ("https://exa mple.com/hook", "whitespace"),
+            ("https://example.com:99999/hook", "Port out of range"),
+            ("https://[::1/hook", "Invalid IPv6 URL"),
+        ],
+    )
+    def test_invalid_resolved_base_rejected(self, base, message):
+        with pytest.raises(ValueError, match=message):
             url_utils.build_rewrite_url(
-                "https://example.com/hook#secret-fragment",
+                base,
                 "/",
                 "",
             )
