@@ -7,7 +7,6 @@ delivery if the executor has been shut down (drain/shutdown race) so
 reports are not silently lost.
 """
 
-import copy
 import json
 import time
 import urllib.error
@@ -169,24 +168,26 @@ def _enqueue_webhook(
     proxy_log_path: str,
     log_type: str,
 ) -> None:
-    """Submit webhook POST to the thread pool.  Copies payload to avoid mutation.
+    """Submit webhook POST to the thread pool.
+
+    The caller transfers ownership of ``payload`` to webhook delivery and
+    must not mutate it after enqueue.
 
     If the executor has already been shut down (drain/shutdown race),
     falls back to synchronous delivery so the report is not silently lost.
     """
-    copied = copy.deepcopy(payload)
     _log_webhook_entry(
         proxy_log_path,
         "info",
         f"Webhook POST to {url} enqueued",
         url,
         log_type,
-        copied,
+        payload,
     )
     increment_pending_reports()
     try:
         usage_executor.submit(
-            _post_webhook_with_retry, url, sandbox_token, copied, proxy_log_path, log_type
+            _post_webhook_with_retry, url, sandbox_token, payload, proxy_log_path, log_type
         )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
@@ -197,7 +198,7 @@ def _enqueue_webhook(
             type=log_type,
             url=url,
         )
-        _post_webhook_with_retry(url, sandbox_token, copied, proxy_log_path, log_type)
+        _post_webhook_with_retry(url, sandbox_token, payload, proxy_log_path, log_type)
     except Exception:
         decrement_pending_reports()
         raise
