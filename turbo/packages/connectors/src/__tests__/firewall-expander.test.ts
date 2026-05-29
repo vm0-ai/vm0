@@ -764,6 +764,12 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://a%E0%A1%B0b.example", "fw");
     }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://\u0870!.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://\u08701!.example", "fw");
+    }).toThrow("invalid bidirectional label text");
   });
 
   it("should accept valid bidirectional host label boundaries", () => {
@@ -778,6 +784,24 @@ describe("validateBaseUrl", () => {
     }).not.toThrow();
     expect(() => {
       return validateBaseUrl("https://1\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u0870!\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u0870!1.example", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept host labels that Python IDNA normalization keeps valid", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0345.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u226e.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u226f.example", "fw");
     }).not.toThrow();
   });
 

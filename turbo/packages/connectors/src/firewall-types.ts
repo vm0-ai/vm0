@@ -745,6 +745,8 @@ const WHITESPACE_PATTERN = /\s/u;
 const UNICODE_CONTROL_PATTERN = /\p{C}/u;
 const UNICODE_MARK_PATTERN = /\p{M}/u;
 const UNICODE_LETTER_PATTERN = /\p{L}/u;
+const GREEK_COMBINING_YPOGEGRAMMENI = "\u0345";
+const GREEK_SMALL_IOTA = "\u03b9";
 // WHATWG accepts these RTL-class label chars in places where Python's IDNA
 // bidi validation rejects mixed LTR/RTL labels at runtime.
 const IDNA_BIDI_RTL_LABEL_RANGES = [
@@ -833,11 +835,19 @@ function hasUnsafeUts46MappingChar(value: string): boolean {
 }
 
 function normalizesToAscii(value: string): boolean {
-  return isAscii(value.normalize("NFKD").toLowerCase());
+  return isAscii(normalizeLabelTextForIdnaValidation(value));
+}
+
+function normalizeLabelTextForIdnaValidation(value: string): string {
+  return value
+    .replaceAll(GREEK_COMBINING_YPOGEGRAMMENI, GREEK_SMALL_IOTA)
+    .normalize("NFKD")
+    .normalize("NFC")
+    .toLowerCase();
 }
 
 function hasForbiddenNormalizedLabelChar(value: string): boolean {
-  for (const char of value.normalize("NFKD")) {
+  for (const char of normalizeLabelTextForIdnaValidation(value)) {
     if (
       FORBIDDEN_NORMALIZED_LABEL_CHARS.has(char) ||
       HOST_DOT_EQUIVALENTS.has(char) ||
@@ -851,7 +861,7 @@ function hasForbiddenNormalizedLabelChar(value: string): boolean {
 }
 
 function normalizedLabelStartsWithMark(value: string): boolean {
-  const [firstChar] = value.normalize("NFKD");
+  const [firstChar] = normalizeLabelTextForIdnaValidation(value);
   return firstChar !== undefined && UNICODE_MARK_PATTERN.test(firstChar);
 }
 
@@ -867,8 +877,20 @@ function isLtrLetterForBidiCheck(char: string): boolean {
   return UNICODE_LETTER_PATTERN.test(char) && !isIdnaBidiRtlLabelChar(char);
 }
 
+function isAsciiDigit(char: string): boolean {
+  return char >= "0" && char <= "9";
+}
+
+function effectiveBidiEndChar(chars: readonly string[]): string | undefined {
+  for (let index = chars.length - 1; index >= 0; index -= 1) {
+    const char = chars[index]!;
+    if (!UNICODE_MARK_PATTERN.test(char)) return char;
+  }
+  return chars.at(-1);
+}
+
 function hasInvalidMixedBidiLabelText(value: string): boolean {
-  const chars = Array.from(value.normalize("NFKD"));
+  const chars = Array.from(normalizeLabelTextForIdnaValidation(value));
   const firstRtlIndex = chars.findIndex((char) => {
     return isIdnaBidiRtlLabelChar(char);
   });
@@ -876,9 +898,17 @@ function hasInvalidMixedBidiLabelText(value: string): boolean {
 
   const suffix = chars.slice(firstRtlIndex + 1);
   if (firstRtlIndex === 0) {
-    return suffix.some((char) => {
+    const suffixHasLtrLetter = suffix.some((char) => {
       return isLtrLetterForBidiCheck(char);
     });
+    if (suffixHasLtrLetter) return true;
+
+    const endChar = effectiveBidiEndChar(chars);
+    return (
+      endChar !== undefined &&
+      !isIdnaBidiRtlLabelChar(endChar) &&
+      !isAsciiDigit(endChar)
+    );
   }
 
   const suffixHasLtrLetter = suffix.some((char) => {
