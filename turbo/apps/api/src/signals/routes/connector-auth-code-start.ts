@@ -11,7 +11,7 @@ import type {
   ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  buildConnectorOAuthAuthUrl,
+  buildConnectorAuthCodeAuthorizationUrl,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 
@@ -93,7 +93,7 @@ export async function buildResolvedConnectorAuthCodeAuthUrl(args: {
   readonly state: string;
 }): Promise<AuthUrlResult> {
   return normalizeAuthUrlResult(
-    await buildConnectorOAuthAuthUrl({
+    await buildConnectorAuthCodeAuthorizationUrl({
       type: args.type,
       authClient: args.authClient,
       redirectUri: args.redirectUri,

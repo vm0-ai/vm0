@@ -5,12 +5,12 @@ import type {
 } from "../connectors";
 import type {
   AuthUrlResult,
-  ConnectorOAuthAuthorizeArgs,
-  ConnectorOAuthDeviceAuthPollArgs,
-  ConnectorOAuthDeviceAuthStartArgs,
-  ConnectorOAuthExchangeArgs,
-  ConnectorOAuthRefreshArgs,
-  ConnectorOAuthRevokeArgs,
+  ConnectorAuthCodeAuthorizeArgs,
+  ConnectorDeviceAuthorizationPollArgs,
+  ConnectorDeviceAuthorizationStartArgs,
+  ConnectorAuthCodeExchangeArgs,
+  ConnectorAuthProviderRefreshArgs,
+  ConnectorAuthProviderRevokeArgs,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
@@ -25,9 +25,11 @@ interface NoneGrantProvider {
 export interface AuthCodeGrantProvider<T extends AuthCodeGrantConnectorType> {
   readonly kind: "auth-code";
   buildAuthUrl(
-    args: ConnectorOAuthAuthorizeArgs<T>,
+    args: ConnectorAuthCodeAuthorizeArgs<T>,
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
-  exchangeCode(args: ConnectorOAuthExchangeArgs<T>): Promise<OAuthTokenResult>;
+  exchangeCode(
+    args: ConnectorAuthCodeExchangeArgs<T>,
+  ): Promise<OAuthTokenResult>;
 }
 
 export interface DeviceAuthGrantProvider<
@@ -35,10 +37,10 @@ export interface DeviceAuthGrantProvider<
 > {
   readonly kind: "device-auth";
   startDeviceAuth(
-    args: ConnectorOAuthDeviceAuthStartArgs<T>,
+    args: ConnectorDeviceAuthorizationStartArgs<T>,
   ): Promise<OAuthDeviceAuthStartResult>;
   pollDeviceAuth(
-    args: ConnectorOAuthDeviceAuthPollArgs<T>,
+    args: ConnectorDeviceAuthorizationPollArgs<T>,
   ): Promise<OAuthDeviceAuthPollResult>;
 }
 
@@ -53,7 +55,9 @@ export interface RefreshTokenAccessProvider<
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
   getRefreshSecretName(): string;
-  refreshToken(args: ConnectorOAuthRefreshArgs<T>): Promise<OAuthRefreshResult>;
+  refreshToken(
+    args: ConnectorAuthProviderRefreshArgs<T>,
+  ): Promise<OAuthRefreshResult>;
 }
 
 export type ConnectorAuthProviderAccess<T extends ConnectorAuthProviderType> =
@@ -66,7 +70,7 @@ interface NoneRevokeProvider {
 
 interface TokenRevokeProvider<T extends ConnectorAuthProviderType> {
   readonly kind: "token-revoke";
-  revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
+  revokeToken(args: ConnectorAuthProviderRevokeArgs<T>): Promise<void>;
 }
 
 export type ConnectorAuthProviderRevoke<T extends ConnectorAuthProviderType> =

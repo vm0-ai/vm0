@@ -56,15 +56,15 @@ import {
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
-  buildConnectorOAuthAuthUrl,
+  buildConnectorAuthCodeAuthorizationUrl,
   getConnectorAuthProviderClientArgs,
   hasConnectorAuthCodeGrantProvider,
   hasConnectorDeviceAuthGrantProvider,
-  getConnectorOAuthSecretMetadata,
-  pollConnectorOAuthDeviceAuth,
+  getConnectorAuthProviderSecretMetadata,
+  pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
-  revokeConnectorOAuthToken,
-  startConnectorOAuthDeviceAuth,
+  revokeConnectorAuthProviderAccessToken,
+  startConnectorDeviceAuthorization,
 } from "../auth-providers/connector-auth";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../auth-providers/oauth/google-connectors";
 import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
@@ -457,12 +457,12 @@ describe("connector grant provider capability checks", () => {
   });
 
   it("exposes connector OAuth secret metadata without provider access", () => {
-    expect(getConnectorOAuthSecretMetadata("test-oauth")).toEqual({
+    expect(getConnectorAuthProviderSecretMetadata("test-oauth")).toEqual({
       accessSecretName: "TEST_OAUTH_ACCESS_TOKEN",
       refreshSecretName: "TEST_OAUTH_REFRESH_TOKEN",
       isRefreshable: true,
     });
-    expect(getConnectorOAuthSecretMetadata("github")).toEqual({
+    expect(getConnectorAuthProviderSecretMetadata("github")).toEqual({
       accessSecretName: "GITHUB_ACCESS_TOKEN",
       isRefreshable: false,
     });
@@ -523,7 +523,7 @@ describe("connector grant provider capability checks", () => {
     );
 
     await expect(
-      revokeConnectorOAuthToken({
+      revokeConnectorAuthProviderAccessToken({
         type: "github",
         authClient: oauthClient,
         loadAccessToken: () => {
@@ -556,7 +556,7 @@ describe("connector grant provider capability checks", () => {
     let loadedAccessToken = false;
 
     await expect(
-      revokeConnectorOAuthToken({
+      revokeConnectorAuthProviderAccessToken({
         type: "notion",
         authClient: oauthClient,
         loadAccessToken: () => {
@@ -590,7 +590,7 @@ describe("connector grant provider capability checks", () => {
         if (!oauthClient) {
           throw new Error(`${type} OAuth client not found`);
         }
-        const authResult = await buildConnectorOAuthAuthUrl({
+        const authResult = await buildConnectorAuthCodeAuthorizationUrl({
           type,
           authClient: oauthClient,
           redirectUri: "https://app.test/callback",
@@ -692,7 +692,7 @@ describe("connector grant provider capability checks", () => {
       throw new Error("Expected test-oauth-device OAuth client");
     }
 
-    const startResult = await startConnectorOAuthDeviceAuth({
+    const startResult = await startConnectorDeviceAuthorization({
       type: "test-oauth-device",
       authClient: oauthClient,
     });
@@ -707,21 +707,21 @@ describe("connector grant provider capability checks", () => {
     });
 
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: "slow-down",
       }),
     ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: "denied",
@@ -732,7 +732,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "User denied the device authorization request",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: "expired",
@@ -743,7 +743,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "Device authorization expired",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: "error",
@@ -754,7 +754,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "Synthetic device authorization error",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: "invalid-grant",
@@ -765,7 +765,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "Unknown device authorization code",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
         authClient: oauthClient,
         deviceCode: startResult.deviceCode,
@@ -896,7 +896,7 @@ describe("connector grant provider capability checks", () => {
     }
 
     await expect(
-      startConnectorOAuthDeviceAuth({
+      startConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
       }),
@@ -911,21 +911,21 @@ describe("connector grant provider capability checks", () => {
     });
 
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
         deviceCode: "slow-down",
       }),
     ).resolves.toStrictEqual({ status: "slow_down" });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
         deviceCode: "denied",
@@ -936,7 +936,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "User denied Base44 access",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
         deviceCode: "expired",
@@ -947,7 +947,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "Base44 device authorization expired",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
         deviceCode: "temporarily-unavailable",
@@ -958,7 +958,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "Base44 is temporarily unavailable",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "base44",
         authClient: oauthClient,
         deviceCode: "base44-device-code",
@@ -1176,7 +1176,7 @@ describe("connector grant provider capability checks", () => {
     }
 
     await expect(
-      startConnectorOAuthDeviceAuth({
+      startConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
       }),
@@ -1190,14 +1190,14 @@ describe("connector grant provider capability checks", () => {
     });
 
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "pending",
       }),
     ).resolves.toStrictEqual({ status: "pending" });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "denied",
@@ -1208,7 +1208,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "User denied Slock access",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "expired",
@@ -1219,7 +1219,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "Slock device authorization expired",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "no-servers",
@@ -1230,7 +1230,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription: "No Slock servers found for this account",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "missing-refresh",
@@ -1240,7 +1240,7 @@ describe("connector grant provider capability checks", () => {
       error: "token_response_invalid",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "server-error",
@@ -1252,7 +1252,7 @@ describe("connector grant provider capability checks", () => {
         "Unable to load Slock account metadata after authorization.",
     });
     await expect(
-      pollConnectorOAuthDeviceAuth({
+      pollConnectorDeviceAuthorization({
         type: "slock",
         authClient: oauthClient,
         deviceCode: "userinfo-error",
@@ -1263,7 +1263,7 @@ describe("connector grant provider capability checks", () => {
       errorDescription:
         "Unable to load Slock account metadata after authorization.",
     });
-    const completeResult = await pollConnectorOAuthDeviceAuth({
+    const completeResult = await pollConnectorDeviceAuthorization({
       type: "slock",
       authClient: oauthClient,
       deviceCode: "slock-device-code",
@@ -1297,7 +1297,7 @@ describe("connector grant provider capability checks", () => {
       SLOCK_ACCESS_TOKEN_TTL_SECONDS,
     );
 
-    const malformedCompleteResult = await pollConnectorOAuthDeviceAuth({
+    const malformedCompleteResult = await pollConnectorDeviceAuthorization({
       type: "slock",
       authClient: oauthClient,
       deviceCode: "malformed-token",
@@ -1452,7 +1452,7 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         continue;
       }
 
-      const providerMetadata = getConnectorOAuthSecretMetadata(type);
+      const providerMetadata = getConnectorAuthProviderSecretMetadata(type);
       if (!providerMetadata) {
         throw new Error(`${type}: OAuth provider metadata is missing`);
       }

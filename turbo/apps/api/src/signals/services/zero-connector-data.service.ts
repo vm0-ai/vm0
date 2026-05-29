@@ -19,8 +19,8 @@ import {
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import {
-  getConnectorOAuthSecretMetadata,
-  revokeConnectorOAuthToken,
+  getConnectorAuthProviderSecretMetadata,
+  revokeConnectorAuthProviderAccessToken,
 } from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
@@ -515,7 +515,7 @@ async function loadPendingConnectorTokenRevoke(args: {
   readonly signal: AbortSignal;
 }): Promise<PendingConnectorTokenRevoke | null> {
   const connectorType = args.type;
-  const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
+  const secretMetadata = getConnectorAuthProviderSecretMetadata(connectorType);
   const accessTokenName = secretMetadata.accessSecretName;
 
   const [accessTokenSecret] = await args.db
@@ -558,7 +558,7 @@ async function revokePendingConnectorToken(args: {
 
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
-    revokeConnectorOAuthToken({
+    revokeConnectorAuthProviderAccessToken({
       type: args.pending.type,
       authClient,
       loadAccessToken: () => {
@@ -1475,7 +1475,7 @@ export const upsertOAuthConnector$ = command(
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
-    const secretMetadata = getConnectorOAuthSecretMetadata(args.type);
+    const secretMetadata = getConnectorAuthProviderSecretMetadata(args.type);
     const tokenExpiresAt = connectorTokenExpiresAt({
       isRefreshable: secretMetadata.isRefreshable,
       expiresIn: args.expiresIn,

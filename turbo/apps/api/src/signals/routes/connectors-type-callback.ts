@@ -14,8 +14,8 @@ import {
   type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 import {
-  exchangeConnectorOAuthCode,
-  getConnectorOAuthSecretMetadata,
+  exchangeConnectorAuthCode,
+  getConnectorAuthProviderSecretMetadata,
   type OAuthTokenResult,
 } from "@vm0/connectors/auth-providers";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -190,7 +190,7 @@ async function exchangeTokenForConnector(args: {
     throw new Error(`${args.connectorType} OAuth not configured`);
   }
 
-  return await exchangeConnectorOAuthCode({
+  return await exchangeConnectorAuthCode({
     type: args.connectorType,
     authClient,
     code: args.code,
@@ -398,7 +398,9 @@ const completeOAuthCallback$ = command(
     });
     signal.throwIfAborted();
 
-    const secretMetadata = getConnectorOAuthSecretMetadata(args.connectorType);
+    const secretMetadata = getConnectorAuthProviderSecretMetadata(
+      args.connectorType,
+    );
     const result = await set(
       upsertOAuthConnector$,
       {

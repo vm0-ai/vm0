@@ -10,7 +10,7 @@ import {
   isStaticConfidentialConnectorAuthClient,
   type StaticConfidentialConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
-import { exchangeConnectorOAuthCode } from "@vm0/connectors/auth-providers";
+import { exchangeConnectorAuthCode } from "@vm0/connectors/auth-providers";
 import {
   exchangeGitHubCode,
   fetchGitHubUserInfo,
@@ -738,7 +738,7 @@ const callbackGithubUserOauth$ = command(
 
     const origin = getOAuthWebOrigin(request);
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
-    const token = await exchangeConnectorOAuthCode({
+    const token = await exchangeConnectorAuthCode({
       type: "github",
       authClient,
       code: query.code,

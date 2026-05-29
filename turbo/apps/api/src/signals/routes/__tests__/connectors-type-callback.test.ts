@@ -5,7 +5,7 @@ import type {
   ConnectorAuthClientConfig,
 } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
-import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
+import { getConnectorAuthProviderSecretMetadata } from "@vm0/connectors/auth-providers";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -2222,7 +2222,9 @@ describe("GET /api/connectors/:type/callback", () => {
         needsReconnect: false,
       });
 
-      const secretMetadata = getConnectorOAuthSecretMetadata(providerCase.type);
+      const secretMetadata = getConnectorAuthProviderSecretMetadata(
+        providerCase.type,
+      );
       await expect(
         findDecryptedSecret({
           orgId,

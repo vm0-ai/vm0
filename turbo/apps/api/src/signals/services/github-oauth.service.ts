@@ -8,7 +8,7 @@ import {
 
 import { and, eq } from "drizzle-orm";
 import {
-  buildConnectorOAuthAuthUrl,
+  buildConnectorAuthCodeAuthorizationUrl,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 import {
@@ -382,7 +382,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/github/callback`;
   const authResult = normalizeAuthUrlResult(
-    await buildConnectorOAuthAuthUrl({
+    await buildConnectorAuthCodeAuthorizationUrl({
       type: "github",
       authClient,
       redirectUri,
