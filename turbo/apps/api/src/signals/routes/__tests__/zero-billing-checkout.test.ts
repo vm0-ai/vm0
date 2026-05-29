@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -37,7 +38,7 @@ function setZeroPrice(): void {
 }
 
 function currentSecond(): number {
-  return Math.floor(Date.now() / 1000);
+  return Math.floor(now() / 1000);
 }
 
 function zeroToken(args: {

@@ -6,6 +6,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { now } from "../../../lib/time";
 import {
   deleteBillingStatusOrg$,
   seedBillingStatusOrg$,
@@ -23,7 +24,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 function currentSecond(): number {
-  return Math.floor(Date.now() / 1000);
+  return Math.floor(now() / 1000);
 }
 
 function zeroToken(args: {
