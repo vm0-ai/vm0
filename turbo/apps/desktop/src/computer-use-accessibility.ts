@@ -164,6 +164,7 @@ export interface ComputerUseCommandFailure {
       | "permission_denied"
       | "accessibility_unavailable"
       | "element_action_unsupported"
+      | "element_not_editable"
       | "window_unavailable"
       | "screen_recording_unavailable"
       | "app_not_found"

@@ -409,6 +409,10 @@ describe("computer use native backend", () => {
     ["app_not_found", "Unable to open Things: Unable to find application"],
     ["app_open_failed", "Unable to open Things"],
     ["element_action_unsupported", "Element does not support a primary click"],
+    [
+      "element_not_editable",
+      "The focused element in Things is not editable. Click into a text field or editable area before typing.",
+    ],
     ["window_unavailable", "Unable to resolve a background window target"],
   ])("preserves %s helper failures", async (code, message) => {
     const helper = await createHelper({

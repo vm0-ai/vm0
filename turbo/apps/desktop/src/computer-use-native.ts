@@ -169,6 +169,7 @@ function responseErrorCode(value: unknown): ComputerUseNativeErrorCode {
     value === "permission_denied" ||
     value === "accessibility_unavailable" ||
     value === "element_action_unsupported" ||
+    value === "element_not_editable" ||
     value === "window_unavailable" ||
     value === "screen_recording_unavailable" ||
     value === "app_not_found" ||

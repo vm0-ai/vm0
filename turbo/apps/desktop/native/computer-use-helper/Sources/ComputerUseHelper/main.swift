@@ -4474,11 +4474,41 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
     }
 }
 
+// type-text dispatches synthesized keystrokes to whatever element currently holds
+// keyboard focus in the target app. When that element is not editable (for example a
+// table or list, as in Things on launch) the keystrokes are consumed as navigation
+// instead of being entered as text, so the input silently disappears. Resolve the
+// focused element up front and refuse with a clear error so the caller knows to focus
+// an editable field before typing.
+func ensureFocusedElementEditable(appName: String) throws {
+    let root = try appElement(named: appName)
+    guard let focused = axElementValue(attribute(root, kAXFocusedUIElementAttribute as CFString)) else {
+        throw HelperFailure(
+            code: "element_not_editable",
+            message:
+                "No element in \(appName) currently has keyboard focus. "
+                + "Click into a text field or editable area before typing."
+        )
+    }
+    guard attributeIsSettable(focused, kAXValueAttribute as CFString) == true else {
+        let roleSuffix = role(focused).map { focusedRole in
+            " The focused element role is \(focusedRole)."
+        } ?? ""
+        throw HelperFailure(
+            code: "element_not_editable",
+            message:
+                "The focused element in \(appName) is not editable.\(roleSuffix) "
+                + "Click into a text field or editable area before typing."
+        )
+    }
+}
+
 func handleTypeText(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
     let policy = try foregroundRecoveryPolicy(request)
     let snapshotId = optionalString(request, "snapshotId")
+    try ensureFocusedElementEditable(appName: appName)
     return try performBackgroundTextInput(
         appName: appName,
         inputText: inputText,

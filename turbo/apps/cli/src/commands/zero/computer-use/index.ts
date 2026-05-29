@@ -83,8 +83,11 @@ Notes:
   Write commands are sent to the connected Desktop host and may wait for local
   approval before they run. Coordinate fallbacks use screenshot coordinates from
   get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
-  type-text sends literal keyboard input to the target app's current focus. Use
-  set-value when you need deterministic accessibility value assignment.
+  type-text sends literal keyboard input to the target app's current focus. It
+  first verifies the focused element is editable and fails with
+  element_not_editable when it is not (for example a focused table or list), so
+  click into a text field before typing. Use set-value when you need
+  deterministic accessibility value assignment.
   press-key accepts xdotool-style names such as shift+semicolon, Control_L+J,
   ctrl+alt+n, and BackSpace, plus existing macOS-style forms such as Command+L.
   type-text and press-key accept the same --snapshot-id as the element actions:
