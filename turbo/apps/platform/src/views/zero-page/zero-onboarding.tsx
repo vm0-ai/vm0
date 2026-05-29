@@ -17,6 +17,10 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroWorkspaceName$,
   setZeroWorkspaceName$,
+  zeroSelectedRole$,
+  setZeroRole$,
+  trialGalleryIndex$,
+  setTrialGalleryIndex$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -52,12 +56,19 @@ import {
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  IconBriefcase,
+  IconChartLine,
   IconCheck,
   IconCircleCheck,
   IconCircleCheckFilled,
+  IconCode,
   IconLoader,
+  IconMessageCircle,
   IconSearch,
+  IconSettings,
+  IconTarget,
 } from "@tabler/icons-react";
+import type { ComponentType } from "react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
@@ -483,24 +494,192 @@ function TrialStepContent() {
   );
 }
 
-/** Left-panel illustration for step 4 — Zero avatar + trial framing,
- *  matching the rest of the onboarding steps. */
-function OnboardingTrialPanel() {
+// ---------------------------------------------------------------------------
+// Trial step — left-panel gallery (step 4)
+//
+// Cycles through three sample artifacts Zero can produce so the user sees
+// concrete output before committing to the trial. Dot indicators below the
+// preview switch between use case, illustration, and website output.
+// ---------------------------------------------------------------------------
+
+type TrialGalleryItem = {
+  readonly id: string;
+  readonly label: string;
+  readonly title: string;
+  readonly render: () => React.ReactNode;
+};
+
+function UseCasePreview() {
   return (
-    <>
-      <img
-        src={zeroAnimatedSrc}
-        alt=""
-        role="presentation"
-        className="h-24 w-24 object-contain mb-7"
-      />
-      <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
-        7 days of Pro, on us
-      </h3>
-      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
-        Full access while you explore. This is what your agent will do for you.
+    <div className="zero-border rounded-2xl bg-background overflow-hidden">
+      <div className="h-24 bg-gradient-to-br from-primary/15 via-primary/5 to-muted/40 relative">
+        <div className="absolute bottom-3 left-4 right-4 flex items-center gap-2">
+          <span className="zero-badge rounded-full px-2 py-0.5 text-[10px] text-foreground">
+            Use case
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            5 min read
+          </span>
+        </div>
+      </div>
+      <div className="px-4 py-4 flex flex-col gap-2.5">
+        <p className="text-[13px] font-semibold text-foreground leading-snug">
+          How a 5-person startup ships their weekly newsletter in 20 minutes
+        </p>
+        <div className="flex flex-col gap-1.5 mt-1">
+          <span className="h-1.5 rounded-full bg-muted/60 w-full" />
+          <span className="h-1.5 rounded-full bg-muted/60 w-[92%]" />
+          <span className="h-1.5 rounded-full bg-muted/60 w-[78%]" />
+        </div>
+        <div className="flex items-center gap-2 mt-3">
+          <span className="h-6 w-6 rounded-full bg-muted/60" />
+          <span className="flex flex-col gap-1">
+            <span className="h-1.5 rounded-full bg-muted/60 w-16" />
+            <span className="h-1 rounded-full bg-muted/40 w-10" />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IllustrationPreview() {
+  const swatches: readonly string[] = [
+    "bg-primary/20",
+    "bg-emerald-200",
+    "bg-amber-200",
+    "bg-sky-200",
+    "bg-rose-200",
+    "bg-violet-200",
+  ];
+  return (
+    <div className="zero-border rounded-2xl bg-background overflow-hidden">
+      <div className="px-4 pt-4 pb-3 flex items-center justify-between">
+        <span className="text-[11px] font-medium text-foreground">
+          Illustrations
+        </span>
+        <span className="text-[10px] text-muted-foreground">6 styles</span>
+      </div>
+      <div className="px-4 pb-4 grid grid-cols-3 gap-2">
+        {swatches.map((tone) => {
+          return (
+            <div
+              key={tone}
+              className={`relative aspect-square rounded-lg ${tone} overflow-hidden`}
+            >
+              <div className="absolute inset-2 rounded-md bg-foreground/[0.04]" />
+              <div className="absolute bottom-2 left-2 h-2 w-2 rounded-full bg-foreground/30" />
+              <div className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-foreground/20" />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WebsitePreview() {
+  return (
+    <div className="zero-border rounded-2xl bg-background overflow-hidden">
+      <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border/40 bg-muted/30">
+        <span className="h-2 w-2 rounded-full bg-foreground/15" />
+        <span className="h-2 w-2 rounded-full bg-foreground/15" />
+        <span className="h-2 w-2 rounded-full bg-foreground/15" />
+        <span className="ml-2 h-3 flex-1 rounded-full bg-background/80" />
+      </div>
+      <div className="px-4 py-5 flex flex-col items-center gap-2.5">
+        <span className="h-2 w-16 rounded-full bg-muted/60" />
+        <p className="text-[13px] font-semibold text-foreground text-center leading-snug max-w-[200px]">
+          Calm AI for teams that ship.
+        </p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="h-6 rounded-md bg-primary px-3 flex items-center text-[10px] text-primary-foreground font-medium">
+            Try it free
+          </span>
+          <span className="h-6 rounded-md zero-border px-3 flex items-center text-[10px] text-foreground">
+            See how
+          </span>
+        </div>
+      </div>
+      <div className="px-4 pb-4 grid grid-cols-3 gap-2">
+        {[0, 1, 2].map((i) => {
+          return (
+            <div
+              key={i}
+              className="rounded-lg bg-muted/30 px-2 py-2.5 flex flex-col gap-1.5"
+            >
+              <span className="h-3 w-3 rounded-full bg-primary/40" />
+              <span className="h-1.5 rounded-full bg-muted/60 w-full" />
+              <span className="h-1.5 rounded-full bg-muted/60 w-3/4" />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
+  {
+    id: "use-case",
+    label: "Use case",
+    title: "Real workflows your team can pick up today",
+    render: UseCasePreview,
+  },
+  {
+    id: "illustration",
+    label: "Illustration",
+    title: "Editorial visuals that match your brand",
+    render: IllustrationPreview,
+  },
+  {
+    id: "website",
+    label: "Website",
+    title: "Landing pages, generated in a single prompt",
+    render: WebsitePreview,
+  },
+];
+
+function OnboardingTrialPanel() {
+  const rawIndex = useGet(trialGalleryIndex$);
+  const setIndex = useSet(setTrialGalleryIndex$);
+  const activeIndex =
+    ((rawIndex % TRIAL_GALLERY_ITEMS.length) + TRIAL_GALLERY_ITEMS.length) %
+    TRIAL_GALLERY_ITEMS.length;
+  const activeItem = TRIAL_GALLERY_ITEMS[activeIndex];
+
+  return (
+    <div
+      data-testid="onboarding-trial-gallery"
+      className="w-full max-w-[320px] flex flex-col items-center"
+    >
+      <div className="w-full">{activeItem.render()}</div>
+      <p className="mt-6 text-xs font-medium text-muted-foreground">
+        {activeItem.label}
       </p>
-    </>
+      <h3 className="mt-2 text-base font-semibold text-foreground text-center leading-snug max-w-[280px]">
+        {activeItem.title}
+      </h3>
+      <div className="mt-5 flex items-center gap-1.5">
+        {TRIAL_GALLERY_ITEMS.map((item, i) => {
+          const isActive = i === activeIndex;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-label={`Show ${item.label} preview`}
+              data-testid={`onboarding-trial-gallery-dot-${item.id}`}
+              onClick={() => {
+                setIndex(i);
+              }}
+              className={`h-1.5 rounded-full transition-all ${
+                isActive ? "w-6 bg-foreground" : "w-1.5 bg-foreground/20"
+              } hover:bg-foreground/40`}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -972,9 +1151,101 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
 // Workspace step content (step 1)
 // ---------------------------------------------------------------------------
 
+type RoleOption = {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly icon: ComponentType<{ size?: number; stroke?: number }>;
+};
+
+const ROLE_OPTIONS: readonly RoleOption[] = [
+  {
+    id: "founder",
+    title: "Founder or business owner",
+    description: "I run the business and make decisions",
+    icon: IconBriefcase,
+  },
+  {
+    id: "sales-marketing",
+    title: "Sales and marketing",
+    description: "Lead gen, outreach, content",
+    icon: IconChartLine,
+  },
+  {
+    id: "ops-support",
+    title: "Operations and support",
+    description: "Onboarding, workflows, CS",
+    icon: IconSettings,
+  },
+  {
+    id: "engineer",
+    title: "Engineer or developer",
+    description: "I write code professionally",
+    icon: IconCode,
+  },
+  {
+    id: "coach-consultant",
+    title: "Coach or consultant",
+    description: "I serve clients",
+    icon: IconTarget,
+  },
+  {
+    id: "other",
+    title: "Something else",
+    description: "Tell us more next step",
+    icon: IconMessageCircle,
+  },
+];
+
+function RoleCard({
+  option,
+  isSelected,
+  onClick,
+}: {
+  option: RoleOption;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const Icon = option.icon;
+  return (
+    <button
+      type="button"
+      data-testid={`onboarding-role-${option.id}`}
+      onClick={onClick}
+      aria-pressed={isSelected}
+      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none text-left w-full ${
+        isSelected
+          ? "border-[1.5px] border-primary bg-primary/[0.04]"
+          : "zero-border bg-background hover:bg-muted/30 cursor-pointer"
+      }`}
+    >
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg overflow-hidden ${
+          isSelected ? "bg-primary/10 text-primary" : "bg-muted/40"
+        }`}
+      >
+        <Icon size={18} stroke={1.75} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-foreground">
+          {option.title}
+        </span>
+        <span className="block text-xs text-muted-foreground mt-0.5">
+          {option.description}
+        </span>
+      </span>
+      {isSelected && (
+        <IconCircleCheckFilled className="h-5 w-5 shrink-0 text-primary" />
+      )}
+    </button>
+  );
+}
+
 function WorkspaceStepContent() {
   const workspaceName = useGet(zeroWorkspaceName$);
   const setWorkspaceName = useSet(setZeroWorkspaceName$);
+  const selectedRole = useGet(zeroSelectedRole$);
+  const setRole = useSet(setZeroRole$);
   const stepNext = useSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
 
@@ -1005,13 +1276,41 @@ function WorkspaceStepContent() {
             return setWorkspaceName(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && workspaceName.trim()) {
+            if (
+              e.key === "Enter" &&
+              workspaceName.trim() &&
+              selectedRole
+            ) {
               detach(stepNext(pageSignal), Reason.DomCallback);
             }
           }}
           className="h-10 rounded-lg"
           autoFocus
         />
+      </div>
+      <div className="w-full mt-8">
+        <p className="block text-sm font-medium text-foreground mb-3">
+          What best describes your role
+        </p>
+        <div
+          data-testid="onboarding-role-list"
+          className="flex flex-col gap-2.5"
+        >
+          {ROLE_OPTIONS.map((option) => {
+            return (
+              <RoleCard
+                key={option.id}
+                option={option}
+                isSelected={selectedRole === option.id}
+                onClick={() => {
+                  return setRole(
+                    selectedRole === option.id ? null : option.id,
+                  );
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </>
   );

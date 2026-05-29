@@ -51,6 +51,8 @@ const initialOnboardingStep$ = computed(async (get) => {
 
 const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
+const internalSelectedRole$ = state<string | null>("founder");
+const internalTrialGalleryIndex$ = state(0);
 
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
@@ -108,6 +110,14 @@ export const zeroWorkspaceName$ = computed((get) => {
   return get(internalWorkspaceName$);
 });
 
+export const zeroSelectedRole$ = computed((get) => {
+  return get(internalSelectedRole$);
+});
+
+export const trialGalleryIndex$ = computed((get) => {
+  return get(internalTrialGalleryIndex$);
+});
+
 export const zeroSelectedConnectors$ = computed((get) => {
   return get(internalSelectedConnectors$);
 });
@@ -126,6 +136,14 @@ export const setZeroAgentName$ = command(({ set }, name: string) => {
 
 export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
   set(internalWorkspaceName$, name);
+});
+
+export const setZeroRole$ = command(({ set }, role: string | null) => {
+  set(internalSelectedRole$, role);
+});
+
+export const setTrialGalleryIndex$ = command(({ set }, index: number) => {
+  set(internalTrialGalleryIndex$, index);
 });
 
 const internalConnectorSearch$ = state("");
@@ -163,6 +181,8 @@ export const resetOnboardingStep$ = command(({ set }) => {
   set(internalUseCaseMode$, false);
   set(internalPromptDraft$, "");
   set(internalEagerInitialized$, false);
+  set(internalSelectedRole$, "founder");
+  set(internalTrialGalleryIndex$, 0);
 });
 
 /**
@@ -174,6 +194,7 @@ export const completeZeroOnboarding$ = command(
     const displayName = get(internalAgentName$);
     const workspaceName = get(internalWorkspaceName$);
     const selectedConnectors = get(internalSelectedConnectors$);
+    const selectedRole = get(internalSelectedRole$);
     const createClient = get(zeroClient$);
 
     const setupClient = createClient(onboardingSetupContract);
@@ -187,6 +208,7 @@ export const completeZeroOnboarding$ = command(
           selectedConnectors:
             selectedConnectors.length > 0 ? selectedConnectors : undefined,
           timezone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
+          role: selectedRole ?? undefined,
         },
         fetchOptions: { signal },
       }),

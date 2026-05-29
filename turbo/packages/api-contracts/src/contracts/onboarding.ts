@@ -55,6 +55,7 @@ export const onboardingSetupContract = c.router({
       avatarUrl: z.string().optional(),
       selectedConnectors: z.array(connectorTypeSchema).optional(),
       timezone: z.string().optional(),
+      role: z.string().optional(),
     }),
     responses: {
       200: z.object({ agentId: z.string() }),
