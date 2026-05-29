@@ -64,9 +64,11 @@ _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 
 
 def _has_unsafe_url_codepoint(value: str) -> bool:
-    return any(
-        ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value
-    ) or value.startswith(" ")
+    return any(ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in value)
+
+
+def _has_unsafe_runtime_url_syntax(value: str) -> bool:
+    return _has_unsafe_url_codepoint(value) or any(char in _RAW_WHITESPACE_CHARS for char in value)
 
 
 def _has_base_url_params(base: str) -> bool:
@@ -288,7 +290,7 @@ def _split_base_match_url(
     allow_query_fragment: bool = True,
     allow_malformed_authority: bool = False,
     allow_host_params: bool = False,
-    allow_unsafe_url_codepoints: bool = False,
+    allow_unsafe_runtime_url_syntax: bool = False,
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
@@ -298,7 +300,7 @@ def _split_base_match_url(
     callers can apply base-path prefix semantics without accidentally comparing
     query strings.
     """
-    if not allow_unsafe_url_codepoints and _has_unsafe_url_codepoint(value):
+    if not allow_unsafe_runtime_url_syntax and _has_unsafe_runtime_url_syntax(value):
         return None
 
     try:
@@ -1154,7 +1156,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         base,
         allow_malformed_authority=True,
         allow_host_params=has_params,
-        allow_unsafe_url_codepoints=True,
+        allow_unsafe_runtime_url_syntax=True,
     )
     if parts is None:
         return None

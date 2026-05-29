@@ -99,13 +99,15 @@ class TestCompiledFirewallMatching:
             "https://api.example.com/a\nb",
             "https://api.example.com/a\rb",
             "https://api.example.com/a\x0cb",
+            "https://api.example.com/a b",
+            "https://api.example.com/ab ",
             "https://api.example.com/a\x7fb",
             " https://api.example.com/ab",
             "\x00https://api.example.com/ab",
             "\x1fhttps://api.example.com/ab",
         ],
     )
-    def test_runtime_url_controls_or_leading_space_are_not_matched(self, url):
+    def test_runtime_url_raw_whitespace_or_controls_are_not_matched(self, url):
         fws = wrap_firewalls(
             [
                 {
@@ -119,7 +121,7 @@ class TestCompiledFirewallMatching:
             name="example",
         )
         compiled_firewalls = self._compiled(fws)
-        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "allow"}}
 
         result = matching.match_compiled_firewall_request(
             url,
@@ -2041,12 +2043,10 @@ class TestCompiledFirewallMatching:
     @pytest.mark.parametrize(
         ("base", "url"),
         [
-            ("https://api.github.com/repos foo", "https://api.github.com/repos foo/org/repo"),
             ("https://api.github.com/re\tpos", "https://api.github.com/repos/org/repo"),
             ("\x00https://api.github.com/repos", "https://api.github.com/repos/org/repo"),
             ("https://api.github.com/repos\\foo", "https://api.github.com/repos\\foo/org/repo"),
             ("ftp://api.github.com/repos", "ftp://api.github.com/repos/org/repo"),
-            ("https://{sub}.github.com/repos {owner}", "https://api.github.com/repos org/repo"),
             ("https://{sub}.github.com/repos\\{owner}", "https://api.github.com/repos\\org/repo"),
             ("ws://{sub}.github.com/repos/{owner}", "ws://api.github.com/repos/org/repo"),
         ],
