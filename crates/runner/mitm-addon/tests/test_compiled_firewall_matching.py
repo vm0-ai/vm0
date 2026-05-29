@@ -404,6 +404,28 @@ class TestCompiledFirewallMatching:
         )
         assert compiled is None
 
+    def test_compiled_rejects_request_url_with_invalid_authority_host(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://exa mple.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://exa mple.com/items",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert result is None
+
     @pytest.mark.parametrize(
         "base",
         [

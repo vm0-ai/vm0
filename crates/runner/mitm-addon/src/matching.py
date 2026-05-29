@@ -21,6 +21,8 @@ _MULTI_PARAM_BRACE_COUNT = 2
 # yields exactly two tokens.  Rows that fail this shape are malformed.
 _RULE_TOKEN_COUNT = 2
 _MIN_HOST_SEGMENTS = 2
+_ASCII_CONTROL_MAX = 0x20
+_ASCII_DELETE = 0x7F
 _VALID_RULE_METHODS = frozenset(
     (
         "GET",
@@ -38,6 +40,13 @@ _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 
 def _has_base_url_params(base: str) -> bool:
     return "{" in base and "}" in base
+
+
+def _has_invalid_authority_host_chars(host: str) -> bool:
+    return any(
+        char.isspace() or ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
+        for char in host
+    )
 
 
 class _BaseUrlParts(NamedTuple):
@@ -191,6 +200,8 @@ def _normalize_authority_host(host: str) -> tuple[str, bool]:
     normalized = host.rstrip(".")
     if not normalized:
         return normalized, True
+    if _has_invalid_authority_host_chars(normalized):
+        return normalized.lower(), True
     if ":" in normalized:
         return f"[{normalized}]", False
     try:
