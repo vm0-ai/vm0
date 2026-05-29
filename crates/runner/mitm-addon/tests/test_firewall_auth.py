@@ -1414,7 +1414,6 @@ class TestFetchFirewallHeaders:
         ("status", "reason", "code"),
         [
             (400, "Bad Request", "BAD_REQUEST"),
-            (403, "Forbidden", "FORBIDDEN"),
         ],
     )
     def test_unrecognized_error_envelope_reraises_http_error(
@@ -1440,6 +1439,35 @@ class TestFetchFirewallHeaders:
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         assert exc_info.value is http_error
+
+    def test_current_forbidden_error_raises_custom_error(self):
+        """Current API FORBIDDEN responses should keep the original status and code."""
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Invalid model-provider secret owner",
+                    "code": "FORBIDDEN",
+                }
+            }
+        ).encode()
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            403,
+            "Forbidden",
+            error_body,
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value.status == 403
+        assert exc_info.value.code == "FORBIDDEN"
+        assert exc_info.value.message == "Invalid model-provider secret owner"
 
     def test_current_token_refresh_failed_error_raises_custom_error(self):
         """Current API TOKEN_REFRESH_FAILED responses should not collapse to auth_failed."""
