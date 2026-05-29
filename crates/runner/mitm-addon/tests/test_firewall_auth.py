@@ -1410,6 +1410,27 @@ class TestFetchFirewallHeaders:
 
         assert exc_info.value is http_error
 
+    def test_unrecognized_error_envelope_reraises_http_error(self):
+        error_body = json.dumps(
+            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
+        ).encode()
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            400,
+            "Bad Request",
+            error_body,
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(urllib.error.HTTPError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value is http_error
+
     def test_http_error_body_read_failure_reraises_http_error(self):
         http_error = urllib.error.HTTPError(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
@@ -1502,7 +1523,14 @@ class TestFetchFirewallHeaders:
         ("error_body", "expected_exception"),
         [
             (
-                json.dumps({"error": {"message": "Bad request", "code": "BAD_REQUEST"}}).encode(),
+                json.dumps(
+                    {
+                        "error": {
+                            "message": "OAuth provider auth service is temporarily unavailable.",
+                            "code": "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+                        }
+                    }
+                ).encode(),
                 auth.FirewallAuthApiError,
             ),
             (b"{}", urllib.error.HTTPError),

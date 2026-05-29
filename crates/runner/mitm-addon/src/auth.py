@@ -90,6 +90,17 @@ class FirewallAuthApiError(Exception):
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
+_STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
+    {
+        "FORBIDDEN",
+        "TOKEN_ACCESS_RESOLUTION_FAILED",
+        "OAUTH_RECONNECT_REQUIRED",
+        "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+        "OAUTH_PROVIDER_AUTH_REJECTED",
+        "OAUTH_PROVIDER_RESPONSE_INVALID",
+        "FIREWALL_AUTH_INTERNAL_ERROR",
+    }
+)
 
 
 @dataclass
@@ -332,6 +343,8 @@ def _firewall_auth_api_error_from_envelope(
     code = _string_field(error_info, "code")
     message = _string_field(error_info, "message")
     if code is None or message is None:
+        return None
+    if code not in _STRUCTURED_FIREWALL_AUTH_ERROR_CODES:
         return None
     return FirewallAuthApiError(
         status=status,
