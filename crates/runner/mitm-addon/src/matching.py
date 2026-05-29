@@ -892,6 +892,14 @@ def _match_compiled_path_prefix(
 
         if isinstance(parsed, SegmentError):
             return None
+        if parsed.greedy == "+":
+            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
+                return None
+            params[parsed.name] = "/".join(path_segs[pi:])
+            return params, len(path_segs)
+        if parsed.greedy == "*":
+            params[parsed.name] = "/".join(path_segs[pi:])
+            return params, len(path_segs)
         if pi >= len(path_segs):
             return None
 
@@ -991,9 +999,10 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
             greedy_allowed_index=len(raw_host_segments) - 1,
         )
         host_segments = compiled_host
+        raw_path_segments = tuple(_split_path_segments(parts.path))
         compiled_path, path_parse_malformed = _compile_base_segments_for_match(
-            tuple(_split_path_segments(parts.path)),
-            greedy_allowed_index=None,
+            raw_path_segments,
+            greedy_allowed_index=len(raw_path_segments) - 1,
         )
         path_segments = compiled_path
         param_parse_malformed = host_parse_malformed or path_parse_malformed

@@ -1663,6 +1663,7 @@ class TestCompiledFirewallMatching:
             ("https://api-{sub+}.example.com", "https://api-us.example.com/repos/org/repo"),
             ("https://api.example.com/{path+}", "https://api.example.com/root/repos/org/repo"),
             ("https://api.example.com/{path*}", "https://api.example.com/root/repos/org/repo"),
+            ("https://api.example.com/{path*}", "https://api.example.com/"),
             ("https://api.example.com/{}", "https://api.example.com/acme/repos/org/repo"),
             ("https://api.example.com/{+}", "https://api.example.com/acme/repos/org/repo"),
             (
@@ -1708,6 +1709,72 @@ class TestCompiledFirewallMatching:
         assert unmatched is None
         assert isinstance(matched, matching.FirewallBlock)
         assert matched.permissions == ()
+        assert matched.reason == "malformed_firewall_config"
+
+    def test_malformed_base_path_plus_requires_segment_scope(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/{path+}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        root = matching.match_compiled_firewall_request(
+            "https://api.example.com/",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            "https://api.example.com/root/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert root is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.reason == "malformed_firewall_config"
+
+    def test_malformed_non_last_base_path_greedy_respects_following_literals(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/{path*}/admin",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        unrelated = matching.match_compiled_firewall_request(
+            "https://api.example.com/public/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            "https://api.example.com/public/admin/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
         assert matched.reason == "malformed_firewall_config"
 
     @pytest.mark.parametrize(
