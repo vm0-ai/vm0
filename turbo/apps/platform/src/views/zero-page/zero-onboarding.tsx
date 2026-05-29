@@ -595,7 +595,7 @@ function TrialWorkflowSlide() {
       <img
         src={trialWorkflowSrc}
         alt="Workflow preview"
-        className="block min-h-0 max-w-[78%] max-h-full object-contain rounded-xl"
+        className="block min-h-0 min-w-0 max-w-full max-h-full object-contain rounded-xl"
       />
     </div>
   );
@@ -644,7 +644,7 @@ function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col gap-5 w-full max-w-[560px] items-center"
+      className="flex flex-col gap-5 w-full max-w-[560px] lg:max-w-[640px] xl:max-w-[760px] items-center"
     >
       <div className="aspect-[4/3] w-full rounded-2xl overflow-hidden">
         {activeIndex === 0 ? (
@@ -1039,7 +1039,7 @@ function OnboardingIllustrationPanel() {
         showChat
           ? "pt-[8%]"
           : showTrial
-            ? "justify-start pt-24"
+            ? "justify-start pt-24 xl:justify-center xl:pt-10"
             : "justify-center"
       }`}
     >
