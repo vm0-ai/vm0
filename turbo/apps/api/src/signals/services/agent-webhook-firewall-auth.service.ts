@@ -1303,7 +1303,7 @@ function referencedConnectorTypes(args: {
   return [...connectorTypes];
 }
 
-function hasUnavailableConnectorSource(args: {
+function hasUnavailableAccessSource(args: {
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
@@ -1319,16 +1319,23 @@ function hasUnavailableConnectorSource(args: {
     if (!connectorType) {
       return false;
     }
-    const sourceType = resolveRefreshMetadata(
+    const metadata = resolveRefreshMetadata(
       connectorType,
       args.secretConnectorMetadataMap?.[key],
-    ).sourceType;
+    );
+    if (metadata.sourceType === "model-provider") {
+      return (
+        modelProviderAccessSecretName({
+          key,
+          connectorType,
+          metadata,
+        }) === undefined
+      );
+    }
+
     const accessMetadata =
       args.connectorAccessByType.get(connectorType)?.accessMetadata;
-    return (
-      sourceType === "connector" &&
-      (!accessMetadata || !isSelectedAccessSecretKey(key, accessMetadata))
-    );
+    return !accessMetadata || !isSelectedAccessSecretKey(key, accessMetadata);
   });
 }
 
@@ -1393,7 +1400,7 @@ async function prepareFirewallAuthResolutionContext(args: {
     featureSwitchContext: args.featureSwitchContext,
   });
   if (
-    hasUnavailableConnectorSource({
+    hasUnavailableAccessSource({
       secretConnectorMap: args.body.secretConnectorMap,
       secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
       referencedKeys: referenced.secrets,

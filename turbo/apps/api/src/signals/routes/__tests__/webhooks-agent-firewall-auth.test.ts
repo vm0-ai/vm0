@@ -2267,6 +2267,49 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("rejects encrypted model-provider access secrets outside env bindings", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-chatgpt-token",
+      refreshToken: "current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            UNBOUND_TOKEN: "stale-unbound-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("UNBOUND_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            UNBOUND_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            UNBOUND_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
   it("rejects model-provider refresh metadata for another user before billable credit auth", async () => {
     const fixture = await track(seedFixture());
 
