@@ -66,46 +66,6 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
   });
 
-  it("should print JSON resource selection metadata when --json is provided", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "presentation",
-      "--prompt",
-      "JSON please",
-      "--site-slug",
-      "api-migration-plan",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      type: "generation-source-selection",
-      kind: "presentation",
-      prompt: "JSON please",
-      outputDir: "./generated/mockups/api-migration-plan",
-      site: "api-migration-plan",
-      hostCommand:
-        "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
-    });
-    expect(parsed.registryVersion).toEqual("v1");
-    expect(parsed.selection).toEqual(
-      expect.objectContaining({
-        candidates: expect.objectContaining({
-          skills: expect.arrayContaining([
-            expect.objectContaining({ id: "skill:article-magazine" }),
-          ]),
-          templates: expect.any(Array),
-          designSystems: expect.any(Array),
-        }),
-      }),
-    );
-    expect(parsed.instructions).toEqual(
-      expect.stringContaining("## Stage 2: Resolve Selected Resources"),
-    );
-  });
-
   it("should expose only base artifact flags plus slides in help", () => {
     let helpOutput = "";
     presentationCommand.configureOutput({
@@ -122,6 +82,7 @@ describe("zero generate presentation command", () => {
     expect(helpOutput).toContain("--design-system <id>");
     expect(helpOutput).toContain("--template <id>");
     expect(helpOutput).toContain("--slides <count>");
+    expect(helpOutput).not.toContain("--json");
     expect(helpOutput).not.toContain("--provider");
     expect(helpOutput).not.toContain("--all");
     expect(helpOutput).not.toContain("--images");

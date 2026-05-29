@@ -13,11 +13,10 @@ import { websiteCommand } from "./website";
 import { voiceCommand } from "./voice";
 import { createListerOnlyCommand } from "./lister-only";
 
-const audioCommand = createListerOnlyCommand({
-  name: "audio",
-  generationType: "audio",
-  description:
-    "List connectors that provide audio generation (alias of voice for non-speech audio)",
+const musicCommand = createListerOnlyCommand({
+  name: "music",
+  generationType: "music",
+  description: "List connectors that provide music generation",
 });
 
 const textCommand = createListerOnlyCommand({
@@ -47,6 +46,7 @@ function buildGenerateHelpText(): string {
     '  Generate video:        zero generate video --prompt "A cinematic city shot"',
     '  Generate site:         zero generate website --prompt "A launch site"',
     '  Generate speech:       zero generate voice --prompt "Hello"',
+    "  Show music choices:    zero generate music",
     "",
     "  Show image choices:    zero generate image",
     "  Show report choices:   zero generate report",
@@ -74,7 +74,7 @@ export const generateCommand = new Command()
   .addCommand(videoCommand)
   .addCommand(websiteCommand)
   .addCommand(voiceCommand)
-  .addCommand(audioCommand)
+  .addCommand(musicCommand)
   .addCommand(textCommand)
   .addCommand(codeCommand)
   .addCommand(documentCommand)

@@ -121,47 +121,6 @@ describe("zero generate website command", () => {
     expect(stderr).toContain("Unknown design system");
   });
 
-  it("should print JSON resource selection metadata when --json is provided", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "website",
-      "--prompt",
-      "observability launch site",
-      "--site-slug",
-      "clearpath-demo",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      type: "generation-source-selection",
-      kind: "website",
-      prompt: "observability launch site",
-      outputDir: "./generated/mockups/clearpath-demo",
-      site: "clearpath-demo",
-      hostCommand:
-        "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
-    });
-    expect(parsed.selection).toEqual(
-      expect.objectContaining({
-        candidates: expect.objectContaining({
-          skills: expect.any(Array),
-          templates: expect.arrayContaining([
-            expect.objectContaining({
-              id: "template:web-prototype-taste-editorial",
-            }),
-          ]),
-          designSystems: expect.any(Array),
-        }),
-      }),
-    );
-    expect(parsed.instructions).toEqual(
-      expect.stringContaining("## Stage 3: Author Artifact"),
-    );
-  });
-
   it("should expose the shared HTML artifact flags in help", () => {
     let helpOutput = "";
     websiteCommand.configureOutput({
@@ -177,6 +136,7 @@ describe("zero generate website command", () => {
     expect(helpOutput).toContain("--title <text>");
     expect(helpOutput).toContain("--design-system <id>");
     expect(helpOutput).toContain("--template <id>");
+    expect(helpOutput).not.toContain("--json");
     expect(helpOutput).not.toContain("--provider");
     expect(helpOutput).not.toContain("--all");
     expect(helpOutput).not.toContain("--images");

@@ -20,6 +20,7 @@ type BuiltInGenerationType =
   | "docs-design"
   | "image"
   | "mobile-app-design"
+  | "music"
   | "poster"
   | "presentation"
   | "report"
@@ -221,23 +222,6 @@ const GENERATION_CONTEXT: Partial<Record<GenerationType, GenerationContext>> = {
   },
 };
 
-const GENERATION_TYPE_ORDER: readonly GenerationType[] = [
-  "image",
-  "video",
-  "audio",
-  "voice",
-  "text",
-  "code",
-  "document",
-  "presentation",
-  "website",
-  "report",
-  "docs-design",
-  "poster",
-  "dashboard-design",
-  "mobile-app-design",
-];
-
 const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   audio: "Audio",
   code: "Code",
@@ -246,6 +230,7 @@ const GENERATION_TYPE_LABELS: Record<GenerationType, string> = {
   "docs-design": "Docs design",
   image: "Image",
   "mobile-app-design": "Mobile app design",
+  music: "Music",
   poster: "Poster",
   presentation: "Presentation",
   report: "Report",
@@ -266,7 +251,6 @@ type CandidateStatus =
 
 interface ListerOptions {
   all?: boolean;
-  json?: boolean;
 }
 
 interface GenerationCandidate {
@@ -285,6 +269,7 @@ function getConnectorGenerationType(
 ): ConnectorGenerationType | null {
   switch (generationType) {
     case "voice":
+    case "music":
       return "audio";
     case "dashboard-design":
     case "docs-design":
@@ -320,25 +305,6 @@ function getGenerationContext(
   generationType: GenerationType,
 ): GenerationContext | null {
   return GENERATION_CONTEXT[generationType] ?? null;
-}
-
-function getAvailableGenerationTypes(): GenerationType[] {
-  const available = new Set<ConnectorGenerationType>();
-  for (const type of CONNECTOR_TYPE_KEYS) {
-    for (const generationType of getConnectorGenerationTypes(type)) {
-      available.add(generationType);
-    }
-  }
-
-  return GENERATION_TYPE_ORDER.filter((type) => {
-    const connectorGenerationType = getConnectorGenerationType(type);
-    return (
-      getBuiltInCommand(type) !== null ||
-      getBuiltInProviders(type).length > 0 ||
-      (connectorGenerationType !== null &&
-        available.has(connectorGenerationType))
-    );
-  });
 }
 
 function getGenerationConnectors(
@@ -646,30 +612,6 @@ export async function runLister(
   const other = candidates.filter((candidate) => {
     return candidate.status !== "ready";
   });
-  const builtInProviders = getBuiltInProviders(generationType);
-
-  if (options.json) {
-    console.log(
-      JSON.stringify(
-        {
-          generationType,
-          connectorGenerationType,
-          availableTypes: getAvailableGenerationTypes(),
-          agentId: agentId ?? null,
-          choices: ready,
-          otherCandidates: other,
-          builtInCommand: getBuiltInCommand(generationType),
-          generationContext: getGenerationContext(generationType),
-          builtInProvider: builtInProviders[0] ?? null,
-          builtInProviders,
-        },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
-
   renderText({
     generationType,
     agentId,

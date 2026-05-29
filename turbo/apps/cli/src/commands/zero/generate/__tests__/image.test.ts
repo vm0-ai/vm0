@@ -285,41 +285,6 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("Provider: fal");
   });
 
-  it("should print JSON metadata when --json is provided", async () => {
-    server.use(
-      http.post(IMAGE_URL, () => {
-        return HttpResponse.json(IMAGE_RESULT);
-      }),
-    );
-
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "image",
-      "--skip-style",
-      "--prompt",
-      "JSON please",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      id: IMAGE_RESULT.id,
-      filename: IMAGE_RESULT.filename,
-      contentType: "image/png",
-      size: IMAGE_RESULT.size,
-      url: IMAGE_RESULT.url,
-      creditsCharged: 65,
-      model: IMAGE_RESULT.model,
-      provider: "fal",
-      imageSize: "1024x1024",
-      quality: "medium",
-      outputFormat: "png",
-      moderation: "auto",
-    });
-  });
-
   it("should print styled image resource selection instructions with --style", async () => {
     await generateCommand.parseAsync([
       "node",
@@ -342,75 +307,6 @@ describe("zero generate image command", () => {
     expect(stdout).toContain("vm0-ai/vm0-skills");
     expect(stdout).toContain("notion-illustration");
     expect(stdout).toContain("## Stage 3: Generate Image");
-  });
-
-  it("should lock the selected style in the JSON packet candidate slice", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "image",
-      "--style",
-      "image-style:notion-illustration",
-      "--prompt",
-      "Notion illustration of a product manager mapping a launch plan",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      type: "generation-source-selection",
-      kind: "image",
-      prompt: "Notion illustration of a product manager mapping a launch plan",
-      outputDir: "./generated/images",
-    });
-    const selection = parsed.selection as {
-      candidates: { imageStyles: { id: string }[] };
-    };
-    expect(selection.candidates.imageStyles).toHaveLength(1);
-    expect(selection.candidates.imageStyles[0]).toEqual(
-      expect.objectContaining({
-        id: "image-style:notion-illustration",
-        source: {
-          repo: "vm0-ai/vm0-skills",
-          ref: "main",
-          path: "illustration-template/notion-illustration",
-        },
-      }),
-    );
-    expect(parsed.instructions).toEqual(
-      expect.stringContaining("## Stage 2: Resolve Selected Resources"),
-    );
-  });
-
-  it("should lock vm0 illustration when selected via --style", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "image",
-      "--style",
-      "image-style:vm0-illustration",
-      "--prompt",
-      "vm0 style in-app illustration for an empty billing state",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    const selection = parsed.selection as {
-      candidates: { imageStyles: { id: string }[] };
-    };
-    expect(selection.candidates.imageStyles).toHaveLength(1);
-    expect(selection.candidates.imageStyles[0]).toEqual(
-      expect.objectContaining({
-        id: "image-style:vm0-illustration",
-        source: {
-          repo: "vm0-ai/vm0-skills",
-          ref: "main",
-          path: "illustration-template/vm0-illustration",
-        },
-      }),
-    );
   });
 
   it("should fail with style listing when neither --style nor --skip-style is provided", async () => {
@@ -549,6 +445,7 @@ describe("zero generate image command", () => {
     expect(helpOutput).toContain("Nano Banana 2 accepts up to 14");
     expect(helpOutput).toContain("--style <id>");
     expect(helpOutput).toContain("--skip-style");
+    expect(helpOutput).not.toContain("--json");
     expect(helpOutput).not.toContain("--styled ");
     expect(helpOutput).toContain("provider");
     expect(helpOutput).toContain("default");

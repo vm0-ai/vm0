@@ -22,7 +22,6 @@ interface WebsiteOptions {
   readonly designSystem?: string;
   readonly siteSlug?: string;
   readonly title?: string;
-  readonly json?: boolean;
 }
 
 function unknownDesignSystemError(id: string): Error {
@@ -71,7 +70,6 @@ export const websiteCommand = new Command()
     "--template <id>",
     "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
   )
-  .option("--json", "Print metadata as JSON")
   .addHelpText("after", () => {
     const designSystems = listDesignSystems();
     const templates = listTemplates(WEBSITE_TARGET);
@@ -103,7 +101,6 @@ ${formatRegistryListing(templates, "website templates")}`;
       const dispatch = await dispatchGenerate({
         generationType: "website",
         prompt: options.prompt,
-        json: options.json,
       });
       if (dispatch.outcome === "handled") return;
       const prompt = dispatch.prompt;
@@ -157,10 +154,6 @@ ${formatRegistryListing(templates, "website templates")}`;
         ],
       });
 
-      if (options.json) {
-        console.log(JSON.stringify(packet));
-        return;
-      }
       console.log(packet.instructions);
     }),
   );

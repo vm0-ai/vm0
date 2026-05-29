@@ -23,7 +23,6 @@ interface PresentationOptions {
   siteSlug?: string;
   designSystem?: string;
   template?: string;
-  json?: boolean;
 }
 
 interface PresentationGenerateCommandConfig {
@@ -98,7 +97,6 @@ export function createPresentationGenerateCommand(
       "Template id from the registry, scoped to presentation (see Templates below). Accepts either 'html-ppt-pitch-deck' or 'template:html-ppt-pitch-deck'.",
     )
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
-    .option("--json", "Print metadata as JSON")
     .addHelpText("after", () => {
       const designSystems = listDesignSystems();
       const templates = listTemplates(PRESENTATION_TARGET);
@@ -124,7 +122,6 @@ ${formatRegistryListing(templates, "presentation templates")}`;
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           prompt: options.prompt,
-          json: options.json,
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
@@ -190,10 +187,6 @@ ${formatRegistryListing(templates, "presentation templates")}`;
           ],
         });
 
-        if (options.json) {
-          console.log(JSON.stringify(packet));
-          return;
-        }
         console.log(packet.instructions);
       }),
     );

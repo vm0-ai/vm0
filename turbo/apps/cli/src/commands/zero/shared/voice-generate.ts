@@ -12,7 +12,6 @@ interface VoiceOptions {
   voice: string;
   instructions?: string;
   all?: boolean;
-  json?: boolean;
 }
 
 interface VoiceGenerateCommandConfig {
@@ -40,7 +39,6 @@ export function createVoiceGenerateCommand(
     )
     .option("--voice <voice>", "OpenAI voice to use", "marin")
     .option("--instructions <text>", "Voice style instructions")
-    .option("--json", "Print metadata as JSON")
     .addHelpText(
       "after",
       `
@@ -63,7 +61,6 @@ Notes:
           provider: options.provider,
           prompt: options.prompt ?? options.text,
           all: options.all,
-          json: options.json,
         });
         if (dispatch.outcome === "handled") return;
         const text = dispatch.prompt;
@@ -73,11 +70,6 @@ Notes:
           voice: options.voice,
           instructions: options.instructions,
         });
-
-        if (options.json) {
-          console.log(JSON.stringify(result));
-          return;
-        }
 
         console.log(chalk.green(`✓ Voice generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

@@ -22,7 +22,6 @@ interface ArtifactOptions {
   title?: string;
   designSystem?: string;
   template?: string;
-  json?: boolean;
 }
 
 interface ArtifactCommandConfig {
@@ -89,7 +88,6 @@ export function createArtifactGenerateCommand(
       "--template <id>",
       `Template id from the registry, scoped to ${config.target} (see Templates below). Accepts either short id or full 'template:<id>'.`,
     )
-    .option("--json", "Print metadata as JSON")
     .addHelpText("after", () => {
       const designSystems = listDesignSystems();
       const templates = listTemplates(config.target);
@@ -116,7 +114,6 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
           prompt: options.prompt,
-          json: options.json,
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
@@ -175,11 +172,6 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
           details: [...config.details(options), ...extraDetails],
           artifactRules: config.artifactRules,
         });
-
-        if (options.json) {
-          console.log(JSON.stringify(packet));
-          return;
-        }
 
         console.log(packet.instructions);
       }),
