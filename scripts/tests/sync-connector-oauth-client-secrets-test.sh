@@ -34,6 +34,22 @@ assert_json_value() {
   fi
 }
 
+assert_json_is_compact() {
+  local json=$1
+  if [[ "$json" == *$'\n'* ]]; then
+    fail "expected bundle JSON to be compact without embedded newlines"
+  fi
+}
+
+assert_file_has_no_lf() {
+  local file=$1
+  local lf_count
+  lf_count="$(tr -cd '\n' < "$file" | wc -c | tr -d '[:space:]')"
+  if [[ "$lf_count" != "0" ]]; then
+    fail "expected bundle JSON written to gh stdin to contain no LF bytes"
+  fi
+}
+
 mkdir -p "${TMPDIR}/bin"
 mkdir -p "${TMPDIR}/no-op-bin"
 ln -s "$(command -v bash)" "${TMPDIR}/no-op-bin/bash"
@@ -115,6 +131,9 @@ if [[ "$1" != "secret" || "$2" != "set" ]]; then
   exit 1
 fi
 
+body_file="${GH_STUB_LOG}.body"
+cat > "$body_file"
+
 {
   printf 'args'
   for arg in "$@"; do
@@ -122,7 +141,7 @@ fi
   done
   printf '\n'
   printf 'body\t'
-  cat
+  cat "$body_file"
   printf '\n'
 } >> "$GH_STUB_LOG"
 BASH
@@ -152,6 +171,8 @@ development_args="$(sed -n '1p' "$development_log")"
 assert_contains "$development_args" $'args\tsecret\tset\tCONNECTOR_OAUTH_CLIENT_SECRETS\t--repo\tvm0-ai/vm0'
 assert_not_contains "$development_args" $'\t--env\t'
 development_body="$(sed -n '2p' "$development_log" | cut -f2-)"
+assert_json_is_compact "$development_body"
+assert_file_has_no_lf "${development_log}.body"
 assert_json_value "$development_body" GOOGLE_OAUTH_CLIENT_SECRET secret-Development-GOOGLE_OAUTH_CLIENT_SECRET
 assert_json_value "$development_body" GH_OAUTH_CLIENT_SECRET secret-Development-GH_OAUTH_CLIENT_SECRET
 if [[ "$(jq 'length' <<< "$development_body")" != "34" ]]; then
@@ -165,6 +186,7 @@ assert_contains "$production_output" "Updated production environment secret CONN
 production_args="$(sed -n '1p' "$production_log")"
 assert_contains "$production_args" $'args\tsecret\tset\tCONNECTOR_OAUTH_CLIENT_SECRETS\t--repo\tvm0-ai/vm0\t--env\tproduction'
 production_body="$(sed -n '2p' "$production_log" | cut -f2-)"
+assert_file_has_no_lf "${production_log}.body"
 assert_json_value "$production_body" GOOGLE_OAUTH_CLIENT_SECRET secret-Production-GOOGLE_OAUTH_CLIENT_SECRET
 
 status=0
