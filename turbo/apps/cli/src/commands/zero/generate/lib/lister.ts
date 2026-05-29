@@ -109,62 +109,6 @@ const BUILT_IN_GENERATION_PROVIDERS: Partial<
       reason: "available without connector setup",
     },
   ],
-  presentation: [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate presentation --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
-  report: [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate report --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
-  "docs-design": [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate docs-design --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
-  poster: [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate poster --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
-  "dashboard-design": [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate dashboard-design --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
-  "mobile-app-design": [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate mobile-app-design --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
-  website: [
-    {
-      label: "Built-in",
-      model: "gpt-5.5",
-      command: "zero generate website --provider built-in -h",
-      reason: "available without connector setup",
-    },
-  ],
   video: [
     {
       label: "Built-in",
@@ -227,37 +171,37 @@ const BUILT_IN_GENERATION_COMMANDS: Partial<
   },
   presentation: {
     label: "Built-in presentation generation",
-    command: "zero generate presentation --provider built-in -h",
+    command: "zero generate presentation -h",
     models: "gpt-5.5",
   },
   report: {
     label: "Built-in report generation",
-    command: "zero generate report --provider built-in -h",
+    command: "zero generate report -h",
     models: "gpt-5.5",
   },
   "docs-design": {
     label: "Built-in docs design generation",
-    command: "zero generate docs-design --provider built-in -h",
+    command: "zero generate docs-design -h",
     models: "gpt-5.5",
   },
   poster: {
     label: "Built-in poster generation",
-    command: "zero generate poster --provider built-in -h",
+    command: "zero generate poster -h",
     models: "gpt-5.5",
   },
   "dashboard-design": {
     label: "Built-in dashboard design generation",
-    command: "zero generate dashboard-design --provider built-in -h",
+    command: "zero generate dashboard-design -h",
     models: "gpt-5.5",
   },
   "mobile-app-design": {
     label: "Built-in mobile app design generation",
-    command: "zero generate mobile-app-design --provider built-in -h",
+    command: "zero generate mobile-app-design -h",
     models: "gpt-5.5",
   },
   website: {
     label: "Built-in website generation",
-    command: "zero generate website --provider built-in -h",
+    command: "zero generate website -h",
     models: "gpt-5.5",
   },
   voice: {
@@ -346,16 +290,16 @@ function getConnectorGenerationType(
     case "docs-design":
     case "mobile-app-design":
     case "poster":
+    case "presentation":
     case "report":
+    case "website":
       return null;
     case "audio":
     case "code":
     case "document":
     case "image":
-    case "presentation":
     case "text":
     case "video":
-    case "website":
       return generationType;
   }
 }
@@ -389,6 +333,7 @@ function getAvailableGenerationTypes(): GenerationType[] {
   return GENERATION_TYPE_ORDER.filter((type) => {
     const connectorGenerationType = getConnectorGenerationType(type);
     return (
+      getBuiltInCommand(type) !== null ||
       getBuiltInProviders(type).length > 0 ||
       (connectorGenerationType !== null &&
         available.has(connectorGenerationType))

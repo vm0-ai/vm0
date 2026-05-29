@@ -14,20 +14,15 @@ import {
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
-const PRESENTATION_MAX_IMAGES = 8;
 const PRESENTATION_TARGET = "presentation";
 
 interface PresentationOptions {
   prompt?: string;
-  provider?: string;
   slides: number;
-  images: number;
-  imageModel?: string;
   title?: string;
   siteSlug?: string;
   designSystem?: string;
   template?: string;
-  all?: boolean;
   json?: boolean;
 }
 
@@ -44,23 +39,6 @@ function parseSlideCount(value: string): number {
     throw new InvalidArgumentError("slides must be an integer");
   }
   return slideCount;
-}
-
-function parseImageCount(value: string): number {
-  const imageCount = Number(value);
-  if (!Number.isInteger(imageCount)) {
-    throw new InvalidArgumentError("images must be an integer");
-  }
-  if (
-    !Number.isSafeInteger(imageCount) ||
-    imageCount < 0 ||
-    imageCount > PRESENTATION_MAX_IMAGES
-  ) {
-    throw new InvalidArgumentError(
-      `images must be between 0 and ${PRESENTATION_MAX_IMAGES}`,
-    );
-  }
-  return imageCount;
 }
 
 function unknownDesignSystemError(id: string, usageCommand: string): Error {
@@ -109,25 +87,7 @@ export function createPresentationGenerateCommand(
       "--prompt <text>",
       "Presentation prompt; can also be piped via stdin",
     )
-    .option(
-      "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
-    )
-    .option(
-      "--all",
-      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
-    )
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
-    .option(
-      "--images <count>",
-      `Generated image count: 0-${PRESENTATION_MAX_IMAGES}`,
-      parseImageCount,
-      2,
-    )
-    .option(
-      "--image-model <model>",
-      "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
-    )
     .option("--title <text>", "Requested deck title")
     .option("--site-slug <slug>", "Hosted site slug override")
     .option(
@@ -163,9 +123,7 @@ ${formatRegistryListing(templates, "presentation templates")}`;
       withErrorHandler(async (options: PresentationOptions) => {
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
-          provider: options.provider,
           prompt: options.prompt,
-          all: options.all,
           json: options.json,
         });
         if (dispatch.outcome === "handled") return;
@@ -211,10 +169,6 @@ ${formatRegistryListing(templates, "presentation templates")}`;
           siteSlug: options.siteSlug,
           details: [
             `Slide count: ${options.slides}`,
-            `Suggested generated visual count: ${options.images}`,
-            `Image model preference if visuals are generated separately: ${
-              options.imageModel ?? "default"
-            }`,
             `Requested deck title: ${options.title ?? "not specified"}`,
             `Selected design system: ${
               resolvedDesignSystem

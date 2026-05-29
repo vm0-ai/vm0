@@ -43,10 +43,6 @@ describe("zero generate presentation command", () => {
       "API migration plan",
       "--slides",
       "10",
-      "--images",
-      "8",
-      "--image-model",
-      "gpt-image-1.5",
       "--title",
       "API Migration Plan",
     ]);
@@ -110,7 +106,7 @@ describe("zero generate presentation command", () => {
     );
   });
 
-  it("should describe the default image model in help", () => {
+  it("should expose only base artifact flags plus slides in help", () => {
     let helpOutput = "";
     presentationCommand.configureOutput({
       writeOut: (str: string) => {
@@ -120,8 +116,16 @@ describe("zero generate presentation command", () => {
 
     presentationCommand.outputHelp();
 
-    expect(helpOutput).toContain("Image model for generated visuals (default:");
-    expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
+    expect(helpOutput).toContain("--prompt <text>");
+    expect(helpOutput).toContain("--site-slug <slug>");
+    expect(helpOutput).toContain("--title <text>");
+    expect(helpOutput).toContain("--design-system <id>");
+    expect(helpOutput).toContain("--template <id>");
+    expect(helpOutput).toContain("--slides <count>");
+    expect(helpOutput).not.toContain("--provider");
+    expect(helpOutput).not.toContain("--all");
+    expect(helpOutput).not.toContain("--images");
+    expect(helpOutput).not.toContain("--image-model");
     expect(helpOutput).not.toContain("--style");
     expect(helpOutput).not.toContain("--theme");
   });

@@ -300,9 +300,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in presentation generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(
-      "Use: zero generate presentation --provider built-in -h",
-    );
+    expect(text).toContain("Use: zero generate presentation -h");
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
@@ -323,7 +321,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero generate website --provider built-in -h");
+    expect(text).toContain("Use: zero generate website -h");
     expect(text).toContain("Context:");
     expect(text).toContain(
       "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
@@ -349,11 +347,15 @@ describe("zero generate lister", () => {
 
     const json = JSON.parse(output()) as {
       builtInCommand: { command: string } | null;
+      builtInProvider: unknown;
+      builtInProviders: unknown[];
       generationContext: { lines: string[] } | null;
     };
     expect(json.builtInCommand).toMatchObject({
-      command: "zero generate website --provider built-in -h",
+      command: "zero generate website -h",
     });
+    expect(json.builtInProvider).toBeNull();
+    expect(json.builtInProviders).toEqual([]);
     expect(json.generationContext?.lines).toEqual(
       expect.arrayContaining([
         "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
@@ -390,7 +392,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain(commandLabel);
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(`Use: zero generate ${type} --provider built-in -h`);
+    expect(text).toContain(`Use: zero generate ${type} -h`);
   });
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {

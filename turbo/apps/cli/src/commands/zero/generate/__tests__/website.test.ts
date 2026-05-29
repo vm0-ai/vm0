@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
 import { generateCommand } from "../index";
+import { websiteCommand } from "../website";
 
 describe("zero generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -159,5 +160,29 @@ describe("zero generate website command", () => {
     expect(parsed.instructions).toEqual(
       expect.stringContaining("## Stage 3: Author Artifact"),
     );
+  });
+
+  it("should expose the shared HTML artifact flags in help", () => {
+    let helpOutput = "";
+    websiteCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
+    });
+
+    websiteCommand.outputHelp();
+
+    expect(helpOutput).toContain("--prompt <text>");
+    expect(helpOutput).toContain("--site-slug <slug>");
+    expect(helpOutput).toContain("--title <text>");
+    expect(helpOutput).toContain("--design-system <id>");
+    expect(helpOutput).toContain("--template <id>");
+    expect(helpOutput).not.toContain("--provider");
+    expect(helpOutput).not.toContain("--all");
+    expect(helpOutput).not.toContain("--images");
+    expect(helpOutput).not.toContain("--image-model");
+    expect(helpOutput).not.toContain("--template-direction");
+    expect(helpOutput).not.toContain("--audience");
+    expect(helpOutput).not.toContain("--site <slug>");
   });
 });

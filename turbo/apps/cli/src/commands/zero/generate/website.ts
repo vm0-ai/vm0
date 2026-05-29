@@ -1,4 +1,4 @@
-import { Command, InvalidArgumentError } from "commander";
+import { Command } from "commander";
 import { withErrorHandler } from "../../../lib/command";
 import { createHtmlArtifactAuthoringPacket } from "../shared/html-artifact-authoring";
 import {
@@ -13,38 +13,16 @@ import {
 } from "../shared/resource-listing";
 import { dispatchGenerate } from "./lib/dispatch";
 
-const WEBSITE_MAX_IMAGES = 3;
 const WEBSITE_TARGET = "website";
 const WEBSITE_USAGE_COMMAND = "zero generate website";
 
 interface WebsiteOptions {
   readonly prompt?: string;
-  readonly provider?: string;
   readonly template?: string;
   readonly designSystem?: string;
-  readonly images: number;
-  readonly imageModel?: string;
   readonly siteSlug?: string;
   readonly title?: string;
-  readonly all?: boolean;
   readonly json?: boolean;
-}
-
-function parseImageCount(value: string): number {
-  const imageCount = Number(value);
-  if (!Number.isInteger(imageCount)) {
-    throw new InvalidArgumentError("images must be an integer");
-  }
-  if (
-    !Number.isSafeInteger(imageCount) ||
-    imageCount < 0 ||
-    imageCount > WEBSITE_MAX_IMAGES
-  ) {
-    throw new InvalidArgumentError(
-      `images must be between 0 and ${WEBSITE_MAX_IMAGES}`,
-    );
-  }
-  return imageCount;
 }
 
 function unknownDesignSystemError(id: string): Error {
@@ -84,30 +62,12 @@ export const websiteCommand = new Command()
   .description("Prepare website authoring instructions from a prompt")
   .option("--prompt <text>", "Website prompt; can also be piped via stdin")
   .option(
-    "--provider <name>",
-    "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
-  )
-  .option(
-    "--all",
-    "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
-  )
-  .option(
     "--template <id>",
     "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
   )
   .option(
     "--design-system <id>",
     "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
-  )
-  .option(
-    "--images <count>",
-    `Generated website image count: 0-${WEBSITE_MAX_IMAGES}`,
-    parseImageCount,
-    1,
-  )
-  .option(
-    "--image-model <model>",
-    "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
   )
   .option("--site-slug <slug>", "Hosted site slug override")
   .option("--title <text>", "Requested site title or name")
@@ -122,11 +82,11 @@ Examples:
   Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
   Stable hosted slug:    zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
   Pipe prompt:           cat brief.txt | zero generate website
-  List providers:        zero generate website
+  Show choices:          zero generate website
 
 Output:
   Prints a source-selection packet for the current agent.
-  With no --prompt and no piped input, prints the provider menu instead.
+  With no --prompt and no piped input, prints the generation choices instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN
@@ -142,9 +102,7 @@ ${formatRegistryListing(templates, "website templates")}`;
     withErrorHandler(async (options: WebsiteOptions) => {
       const dispatch = await dispatchGenerate({
         generationType: "website",
-        provider: options.provider,
         prompt: options.prompt,
-        all: options.all,
         json: options.json,
       });
       if (dispatch.outcome === "handled") return;
@@ -179,10 +137,6 @@ ${formatRegistryListing(templates, "website templates")}`;
         slugSource: options.title,
         siteSlug: options.siteSlug,
         details: [
-          `Suggested generated visual count: ${options.images}`,
-          `Image model preference if visuals are generated separately: ${
-            options.imageModel ?? "default"
-          }`,
           `Requested title/site name: ${options.title ?? "not specified"}`,
           `Selected design system: ${
             resolvedDesignSystem

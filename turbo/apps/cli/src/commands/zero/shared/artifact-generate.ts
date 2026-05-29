@@ -18,12 +18,10 @@ import type { GenerationType } from "../generate/lib/lister";
 
 interface ArtifactOptions {
   prompt?: string;
-  provider?: string;
   siteSlug?: string;
   title?: string;
   designSystem?: string;
   template?: string;
-  all?: boolean;
   json?: boolean;
 }
 
@@ -81,14 +79,6 @@ export function createArtifactGenerateCommand(
     .name(config.name)
     .description(config.description)
     .option("--prompt <text>", "Artifact prompt; can also be piped via stdin")
-    .option(
-      "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
-    )
-    .option(
-      "--all",
-      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
-    )
     .option("--site-slug <slug>", "Hosted site slug override")
     .option("--title <text>", "Requested artifact title or name")
     .option(
@@ -110,7 +100,7 @@ ${config.examples}
 Output:
   Prints a source-selection packet for the current agent. The
   agent authors a static HTML artifact and hosts it with zero host. With no
-  --prompt and no piped input, prints the provider menu instead.
+  --prompt and no piped input, prints the generation choices instead.
 
 Notes:
   - Authenticates via ZERO_TOKEN
@@ -125,9 +115,7 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
       withErrorHandler(async (options: ArtifactOptions) => {
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
-          provider: options.provider,
           prompt: options.prompt,
-          all: options.all,
           json: options.json,
         });
         if (dispatch.outcome === "handled") return;

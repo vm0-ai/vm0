@@ -48,12 +48,15 @@ function buildGenerateHelpText(): string {
     '  Generate site:         zero generate website --prompt "A launch site"',
     '  Generate speech:       zero generate voice --prompt "Hello"',
     "",
-    "  List image providers:  zero generate image",
+    "  Show image choices:    zero generate image",
+    "  Show report choices:   zero generate report",
     "  Use a connector:       zero generate video --provider heygen",
     "  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --prompt ...",
   ];
 
-  return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "zero generate <type>" with no --prompt to list every provider available for that type.\n  - --provider built-in (default when --prompt is provided) runs the vm0-hosted pipeline.\n  - --provider <connector-name> prints how to invoke that connector's skill instead.`;
+  return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "zero generate <type>" with no --prompt to list generation choices for that type.
+  - Media and connector-backed generation types may expose --provider for vm0 or connector execution guidance.
+  - HTML artifact types use registry-backed --design-system and --template selection.`;
 }
 
 export const generateCommand = new Command()
