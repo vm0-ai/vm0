@@ -184,7 +184,7 @@ describe("model-provider-picker - user/workspace default source", () => {
   it("uses the user preference without showing a personal default option (MPKR-AD-006)", async () => {
     const user = userEvent.setup();
     setMockUserModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgentWith({
@@ -196,7 +196,7 @@ describe("model-provider-picker - user/workspace default source", () => {
     await expectAgentChatLoaded();
 
     const trigger = await waitFor(() => {
-      return screen.getByRole("combobox", { name: "Claude Opus 4.7" });
+      return screen.getByRole("combobox", { name: "Claude Opus 4.8" });
     });
     await user.click(trigger);
 
@@ -208,7 +208,7 @@ describe("model-provider-picker - user/workspace default source", () => {
     expect(within(listbox).queryByText("Default")).toBeNull();
     expect(within(listbox).getByText("Models")).toBeInTheDocument();
     expect(
-      within(listbox).getByRole("option", { name: /Claude Opus 4\.7/ }),
+      within(listbox).getByRole("option", { name: /Claude Opus 4\.8/ }),
     ).toHaveAttribute("aria-selected", "true");
   });
 });
