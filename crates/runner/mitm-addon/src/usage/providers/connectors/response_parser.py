@@ -9,7 +9,7 @@ class ConnectorResponseParser(NamedTuple):
 
     Connector parser factories registered in ``_RESPONSE_PARSER_FACTORIES``
     return this value when a connector flow needs response-body parsing for
-    billable usage extraction. The response streaming layer wires ``feed`` into
+    connector usage extraction. The response streaming layer wires ``feed`` into
     the stream callback for that flow.
 
     ``feed`` receives each streamed response-body chunk. For supported
