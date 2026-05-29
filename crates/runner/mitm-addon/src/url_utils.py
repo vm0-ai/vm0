@@ -21,7 +21,7 @@ _IPV6_VERSION = 6
 _MAX_PORT = 65535
 _ASCII_CONTROL_MAX = 0x20
 _ASCII_DELETE = 0x7F
-_FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|")
+_FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
 
 
 @dataclass(frozen=True)

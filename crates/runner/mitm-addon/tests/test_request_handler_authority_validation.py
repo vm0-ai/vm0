@@ -705,6 +705,41 @@ async def test_rejects_idna_compatibility_sni_alias_before_firewall_auth(
     assert "Authorization" not in flow.request.headers
 
 
+async def test_rejects_multiple_trailing_dot_sni_before_firewall_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+):
+    reg_path = _write_github_firewall_registry(tmp_path, base="https://api.github.com")
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com..",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "invalid_sni"
+    assert body["sni"] == "api.github.com.."
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_error"] == "invalid_sni"
+    assert flow.metadata["original_url"] == "https://203.0.113.10/repos"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
     tmp_path,
     real_flow,
@@ -748,6 +783,8 @@ async def test_rejects_idna_compatibility_host_alias_before_firewall_auth(
         (443, "", "missing_authority", "https://api.github.com/repos"),
         (8443, "", "missing_authority", "https://api.github.com:8443/repos"),
         (443, "api.github.com:bad", "invalid_authority", "https://api.github.com/repos"),
+        (443, "api.github.com..", "invalid_authority", "https://api.github.com/repos"),
+        (443, "{api}.github.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--a.com", "invalid_authority", "https://api.github.com/repos"),
         (443, "xn--zzzz.example", "invalid_authority", "https://api.github.com/repos"),

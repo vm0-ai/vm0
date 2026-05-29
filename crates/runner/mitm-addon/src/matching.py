@@ -28,6 +28,7 @@ _ASCII_DELETE = 0x7F
 _PERCENT_ESCAPE_LENGTH = 3
 _IPV6_VERSION = 6
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
+_FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
     (
@@ -48,12 +49,17 @@ def _has_base_url_params(base: str) -> bool:
     return "{" in base and "}" in base
 
 
-def _has_invalid_authority_host_chars(host: str) -> bool:
+def _has_invalid_authority_host_chars(host: str, *, allow_host_params: bool = False) -> bool:
+    forbidden_chars = (
+        _FORBIDDEN_AUTHORITY_HOST_CHARS
+        if allow_host_params
+        else _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS
+    )
     return any(
         char.isspace()
         or ord(char) < _ASCII_CONTROL_MAX
         or ord(char) == _ASCII_DELETE
-        or char in _FORBIDDEN_AUTHORITY_HOST_CHARS
+        or char in forbidden_chars
         for char in host
     )
 
@@ -198,6 +204,7 @@ def _split_base_match_url(
     *,
     allow_query_fragment: bool = True,
     allow_malformed_authority: bool = False,
+    allow_host_params: bool = False,
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
@@ -229,7 +236,12 @@ def _split_base_match_url(
     if has_userinfo and not allow_malformed_authority:
         return None
 
-    authority_result = _normalize_authority(parts.scheme, _extract_raw_hostname(parts.netloc), port)
+    authority_result = _normalize_authority(
+        parts.scheme,
+        _extract_raw_hostname(parts.netloc),
+        port,
+        allow_host_params=allow_host_params,
+    )
     if authority_result is None:
         return None
     authority, host_malformed = authority_result
@@ -246,14 +258,14 @@ def _split_base_match_url(
     )
 
 
-def _normalize_authority_host(host: str) -> tuple[str, bool]:
-    decoded_host, percent_malformed = _percent_decode_authority_host(host.rstrip("."))
-    normalized = decoded_host.rstrip(".")
+def _normalize_authority_host(host: str, *, allow_host_params: bool = False) -> tuple[str, bool]:
+    decoded_host, percent_malformed = _percent_decode_authority_host(host)
+    normalized = decoded_host
     if not normalized:
         return normalized, True
     if percent_malformed:
         return normalized.lower(), True
-    if _has_invalid_authority_host_chars(normalized):
+    if _has_invalid_authority_host_chars(normalized, allow_host_params=allow_host_params):
         return normalized.lower(), True
     if ":" in normalized:
         try:
@@ -265,7 +277,7 @@ def _normalize_authority_host(host: str) -> tuple[str, bool]:
         return f"[{parsed_ip.compressed.lower()}]", False
     try:
         return normalize_idna_hostname(normalized), False
-    except UnicodeError:
+    except (UnicodeError, ValueError):
         return normalized.lower(), True
 
 
@@ -273,10 +285,15 @@ def _normalize_authority(
     scheme: str,
     host: str | None,
     port: int | None,
+    *,
+    allow_host_params: bool = False,
 ) -> tuple[str, bool] | None:
     if host is None:
         return None
-    normalized_host, host_malformed = _normalize_authority_host(host)
+    normalized_host, host_malformed = _normalize_authority_host(
+        host,
+        allow_host_params=allow_host_params,
+    )
     if port is None:
         return normalized_host, host_malformed
 
@@ -531,7 +548,11 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
         return rel_path, {}
 
     # Parameterized base URL: parse into scheme, host pattern, path pattern
-    base_parts = _split_base_match_url(base.rstrip("/"), allow_query_fragment=False)
+    base_parts = _split_base_match_url(
+        base.rstrip("/"),
+        allow_query_fragment=False,
+        allow_host_params=True,
+    )
     if base_parts is None:
         return None
 
@@ -914,7 +935,11 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         return None
 
     has_query_or_fragment = bool(parsed.query or parsed.fragment)
-    parts = _split_base_match_url(base, allow_malformed_authority=True)
+    parts = _split_base_match_url(
+        base,
+        allow_malformed_authority=True,
+        allow_host_params=has_params,
+    )
     if parts is None:
         return None
 

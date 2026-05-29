@@ -415,6 +415,8 @@ class TestCompiledFirewallMatching:
             "exa\\mple.com",
             "exa%mple.com",
             "exa%20mple.com",
+            "api.github.com..",
+            "{api}.github.com",
             "%3A%3A1",
             "2001%3Adb8%3A%3A1",
             "[::1]junk",

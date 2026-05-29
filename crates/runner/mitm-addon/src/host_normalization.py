@@ -105,6 +105,15 @@ def _has_unicode_control_chars(value: str) -> bool:
     return any(category(char).startswith(_UNICODE_CONTROL_CATEGORY_PREFIX) for char in value)
 
 
+def _normalize_hostname_dots(host: str) -> str:
+    normalized = host.translate(_IDNA_DOT_TRANSLATION)
+    if normalized.endswith("."):
+        normalized = normalized[:-1]
+        if not normalized or normalized.endswith("."):
+            raise UnicodeError("empty IDNA label")
+    return normalized
+
+
 def _effective_bidi_class_at_label_end(value: str) -> str:
     for char in reversed(value):
         char_bidi = bidirectional(char)
@@ -327,7 +336,7 @@ def normalize_idna_hostname(host: str) -> str:
     non-ASCII labels directly and reject compatibility folds that collapse to a
     plain ASCII label such as fullwidth Latin text.
     """
-    normalized = host.translate(_IDNA_DOT_TRANSLATION).rstrip(".")
+    normalized = _normalize_hostname_dots(host)
     if not normalized:
         raise ValueError("empty hostname")
 

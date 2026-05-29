@@ -375,6 +375,14 @@ class TestMatchBaseUrl:
             ("https://!a\u0663.example/repos", "https://!a\u0663.example"),
             ("https://1\u0663.example/repos", "https://1\u0663.example"),
             ("https://!\u0663!.example/repos", "https://!\u0663!.example"),
+            ("https://api.github.com../repos", "https://api.github.com"),
+            ("https://api.github.com%2e%2e/repos", "https://api.github.com"),
+            ("https://api.github.com/repos", "https://api.github.com.."),
+            ("https://api.github.com/repos", "https://api.github.com%2e%2e"),
+            (
+                "https://\u4f8b\u5b50\u3002\u3002\u6d4b\u8bd5/repos",
+                "https://\u4f8b\u5b50.\u6d4b\u8bd5",
+            ),
         ],
     )
     def test_static_base_rejects_invalid_alabel_authorities(self, url, base):
@@ -532,6 +540,13 @@ class TestMatchBaseUrl:
     def test_host_mismatch_returns_none(self):
         result = matching.match_base_url(
             "https://api.github.com/repos", "https://{sub}.zendesk.com"
+        )
+        assert result is None
+
+    def test_runtime_host_braces_do_not_match_parameterized_base(self):
+        result = matching.match_base_url(
+            "https://{acme}.zendesk.com/api",
+            "https://{sub}.zendesk.com",
         )
         assert result is None
 
