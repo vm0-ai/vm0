@@ -491,10 +491,11 @@ function TrialStepContent() {
 // ---------------------------------------------------------------------------
 // Trial step — left-panel gallery (step 4)
 //
-// Three full-bleed image tiles stacked to fill the panel height, each
-// labeled with its category and a one-line headline. The workflow tile
-// uses an abstract diagram rather than a screenshot so the trio reads
-// as "outputs Zero can make", not a tour of the marketing site.
+// Two-column masonry / waterfall layout. Each tile keeps its native
+// aspect ratio so the artwork is never cropped. The second column is
+// offset slightly so the columns stagger, giving the "waterfall" feel.
+// Workflow tile uses an abstract diagram rather than a screenshot so
+// the trio reads as "outputs Zero can make".
 // ---------------------------------------------------------------------------
 
 type TrialGalleryItem = {
@@ -504,18 +505,12 @@ type TrialGalleryItem = {
   readonly image: string;
 };
 
-const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
+const TRIAL_GALLERY_LEFT: readonly TrialGalleryItem[] = [
   {
     id: "workflow",
     label: "Workflow",
     title: "Workflows that ship themselves",
     image: trialWorkflowSrc,
-  },
-  {
-    id: "website",
-    label: "Website",
-    title: "Polished pages from a single brief",
-    image: trialWebsiteSrc,
   },
   {
     id: "illustration",
@@ -525,39 +520,60 @@ const TRIAL_GALLERY_ITEMS: readonly TrialGalleryItem[] = [
   },
 ];
 
+const TRIAL_GALLERY_RIGHT: readonly TrialGalleryItem[] = [
+  {
+    id: "website",
+    label: "Website",
+    title: "Polished pages from a single brief",
+    image: trialWebsiteSrc,
+  },
+];
+
+function TrialGalleryTile({ item }: { item: TrialGalleryItem }) {
+  return (
+    <div
+      data-testid={`onboarding-trial-gallery-item-${item.id}`}
+      className="flex flex-col"
+    >
+      <div className="rounded-xl overflow-hidden">
+        <img
+          src={item.image}
+          alt={`${item.label} preview`}
+          className="block w-full h-auto"
+        />
+      </div>
+      <div className="px-0.5 pt-2">
+        <span className="block text-[10px] font-medium text-muted-foreground">
+          {item.label}
+        </span>
+        <h3 className="text-[12px] font-semibold text-foreground leading-snug">
+          {item.title}
+        </h3>
+      </div>
+    </div>
+  );
+}
+
 function OnboardingTrialPanel() {
   return (
     <div
       data-testid="onboarding-trial-gallery"
-      className="flex flex-col w-full max-w-[440px] h-full min-h-0"
+      className="flex flex-col w-full max-w-[480px]"
     >
-      <p className="text-[11px] font-medium text-muted-foreground mb-5 shrink-0">
+      <p className="text-[11px] font-medium text-muted-foreground mb-5">
         Made with Zero
       </p>
-      <div className="flex flex-col gap-3 flex-1 min-h-0">
-        {TRIAL_GALLERY_ITEMS.map((item) => {
-          return (
-            <div
-              key={item.id}
-              data-testid={`onboarding-trial-gallery-item-${item.id}`}
-              className="flex-1 min-h-0 relative rounded-2xl overflow-hidden zero-border bg-background"
-            >
-              <img
-                src={item.image}
-                alt={`${item.label} preview`}
-                className="absolute inset-0 h-full w-full object-cover object-top"
-              />
-              <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-gradient-to-t from-black/65 via-black/25 to-transparent">
-                <span className="text-[10px] font-medium text-white/85">
-                  {item.label}
-                </span>
-                <h3 className="text-sm font-semibold text-white leading-snug">
-                  {item.title}
-                </h3>
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-3 items-start">
+        <div className="flex flex-col gap-3">
+          {TRIAL_GALLERY_LEFT.map((item) => {
+            return <TrialGalleryTile key={item.id} item={item} />;
+          })}
+        </div>
+        <div className="flex flex-col gap-3 mt-10">
+          {TRIAL_GALLERY_RIGHT.map((item) => {
+            return <TrialGalleryTile key={item.id} item={item} />;
+          })}
+        </div>
       </div>
     </div>
   );
@@ -904,12 +920,8 @@ function OnboardingIllustrationPanel() {
 
   return (
     <div
-      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center relative overflow-hidden ${
-        showChat
-          ? "p-10 pt-[8%]"
-          : showTrial
-            ? "px-10 pt-20 pb-20"
-            : "p-10 justify-center"
+      className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${
+        showChat ? "pt-[8%]" : "justify-center"
       }`}
     >
       {/* Decorative circles (non-orbit, non-chat, non-trial steps) */}
@@ -922,9 +934,7 @@ function OnboardingIllustrationPanel() {
         </div>
       )}
 
-      <div
-        className={`relative z-10 flex flex-col items-center ${showTrial ? "w-full flex-1 min-h-0" : ""}`}
-      >
+      <div className="relative z-10 flex flex-col items-center">
         {showChat ? (
           <ChatPreview />
         ) : showOrbit ? (
