@@ -1,6 +1,6 @@
 import type {
   AuthCodeGrantConnectorType,
-  AuthorizationGrantConnectorType,
+  ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
 } from "../connectors";
 import type {
@@ -48,7 +48,7 @@ export interface NoneAccessProvider {
 }
 
 export interface RefreshTokenAccessProvider<
-  T extends AuthorizationGrantConnectorType,
+  T extends ConnectorAuthProviderType,
 > {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
@@ -56,22 +56,22 @@ export interface RefreshTokenAccessProvider<
   refreshToken(args: ConnectorOAuthRefreshArgs<T>): Promise<OAuthRefreshResult>;
 }
 
-export type ConnectorAuthProviderAccess<
-  T extends AuthorizationGrantConnectorType,
-> = NoneAccessProvider | RefreshTokenAccessProvider<T>;
+export type ConnectorAuthProviderAccess<T extends ConnectorAuthProviderType> =
+  | NoneAccessProvider
+  | RefreshTokenAccessProvider<T>;
 
 interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-interface TokenRevokeProvider<T extends AuthorizationGrantConnectorType> {
+interface TokenRevokeProvider<T extends ConnectorAuthProviderType> {
   readonly kind: "token-revoke";
   revokeToken(args: ConnectorOAuthRevokeArgs<T>): Promise<void>;
 }
 
-export type ConnectorAuthProviderRevoke<
-  T extends AuthorizationGrantConnectorType,
-> = NoneRevokeProvider | TokenRevokeProvider<T>;
+export type ConnectorAuthProviderRevoke<T extends ConnectorAuthProviderType> =
+  | NoneRevokeProvider
+  | TokenRevokeProvider<T>;
 
 export interface AuthProvider<TGrant, TAccess, TRevoke> {
   readonly grant: TGrant;

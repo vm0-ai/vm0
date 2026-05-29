@@ -13,7 +13,7 @@ import {
   type ConnectorOAuthClientConfig,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
-  type AuthorizationGrantConnectorType,
+  type ConnectorAuthProviderType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
   type TokenRevokeConnectorType,
@@ -236,7 +236,7 @@ function isConnectorGrantConfigWithScopes(
 }
 
 function getConnectorOAuthGrantConfig(
-  type: AuthorizationGrantConnectorType,
+  type: ConnectorAuthProviderType,
 ): ConnectorGrantConfigWithScopes;
 function getConnectorOAuthGrantConfig(
   type: ConnectorType,
@@ -477,7 +477,7 @@ export function isStaticConfidentialConnectorOAuthClient(
 }
 
 function getConnectorOAuthClientConfig(
-  type: AuthorizationGrantConnectorType,
+  type: ConnectorAuthProviderType,
 ): ConnectorOAuthClientConfig;
 function getConnectorOAuthClientConfig(
   type: ConnectorType,

@@ -1,7 +1,7 @@
 import type {
   ConnectorType,
   AuthCodeGrantConnectorType,
-  AuthorizationGrantConnectorType,
+  ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -125,7 +125,7 @@ function deviceAuthConnectorProviderFor<T extends DeviceAuthGrantConnectorType>(
   return DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[type];
 }
 
-function connectorAccessProviderFor<T extends AuthorizationGrantConnectorType>(
+function connectorAccessProviderFor<T extends ConnectorAuthProviderType>(
   type: T,
 ): ConnectorAuthProviderAccess<T> {
   if (hasConnectorAuthCodeGrant(type)) {
@@ -137,7 +137,7 @@ function connectorAccessProviderFor<T extends AuthorizationGrantConnectorType>(
     .access as ConnectorAuthProviderAccess<T>;
 }
 
-function connectorRevokeProviderFor<T extends AuthorizationGrantConnectorType>(
+function connectorRevokeProviderFor<T extends ConnectorAuthProviderType>(
   type: T,
 ): ConnectorAuthProviderRevoke<T> {
   if (hasConnectorAuthCodeGrant(type)) {
@@ -219,9 +219,9 @@ const DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS: DeviceAuthConnectorOAuthProviderMap
     "test-oauth-device": testOauthDeviceProvider,
   };
 
-function hasConnectorAuthorizationGrantProvider(
+function hasConnectorAuthProvider(
   type: string,
-): type is AuthorizationGrantConnectorType {
+): type is ConnectorAuthProviderType {
   return (
     hasConnectorAuthCodeGrantProvider(type) ||
     hasConnectorDeviceAuthGrantProvider(type)
@@ -241,7 +241,7 @@ export function hasConnectorDeviceAuthGrantProvider(
 }
 
 export function getConnectorOAuthSecretMetadata(
-  type: AuthorizationGrantConnectorType,
+  type: ConnectorAuthProviderType,
 ): ConnectorOAuthSecretMetadata;
 export function getConnectorOAuthSecretMetadata(
   type: string,
@@ -335,7 +335,7 @@ export async function pollConnectorOAuthDeviceAuth<
 }
 
 async function refreshConnectorProviderAccessToken<
-  T extends AuthorizationGrantConnectorType,
+  T extends ConnectorAuthProviderType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
@@ -360,10 +360,8 @@ export async function refreshConnectorAccessToken(args: {
   readonly oauthClient: ConnectorOAuthClient;
   readonly refreshToken: string;
 }): Promise<OAuthRefreshResult> {
-  if (!hasConnectorAuthorizationGrantProvider(args.type)) {
-    throw new Error(
-      `${args.type} connector does not have an authorization grant provider`,
-    );
+  if (!hasConnectorAuthProvider(args.type)) {
+    throw new Error(`${args.type} connector does not have an auth provider`);
   }
   return await refreshConnectorProviderAccessToken({
     type: args.type,
@@ -373,7 +371,7 @@ export async function refreshConnectorAccessToken(args: {
 }
 
 export async function revokeConnectorOAuthToken<
-  T extends AuthorizationGrantConnectorType,
+  T extends ConnectorAuthProviderType,
 >(args: {
   readonly type: T;
   readonly oauthClient: ConnectorOAuthClient;
