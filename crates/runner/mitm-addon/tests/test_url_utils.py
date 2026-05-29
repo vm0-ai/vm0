@@ -72,6 +72,28 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://xn--bcher-kva.example/hook/sub"
 
+    def test_base_unicode_path_and_query_are_encoded_for_forwarding(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook/路径?token=é",
+            "/子",
+            "from=请求",
+        )
+        assert (
+            url == "https://example.com/hook/%E8%B7%AF%E5%BE%84/%E5%AD%90"
+            "?token=%C3%A9&from=%E8%AF%B7%E6%B1%82"
+        )
+
+    def test_existing_percent_encoded_path_and_query_are_not_double_encoded(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook/%E8%B7%AF%E5%BE%84?token=%C3%A9",
+            "/%E5%AD%90",
+            "from=%E8%AF%B7%E6%B1%82",
+        )
+        assert (
+            url == "https://example.com/hook/%E8%B7%AF%E5%BE%84/%E5%AD%90"
+            "?token=%C3%A9&from=%E8%AF%B7%E6%B1%82"
+        )
+
     @pytest.mark.parametrize(
         ("base", "message"),
         [

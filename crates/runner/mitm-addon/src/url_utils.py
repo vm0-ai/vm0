@@ -26,6 +26,8 @@ _FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
+_URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
+_URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_REWRITE_SCHEMES = frozenset(("http", "https"))
 
 
@@ -470,6 +472,13 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
     return parsed, authority
 
 
+def _quote_url_part(value: str, safe: str) -> str:
+    try:
+        return urllib.parse.quote(value, safe=safe, encoding="utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError("Invalid auth.base URL: contains invalid unicode") from exc
+
+
 def build_rewrite_url(
     resolved_base: str,
     rel_path: str,
@@ -499,5 +508,9 @@ def build_rewrite_url(
     )
 
     merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)
+    encoded_base_path = _quote_url_part(base_path, _URL_PATH_SAFE_CHARS)
+    encoded_query = _quote_url_part(merged_qs, _URL_QUERY_SAFE_CHARS)
 
-    return urllib.parse.urlunsplit((base_parsed.scheme, base_authority, base_path, merged_qs, ""))
+    return urllib.parse.urlunsplit(
+        (base_parsed.scheme, base_authority, encoded_base_path, encoded_query, "")
+    )
