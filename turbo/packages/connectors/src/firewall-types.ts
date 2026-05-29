@@ -743,6 +743,19 @@ const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
 const FORBIDDEN_NORMALIZED_LABEL_CHARS = new Set("#%,/:<>?@[\\]^|[]".split(""));
 const WHITESPACE_PATTERN = /\s/u;
 const UNICODE_CONTROL_PATTERN = /\p{C}/u;
+const UNICODE_MARK_PATTERN = /\p{M}/u;
+const UNICODE_LETTER_PATTERN = /\p{L}/u;
+// WHATWG accepts these RTL-class label chars in places where Python's IDNA
+// bidi validation rejects mixed LTR/RTL labels at runtime.
+const IDNA_BIDI_RTL_LABEL_RANGES = [
+  [0x061d, 0x061d],
+  [0x0870, 0x088e],
+  [0x08b5, 0x08b5],
+  [0x08c8, 0x08c9],
+  [0xfbc2, 0xfbc2],
+  [0x10f70, 0x10f81],
+  [0x10f86, 0x10f89],
+] as const;
 // Keep creation-time host validation aligned with mitm-addon host_normalization.py.
 const UNSAFE_UTS46_COLLISION_CHARS = new Set([
   "\u03f2",
@@ -835,6 +848,53 @@ function hasForbiddenNormalizedLabelChar(value: string): boolean {
     }
   }
   return false;
+}
+
+function normalizedLabelStartsWithMark(value: string): boolean {
+  const [firstChar] = value.normalize("NFKD");
+  return firstChar !== undefined && UNICODE_MARK_PATTERN.test(firstChar);
+}
+
+function isIdnaBidiRtlLabelChar(char: string): boolean {
+  const codePoint = char.codePointAt(0);
+  return (
+    codePoint !== undefined &&
+    codePointInRanges(codePoint, IDNA_BIDI_RTL_LABEL_RANGES)
+  );
+}
+
+function isLtrLetterForBidiCheck(char: string): boolean {
+  return UNICODE_LETTER_PATTERN.test(char) && !isIdnaBidiRtlLabelChar(char);
+}
+
+function hasInvalidMixedBidiLabelText(value: string): boolean {
+  const chars = Array.from(value.normalize("NFKD"));
+  const firstRtlIndex = chars.findIndex((char) => {
+    return isIdnaBidiRtlLabelChar(char);
+  });
+  if (firstRtlIndex === -1) return false;
+
+  const suffix = chars.slice(firstRtlIndex + 1);
+  if (firstRtlIndex === 0) {
+    return suffix.some((char) => {
+      return isLtrLetterForBidiCheck(char);
+    });
+  }
+
+  const suffixHasLtrLetter = suffix.some((char) => {
+    return isLtrLetterForBidiCheck(char);
+  });
+  if (suffixHasLtrLetter) return true;
+
+  const prefixHasLtrLetter = chars.slice(0, firstRtlIndex).some((char) => {
+    return isLtrLetterForBidiCheck(char);
+  });
+  return (
+    prefixHasLtrLetter &&
+    suffix.some((char) => {
+      return !UNICODE_MARK_PATTERN.test(char);
+    })
+  );
 }
 
 function hasRawWhitespace(value: string): boolean {
@@ -1002,6 +1062,24 @@ function validateLabelHasNoUnsafeIdnaMappings(
         base,
         serviceName,
         "host must not contain characters that normalize to forbidden host syntax",
+      ),
+    );
+  }
+  if (normalizedLabelStartsWithMark(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host label must not start with a combining mark",
+      ),
+    );
+  }
+  if (hasInvalidMixedBidiLabelText(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host must not contain invalid bidirectional label text",
       ),
     );
   }

@@ -742,6 +742,45 @@ describe("validateBaseUrl", () => {
     }).toThrow("normalize to forbidden host syntax");
   });
 
+  it("should reject host labels that start with a combining mark", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0898b.example", "fw");
+    }).toThrow("must not start with a combining mark");
+    expect(() => {
+      return validateBaseUrl("https://%E0%A2%98b.example", "fw");
+    }).toThrow("must not start with a combining mark");
+  });
+
+  it("should reject invalid bidirectional host labels", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0870b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://a\u0870b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.a\u0870b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://a%E0%A1%B0b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+  });
+
+  it("should accept valid bidirectional host label boundaries", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://a\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u08701.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://1\u0870.example", "fw");
+    }).not.toThrow();
+  });
+
   it("should accept canonical IDNA hosts", () => {
     expect(() => {
       return validateBaseUrl("https://xn--fa-hia.de", "fw");
