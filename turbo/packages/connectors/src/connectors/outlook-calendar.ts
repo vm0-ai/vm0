@@ -12,16 +12,16 @@ export const outlookCalendar = {
         featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl:
             "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
         },
         access: {

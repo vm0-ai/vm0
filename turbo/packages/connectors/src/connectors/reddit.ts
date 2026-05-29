@@ -12,15 +12,15 @@ export const reddit = {
         featureFlag: FeatureSwitchKey.RedditConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Reddit to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://www.reddit.com/api/v1/access_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["identity", "read"],
         },
         access: {

@@ -13,15 +13,15 @@ export const stripe = {
         featureFlag: FeatureSwitchKey.StripeConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Stripe to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://connect.stripe.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["read_write"],
         },
         access: {

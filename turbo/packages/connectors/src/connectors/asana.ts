@@ -10,15 +10,15 @@ export const asana = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Asana to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "ASANA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://app.asana.com/-/oauth_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "ASANA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
-          },
           scopes: [],
         },
         access: {

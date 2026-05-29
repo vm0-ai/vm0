@@ -10,15 +10,15 @@ export const monday = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Monday.com to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
+          clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://auth.monday.com/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
-            clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "me:read",
             "boards:read",

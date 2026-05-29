@@ -10,15 +10,15 @@ export const xero = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Xero to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "XERO_OAUTH_CLIENT_ID",
+          clientSecretEnv: "XERO_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://identity.xero.com/connect/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "XERO_OAUTH_CLIENT_ID",
-            clientSecretEnv: "XERO_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "openid",
             "profile",

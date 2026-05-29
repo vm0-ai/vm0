@@ -13,6 +13,7 @@ import {
 } from "@vm0/connectors/connectors";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
 import {
+  getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
@@ -219,15 +220,25 @@ const createTestConnector$ = command(
     let grantConnectorType:
       | AuthCodeGrantConnectorType
       | DeviceAuthGrantConnectorType;
+    let authMethodGrantKind: "auth-code" | "device-auth";
     if (hasConnectorAuthCodeGrant(connectorType)) {
       grantConnectorType = connectorType;
+      authMethodGrantKind = "auth-code";
     } else if (hasConnectorDeviceAuthGrant(connectorType)) {
       grantConnectorType = connectorType;
+      authMethodGrantKind = "device-auth";
     } else {
       return stringError(
         400,
         `${connectorType} connector does not use an auth-code or device-auth grant`,
       );
+    }
+    const authMethod = getConnectorAuthMethodIdForGrantKind(
+      grantConnectorType,
+      authMethodGrantKind,
+    );
+    if (!authMethod) {
+      throw new Error(`${grantConnectorType} connector has no auth method`);
     }
     const secretMetadata = getConnectorOAuthSecretMetadata(grantConnectorType);
     const refreshSecretName = secretMetadata.isRefreshable
@@ -239,6 +250,7 @@ const createTestConnector$ = command(
         orgId,
         userId,
         type: grantConnectorType,
+        authMethod,
         accessToken: bodyResult.data.accessToken,
         userInfo: {
           id: `e2e-test-${grantConnectorType}`,

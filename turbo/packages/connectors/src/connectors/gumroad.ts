@@ -11,15 +11,15 @@ export const gumroad = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Gumroad to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://gumroad.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "view_profile",
             "edit_products",

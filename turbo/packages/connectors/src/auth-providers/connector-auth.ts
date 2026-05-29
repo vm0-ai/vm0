@@ -7,9 +7,9 @@ import type {
 import {
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
   hasConnectorAuthCodeGrant,
-  isStaticConfidentialConnectorOAuthClient,
-  isStaticConnectorOAuthClient,
-  type ConnectorOAuthClient,
+  isStaticConfidentialConnectorAuthClient,
+  isStaticConnectorAuthClient,
+  type ConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
 import {
   getAuthProviderSecretMetadata,
@@ -155,24 +155,24 @@ function connectorRevokeProviderFor<T extends ConnectorAuthProviderType>(
 }
 
 function connectorAuthProviderClientArgs(
-  oauthClient: ConnectorOAuthClient,
+  authClient: ConnectorAuthClient,
 ): ConnectorAuthProviderClientArgs {
-  if (!isStaticConnectorOAuthClient(oauthClient)) {
+  if (!isStaticConnectorAuthClient(authClient)) {
     return {};
   }
-  if (isStaticConfidentialConnectorOAuthClient(oauthClient)) {
+  if (isStaticConfidentialConnectorAuthClient(authClient)) {
     return {
-      clientId: oauthClient.clientId,
-      clientSecret: oauthClient.clientSecret,
+      clientId: authClient.clientId,
+      clientSecret: authClient.clientSecret,
     };
   }
-  return { clientId: oauthClient.clientId };
+  return { clientId: authClient.clientId };
 }
 
 export function getConnectorAuthProviderClientArgs(
-  oauthClient: ConnectorOAuthClient,
+  authClient: ConnectorAuthClient,
 ): ConnectorAuthProviderClientArgs {
-  return connectorAuthProviderClientArgs(oauthClient);
+  return connectorAuthProviderClientArgs(authClient);
 }
 
 const AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS: AuthCodeConnectorOAuthProviderMap = {
@@ -279,14 +279,14 @@ export async function buildConnectorOAuthAuthUrl<
   T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly oauthClient: ConnectorOAuthClient;
+  readonly authClient: ConnectorAuthClient;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<string | AuthUrlResult> {
   return await AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.buildAuthUrl({
-    ...connectorAuthProviderClientArgs(args.oauthClient),
+    ...connectorAuthProviderClientArgs(args.authClient),
     redirectUri: args.redirectUri,
     state: args.state,
   } as ConnectorOAuthAuthorizeArgs<T>);
@@ -296,7 +296,7 @@ export async function exchangeConnectorOAuthCode<
   T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly oauthClient: ConnectorOAuthClient;
+  readonly authClient: ConnectorAuthClient;
   readonly code: string;
   readonly redirectUri: string;
   readonly state: string | undefined;
@@ -306,7 +306,7 @@ export async function exchangeConnectorOAuthCode<
   return await AUTH_CODE_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.exchangeCode({
-    ...connectorAuthProviderClientArgs(args.oauthClient),
+    ...connectorAuthProviderClientArgs(args.authClient),
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -319,13 +319,13 @@ export async function startConnectorOAuthDeviceAuth<
   T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly oauthClient: ConnectorOAuthClient;
+  readonly authClient: ConnectorAuthClient;
 }): Promise<OAuthDeviceAuthStartResult> {
   const grant = getDeviceAuthGrantConfig(args.type);
   return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.startDeviceAuth({
-    ...connectorAuthProviderClientArgs(args.oauthClient),
+    ...connectorAuthProviderClientArgs(args.authClient),
     scopes: grant.scopes,
   } as ConnectorOAuthDeviceAuthStartArgs<T>);
 }
@@ -334,13 +334,13 @@ export async function pollConnectorOAuthDeviceAuth<
   T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly oauthClient: ConnectorOAuthClient;
+  readonly authClient: ConnectorAuthClient;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
   return await DEVICE_AUTH_CONNECTOR_OAUTH_PROVIDERS[
     args.type
   ].grant.pollDeviceAuth({
-    ...connectorAuthProviderClientArgs(args.oauthClient),
+    ...connectorAuthProviderClientArgs(args.authClient),
     deviceCode: args.deviceCode,
   } as ConnectorOAuthDeviceAuthPollArgs<T>);
 }
@@ -370,7 +370,7 @@ export async function revokeConnectorOAuthToken<
   T extends ConnectorAuthProviderType,
 >(args: {
   readonly type: T;
-  readonly oauthClient: ConnectorOAuthClient;
+  readonly authClient: ConnectorAuthClient;
   readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorOAuthRevokeResult> {
   const revoke = connectorRevokeProviderFor(args.type);
@@ -381,7 +381,7 @@ export async function revokeConnectorOAuthToken<
 
     case "token-revoke":
       await revoke.revokeToken({
-        ...connectorAuthProviderClientArgs(args.oauthClient),
+        ...connectorAuthProviderClientArgs(args.authClient),
         accessToken: await args.loadAccessToken(),
       } as ConnectorOAuthRevokeArgs<T>);
       return { status: "revoked" };

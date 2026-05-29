@@ -10,15 +10,15 @@ export const x = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with X to grant read access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "X_OAUTH_CLIENT_ID",
+          clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.x.com/2/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "X_OAUTH_CLIENT_ID",
-            clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "tweet.read", // All the Tweets you can view, including Tweets from protected accounts.
             "tweet.write", // Tweet and Retweet for you.

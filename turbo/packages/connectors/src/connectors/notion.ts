@@ -10,15 +10,15 @@ export const notion = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Notion to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
+          clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.notion.com/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
-            clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
-          },
           scopes: [],
         },
         access: {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorOAuthClientConfig } from "@vm0/connectors/connectors";
+import type { ConnectorAuthClientConfig } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
@@ -88,7 +88,7 @@ function mockOAuthEnv(): void {
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
-} as const satisfies ConnectorOAuthClientConfig;
+} as const satisfies ConnectorAuthClientConfig;
 
 async function enableConnectorFeature(
   userId: string,
@@ -104,17 +104,17 @@ async function enableConnectorFeature(
 }
 
 function useDynamicTestOAuthAuthorize(): () => void {
-  const grant = getConnectorAuthMethod("test-oauth", "oauth")?.grant;
-  if (grant?.kind !== "auth-code") {
+  const method = getConnectorAuthMethod("test-oauth", "oauth");
+  if (method?.grant.kind !== "auth-code") {
     throw new Error("test-oauth OAuth config is missing");
   }
 
-  const mutableGrant = grant as { client: ConnectorOAuthClientConfig };
-  const originalClient = grant.client;
+  const mutableMethod = method as { client: ConnectorAuthClientConfig };
+  const originalClient = mutableMethod.client;
   const provider = testOauthProvider;
   const originalBuildAuthUrl = provider.grant.buildAuthUrl;
 
-  mutableGrant.client = dynamicPublicClient;
+  mutableMethod.client = dynamicPublicClient;
   provider.grant.buildAuthUrl = (args) => {
     expect(args.clientId).toBeUndefined();
     return {
@@ -124,7 +124,7 @@ function useDynamicTestOAuthAuthorize(): () => void {
   };
 
   return () => {
-    mutableGrant.client = originalClient;
+    mutableMethod.client = originalClient;
     provider.grant.buildAuthUrl = originalBuildAuthUrl;
   };
 }

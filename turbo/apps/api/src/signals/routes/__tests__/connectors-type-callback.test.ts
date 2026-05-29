@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   AuthCodeGrantConnectorType,
-  ConnectorOAuthClientConfig,
+  ConnectorAuthClientConfig,
 } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { getConnectorOAuthSecretMetadata } from "@vm0/connectors/auth-providers";
@@ -201,7 +201,7 @@ function mockOAuthEnv(): void {
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
-} as const satisfies ConnectorOAuthClientConfig;
+} as const satisfies ConnectorAuthClientConfig;
 
 type CapturedOAuthExchange = {
   readonly clientId: string | undefined;
@@ -228,17 +228,17 @@ function useDynamicTestOAuthExchange(): {
 function configureDynamicTestOAuthExchange(
   exchanges: CapturedOAuthExchange[],
 ): () => void {
-  const grant = getConnectorAuthMethod("test-oauth", "oauth")?.grant;
-  if (grant?.kind !== "auth-code") {
+  const method = getConnectorAuthMethod("test-oauth", "oauth");
+  if (method?.grant.kind !== "auth-code") {
     throw new Error("test-oauth OAuth config is missing");
   }
 
-  const mutableGrant = grant as { client: ConnectorOAuthClientConfig };
-  const originalClient = grant.client;
+  const mutableMethod = method as { client: ConnectorAuthClientConfig };
+  const originalClient = mutableMethod.client;
   const provider = testOauthProvider;
   const originalExchangeCode = provider.grant.exchangeCode;
 
-  mutableGrant.client = dynamicPublicClient;
+  mutableMethod.client = dynamicPublicClient;
   provider.grant.exchangeCode = (args) => {
     exchanges.push({
       clientId: args.clientId,
@@ -263,7 +263,7 @@ function configureDynamicTestOAuthExchange(
   };
 
   return () => {
-    mutableGrant.client = originalClient;
+    mutableMethod.client = originalClient;
     provider.grant.exchangeCode = originalExchangeCode;
   };
 }

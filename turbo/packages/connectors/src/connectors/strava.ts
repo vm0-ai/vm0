@@ -10,15 +10,15 @@ export const strava = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Strava to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "STRAVA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://www.strava.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "STRAVA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "read",
             "profile:read_all",

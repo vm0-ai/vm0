@@ -12,15 +12,15 @@ export const canva = {
         featureFlag: FeatureSwitchKey.CanvaConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Canva to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "asset:read",
             "asset:write",

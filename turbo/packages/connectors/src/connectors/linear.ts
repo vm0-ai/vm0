@@ -10,15 +10,15 @@ export const linear = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Linear to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
+          clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.linear.app/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
-            clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "read",
             "write",

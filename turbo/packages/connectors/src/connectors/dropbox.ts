@@ -11,15 +11,15 @@ export const dropbox = {
         featureFlag: FeatureSwitchKey.DropboxConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Dropbox to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "DROPBOX_OAUTH_CLIENT_ID",
+          clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.dropboxapi.com/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "DROPBOX_OAUTH_CLIENT_ID",
-            clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
-          },
           scopes: [
             "account_info.read",
             "files.metadata.read",

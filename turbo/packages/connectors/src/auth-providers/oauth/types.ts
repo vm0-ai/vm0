@@ -1,6 +1,6 @@
 import type {
   CONNECTOR_TYPES,
-  ConnectorOAuthClientConfig,
+  ConnectorAuthClientConfig,
   ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
@@ -128,26 +128,26 @@ export type OAuthDeviceAuthPollResult =
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
-type ConnectorOAuthClientFor<T extends ConnectorAuthProviderType> = {
+type ConnectorAuthClientFor<T extends ConnectorAuthProviderType> = {
   [Method in keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]]: (typeof CONNECTOR_TYPES)[T]["authMethods"][Method] extends {
+    readonly client: infer Client;
     readonly grant: {
       readonly kind: "auth-code" | "device-auth";
-      readonly client: infer Client;
     };
   }
     ? Client
     : never;
 }[keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]] &
-  ConnectorOAuthClientConfig;
+  ConnectorAuthClientConfig;
 
 type NoClientCredentialArgs = Record<never, never>;
 
-type StaticClientIdArgs<Client extends ConnectorOAuthClientConfig> =
+type StaticClientIdArgs<Client extends ConnectorAuthClientConfig> =
   Client extends { readonly clientRegistration: "static" }
     ? { readonly clientId: string }
     : NoClientCredentialArgs;
 
-type TokenCredentialArgs<Client extends ConnectorOAuthClientConfig> =
+type TokenCredentialArgs<Client extends ConnectorAuthClientConfig> =
   Client extends {
     readonly clientRegistration: "static";
     readonly clientType: "confidential";
@@ -161,23 +161,23 @@ type TokenCredentialArgs<Client extends ConnectorOAuthClientConfig> =
       : NoClientCredentialArgs;
 
 export type ConnectorOAuthAuthorizeArgs<T extends ConnectorAuthProviderType> =
-  OAuthAuthorizeFlowArgs & StaticClientIdArgs<ConnectorOAuthClientFor<T>>;
+  OAuthAuthorizeFlowArgs & StaticClientIdArgs<ConnectorAuthClientFor<T>>;
 
 export type ConnectorOAuthExchangeArgs<T extends ConnectorAuthProviderType> =
-  OAuthExchangeFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
+  OAuthExchangeFlowArgs & TokenCredentialArgs<ConnectorAuthClientFor<T>>;
 
 export type ConnectorOAuthRefreshArgs<T extends ConnectorAuthProviderType> =
-  OAuthRefreshFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
+  OAuthRefreshFlowArgs & TokenCredentialArgs<ConnectorAuthClientFor<T>>;
 
 export type ConnectorOAuthRevokeArgs<T extends ConnectorAuthProviderType> =
-  OAuthRevokeFlowArgs & TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
+  OAuthRevokeFlowArgs & TokenCredentialArgs<ConnectorAuthClientFor<T>>;
 
 export type ConnectorOAuthDeviceAuthStartArgs<
   T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthStartFlowArgs &
-  StaticClientIdArgs<ConnectorOAuthClientFor<T>>;
+  StaticClientIdArgs<ConnectorAuthClientFor<T>>;
 
 export type ConnectorOAuthDeviceAuthPollArgs<
   T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthPollFlowArgs &
-  TokenCredentialArgs<ConnectorOAuthClientFor<T>>;
+  TokenCredentialArgs<ConnectorAuthClientFor<T>>;
