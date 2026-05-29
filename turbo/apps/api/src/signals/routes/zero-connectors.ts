@@ -504,11 +504,23 @@ const createConnectorSessionInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(zeroConnectorSessionsContract.create));
+    const authCodeStartType = resolveConnectorAuthCodeStartType(params.type);
+    if (!authCodeStartType.ok) {
+      return badRequestMessage(
+        `${params.type} connector does not use an auth-code grant`,
+      );
+    }
+
     const availability = await get(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(params.type, "oauth")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        authCodeStartType.type,
+        authCodeStartType.authMethod,
+      )
+    ) {
       return connectorUnavailable(params.type);
     }
 
@@ -522,7 +534,7 @@ const createConnectorSessionInner$ = command(
       .insert(connectorSessions)
       .values({
         code,
-        type: params.type,
+        type: authCodeStartType.type,
         userId: auth.userId,
         status: "pending",
         expiresAt,
@@ -539,9 +551,9 @@ const createConnectorSessionInner$ = command(
       body: {
         id: session.id,
         code,
-        type: params.type,
+        type: authCodeStartType.type,
         status: "pending" as const,
-        verificationUrl: `/api/connectors/${params.type}/authorize?session=${session.id}`,
+        verificationUrl: `/api/connectors/${authCodeStartType.type}/authorize?session=${session.id}`,
         expiresIn: CONNECTOR_SESSION_TTL_SECONDS,
         interval: CONNECTOR_SESSION_POLL_INTERVAL_SECONDS,
       },
