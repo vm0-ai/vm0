@@ -1086,7 +1086,12 @@ async function markRefreshFailure(
   args: RefreshAccessTokenArgs,
   context: RefreshTokenContext,
   errorCode: string | null,
+  failureReason: FirewallAuthFailureReason | undefined,
 ): Promise<void> {
+  if (failureReason === "upstream_provider") {
+    return;
+  }
+
   if (args.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
@@ -1227,6 +1232,7 @@ async function refreshAccessTokenForSource(
         { ...args, db: tx },
         prepared.context,
         errorCode,
+        failureReason,
       );
       return refreshFailedResult(failureReason);
     }

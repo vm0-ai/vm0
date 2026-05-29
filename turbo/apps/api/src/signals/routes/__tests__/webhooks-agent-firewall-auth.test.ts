@@ -3097,9 +3097,15 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("marks upstream ChatGPT refresh failures with failureReason", async () => {
+  it("classifies upstream ChatGPT refresh failures without marking reconnect", async () => {
     const fixture = await track(seedFixture());
-    await seedExpiredCodexModelProvider(fixture);
+    await seedCodexModelProvider(fixture, {
+      accessToken: "stale-chatgpt-token",
+      refreshToken: "chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
     server.use(
       http.post("https://auth.openai.com/oauth/token", () => {
         return HttpResponse.json(
@@ -3138,6 +3144,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       code: "TOKEN_REFRESH_FAILED",
       connectors: ["codex-oauth-token"],
       failureReason: "upstream_provider",
+    });
+    await expect(codexProviderState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
     });
   });
 
