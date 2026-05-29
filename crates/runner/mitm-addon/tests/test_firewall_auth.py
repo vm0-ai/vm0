@@ -1372,7 +1372,6 @@ class TestFetchFirewallHeaders:
             {
                 "connector": "notion",
                 "code": "OAUTH_RECONNECT_REQUIRED",
-                "message": "Notion token refresh failed: 400 invalid_grant",
                 "provider": "Notion",
                 "sourceType": "connector",
                 "retryable": False,

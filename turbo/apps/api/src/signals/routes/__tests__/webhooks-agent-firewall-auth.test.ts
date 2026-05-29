@@ -2364,6 +2364,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         },
       ],
     });
+    expect(response.body.error.failures?.[0]).not.toHaveProperty("message");
     await expect(notionConnectorState(fixture)).resolves.toMatchObject({
       needsReconnect: true,
     });

@@ -171,7 +171,6 @@ const volumeVersionsSnapshotSchema = z.object({
 const firewallAuthFailureSchema = z.object({
   connector: z.string(),
   code: z.string(),
-  message: z.string().optional(),
   retryable: z.boolean(),
   provider: z.string().optional(),
   sourceType: z.enum(["connector", "model-provider"]).optional(),

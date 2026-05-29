@@ -299,7 +299,7 @@ def _sanitize_failure(value: object) -> dict | None:
         return None
 
     sanitized: dict[str, object] = {}
-    for key in ("connector", "code", "message", "provider", "sourceType", "refreshErrorCode"):
+    for key in ("connector", "code", "provider", "sourceType", "refreshErrorCode"):
         field_value = _string_field(value, key)
         if field_value is not None:
             sanitized[key] = field_value
