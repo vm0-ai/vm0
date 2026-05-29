@@ -13,7 +13,6 @@ import {
 } from "../shared/resource-listing";
 import { dispatchGenerate } from "./lib/dispatch";
 
-const WEBSITE_TEMPLATE_DIRECTIONS = ["auto", "launch", "profile"] as const;
 const WEBSITE_MAX_IMAGES = 3;
 const WEBSITE_TARGET = "website";
 const WEBSITE_USAGE_COMMAND = "zero generate website";
@@ -21,29 +20,14 @@ const WEBSITE_USAGE_COMMAND = "zero generate website";
 interface WebsiteOptions {
   readonly prompt?: string;
   readonly provider?: string;
-  readonly templateDirection: string;
   readonly template?: string;
   readonly designSystem?: string;
   readonly images: number;
   readonly imageModel?: string;
-  readonly site?: string;
+  readonly siteSlug?: string;
   readonly title?: string;
-  readonly audience?: string;
   readonly all?: boolean;
   readonly json?: boolean;
-}
-
-function parseTemplateDirection(value: string): string {
-  if (
-    WEBSITE_TEMPLATE_DIRECTIONS.some((direction) => {
-      return direction === value;
-    })
-  ) {
-    return value;
-  }
-  throw new InvalidArgumentError(
-    "template-direction must be auto, launch, or profile",
-  );
 }
 
 function parseImageCount(value: string): number {
@@ -108,12 +92,6 @@ export const websiteCommand = new Command()
     "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
   )
   .option(
-    "--template-direction <direction>",
-    "High-level website direction: auto, launch, or profile",
-    parseTemplateDirection,
-    "auto",
-  )
-  .option(
     "--template <id>",
     "Template id from the registry, scoped to website (see Templates below). Accepts either short id or full 'template:<id>'.",
   )
@@ -131,9 +109,8 @@ export const websiteCommand = new Command()
     "--image-model <model>",
     "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
   )
-  .option("--site <slug>", "Hosted site slug; defaults to the generated name")
+  .option("--site-slug <slug>", "Hosted site slug override")
   .option("--title <text>", "Requested site title or name")
-  .option("--audience <text>", "Audience context")
   .option("--json", "Print metadata as JSON")
   .addHelpText("after", () => {
     const designSystems = listDesignSystems();
@@ -141,10 +118,9 @@ export const websiteCommand = new Command()
     return `
 Examples:
   Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
-  Pick direction:        zero generate website --template-direction profile --images 2 --image-model gpt-image-1.5 --prompt "Portfolio for a robotics photographer"
   Pick template:         zero generate website --template saas-landing --prompt "Launch site for a billing API"
   Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
-  Stable hosted slug:    zero generate website --site api-migration-demo --prompt "An internal migration microsite"
+  Stable hosted slug:    zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
   Pipe prompt:           cat brief.txt | zero generate website
   List providers:        zero generate website
 
@@ -201,15 +177,13 @@ ${formatRegistryListing(templates, "website templates")}`;
         kind: "website",
         prompt,
         slugSource: options.title,
-        site: options.site,
+        siteSlug: options.siteSlug,
         details: [
-          `Template direction: ${options.templateDirection}`,
           `Suggested generated visual count: ${options.images}`,
           `Image model preference if visuals are generated separately: ${
             options.imageModel ?? "default"
           }`,
           `Requested title/site name: ${options.title ?? "not specified"}`,
-          `Audience: ${options.audience ?? "not specified"}`,
           `Selected design system: ${
             resolvedDesignSystem
               ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`

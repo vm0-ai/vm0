@@ -41,18 +41,12 @@ describe("zero generate presentation command", () => {
       "presentation",
       "--prompt",
       "API migration plan",
-      "--style",
-      "swiss",
       "--slides",
       "10",
       "--images",
       "8",
       "--image-model",
       "gpt-image-1.5",
-      "--theme",
-      "ikb",
-      "--audience",
-      "engineering leadership",
       "--title",
       "API Migration Plan",
     ]);
@@ -65,16 +59,14 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("API migration plan");
     expect(stdout).toContain("skill:article-magazine");
     expect(stdout).toContain("template:html-ppt-graphify-dark-graph");
+    expect(stdout).not.toContain("template:saas-landing");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/api-migration-plan/`.",
     );
     expect(stdout).toContain(
       "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
     );
-    expect(stdout).toContain("Style: swiss");
     expect(stdout).toContain("Slide count: 10");
-    expect(stdout).toContain("Theme: ikb");
-    expect(stdout).toContain("Audience: engineering leadership");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
   });
 
@@ -85,8 +77,8 @@ describe("zero generate presentation command", () => {
       "presentation",
       "--prompt",
       "JSON please",
-      "--title",
-      "API Migration Plan",
+      "--site-slug",
+      "api-migration-plan",
       "--json",
     ]);
 
@@ -130,6 +122,8 @@ describe("zero generate presentation command", () => {
 
     expect(helpOutput).toContain("Image model for generated visuals (default:");
     expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
+    expect(helpOutput).not.toContain("--style");
+    expect(helpOutput).not.toContain("--theme");
   });
 
   it("should list presentation templates and design systems in help", () => {

@@ -62,12 +62,10 @@ describe("zero generate source-backed artifact commands", () => {
         command,
         "--prompt",
         prompt,
-        "--site",
+        "--site-slug",
         `${command}-demo`,
         "--title",
         `${command} demo`,
-        "--audience",
-        "internal product team",
       ]);
 
       const stdout = output();
@@ -96,7 +94,7 @@ describe("zero generate source-backed artifact commands", () => {
       "mobile-app-design",
       "--prompt",
       "A mobile review screen",
-      "--site",
+      "--site-slug",
       "mobile-review",
       "--json",
     ]);
@@ -157,6 +155,41 @@ describe("zero generate source-backed artifact commands", () => {
     );
   });
 
+  it("filters template candidates by target when requested", () => {
+    const websiteSelection = selectResourceCandidates("website");
+    const presentationSelection = selectResourceCandidates("presentation");
+
+    expect(websiteSelection.candidates.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "template:saas-landing",
+          description: expect.stringContaining("Single-page SaaS landing"),
+        }),
+      ]),
+    );
+    expect(websiteSelection.candidates.templates).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "template:html-ppt-pitch-deck" }),
+      ]),
+    );
+    expect(presentationSelection.candidates.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "template:html-ppt-pitch-deck",
+          description: expect.stringContaining("Investor-ready"),
+        }),
+      ]),
+    );
+    expect(presentationSelection.candidates.designSystems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "design-system:shopify",
+          description: expect.stringContaining("E-commerce platform"),
+        }),
+      ]),
+    );
+  });
+
   it("attributes every vm0 image style to the vm0-skills repo", () => {
     const selection = selectResourceCandidates();
     const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
@@ -191,7 +224,7 @@ describe("zero generate source-backed artifact commands", () => {
       "report",
       "--prompt",
       "Q2 finance report",
-      "--site",
+      "--site-slug",
       "q2-finance-demo",
       "--design-system",
       "apple",

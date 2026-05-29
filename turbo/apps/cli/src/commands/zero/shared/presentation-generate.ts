@@ -20,13 +20,11 @@ const PRESENTATION_TARGET = "presentation";
 interface PresentationOptions {
   prompt?: string;
   provider?: string;
-  style: string;
   slides: number;
   images: number;
   imageModel?: string;
-  theme?: string;
-  audience?: string;
   title?: string;
+  siteSlug?: string;
   designSystem?: string;
   template?: string;
   all?: boolean;
@@ -119,7 +117,6 @@ export function createPresentationGenerateCommand(
       "--all",
       "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
     )
-    .option("--style <style>", "Style: editorial or swiss", "editorial")
     .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .option(
       "--images <count>",
@@ -131,12 +128,8 @@ export function createPresentationGenerateCommand(
       "--image-model <model>",
       "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
     )
-    .option(
-      "--theme <theme>",
-      "Theme: editorial supports ink, coral, forest; swiss supports ikb, lemon, lime, mono",
-    )
-    .option("--audience <text>", "Audience context")
     .option("--title <text>", "Requested deck title")
+    .option("--site-slug <slug>", "Hosted site slug override")
     .option(
       "--design-system <id>",
       "Design system id from the registry (see Design Systems below). Accepts either 'apple' or 'design-system:apple'.",
@@ -215,15 +208,13 @@ ${formatRegistryListing(templates, "presentation templates")}`;
           kind: "presentation",
           prompt,
           slugSource: options.title,
+          siteSlug: options.siteSlug,
           details: [
-            `Style: ${options.style}`,
             `Slide count: ${options.slides}`,
             `Suggested generated visual count: ${options.images}`,
             `Image model preference if visuals are generated separately: ${
               options.imageModel ?? "default"
             }`,
-            `Theme: ${options.theme ?? "agent decides from style"}`,
-            `Audience: ${options.audience ?? "not specified"}`,
             `Requested deck title: ${options.title ?? "not specified"}`,
             `Selected design system: ${
               resolvedDesignSystem

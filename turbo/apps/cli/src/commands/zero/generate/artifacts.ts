@@ -1,11 +1,10 @@
 import { createArtifactGenerateCommand } from "../shared/artifact-generate";
 
 function standardDetails(kind: string) {
-  return (options: { title?: string; audience?: string }) => {
+  return (options: { title?: string }) => {
     return [
       `Artifact kind: ${kind}`,
       `Requested title/name: ${options.title ?? "not specified"}`,
-      `Audience: ${options.audience ?? "not specified"}`,
     ];
   };
 }
@@ -17,7 +16,7 @@ export const reportCommand = createArtifactGenerateCommand({
   description: "Generate an HTML report from a prompt",
   usageCommand: "zero generate report",
   examples: `  Generate report:      zero generate report --prompt "A Q2 usage report for the API team"
-  Stable hosted slug:    zero generate report --site api-usage-q2 --prompt "A Q2 usage report"
+  Stable hosted slug:    zero generate report --site-slug api-usage-q2 --prompt "A Q2 usage report"
   List providers:        zero generate report`,
   details: standardDetails("report"),
   artifactRules: [
@@ -35,7 +34,7 @@ export const docsDesignCommand = createArtifactGenerateCommand({
   description: "Generate a documentation design from a prompt",
   usageCommand: "zero generate docs-design",
   examples: `  Generate docs design: zero generate docs-design --prompt "Docs for adding artifact targets"
-  Stable hosted slug:    zero generate docs-design --site artifact-target-docs --prompt "Artifact target docs"
+  Stable hosted slug:    zero generate docs-design --site-slug artifact-target-docs --prompt "Artifact target docs"
   List providers:        zero generate docs-design`,
   details: standardDetails("docs-design"),
   artifactRules: [
@@ -53,7 +52,7 @@ export const posterCommand = createArtifactGenerateCommand({
   description: "Generate an HTML poster from a prompt",
   usageCommand: "zero generate poster",
   examples: `  Generate poster:      zero generate poster --prompt "A launch poster for artifact targets"
-  Stable hosted slug:    zero generate poster --site artifact-poster --prompt "A launch poster"
+  Stable hosted slug:    zero generate poster --site-slug artifact-poster --prompt "A launch poster"
   List providers:        zero generate poster`,
   details: standardDetails("poster"),
   artifactRules: [
@@ -71,7 +70,7 @@ export const dashboardDesignCommand = createArtifactGenerateCommand({
   description: "Generate a dashboard design from a prompt",
   usageCommand: "zero generate dashboard-design",
   examples: `  Generate dash design: zero generate dashboard-design --prompt "An ops dashboard for generation runs"
-  Stable hosted slug:    zero generate dashboard-design --site generation-ops --prompt "A generation ops dashboard"
+  Stable hosted slug:    zero generate dashboard-design --site-slug generation-ops --prompt "A generation ops dashboard"
   List providers:        zero generate dashboard-design`,
   details: standardDetails("dashboard-design"),
   artifactRules: [
@@ -89,7 +88,7 @@ export const mobileAppDesignCommand = createArtifactGenerateCommand({
   description: "Generate a mobile app design prototype from a prompt",
   usageCommand: "zero generate mobile-app-design",
   examples: `  Generate mobile UI:   zero generate mobile-app-design --prompt "A mobile review screen for generation artifacts"
-  Stable hosted slug:    zero generate mobile-app-design --site generation-mobile-review --prompt "A mobile review screen"
+  Stable hosted slug:    zero generate mobile-app-design --site-slug generation-mobile-review --prompt "A mobile review screen"
   List providers:        zero generate mobile-app-design`,
   details: standardDetails("mobile-app-design"),
   artifactRules: [

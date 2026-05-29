@@ -40,13 +40,9 @@ describe("zero generate website command", () => {
       "website",
       "--prompt",
       "observability launch site",
-      "--template-direction",
-      "launch",
       "--title",
       "Clearpath",
-      "--audience",
-      "small engineering teams",
-      "--site",
+      "--site-slug",
       "clearpath-demo",
     ]);
 
@@ -57,14 +53,13 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain("template:web-prototype-taste-editorial");
+    expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(
       "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
     );
-    expect(stdout).toContain("Template direction: launch");
-    expect(stdout).toContain("Audience: small engineering teams");
   });
 
   it("should accept --template and --design-system from the registry", async () => {
@@ -78,7 +73,7 @@ describe("zero generate website command", () => {
       "saas-landing",
       "--design-system",
       "stripe",
-      "--site",
+      "--site-slug",
       "saas-pricing-demo",
     ]);
 
@@ -132,7 +127,7 @@ describe("zero generate website command", () => {
       "website",
       "--prompt",
       "observability launch site",
-      "--site",
+      "--site-slug",
       "clearpath-demo",
       "--json",
     ]);
