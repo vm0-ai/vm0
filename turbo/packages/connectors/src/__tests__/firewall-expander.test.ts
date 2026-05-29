@@ -770,6 +770,12 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://\u08701!.example", "fw");
     }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://1a\u0870.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://1\u0870!.example", "fw");
+    }).toThrow("invalid bidirectional label text");
   });
 
   it("should accept valid bidirectional host label boundaries", () => {
@@ -790,6 +796,12 @@ describe("validateBaseUrl", () => {
     }).not.toThrow();
     expect(() => {
       return validateBaseUrl("https://\u0870!1.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://a1\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://1\u0870\u0301.example", "fw");
     }).not.toThrow();
   });
 

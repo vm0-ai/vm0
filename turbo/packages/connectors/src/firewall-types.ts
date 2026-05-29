@@ -881,12 +881,31 @@ function isAsciiDigit(char: string): boolean {
   return char >= "0" && char <= "9";
 }
 
+function isArabicNumberForBidiCheck(char: string): boolean {
+  const codePoint = char.codePointAt(0);
+  return codePoint !== undefined && 0x0660 <= codePoint && codePoint <= 0x0669;
+}
+
 function effectiveBidiEndChar(chars: readonly string[]): string | undefined {
   for (let index = chars.length - 1; index >= 0; index -= 1) {
     const char = chars[index]!;
     if (!UNICODE_MARK_PATTERN.test(char)) return char;
   }
   return chars.at(-1);
+}
+
+function firstEffectiveBidiChar(chars: readonly string[]): string | undefined {
+  return chars.find((char) => {
+    return !UNICODE_MARK_PATTERN.test(char);
+  });
+}
+
+function isRtlEndCharForBidiCheck(char: string): boolean {
+  return (
+    isIdnaBidiRtlLabelChar(char) ||
+    isAsciiDigit(char) ||
+    isArabicNumberForBidiCheck(char)
+  );
 }
 
 function hasInvalidMixedBidiLabelText(value: string): boolean {
@@ -904,11 +923,7 @@ function hasInvalidMixedBidiLabelText(value: string): boolean {
     if (suffixHasLtrLetter) return true;
 
     const endChar = effectiveBidiEndChar(chars);
-    return (
-      endChar !== undefined &&
-      !isIdnaBidiRtlLabelChar(endChar) &&
-      !isAsciiDigit(endChar)
-    );
+    return endChar !== undefined && !isRtlEndCharForBidiCheck(endChar);
   }
 
   const suffixHasLtrLetter = suffix.some((char) => {
@@ -916,15 +931,26 @@ function hasInvalidMixedBidiLabelText(value: string): boolean {
   });
   if (suffixHasLtrLetter) return true;
 
-  const prefixHasLtrLetter = chars.slice(0, firstRtlIndex).some((char) => {
+  const prefix = chars.slice(0, firstRtlIndex);
+  const prefixHasLtrLetter = prefix.some((char) => {
     return isLtrLetterForBidiCheck(char);
   });
-  return (
-    prefixHasLtrLetter &&
-    suffix.some((char) => {
+  if (prefixHasLtrLetter) {
+    if (prefix.some(isArabicNumberForBidiCheck)) return true;
+    const firstPrefixChar = firstEffectiveBidiChar(prefix);
+    if (
+      firstPrefixChar === undefined ||
+      !isLtrLetterForBidiCheck(firstPrefixChar)
+    ) {
+      return true;
+    }
+    return suffix.some((char) => {
       return !UNICODE_MARK_PATTERN.test(char);
-    })
-  );
+    });
+  }
+
+  const endChar = effectiveBidiEndChar(chars);
+  return endChar !== undefined && !isRtlEndCharForBidiCheck(endChar);
 }
 
 function hasRawWhitespace(value: string): boolean {
