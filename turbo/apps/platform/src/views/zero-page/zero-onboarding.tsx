@@ -550,7 +550,7 @@ function OnboardingTrialPanel() {
         <img
           src={activeItem.image}
           alt={`${activeItem.label} preview`}
-          className="max-h-full max-w-full object-contain"
+          className="max-h-full max-w-full object-contain rounded-2xl"
         />
       </div>
       <div className="flex flex-col">
