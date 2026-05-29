@@ -243,6 +243,78 @@ describe("resolveFirewallSelections", () => {
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
 
+  it("collectAndValidatePermissions rejects malformed static auth.base URLs", () => {
+    const config = (authBase: string): FirewallConfig => {
+      return {
+        name: "rewrite",
+        apis: [
+          {
+            base: "https://placeholder.example.com/hook",
+            auth: { base: authBase },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(config("ftp://example.com/hook"));
+    }).toThrow("scheme must be http or https");
+    expect(() => {
+      return collectAndValidatePermissions(config("https:/example.com/hook"));
+    }).toThrow('URL must include "://" after the scheme');
+    expect(() => {
+      return collectAndValidatePermissions(config("https:///hook"));
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/hook#fragment"),
+      );
+    }).toThrow("must not contain fragment");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://user:pass@example.com/hook"),
+      );
+    }).toThrow("must not contain userinfo");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"),
+      );
+    }).toThrow('URL must include "://" after the scheme');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"),
+      );
+    }).toThrow("contains unsupported template reference");
+  });
+
+  it("collectAndValidatePermissions accepts static and templated auth.base URLs", () => {
+    const validAuthBases = [
+      "https://example.com/hook?token=static",
+      "${{ secrets.WEBHOOK_URL }}",
+      "${{ secrets.WEBHOOK_BASE_URL }}/v1",
+      "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}",
+      "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK_TOKEN }}",
+    ];
+
+    for (const authBase of validAuthBases) {
+      const config: FirewallConfig = {
+        name: "rewrite",
+        apis: [
+          {
+            base: "https://placeholder.example.com/hook",
+            auth: { base: authBase },
+            permissions: [],
+          },
+        ],
+      };
+
+      expect(() => {
+        return collectAndValidatePermissions(config);
+      }).not.toThrow();
+    }
+  });
+
   it("should retain api entries with empty permissions when user picks all", async () => {
     // Regression for the filter bug: api entries configured as
     // `permissions: []` rely on base URL match + unknownPolicy fallback.
@@ -495,6 +567,15 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https:///v1", "fw");
     }).toThrow("not a valid URL authority");
+  });
+
+  it("should reject URLs that omit // after the scheme", () => {
+    expect(() => {
+      return validateBaseUrl("https:/api.example.com/v1", "fw");
+    }).toThrow('URL must include "://" after the scheme');
+    expect(() => {
+      return validateBaseUrl("https:api.example.com/v1", "fw");
+    }).toThrow('URL must include "://" after the scheme');
   });
 
   it("suggests adding https:// when the scheme is missing", () => {

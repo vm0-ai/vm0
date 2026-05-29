@@ -2545,6 +2545,13 @@ class TestCompiledFirewallMatching:
             {"headers": {123: "Bearer token"}},
             {"base": None},
             {"base": 123},
+            {"base": "ftp://example.com/hook"},
+            {"base": "https:/example.com/hook"},
+            {"base": "https:///hook"},
+            {"base": "https://example.com/hook#fragment"},
+            {"base": "https://user:pass@example.com/hook"},
+            {"base": "https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
+            {"base": "https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"},
             {"query": None},
             {"query": "api_key"},
             {"query": {"api_key": 123}},
@@ -2584,6 +2591,41 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallBlock)
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
+        "auth_config",
+        [
+            {"base": "https://example.com/hook?token=static"},
+            {"base": "${{ secrets.WEBHOOK_URL }}"},
+            {"base": "${{ secrets.WEBHOOK_BASE_URL }}/v1"},
+            {"base": "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
+            {"base": "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK_TOKEN }}"},
+        ],
+    )
+    def test_valid_auth_base_config_can_match(self, auth_config):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": auth_config,
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "repo-read"
 
     def test_missing_auth_config_fails_closed_after_base_match(self):
         fws = wrap_firewalls(

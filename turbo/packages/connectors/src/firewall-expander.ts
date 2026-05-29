@@ -1,6 +1,7 @@
 import {
   type FirewallConfig,
   type ExpandedFirewallConfig,
+  validateAuthBaseUrl,
   validateBaseUrl,
 } from "./firewall-types";
 import { parseSegment, splitPathSegments } from "./segment-parser";
@@ -135,6 +136,9 @@ export function collectAndValidatePermissions(
   const available = new Set<string>();
   for (const api of serviceConfig.apis) {
     validateBaseUrl(api.base, serviceConfig.name);
+    if (api.auth.base !== undefined) {
+      validateAuthBaseUrl(api.auth.base, serviceConfig.name);
+    }
     if (!api.permissions || api.permissions.length === 0) {
       // Empty permissions is a valid shape: every request under this base
       // falls through to the firewall's unknownPolicy. Auth headers are

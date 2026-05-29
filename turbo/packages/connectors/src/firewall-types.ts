@@ -179,6 +179,9 @@ const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 const AUTH_REFERENCE_PATTERN =
   /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const AUTH_REFERENCE_PATTERN_G = new RegExp(AUTH_REFERENCE_PATTERN.source, "g");
+const AUTH_TEMPLATE_START = "${{";
+const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -814,6 +817,32 @@ function validateBaseUrlScheme(
   }
 }
 
+function validateUrlSchemeDelimiter(
+  value: string,
+  serviceName: string,
+  label: "base URL" | "auth.base URL",
+  displayValue = value,
+): void {
+  if (value.includes("://")) return;
+
+  const colonIndex = value.indexOf(":");
+  if (colonIndex !== -1) {
+    const scheme = value.slice(0, colonIndex);
+    if (!ALLOWED_BASE_URL_SCHEMES.has(scheme.toLowerCase())) {
+      throw new Error(
+        `Invalid ${label} "${displayValue}" in firewall "${serviceName}": scheme must be http or https`,
+      );
+    }
+    throw new Error(
+      `Invalid ${label} "${displayValue}" in firewall "${serviceName}": URL must include "://" after the scheme`,
+    );
+  }
+
+  throw new Error(
+    `Invalid ${label} "${displayValue}" in firewall "${serviceName}": URL must include a scheme (e.g. "https://${displayValue}")`,
+  );
+}
+
 function isAscii(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
     if (value.charCodeAt(i) > 0x7f) return false;
@@ -1431,6 +1460,8 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     );
   }
 
+  validateUrlSchemeDelimiter(base, serviceName, "base URL");
+
   // Parameterized base URLs have their own validation path.
   if (hasBaseUrlParams(base)) {
     validateBaseUrlParams(base, serviceName);
@@ -1478,6 +1509,92 @@ export function validateBaseUrl(base: string, serviceName: string): void {
       `Invalid base URL "${base}" in firewall "${serviceName}": host must not contain braces`,
     );
   }
+}
+
+function authBaseForStaticUrlValidation(authBase: string): string | null {
+  if (!authBase.includes(AUTH_TEMPLATE_START)) return authBase;
+
+  const replaced = authBase.replace(
+    AUTH_REFERENCE_PATTERN_G,
+    AUTH_TEMPLATE_URL_PLACEHOLDER,
+  );
+  if (replaced.includes(AUTH_TEMPLATE_START)) return authBase;
+  if (
+    authBase.startsWith(AUTH_TEMPLATE_START) ||
+    replaced === AUTH_TEMPLATE_URL_PLACEHOLDER
+  ) {
+    return null;
+  }
+  return replaced;
+}
+
+export function validateAuthBaseUrl(
+  authBase: string,
+  serviceName: string,
+): void {
+  if (authBase.includes("\\")) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain backslash`,
+    );
+  }
+
+  // Auth base URLs may be fully or partially secret/var-backed; resolved
+  // values are only available in the sandbox when auth is applied.
+  const validationUrl = authBaseForStaticUrlValidation(authBase);
+  if (validationUrl === null) return;
+  if (validationUrl.includes(AUTH_TEMPLATE_START)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": contains unsupported template reference`,
+    );
+  }
+
+  if (hasRawWhitespace(validationUrl)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
+
+  validateUrlSchemeDelimiter(
+    validationUrl,
+    serviceName,
+    "auth.base URL",
+    authBase,
+  );
+
+  let url: URL;
+  try {
+    url = new URL(validationUrl);
+  } catch {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL`,
+    );
+  }
+  if (!ALLOWED_BASE_URL_SCHEMES.has(url.protocol.slice(0, -1).toLowerCase())) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": scheme must be http or https`,
+    );
+  }
+  if (url.hash) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
+  const authority = rawAuthorityFromBaseUrl(validationUrl);
+  if (authority !== null) {
+    if (authority === "") {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authority.includes("@")) {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain userinfo`,
+      );
+    }
+    validateHostPercentEncoding(authority, validationUrl, serviceName);
+    validateHostHasNoUnsafeIdnaMappings(authority, validationUrl, serviceName);
+  }
+  validateStaticHostLabels(url.hostname, validationUrl, serviceName);
 }
 
 /**

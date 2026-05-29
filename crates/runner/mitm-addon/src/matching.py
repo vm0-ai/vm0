@@ -4,6 +4,7 @@ Pure functions with no module-level state or I/O.
 """
 
 import ipaddress
+import re
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal, NamedTuple
@@ -54,6 +55,9 @@ _VALID_RULE_METHODS = frozenset(
 )
 _VALID_BASE_SCHEMES = frozenset(("http", "https"))
 _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
+_AUTH_TEMPLATE_START = "${{"
+_AUTH_REFERENCE_PATTERN = re.compile(r"\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}")
+_AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 
 
 def _has_base_url_params(base: str) -> bool:
@@ -849,6 +853,49 @@ def _is_string_record(value: object) -> bool:
     )
 
 
+def _auth_base_for_static_url_validation(auth_base: str) -> str | None:
+    if _AUTH_TEMPLATE_START not in auth_base:
+        return auth_base
+
+    replaced = _AUTH_REFERENCE_PATTERN.sub(_AUTH_TEMPLATE_URL_PLACEHOLDER, auth_base)
+    if _AUTH_TEMPLATE_START in replaced:
+        return auth_base
+    if auth_base.startswith(_AUTH_TEMPLATE_START) or replaced == _AUTH_TEMPLATE_URL_PLACEHOLDER:
+        return None
+    return replaced
+
+
+def _static_auth_base_is_valid(auth_base: str) -> bool:
+    if "\\" in auth_base:
+        return False
+    validation_url = _auth_base_for_static_url_validation(auth_base)
+    if validation_url is None:
+        return True
+    if _AUTH_TEMPLATE_START in validation_url:
+        return False
+    if any(char in _RAW_WHITESPACE_CHARS for char in validation_url):
+        return False
+    if "://" not in validation_url:
+        return False
+
+    try:
+        parts = urlsplit(validation_url)
+    except ValueError:
+        return False
+    if parts.scheme.lower() not in _VALID_BASE_SCHEMES:
+        return False
+    if parts.fragment:
+        return False
+    return (
+        _split_base_match_url(
+            validation_url,
+            allow_query_fragment=True,
+            allow_malformed_authority=False,
+        )
+        is not None
+    )
+
+
 def _auth_config_is_valid(api_entry: dict) -> bool:
     if "auth" not in api_entry:
         return False
@@ -860,6 +907,8 @@ def _auth_config_is_valid(api_entry: dict) -> bool:
     if "headers" in raw_auth and not _is_string_record(raw_auth["headers"]):
         return False
     if "base" in raw_auth and not isinstance(raw_auth["base"], str):
+        return False
+    if "base" in raw_auth and not _static_auth_base_is_valid(raw_auth["base"]):
         return False
 
     return "query" not in raw_auth or _is_string_record(raw_auth["query"])
