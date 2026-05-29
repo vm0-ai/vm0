@@ -590,7 +590,7 @@ async function completeSessionResponse(args: {
   const connector = await args.connectorLoader();
   args.signal.throwIfAborted();
   if (!connector) {
-    throw new Error("Completed connector not found");
+    throw new Error("Completed OAuth connector not found");
   }
   return { status: 200, body: { status: "complete", connector } };
 }

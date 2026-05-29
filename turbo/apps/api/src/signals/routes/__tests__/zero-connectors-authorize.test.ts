@@ -983,7 +983,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "github connector auth client not configured",
+        message: "github OAuth not configured",
         code: "INTERNAL_SERVER_ERROR",
       },
     });
