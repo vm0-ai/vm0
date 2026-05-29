@@ -38,6 +38,7 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61")
+_RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
     (
@@ -208,6 +209,7 @@ class _CompiledBase(NamedTuple):
     parts: _BaseUrlParts
     has_params: bool
     has_query_or_fragment: bool
+    raw_syntax_malformed: bool
     param_parse_malformed: bool
     host_segments: tuple[ParsedSegment, ...]
     path_segments: tuple[ParsedSegment, ...]
@@ -1043,6 +1045,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         return None
 
     has_params = _has_base_url_params(base)
+    raw_syntax_malformed = "\\" in base or any(char in _RAW_WHITESPACE_CHARS for char in base)
     try:
         parsed = urlsplit(base)
     except ValueError:
@@ -1080,6 +1083,7 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         parts,
         has_params,
         has_query_or_fragment,
+        raw_syntax_malformed,
         param_parse_malformed,
         host_segments,
         path_segments,
@@ -1137,7 +1141,13 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
     method, path = parts
     if method not in _VALID_RULE_METHODS:
         return None
-    if not path.startswith("/") or "?" in path or "#" in path:
+    if (
+        not path.startswith("/")
+        or "?" in path
+        or "#" in path
+        or "\\" in path
+        or any(char in _RAW_WHITESPACE_CHARS for char in path)
+    ):
         return None
     pattern = compile_path_pattern(path)
     if pattern is None:
@@ -1177,6 +1187,7 @@ def compile_firewalls(vm_firewalls: list | None) -> CompiledFirewallSet | None:
                 continue
             base_malformed = (
                 base.has_query_or_fragment
+                or base.raw_syntax_malformed
                 or base.param_parse_malformed
                 or base.parts.host_malformed
                 or base.parts.has_userinfo

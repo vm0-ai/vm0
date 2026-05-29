@@ -1609,6 +1609,9 @@ class TestCompiledFirewallMatching:
             ("GET repos/{owner}/{repo}", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner}/{repo}?state=open", "https://api.github.com/repos/org/repo"),
             ("GET /repos/{owner}/{repo}#section", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/{owner} {repo}", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/{owner}\\{repo}", "https://api.github.com/repos/org/repo"),
+            ("GET /repos/{owner}\t{repo}", "https://api.github.com/repos/org/repo"),
             ("GET /files/{path+}/admin", "https://api.github.com/files/readme"),
             ("GET /files/{path*}/admin", "https://api.github.com/files/readme"),
             ("GET /files/{path+}.json", "https://api.github.com/files/readme.json"),
@@ -1905,6 +1908,49 @@ class TestCompiledFirewallMatching:
                     "auth": {"headers": {"Authorization": "Bearer token"}},
                     "permissions": [
                         {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        unrelated = matching.match_compiled_firewall_request(
+            "https://api.gitlab.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.permissions == ()
+        assert matched.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
+        ("base", "url"),
+        [
+            ("https://api.github.com/repos foo", "https://api.github.com/repos foo/org/repo"),
+            ("https://api.github.com/repos\\foo", "https://api.github.com/repos\\foo/org/repo"),
+            ("https://{sub}.github.com/repos {owner}", "https://api.github.com/repos org/repo"),
+            ("https://{sub}.github.com/repos\\{owner}", "https://api.github.com/repos\\org/repo"),
+        ],
+    )
+    def test_malformed_base_raw_syntax_fails_closed_after_base_match(self, base, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /{repo}"]},
                     ],
                 }
             ],
