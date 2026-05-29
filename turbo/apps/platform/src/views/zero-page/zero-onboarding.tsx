@@ -571,15 +571,19 @@ const TRIAL_WORKFLOW_CHANNELS: readonly { key: string; src: string }[] = [
 
 function TrialWorkflowSlide() {
   return (
-    <div className="h-full w-full flex flex-col items-center justify-center gap-4 p-3">
+    <div className="h-full w-full flex flex-col items-center justify-center gap-4 pl-3 pr-1 py-3">
       <div className="flex items-center justify-center gap-5">
         {TRIAL_WORKFLOW_CHANNELS.map((channel) => {
+          // The Slack icon's source SVG has a padded viewBox; scale it up so
+          // its visible mark matches Telegram + iMessage which fill their own
+          // viewBox edge to edge.
+          const scale = channel.key === "slack" ? "scale-150" : "";
           return (
             <img
               key={channel.key}
               src={channel.src}
               alt=""
-              className="h-11 w-11 object-contain"
+              className={`h-14 w-14 object-contain ${scale}`}
             />
           );
         })}
