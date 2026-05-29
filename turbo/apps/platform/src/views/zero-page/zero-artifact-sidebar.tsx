@@ -7,6 +7,9 @@ import {
   IconExternalLink,
   IconLoader2,
   IconX,
+  IconZoomIn,
+  IconZoomOut,
+  IconZoomReset,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import {
@@ -28,6 +31,15 @@ import {
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
+import {
+  IMAGE_LIGHTBOX_MAX_ZOOM,
+  IMAGE_LIGHTBOX_MIN_ZOOM,
+  imageLightboxImageRef$,
+  imageLightboxState$,
+  resetImageLightboxZoom$,
+  zoomImageLightboxIn$,
+  zoomImageLightboxOut$,
+} from "../../signals/view-component-state.ts";
 
 // ---------------------------------------------------------------------------
 // ArtifactSidebar — page-level pane for previewing the artifact pointed to
@@ -392,6 +404,10 @@ function ArtifactCsvBody({
   );
 }
 
+function isImageLightboxZoomAtReset(zoom: number): boolean {
+  return Math.abs(zoom - 1) < 0.001;
+}
+
 function ArtifactImageBody({
   url,
   filename,
@@ -399,14 +415,93 @@ function ArtifactImageBody({
   url: string;
   filename: string;
 }) {
+  // The sidebar image preview and the legacy full-screen lightbox are mutually
+  // exclusive (chatArtifactSidebar feature switch routes image clicks to one
+  // or the other), so the lightbox zoom state is reused here. The `key={url}`
+  // on the img remounts it on artifact change, which triggers the onRef
+  // reset that wipes any stale zoom level.
+  const { zoom } = useGet(imageLightboxState$);
+  const setImageRef = useSet(imageLightboxImageRef$);
+  const zoomIn = useSet(zoomImageLightboxIn$);
+  const zoomOut = useSet(zoomImageLightboxOut$);
+  const resetZoom = useSet(resetImageLightboxZoom$);
+
   return (
-    <div className="flex h-full items-center justify-center bg-muted/20 p-4">
+    <div className="relative flex h-full items-center justify-center overflow-auto bg-muted/20 p-4">
       <img
+        key={url}
+        ref={setImageRef}
         src={url}
         alt={filename}
-        className="max-h-full max-w-full object-contain"
+        style={{ transform: `scale(${String(zoom)})` }}
+        className="max-h-full max-w-full object-contain transition-transform duration-150"
         data-testid="artifact-sidebar-body-image"
       />
+      <ArtifactImageZoomControls
+        zoom={zoom}
+        zoomIn={zoomIn}
+        zoomOut={zoomOut}
+        resetZoom={resetZoom}
+      />
+    </div>
+  );
+}
+
+function ArtifactImageZoomControls({
+  zoom,
+  zoomIn,
+  zoomOut,
+  resetZoom,
+}: {
+  zoom: number;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetZoom: () => void;
+}) {
+  return (
+    <div
+      className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-foreground/80 p-1 text-background shadow-lg backdrop-blur-sm"
+      data-testid="artifact-sidebar-image-zoom-controls"
+    >
+      <button
+        type="button"
+        onClick={zoomOut}
+        disabled={zoom <= IMAGE_LIGHTBOX_MIN_ZOOM}
+        className="rounded-full p-1.5 transition-colors hover:bg-background/20 disabled:pointer-events-none disabled:opacity-40"
+        aria-label="Zoom out"
+        title="Zoom out"
+        data-testid="artifact-sidebar-image-zoom-out"
+      >
+        <IconZoomOut size={18} stroke={2} />
+      </button>
+      <span
+        className="min-w-10 text-center text-xs font-medium tabular-nums"
+        data-testid="artifact-sidebar-image-zoom-level"
+      >
+        {Math.round(zoom * 100)}%
+      </span>
+      <button
+        type="button"
+        onClick={zoomIn}
+        disabled={zoom >= IMAGE_LIGHTBOX_MAX_ZOOM}
+        className="rounded-full p-1.5 transition-colors hover:bg-background/20 disabled:pointer-events-none disabled:opacity-40"
+        aria-label="Zoom in"
+        title="Zoom in"
+        data-testid="artifact-sidebar-image-zoom-in"
+      >
+        <IconZoomIn size={18} stroke={2} />
+      </button>
+      <button
+        type="button"
+        onClick={resetZoom}
+        disabled={isImageLightboxZoomAtReset(zoom)}
+        className="rounded-full p-1.5 transition-colors hover:bg-background/20 disabled:pointer-events-none disabled:opacity-40"
+        aria-label="Reset zoom"
+        title="Reset zoom"
+        data-testid="artifact-sidebar-image-zoom-reset"
+      >
+        <IconZoomReset size={18} stroke={2} />
+      </button>
     </div>
   );
 }
