@@ -90,6 +90,20 @@ function basicTemplate(first: string, second: string): string {
   return `\${{ basic(${first}, ${second}) }}`;
 }
 
+function deferred(): {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+} {
+  let resolvePromise: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  if (!resolvePromise) {
+    throw new Error("Failed to create deferred promise");
+  }
+  return { promise, resolve: resolvePromise };
+}
+
 function firewallClient() {
   return setupApp({ context })(webhookFirewallAuthContract);
 }
@@ -1249,6 +1263,97 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(connector.tokenExpiresAt?.getTime()).toBeGreaterThan(now());
   });
 
+  it("serializes concurrent connector OAuth refreshes for rotated refresh tokens", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+
+    let refreshCallCount = 0;
+    const firstRefreshStarted = deferred();
+    const firstRefreshRelease = deferred();
+
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", async () => {
+        refreshCallCount += 1;
+        if (refreshCallCount === 1) {
+          firstRefreshStarted.resolve();
+          await firstRefreshRelease.promise;
+        }
+        return HttpResponse.json({
+          access_token: "fresh-concurrent-notion-token",
+          refresh_token: "rotated-concurrent-notion-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const refreshRequest = () => {
+      return accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({
+              NOTION_TOKEN: "stale-notion-token",
+            }),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              NOTION_TOKEN: "notion",
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [200],
+      );
+    };
+
+    const firstResponsePromise = refreshRequest();
+    await firstRefreshStarted.promise;
+    const secondResponsePromise = refreshRequest();
+    firstRefreshRelease.resolve();
+
+    const responses = await Promise.all([
+      firstResponsePromise,
+      secondResponsePromise,
+    ]);
+
+    expect(refreshCallCount).toBe(1);
+    for (const response of responses) {
+      expect(response.body.headers.Authorization).toBe(
+        "Bearer fresh-concurrent-notion-token",
+      );
+      expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+    }
+    expect(
+      responses.map((response) => {
+        return response.body.refreshedConnectors;
+      }),
+    ).toStrictEqual([["notion"], []]);
+    expect(
+      responses.map((response) => {
+        return response.body.refreshedSecrets;
+      }),
+    ).toStrictEqual([["NOTION_TOKEN"], []]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "NOTION_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-concurrent-notion-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "NOTION_REFRESH_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("rotated-concurrent-notion-refresh-token");
+    await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+  });
+
   it("refreshes dynamic public connector OAuth tokens without env client credentials", async () => {
     const dynamicOAuth = useDynamicTestOAuthRefresh();
     restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
@@ -2136,6 +2241,105 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         type: "model-provider",
       }),
     ).resolves.toBe("fresh-chatgpt-token");
+    await expect(codexProviderState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+  });
+
+  it("serializes concurrent model-provider OAuth refreshes for rotated refresh tokens", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCodexModelProvider(fixture);
+
+    let refreshCallCount = 0;
+    const firstRefreshStarted = deferred();
+    const firstRefreshRelease = deferred();
+
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async () => {
+        refreshCallCount += 1;
+        if (refreshCallCount === 1) {
+          firstRefreshStarted.resolve();
+          await firstRefreshRelease.promise;
+        }
+        return HttpResponse.json({
+          access_token: "fresh-concurrent-chatgpt-token",
+          refresh_token: "rotated-concurrent-chatgpt-refresh",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const refreshRequest = () => {
+      return accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({
+              CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+            }),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+            },
+            secretConnectorMetadataMap: {
+              CHATGPT_ACCESS_TOKEN: {
+                sourceType: "model-provider",
+                sourceUserId: ORG_SENTINEL_USER_ID,
+                metadataKey: "codex-oauth-token",
+              },
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [200],
+      );
+    };
+
+    const firstResponsePromise = refreshRequest();
+    await firstRefreshStarted.promise;
+    const secondResponsePromise = refreshRequest();
+    firstRefreshRelease.resolve();
+
+    const responses = await Promise.all([
+      firstResponsePromise,
+      secondResponsePromise,
+    ]);
+
+    expect(refreshCallCount).toBe(1);
+    for (const response of responses) {
+      expect(response.body.headers.Authorization).toBe(
+        "Bearer fresh-concurrent-chatgpt-token",
+      );
+      expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
+    }
+    expect(
+      responses.map((response) => {
+        return response.body.refreshedConnectors;
+      }),
+    ).toStrictEqual([["codex-oauth-token"], []]);
+    expect(
+      responses.map((response) => {
+        return response.body.refreshedSecrets;
+      }),
+    ).toStrictEqual([["CHATGPT_ACCESS_TOKEN"], []]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ACCESS_TOKEN",
+        type: "model-provider",
+      }),
+    ).resolves.toBe("fresh-concurrent-chatgpt-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_REFRESH_TOKEN",
+        type: "model-provider",
+      }),
+    ).resolves.toBe("rotated-concurrent-chatgpt-refresh");
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
       needsReconnect: false,
       lastRefreshErrorCode: null,

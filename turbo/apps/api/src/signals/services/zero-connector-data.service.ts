@@ -39,7 +39,7 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -51,6 +51,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { lockConnectorState } from "./auth-state-lock.service";
 import {
   userFeatureSwitchContext,
   userFeatureSwitchOverrides,
@@ -124,19 +125,6 @@ interface PendingConnectorTokenRevoke {
   readonly authMethod: string;
   readonly encryptedAccessToken: string;
   readonly featureSwitchContext: FeatureSwitchContext;
-}
-
-async function lockConnectorState(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly type: ConnectorType;
-  },
-): Promise<void> {
-  await db.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('connector_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type}))`,
-  );
 }
 
 function parseOauthScopes(value: string | null): string[] | null {
