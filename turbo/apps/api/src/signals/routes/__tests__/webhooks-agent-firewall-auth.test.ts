@@ -297,6 +297,34 @@ async function seedExpiredTestOAuthConnector(
   });
 }
 
+async function seedStripeApiTokenConnector(
+  fixture: FirewallFixture,
+  args: { readonly token?: string } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "stripe",
+    authMethod: "api-token",
+    externalId: "stripe-account",
+    externalUsername: "stripe-account",
+    externalEmail: "stripe@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt: null,
+  });
+
+  if (args.token !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "STRIPE_TOKEN",
+      value: args.token,
+      type: "connector",
+    });
+  }
+}
+
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
@@ -1478,23 +1506,73 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("keeps missing static connector access secrets as missing configuration", async () => {
     const fixture = await track(seedFixture());
-    const db = store.set(writeDb$);
-    await db.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "stripe",
-      authMethod: "api-token",
-      externalId: "stripe-account",
-      externalUsername: "stripe-account",
-      externalEmail: "stripe@example.com",
-      oauthScopes: JSON.stringify([]),
-      tokenExpiresAt: null,
-    });
+    await seedStripeApiTokenConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({}),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+  });
+
+  it("loads current static connector access instead of stale encrypted access", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture, {
+      token: "current-stripe-token",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            STRIPE_TOKEN: "stripe",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-stripe-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects stale encrypted static connector access when current storage is missing", async () => {
+    const fixture = await track(seedFixture());
+    await seedStripeApiTokenConnector(fixture);
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            STRIPE_TOKEN: "stale-stripe-token",
+          }),
           authHeaders: {
             Authorization: `Bearer ${secretTemplate("STRIPE_TOKEN")}`,
           },
@@ -1546,18 +1624,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
   it("rejects encrypted connector secrets outside the selected access method", async () => {
     const fixture = await track(seedFixture());
-    const db = store.set(writeDb$);
-    await db.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "stripe",
-      authMethod: "api-token",
-      externalId: "stripe-account",
-      externalUsername: "stripe-account",
-      externalEmail: "stripe@example.com",
-      oauthScopes: JSON.stringify([]),
-      tokenExpiresAt: null,
-    });
+    await seedStripeApiTokenConnector(fixture);
 
     const response = await accept(
       firewallClient().resolve({

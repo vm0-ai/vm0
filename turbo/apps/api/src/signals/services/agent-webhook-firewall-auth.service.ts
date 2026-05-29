@@ -338,6 +338,7 @@ interface BasicArgContext extends BasicAuthTemplateArg {
 
 const L = logger("webhook:firewall-auth");
 const ORG_SENTINEL_USER_ID = "__org__";
+const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
@@ -1098,22 +1099,115 @@ function isSelectedAccessSecretKey(
   key: string,
   accessMetadata: ConnectorAuthMethodAccessMetadata,
 ): boolean {
+  return connectorAccessSecretName(key, accessMetadata) !== undefined;
+}
+
+function connectorAccessSecretName(
+  key: string,
+  accessMetadata: ConnectorAuthMethodAccessMetadata,
+): string | undefined {
   switch (accessMetadata.kind) {
     case "refresh-token": {
-      return (
+      if (
         key === accessMetadata.accessToken ||
         accessMetadata.envBindings[key] ===
-          `$secrets.${accessMetadata.accessToken}`
-      );
+          `${CONNECTOR_SECRET_REF_PREFIX}${accessMetadata.accessToken}`
+      ) {
+        return accessMetadata.accessToken;
+      }
+      return undefined;
     }
     case "static": {
-      return (
-        Object.hasOwn(accessMetadata.envBindings, key) &&
-        accessMetadata.envBindings[key]?.startsWith("$secrets.") === true
-      );
+      const valueRef = accessMetadata.envBindings[key];
+      return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true
+        ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
+        : undefined;
     }
     case "none": {
-      return false;
+      return undefined;
+    }
+  }
+}
+
+async function syncStaticConnectorAccessSecrets(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly secrets: Record<string, string>;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<void> {
+  if (!args.secretConnectorMap) {
+    return;
+  }
+
+  const lookups = [...args.referencedKeys].flatMap((key) => {
+    const connectorType = getOwnConnectorOwner(args.secretConnectorMap, key);
+    if (!connectorType) {
+      return [];
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "connector") {
+      return [];
+    }
+    const accessMetadata =
+      args.connectorAccessByType.get(connectorType)?.accessMetadata;
+    if (accessMetadata?.kind !== "static") {
+      return [];
+    }
+    const secretName = connectorAccessSecretName(key, accessMetadata);
+    return secretName ? [{ key, secretName }] : [];
+  });
+  if (lookups.length === 0) {
+    return;
+  }
+
+  const rows = await args.db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.type, "connector"),
+        inArray(secretsTable.name, [
+          ...new Set(
+            lookups.map((lookup) => {
+              return lookup.secretName;
+            }),
+          ),
+        ]),
+      ),
+    );
+
+  const valuesByName = new Map<string, string>();
+  for (const row of rows) {
+    valuesByName.set(
+      row.name,
+      await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      ),
+    );
+  }
+
+  for (const { key, secretName } of lookups) {
+    const value = valuesByName.get(secretName);
+    if (value === undefined) {
+      delete args.secrets[key];
+    } else {
+      args.secrets[key] = value;
     }
   }
 }
@@ -1226,6 +1320,7 @@ async function prepareFirewallAuthResolutionContext(args: {
   readonly auth: SandboxAuth;
   readonly body: FirewallAuthBody;
   readonly orgId: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
   readonly secrets: Record<string, string>;
 }): Promise<
   | { readonly ok: true; readonly context: FirewallAuthResolutionContext }
@@ -1247,6 +1342,17 @@ async function prepareFirewallAuthResolutionContext(args: {
       referencedKeys: referenced.secrets,
     }),
   );
+  await syncStaticConnectorAccessSecrets({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: referenced.secrets,
+    connectorAccessByType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
   if (
     hasUnavailableConnectorSource({
       secretConnectorMap: args.body.secretConnectorMap,
@@ -1808,6 +1914,7 @@ export async function resolveFirewallAuth(
     auth,
     body,
     orgId: decrypted.orgId,
+    featureSwitchContext: decrypted.featureSwitchContext,
     secrets: decryptedSecrets,
   });
   if (!prepared.ok) {
