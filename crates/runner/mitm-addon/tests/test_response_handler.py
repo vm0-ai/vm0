@@ -454,14 +454,14 @@ class TestResponseHandler:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}]}')
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         mitm_addon.response(flow)
 
         assert flow.response.stream is False
         assert "stream_buffer" not in flow.metadata
         assert "stream_buffer_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
         """Early-returning SSE flows should not retain parser closures."""

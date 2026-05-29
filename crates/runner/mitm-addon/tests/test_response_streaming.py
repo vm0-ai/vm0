@@ -7,15 +7,15 @@ from mitmproxy.test import tutils
 
 import mitm_addon
 import response_streaming
-import usage
 from tests.flow_helpers import header_map, response_stream
+from usage.providers.connectors import x as usage_x_connector
 
 
 class TestNdjsonExtractor:
     """Tests for create_ndjson_extractor incremental parser (issue #9534)."""
 
     def test_single_line(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         assert state["data_count"] == 1
         assert state["includes"] == {"users": 1}
@@ -23,7 +23,7 @@ class TestNdjsonExtractor:
         assert state["lines_failed"] == 0
 
     def test_multiple_lines_aggregate_counts(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         parse(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"},{"id":"u3"}]}}\n')
         assert state["data_count"] == 2
@@ -31,7 +31,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_chunked_line_split_mid_json(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"include')
         parse(b's":{"users":[{"id":"u1"}]}}\n')
         assert state["data_count"] == 1
@@ -39,7 +39,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 1
 
     def test_keep_alive_blank_lines(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b"\n\n")
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"\n")
@@ -48,13 +48,13 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_crlf_line_endings(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\r\n{"data":{"id":"2"}}\r\n')
         assert state["data_count"] == 2
         assert state["lines_parsed"] == 2
 
     def test_malformed_line_increments_failures(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"not json at all\n")
         parse(b'{"data":{"id":"2"}}\n')
@@ -64,13 +64,13 @@ class TestNdjsonExtractor:
 
     def test_truncated_trailing_line_not_counted(self):
         """Connection drops mid-line — partial trailing line stays in buf, not counted."""
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')  # no trailing \n
         assert state["data_count"] == 1
         assert state["lines_parsed"] == 1
 
     def test_empty_chunks_safe(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b"")
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"")
@@ -78,8 +78,8 @@ class TestNdjsonExtractor:
 
     def test_oversized_line_dropped(self):
         """Line > MAX_NDJSON_LINE_BYTES is dropped; subsequent lines parse normally."""
-        parse, state = usage.x.create_ndjson_extractor()
-        big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
+        parse, state = usage_x_connector.create_ndjson_extractor()
+        big = b"x" * (usage_x_connector.MAX_NDJSON_LINE_BYTES + 1024)
         parse(big)
         parse(b"\n")
         parse(b'{"data":{"id":"after"}}\n')
@@ -89,8 +89,8 @@ class TestNdjsonExtractor:
 
     def test_oversized_line_discards_until_newline(self):
         """A valid-looking tail of an overlong line must not be counted as its own row."""
-        parse, state = usage.x.create_ndjson_extractor()
-        big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
+        parse, state = usage_x_connector.create_ndjson_extractor()
+        big = b"x" * (usage_x_connector.MAX_NDJSON_LINE_BYTES + 1024)
         parse(big)
         parse(b'{"data":{"id":"tail"}}\n')
         parse(b'{"data":{"id":"next"}}\n')
@@ -101,8 +101,8 @@ class TestNdjsonExtractor:
 
     def test_oversized_line_with_newline_continues_in_same_chunk(self):
         """Dropping an overlong row should not discard valid later rows in the same chunk."""
-        parse, state = usage.x.create_ndjson_extractor()
-        big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
+        parse, state = usage_x_connector.create_ndjson_extractor()
+        big = b"x" * (usage_x_connector.MAX_NDJSON_LINE_BYTES + 1024)
         parse(big + b'\n{"data":{"id":"after"}}\n')
 
         assert state["data_count"] == 1
@@ -110,7 +110,7 @@ class TestNdjsonExtractor:
         assert state["lines_failed"] == 1
 
     def test_includes_multiple_keys(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(
             b'{"data":{"id":"1"},"includes":'
             b'{"users":[{"id":"u1"}],'
@@ -121,13 +121,13 @@ class TestNdjsonExtractor:
 
     def test_data_array_not_counted(self):
         """Line where top-level ``data`` is an array (not a dict) contributes 0 to data_count."""
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'{"data":[1,2,3]}\n')
         assert state["data_count"] == 0
         assert state["lines_parsed"] == 1
 
     def test_non_dict_top_level_skipped(self):
-        parse, state = usage.x.create_ndjson_extractor()
+        parse, state = usage_x_connector.create_ndjson_extractor()
         parse(b'"some string"\n')
         parse(b"42\n")
         parse(b'{"data":{"id":"1"}}\n')
@@ -152,54 +152,54 @@ class TestXJsonFinalize:
     def test_no_registered_x_json_finalizer_is_noop(self, real_flow):
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
 
-        response_streaming.finalize_x_json_state(flow)
+        response_streaming.finalize_connector_response_state(flow)
 
         assert "x_json_state" not in flow.metadata
 
     def test_finalizes_successful_x_json_state(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
         mitm_addon.responseheaders(flow)
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         response_stream(flow)(b'{"data":[{"id":"1"}]}')
-        response_streaming.finalize_x_json_state(flow)
+        response_streaming.finalize_connector_response_state(flow)
 
         state = dict(flow.metadata["x_json_state"])
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 1
         assert "parse_error" not in state
 
-        response_streaming.finalize_x_json_state(flow)
+        response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata["x_json_state"] == state
 
     def test_finalizes_x_json_parse_error(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
         mitm_addon.responseheaders(flow)
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         response_stream(flow)(b'{"data":[1')
-        response_streaming.finalize_x_json_state(flow)
+        response_streaming.finalize_connector_response_state(flow)
 
         state = dict(flow.metadata["x_json_state"])
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
         assert state["body_parsed"] is False
         assert isinstance(state["parse_error"], str)
         assert state["parse_error"]
 
-        response_streaming.finalize_x_json_state(flow)
+        response_streaming.finalize_connector_response_state(flow)
         assert flow.metadata["x_json_state"] == state
 
     def test_finalizes_non_object_x_json_without_parse_error(self, real_flow):
         flow = self._billable_x_json_flow(real_flow)
         mitm_addon.responseheaders(flow)
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         response_stream(flow)(b"[1,2,3]")
-        response_streaming.finalize_x_json_state(flow)
+        response_streaming.finalize_connector_response_state(flow)
 
         state = flow.metadata["x_json_state"]
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
         assert state["body_parsed"] is False
         assert "parse_error" not in state
 
@@ -489,7 +489,7 @@ class TestReleaseResponseStreamState:
                     "firewall_billable": True,
                     "original_url": "https://api.x.com/2/tweets",
                 },
-                "x_json_response_finish",
+                "connector_response_finish",
                 id="x-json",
             ),
         ],

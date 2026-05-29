@@ -11,7 +11,8 @@ Two paths:
   platform upload via ``/api/webhooks/agent/usage-event`` — see
   :mod:`usage.providers.connectors`.
 
-This package exposes the stable surface consumed by ``mitm_addon.py``.
+This package exposes the stable surface consumed by ``mitm_addon.py`` and
+``response_streaming.py``.
 For test patching, target the submodule that **reads** the name (e.g.
 ``usage.webhook._opener`` rather than ``usage._opener``) — Python's
 ``from X import Y`` creates a module-local binding that facade-level
@@ -47,7 +48,7 @@ from .openai_responses import (
     extract_openai_responses_usage_with_error_from_json,
     merge_openai_responses_usage_result,
 )
-from .providers.connectors import report_connector_usage, x
+from .providers.connectors import create_connector_response_parser, report_connector_usage
 from .providers.model_provider import report_model_provider_usage
 
 __all__ = [
@@ -56,6 +57,7 @@ __all__ = [
     "configure_usage_buffer",
     "create_anthropic_messages_json_usage_extractor",
     "create_anthropic_messages_sse_usage_extractor",
+    "create_connector_response_parser",
     "create_openai_responses_json_usage_extractor",
     "create_openai_responses_sse_usage_extractor",
     "decrement_in_flight_flows",
@@ -74,5 +76,4 @@ __all__ = [
     "set_pending_path",
     "webhook",
     "write_pending_snapshot",
-    "x",
 ]

@@ -76,7 +76,7 @@ class TestErrorHandler:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
         flow.error = Error("connection reset")
 
         with mitm_ctx():
@@ -85,7 +85,7 @@ class TestErrorHandler:
         assert flow.response.stream is False
         assert "stream_buffer" not in flow.metadata
         assert "stream_buffer_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_error_does_not_bill_partial_x_json_response(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
@@ -121,7 +121,7 @@ class TestErrorHandler:
         mock_opener.open.assert_not_called()
         assert flow.response.stream is False
         assert "stream_buffer" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_skips_log_when_no_metadata(self, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)

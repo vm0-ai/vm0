@@ -21,6 +21,7 @@ from logging_utils import log_proxy_entry
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR
 from ...json_selective import JsonSelectiveExtractor, ScalarField
+from .response_parser import ConnectorResponseParser
 from .x_billing import (
     classify_bucket,
     classify_includes_bucket,
@@ -238,6 +239,43 @@ class XJsonResponseExtractor:
 
 def create_json_response_extractor() -> XJsonResponseExtractor:
     return XJsonResponseExtractor()
+
+
+def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
+    """Create the X response-body parser needed for this flow, if any."""
+    if not flow.response:
+        return None
+
+    status_code = flow.response.status_code
+    if _HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN:
+        # Reads ``original_url`` with no fallback — kept consistent with
+        # ``_parse_request_metadata`` so the log entry's ``is_stream`` field
+        # cannot diverge from the parser registration decision.  For any x
+        # firewall flow, ``request()`` has already populated ``original_url``
+        # before ``responseheaders`` fires.
+        stream_path = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, "")).path
+        if is_stream_path(stream_path):
+            parser_fn, ndjson_state = create_ndjson_extractor()
+            # Deliberately NOT "model_provider_usage" — that key routes through
+            # report_model_provider_usage and triggers the model-provider webhook.
+            # x_ndjson_state is only consumed by report_connector_usage.
+            flow.metadata[metadata_keys.X_NDJSON_STATE] = ndjson_state
+            return ConnectorResponseParser(feed=parser_fn)
+
+    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+        return None
+    if not (_HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN):
+        return None
+
+    extractor = create_json_response_extractor()
+
+    def finish_json_state() -> None:
+        state, error = extractor.finish()
+        if error:
+            state["parse_error"] = error
+        flow.metadata[metadata_keys.X_JSON_STATE] = state
+
+    return ConnectorResponseParser(feed=extractor.feed, finish=finish_json_state)
 
 
 def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:

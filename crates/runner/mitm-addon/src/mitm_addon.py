@@ -628,7 +628,7 @@ def response(flow: http.HTTPFlow) -> None:
     _report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).
-    response_streaming.finalize_x_json_state(flow)
+    response_streaming.finalize_connector_response_state(flow)
     usage.report_connector_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers.

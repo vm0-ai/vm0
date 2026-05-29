@@ -1,6 +1,5 @@
 """Response streaming setup and parser state for the mitmproxy addon."""
 
-import urllib.parse
 from collections.abc import Callable
 
 from mitmproxy import http
@@ -10,17 +9,13 @@ import flow_metadata_keys as metadata_keys
 import usage
 from logging_utils import log_proxy_entry
 
-# HTTP 2xx success range (RFC 9110).  Also defined in
-# ``usage.providers.connectors.x`` for local response-phase classification.
-_HTTP_STATUS_OK_MIN = 200
 _HTTP_STATUS_SWITCHING_PROTOCOLS = 101
-_HTTP_STATUS_REDIRECT_MIN = 300
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
+_CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
-_X_JSON_RESPONSE_FINISH = "x_json_response_finish"
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -79,31 +74,6 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
     # and the incremental response parsers used for billing payload extraction.
     is_billable_flow = flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False)
     is_billable_model_provider = is_model_provider and is_billable_flow
-    # X-specific NDJSON stream classification — tied to the x firewall itself,
-    # not to billing.  Kept separate so a future non-x billable connector
-    # doesn't accidentally inherit X stream parsing.
-    is_x_flow = firewall_name == "x"
-
-    # Classify X NDJSON streams early so we can register an incremental parser
-    # and avoid buffering the (potentially multi-GB) stream body.  Only a
-    # cheap path-only check happens here — full request metadata is parsed
-    # later in response() by report_connector_usage.
-    #
-    # Gated on 2xx status so error responses (4xx/5xx on stream endpoints
-    # return JSON, not NDJSON) skip the billing parser and only use the capped
-    # forensic stream buffer.  report_connector_usage already skips non-2xx
-    # responses so no billing record is affected either way.
-    #
-    # Reads ``original_url`` with no fallback — kept consistent with
-    # :func:`usage.x._parse_request_metadata` so the log entry's
-    # ``is_stream`` field cannot diverge from the parser registration
-    # decision.  For any x firewall flow, ``request()`` has already
-    # populated ``original_url`` before ``responseheaders`` fires.
-    is_x_stream = False
-    if is_x_flow and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN:
-        stream_path = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, "")).path
-        is_x_stream = usage.x.is_stream_path(stream_path)
-
     if (
         is_billable_model_provider
         and flow.response.status_code == _HTTP_STATUS_SWITCHING_PROTOCOLS
@@ -139,21 +109,12 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
             extractor = usage.create_anthropic_messages_json_usage_extractor()
         flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
         return _make_response_chunk_parser(extractor.feed, flow.response.headers)
-    if is_x_stream:
-        parser_fn, ndjson_state = usage.x.create_ndjson_extractor()
-        # Deliberately NOT "model_provider_usage" — that key would route through
-        # report_model_provider_usage and trigger the model-provider webhook.
-        # x_ndjson_state is only consumed by report_connector_usage.
-        flow.metadata[metadata_keys.X_NDJSON_STATE] = ndjson_state
-        return _make_response_chunk_parser(parser_fn, flow.response.headers)
-    if (
-        is_x_flow
-        and is_billable_flow
-        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
-    ):
-        extractor = usage.x.create_json_response_extractor()
-        flow.metadata[_X_JSON_RESPONSE_FINISH] = extractor.finish
-        return _make_response_chunk_parser(extractor.feed, flow.response.headers)
+
+    connector_parser = usage.create_connector_response_parser(flow)
+    if connector_parser is not None:
+        if connector_parser.finish is not None:
+            flow.metadata[_CONNECTOR_RESPONSE_FINISH] = connector_parser.finish
+        return _make_response_chunk_parser(connector_parser.feed, flow.response.headers)
 
     return None
 
@@ -246,14 +207,10 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
     usage.merge_openai_responses_usage_result(usage_target, usage_result)
 
 
-def finalize_x_json_state(flow: http.HTTPFlow) -> None:
-    finish = flow.metadata.pop(_X_JSON_RESPONSE_FINISH, None)
-    if finish is None:
-        return
-    state, error = finish()
-    if error:
-        state["parse_error"] = error
-    flow.metadata[metadata_keys.X_JSON_STATE] = state
+def finalize_connector_response_state(flow: http.HTTPFlow) -> None:
+    finish = flow.metadata.pop(_CONNECTOR_RESPONSE_FINISH, None)
+    if finish is not None:
+        finish()
 
 
 def release_response_stream_state(flow: http.HTTPFlow) -> None:
@@ -262,6 +219,6 @@ def release_response_stream_state(flow: http.HTTPFlow) -> None:
     flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
     flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
     flow.metadata.pop(_MODEL_SSE_USAGE_FINISH, None)
-    flow.metadata.pop(_X_JSON_RESPONSE_FINISH, None)
+    flow.metadata.pop(_CONNECTOR_RESPONSE_FINISH, None)
     if stream_callback is not None and flow.response and flow.response.stream is stream_callback:
         flow.response.stream = False

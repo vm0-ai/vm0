@@ -7,6 +7,7 @@ from mitmproxy.test import tutils
 
 import body_utils
 import mitm_addon
+import response_streaming
 from tests.flow_helpers import header_map, response_stream
 
 
@@ -208,8 +209,8 @@ class TestResponseHeadersHandler:
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert "x_ndjson_state" not in flow.metadata
-        state, error = flow.metadata["x_json_response_finish"]()
-        assert error is None
+        response_streaming.finalize_connector_response_state(flow)
+        state = flow.metadata["x_json_state"]
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 1
         assert state["response_includes"] == {"users": 1}
@@ -249,7 +250,7 @@ class TestResponseHeadersHandler:
 
         # No NDJSON parser — error body would fail NDJSON parsing anyway.
         assert "x_ndjson_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
         callback = response_stream(flow)
         error_body = b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}'
         callback(error_body)
@@ -369,8 +370,8 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         response_stream(flow)(gzip.compress(body))
-        json_state, error = flow.metadata["x_json_response_finish"]()
-        assert error is None
+        response_streaming.finalize_connector_response_state(flow)
+        json_state = flow.metadata["x_json_state"]
         assert json_state["response_data_count"] == 2
         assert json_state["response_includes"] == {"users": 1}
         assert json_state["response_result_count"] == 2
@@ -464,8 +465,8 @@ class TestResponseHeadersHandler:
         state = flow.metadata["stream_buffer_state"]
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
-        json_state, error = flow.metadata["x_json_response_finish"]()
-        assert error is None
+        response_streaming.finalize_connector_response_state(flow)
+        json_state = flow.metadata["x_json_state"]
         assert json_state["response_data_count"] == 1
         assert json_state["response_result_count"] == 1
 
@@ -489,7 +490,7 @@ class TestResponseHeadersHandler:
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
         assert "x_ndjson_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow, headers):
         """Future billable connectors must not get unbounded buffers by default."""
@@ -512,4 +513,4 @@ class TestResponseHeadersHandler:
         assert state["truncated"]
         # And no X-specific state gets attached to a non-x flow.
         assert "x_ndjson_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata

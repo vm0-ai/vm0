@@ -24,22 +24,22 @@ class TestIsStreamPath:
     """Tests for is_stream_path predicate (issue #9534)."""
 
     def test_all_five_stream_endpoints_match(self):
-        assert usage.x.is_stream_path("/2/tweets/search/stream") is True
-        assert usage.x.is_stream_path("/2/tweets/sample/stream") is True
-        assert usage.x.is_stream_path("/2/tweets/sample10/stream") is True
-        assert usage.x.is_stream_path("/2/tweets/compliance/stream") is True
-        assert usage.x.is_stream_path("/2/users/compliance/stream") is True
+        assert usage_x_connector.is_stream_path("/2/tweets/search/stream") is True
+        assert usage_x_connector.is_stream_path("/2/tweets/sample/stream") is True
+        assert usage_x_connector.is_stream_path("/2/tweets/sample10/stream") is True
+        assert usage_x_connector.is_stream_path("/2/tweets/compliance/stream") is True
+        assert usage_x_connector.is_stream_path("/2/users/compliance/stream") is True
 
     def test_stream_rules_is_not_stream(self):
         # Rules management is a regular JSON request/response endpoint.
-        assert usage.x.is_stream_path("/2/tweets/search/stream/rules") is False
+        assert usage_x_connector.is_stream_path("/2/tweets/search/stream/rules") is False
 
     def test_non_stream_paths_do_not_match(self):
-        assert usage.x.is_stream_path("/2/tweets/search/recent") is False
-        assert usage.x.is_stream_path("/2/users/by") is False
-        assert usage.x.is_stream_path("/2/tweets/1") is False
-        assert usage.x.is_stream_path("") is False
-        assert usage.x.is_stream_path("/") is False
+        assert usage_x_connector.is_stream_path("/2/tweets/search/recent") is False
+        assert usage_x_connector.is_stream_path("/2/users/by") is False
+        assert usage_x_connector.is_stream_path("/2/tweets/1") is False
+        assert usage_x_connector.is_stream_path("") is False
+        assert usage_x_connector.is_stream_path("/") is False
 
 
 class TestReportConnectorUsage:
@@ -1253,7 +1253,7 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
         # 2. Stream chunks (including keep-alives and a mid-line split)
         chunks = [
@@ -1308,7 +1308,7 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -1330,7 +1330,7 @@ class TestReportConnectorUsage:
         assert entry["body_truncated"] is False
         assert isinstance(entry["parse_error"], str)
         assert entry["parse_error"]
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_response_logs_x_json_parse_error_after_forensic_buffer_truncates(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
@@ -1375,7 +1375,7 @@ class TestReportConnectorUsage:
         assert entry["level"] == "error"
         assert entry["body_truncated"] is False
         assert entry["parse_error"] == "incomplete json"
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_response_uses_request_hints_for_incremental_x_json_parse_error(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
@@ -1399,7 +1399,7 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
         mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
@@ -1419,4 +1419,4 @@ class TestReportConnectorUsage:
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
         assert all("parse_error" not in entry for entry in entries)
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
