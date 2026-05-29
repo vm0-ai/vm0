@@ -29,7 +29,9 @@ function PresentationCard({
     >
       <button
         type="button"
-        onClick={() => onOpen(item)}
+        onClick={() => {
+          onOpen(item);
+        }}
         aria-label={`Open ${item.title}`}
         className="group relative block aspect-[16/10] w-full overflow-hidden bg-[hsl(var(--gray-1))]"
       >
@@ -91,7 +93,9 @@ function PresentationLightbox({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
     >
       <div
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
         className="flex max-h-[92vh] w-full max-w-[1100px] flex-col overflow-hidden rounded-[16px] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.35)]"
       >
         <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--gray-1))] px-4 py-3">
@@ -196,7 +200,9 @@ export function PresentationClient() {
         <PresentationLightbox
           item={activeItem}
           appUrl={appUrl}
-          onClose={() => setActiveItem(null)}
+          onClose={() => {
+            setActiveItem(null);
+          }}
         />
       ) : null}
     </div>
