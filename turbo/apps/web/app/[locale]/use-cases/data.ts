@@ -1645,6 +1645,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "google-ads-keyword-audit",
     color: "#d9a341",
+    screenshots: [
+      "/assets/use-cases/google-ads-keyword-audit.png",
+      "/assets/use-cases/google-ads-keyword-audit-2.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 2,
