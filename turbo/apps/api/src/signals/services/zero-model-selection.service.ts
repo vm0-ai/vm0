@@ -20,12 +20,12 @@ export interface ModelFirstPin {
   readonly selectedModel: string | null;
 }
 
-export interface ModelSelectionRequest {
+interface ModelSelectionRequest {
   readonly modelProviderId: string;
   readonly selectedModel: string;
 }
 
-export function parseModelProviderCredentialScope(
+function parseModelProviderCredentialScope(
   value: string | null,
 ): ModelProviderCredentialScope | null {
   if (value === null || value === "org" || value === "member") {
