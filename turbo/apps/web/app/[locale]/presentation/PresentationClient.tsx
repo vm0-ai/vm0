@@ -39,7 +39,7 @@ function PresentationCard({
           src={item.previewImage}
           alt={item.title}
           fill
-          sizes="(min-width: 1024px) 368px, (min-width: 640px) 50vw, 100vw"
+          sizes="(min-width: 640px) 50vw, 100vw"
           className="object-contain transition-transform duration-300 group-hover:scale-[1.03]"
         />
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
@@ -49,11 +49,6 @@ function PresentationCard({
           </div>
         </div>
       </button>
-      <div className="px-4 py-3">
-        <h2 className="text-[14px] font-medium text-[hsl(var(--foreground))]">
-          {item.title}
-        </h2>
-      </div>
     </article>
   );
 }
@@ -180,7 +175,7 @@ export function PresentationClient() {
             margin: "0 auto",
             padding: `0 ${PAGE_PADDING}px`,
           }}
-          className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          className="grid grid-cols-1 gap-6 sm:grid-cols-2"
         >
           {PRESENTATION_ITEMS.map((item) => {
             return (
