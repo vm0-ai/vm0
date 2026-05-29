@@ -933,7 +933,7 @@ function didLockedRefreshFailDuringRequest(args: {
   readonly state: RefreshState;
 }): boolean {
   if (!args.state.needsReconnect) {
-    return false;
+    return lockedTransientFailureReasonDuringRequest(args) !== undefined;
   }
   if (args.initialState) {
     return (
@@ -945,6 +945,20 @@ function didLockedRefreshFailDuringRequest(args: {
     args.requestStartedAtMicros !== null &&
     args.state.updatedAtMicros > args.requestStartedAtMicros
   );
+}
+
+function lockedTransientFailureReasonDuringRequest(args: {
+  readonly requestStartedAtMicros: bigint | null;
+  readonly state: RefreshState;
+}): FirewallAuthFailureReason | undefined {
+  if (
+    args.requestStartedAtMicros !== null &&
+    args.state.updatedAtMicros > args.requestStartedAtMicros &&
+    tokenExpiresAtNeedsRefresh(args.state.tokenExpiresAt)
+  ) {
+    return "upstream_provider";
+  }
+  return undefined;
 }
 
 async function loadRefreshState(
@@ -1090,18 +1104,18 @@ async function markRefreshFailure(
   errorCode: string | null,
   failureReason: FirewallAuthFailureReason | undefined,
 ): Promise<void> {
-  if (failureReason === "upstream_provider") {
-    return;
-  }
-
   if (args.sourceType === "model-provider") {
     await args.db
       .update(modelProviders)
-      .set({
-        needsReconnect: true,
-        lastRefreshErrorCode: errorCode,
-        updatedAt: sql`clock_timestamp()`,
-      })
+      .set(
+        failureReason === "upstream_provider"
+          ? { updatedAt: sql`clock_timestamp()` }
+          : {
+              needsReconnect: true,
+              lastRefreshErrorCode: errorCode,
+              updatedAt: sql`clock_timestamp()`,
+            },
+      )
       .where(
         and(
           eq(modelProviders.orgId, args.orgId),
@@ -1114,10 +1128,14 @@ async function markRefreshFailure(
 
   await args.db
     .update(connectors)
-    .set({
-      needsReconnect: true,
-      updatedAt: sql`clock_timestamp()`,
-    })
+    .set(
+      failureReason === "upstream_provider"
+        ? { updatedAt: sql`clock_timestamp()` }
+        : {
+            needsReconnect: true,
+            updatedAt: sql`clock_timestamp()`,
+          },
+    )
     .where(
       and(
         eq(connectors.orgId, args.orgId),
@@ -1147,7 +1165,7 @@ async function refreshAccessTokenForSource(
   const { prepared } = preparation;
   const requestStartedAtMicros = args.forceRefresh
     ? args.forceRefreshStartedAtMicros
-    : null;
+    : await currentDatabaseTimestampMicros(args.db);
   const initialState = args.forceRefresh
     ? await loadRefreshState(args.db, args, prepared.context)
     : null;
@@ -1186,7 +1204,12 @@ async function refreshAccessTokenForSource(
         state: lockedState,
       })
     ) {
-      return refreshFailedResult();
+      return refreshFailedResult(
+        lockedTransientFailureReasonDuringRequest({
+          requestStartedAtMicros,
+          state: lockedState,
+        }),
+      );
     }
 
     if (
