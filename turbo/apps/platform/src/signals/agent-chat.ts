@@ -127,7 +127,7 @@ export interface ChatThread {
  * raw page so derived signals (chatThreads$, hasMore, nextCursor) can share a
  * single network round-trip.
  */
-export const chatThreadsFirstPage$ = computed(async (get) => {
+const chatThreadsFirstPage$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
   const agentId = await get(currentChatAgentId$);
