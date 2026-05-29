@@ -11,8 +11,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint src --type-aware -c ../../.oxlintrc.typeaware.json --ignore-pattern '**/__tests__/**' && eslint . --max-warnings 0",
-    "backfill:secret-kms": "tsx src/scripts/backfill-secret-kms-encryption.ts",
-    "backfill:persistent-secret-kms": "tsx src/scripts/backfill-persistent-secret-kms-encryption.ts",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {

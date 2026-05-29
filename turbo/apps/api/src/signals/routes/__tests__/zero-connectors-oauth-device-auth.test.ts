@@ -22,10 +22,10 @@ import {
   decryptPersistentSecretValue,
   decryptStoredSecretValue,
   encryptPersistentSecretValue,
-  inspectPersistentSecretCiphertext,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
+import { isKmsSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -461,13 +461,7 @@ describe("OAuth device authorization connector routes", () => {
       sessionTokenHash(response.body.sessionToken),
     );
     expect(session.encryptedProviderState).not.toContain("test-device:");
-    expect(
-      inspectPersistentSecretCiphertext(session.encryptedProviderState),
-    ).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
+    expect(isKmsSecretForTests(session.encryptedProviderState)).toBeTruthy();
     const decryptedProviderState = await decryptPersistentSecretValue(
       session.encryptedProviderState,
       {

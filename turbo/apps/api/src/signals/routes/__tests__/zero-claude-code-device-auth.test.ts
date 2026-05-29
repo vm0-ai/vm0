@@ -15,10 +15,10 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
   decryptStoredSecretValue,
-  inspectPersistentSecretCiphertext,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
+import { isKmsSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -184,13 +184,7 @@ describe("Claude Code device auth routes", () => {
       claudeCodeDeviceAuthSessions(userId, orgId),
     ).resolves.toHaveLength(1);
     const [session] = await claudeCodeDeviceAuthSessions(userId, orgId);
-    expect(
-      inspectPersistentSecretCiphertext(session!.encryptedProviderState!),
-    ).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
+    expect(isKmsSecretForTests(session!.encryptedProviderState!)).toBeTruthy();
     expect(kms.calls).toHaveLength(1);
   });
 

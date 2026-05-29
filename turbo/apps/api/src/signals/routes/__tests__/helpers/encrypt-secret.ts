@@ -96,6 +96,22 @@ export function decryptSecretForTests(encrypted: string): string {
   ]).toString("utf8");
 }
 
+export function isKmsSecretForTests(encrypted: string): boolean {
+  if (!encrypted.startsWith(STORED_SECRET_ENVELOPE_PREFIX)) {
+    return false;
+  }
+
+  const payload = encrypted.slice(STORED_SECRET_ENVELOPE_PREFIX.length);
+  const envelope = JSON.parse(
+    Buffer.from(payload, "base64url").toString("utf8"),
+  ) as {
+    readonly kms?: unknown;
+    readonly legacy?: unknown;
+  };
+
+  return Boolean(envelope.kms) && !("legacy" in envelope);
+}
+
 export function decryptSecretsMapForTests(
   encryptedData: string | null,
 ): Record<string, string> | null {

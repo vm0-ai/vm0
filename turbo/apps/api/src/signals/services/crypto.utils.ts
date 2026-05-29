@@ -16,13 +16,6 @@ import { singleton, testOverride } from "../../lib/singleton";
 const secretsMapSchema = z.record(z.string(), z.string());
 export const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
 
-export type StoredSecretWriteMode = "legacy" | "dual" | "kms";
-export type StoredSecretReadMode =
-  | "prefer-legacy"
-  | "prefer-kms"
-  | "legacy-only"
-  | "kms-only";
-
 const directKmsCiphertextSchema = z.object({
   keyId: z.string().min(1),
   ciphertext: z.string().min(1),
@@ -41,30 +34,14 @@ const kmsCiphertextSchema = z.union([
   directKmsCiphertextSchema,
 ]);
 
-const storedSecretEnvelopeSchema = z
-  .object({
-    v: z.literal(1),
-    kind: z.literal("stored-secret"),
-    legacy: z.string().min(1).optional(),
-    kms: kmsCiphertextSchema.optional(),
-  })
-  .refine(
-    (value) => {
-      return Boolean(value.legacy ?? value.kms);
-    },
-    { message: "Stored secret envelope must contain legacy or kms material" },
-  );
+const storedSecretEnvelopeSchema = z.object({
+  v: z.literal(1),
+  kind: z.literal("stored-secret"),
+  kms: kmsCiphertextSchema,
+});
 
 type KmsCiphertext = z.infer<typeof kmsCiphertextSchema>;
 type StoredSecretEnvelope = z.infer<typeof storedSecretEnvelopeSchema>;
-
-export type StoredSecretCiphertextFormat = "legacy" | "dual" | "kms";
-
-interface StoredSecretCiphertextInfo {
-  readonly format: StoredSecretCiphertextFormat;
-  readonly hasLegacy: boolean;
-  readonly hasKms: boolean;
-}
 
 export interface SecretKmsClient {
   send(command: GenerateDataKeyCommand): Promise<GenerateDataKeyCommandOutput>;
@@ -123,25 +100,13 @@ function encodeStoredSecretEnvelope(envelope: StoredSecretEnvelope): string {
 
 function decodeStoredSecretEnvelope(encrypted: string): StoredSecretEnvelope {
   if (!encrypted.startsWith(STORED_SECRET_ENVELOPE_PREFIX)) {
-    return { v: 1, kind: "stored-secret", legacy: encrypted };
+    throw new Error("Stored secret ciphertext does not include KMS data");
   }
 
   const payload = encrypted.slice(STORED_SECRET_ENVELOPE_PREFIX.length);
   return storedSecretEnvelopeSchema.parse(
     JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown,
   );
-}
-
-function storedSecretFormat(
-  envelope: StoredSecretEnvelope,
-): StoredSecretCiphertextFormat {
-  if (envelope.kms && envelope.legacy) {
-    return "dual";
-  }
-  if (envelope.kms) {
-    return "kms";
-  }
-  return "legacy";
 }
 
 function encryptSecretValueWithDataKey(
@@ -272,81 +237,24 @@ export function setSecretKmsClientForTests(client: SecretKmsClient): void {
   setSecretKmsClientOverride(client);
 }
 
-export function inspectStoredSecretCiphertext(
-  encrypted: string,
-): StoredSecretCiphertextInfo {
-  const envelope = decodeStoredSecretEnvelope(encrypted);
-  return {
-    format: storedSecretFormat(envelope),
-    hasLegacy: Boolean(envelope.legacy),
-    hasKms: Boolean(envelope.kms),
-  };
-}
-
-export async function encryptStoredSecretValueWithMode(
-  plaintext: string,
-  mode: StoredSecretWriteMode,
-): Promise<string> {
-  if (mode === "legacy") {
-    return encryptSecretValue(plaintext);
-  }
-
-  const kms = await encryptSecretValueWithKms(plaintext);
-  return encodeStoredSecretEnvelope({
-    v: 1,
-    kind: "stored-secret",
-    legacy: mode === "dual" ? encryptSecretValue(plaintext) : undefined,
-    kms,
-  });
-}
-
-export async function decryptStoredSecretValueWithMode(
-  encrypted: string,
-  mode: StoredSecretReadMode,
-): Promise<string> {
-  const envelope = decodeStoredSecretEnvelope(encrypted);
-
-  if (mode === "legacy-only") {
-    if (!envelope.legacy) {
-      throw new Error("Stored secret ciphertext does not include legacy data");
-    }
-    return decryptSecretValue(envelope.legacy);
-  }
-
-  if (mode === "kms-only") {
-    if (!envelope.kms) {
-      throw new Error("Stored secret ciphertext does not include KMS data");
-    }
-    return await decryptSecretValueWithKms(envelope.kms);
-  }
-
-  if (mode === "prefer-kms" && envelope.kms) {
-    return await decryptSecretValueWithKms(envelope.kms);
-  }
-
-  if (envelope.legacy) {
-    return decryptSecretValue(envelope.legacy);
-  }
-
-  if (envelope.kms) {
-    return await decryptSecretValueWithKms(envelope.kms);
-  }
-
-  throw new Error("Stored secret ciphertext does not include decryptable data");
-}
-
 export async function encryptStoredSecretValue(
   plaintext: string,
   _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  return await encryptStoredSecretValueWithMode(plaintext, "kms");
+  const kms = await encryptSecretValueWithKms(plaintext);
+  return encodeStoredSecretEnvelope({
+    v: 1,
+    kind: "stored-secret",
+    kms,
+  });
 }
 
 export async function decryptStoredSecretValue(
   encrypted: string,
   _ctx: FeatureSwitchContext = {},
 ): Promise<string> {
-  return await decryptStoredSecretValueWithMode(encrypted, "kms-only");
+  const envelope = decodeStoredSecretEnvelope(encrypted);
+  return await decryptSecretValueWithKms(envelope.kms);
 }
 
 export async function encryptStoredSecretsMap(
@@ -373,40 +281,18 @@ export async function decryptStoredSecretsMap(
   );
 }
 
-export function inspectPersistentSecretCiphertext(encrypted: string): {
-  readonly format: "legacy" | "dual" | "kms";
-  readonly hasLegacy: boolean;
-  readonly hasKms: boolean;
-} {
-  return inspectStoredSecretCiphertext(encrypted);
-}
-
-export async function encryptPersistentSecretValueWithMode(
-  plaintext: string,
-  mode: StoredSecretWriteMode,
-): Promise<string> {
-  return await encryptStoredSecretValueWithMode(plaintext, mode);
-}
-
-export async function decryptPersistentSecretValueWithMode(
-  encrypted: string,
-  mode: StoredSecretReadMode,
-): Promise<string> {
-  return await decryptStoredSecretValueWithMode(encrypted, mode);
-}
-
 export async function encryptPersistentSecretValue(
   plaintext: string,
-  _ctx: FeatureSwitchContext,
+  ctx: FeatureSwitchContext,
 ): Promise<string> {
-  return await encryptPersistentSecretValueWithMode(plaintext, "kms");
+  return await encryptStoredSecretValue(plaintext, ctx);
 }
 
 export async function decryptPersistentSecretValue(
   encrypted: string,
-  _ctx: FeatureSwitchContext,
+  ctx: FeatureSwitchContext,
 ): Promise<string> {
-  return await decryptPersistentSecretValueWithMode(encrypted, "kms-only");
+  return await decryptStoredSecretValue(encrypted, ctx);
 }
 
 export async function encryptPersistentSecretsMap(
@@ -420,20 +306,6 @@ export async function encryptPersistentSecretsMap(
   return await encryptPersistentSecretValue(JSON.stringify(secrets), ctx);
 }
 
-export async function encryptPersistentSecretsMapWithMode(
-  secrets: Record<string, string> | null | undefined,
-  mode: StoredSecretWriteMode,
-): Promise<string | null> {
-  if (!secrets) {
-    return null;
-  }
-
-  return await encryptPersistentSecretValueWithMode(
-    JSON.stringify(secrets),
-    mode,
-  );
-}
-
 export async function decryptPersistentSecretsMap(
   encryptedData: string | null,
   ctx: FeatureSwitchContext,
@@ -445,21 +317,6 @@ export async function decryptPersistentSecretsMap(
   return secretsMapSchema.parse(
     JSON.parse(
       await decryptPersistentSecretValue(encryptedData, ctx),
-    ) as unknown,
-  );
-}
-
-export async function decryptPersistentSecretsMapWithMode(
-  encryptedData: string | null,
-  mode: StoredSecretReadMode,
-): Promise<Record<string, string> | null> {
-  if (!encryptedData) {
-    return null;
-  }
-
-  return secretsMapSchema.parse(
-    JSON.parse(
-      await decryptPersistentSecretValueWithMode(encryptedData, mode),
     ) as unknown,
   );
 }

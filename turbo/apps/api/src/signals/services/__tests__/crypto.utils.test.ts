@@ -10,17 +10,12 @@ import {
 import { clearMockedEnv, mockEnv } from "../../../lib/env";
 import {
   decryptPersistentSecretValue,
-  decryptPersistentSecretValueWithMode,
   encryptPersistentSecretValue,
-  encryptPersistentSecretValueWithMode,
   encryptPersistentSecretsMap,
   decryptStoredSecretValue,
-  decryptStoredSecretValueWithMode,
   encryptSecretValue,
   encryptStoredSecretValue,
-  encryptStoredSecretValueWithMode,
   encryptStoredSecretsMap,
-  inspectStoredSecretCiphertext,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
   STORED_SECRET_ENVELOPE_PREFIX,
@@ -85,11 +80,59 @@ function createFakeKmsClient(): {
 
 type FakeKmsClient = ReturnType<typeof createFakeKmsClient>;
 
+type TestStoredSecretEnvelope = {
+  readonly v?: unknown;
+  readonly kind?: unknown;
+  readonly kms?: unknown;
+  readonly legacy?: unknown;
+};
+
+function decodeTestStoredSecretEnvelope(
+  encrypted: string,
+): TestStoredSecretEnvelope {
+  expect(encrypted.startsWith(STORED_SECRET_ENVELOPE_PREFIX)).toBeTruthy();
+  const payload = encrypted.slice(STORED_SECRET_ENVELOPE_PREFIX.length);
+  return JSON.parse(
+    Buffer.from(payload, "base64url").toString("utf8"),
+  ) as TestStoredSecretEnvelope;
+}
+
+function expectKmsOnlyEnvelope(encrypted: string): void {
+  const envelope = decodeTestStoredSecretEnvelope(encrypted);
+  expect(envelope).toMatchObject({
+    v: 1,
+    kind: "stored-secret",
+    kms: expect.objectContaining({
+      keyId: "alias/vm0-secrets",
+      encryptedDataKey: expect.any(String),
+      iv: expect.any(String),
+      authTag: expect.any(String),
+      ciphertext: expect.any(String),
+    }),
+  });
+  expect(envelope).not.toHaveProperty("legacy");
+}
+
 function directKmsEnvelope(plaintext: string): string {
   return `${STORED_SECRET_ENVELOPE_PREFIX}${Buffer.from(
     JSON.stringify({
       v: 1,
       kind: "stored-secret",
+      kms: {
+        keyId: "alias/vm0-secrets",
+        ciphertext: Buffer.from(`kms:${plaintext}`, "utf8").toString("base64"),
+      },
+    }),
+    "utf8",
+  ).toString("base64url")}`;
+}
+
+function legacyBearingKmsEnvelope(plaintext: string): string {
+  return `${STORED_SECRET_ENVELOPE_PREFIX}${Buffer.from(
+    JSON.stringify({
+      v: 1,
+      kind: "stored-secret",
+      legacy: encryptSecretValue(plaintext),
       kms: {
         keyId: "alias/vm0-secrets",
         ciphertext: Buffer.from(`kms:${plaintext}`, "utf8").toString("base64"),
@@ -126,11 +169,7 @@ describe("stored secret encryption", () => {
 
     const encrypted = await encryptStoredSecretValue("secret-value");
 
-    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
+    expectKmsOnlyEnvelope(encrypted);
 
     await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
       "secret-value",
@@ -138,22 +177,6 @@ describe("stored secret encryption", () => {
     expect(fakeKmsClient.calls).toHaveLength(2);
     expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
     expect(fakeKmsClient.calls[1]).toBeInstanceOf(DecryptCommand);
-  });
-
-  it("reads existing dual ciphertext by default when KMS env is set", async () => {
-    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
-
-    const encrypted = await encryptStoredSecretValueWithMode(
-      "secret-value",
-      "dual",
-    );
-
-    expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
-      format: "dual",
-    });
-    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(
-      "secret-value",
-    );
   });
 
   it("rejects legacy-only stored ciphertext by default", async () => {
@@ -166,55 +189,27 @@ describe("stored secret encryption", () => {
     );
   });
 
-  it("can write and strictly read KMS-only ciphertext", async () => {
-    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
-
-    const encrypted = await encryptStoredSecretValueWithMode(
-      "secret-value",
-      "kms",
-    );
-
-    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
-    await expect(
-      decryptStoredSecretValueWithMode(encrypted, "legacy-only"),
-    ).rejects.toThrow("Stored secret ciphertext does not include legacy data");
-    await expect(
-      decryptStoredSecretValueWithMode(encrypted, "kms-only"),
-    ).resolves.toBe("secret-value");
-  });
-
   it("encrypts large stored secrets with data key envelope encryption", async () => {
     mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
 
     const secret = "x".repeat(5000);
-    const encrypted = await encryptStoredSecretValueWithMode(secret, "kms");
+    const encrypted = await encryptStoredSecretValue(secret);
 
     expect(fakeKmsClient.calls[0]).toBeInstanceOf(GenerateDataKeyCommand);
     expect(fakeKmsClient.calls).not.toContainEqual(expect.any(EncryptCommand));
-    await expect(
-      decryptStoredSecretValueWithMode(encrypted, "kms-only"),
-    ).resolves.toBe(secret);
+    await expect(decryptStoredSecretValue(encrypted)).resolves.toBe(secret);
   });
 
   it("can read direct KMS ciphertext envelopes for compatibility", async () => {
     await expect(
-      decryptStoredSecretValueWithMode(
-        directKmsEnvelope("secret-value"),
-        "kms-only",
-      ),
+      decryptStoredSecretValue(directKmsEnvelope("secret-value")),
     ).resolves.toBe("secret-value");
   });
 
-  it("can reject legacy-only ciphertext when KMS-only reads are enabled", async () => {
-    const encrypted = encryptSecretValue("secret-value");
-
+  it("reads KMS material from legacy-bearing stored secret envelopes", async () => {
     await expect(
-      decryptStoredSecretValueWithMode(encrypted, "kms-only"),
-    ).rejects.toThrow("Stored secret ciphertext does not include KMS data");
+      decryptStoredSecretValue(legacyBearingKmsEnvelope("secret-value")),
+    ).resolves.toBe("secret-value");
   });
 
   it("writes stored secrets maps as KMS-only when KMS env is set", async () => {
@@ -226,9 +221,7 @@ describe("stored secret encryption", () => {
     if (!encrypted) {
       throw new Error("Expected encrypted secrets map");
     }
-    expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
-      format: "kms",
-    });
+    expectKmsOnlyEnvelope(encrypted);
   });
 
   it("requires KMS configuration when writing persistent secrets", async () => {
@@ -245,35 +238,10 @@ describe("stored secret encryption", () => {
 
     const encrypted = await encryptPersistentSecretValue("bot-token", {});
 
-    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
+    expectKmsOnlyEnvelope(encrypted);
     await expect(decryptPersistentSecretValue(encrypted, {})).resolves.toBe(
       "bot-token",
     );
-  });
-
-  it("can backfill persistent secrets to KMS-only ciphertext", async () => {
-    mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets");
-
-    const encrypted = await encryptPersistentSecretValueWithMode(
-      "callback-secret",
-      "kms",
-    );
-
-    expect(inspectStoredSecretCiphertext(encrypted)).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
-    await expect(
-      decryptPersistentSecretValueWithMode(encrypted, "legacy-only"),
-    ).rejects.toThrow("Stored secret ciphertext does not include legacy data");
-    await expect(
-      decryptPersistentSecretValueWithMode(encrypted, "kms-only"),
-    ).resolves.toBe("callback-secret");
   });
 
   it("writes persistent secret maps as KMS-only when KMS env is set", async () => {
@@ -288,8 +256,6 @@ describe("stored secret encryption", () => {
     if (!encrypted) {
       throw new Error("Expected encrypted persistent secrets map");
     }
-    expect(inspectStoredSecretCiphertext(encrypted)).toMatchObject({
-      format: "kms",
-    });
+    expectKmsOnlyEnvelope(encrypted);
   });
 });
