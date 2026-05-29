@@ -203,7 +203,11 @@ export const webhookFirewallAuthContract = c.router({
       authHeaders: z.record(z.string(), z.string()),
       authBase: z.string().optional(),
       authQuery: z.record(z.string(), z.string()).optional(),
+      // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
+      // to the connector or provider owner that can refresh/resolve access.
       secretConnectorMap: z.record(z.string(), z.string()).optional(),
+      // Same keys as secretConnectorMap; adds source details when the owner
+      // alone is not enough to locate access storage.
       secretConnectorMetadataMap: secretConnectorMetadataMapSchema.optional(),
       vars: z.record(z.string(), z.string()).optional(),
       // Set by mitm from billableFirewalls. Server uses this only to bound

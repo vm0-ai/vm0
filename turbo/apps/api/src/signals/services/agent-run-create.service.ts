@@ -1093,6 +1093,9 @@ function modelProviderRefreshMaps(
   const accessSecretName = metadata.accessSecretName;
   const secretConnectorMap: Record<string, string> = {};
   const envBindings = getModelProviderEnvBindings(providerType);
+  // Firewall auth templates reference runtime env aliases (for example, the
+  // `CHATGPT_ACCESS_TOKEN` in `${{ secrets.CHATGPT_ACCESS_TOKEN }}`), so the
+  // refresh map is keyed by envName, not by the backing provider storage key.
   for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
     if (valueRef === `$secrets.${accessSecretName}`) {
       secretConnectorMap[envName] = providerType;
@@ -1774,6 +1777,8 @@ function resolveStoredConnectorState(
       connectorType,
       authMethod,
     );
+    // Firewall auth templates can only reference env aliases from envBindings;
+    // store the alias that points at the access secret, not the backing secret name.
     if (accessMetadata?.kind === "refresh-token") {
       const secretName = accessMetadata.accessToken;
       for (const [envName, valueRef] of Object.entries(envBindings)) {

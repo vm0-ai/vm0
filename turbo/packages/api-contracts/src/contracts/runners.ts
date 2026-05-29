@@ -135,6 +135,7 @@ export const secretConnectorMetadataSchema = z.object({
   metadataKey: z.string().optional(),
 });
 
+// Keyed by the same firewall auth secret env aliases as secretConnectorMap.
 export const secretConnectorMetadataMapSchema = z.record(
   z.string(),
   secretConnectorMetadataSchema,
@@ -151,9 +152,11 @@ export const storedExecutionContextSchema = z.object({
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
-  // Maps firewall auth secret env aliases to their connector or provider owner.
+  // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
+  // their connector or provider owner. Keys are env aliases, not storage secret names.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  // Same keys as secretConnectorMap; adds source details when the owner alone
+  // is not enough to locate access storage (for example, personal model providers).
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
     .nullable()
     .optional(),
@@ -207,9 +210,11 @@ export const executionContextSchema = z.object({
   secretValues: z.array(z.string()).nullable(),
   // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
   encryptedSecrets: z.string().nullable(),
-  // Maps firewall auth secret env aliases to their connector or provider owner.
+  // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
+  // their connector or provider owner. Keys are env aliases, not storage secret names.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
+  // Same keys as secretConnectorMap; adds source details when the owner alone
+  // is not enough to locate access storage (for example, personal model providers).
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
     .nullable()
     .optional(),

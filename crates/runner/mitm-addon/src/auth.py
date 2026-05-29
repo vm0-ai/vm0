@@ -306,6 +306,12 @@ async def fetch_firewall_headers(
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
+    secret_connector_map maps firewall auth secret env aliases (the `NAME` in
+    `${{ secrets.NAME }}`) to the connector or provider owner that can
+    refresh/resolve access. secret_connector_metadata_map uses the same keys to
+    add source details when the owner alone is not enough to locate access
+    storage.
+
     When secret_connector_map is provided, the auth endpoint can refresh
     expired access tokens and returns an expiresAt timestamp for TTL caching.
     For billable firewall auth, expiresAt is also bounded by the server-side

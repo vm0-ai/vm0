@@ -62,10 +62,12 @@ pub struct ExecutionContext {
     // Forwarded to mitm-addon via proxy registry for auth resolution
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
-    // Maps firewall auth secret env aliases to their connector or provider owner.
+    // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
+    // to their connector or provider owner. Keys are env aliases, not storage secret names.
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
-    // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh
+    // Same keys as secret_connector_map; adds source details when the owner
+    // alone is not enough to locate access storage.
     #[serde(default)]
     pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,
@@ -444,7 +446,7 @@ mod tests {
             "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
             "secretValues": ["s1", "s2"],
             "encryptedSecrets": "enc-blob",
-            "secretConnectorMap": {"github": "oauth"},
+            "secretConnectorMap": {"GITHUB_TOKEN": "github"},
             "secretConnectorMetadataMap": {
                 "CHATGPT_ACCESS_TOKEN": {
                     "sourceType": "model-provider",
