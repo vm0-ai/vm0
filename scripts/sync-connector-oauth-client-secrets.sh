@@ -6,8 +6,7 @@ readonly DEFAULT_REPO="vm0-ai/vm0"
 readonly SECRET_NAME="CONNECTOR_OAUTH_CLIENT_SECRETS"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-BUILDER="${REPO_ROOT}/.github/scripts/build-connector-oauth-client-secrets-bundle.sh"
+BUILDER="${SCRIPT_DIR}/build-connector-oauth-client-secrets-bundle.sh"
 
 usage() {
   cat <<EOF
