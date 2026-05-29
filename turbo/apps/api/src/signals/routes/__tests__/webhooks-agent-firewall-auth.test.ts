@@ -105,16 +105,12 @@ function deferred(): {
   return { promise, resolve: resolvePromise };
 }
 
-async function hasWaitingConnectorStateLock(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorType: string;
-}): Promise<boolean> {
+async function hasWaitingAdvisoryLock(lockKey: string): Promise<boolean> {
   const db = store.set(writeDb$);
   const result = await db.execute<{ waiting: boolean }>(
     sql`
       WITH key AS (
-        SELECT hashtext('connector_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.connectorType}) AS value
+        SELECT hashtext(${lockKey}) AS value
       )
       SELECT EXISTS (
         SELECT 1
@@ -134,20 +130,36 @@ async function hasWaitingConnectorStateLock(args: {
   return result.rows[0]?.waiting ?? false;
 }
 
-async function waitForConnectorStateLockWaiter(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorType: string;
-}): Promise<void> {
+async function waitForAdvisoryLockWaiter(lockKey: string): Promise<void> {
   for (let attempt = 0; attempt < 1000; attempt += 1) {
-    if (await hasWaitingConnectorStateLock(args)) {
+    if (await hasWaitingAdvisoryLock(lockKey)) {
       return;
     }
     await new Promise<void>((resolve) => {
       setImmediate(resolve);
     });
   }
-  throw new Error("Timed out waiting for connector state lock waiter");
+  throw new Error(`Timed out waiting for advisory lock waiter: ${lockKey}`);
+}
+
+async function waitForConnectorStateLockWaiter(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorType: string;
+}): Promise<void> {
+  await waitForAdvisoryLockWaiter(
+    `connector_state:${args.orgId}:${args.userId}:${args.connectorType}`,
+  );
+}
+
+async function waitForModelProviderStateLockWaiter(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly providerType: string;
+}): Promise<void> {
+  await waitForAdvisoryLockWaiter(
+    `model_provider_state:${args.orgId}:${args.userId}:${args.providerType}`,
+  );
 }
 
 function firewallClient() {
@@ -2587,6 +2599,11 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     const firstResponsePromise = refreshRequest();
     await firstRefreshStarted.promise;
     const secondResponsePromise = refreshRequest();
+    await waitForModelProviderStateLockWaiter({
+      orgId: fixture.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      providerType: "codex-oauth-token",
+    });
     firstRefreshRelease.resolve();
 
     const responses = await Promise.all([
@@ -2630,6 +2647,91 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
       needsReconnect: false,
       lastRefreshErrorCode: null,
+    });
+  });
+
+  it("does not fall back to stale model-provider access after a concurrent forced refresh failure", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-force-failure-chatgpt-token",
+      refreshToken: "force-failure-chatgpt-refresh",
+      tokenExpiresAt: new Date(now() + 3_600_000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    let refreshCallCount = 0;
+    const firstRefreshStarted = deferred();
+    const firstRefreshRelease = deferred();
+
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", async () => {
+        refreshCallCount += 1;
+        firstRefreshStarted.resolve();
+        await firstRefreshRelease.promise;
+        return HttpResponse.json(
+          {
+            error: {
+              code: "refresh_token_expired",
+              message: "expired refresh token",
+            },
+          },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const refreshRequest = () => {
+      return accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({}),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+            },
+            secretConnectorMetadataMap: {
+              CHATGPT_ACCESS_TOKEN: {
+                sourceType: "model-provider",
+                sourceUserId: ORG_SENTINEL_USER_ID,
+                metadataKey: "codex-oauth-token",
+              },
+            },
+            forceRefresh: true,
+          },
+          headers: authHeaders(fixture),
+        }),
+        [502],
+      );
+    };
+
+    const firstResponsePromise = refreshRequest();
+    await firstRefreshStarted.promise;
+    const secondResponsePromise = refreshRequest();
+    await waitForModelProviderStateLockWaiter({
+      orgId: fixture.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      providerType: "codex-oauth-token",
+    });
+    firstRefreshRelease.resolve();
+
+    const responses = await Promise.all([
+      firstResponsePromise,
+      secondResponsePromise,
+    ]);
+
+    expect(refreshCallCount).toBe(1);
+    for (const response of responses) {
+      expect(response.body.error).toMatchObject({
+        code: "TOKEN_REFRESH_FAILED",
+        connectors: ["codex-oauth-token"],
+      });
+    }
+    await expect(codexProviderState(fixture)).resolves.toMatchObject({
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
     });
   });
 
