@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.394.0](https://github.com/vm0-ai/vm0/compare/app-v0.393.0...app-v0.394.0) (2026-05-29)
+
+
+### Features
+
+* **onboarding:** add role picker on step 1 and gallery on trial step ([#15334](https://github.com/vm0-ai/vm0/issues/15334)) ([ec0b632](https://github.com/vm0-ai/vm0/commit/ec0b6326c2eb49db1d869c3a2db53d40537bd5a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.0
+    * @vm0/connectors bumped to 1.37.8
+    * @vm0/core bumped to 8.302.4
+
 ## [0.393.0](https://github.com/vm0-ai/vm0/compare/app-v0.392.2...app-v0.393.0) (2026-05-29)
 
 
