@@ -260,7 +260,7 @@ function billingStatusResponse(args: {
   activeRecords: readonly ActiveCreditRecord[];
 }): BillingStatusResponse {
   const org = args.org ?? DEFAULT_BILLING_ORG;
-  const displayedCredits = Math.max(org.credits - args.unsettledExpired, 0);
+  const displayedCredits = org.credits - args.unsettledExpired;
 
   return {
     tier: org.tier,

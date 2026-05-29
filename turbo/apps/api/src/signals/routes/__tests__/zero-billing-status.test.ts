@@ -108,6 +108,22 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.currentPeriodEnd).toBeNull();
   });
 
+  it("preserves negative org credit balances", async () => {
+    const fixture = await track(
+      store.set(seedBillingStatusOrg$, { credits: -1234 }, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroBillingStatusContract);
+
+    const response = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    expect(response.body.credits).toBe(-1234);
+  });
+
   it("returns billing status for zero tokens with billing read capability", async () => {
     const fixture = await track(
       store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
