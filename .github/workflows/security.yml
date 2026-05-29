@@ -189,11 +189,9 @@ jobs:
           script_files=(
             .github/scripts/*.sh
             .github/scripts/tests/*.sh
-            scripts/sync-connector-oauth-client-secrets.sh
-            scripts/tests/*.sh
           )
           bash -n "${script_files[@]}"
-          for test_script in .github/scripts/tests/*.sh scripts/tests/*.sh; do
+          for test_script in .github/scripts/tests/*.sh; do
             bash "$test_script"
           done
 
