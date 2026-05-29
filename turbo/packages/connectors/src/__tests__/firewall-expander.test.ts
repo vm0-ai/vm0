@@ -670,6 +670,30 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must not contain commas");
   });
 
+  it("should reject empty labels in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://api..example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://.example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com..", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://api.example..com:8443", "fw");
+    }).toThrow("host must not contain empty labels");
+  });
+
+  it("should accept a trailing dot in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com.", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.example.com.:8443", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject malformed parameterized authorities", () => {
     expect(() => {
       return validateBaseUrl("https://user@{sub}.zendesk.com", "fw");

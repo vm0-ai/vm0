@@ -863,6 +863,29 @@ function validateNoUserinfo(
   }
 }
 
+function validateHostHasNoEmptyLabels(
+  host: string,
+  base: string,
+  serviceName: string,
+): string {
+  let normalizedHost = host.replace(HOST_DOT_EQUIVALENT_PATTERN, ".");
+  if (normalizedHost.endsWith(".")) {
+    normalizedHost = normalizedHost.slice(0, -1);
+  }
+  if (
+    normalizedHost === "" ||
+    normalizedHost.endsWith(".") ||
+    normalizedHost.split(".").some((label) => {
+      return label === "";
+    })
+  ) {
+    throw new Error(
+      errMsg(base, serviceName, "host must not contain empty labels"),
+    );
+  }
+  return normalizedHost;
+}
+
 function splitParameterizedAuthority(
   authority: string,
   base: string,
@@ -888,23 +911,18 @@ function splitParameterizedAuthority(
     }
   }
 
-  let normalizedHost = host.replace(HOST_DOT_EQUIVALENT_PATTERN, ".");
-  if (normalizedHost.endsWith(".")) {
-    normalizedHost = normalizedHost.slice(0, -1);
-  }
-  if (
-    normalizedHost === "" ||
-    normalizedHost.endsWith(".") ||
-    normalizedHost.split(".").some((label) => {
-      return label === "";
-    })
-  ) {
-    throw new Error(
-      errMsg(base, serviceName, "host must not contain empty labels"),
-    );
-  }
+  const normalizedHost = validateHostHasNoEmptyLabels(host, base, serviceName);
 
   return { normalizedHost, portSuffix };
+}
+
+function validateStaticHostLabels(
+  hostname: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) return;
+  validateHostHasNoEmptyLabels(hostname, base, serviceName);
 }
 
 function hostSegmentForSyntaxValidation(
@@ -1145,6 +1163,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     validateNoUserinfo(authority, base, serviceName);
     validateHostPercentEncoding(authority, base, serviceName);
   }
+  validateStaticHostLabels(url.hostname, base, serviceName);
   if (url.hostname.includes("{") || url.hostname.includes("}")) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": host must not contain braces`,
