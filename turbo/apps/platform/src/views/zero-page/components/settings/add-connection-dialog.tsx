@@ -131,7 +131,7 @@ function connectorOAuthDeviceAuthFlowIsActive(
   );
 }
 
-function connectedConnectorUsesOAuthGrant(
+function connectedConnectorUsesInteractiveGrant(
   item: ConnectorTypeWithStatus,
 ): boolean {
   return item.connector
@@ -202,9 +202,9 @@ function ManualCredentialForm({
 
   return (
     <div className="flex flex-col gap-3">
-      {item.connected && connectedConnectorUsesOAuthGrant(item) && (
+      {item.connected && connectedConnectorUsesInteractiveGrant(item) && (
         <p className="text-xs text-amber-600">
-          This will replace your current OAuth connection.
+          This will replace your current connected account.
         </p>
       )}
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
