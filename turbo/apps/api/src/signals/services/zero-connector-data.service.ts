@@ -29,6 +29,7 @@ import {
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type OAuthGrantConnectorType,
+  type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -118,7 +119,7 @@ interface EncryptedOAuthConnectorSecret {
 }
 
 interface PendingConnectorTokenRevoke {
-  readonly type: OAuthGrantConnectorType;
+  readonly type: TokenRevokeConnectorType;
   readonly encryptedAccessToken: string;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -506,7 +507,7 @@ async function loadPendingConnectorTokenRevoke(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: OAuthGrantConnectorType;
+  readonly type: TokenRevokeConnectorType;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingConnectorTokenRevoke | null> {

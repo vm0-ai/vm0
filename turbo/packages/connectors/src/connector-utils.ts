@@ -16,6 +16,7 @@ import {
   type OAuthGrantConnectorType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
+  type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
@@ -288,7 +289,7 @@ export function getConnectorAuthMethodGrantScopes(
 export function connectorAuthMethodSupportsTokenRevoke(
   type: ConnectorType,
   authMethod: string,
-): type is OAuthGrantConnectorType {
+): type is TokenRevokeConnectorType {
   return (
     getConnectorAuthMethod(type, authMethod)?.revoke.kind === "token-revoke"
   );
