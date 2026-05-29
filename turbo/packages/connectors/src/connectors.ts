@@ -960,30 +960,6 @@ export type ConnectorDeviceAuthGrantMethodsAreSingle = AssertNever<
   ConnectorTypeWithMultipleAuthMethodsForGrantKind<"device-auth">
 >;
 
-type ConnectorAuthMethodIdsByAccessKind<
-  Type extends ConnectorType,
-  Kind extends ConnectorAccessKind,
-> = {
-  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-    readonly access: { readonly kind: Kind };
-  }
-    ? Method
-    : never;
-}[ConnectorAuthMethodKeys<Type>];
-
-type ConnectorTypeWithMultipleAuthMethodsForAccessKind<
-  Kind extends ConnectorAccessKind,
-> = {
-  [Type in ConnectorType]: IsUnion<
-    ConnectorAuthMethodIdsByAccessKind<Type, Kind>
-  > extends true
-    ? Type
-    : never;
-}[ConnectorType];
-export type ConnectorRefreshTokenAccessMethodsAreSingle = AssertNever<
-  ConnectorTypeWithMultipleAuthMethodsForAccessKind<"refresh-token">
->;
-
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {
     [Method in keyof ConnectorAuthMethodsOf<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
