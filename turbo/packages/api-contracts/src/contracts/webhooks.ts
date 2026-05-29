@@ -168,13 +168,32 @@ const volumeVersionsSnapshotSchema = z.object({
   versions: z.record(z.string(), z.string()),
 });
 
-const firewallAuthErrorSchema = z.object({
+const firewallAuthFailureSchema = z.object({
+  connector: z.string(),
+  code: z.string(),
+  message: z.string().optional(),
+  retryable: z.boolean(),
+  provider: z.string().optional(),
+  sourceType: z.enum(["connector", "model-provider"]).optional(),
+  upstreamStatus: z.number().optional(),
+  refreshErrorCode: z.string().optional(),
+});
+
+export const firewallAuthErrorSchema = z.object({
   error: z.object({
     message: z.string(),
     code: z.string(),
     connectors: z.array(z.string()).optional(),
+    retryable: z.boolean().optional(),
+    provider: z.string().optional(),
+    sourceType: z.enum(["connector", "model-provider"]).optional(),
+    upstreamStatus: z.number().optional(),
+    refreshErrorCode: z.string().optional(),
+    failures: z.array(firewallAuthFailureSchema).optional(),
   }),
 });
+
+export type FirewallAuthError = z.infer<typeof firewallAuthErrorSchema>;
 
 const firewallAuthResponseSchema = z.object({
   headers: z.record(z.string(), z.string()),

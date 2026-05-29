@@ -1499,7 +1499,7 @@ export const modelProviderResponseSchema = z.object({
   planType: z.string().nullable().optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's
   // refresh attempt fails (#11921 writes this on the model_providers row).
-  // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`
+  // `lastRefreshErrorCode` carries provider-specific OAuth refresh error codes
   // (e.g. `refresh_token_expired`) so the UI can render an actionable
   // re-connect message. Both fields are always emitted for OAuth-typed
   // providers; non-OAuth types default to false / null.

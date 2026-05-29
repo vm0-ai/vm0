@@ -1943,8 +1943,20 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     );
 
     expect(response.body.error).toMatchObject({
-      code: "TOKEN_REFRESH_FAILED",
+      code: "FIREWALL_AUTH_INTERNAL_ERROR",
       connectors: ["test-oauth"],
+      retryable: false,
+      provider: "test-oauth",
+      sourceType: "connector",
+      failures: [
+        {
+          connector: "test-oauth",
+          code: "FIREWALL_AUTH_INTERNAL_ERROR",
+          retryable: false,
+          provider: "test-oauth",
+          sourceType: "connector",
+        },
+      ],
     });
     expect(dynamicOAuth.refreshes).toStrictEqual([]);
   });
@@ -2291,7 +2303,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.expiresAt).toBeLessThanOrEqual(after + 30);
   });
 
-  it("returns token-refresh-failed and marks connector reconnect when refresh fails", async () => {
+  it("returns reconnect-required and marks connector reconnect when refresh token is invalid", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredNotionConnector(fixture);
     server.use(
@@ -2318,15 +2330,205 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         },
         headers: authHeaders(fixture),
       }),
+      [424],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "OAUTH_RECONNECT_REQUIRED",
+      connectors: ["notion"],
+      retryable: false,
+      provider: "Notion",
+      sourceType: "connector",
+      upstreamStatus: 400,
+      failures: [
+        {
+          connector: "notion",
+          code: "OAUTH_RECONNECT_REQUIRED",
+          provider: "Notion",
+          retryable: false,
+          sourceType: "connector",
+          upstreamStatus: 400,
+        },
+      ],
+    });
+    await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: true,
+    });
+  });
+
+  it.each([
+    { status: 502, description: "provider 502" },
+    { status: 429, description: "provider 429" },
+  ])(
+    "returns upstream-auth-unavailable and leaves reconnect unchanged on $description",
+    async ({ status }) => {
+      const fixture = await track(seedFixture());
+      await seedExpiredNotionConnector(fixture);
+      server.use(
+        http.post("https://api.notion.com/v1/oauth/token", () => {
+          return HttpResponse.text("temporarily unavailable", { status });
+        }),
+      );
+
+      const response = await accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({
+              NOTION_TOKEN: "stale-notion-token",
+            }),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              NOTION_TOKEN: "notion",
+            },
+          },
+          headers: authHeaders(fixture),
+        }),
+        [502],
+      );
+
+      expect(response.body.error).toMatchObject({
+        code: "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+        connectors: ["notion"],
+        retryable: true,
+        provider: "Notion",
+        sourceType: "connector",
+        upstreamStatus: status,
+        failures: [
+          {
+            connector: "notion",
+            code: "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+            provider: "Notion",
+            retryable: true,
+            sourceType: "connector",
+            upstreamStatus: status,
+          },
+        ],
+      });
+      await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+        needsReconnect: false,
+      });
+    },
+  );
+
+  it("returns provider-response-invalid without marking reconnect for malformed refresh responses", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json({});
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
       [502],
     );
 
     expect(response.body.error).toMatchObject({
-      code: "TOKEN_REFRESH_FAILED",
+      code: "OAUTH_PROVIDER_RESPONSE_INVALID",
       connectors: ["notion"],
+      retryable: true,
+      provider: "notion",
+      sourceType: "connector",
+      failures: [
+        {
+          connector: "notion",
+          code: "OAUTH_PROVIDER_RESPONSE_INVALID",
+          provider: "notion",
+          retryable: true,
+          sourceType: "connector",
+        },
+      ],
     });
     await expect(notionConnectorState(fixture)).resolves.toMatchObject({
-      needsReconnect: true,
+      needsReconnect: false,
+    });
+  });
+
+  it("preserves per-connector details and uses deterministic priority for mixed refresh failures", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    await seedExpiredCodexModelProvider(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.json(
+          { error: "invalid_grant", error_description: "revoked" },
+          { status: 400 },
+        );
+      }),
+      http.post("https://auth.openai.com/oauth/token", () => {
+        return HttpResponse.text("Bad Gateway", { status: 502 });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+            CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+          }),
+          authHeaders: {
+            Notion: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+            ChatGPT: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "OAUTH_RECONNECT_REQUIRED",
+      connectors: ["notion", "codex-oauth-token"],
+      retryable: false,
+      provider: "Notion",
+      sourceType: "connector",
+      upstreamStatus: 400,
+      failures: [
+        {
+          connector: "notion",
+          code: "OAUTH_RECONNECT_REQUIRED",
+          provider: "Notion",
+          retryable: false,
+          sourceType: "connector",
+          upstreamStatus: 400,
+        },
+        {
+          connector: "codex-oauth-token",
+          code: "OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+          provider: "ChatGPT",
+          retryable: true,
+          sourceType: "model-provider",
+          upstreamStatus: 502,
+        },
+      ],
     });
   });
 
@@ -3044,7 +3246,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("preserves ChatGPT refresh error codes on model-provider refresh failure", async () => {
+  it("returns reconnect-required with ChatGPT refresh error code on model-provider refresh failure", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
     server.use(
@@ -3052,8 +3254,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         return HttpResponse.json(
           {
             error: {
-              code: "refresh_token_expired",
-              message: "expired refresh token",
+              code: "refresh_token_reused",
+              message: "refresh token was already used",
             },
           },
           { status: 401 },
@@ -3083,16 +3285,32 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         },
         headers: authHeaders(fixture),
       }),
-      [502],
+      [424],
     );
 
     expect(response.body.error).toMatchObject({
-      code: "TOKEN_REFRESH_FAILED",
+      code: "OAUTH_RECONNECT_REQUIRED",
       connectors: ["codex-oauth-token"],
+      retryable: false,
+      provider: "ChatGPT",
+      sourceType: "model-provider",
+      upstreamStatus: 401,
+      refreshErrorCode: "refresh_token_reused",
+      failures: [
+        {
+          connector: "codex-oauth-token",
+          code: "OAUTH_RECONNECT_REQUIRED",
+          provider: "ChatGPT",
+          retryable: false,
+          sourceType: "model-provider",
+          upstreamStatus: 401,
+          refreshErrorCode: "refresh_token_reused",
+        },
+      ],
     });
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
       needsReconnect: true,
-      lastRefreshErrorCode: "refresh_token_expired",
+      lastRefreshErrorCode: "refresh_token_reused",
     });
   });
 });

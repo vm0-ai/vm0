@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { getModelProviderOAuthSecretMetadata } from "../../../model-provider-auth";
+import { isOAuthProviderError } from "../../error";
 import {
   getChatgptSecretName,
   getChatgptRefreshSecretName,
@@ -73,8 +74,12 @@ describe("connector/providers/codex-oauth", () => {
       await expect(
         refreshChatgptToken("x", "x", "old-rt"),
       ).rejects.toMatchObject({
-        name: "ChatgptRefreshError",
+        name: "OAuthProviderError",
         code: "refresh_token_expired",
+        failureClass: "reconnect_required",
+        refreshErrorCode: "refresh_token_expired",
+        retryable: false,
+        upstreamStatus: 401,
       });
     });
 
@@ -90,8 +95,12 @@ describe("connector/providers/codex-oauth", () => {
       await expect(
         refreshChatgptToken("x", "x", "old-rt"),
       ).rejects.toMatchObject({
-        name: "ChatgptRefreshError",
+        name: "OAuthProviderError",
         code: "refresh_token_reused",
+        failureClass: "reconnect_required",
+        refreshErrorCode: "refresh_token_reused",
+        retryable: false,
+        upstreamStatus: 401,
       });
     });
 
@@ -118,6 +127,12 @@ describe("connector/providers/codex-oauth", () => {
       expect((error as ChatgptRefreshError).code).toBe(
         "refresh_token_invalidated",
       );
+      expect(error).toMatchObject({
+        failureClass: "reconnect_required",
+        refreshErrorCode: "refresh_token_invalidated",
+        retryable: false,
+        upstreamStatus: 401,
+      });
     });
 
     it("classifies unknown 401 codes into refresh_token_other", async () => {
@@ -136,9 +151,15 @@ describe("connector/providers/codex-oauth", () => {
       );
       expect(isChatgptRefreshError(error)).toBe(true);
       expect((error as ChatgptRefreshError).code).toBe("refresh_token_other");
+      expect(error).toMatchObject({
+        failureClass: "provider_auth_rejected",
+        refreshErrorCode: "refresh_token_other",
+        retryable: false,
+        upstreamStatus: 401,
+      });
     });
 
-    it("throws non-typed error on 5xx so caller can retry", async () => {
+    it("classifies 5xx as retryable upstream auth unavailable", async () => {
       const handler = http.post(TOKEN_URL, () => {
         return new HttpResponse("Bad Gateway", { status: 502 });
       });
@@ -151,6 +172,14 @@ describe("connector/providers/codex-oauth", () => {
       );
       expect(error).toBeInstanceOf(Error);
       expect(isChatgptRefreshError(error)).toBe(false);
+      expect(isOAuthProviderError(error)).toBe(true);
+      expect(error).toMatchObject({
+        provider: "ChatGPT",
+        operation: "refresh",
+        failureClass: "upstream_auth_unavailable",
+        retryable: true,
+        upstreamStatus: 502,
+      });
     });
 
     it("throws when refresh response is missing access_token", async () => {

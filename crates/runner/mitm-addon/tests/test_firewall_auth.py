@@ -718,6 +718,124 @@ class TestHandleFirewallRequest:
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
 
+    async def test_structured_api_error_is_preserved(self, real_flow, headers, mitm_ctx, tmp_path):
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        allow = _allow(api_entry)
+        api_error = auth.FirewallAuthApiError(
+            status=424,
+            code="OAUTH_RECONNECT_REQUIRED",
+            message="OAuth credential needs reconnect for: notion.",
+            connectors=["notion"],
+            retryable=False,
+            provider="Notion",
+            source_type="connector",
+            upstream_status=400,
+            refresh_error_code="invalid_grant",
+            failures=[
+                {
+                    "connector": "notion",
+                    "code": "OAUTH_RECONNECT_REQUIRED",
+                    "provider": "Notion",
+                    "sourceType": "connector",
+                    "retryable": False,
+                    "upstreamStatus": 400,
+                    "refreshErrorCode": "invalid_grant",
+                }
+            ],
+        )
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(side_effect=api_error),
+            ),
+            mitm_ctx(),
+            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 424
+        assert flow.metadata["firewall_action"] == "BLOCK"
+        assert flow.metadata["firewall_error"] == "OAUTH_RECONNECT_REQUIRED"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "OAUTH_RECONNECT_REQUIRED"
+        assert body["message"] == "OAuth credential needs reconnect for: notion."
+        assert body["permission"] == "github"
+        assert body["connectors"] == ["notion"]
+        assert body["retryable"] is False
+        assert body["provider"] == "Notion"
+        assert body["sourceType"] == "connector"
+        assert body["upstreamStatus"] == 400
+        assert body["refreshErrorCode"] == "invalid_grant"
+        assert body["failures"] == [
+            {
+                "connector": "notion",
+                "code": "OAUTH_RECONNECT_REQUIRED",
+                "provider": "Notion",
+                "sourceType": "connector",
+                "retryable": False,
+                "upstreamStatus": 400,
+                "refreshErrorCode": "invalid_grant",
+            }
+        ]
+
+    async def test_retryable_structured_api_error_is_preserved(
+        self, real_flow, headers, mitm_ctx, tmp_path
+    ):
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        allow = _allow(api_entry)
+
+        with (
+            patch.object(
+                auth,
+                "get_firewall_headers",
+                AsyncMock(
+                    side_effect=auth.FirewallAuthApiError(
+                        status=502,
+                        code="OAUTH_UPSTREAM_AUTH_UNAVAILABLE",
+                        message="OAuth provider auth service is temporarily unavailable.",
+                        connectors=["notion"],
+                        retryable=True,
+                        provider="Notion",
+                        source_type="connector",
+                        upstream_status=502,
+                    )
+                ),
+            ),
+            mitm_ctx(),
+            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "OAUTH_UPSTREAM_AUTH_UNAVAILABLE"
+        body = json.loads(flow.response.content)
+        assert body["error"] == "OAUTH_UPSTREAM_AUTH_UNAVAILABLE"
+        assert body["retryable"] is True
+        assert body["upstreamStatus"] == 502
+
     async def test_invalid_billable_auth_expiry_returns_502(self, real_flow, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -1199,15 +1317,38 @@ class TestFetchFirewallHeaders:
                 )
             assert "Insufficient credits" in str(exc_info.value)
 
-    def test_non_connector_not_configured_error_reraised(self):
-        """Non-CONNECTOR_NOT_CONFIGURED HTTP errors should be re-raised as HTTPError."""
+    def test_structured_firewall_auth_api_error_raises_custom_error(self):
+        """Structured auth endpoint errors should preserve their diagnostic fields."""
         error_body = json.dumps(
-            {"error": {"message": "Bad request", "code": "BAD_REQUEST"}}
+            {
+                "error": {
+                    "message": "OAuth credential needs reconnect for: notion.",
+                    "code": "OAUTH_RECONNECT_REQUIRED",
+                    "connectors": ["notion"],
+                    "retryable": False,
+                    "provider": "Notion",
+                    "sourceType": "connector",
+                    "upstreamStatus": 400,
+                    "refreshErrorCode": "invalid_grant",
+                    "failures": [
+                        {
+                            "connector": "notion",
+                            "code": "OAUTH_RECONNECT_REQUIRED",
+                            "message": "Notion token refresh failed: 400 invalid_grant",
+                            "provider": "Notion",
+                            "sourceType": "connector",
+                            "retryable": False,
+                            "upstreamStatus": 400,
+                            "refreshErrorCode": "invalid_grant",
+                        }
+                    ],
+                }
+            }
         ).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            400,
-            "Bad Request",
+            424,
+            "Failed Dependency",
             error_body,
         )
 
@@ -1215,9 +1356,30 @@ class TestFetchFirewallHeaders:
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(urllib.error.HTTPError),
+            pytest.raises(auth.FirewallAuthApiError) as exc_info,
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value.status == 424
+        assert exc_info.value.code == "OAUTH_RECONNECT_REQUIRED"
+        assert exc_info.value.connectors == ["notion"]
+        assert exc_info.value.retryable is False
+        assert exc_info.value.provider == "Notion"
+        assert exc_info.value.source_type == "connector"
+        assert exc_info.value.upstream_status == 400
+        assert exc_info.value.refresh_error_code == "invalid_grant"
+        assert exc_info.value.failures == [
+            {
+                "connector": "notion",
+                "code": "OAUTH_RECONNECT_REQUIRED",
+                "message": "Notion token refresh failed: 400 invalid_grant",
+                "provider": "Notion",
+                "sourceType": "connector",
+                "retryable": False,
+                "upstreamStatus": 400,
+                "refreshErrorCode": "invalid_grant",
+            }
+        ]
 
     @pytest.mark.parametrize(
         "error_body",
@@ -1338,13 +1500,18 @@ class TestFetchFirewallHeaders:
         mock_resp.__exit__.assert_called_once()  # urllib external boundary (#9991)
 
     @pytest.mark.parametrize(
-        "error_body",
+        ("error_body", "expected_exception"),
         [
-            json.dumps({"error": {"message": "Bad request", "code": "BAD_REQUEST"}}).encode(),
-            b"{}",
+            (
+                json.dumps({"error": {"message": "Bad request", "code": "BAD_REQUEST"}}).encode(),
+                auth.FirewallAuthApiError,
+            ),
+            (b"{}", urllib.error.HTTPError),
         ],
     )
-    def test_closes_http_error_response(self, error_body: bytes):
+    def test_closes_http_error_response(
+        self, error_body: bytes, expected_exception: type[Exception]
+    ):
         """HTTPError path must close the underlying socket — FD leak guard (#10475)."""
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
@@ -1358,7 +1525,7 @@ class TestFetchFirewallHeaders:
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(urllib.error.HTTPError),
+            pytest.raises(expected_exception),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 

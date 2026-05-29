@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { throwOAuthError } from "../error";
+import {
+  createOAuthProviderError,
+  isOAuthProviderError,
+  throwOAuthError,
+  type OAuthProviderError,
+} from "../error";
 
 export const CHATGPT_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const CHATGPT_OAUTH_ISSUER = "https://auth.openai.com";
@@ -17,17 +22,36 @@ export type ChatgptRefreshErrorCode =
  * distinguish stale-token cases (must re-auth) from transient HTTP errors
  * (retry next time).
  */
-export interface ChatgptRefreshError extends Error {
-  readonly name: "ChatgptRefreshError";
+export interface ChatgptRefreshError extends OAuthProviderError {
   readonly code: ChatgptRefreshErrorCode;
+  readonly refreshErrorCode: ChatgptRefreshErrorCode;
+}
+
+function isReconnectRequiredChatgptRefreshError(
+  code: ChatgptRefreshErrorCode,
+): boolean {
+  return (
+    code === "refresh_token_expired" ||
+    code === "refresh_token_reused" ||
+    code === "refresh_token_invalidated"
+  );
 }
 
 function createChatgptRefreshError(
   code: ChatgptRefreshErrorCode,
   message: string,
 ): ChatgptRefreshError {
-  const err = new Error(message);
-  err.name = "ChatgptRefreshError";
+  const err = createOAuthProviderError({
+    provider: "ChatGPT",
+    operation: "refresh",
+    message,
+    failureClass: isReconnectRequiredChatgptRefreshError(code)
+      ? "reconnect_required"
+      : "provider_auth_rejected",
+    upstreamStatus: 401,
+    oauthError: code,
+    refreshErrorCode: code,
+  });
   Object.assign(err, { code });
   return err as ChatgptRefreshError;
 }
@@ -36,9 +60,11 @@ export function isChatgptRefreshError(
   value: unknown,
 ): value is ChatgptRefreshError {
   return (
-    value instanceof Error &&
-    value.name === "ChatgptRefreshError" &&
-    typeof (value as { code?: unknown }).code === "string"
+    isOAuthProviderError(value) &&
+    value.provider === "ChatGPT" &&
+    value.operation === "refresh" &&
+    typeof (value as { code?: unknown }).code === "string" &&
+    typeof value.refreshErrorCode === "string"
   );
 }
 
@@ -67,8 +93,8 @@ const refreshErrorBodySchema = z.object({
 /**
  * Refresh a ChatGPT access token. Refresh tokens rotate on each call -
  * the new refresh_token (when present) is returned and must be persisted by
- * the caller. 401 responses are classified into ChatgptRefreshError codes
- * so the firewall pipeline can distinguish stale-token from transient errors.
+ * the caller. 401 responses are classified into shared OAuthProviderError
+ * failures with ChatGPT refresh codes attached.
  */
 export async function refreshChatgptToken(
   _clientId: string,
