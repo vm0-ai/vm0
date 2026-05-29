@@ -661,6 +661,8 @@ def _compile_segments(segments: list[str] | tuple[str, ...]) -> tuple[ParsedSegm
 
 def _compile_base_segments_for_match(
     segments: list[str] | tuple[str, ...],
+    *,
+    greedy_allowed_index: int | None,
 ) -> tuple[tuple[ParsedSegment, ...], bool]:
     parsed: list[ParsedSegment] = []
     has_malformed_segment = False
@@ -669,6 +671,20 @@ def _compile_base_segments_for_match(
         if isinstance(parsed_segment, SegmentError):
             has_malformed_segment = True
             parsed.append(SegmentParam("", f"__malformed_base_segment_{index}", "", ""))
+        elif (
+            isinstance(parsed_segment, SegmentParam)
+            and parsed_segment.greedy
+            and (index != greedy_allowed_index or parsed_segment.prefix or parsed_segment.suffix)
+        ):
+            has_malformed_segment = True
+            parsed.append(
+                SegmentParam(
+                    parsed_segment.prefix,
+                    parsed_segment.name,
+                    parsed_segment.suffix,
+                    "",
+                )
+            )
         else:
             parsed.append(parsed_segment)
     return tuple(parsed), has_malformed_segment
@@ -969,12 +985,15 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
     path_segments: tuple[ParsedSegment, ...] = ()
     param_parse_malformed = False
     if has_params:
+        raw_host_segments = tuple(reversed(parts.authority.split(".")))
         compiled_host, host_parse_malformed = _compile_base_segments_for_match(
-            tuple(reversed(parts.authority.split(".")))
+            raw_host_segments,
+            greedy_allowed_index=len(raw_host_segments) - 1,
         )
         host_segments = compiled_host
         compiled_path, path_parse_malformed = _compile_base_segments_for_match(
-            tuple(_split_path_segments(parts.path))
+            tuple(_split_path_segments(parts.path)),
+            greedy_allowed_index=None,
         )
         path_segments = compiled_path
         param_parse_malformed = host_parse_malformed or path_parse_malformed

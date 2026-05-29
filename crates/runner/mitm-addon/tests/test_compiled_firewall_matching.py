@@ -1711,6 +1711,59 @@ class TestCompiledFirewallMatching:
         assert matched.reason == "malformed_firewall_config"
 
     @pytest.mark.parametrize(
+        ("base", "matched_url", "unrelated_url"),
+        [
+            (
+                "https://api.{sub+}.example.com",
+                "https://api.us.example.com/repos/org/repo",
+                "https://us.example.com/repos/org/repo",
+            ),
+            (
+                "https://api-{sub+}.example.com",
+                "https://api-us.example.com/repos/org/repo",
+                "https://us.example.com/repos/org/repo",
+            ),
+        ],
+    )
+    def test_malformed_host_greedy_base_respects_static_scope(
+        self,
+        base,
+        matched_url,
+        unrelated_url,
+    ):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        unrelated = matching.match_compiled_firewall_request(
+            unrelated_url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+        matched = matching.match_compiled_firewall_request(
+            matched_url,
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert unrelated is None
+        assert isinstance(matched, matching.FirewallBlock)
+        assert matched.reason == "malformed_firewall_config"
+
+    @pytest.mark.parametrize(
         ("base", "url"),
         [
             ("https://api.github.com?token=1", "https://api.github.com/repos/org/repo"),
