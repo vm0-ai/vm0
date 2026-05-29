@@ -189,7 +189,6 @@ jobs:
           script_files=(
             .github/scripts/*.sh
             .github/scripts/tests/*.sh
-            scripts/build-connector-oauth-client-secrets-bundle.sh
             scripts/sync-connector-oauth-client-secrets.sh
             scripts/tests/*.sh
           )

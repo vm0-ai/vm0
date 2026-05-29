@@ -81,6 +81,20 @@ if [[ "$1" == "read" ]]; then
     exit 1
   fi
 
+  case "${OP_STUB_MODE:-success}:${key}" in
+    missing:GOOGLE_OAUTH_CLIENT_SECRET)
+      echo "missing field" >&2
+      exit 1
+      ;;
+    empty:GOOGLE_OAUTH_CLIENT_SECRET)
+      exit 0
+      ;;
+    large:GOOGLE_OAUTH_CLIENT_SECRET)
+      printf 'x%.0s' {1..50000}
+      exit 0
+      ;;
+  esac
+
   printf 'secret-%s-%s' "$vault" "$key"
   exit 0
 fi
@@ -115,7 +129,7 @@ chmod +x "${TMPDIR}/bin/gh"
 run_syncer() {
   local log_file=$1
   shift
-  GH_STUB_LOG="$log_file" PATH="${TMPDIR}/bin:${PATH}" "$SYNCER" "$@"
+  GH_STUB_LOG="$log_file" OP_STUB_MODE="${OP_STUB_MODE:-}" PATH="${TMPDIR}/bin:${PATH}" "$SYNCER" "$@"
 }
 
 development_log="${TMPDIR}/development-gh.log"
@@ -128,6 +142,9 @@ assert_not_contains "$development_args" $'\t--env\t'
 development_body="$(sed -n '2p' "$development_log" | cut -f2-)"
 assert_json_value "$development_body" GOOGLE_OAUTH_CLIENT_SECRET secret-Development-GOOGLE_OAUTH_CLIENT_SECRET
 assert_json_value "$development_body" GH_OAUTH_CLIENT_SECRET secret-Development-GH_OAUTH_CLIENT_SECRET
+if [[ "$(jq 'length' <<< "$development_body")" != "34" ]]; then
+  fail "expected development bundle to contain 34 connector OAuth client secret entries"
+fi
 
 production_log="${TMPDIR}/production-gh.log"
 production_output="$(run_syncer "$production_log" production vm0-ai/vm0)"
@@ -137,6 +154,46 @@ production_args="$(sed -n '1p' "$production_log")"
 assert_contains "$production_args" $'args\tsecret\tset\tCONNECTOR_OAUTH_CLIENT_SECRETS\t--repo\tvm0-ai/vm0\t--env\tproduction'
 production_body="$(sed -n '2p' "$production_log" | cut -f2-)"
 assert_json_value "$production_body" GOOGLE_OAUTH_CLIENT_SECRET secret-Production-GOOGLE_OAUTH_CLIENT_SECRET
+
+status=0
+missing_secret_log="${TMPDIR}/missing-secret-gh.log"
+missing_secret_output="$(
+  OP_STUB_MODE=missing run_syncer "$missing_secret_log" development 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing 1Password field case to fail"
+fi
+assert_contains "$missing_secret_output" "GOOGLE_OAUTH_CLIENT_SECRET is missing or unreadable from 1Password"
+assert_contains "$missing_secret_output" "connector OAuth client secret value(s) failed validation"
+if [[ -s "$missing_secret_log" ]]; then
+  fail "expected missing 1Password field case not to call gh"
+fi
+
+status=0
+empty_secret_log="${TMPDIR}/empty-secret-gh.log"
+empty_secret_output="$(
+  OP_STUB_MODE=empty run_syncer "$empty_secret_log" development 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected empty 1Password field case to fail"
+fi
+assert_contains "$empty_secret_output" "GOOGLE_OAUTH_CLIENT_SECRET is empty in 1Password"
+if [[ -s "$empty_secret_log" ]]; then
+  fail "expected empty 1Password field case not to call gh"
+fi
+
+status=0
+large_bundle_log="${TMPDIR}/large-bundle-gh.log"
+large_bundle_output="$(
+  OP_STUB_MODE=large run_syncer "$large_bundle_log" development 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected oversized bundle case to fail"
+fi
+assert_contains "$large_bundle_output" "GitHub secret limit is 49152 bytes"
+if [[ -s "$large_bundle_log" ]]; then
+  fail "expected oversized bundle case not to call gh"
+fi
 
 status=0
 invalid_scope_output="$(
