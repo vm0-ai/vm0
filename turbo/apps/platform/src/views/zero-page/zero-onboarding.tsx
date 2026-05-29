@@ -10,7 +10,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
-import upsellCrownSrc from "./assets/upsell-crown.webp";
 import trialWorkflowSrc from "./assets/trial-workflow.webp";
 import webModernSrc from "./assets/web-modern.webp";
 import webCafeSrc from "./assets/web-cafe.webp";
@@ -459,12 +458,6 @@ function TrialStepContent() {
           real spending power, not a token allowance. The $20 is the visual
           anchor of the entire step. */}
       <div className="rounded-2xl bg-gray-50 px-6 py-6 mb-6 relative overflow-hidden">
-        <img
-          src={upsellCrownSrc}
-          alt=""
-          role="presentation"
-          className="absolute top-3 right-3 h-14 w-14 object-contain"
-        />
         <div className="flex items-baseline gap-2">
           <span className="text-5xl font-semibold text-foreground leading-none tracking-tight">
             $20
@@ -475,7 +468,7 @@ function TrialStepContent() {
         </div>
         <p className="text-sm text-foreground mt-3 leading-relaxed">
           <span className="font-medium">20,000 VM0 credits</span> to spend on
-          Zero. Enough agent runs to draft, build and ship from day one.
+          Zero.
         </p>
       </div>
 
