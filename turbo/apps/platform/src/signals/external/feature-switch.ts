@@ -113,7 +113,3 @@ export const resetFeatureSwitches$ = command(
     await set(reloadFeatureSwitch$, signal);
   },
 );
-
-export const pwaOfflineCacheEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
-});

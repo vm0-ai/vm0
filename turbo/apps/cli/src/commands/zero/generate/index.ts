@@ -1,6 +1,4 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command } from "commander";
-import { zeroTokenAllowsFeatureSwitch } from "../../../lib/api/zero-token";
 import { imageCommand } from "./image";
 import {
   dashboardDesignCommand,
@@ -47,11 +45,7 @@ function buildGenerateHelpText(): string {
     '  Generate report:       zero generate report --prompt "A Q2 usage report"',
     '  Generate docs:         zero generate docs-design --prompt "A setup guide"',
     '  Generate video:        zero generate video --prompt "A cinematic city shot"',
-    ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites)
-      ? [
-          '  Generate site:         zero generate website --prompt "A launch site"',
-        ]
-      : []),
+    '  Generate site:         zero generate website --prompt "A launch site"',
     '  Generate speech:       zero generate voice --prompt "Hello"',
     "",
     "  List image providers:  zero generate image",
@@ -75,12 +69,7 @@ export const generateCommand = new Command()
   .addCommand(dashboardDesignCommand)
   .addCommand(mobileAppDesignCommand)
   .addCommand(videoCommand)
-  .addCommand(
-    websiteCommand,
-    zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites)
-      ? {}
-      : { hidden: true },
-  )
+  .addCommand(websiteCommand)
   .addCommand(voiceCommand)
   .addCommand(audioCommand)
   .addCommand(textCommand)

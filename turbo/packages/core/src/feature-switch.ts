@@ -134,12 +134,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
-  [FeatureSwitchKey.PwaOfflineCache]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable PWA offline caching (static asset cache-first, offline fallback page, and service worker updateViaCache: none)",
-    enabled: true,
-  },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Mailchimp email marketing connector",
@@ -264,11 +258,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
-  },
-  [FeatureSwitchKey.HostedSites]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable static hosted-site deployments from zero host.",
-    enabled: true,
   },
   [FeatureSwitchKey.SandboxIoLimiters]: {
     maintainer: "liangyou@vm0.ai",

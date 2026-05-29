@@ -2,13 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
@@ -37,26 +35,12 @@ const track = createFixtureTracker<HostedSiteFixture>(async (fixture) => {
     .delete(hostedDeployments)
     .where(eq(hostedDeployments.orgId, fixture.orgId));
   await writeDb.delete(hostedSites).where(eq(hostedSites.orgId, fixture.orgId));
-  await writeDb
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, fixture.orgId),
-        eq(userFeatureSwitches.userId, fixture.userId),
-      ),
-    );
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
 
-async function seedHostedSitesEnabled(): Promise<HostedSiteFixture> {
+function seedHostedSiteFixture(): Promise<HostedSiteFixture> {
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId,
-    userId,
-    switches: { [FeatureSwitchKey.HostedSites]: true },
-  });
   return track(Promise.resolve({ orgId, userId }));
 }
 
@@ -123,31 +107,8 @@ describe("POST /api/zero/host/deployments/prepare", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 when hosted sites are disabled", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.HostedSites]: false },
-    });
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroHostContract);
-    const response = await accept(
-      client.prepare({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { site: "demo-site", spaFallback: true, files: validFiles() },
-      }),
-      [403],
-    );
-    expect(response.body.error.message).toBe("Hosted sites are not enabled");
-    await track(Promise.resolve({ orgId, userId }));
-  });
-
   it("creates a deployment and returns per-file upload URLs", async () => {
-    const fixture = await seedHostedSitesEnabled();
+    const fixture = await seedHostedSiteFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroHostContract);
@@ -193,7 +154,7 @@ describe("POST /api/zero/host/deployments/prepare", () => {
   });
 
   it("rejects deployments missing index.html", async () => {
-    const fixture = await seedHostedSitesEnabled();
+    const fixture = await seedHostedSiteFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroHostContract);
@@ -214,7 +175,7 @@ describe("POST /api/zero/host/deployments/prepare", () => {
 
 describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
   it("marks a deployment ready and writes manifest plus active pointer", async () => {
-    const fixture = await seedHostedSitesEnabled();
+    const fixture = await seedHostedSiteFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroHostContract);
@@ -262,7 +223,7 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
   });
 
   it("records a run artifact that points at the hosted site URL", async () => {
-    const fixture = await seedHostedSitesEnabled();
+    const fixture = await seedHostedSiteFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },

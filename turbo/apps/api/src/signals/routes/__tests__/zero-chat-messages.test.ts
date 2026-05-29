@@ -785,7 +785,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
-  it("passes user feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
+  it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
     const fixture = await track(seedFixture());
     await store
       .set(writeDb$)
@@ -795,7 +795,6 @@ describe("POST /api/zero/chat/messages", () => {
         userId: fixture.userId,
         switches: {
           [FeatureSwitchKey.ComputerUse]: true,
-          [FeatureSwitchKey.HostedSites]: true,
         },
         updatedAt: nowDate(),
       });

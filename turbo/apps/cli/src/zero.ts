@@ -1,7 +1,6 @@
 // Zero CLI entry point - standalone binary for zero platform commands
 // Sentry must be initialized before any other imports
 import "./instrument.js";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { zeroOrgCommand } from "./commands/zero/org";
@@ -33,7 +32,6 @@ import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import {
   decodeZeroTokenPayload,
-  zeroTokenAllowsFeatureSwitch,
   type ZeroTokenPayload,
 } from "./lib/api/zero-token.js";
 
@@ -67,7 +65,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
-  generate: "file:write",
+  generate: null,
   web: null,
   host: "host:write",
   maps: "maps:read",
@@ -108,12 +106,6 @@ function shouldHideCommand(
   payload: ZeroTokenPayload | undefined,
 ): boolean {
   if (!payload) return false;
-  if (name === "generate") {
-    return (
-      !payload.capabilities.includes("file:write") &&
-      !zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites, payload)
-    );
-  }
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
   if (requiredCap === null) return false;
@@ -153,9 +145,7 @@ export function buildZeroHelpText(
     "  Manage custom skills?  zero skill --help",
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --prompt "..."',
-    ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites, payload)
-      ? ['  Generate website?      zero generate website --prompt "..."']
-      : []),
+    '  Generate website?      zero generate website --prompt "..."',
     '  Generate voice?        zero generate voice --prompt "..."',
     ...(shouldHideCommand("host", payload)
       ? []
