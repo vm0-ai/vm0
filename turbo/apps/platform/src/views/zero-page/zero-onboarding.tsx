@@ -527,17 +527,29 @@ const TRIAL_GALLERY_SECONDARY: readonly TrialGalleryItem[] = [
   },
 ];
 
-function TrialGalleryTile({ item }: { item: TrialGalleryItem }) {
+function TrialGalleryTile({
+  item,
+  aspect,
+  objectPosition,
+}: {
+  item: TrialGalleryItem;
+  aspect?: string;
+  objectPosition?: string;
+}) {
   return (
     <div
       data-testid={`onboarding-trial-gallery-item-${item.id}`}
       className="flex flex-col"
     >
-      <div className="rounded-xl overflow-hidden">
+      <div className={`rounded-xl overflow-hidden ${aspect ?? ""}`}>
         <img
           src={item.image}
           alt={`${item.label} preview`}
-          className="block w-full h-auto"
+          className={
+            aspect
+              ? `block w-full h-full object-cover ${objectPosition ?? "object-center"}`
+              : "block w-full h-auto"
+          }
         />
       </div>
       <div className="px-0.5 pt-2">
@@ -564,7 +576,16 @@ function OnboardingTrialPanel() {
       <TrialGalleryTile item={TRIAL_GALLERY_HERO} />
       <div className="grid grid-cols-2 gap-3 items-start">
         {TRIAL_GALLERY_SECONDARY.map((item) => {
-          return <TrialGalleryTile key={item.id} item={item} />;
+          const objectPosition =
+            item.id === "website" ? "object-top" : "object-center";
+          return (
+            <TrialGalleryTile
+              key={item.id}
+              item={item}
+              aspect="aspect-square"
+              objectPosition={objectPosition}
+            />
+          );
         })}
       </div>
     </div>
