@@ -3508,55 +3508,22 @@ func captureAccessibilityElements(
     return (elements, nodeCount, truncationReasons)
 }
 
-func appendAccessibilityFingerprint(_ node: [String: Any], into out: inout String) {
-    out += (node["id"] as? String) ?? ""
-    out += "|"
-    out += (node["role"] as? String) ?? ""
-    if let bounds = node["bounds"] as? [String: Double] {
-        out += "|\(Int(bounds["x"] ?? 0)),\(Int(bounds["y"] ?? 0)),"
-        out += "\(Int(bounds["width"] ?? 0)),\(Int(bounds["height"] ?? 0))"
-    }
-    out += ";"
-    if let children = node["children"] as? [[String: Any]] {
-        for child in children {
-            appendAccessibilityFingerprint(child, into: &out)
-        }
-    }
-}
-
-func accessibilityElementsFingerprint(_ elements: [[String: Any]]) -> String {
-    var out = ""
-    for element in elements {
-        appendAccessibilityFingerprint(element, into: &out)
-    }
-    return out
-}
-
 // Re-capture the accessibility tree until its structure stabilizes. Element ids
 // are positional tree paths, so a snapshot taken while a menu is still animating
 // open returns ids that shift before the agent can act on them. Polling until the
-// fingerprint stops changing keeps post-action snapshots actionable.
+// fingerprint stops changing keeps post-action snapshots actionable. The loop
+// control lives in ComputerUseHelperCore so it can be exercised deterministically
+// in tests.
 func settledAccessibilityElements(
     _ root: AXUIElement
 ) -> (elements: [[String: Any]], nodeCount: Int, truncationReasons: [String]) {
-    let requiredStablePasses = 3
-    let pollInterval: useconds_t = 120_000
-    let deadline = Date().addingTimeInterval(1.6)
-    var latest = captureAccessibilityElements(root)
-    var previousFingerprint = accessibilityElementsFingerprint(latest.elements)
-    var stablePasses = 1
-    while stablePasses < requiredStablePasses, Date() < deadline {
-        usleep(pollInterval)
-        latest = captureAccessibilityElements(root)
-        let fingerprint = accessibilityElementsFingerprint(latest.elements)
-        if fingerprint == previousFingerprint {
-            stablePasses += 1
-        } else {
-            stablePasses = 1
-            previousFingerprint = fingerprint
-        }
-    }
-    return latest
+    return settleCapture(
+        policy: .postAction,
+        now: { Date().timeIntervalSinceReferenceDate },
+        sleep: { usleep($0) },
+        capture: { captureAccessibilityElements(root) },
+        fingerprint: { accessibilityElementsFingerprint($0.elements) }
+    )
 }
 
 func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {

@@ -23,6 +23,7 @@
     "package": "pnpm build && electron-forge package --platform darwin",
     "start": "electron-forge start",
     "test": "vitest run",
+    "test:native": "node scripts/test-native-helper.js",
     "vm0-computer": "pnpm build:cli && node dist/vm0-computer.js"
   },
   "dependencies": {
