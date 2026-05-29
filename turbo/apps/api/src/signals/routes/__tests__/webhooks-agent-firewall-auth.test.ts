@@ -1433,6 +1433,83 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBe("rotated-force-concurrent-notion-refresh-token");
   });
 
+  it("serializes concurrent forced connector OAuth refreshes without access snapshots", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "current-force-missing-snapshot-notion-token",
+      refreshToken: "force-missing-snapshot-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 3_600_000),
+    });
+
+    let refreshCallCount = 0;
+    const firstRefreshStarted = deferred();
+    const firstRefreshRelease = deferred();
+
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", async () => {
+        refreshCallCount += 1;
+        if (refreshCallCount === 1) {
+          firstRefreshStarted.resolve();
+          await firstRefreshRelease.promise;
+        }
+        return HttpResponse.json({
+          access_token: "fresh-force-missing-snapshot-notion-token",
+          refresh_token: "rotated-force-missing-snapshot-notion-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const refreshRequest = () => {
+      return accept(
+        firewallClient().resolve({
+          body: {
+            encryptedSecrets: encryptedSecrets({}),
+            authHeaders: {
+              Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+            },
+            secretConnectorMap: {
+              NOTION_TOKEN: "notion",
+            },
+            forceRefresh: true,
+          },
+          headers: authHeaders(fixture),
+        }),
+        [200],
+      );
+    };
+
+    const firstResponsePromise = refreshRequest();
+    await firstRefreshStarted.promise;
+    const secondResponsePromise = refreshRequest();
+    firstRefreshRelease.resolve();
+
+    const responses = await Promise.all([
+      firstResponsePromise,
+      secondResponsePromise,
+    ]);
+
+    expect(refreshCallCount).toBe(1);
+    for (const response of responses) {
+      expect(response.body.headers.Authorization).toBe(
+        "Bearer fresh-force-missing-snapshot-notion-token",
+      );
+    }
+    expect(
+      responses.map((response) => {
+        return response.body.refreshedConnectors;
+      }),
+    ).toStrictEqual([["notion"], []]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "NOTION_REFRESH_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("rotated-force-missing-snapshot-notion-refresh-token");
+  });
+
   it("refreshes dynamic public connector OAuth tokens without env client credentials", async () => {
     const dynamicOAuth = useDynamicTestOAuthRefresh();
     restoreDynamicTestOAuthRefresh = dynamicOAuth.restore;
