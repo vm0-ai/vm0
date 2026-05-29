@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.105.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.5...runner-rs-v0.105.6) (2026-05-29)
+
+
+### Refactoring
+
+* resolve connector access from selected auth method ([#15355](https://github.com/vm0-ai/vm0/issues/15355)) ([1c24b75](https://github.com/vm0-ai/vm0/commit/1c24b7553c4f86cbd70082ed454efb4853ac7cb2))
+
 ## [0.105.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.4...runner-rs-v0.105.5) (2026-05-29)
 
 ## [0.105.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.3...runner-rs-v0.105.4) (2026-05-29)

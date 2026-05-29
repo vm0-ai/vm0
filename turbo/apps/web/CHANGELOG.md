@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.401.0](https://github.com/vm0-ai/vm0/compare/web-v12.400.1...web-v12.401.0) (2026-05-29)
+
+
+### Features
+
+* **web:** add /presentation gallery page ([#15372](https://github.com/vm0-ai/vm0/issues/15372)) ([3fc6da3](https://github.com/vm0-ai/vm0/commit/3fc6da3afe3e3c55cbf20c8819134055f89f5ab5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/core bumped to 8.302.3
+    * @vm0/db bumped to 1.22.5
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.7
+
 ## [12.400.1](https://github.com/vm0-ai/vm0/compare/web-v12.400.0...web-v12.400.1) (2026-05-29)
 
 

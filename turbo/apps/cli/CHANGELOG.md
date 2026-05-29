@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.176.4](https://github.com/vm0-ai/vm0/compare/cli-v9.176.3...cli-v9.176.4) (2026-05-29)
+
+
+### Bug Fixes
+
+* **cli:** clean up generate artifact flags ([#15389](https://github.com/vm0-ai/vm0/issues/15389)) ([12581b7](https://github.com/vm0-ai/vm0/commit/12581b76cb5057f46fd63df5691fba4dce369167))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/connectors bumped to 1.37.7
+    * @vm0/core bumped to 8.302.3
+
 ## [9.176.3](https://github.com/vm0-ai/vm0/compare/cli-v9.176.2...cli-v9.176.3) (2026-05-29)
 
 
