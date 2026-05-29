@@ -181,8 +181,14 @@ export class DesktopAuthSession {
     }
 
     this.tokenRefresh = (async () => {
+      const before = this.token;
       await this.runAuthWindow({ url: this.tokenUrl, visible: false });
-      return this.token;
+      const after = this.token;
+      // completeSignIn() is the token's only write path. If the refresh window
+      // reached a completion navigation without ever delivering a token, the
+      // token is unchanged, so surface an explicit null instead of the stale
+      // value the 401 retry would otherwise resend.
+      return after === before ? null : after;
     })();
 
     try {
