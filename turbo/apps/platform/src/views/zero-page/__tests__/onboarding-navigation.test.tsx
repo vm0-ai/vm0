@@ -111,6 +111,10 @@ describe("onboarding navigation", () => {
     // Fill name and advance — this eager-inits the workspace + default agent
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Step 2: Choose your tools — pick a connector to authorize

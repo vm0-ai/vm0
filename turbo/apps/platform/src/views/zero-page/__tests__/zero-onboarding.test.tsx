@@ -77,6 +77,10 @@ describe("zero onboarding - step 1: workspace name", () => {
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
 
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -119,6 +123,10 @@ describe("zero onboarding - step 2: choose tools", () => {
 
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Should reach step 2 (choose tools) — search input is the structural anchor
@@ -135,6 +143,10 @@ describe("zero onboarding - step 2: choose tools", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -162,6 +174,10 @@ describe("zero onboarding - Pro trial step", () => {
     // Step 1 -> fill name -> Next
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Step 2: connectors. The trial step adds a third progress segment, and
@@ -232,6 +248,10 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
     // Selecting a connector on step 2 doesn't change the step count.
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -275,6 +295,10 @@ describe("step-specific content renders (AGENT-D-057)", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -299,6 +323,10 @@ describe("connector selection display renders (AGENT-D-058)", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -324,6 +352,10 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -353,6 +385,10 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -389,6 +425,10 @@ describe("connector search input filters list (AGENT-D-065)", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -422,6 +462,10 @@ describe("back button hidden after eager init (AGENT-D-068)", () => {
     // Navigate to step 2
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -455,6 +499,10 @@ describe("connectors via URL pre-select on step 2", () => {
     // Fill step 1 and advance — lands on step 2 with slack pre-selected.
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -474,6 +522,10 @@ describe("connectors via URL pre-select on step 2", () => {
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Acme");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Should land on step 2 (choose tools) — normal flow, nothing pre-selected

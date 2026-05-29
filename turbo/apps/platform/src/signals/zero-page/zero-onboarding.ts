@@ -51,7 +51,7 @@ const initialOnboardingStep$ = computed(async (get) => {
 
 const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
-const internalSelectedRole$ = state<string | null>("founder");
+const internalSelectedRole$ = state<string | null>(null);
 const internalTrialGalleryIndex$ = state(0);
 
 const internalSelectedConnectors$ = state<ConnectorType[]>([]);
@@ -183,7 +183,7 @@ export const resetOnboardingStep$ = command(({ set }) => {
   set(internalUseCaseMode$, false);
   set(internalPromptDraft$, "");
   set(internalEagerInitialized$, false);
-  set(internalSelectedRole$, "founder");
+  set(internalSelectedRole$, null);
   set(internalTrialGalleryIndex$, 0);
 });
 

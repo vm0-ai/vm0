@@ -574,20 +574,19 @@ function TrialWorkflowSlide() {
     <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-3">
       <div className="flex items-center justify-center gap-4">
         {TRIAL_WORKFLOW_CHANNELS.map((channel) => {
-          // Slack's source SVG packs its mark into the top-left ~63% of a
-          // 270x270 viewBox, so scaling at the layout center pushes the
-          // visible icon to the left of its box and widens the gap to its
-          // right neighbour. Compensate the visible position with a small
-          // negative right margin so the gap to Telegram matches the gap
-          // between Telegram and iMessage.
-          const slackTweak =
-            channel.key === "slack" ? "scale-[1.85] -mr-2" : "";
+          // Slack's source SVG places its mark in the centre of a padded
+          // 270x270 viewBox; without scaling, the visible hash mark is much
+          // smaller than Telegram + iMessage which fill their own viewBoxes
+          // edge to edge. scale-[1.85] sizes Slack to match, and the
+          // remaining ~3px asymmetry around the layout box is well within
+          // the gap-4 (16px) inter-icon spacing.
+          const slackScale = channel.key === "slack" ? "scale-[1.85]" : "";
           return (
             <img
               key={channel.key}
               src={channel.src}
               alt=""
-              className={`h-9 w-9 object-contain ${slackTweak}`}
+              className={`h-9 w-9 object-contain ${slackScale}`}
             />
           );
         })}
