@@ -29,7 +29,9 @@ export const gumroad = {
           ],
         },
         access: {
-          kind: "static",
+          kind: "refresh-token",
+          accessToken: "GUMROAD_ACCESS_TOKEN",
+          refreshToken: "GUMROAD_REFRESH_TOKEN",
           envBindings: {
             GUMROAD_TOKEN: "$secrets.GUMROAD_ACCESS_TOKEN",
           },

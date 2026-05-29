@@ -1439,6 +1439,42 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       getConnectorAuthMethodAccessMetadata("stripe", "missing"),
     ).toBeUndefined();
   });
+
+  it("keeps OAuth provider secret metadata aligned with OAuth access metadata", () => {
+    for (const type of connectorTypeSchema.options) {
+      if (!hasConnectorAuthorizationGrant(type)) {
+        continue;
+      }
+
+      const providerMetadata = getConnectorOAuthSecretMetadata(type);
+      if (!providerMetadata) {
+        throw new Error(`${type}: OAuth provider metadata is missing`);
+      }
+
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        type,
+        "oauth",
+      );
+
+      if (providerMetadata.isRefreshable) {
+        expect(
+          accessMetadata,
+          `${type}: refreshable OAuth provider must use refresh-token access`,
+        ).toEqual(
+          expect.objectContaining({
+            kind: "refresh-token",
+            accessToken: providerMetadata.accessSecretName,
+            refreshToken: providerMetadata.refreshSecretName,
+          }),
+        );
+      } else {
+        expect(
+          accessMetadata,
+          `${type}: non-refreshable OAuth provider must not use refresh-token access`,
+        ).not.toEqual(expect.objectContaining({ kind: "refresh-token" }));
+      }
+    }
+  });
 });
 
 describe("getConnectorVariableNames", () => {
