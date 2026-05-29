@@ -1239,21 +1239,53 @@ class TestFetchFirewallHeaders:
                 )
             assert "Insufficient credits" in str(exc_info.value)
 
-    def test_structured_firewall_auth_api_error_raises_custom_error(self):
+    @pytest.mark.parametrize(
+        ("status", "reason", "code", "message", "connectors"),
+        [
+            (
+                424,
+                "Failed Dependency",
+                "TOKEN_ACCESS_RESOLUTION_FAILED",
+                "Token access resolution failed for: notion.",
+                ["notion"],
+            ),
+            (
+                403,
+                "Forbidden",
+                "FORBIDDEN",
+                "Invalid model-provider secret owner",
+                None,
+            ),
+            (
+                502,
+                "Bad Gateway",
+                "TOKEN_REFRESH_FAILED",
+                "Access token expired and refresh failed for: codex-oauth-token.",
+                ["codex-oauth-token"],
+            ),
+        ],
+        ids=["token-access-resolution", "forbidden", "token-refresh"],
+    )
+    def test_current_structured_error_raises_custom_error(
+        self,
+        status: int,
+        reason: str,
+        code: str,
+        message: str,
+        connectors: list[str] | None,
+    ):
         """Current auth endpoint errors should preserve their code and connectors."""
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": "Token access resolution failed for: notion.",
-                    "code": "TOKEN_ACCESS_RESOLUTION_FAILED",
-                    "connectors": ["notion"],
-                }
-            }
-        ).encode()
+        error_info: dict[str, object] = {
+            "message": message,
+            "code": code,
+        }
+        if connectors is not None:
+            error_info["connectors"] = connectors
+        error_body = json.dumps({"error": error_info}).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            424,
-            "Failed Dependency",
+            status,
+            reason,
             error_body,
         )
 
@@ -1265,9 +1297,10 @@ class TestFetchFirewallHeaders:
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
-        assert exc_info.value.status == 424
-        assert exc_info.value.code == "TOKEN_ACCESS_RESOLUTION_FAILED"
-        assert exc_info.value.connectors == ["notion"]
+        assert exc_info.value.status == status
+        assert exc_info.value.code == code
+        assert exc_info.value.message == message
+        assert exc_info.value.connectors == connectors
 
     @pytest.mark.parametrize(
         "error_body",
@@ -1299,23 +1332,14 @@ class TestFetchFirewallHeaders:
 
         assert exc_info.value is http_error
 
-    @pytest.mark.parametrize(
-        ("status", "reason", "code"),
-        [
-            (400, "Bad Request", "BAD_REQUEST"),
-        ],
-    )
-    def test_unrecognized_error_envelope_reraises_http_error(
-        self,
-        status: int,
-        reason: str,
-        code: str,
-    ):
-        error_body = json.dumps({"error": {"message": reason, "code": code}}).encode()
+    def test_unrecognized_error_envelope_reraises_http_error(self):
+        error_body = json.dumps(
+            {"error": {"message": "Bad Request", "code": "BAD_REQUEST"}}
+        ).encode()
         http_error = _http_error(
             "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            status,
-            reason,
+            400,
+            "Bad Request",
             error_body,
         )
 
@@ -1328,65 +1352,6 @@ class TestFetchFirewallHeaders:
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         assert exc_info.value is http_error
-
-    def test_current_forbidden_error_raises_custom_error(self):
-        """Current API FORBIDDEN responses should keep the original status and code."""
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": "Invalid model-provider secret owner",
-                    "code": "FORBIDDEN",
-                }
-            }
-        ).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            403,
-            "Forbidden",
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.FirewallAuthApiError) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert exc_info.value.status == 403
-        assert exc_info.value.code == "FORBIDDEN"
-        assert exc_info.value.message == "Invalid model-provider secret owner"
-
-    def test_current_token_refresh_failed_error_raises_custom_error(self):
-        """Current API TOKEN_REFRESH_FAILED responses should not collapse to auth_failed."""
-        error_body = json.dumps(
-            {
-                "error": {
-                    "message": "Access token expired and refresh failed for: codex-oauth-token.",
-                    "code": "TOKEN_REFRESH_FAILED",
-                    "connectors": ["codex-oauth-token"],
-                }
-            }
-        ).encode()
-        http_error = _http_error(
-            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
-            502,
-            "Bad Gateway",
-            error_body,
-        )
-
-        with (
-            patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
-            patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(auth.FirewallAuthApiError) as exc_info,
-        ):
-            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
-
-        assert exc_info.value.status == 502
-        assert exc_info.value.code == "TOKEN_REFRESH_FAILED"
-        assert exc_info.value.connectors == ["codex-oauth-token"]
 
     def test_http_error_body_read_failure_reraises_http_error(self):
         http_error = urllib.error.HTTPError(
