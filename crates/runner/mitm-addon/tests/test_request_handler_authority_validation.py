@@ -607,6 +607,13 @@ async def test_rejects_host_authority_port_mismatch(
             "https://xn--a-63c.example/repos",
         ),
         (
+            "https://xn--z-cmbg264c9ov.example",
+            "z\u1fc3\u08f2\u17b6.example",
+            "xn--z-cmbg264c9ov.example",
+            "https://xn--z-cmbg264c9ov.example",
+            "https://xn--z-cmbg264c9ov.example/repos",
+        ),
+        (
             "https://xn--cib0c.example",
             "\u0663\u067a.example",
             "xn--cib0c.example",

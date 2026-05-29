@@ -50,6 +50,13 @@ _GREEK_MATHEMATICAL_FINAL_SIGMA_TRANSLATION = str.maketrans(
         "\U0001d7bb": _GREEK_SMALL_SIGMA,
     }
 )
+_GREEK_PRECOMPOSED_IOTA_SUBSCRIPT_TRANSLATION = str.maketrans(
+    {
+        char: normalize("NFKD", char).replace(_GREEK_COMBINING_YPOGEGRAMMENI, _GREEK_SMALL_IOTA)
+        for char in (chr(codepoint) for codepoint in (0x037A, *range(0x1F00, 0x2000)))
+        if _GREEK_COMBINING_YPOGEGRAMMENI in normalize("NFKD", char)
+    }
+)
 _CHEROKEE_UPPER_START = 0x13A0
 _CHEROKEE_UPPER_END = 0x13FF
 _CHEROKEE_SMALL_START = 0xAB70
@@ -128,11 +135,15 @@ def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
 
 
 def _normalize_label_text(label: str) -> str:
+    remapped = label.translate(_GREEK_MATHEMATICAL_FINAL_SIGMA_TRANSLATION).translate(
+        _GREEK_PRECOMPOSED_IOTA_SUBSCRIPT_TRANSLATION
+    )
     normalized = normalize(
-        "NFKD", label.translate(_GREEK_MATHEMATICAL_FINAL_SIGMA_TRANSLATION)
-    ).replace(
-        _GREEK_COMBINING_YPOGEGRAMMENI,
-        _GREEK_SMALL_IOTA,
+        "NFKD",
+        remapped.replace(
+            _GREEK_COMBINING_YPOGEGRAMMENI,
+            _GREEK_SMALL_IOTA,
+        ),
     )
     normalized = normalize("NFC", normalized)
     chars: list[str] = []

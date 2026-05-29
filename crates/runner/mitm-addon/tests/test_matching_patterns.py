@@ -284,6 +284,11 @@ class TestMatchBaseUrl:
             ("https://\u1c85.example/repos", "https://xn--r1a.example"),
             ("https://\U0001d6d3.example/repos", "https://xn--4xa.example"),
             ("https://a\u0754.example/repos", "https://xn--a-63c.example"),
+            ("https://z\u1fc3\u08f2\u17b6.example/repos", "https://xn--z-cmbg264c9ov.example"),
+            (
+                "https://z\u03b7\u08f2\u0345\u17b6.example/repos",
+                "https://xn--z-cmbg164cbpv.example",
+            ),
             ("https://\u0663\u067a.example/repos", "https://xn--cib0c.example"),
             ("https://\u0663\u067a\u0663.example/repos", "https://xn--ciba2e.example"),
             ("https://1\u067a1.example/repos", "https://xn--11-g0d.example"),
