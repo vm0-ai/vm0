@@ -35,6 +35,8 @@ assert_json_value() {
 }
 
 mkdir -p "${TMPDIR}/bin"
+mkdir -p "${TMPDIR}/no-op-bin"
+ln -s "$(command -v bash)" "${TMPDIR}/no-op-bin/bash"
 
 cat > "${TMPDIR}/bin/op" <<'BASH'
 #!/usr/bin/env bash
@@ -126,6 +128,16 @@ fi
 BASH
 chmod +x "${TMPDIR}/bin/gh"
 
+mkdir -p "${TMPDIR}/missing-jq-bin"
+ln -s "$(command -v bash)" "${TMPDIR}/missing-jq-bin/bash"
+ln -s "${TMPDIR}/bin/op" "${TMPDIR}/missing-jq-bin/op"
+ln -s "${TMPDIR}/bin/gh" "${TMPDIR}/missing-jq-bin/gh"
+
+mkdir -p "${TMPDIR}/missing-gh-bin"
+ln -s "$(command -v bash)" "${TMPDIR}/missing-gh-bin/bash"
+ln -s "$(command -v jq)" "${TMPDIR}/missing-gh-bin/jq"
+ln -s "${TMPDIR}/bin/op" "${TMPDIR}/missing-gh-bin/op"
+
 run_syncer() {
   local log_file=$1
   shift
@@ -194,6 +206,33 @@ assert_contains "$large_bundle_output" "GitHub secret limit is 49152 bytes"
 if [[ -s "$large_bundle_log" ]]; then
   fail "expected oversized bundle case not to call gh"
 fi
+
+status=0
+missing_op_output="$(
+  GH_STUB_LOG="${TMPDIR}/missing-op-gh.log" PATH="${TMPDIR}/no-op-bin" "$SYNCER" development 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing op case to fail"
+fi
+assert_contains "$missing_op_output" "1Password CLI (op) is not installed"
+
+status=0
+missing_jq_output="$(
+  GH_STUB_LOG="${TMPDIR}/missing-jq-gh.log" PATH="${TMPDIR}/missing-jq-bin" "$SYNCER" development 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing jq case to fail"
+fi
+assert_contains "$missing_jq_output" "jq is not installed"
+
+status=0
+missing_gh_output="$(
+  GH_STUB_LOG="${TMPDIR}/missing-gh.log" PATH="${TMPDIR}/missing-gh-bin" "$SYNCER" development 2>&1
+)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected missing gh case to fail"
+fi
+assert_contains "$missing_gh_output" "GitHub CLI (gh) is not installed"
 
 status=0
 invalid_scope_output="$(

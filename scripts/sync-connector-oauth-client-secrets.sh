@@ -185,9 +185,9 @@ if ! op vault get "$vault_name" >/dev/null 2>&1; then
   exit 1
 fi
 
-bundle_file="$(mktemp "${TMPDIR:-/tmp}/connector-oauth-client-secrets-${scope}.XXXXXX.json")"
-bundle_tmp="$(mktemp "${TMPDIR:-/tmp}/connector-oauth-client-secrets-${scope}-bundle.XXXXXX.json")"
-next_tmp="$(mktemp "${TMPDIR:-/tmp}/connector-oauth-client-secrets-${scope}-next.XXXXXX.json")"
+bundle_file="$(mktemp "${TMPDIR:-/tmp}/connector-oauth-client-secrets-${scope}.XXXXXX")"
+bundle_tmp="$(mktemp "${TMPDIR:-/tmp}/connector-oauth-client-secrets-${scope}-bundle.XXXXXX")"
+next_tmp="$(mktemp "${TMPDIR:-/tmp}/connector-oauth-client-secrets-${scope}-next.XXXXXX")"
 trap 'rm -f "$bundle_file" "$bundle_tmp" "$next_tmp"' EXIT
 
 echo "Building ${SECRET_NAME} from the ${vault_name} 1Password vault..."
