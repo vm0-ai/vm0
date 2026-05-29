@@ -325,6 +325,34 @@ async function seedStripeApiTokenConnector(
   }
 }
 
+async function seedGithubOAuthStaticAccessConnector(
+  fixture: FirewallFixture,
+  args: { readonly accessToken?: string } = {},
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: "github",
+    authMethod: "oauth",
+    externalId: "github-user",
+    externalUsername: "github-user",
+    externalEmail: "github@example.com",
+    oauthScopes: JSON.stringify([]),
+    tokenExpiresAt: null,
+  });
+
+  if (args.accessToken !== undefined) {
+    await seedSecret({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "GITHUB_ACCESS_TOKEN",
+      value: args.accessToken,
+      type: "connector",
+    });
+  }
+}
+
 const dynamicPublicClient = {
   clientRegistration: "dynamic",
   clientType: "public",
@@ -1558,6 +1586,37 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
     expect(response.body.headers.Authorization).toBe(
       "Bearer current-stripe-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("loads current static connector raw access secret names", async () => {
+    const fixture = await track(seedFixture());
+    await seedGithubOAuthStaticAccessConnector(fixture, {
+      accessToken: "current-github-token",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            GITHUB_ACCESS_TOKEN: "stale-github-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("GITHUB_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            GITHUB_ACCESS_TOKEN: "github",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-github-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual([]);
     expect(response.body.refreshedSecrets).toStrictEqual([]);

@@ -1550,6 +1550,59 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
+  it("maps static OAuth connector raw access secret names and aliases", async () => {
+    const fx = await fixture();
+    const db = store.set(writeDb$);
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await db.insert(userConnectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      connectorType: "github",
+    });
+    await db.insert(connectors).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      type: "github",
+      authMethod: "oauth",
+    });
+    await db.insert(secrets).values({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      name: "GITHUB_ACCESS_TOKEN",
+      encryptedValue: encryptSecretForTests("gho-access"),
+      type: "connector",
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "github connector", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+    };
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      GH_TOKEN: "gho-access",
+      GITHUB_TOKEN: "gho-access",
+    });
+    expect(executionContext.secretConnectorMap).toMatchObject({
+      GITHUB_ACCESS_TOKEN: "github",
+      GH_TOKEN: "github",
+      GITHUB_TOKEN: "github",
+    });
+  });
+
   it("ignores orphaned connector secrets for removed connector types", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);

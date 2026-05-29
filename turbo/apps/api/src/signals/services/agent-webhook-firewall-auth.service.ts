@@ -1119,9 +1119,15 @@ function connectorAccessSecretName(
     }
     case "static": {
       const valueRef = accessMetadata.envBindings[key];
-      return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true
-        ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
-        : undefined;
+      if (valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true) {
+        return valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+      }
+      for (const candidate of Object.values(accessMetadata.envBindings)) {
+        if (candidate === `${CONNECTOR_SECRET_REF_PREFIX}${key}`) {
+          return key;
+        }
+      }
+      return undefined;
     }
     case "none": {
       return undefined;

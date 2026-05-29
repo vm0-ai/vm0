@@ -1789,6 +1789,8 @@ function resolveStoredConnectorState(
         accessMetadata.envBindings,
       )) {
         if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+          const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+          secretConnectorMap[secretName] = connectorType;
           secretConnectorMap[envName] = connectorType;
         }
       }
