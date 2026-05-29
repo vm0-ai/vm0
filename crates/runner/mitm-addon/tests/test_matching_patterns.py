@@ -273,6 +273,8 @@ class TestMatchBaseUrl:
             ("https://xn--strae-oqa.de/repos", "https://straße.de"),
             ("https://xn--fa-hia.de/repos", "https://xn--fa-hia.de"),
             ("https://\u03c2.example/repos", "https://xn--3xa.example"),
+            ("https://a\u03a3.example/repos", "https://xn--a-0mb.example"),
+            ("https://a\u03f9.example/repos", "https://xn--a-0mb.example"),
         ],
     )
     def test_static_base_idna_authority_matches_runtime_host(self, url, base):
@@ -292,6 +294,8 @@ class TestMatchBaseUrl:
             ("https://ß.de/repos", "https://\u1e9e.de"),
             ("https://\u03f2.example/repos", "https://\u03c2.example"),
             ("https://\u03c2.example/repos", "https://\u03f2.example"),
+            ("https://a\u03a3.example/repos", "https://a\u03c2.example"),
+            ("https://a\u03c2.example/repos", "https://a\u03a3.example"),
             ("https://\u200cexample.com/repos", "https://example.com"),
             ("https://example.com/repos", "https://\u200cexample.com"),
         ],

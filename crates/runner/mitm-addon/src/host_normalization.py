@@ -14,6 +14,8 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 _PUNYCODE_PREFIX = "xn--"
 _UNICODE_CONTROL_CATEGORY_PREFIX = "C"
 _FORBIDDEN_NORMALIZED_LABEL_CHARS = frozenset("#%,/:<>?@[\\]^|[]")
+_GREEK_CAPITAL_SIGMA = "\u03a3"
+_GREEK_SMALL_SIGMA = "\u03c3"
 _UNSAFE_UTS46_COLLISION_CHARS = frozenset(
     (
         "\u03f2",  # Greek lunate sigma symbol maps like sigma under UTS46.
@@ -48,6 +50,11 @@ def _has_unsafe_uts46_mapping_chars(value: str) -> bool:
     return False
 
 
+def _normalize_label_text(label: str) -> str:
+    normalized = normalize("NFKC", label)
+    return normalized.replace(_GREEK_CAPITAL_SIGMA, _GREEK_SMALL_SIGMA).lower()
+
+
 def _validate_normalized_label_text(normalized_label: str) -> None:
     if not normalized_label or "." in normalized_label:
         raise UnicodeError("invalid IDNA label")
@@ -60,7 +67,7 @@ def _validate_normalized_label_text(normalized_label: str) -> None:
 def _canonical_punycode_label(label: str) -> str:
     if _has_unsafe_uts46_mapping_chars(label):
         raise UnicodeError("unsafe IDNA compatibility mapping")
-    normalized_label = normalize("NFKC", label).lower()
+    normalized_label = _normalize_label_text(label)
     _validate_normalized_label_text(normalized_label)
 
     try:
@@ -73,7 +80,7 @@ def _canonical_punycode_label(label: str) -> str:
 
 
 def _encode_unicode_label(label: str) -> str:
-    normalized_label = normalize("NFKC", label).lower()
+    normalized_label = _normalize_label_text(label)
     if _is_ascii(normalized_label):
         raise UnicodeError("unsafe IDNA compatibility mapping")
     return _canonical_punycode_label(label)
@@ -108,7 +115,7 @@ def _has_invalid_alabel(ascii_host: str) -> bool:
 def _normalize_label(label: str) -> str:
     if not label:
         raise UnicodeError("empty IDNA label")
-    normalized_label = normalize("NFKC", label).lower()
+    normalized_label = _normalize_label_text(label)
     _validate_normalized_label_text(normalized_label)
     ascii_label = label.lower() if _is_ascii(label) else _encode_unicode_label(label)
     if len(ascii_label) > _DNS_LABEL_MAX_LENGTH:

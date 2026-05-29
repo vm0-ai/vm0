@@ -536,6 +536,13 @@ async def test_rejects_host_authority_port_mismatch(
             "https://xn--3xa.example",
             "https://xn--3xa.example/repos",
         ),
+        (
+            "https://xn--a-0mb.example",
+            "a\u03a3.example",
+            "xn--a-0mb.example",
+            "https://xn--a-0mb.example",
+            "https://xn--a-0mb.example/repos",
+        ),
     ],
 )
 async def test_accepts_authority_host_normalization_equivalence(

@@ -625,6 +625,16 @@ class TestCompiledFirewallMatching:
                 "https://\u03c2.example/repos/org/repo",
                 {"owner": "org", "repo": "repo"},
             ),
+            (
+                "https://xn--a-0mb.example",
+                "https://a\u03a3.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://xn--a-0mb.example",
+                "https://a\u03f9.example/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
         ],
     )
     def test_compiled_matches_idna_authority_bases(self, base, url, expected_params):
@@ -661,6 +671,7 @@ class TestCompiledFirewallMatching:
             ("https://k.example", "https://\u212a.example/repos/org/repo"),
             ("https://ß.de", "https://\u1e9e.de/repos/org/repo"),
             ("https://\u03c2.example", "https://\u03f2.example/repos/org/repo"),
+            ("https://a\u03c2.example", "https://a\u03a3.example/repos/org/repo"),
             ("https://example.com", "https://\u200cexample.com/repos/org/repo"),
             ("https://xn--4xa.example", "https://\u03c2.example/repos/org/repo"),
         ],
@@ -695,6 +706,7 @@ class TestCompiledFirewallMatching:
             ("https://faß.de", "https://fass.de/repos/org/repo"),
             ("https://\uff21.example", "https://a.example/repos/org/repo"),
             ("https://\u1e9e.de", "https://ß.de/repos/org/repo"),
+            ("https://a\u03a3.example", "https://a\u03c2.example/repos/org/repo"),
             ("https://\u200cexample.com", "https://example.com/repos/org/repo"),
             ("https://xn--3xa.example", "https://\u03c3.example/repos/org/repo"),
         ],
