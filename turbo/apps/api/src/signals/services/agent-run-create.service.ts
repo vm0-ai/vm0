@@ -1091,9 +1091,7 @@ function modelProviderRefreshMaps(
   }
 
   const accessSecretName = metadata.accessSecretName;
-  const secretConnectorMap: Record<string, string> = {
-    [accessSecretName]: providerType,
-  };
+  const secretConnectorMap: Record<string, string> = {};
   const envBindings = getModelProviderEnvBindings(providerType);
   for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
     if (valueRef === `$secrets.${accessSecretName}`) {
@@ -1778,7 +1776,6 @@ function resolveStoredConnectorState(
     );
     if (accessMetadata?.kind === "refresh-token") {
       const secretName = accessMetadata.accessToken;
-      secretConnectorMap[secretName] = connectorType;
       for (const [envName, valueRef] of Object.entries(envBindings)) {
         if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
           secretConnectorMap[envName] = connectorType;
@@ -1789,8 +1786,6 @@ function resolveStoredConnectorState(
         accessMetadata.envBindings,
       )) {
         if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-          const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-          secretConnectorMap[secretName] = connectorType;
           secretConnectorMap[envName] = connectorType;
         }
       }

@@ -1189,13 +1189,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1207,9 +1207,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-notion-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["notion"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "NOTION_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["NOTION_TOKEN"]);
     expect(response.body.expiresAt).toBeGreaterThan(currentSecond());
     await expect(
       readSecret({
@@ -1243,13 +1241,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            TEST_OAUTH_ACCESS_TOKEN: "stale-test-oauth-token",
+            TEST_OAUTH_TOKEN: "stale-test-oauth-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
           },
           secretConnectorMap: {
-            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+            TEST_OAUTH_TOKEN: "test-oauth",
           },
         },
         headers: authHeaders(fixture),
@@ -1268,9 +1266,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-test-oauth-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "TEST_OAUTH_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["TEST_OAUTH_TOKEN"]);
     await expect(
       readSecret({
         orgId: fixture.orgId,
@@ -1300,10 +1296,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({}),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
           },
           secretConnectorMap: {
-            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+            TEST_OAUTH_TOKEN: "test-oauth",
           },
         },
         headers: authHeaders(fixture),
@@ -1315,9 +1311,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-test-oauth-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["test-oauth"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "TEST_OAUTH_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["TEST_OAUTH_TOKEN"]);
   });
 
   it("loads a missing selected connector access secret when the stored token is current", async () => {
@@ -1333,10 +1327,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({}),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1376,10 +1370,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({}),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1444,10 +1438,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({}),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1470,13 +1464,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1514,10 +1508,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         body: {
           encryptedSecrets: encryptedSecrets({}),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
           },
           secretConnectorMap: {
-            TEST_OAUTH_ACCESS_TOKEN: "test-oauth",
+            TEST_OAUTH_TOKEN: "test-oauth",
           },
         },
         headers: authHeaders(fixture),
@@ -1591,7 +1585,38 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.refreshedSecrets).toStrictEqual([]);
   });
 
-  it("loads current static connector raw access secret names", async () => {
+  it("loads current static connector env aliases", async () => {
+    const fixture = await track(seedFixture());
+    await seedGithubOAuthStaticAccessConnector(fixture, {
+      accessToken: "current-github-token",
+    });
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            GITHUB_TOKEN: "stale-github-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("GITHUB_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            GITHUB_TOKEN: "github",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer current-github-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([]);
+    expect(response.body.refreshedSecrets).toStrictEqual([]);
+  });
+
+  it("rejects static connector raw access secret names", async () => {
     const fixture = await track(seedFixture());
     await seedGithubOAuthStaticAccessConnector(fixture, {
       accessToken: "current-github-token",
@@ -1612,14 +1637,15 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         },
         headers: authHeaders(fixture),
       }),
-      [200],
+      [424],
     );
 
-    expect(response.body.headers.Authorization).toBe(
-      "Bearer current-github-token",
-    );
-    expect(response.body.refreshedConnectors).toStrictEqual([]);
-    expect(response.body.refreshedSecrets).toStrictEqual([]);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
   });
 
   it("rejects stale encrypted static connector access when current storage is missing", async () => {
@@ -1729,13 +1755,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
           firewallBillable: true,
         },
@@ -1770,13 +1796,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1819,13 +1845,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
           firewallBillable: true,
         },
@@ -1858,13 +1884,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-notion-token",
+            NOTION_TOKEN: "stale-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1901,13 +1927,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-buffered-notion-token",
+            NOTION_TOKEN: "stale-buffered-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1919,9 +1945,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       "Bearer fresh-buffered-notion-token",
     );
     expect(response.body.refreshedConnectors).toStrictEqual(["notion"]);
-    expect(response.body.refreshedSecrets).toStrictEqual([
-      "NOTION_ACCESS_TOKEN",
-    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual(["NOTION_TOKEN"]);
   });
 
   it("uses the current DB token when connector expiry is still valid", async () => {
@@ -1937,13 +1961,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-snapshot-notion-token",
+            NOTION_TOKEN: "stale-snapshot-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(fixture),
@@ -1979,13 +2003,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-null-expiry-notion-token",
+            NOTION_TOKEN: "stale-null-expiry-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
         },
         headers: authHeaders(nullExpiryFixture),
@@ -2018,13 +2042,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       firewallClient().resolve({
         body: {
           encryptedSecrets: encryptedSecrets({
-            NOTION_ACCESS_TOKEN: "stale-force-notion-token",
+            NOTION_TOKEN: "stale-force-notion-token",
           }),
           authHeaders: {
-            Authorization: `Bearer ${secretTemplate("NOTION_ACCESS_TOKEN")}`,
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
           },
           secretConnectorMap: {
-            NOTION_ACCESS_TOKEN: "notion",
+            NOTION_TOKEN: "notion",
           },
           forceRefresh: true,
         },

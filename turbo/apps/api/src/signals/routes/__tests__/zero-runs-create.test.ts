@@ -1537,8 +1537,7 @@ describe("POST /api/zero/runs", () => {
     );
     expect(decrypted).toMatchObject({ X_TOKEN: "x-access" });
     expect(decrypted).not.toHaveProperty("X_REFRESH_TOKEN");
-    expect(executionContext.secretConnectorMap).toMatchObject({
-      X_ACCESS_TOKEN: "x",
+    expect(executionContext.secretConnectorMap).toStrictEqual({
       X_TOKEN: "x",
     });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
@@ -1550,7 +1549,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
-  it("maps static OAuth connector raw access secret names and aliases", async () => {
+  it("maps static OAuth connector env aliases", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -1596,8 +1595,7 @@ describe("POST /api/zero/runs", () => {
       GH_TOKEN: "gho-access",
       GITHUB_TOKEN: "gho-access",
     });
-    expect(executionContext.secretConnectorMap).toMatchObject({
-      GITHUB_ACCESS_TOKEN: "github",
+    expect(executionContext.secretConnectorMap).toStrictEqual({
       GH_TOKEN: "github",
       GITHUB_TOKEN: "github",
     });
@@ -1752,8 +1750,7 @@ describe("POST /api/zero/runs", () => {
     );
     expect(decrypted).toMatchObject({ BASE44_TOKEN: "base44-access" });
     expect(decrypted).not.toHaveProperty("BASE44_REFRESH_TOKEN");
-    expect(executionContext.secretConnectorMap).toMatchObject({
-      BASE44_ACCESS_TOKEN: "base44",
+    expect(executionContext.secretConnectorMap).toStrictEqual({
       BASE44_TOKEN: "base44",
     });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
@@ -1854,7 +1851,6 @@ describe("POST /api/zero/runs", () => {
     expect(decrypted).not.toHaveProperty("SLOCK_ACCESS_TOKEN");
     expect(decrypted).not.toHaveProperty("SLOCK_REFRESH_TOKEN");
     expect(executionContext.secretConnectorMap).toStrictEqual({
-      SLOCK_ACCESS_TOKEN: "slock",
       SLOCK_TOKEN: "slock",
     });
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
@@ -1916,8 +1912,7 @@ describe("POST /api/zero/runs", () => {
       GOOGLE_ADS_TOKEN: "google-ads-access",
       GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
     });
-    expect(executionContext.secretConnectorMap).toMatchObject({
-      GOOGLE_ADS_ACCESS_TOKEN: "google-ads",
+    expect(executionContext.secretConnectorMap).toStrictEqual({
       GOOGLE_ADS_TOKEN: "google-ads",
     });
     expect(

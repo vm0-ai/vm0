@@ -1109,9 +1109,8 @@ function connectorAccessSecretName(
   switch (accessMetadata.kind) {
     case "refresh-token": {
       if (
-        key === accessMetadata.accessToken ||
         accessMetadata.envBindings[key] ===
-          `${CONNECTOR_SECRET_REF_PREFIX}${accessMetadata.accessToken}`
+        `${CONNECTOR_SECRET_REF_PREFIX}${accessMetadata.accessToken}`
       ) {
         return accessMetadata.accessToken;
       }
@@ -1119,15 +1118,9 @@ function connectorAccessSecretName(
     }
     case "static": {
       const valueRef = accessMetadata.envBindings[key];
-      if (valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true) {
-        return valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-      }
-      for (const candidate of Object.values(accessMetadata.envBindings)) {
-        if (candidate === `${CONNECTOR_SECRET_REF_PREFIX}${key}`) {
-          return key;
-        }
-      }
-      return undefined;
+      return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true
+        ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
+        : undefined;
     }
     case "none": {
       return undefined;

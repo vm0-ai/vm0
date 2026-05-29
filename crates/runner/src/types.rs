@@ -62,7 +62,7 @@ pub struct ExecutionContext {
     // Forwarded to mitm-addon via proxy registry for auth resolution
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
-    // Maps access secret keys/env aliases to their connector or provider owner.
+    // Maps firewall auth secret env aliases to their connector or provider owner.
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
     // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh

@@ -151,7 +151,7 @@ export const storedExecutionContextSchema = z.object({
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
   encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
-  // Maps access secret keys/env aliases to their connector or provider owner.
+  // Maps firewall auth secret env aliases to their connector or provider owner.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
@@ -207,7 +207,7 @@ export const executionContextSchema = z.object({
   secretValues: z.array(z.string()).nullable(),
   // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
   encryptedSecrets: z.string().nullable(),
-  // Maps access secret keys/env aliases to their connector or provider owner.
+  // Maps firewall auth secret env aliases to their connector or provider owner.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Per-secret refresh metadata, used when a handler needs owner-specific storage (e.g. personal model providers)
   secretConnectorMetadataMap: secretConnectorMetadataMapSchema
