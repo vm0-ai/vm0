@@ -769,6 +769,7 @@ jobs:
       pull-requests: write
       issues: write
       deployments: write
+      id-token: write
     defaults:
       run:
         shell: bash
@@ -784,6 +785,15 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
 
+      - name: Fetch development Doppler OAuth config
+        id: doppler-oauth
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: dev
+
       - name: Resolve Web build environment
         id: web-build-env
         uses: ./.github/actions/web-api-env
@@ -798,6 +808,7 @@ jobs:
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       # Step 2: Create Neon branch
       - name: Create Neon Branch
@@ -883,6 +894,7 @@ jobs:
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       # Step 4: Deploy prebuilt artifacts with database URL
       - name: Start deployment
@@ -986,6 +998,7 @@ jobs:
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Deploy API to Vercel
         id: api-deploy

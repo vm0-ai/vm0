@@ -285,6 +285,7 @@ jobs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
       contents: read
+      id-token: write
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -322,6 +323,15 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
+      - name: Fetch production Doppler OAuth config
+        id: doppler-oauth
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: prd
+
       - name: Resolve Web production environment
         id: web-production-env
         uses: ./.github/actions/web-api-env
@@ -335,6 +345,7 @@ jobs:
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Build Web Staged Production Deployment
         id: deploy
@@ -405,6 +416,7 @@ jobs:
       deployment_url: ${{ steps.deploy.outputs.url }}
     permissions:
       contents: read
+      id-token: write
     environment: production
     steps:
       - uses: actions/checkout@v6
@@ -441,6 +453,15 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
+      - name: Fetch production Doppler OAuth config
+        id: doppler-oauth
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: prd
+
       - name: Resolve API production environment
         id: api-production-env
         uses: ./.github/actions/web-api-env
@@ -454,6 +475,7 @@ jobs:
         env:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
 
       - name: Build API Staged Production Deployment
         id: deploy
