@@ -466,6 +466,9 @@ describe("validateBaseUrl", () => {
       return validateBaseUrl("https://api.github.com", "github");
     }).not.toThrow();
     expect(() => {
+      return validateBaseUrl("http://api.github.com", "github");
+    }).not.toThrow();
+    expect(() => {
       return validateBaseUrl("https://slack.com/api", "slack");
     }).not.toThrow();
     expect(() => {
@@ -477,6 +480,15 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("not-a-url", "fw");
     }).toThrow('URL must include a scheme (e.g. "https://not-a-url")');
+  });
+
+  it("should reject unsupported URL schemes", () => {
+    expect(() => {
+      return validateBaseUrl("ftp://api.example.com/v1", "fw");
+    }).toThrow("scheme must be http or https");
+    expect(() => {
+      return validateBaseUrl("ws://{sub}.example.com/v1", "fw");
+    }).toThrow("scheme must be http or https");
   });
 
   it("should reject URLs with missing authority", () => {

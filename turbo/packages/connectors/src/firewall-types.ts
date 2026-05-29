@@ -741,6 +741,7 @@ function errMsg(base: string, svc: string, detail: string): string {
 const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
 const FORBIDDEN_NORMALIZED_LABEL_CHARS = new Set("#%,/:<>?@[\\]^|[]".split(""));
+const ALLOWED_BASE_URL_SCHEMES = new Set(["http", "https"]);
 const WHITESPACE_PATTERN = /\s/u;
 const UNICODE_CONTROL_PATTERN = /\p{C}/u;
 const UNICODE_MARK_PATTERN = /\p{M}/u;
@@ -801,6 +802,16 @@ function isHexDigit(char: string): boolean {
     (char >= "a" && char <= "f") ||
     (char >= "A" && char <= "F")
   );
+}
+
+function validateBaseUrlScheme(
+  scheme: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (!ALLOWED_BASE_URL_SCHEMES.has(scheme.toLowerCase())) {
+    throw new Error(errMsg(base, serviceName, "scheme must be http or https"));
+  }
 }
 
 function isAscii(value: string): boolean {
@@ -1359,11 +1370,13 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   if (schemeEnd === -1) {
     throw new Error(errMsg(base, serviceName, "missing scheme"));
   }
-  if (base.slice(0, schemeEnd).includes("{")) {
+  const scheme = base.slice(0, schemeEnd);
+  if (scheme.includes("{")) {
     throw new Error(
       errMsg(base, serviceName, "scheme must not contain parameters"),
     );
   }
+  validateBaseUrlScheme(scheme, base, serviceName);
   if (base.includes("?")) {
     throw new Error(errMsg(base, serviceName, "must not contain query string"));
   }
@@ -1437,6 +1450,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
       `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL`,
     );
   }
+  validateBaseUrlScheme(url.protocol.slice(0, -1), base, serviceName);
   if (url.search) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain query string`,

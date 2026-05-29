@@ -52,6 +52,7 @@ _VALID_RULE_METHODS = frozenset(
         "ANY",
     )
 )
+_VALID_BASE_SCHEMES = frozenset(("http", "https"))
 _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 
 
@@ -1052,11 +1053,15 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         return None
 
     has_params = _has_base_url_params(base)
-    raw_syntax_malformed = "\\" in base or any(char in _RAW_WHITESPACE_CHARS for char in base)
     try:
         parsed = urlsplit(base)
     except ValueError:
         return None
+    raw_syntax_malformed = (
+        "\\" in base
+        or any(char in _RAW_WHITESPACE_CHARS for char in base)
+        or parsed.scheme.lower() not in _VALID_BASE_SCHEMES
+    )
 
     has_query_or_fragment = bool(parsed.query or parsed.fragment)
     parts = _split_base_match_url(
