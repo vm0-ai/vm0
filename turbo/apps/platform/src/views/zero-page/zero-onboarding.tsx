@@ -22,6 +22,13 @@ import illBotanicalSrc from "./assets/ill-botanical.webp";
 import illPapernookSrc from "./assets/ill-papernook.webp";
 import illPosterSrc from "./assets/ill-poster.webp";
 import illOpedcoverSrc from "./assets/ill-opedcover.webp";
+import illMellowPopSrc from "./assets/ill-mellow-pop.webp";
+import illEndpaperSrc from "./assets/ill-endpaper.webp";
+import illIsoSceneSrc from "./assets/ill-iso-scene.webp";
+import illInkdabSrc from "./assets/ill-inkdab.webp";
+import slackIconImg from "./components/settings/icons/slack.svg";
+import telegramIconImg from "./components/settings/icons/telegram.svg";
+import imessageIconImg from "./components/settings/icons/imessage.svg";
 import { Button, Input } from "@vm0/ui";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -546,10 +553,14 @@ const TRIAL_WEBSITE_TILES: readonly string[] = [
 
 const TRIAL_ILLUSTRATION_TILES: readonly string[] = [
   illFlatfolkSrc,
-  illFolkSrc,
+  illEndpaperSrc,
   illBotanicalSrc,
+  illFolkSrc,
+  illMellowPopSrc,
   illPapernookSrc,
+  illIsoSceneSrc,
   illOpedcoverSrc,
+  illInkdabSrc,
   illPosterSrc,
 ];
 
@@ -559,13 +570,31 @@ const TRIAL_GALLERY_THUMBS: readonly string[] = [
   illFlatfolkSrc,
 ];
 
+const TRIAL_WORKFLOW_CHANNELS: readonly { key: string; src: string }[] = [
+  { key: "slack", src: slackIconImg },
+  { key: "telegram", src: telegramIconImg },
+  { key: "imessage", src: imessageIconImg },
+];
+
 function TrialWorkflowSlide() {
   return (
-    <div className="h-full w-full flex items-center justify-center p-2">
+    <div className="h-full w-full flex flex-col items-center justify-center gap-3 p-3">
+      <div className="flex items-center justify-center gap-2.5">
+        {TRIAL_WORKFLOW_CHANNELS.map((channel) => {
+          return (
+            <span
+              key={channel.key}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-background zero-border"
+            >
+              <img src={channel.src} alt="" className="h-5 w-5" />
+            </span>
+          );
+        })}
+      </div>
       <img
         src={trialWorkflowSrc}
         alt="Workflow preview"
-        className="max-h-full max-w-full object-contain rounded-xl"
+        className="min-h-0 flex-1 max-w-full object-contain rounded-xl"
       />
     </div>
   );
