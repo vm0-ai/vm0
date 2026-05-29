@@ -7,11 +7,18 @@ export function CopyablePrompt({ prompt }: { prompt: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    void navigator.clipboard.writeText(prompt);
-    setCopied(true);
-    window.setTimeout(() => {
-      setCopied(false);
-    }, 1500);
+    navigator.clipboard
+      .writeText(prompt)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => {
+          setCopied(false);
+        }, 1500);
+      })
+      .catch((error: unknown) => {
+        // Log error when clipboard API is unavailable (e.g., insecure context)
+        console.warn("Failed to copy to clipboard:", error);
+      });
   };
 
   return (
