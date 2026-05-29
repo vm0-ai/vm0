@@ -27,6 +27,7 @@ import {
   IconDots,
   IconVolume2,
   IconArrowBarToUp,
+  IconArrowDown,
   IconBrandGoogleDrive,
   IconDownload,
   IconFile,
@@ -1859,6 +1860,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const awayFromBottom = useGet(thread.awayFromBottom$);
+  const scrollToBottom = useSet(thread.scrollToBottom$);
+  const features = useLastResolved(featureSwitch$);
+  const scrollToBottomButtonEnabled =
+    features?.[FeatureSwitchKey.ChatScrollToBottomButton] ?? false;
+  const showScrollToBottomButton =
+    scrollToBottomButtonEnabled &&
+    awayFromBottom &&
+    !skeletonVisible &&
+    !sessionError;
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onLoadHistory = onDomEventFn(() => {
@@ -1943,6 +1954,19 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               </div>
             </main>
           </div>
+        )}
+        {showScrollToBottomButton && (
+          <button
+            type="button"
+            data-scroll-to-bottom
+            aria-label="Scroll to bottom"
+            onClick={() => {
+              scrollToBottom();
+            }}
+            className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <IconArrowDown size={18} />
+          </button>
         )}
       </div>
 

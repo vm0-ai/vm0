@@ -117,12 +117,17 @@ interface ScrollHandlerContext {
   setDisabled: (v: boolean) => void;
   clearCache: () => void;
   saveCache: (top: number) => void;
+  setAwayFromBottom: (v: boolean) => void;
 }
 
 function buildScrollHandler(ctx: ScrollHandlerContext) {
   return () => {
     const { el, restoreState, lastUserInputAt, lastKnownScrollTop } = ctx;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // Drives the floating scroll-to-bottom button. Recomputed on every scroll
+    // event (including the programmatic scrolls that fire when content grows or
+    // a scroll command runs) so the button reflects the live viewport position.
+    ctx.setAwayFromBottom(distanceFromBottom > AT_BOTTOM_THRESHOLD);
     const userRecent =
       performance.now() - lastUserInputAt.v < USER_INPUT_WINDOW_MS;
     if (restoreState.pendingRestorePosition !== null && userRecent) {
@@ -299,6 +304,25 @@ function createScrollToTopCommand(deps: ScrollToTopCommandDeps) {
   });
 }
 
+interface ScrollToBottomCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  restoreState: RestoreState;
+}
+
+function createScrollToBottomCommand(deps: ScrollToBottomCommandDeps) {
+  return command(({ get }) => {
+    const scrollEl = get(deps.internalScrollContainer$);
+    if (!scrollEl) {
+      return;
+    }
+    if (deps.restoreState.suppressNextScrollToBottom) {
+      deps.restoreState.suppressNextScrollToBottom = false;
+      return;
+    }
+    scrollEl.scrollTop = scrollEl.scrollHeight;
+  });
+}
+
 /**
  * Factory that creates scroll-management signals for a scrollable container.
  *
@@ -325,6 +349,9 @@ function createScrollToTopCommand(deps: ScrollToTopCommandDeps) {
 export function createScrollSignals(id?: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const autoScrollDisabled$ = state(false);
+  // Readable "scrolled away from the bottom" flag for UI (the scroll-to-bottom
+  // button). Purely reflects distance from bottom, unlike autoScrollDisabled$.
+  const awayFromBottom$ = state(false);
   const restoreState: RestoreState = {
     pendingRestorePosition: null,
     suppressNextScrollToBottom: false,
@@ -350,6 +377,8 @@ export function createScrollSignals(id?: string) {
         restoreState.suppressNextScrollToBottom = true;
         el.scrollTop = saved;
         set(autoScrollDisabled$, true);
+        // A cached position is always non-bottom — reflect it immediately.
+        set(awayFromBottom$, true);
         L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
       }
 
@@ -376,6 +405,11 @@ export function createScrollSignals(id?: string) {
         saveCache: (top) => {
           if (id !== undefined) {
             set(setCachedScrollTop$, id, top);
+          }
+        },
+        setAwayFromBottom: (v) => {
+          if (get(awayFromBottom$) !== v) {
+            set(awayFromBottom$, v);
           }
         },
       };
@@ -412,16 +446,9 @@ export function createScrollSignals(id?: string) {
     scrollEl.scrollTop = scrollEl.scrollHeight;
   });
 
-  const scrollToBottom$ = command(({ get }) => {
-    const scrollEl = get(internalScrollContainer$);
-    if (!scrollEl) {
-      return;
-    }
-    if (restoreState.suppressNextScrollToBottom) {
-      restoreState.suppressNextScrollToBottom = false;
-      return;
-    }
-    scrollEl.scrollTop = scrollEl.scrollHeight;
+  const scrollToBottom$ = createScrollToBottomCommand({
+    internalScrollContainer$,
+    restoreState,
   });
 
   const scrollBy$ = createScrollByCommand({
@@ -458,5 +485,6 @@ export function createScrollSignals(id?: string) {
     scrollBy$,
     prepareKeyboardScroll$,
     recordScrollHeightForPrepend$,
+    awayFromBottom$,
   };
 }
