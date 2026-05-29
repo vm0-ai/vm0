@@ -766,6 +766,9 @@ function validateHostPercentEncoding(
   base: string,
   serviceName: string,
 ): void {
+  if (host.includes(",")) {
+    throw new Error(errMsg(base, serviceName, "host must not contain commas"));
+  }
   for (let i = 0; i < host.length; i += 1) {
     if (host[i] !== "%") continue;
     if (
@@ -813,6 +816,11 @@ function validateHostPercentEncoding(
             serviceName,
             "host must not contain percent-encoded dots",
           ),
+        );
+      }
+      if (char === ",") {
+        throw new Error(
+          errMsg(base, serviceName, "host must not contain commas"),
         );
       }
     }

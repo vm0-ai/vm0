@@ -625,6 +625,21 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must not contain percent-encoded dots");
   });
 
+  it("should reject commas in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://api,example.com", "fw");
+    }).toThrow("host must not contain commas");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.api,example.com", "fw");
+    }).toThrow("host must not contain commas");
+    expect(() => {
+      return validateBaseUrl("https://api%2Cexample.com", "fw");
+    }).toThrow("host must not contain commas");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.api%2Cexample.com", "fw");
+    }).toThrow("host must not contain commas");
+  });
+
   it("should reject malformed parameterized authorities", () => {
     expect(() => {
       return validateBaseUrl("https://user@{sub}.zendesk.com", "fw");
