@@ -88,7 +88,8 @@ warning_output="$(
 assert_contains "$warning_output" "::warning::X_OAUTH_CLIENT_ID is missing from GitHub variables; Doppler has a value"
 assert_contains "$warning_output" "Checked 1 vm0/dev OAuth client config entries (0 compared, 1 warning(s))"
 assert_not_contains "$warning_output" "missing from Doppler"
-assert_not_contains "$warning_output" "doppler-x-client-id"
+warning_log_output="$(without_mask_commands "$warning_output")"
+assert_not_contains "$warning_log_output" "doppler-x-client-id"
 
 status=0
 missing_both_output="$(
