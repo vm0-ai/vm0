@@ -8,7 +8,11 @@ import {
   getConnectorEnvBindingEntries,
   getConnectorTypeForSecretName,
 } from "@vm0/connectors/connector-utils";
-import { findMatchingPermissions } from "@vm0/connectors/firewall-rule-matcher";
+import {
+  findMatchingPermissions,
+  matchFirewallHost,
+  matchFirewallPathPrefix,
+} from "@vm0/connectors/firewall-rule-matcher";
 import { extractSecretNamesFromApis } from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
@@ -210,18 +214,6 @@ function rawPathFromUrl(url: string): string {
   return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
 }
 
-function relativePathForBase(
-  pathname: string,
-  basePath: string,
-): string | null {
-  if (basePath === "/") return pathname;
-  if (pathname === basePath) return "/";
-  if (pathname.startsWith(`${basePath}/`)) {
-    return pathname.slice(basePath.length);
-  }
-  return null;
-}
-
 function normalizeUrlHostname(hostname: string): string | null {
   let normalized = hostname.toLowerCase();
   if (normalized.endsWith(".")) {
@@ -229,6 +221,13 @@ function normalizeUrlHostname(hostname: string): string | null {
     if (normalized === "" || normalized.endsWith(".")) {
       return null;
     }
+  }
+  if (
+    normalized.split(".").some((label) => {
+      return label === "";
+    })
+  ) {
+    return null;
   }
   return normalized;
 }
@@ -256,10 +255,14 @@ function matchStaticBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
   const urlAuthority = normalizedUrlAuthority(parsedUrl);
   const baseAuthority = normalizedUrlAuthority(parsedBase);
   if (urlAuthority === null || baseAuthority === null) return null;
-  if (urlAuthority !== baseAuthority) return null;
+  if (rawBase.includes("{") || rawBase.includes("}")) {
+    if (matchFirewallHost(urlAuthority, baseAuthority) === null) return null;
+  } else if (urlAuthority !== baseAuthority) {
+    return null;
+  }
 
   const basePath = normalizeBasePath(rawPathFromUrl(rawBase));
-  const relativePath = relativePathForBase(rawPathFromUrl(url), basePath);
+  const relativePath = matchFirewallPathPrefix(rawPathFromUrl(url), basePath);
   if (relativePath === null) return null;
 
   const displayBase = stripTrailingSlash(rawBase);

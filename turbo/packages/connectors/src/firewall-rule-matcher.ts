@@ -135,6 +135,140 @@ function recordPermissionMatch(
   }
 }
 
+function relativePathFromSegments(
+  segments: string[],
+  consumed: number,
+): string {
+  const rest = segments.slice(consumed).join("/");
+  return rest === "" ? "/" : `/${rest}`;
+}
+
+/**
+ * Match a runtime host/authority against a firewall base host pattern.
+ *
+ * Host comparison is case-insensitive and mirrors the runner's right-to-left
+ * host matcher. Non-default ports are part of the normalized authority and
+ * therefore participate in the final host segment comparison.
+ */
+export function matchFirewallHost(
+  host: string,
+  pattern: string,
+): Record<string, string> | null {
+  const hostSegsOrig = host.split(".");
+  const hostSegsLower = hostSegsOrig.map((segment) => {
+    return segment.toLowerCase();
+  });
+  const patternSegs = pattern.split(".").reverse();
+
+  hostSegsOrig.reverse();
+  hostSegsLower.reverse();
+
+  const params: Record<string, string> = {};
+  let hi = 0;
+
+  for (
+    let patternIndex = 0;
+    patternIndex < patternSegs.length;
+    patternIndex++
+  ) {
+    const seg = patternSegs[patternIndex]!;
+    const parsed = parseSegment(seg);
+    if (parsed.kind === "error") return null;
+    if (parsed.kind === "literal") {
+      if (
+        hi >= hostSegsLower.length ||
+        hostSegsLower[hi] !== parsed.value.toLowerCase()
+      ) {
+        return null;
+      }
+      hi += 1;
+      continue;
+    }
+
+    const { name, prefix, suffix, greedy } = parsed;
+    if (greedy === "+") {
+      if (patternIndex !== patternSegs.length - 1) return null;
+      if (hi >= hostSegsOrig.length) return null;
+      params[name] = hostSegsOrig.slice(hi).reverse().join(".");
+      return params;
+    }
+    if (greedy === "*") {
+      if (patternIndex !== patternSegs.length - 1) return null;
+      params[name] = hostSegsOrig.slice(hi).reverse().join(".");
+      return params;
+    }
+    if (hi >= hostSegsOrig.length) return null;
+    if (prefix === "" && suffix === "") {
+      params[name] = hostSegsLower[hi]!;
+    } else {
+      const captured = matchMixedSegment(
+        hostSegsLower[hi]!,
+        prefix.toLowerCase(),
+        suffix.toLowerCase(),
+      );
+      if (captured === null) return null;
+      params[name] = captured;
+    }
+    hi += 1;
+  }
+
+  return hi === hostSegsOrig.length ? params : null;
+}
+
+/**
+ * Match a runtime path against the beginning of a firewall base path pattern.
+ *
+ * Unlike matchFirewallPath(), this intentionally allows extra runtime path
+ * segments and returns the remaining relative path after the base prefix.
+ */
+export function matchFirewallPathPrefix(
+  path: string,
+  pattern: string,
+): string | null {
+  const pathSegs = splitPathSegments(path);
+  const patternSegs = splitPathSegments(pattern);
+
+  let pi = 0;
+  for (
+    let patternIndex = 0;
+    patternIndex < patternSegs.length;
+    patternIndex++
+  ) {
+    const seg = patternSegs[patternIndex]!;
+    const parsed = parseSegment(seg);
+    if (parsed.kind === "error") return null;
+    if (parsed.kind === "literal") {
+      if (pi >= pathSegs.length || pathSegs[pi] !== parsed.value) return null;
+      pi += 1;
+      continue;
+    }
+
+    const { prefix, suffix, greedy } = parsed;
+    if (greedy === "+") {
+      if (patternIndex !== patternSegs.length - 1) return null;
+      if (pi >= pathSegs.length || !hasNonEmptySegment(pathSegs, pi)) {
+        return null;
+      }
+      return "/";
+    }
+    if (greedy === "*") {
+      if (patternIndex !== patternSegs.length - 1) return null;
+      return "/";
+    }
+    if (pi >= pathSegs.length) return null;
+
+    const runtime = pathSegs[pi]!;
+    if (prefix === "" && suffix === "") {
+      if (runtime === "") return null;
+    } else if (matchMixedSegment(runtime, prefix, suffix) === null) {
+      return null;
+    }
+    pi += 1;
+  }
+
+  return relativePathFromSegments(pathSegs, pi);
+}
+
 /**
  * Match a URL path against a rule path pattern.
  *

@@ -829,6 +829,54 @@ describe("zero doctor check-connector command", () => {
       expect(output).not.toContain("Matched permissions: [connections");
     });
 
+    it("should resolve parameterized connector base URLs", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "github",
+                apis: [
+                  {
+                    base: "https://raw.githubusercontent.com/{owner}/{repo}",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://raw.githubusercontent.com/owner/repo/main/README.md",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the GitHub connector");
+      expect(output).toContain(
+        "Matched base URL: https://raw.githubusercontent.com/{owner}/{repo}",
+      );
+      expect(output).toContain("Relative path:    /main/README.md");
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
@@ -848,6 +896,7 @@ describe("zero doctor check-connector command", () => {
       ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
       ["raw whitespace", "https://api.github.com/foo bar"],
       ["authority backslash", "https://api.github.com\\repos/owner/repo"],
+      ["empty host label", "https://.g.alchemy.com/v2"],
       [
         "percent-encoded authority dot",
         "https://api%2egithub.com/repos/owner/repo",

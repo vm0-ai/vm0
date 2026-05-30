@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
+  matchFirewallHost,
   matchFirewallPath,
+  matchFirewallPathPrefix,
   findMatchingPermissions,
 } from "../firewall-rule-matcher";
 import type { FirewallConfig } from "../firewall-types";
@@ -111,6 +113,78 @@ describe("matchFirewallPath", () => {
         "/orgs/{org}/insights/api/route-stats/{actor_type}/{actor_id}",
       ),
     ).toEqual({ org: "acme", actor_type: "user", actor_id: "42" });
+  });
+});
+
+describe("matchFirewallHost", () => {
+  it("matches host params case-insensitively", () => {
+    expect(
+      matchFirewallHost("ETH.G.ALCHEMY.COM", "{network}.g.alchemy.com"),
+    ).toEqual({
+      network: "eth",
+    });
+  });
+
+  it("matches mixed host params case-insensitively", () => {
+    expect(
+      matchFirewallHost("API-US.EXAMPLE.COM", "api-{region}.example.com"),
+    ).toEqual({
+      region: "us",
+    });
+  });
+
+  it("matches leading greedy host params", () => {
+    expect(
+      matchFirewallHost("foo.bar.bentoml.ai", "{deployment+}.bentoml.ai"),
+    ).toEqual({ deployment: "foo.bar" });
+  });
+
+  it("rejects non-leading greedy host params", () => {
+    expect(
+      matchFirewallHost("foo.bar.example.com", "foo.{deployment+}.com"),
+    ).toBeNull();
+  });
+
+  it("preserves non-default ports in host matching", () => {
+    expect(
+      matchFirewallHost("api.example.com:8443", "api.example.com:8443"),
+    ).toEqual({});
+    expect(
+      matchFirewallHost("api.example.com:9443", "api.example.com:8443"),
+    ).toBeNull();
+  });
+});
+
+describe("matchFirewallPathPrefix", () => {
+  it("returns relative path after literal base prefix", () => {
+    expect(matchFirewallPathPrefix("/api/v1/users/123", "/api/v1")).toBe(
+      "/users/123",
+    );
+  });
+
+  it("returns relative path after parameterized base prefix", () => {
+    expect(
+      matchFirewallPathPrefix("/owner/repo/main/README.md", "/{owner}/{repo}"),
+    ).toBe("/main/README.md");
+  });
+
+  it("matches mixed path segments in base prefixes", () => {
+    expect(
+      matchFirewallPathPrefix(
+        "/owner/repo.git/info/refs",
+        "/{owner}/{repo}.git",
+      ),
+    ).toBe("/info/refs");
+  });
+
+  it("keeps base boundary strict", () => {
+    expect(matchFirewallPathPrefix("/apiary/users", "/api")).toBeNull();
+  });
+
+  it("rejects non-terminal greedy path params", () => {
+    expect(
+      matchFirewallPathPrefix("/api/a/b/tail", "/api/{rest+}/tail"),
+    ).toBeNull();
   });
 });
 
