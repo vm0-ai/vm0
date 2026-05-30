@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.396.0](https://github.com/vm0-ai/vm0/compare/app-v0.395.2...app-v0.396.0) (2026-05-30)
+
+
+### Features
+
+* preserve ad attribution through checkout ([#15447](https://github.com/vm0-ai/vm0/issues/15447)) ([475508d](https://github.com/vm0-ai/vm0/commit/475508de4bf308af8e7ea43c568b56382152e650))
+
 ## [0.395.2](https://github.com/vm0-ai/vm0/compare/app-v0.395.1...app-v0.395.2) (2026-05-30)
 
 
