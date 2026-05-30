@@ -813,7 +813,7 @@ describe("zero doctor check-connector command", () => {
         "node",
         "cli",
         "--url",
-        "https://api.xero.com/api.xro/2.0/Accounts?where=Name",
+        "https://API.XERO.COM:443/api.xro/2.0/Accounts?where=Name#ignored",
       ]);
 
       const output = getOutput();

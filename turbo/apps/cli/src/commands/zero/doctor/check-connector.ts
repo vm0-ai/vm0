@@ -53,6 +53,12 @@ interface UrlLookupResult {
   relativePath: string;
 }
 
+interface BaseUrlMatch {
+  displayBase: string;
+  relativePath: string;
+  score: number;
+}
+
 function stripUrlQueryAndFragment(url: string): string {
   const queryIndex = url.indexOf("?");
   const fragmentIndex = url.indexOf("#");
@@ -60,6 +66,72 @@ function stripUrlQueryAndFragment(url: string): string {
   if (queryIndex !== -1) end = Math.min(end, queryIndex);
   if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
   return url.slice(0, end);
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function normalizeBasePath(pathname: string): string {
+  return pathname.length > 1 ? stripTrailingSlash(pathname) : "/";
+}
+
+function rawPathFromUrl(url: string): string {
+  const urlWithoutQuery = stripUrlQueryAndFragment(url);
+  const schemeEnd = urlWithoutQuery.indexOf("://");
+  const authorityStart = schemeEnd === -1 ? 0 : schemeEnd + 3;
+  const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
+  return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
+}
+
+function relativePathForBase(
+  pathname: string,
+  basePath: string,
+): string | null {
+  if (basePath === "/") return pathname;
+  if (pathname === basePath) return "/";
+  if (pathname.startsWith(`${basePath}/`)) {
+    return pathname.slice(basePath.length);
+  }
+  return null;
+}
+
+function matchStaticBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
+  const parsedUrl = new URL(url);
+  const parsedBase = new URL(rawBase);
+  if (parsedUrl.protocol !== parsedBase.protocol) return null;
+  if (parsedUrl.host !== parsedBase.host) return null;
+
+  const basePath = normalizeBasePath(rawPathFromUrl(rawBase));
+  const relativePath = relativePathForBase(rawPathFromUrl(url), basePath);
+  if (relativePath === null) return null;
+
+  const displayBase = stripTrailingSlash(rawBase);
+  return {
+    displayBase,
+    relativePath,
+    score: displayBase.length,
+  };
+}
+
+function matchBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
+  try {
+    return matchStaticBaseUrl(url, rawBase);
+  } catch {
+    const normalized = stripTrailingSlash(stripUrlQueryAndFragment(url));
+    const base = stripTrailingSlash(rawBase);
+    if (normalized === base) {
+      return { displayBase: base, relativePath: "/", score: base.length };
+    }
+    if (normalized.startsWith(`${base}/`)) {
+      return {
+        displayBase: base,
+        relativePath: normalized.slice(base.length),
+        score: base.length,
+      };
+    }
+    return null;
+  }
 }
 
 function isConnectorType(type: string): type is ConnectorType {
@@ -84,15 +156,9 @@ async function connectorTypeIsAvailable(type: string): Promise<boolean> {
 function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
   const allTypes = CONNECTOR_TYPE_KEYS;
 
-  // Normalize: strip trailing slash for comparison
-  const urlWithoutQuery = stripUrlQueryAndFragment(url);
-  const normalized = urlWithoutQuery.endsWith("/")
-    ? urlWithoutQuery.slice(0, -1)
-    : urlWithoutQuery;
-
   let bestMatch: {
     connectorType: string;
-    base: string;
+    match: BaseUrlMatch;
     config: FirewallConfig;
   } | null = null;
 
@@ -100,12 +166,11 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
     if (!isFirewallConnectorType(type)) continue;
     const config = getConnectorFirewall(type);
     for (const api of config.apis) {
-      const base = api.base.endsWith("/") ? api.base.slice(0, -1) : api.base;
-      // URL must match the base exactly or have the base as a prefix followed by /
-      if (normalized === base || normalized.startsWith(base + "/")) {
+      const match = matchBaseUrl(url, api.base);
+      if (match !== null) {
         // Pick the longest (most specific) base URL match
-        if (!bestMatch || base.length > bestMatch.base.length) {
-          bestMatch = { connectorType: type, base, config };
+        if (!bestMatch || match.score > bestMatch.match.score) {
+          bestMatch = { connectorType: type, match, config };
         }
       }
     }
@@ -120,16 +185,11 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
   const envName = envBindingEntries[0]?.envName;
   if (!envName) return null;
 
-  const relativePath =
-    normalized === bestMatch.base
-      ? "/"
-      : normalized.slice(bestMatch.base.length);
-
   return {
     connectorType: bestMatch.connectorType,
     envName,
-    matchedBase: bestMatch.base,
-    relativePath,
+    matchedBase: bestMatch.match.displayBase,
+    relativePath: bestMatch.match.relativePath,
   };
 }
 
