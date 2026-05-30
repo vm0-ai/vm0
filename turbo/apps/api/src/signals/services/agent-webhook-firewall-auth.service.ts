@@ -453,7 +453,12 @@ function refreshFailureReasonFromError(
     if (error.oauthError === "invalid_grant") {
       return "reconnect_required";
     }
-    if (error.status >= 500 || error.status === 429) {
+    if (
+      error.oauthError === "server_error" ||
+      error.oauthError === "temporarily_unavailable" ||
+      error.status >= 500 ||
+      error.status === 429
+    ) {
       return "upstream_provider";
     }
   }
