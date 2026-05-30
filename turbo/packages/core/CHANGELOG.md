@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.304.0](https://github.com/vm0-ai/vm0/compare/core-v8.303.1...core-v8.304.0) (2026-05-30)
+
+
+### Features
+
+* seed paid ads operator skill ([#15454](https://github.com/vm0-ai/vm0/issues/15454)) ([ccb1279](https://github.com/vm0-ai/vm0/commit/ccb127919e3e0aafa585523749c55a03f85935c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.3
+    * @vm0/connectors bumped to 1.38.2
+
 ## [8.303.1](https://github.com/vm0-ai/vm0/compare/core-v8.303.0...core-v8.303.1) (2026-05-30)
 
 

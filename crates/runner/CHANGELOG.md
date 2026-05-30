@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.105.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.7...runner-rs-v0.105.8) (2026-05-30)
+
+
+### Documentation
+
+* document connector response parser lifecycle ([#15444](https://github.com/vm0-ai/vm0/issues/15444)) ([49a9cfe](https://github.com/vm0-ai/vm0/commit/49a9cfe723bbf54ece885c0dbaa7d3ca24a2b337))
+
 ## [0.105.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.6...runner-rs-v0.105.7) (2026-05-29)
 
 

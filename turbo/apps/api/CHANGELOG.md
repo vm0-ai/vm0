@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.88.4](https://github.com/vm0-ai/vm0/compare/api-v1.88.3...api-v1.88.4) (2026-05-30)
+
+
+### Bug Fixes
+
+* filter unavailable connector types from agent user-connectors GET ([#15459](https://github.com/vm0-ai/vm0/issues/15459)) ([76edd36](https://github.com/vm0-ai/vm0/commit/76edd36994a569a473d766c6aaffbe2ac45bb21a))
+
+
+### Refactoring
+
+* retire connector auth provider secret metadata ([#15445](https://github.com/vm0-ai/vm0/issues/15445)) ([c03de8c](https://github.com/vm0-ai/vm0/commit/c03de8cad5d2205ebca244c564ef6796cf11d02c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.3
+    * @vm0/connectors bumped to 1.38.2
+    * @vm0/core bumped to 8.304.0
+    * @vm0/db bumped to 1.23.3
+
 ## [1.88.3](https://github.com/vm0-ai/vm0/compare/api-v1.88.2...api-v1.88.3) (2026-05-30)
 
 
