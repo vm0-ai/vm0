@@ -205,6 +205,7 @@ const CONNECTOR_ICON_COLORFUL = {
   tldv: true,
   todoist: true,
   together: true,
+  tripo: true,
   wandb: true,
   webflow: true,
   weread: true,

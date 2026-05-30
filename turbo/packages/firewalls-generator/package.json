@@ -211,6 +211,7 @@
     "generate:ticketmaster": "tsx src/index.ts ticketmaster",
     "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
+    "generate:tripo": "tsx src/index.ts tripo",
     "generate:twenty": "tsx src/index.ts twenty",
     "generate:v0": "tsx src/index.ts v0",
     "generate:vercel": "tsx src/index.ts vercel",

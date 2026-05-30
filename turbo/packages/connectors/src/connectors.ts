@@ -229,6 +229,7 @@ import { testrail } from "./connectors/testrail";
 import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
+import { tripo } from "./connectors/tripo";
 import { twenty } from "./connectors/twenty";
 import { twilio } from "./connectors/twilio";
 import { typeform } from "./connectors/typeform";
@@ -809,6 +810,7 @@ const CONNECTOR_TYPES_DEF = {
   ...ticketmaster,
   ...tldv,
   ...together,
+  ...tripo,
   ...twenty,
   ...twilio,
   ...typeform,

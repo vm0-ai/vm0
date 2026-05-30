@@ -252,6 +252,7 @@ import { ticketmasterFirewall } from "./ticketmaster.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { togetherFirewall } from "./together.generated";
+import { tripoFirewall } from "./tripo.generated";
 import { twentyFirewall } from "./twenty.generated";
 import { typeformFirewall } from "./typeform.generated";
 import { v0Firewall } from "./v0.generated";
@@ -501,6 +502,7 @@ const CONNECTOR_FIREWALLS = {
   tldv: tldvFirewall,
   todoist: todoistFirewall,
   together: togetherFirewall,
+  tripo: tripoFirewall,
   twenty: twentyFirewall,
   typeform: typeformFirewall,
   v0: v0Firewall,
