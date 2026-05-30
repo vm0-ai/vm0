@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
 import { CopyablePrompt } from "../../components/CopyablePrompt";
@@ -10,6 +11,92 @@ import { REPORT_ITEMS, buildReportRemixHref, type ReportItem } from "./data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
+const REPORT_PREVIEW_SCROLL_SPEED = 28;
+
+function ReportPreview({ item }: { item: ReportItem }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number | null>(null);
+
+  const stopAutoScroll = () => {
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    lastFrameTimeRef.current = null;
+  };
+
+  const scrollStep = (timestamp: number) => {
+    const container = containerRef.current;
+
+    if (!container) {
+      stopAutoScroll();
+      return;
+    }
+
+    if (lastFrameTimeRef.current === null) {
+      lastFrameTimeRef.current = timestamp;
+    }
+
+    const maxScrollTop = container.scrollHeight - container.clientHeight;
+    if (maxScrollTop <= 0 || container.scrollTop >= maxScrollTop) {
+      stopAutoScroll();
+      return;
+    }
+
+    const elapsedSeconds = (timestamp - lastFrameTimeRef.current) / 1000;
+    container.scrollTop = Math.min(
+      maxScrollTop,
+      container.scrollTop + elapsedSeconds * REPORT_PREVIEW_SCROLL_SPEED,
+    );
+    lastFrameTimeRef.current = timestamp;
+    frameRef.current = requestAnimationFrame(scrollStep);
+  };
+
+  const startAutoScroll = () => {
+    if (frameRef.current !== null) {
+      return;
+    }
+
+    frameRef.current = requestAnimationFrame(scrollStep);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className="relative max-h-[640px] overflow-hidden bg-[hsl(var(--gray-1))] sm:max-h-[720px]"
+      onMouseEnter={startAutoScroll}
+      onMouseLeave={stopAutoScroll}
+    >
+      <div
+        ref={containerRef}
+        className="max-h-[640px] overflow-hidden sm:max-h-[720px]"
+      >
+        <Image
+          src={item.previewImage}
+          alt={item.title}
+          width={item.previewWidth}
+          height={item.previewHeight}
+          sizes="(min-width: 880px) 832px, calc(100vw - 48px)"
+          className="block h-auto w-full"
+        />
+      </div>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
+        <div className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-[hsl(var(--foreground))] shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+          <IconExternalLink size={16} stroke={2} />
+          View
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ReportCard({ item, appUrl }: { item: ReportItem; appUrl: string }) {
   const remixHref = buildReportRemixHref(item, appUrl);
@@ -27,24 +114,7 @@ function ReportCard({ item, appUrl }: { item: ReportItem; appUrl: string }) {
         className="group block"
         style={{ textDecoration: "none" }}
       >
-        <div className="relative max-h-[640px] overflow-hidden bg-[hsl(var(--gray-1))] sm:max-h-[720px]">
-          <div className="max-h-[640px] overflow-y-auto overscroll-contain sm:max-h-[720px]">
-            <Image
-              src={item.previewImage}
-              alt={item.title}
-              width={item.previewWidth}
-              height={item.previewHeight}
-              sizes="(min-width: 880px) 832px, calc(100vw - 48px)"
-              className="block h-auto w-full"
-            />
-          </div>
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-[hsl(var(--foreground))] shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
-              <IconExternalLink size={16} stroke={2} />
-              View
-            </div>
-          </div>
-        </div>
+        <ReportPreview item={item} />
       </a>
       <div className="flex flex-col gap-3 px-4 py-3">
         <CopyablePrompt prompt={item.prompt} />

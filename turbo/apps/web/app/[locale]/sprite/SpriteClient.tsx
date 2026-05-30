@@ -33,7 +33,7 @@ function SpriteCard({ item, appUrl }: { item: SpriteItem; appUrl: string }) {
             alt={item.title}
             fill
             sizes="(min-width: 880px) 832px, calc(100vw - 48px)"
-            className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            className="origin-left scale-x-[1.014] object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/35 group-hover:opacity-100">
             <div className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-[13px] font-medium text-[hsl(var(--foreground))] shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
