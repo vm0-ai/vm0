@@ -40,7 +40,8 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const { tier, successUrl, cancelUrl, trialDays } = bodyResult.data;
+  const { tier, successUrl, cancelUrl, trialDays, adAttribution } =
+    bodyResult.data;
 
   const appOrigin = new URL(env("APP_URL")).origin;
   if (
@@ -79,7 +80,14 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const url = await set(
     createCheckoutSession$,
-    { orgId: auth.orgId, priceId, trialDays, successUrl, cancelUrl },
+    {
+      orgId: auth.orgId,
+      priceId,
+      trialDays,
+      successUrl,
+      cancelUrl,
+      adAttribution,
+    },
     signal,
   );
   signal.throwIfAborted();

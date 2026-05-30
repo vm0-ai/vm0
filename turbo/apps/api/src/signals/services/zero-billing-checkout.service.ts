@@ -16,6 +16,7 @@ interface CreateCheckoutSessionArgs {
   readonly trialDays?: 7;
   readonly successUrl: string;
   readonly cancelUrl: string;
+  readonly adAttribution?: Readonly<Record<string, string | undefined>>;
 }
 
 interface CompleteCheckoutSessionArgs {
@@ -57,6 +58,19 @@ export function tierFromPriceId(priceId: string): OrgTier {
 
 export function activeCustomCreditPriceId(): string | undefined {
   return env("ZERO_PRICE")?.customCredits?.[0];
+}
+
+function checkoutSessionMetadata(
+  orgId: string,
+  adAttribution: Readonly<Record<string, string | undefined>> | undefined,
+): Record<string, string> {
+  const metadata: Record<string, string> = { orgId };
+  for (const [key, value] of Object.entries(adAttribution ?? {})) {
+    if (value) {
+      metadata[key] = value;
+    }
+  }
+  return metadata;
 }
 
 function stripeObjectId(
@@ -131,6 +145,7 @@ export const createCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
+    const metadata = checkoutSessionMetadata(args.orgId, args.adAttribution);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -138,8 +153,9 @@ export const createCheckoutSession$ = command(
       allow_promotion_codes: true,
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
+      metadata,
       subscription_data: {
-        metadata: { orgId: args.orgId },
+        metadata,
         ...(args.trialDays === undefined
           ? {}
           : { trial_period_days: args.trialDays }),

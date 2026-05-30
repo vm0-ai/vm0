@@ -12,7 +12,33 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_campaign",
   "utm_content",
   "utm_term",
+  "vm0_experiment",
+  "vm0_variant",
+  "lp_variant",
 ] as const;
+
+const STRIPE_METADATA_PARAMS = [
+  AD_ATTRIBUTION_SOURCE_PARAM,
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "vm0_experiment",
+  "vm0_variant",
+  "lp_variant",
+] as const;
+
+const STRIPE_CLICK_ID_PRESENT_PARAMS = [
+  ["gclid", "gclid_present"],
+  ["gbraid", "gbraid_present"],
+  ["wbraid", "wbraid_present"],
+] as const;
+
+export type AdAttributionMetadata = Partial<
+  Record<(typeof STRIPE_METADATA_PARAMS)[number], string> &
+    Record<(typeof STRIPE_CLICK_ID_PRESENT_PARAMS)[number][1], "true">
+>;
 
 function getSessionStorage(): Storage | null {
   if (typeof window === "undefined") {
@@ -76,4 +102,35 @@ export function applyStoredAdAttribution(
       url.searchParams.append(param, value);
     }
   }
+}
+
+export function getStoredAdAttributionMetadata(
+  storage: Storage | null = getSessionStorage(),
+): AdAttributionMetadata | undefined {
+  if (!storage) {
+    return undefined;
+  }
+
+  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
+  if (!stored) {
+    return undefined;
+  }
+
+  const attributionParams = new URLSearchParams(stored);
+  const metadata: AdAttributionMetadata = {};
+
+  for (const param of STRIPE_METADATA_PARAMS) {
+    const value = attributionParams.get(param);
+    if (value) {
+      metadata[param] = value;
+    }
+  }
+
+  for (const [clickIdParam, metadataParam] of STRIPE_CLICK_ID_PRESENT_PARAMS) {
+    if (attributionParams.has(clickIdParam)) {
+      metadata[metadataParam] = "true";
+    }
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

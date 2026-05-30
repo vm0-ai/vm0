@@ -11,7 +11,10 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { applyStoredAdAttribution } from "../bootstrap/ad-attribution.ts";
+import {
+  applyStoredAdAttribution,
+  getStoredAdAttributionMetadata,
+} from "../bootstrap/ad-attribution.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -135,6 +138,7 @@ export const startCheckout$ = command(
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
     applyStoredAdAttribution(cancelUrl);
+    const adAttribution = getStoredAdAttributionMetadata();
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
@@ -147,6 +151,7 @@ export const startCheckout$ = command(
           ...(options?.trialDays === undefined
             ? {}
             : { trialDays: options.trialDays }),
+          ...(adAttribution === undefined ? {} : { adAttribution }),
         },
         fetchOptions: { signal },
       }),

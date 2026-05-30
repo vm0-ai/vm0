@@ -18,6 +18,9 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_campaign",
   "utm_content",
   "utm_term",
+  "vm0_experiment",
+  "vm0_variant",
+  "lp_variant",
 ] as const;
 
 export const PRESENTATION_ITEMS: readonly PresentationItem[] = [

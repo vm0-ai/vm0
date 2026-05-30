@@ -248,8 +248,63 @@ describe("POST /api/zero/billing/checkout", () => {
       allow_promotion_codes: true,
       success_url: `${APP_ORIGIN}/billing?billing=success`,
       cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
+      metadata: { orgId: fixture.orgId },
       subscription_data: { metadata: { orgId: fixture.orgId } },
     });
+  });
+
+  it("attaches ad attribution to Stripe checkout and subscription metadata", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/attributed",
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+          adAttribution: {
+            vm0_source: "presentation",
+            utm_source: "google",
+            utm_medium: "cpc",
+            utm_campaign: "presentation_search_en",
+            utm_content: "hero",
+            gclid_present: "true",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/attributed",
+    });
+    const expectedMetadata = {
+      orgId: fixture.orgId,
+      vm0_source: "presentation",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "presentation_search_en",
+      utm_content: "hero",
+      gclid_present: "true",
+    };
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expectedMetadata,
+        subscription_data: expect.objectContaining({
+          metadata: expectedMetadata,
+        }),
+      }),
+    );
   });
 
   it("returns Pro trial checkout URL during onboarding payment", async () => {
@@ -287,6 +342,7 @@ describe("POST /api/zero/billing/checkout", () => {
       allow_promotion_codes: true,
       success_url: `${APP_ORIGIN}/onboarding?billing=pro`,
       cancel_url: `${APP_ORIGIN}/onboarding?billing=canceled`,
+      metadata: { orgId: fixture.orgId },
       subscription_data: {
         metadata: { orgId: fixture.orgId },
         trial_period_days: 7,

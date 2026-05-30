@@ -104,7 +104,7 @@ describe("onboarding Pro trial checkout", () => {
 
     detachedSetupPage({
       context,
-      path: "/onboarding?vm0_source=presentation&gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=presentation_search_en",
+      path: "/onboarding?vm0_source=presentation&gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=presentation_search_en&vm0_experiment=presentation_lp&vm0_variant=a",
     });
     await walkAdminToContinue();
 
@@ -131,7 +131,19 @@ describe("onboarding Pro trial checkout", () => {
       expect(url.searchParams.get("utm_campaign")).toBe(
         "presentation_search_en",
       );
+      expect(url.searchParams.get("vm0_experiment")).toBe("presentation_lp");
+      expect(url.searchParams.get("vm0_variant")).toBe("a");
     }
+
+    expect(checkoutBody!.adAttribution).toStrictEqual({
+      vm0_source: "presentation",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "presentation_search_en",
+      vm0_experiment: "presentation_lp",
+      vm0_variant: "a",
+      gclid_present: "true",
+    });
   });
 });
 

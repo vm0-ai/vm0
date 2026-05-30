@@ -33,7 +33,7 @@ describe("presentation remix links", () => {
     const href = buildPresentationRemixHref(
       item,
       "https://app.vm0.ai",
-      "?gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=presentation_search_en&utm_content=hero&unused=value",
+      "?gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=presentation_search_en&utm_content=hero&vm0_experiment=presentation_lp&vm0_variant=a&unused=value",
     );
     const params = new URL(href).searchParams;
 
@@ -42,6 +42,8 @@ describe("presentation remix links", () => {
     expect(params.get("utm_medium")).toBe("cpc");
     expect(params.get("utm_campaign")).toBe("presentation_search_en");
     expect(params.get("utm_content")).toBe("hero");
+    expect(params.get("vm0_experiment")).toBe("presentation_lp");
+    expect(params.get("vm0_variant")).toBe("a");
     expect(params.get("unused")).toBeNull();
   });
 });
