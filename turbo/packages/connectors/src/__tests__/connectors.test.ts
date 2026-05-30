@@ -63,7 +63,6 @@ import {
   hasConnectorAuthCodeGrantProvider,
   hasConnectorDeviceAuthGrantProvider,
   hasConnectorRefreshTokenAccessProvider,
-  getConnectorAuthProviderSecretMetadata,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
   revokeConnectorAuthProviderAccessToken,
@@ -491,18 +490,6 @@ describe("connector provider capability checks", () => {
     expect(connectorAuthMethodSupportsTokenRevoke("stripe", "api-token")).toBe(
       false,
     );
-  });
-
-  it("exposes connector OAuth secret metadata without provider access", () => {
-    expect(getConnectorAuthProviderSecretMetadata("test-oauth")).toEqual({
-      accessSecretName: "TEST_OAUTH_ACCESS_TOKEN",
-      refreshSecretName: "TEST_OAUTH_REFRESH_TOKEN",
-      isRefreshable: true,
-    });
-    expect(getConnectorAuthProviderSecretMetadata("github")).toEqual({
-      accessSecretName: "GITHUB_ACCESS_TOKEN",
-      isRefreshable: false,
-    });
   });
 
   it("does not expose refresh-token access providers for non-refreshable auth methods", () => {
@@ -1480,42 +1467,6 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("stripe", "missing"),
     ).toBeUndefined();
-  });
-
-  it("keeps OAuth provider secret metadata aligned with OAuth access metadata", () => {
-    for (const type of connectorTypeSchema.options) {
-      if (!hasConnectorAuthorizationGrant(type)) {
-        continue;
-      }
-
-      const providerMetadata = getConnectorAuthProviderSecretMetadata(type);
-      if (!providerMetadata) {
-        throw new Error(`${type}: OAuth provider metadata is missing`);
-      }
-
-      const accessMetadata = getConnectorAuthMethodAccessMetadata(
-        type,
-        "oauth",
-      );
-
-      if (providerMetadata.isRefreshable) {
-        expect(
-          accessMetadata,
-          `${type}: refreshable OAuth provider must use refresh-token access`,
-        ).toEqual(
-          expect.objectContaining({
-            kind: "refresh-token",
-            accessToken: providerMetadata.accessSecretName,
-            refreshToken: providerMetadata.refreshSecretName,
-          }),
-        );
-      } else {
-        expect(
-          accessMetadata,
-          `${type}: non-refreshable OAuth provider must not use refresh-token access`,
-        ).not.toEqual(expect.objectContaining({ kind: "refresh-token" }));
-      }
-    }
   });
 });
 

@@ -2,10 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import type {
   AuthCodeGrantConnectorType,
+  ConnectorAuthMethodId,
   ConnectorAuthClientConfig,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
-import { getConnectorAuthProviderSecretMetadata } from "@vm0/connectors/auth-providers";
+import {
+  getConnectorAuthMethod,
+  getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodIdForGrantKind,
+} from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -33,6 +37,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
+const SECRET_REF_PREFIX = "$secrets.";
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -1017,6 +1022,63 @@ async function findDecryptedSecret(args: {
 }): Promise<string | undefined> {
   const secret = await findSecret(args);
   return secret ? decryptSecretForTests(secret.encryptedValue) : undefined;
+}
+
+function staticAccessSecretName(
+  envBindings: Readonly<Record<string, string>>,
+): string | undefined {
+  const secretNames = new Set<string>();
+  for (const valueRef of Object.values(envBindings)) {
+    if (valueRef.startsWith(SECRET_REF_PREFIX)) {
+      secretNames.add(valueRef.slice(SECRET_REF_PREFIX.length));
+    }
+  }
+  return secretNames.size === 1 ? [...secretNames][0] : undefined;
+}
+
+function authCodeAuthMethodForTest(
+  type: AuthCodeGrantConnectorType,
+): ConnectorAuthMethodId {
+  const authMethod = getConnectorAuthMethodIdForGrantKind(type, "auth-code");
+  if (!authMethod) {
+    throw new Error(`${type}: auth-code auth method is missing`);
+  }
+  return authMethod;
+}
+
+function accessTokenSecretNameForAuthCodeMethod(
+  type: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): string {
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
+  switch (accessMetadata?.kind) {
+    case "refresh-token": {
+      return accessMetadata.accessToken;
+    }
+    case "static": {
+      const secretName = staticAccessSecretName(accessMetadata.envBindings);
+      if (!secretName) {
+        throw new Error(
+          `${type}: auth-code auth method has no static access secret`,
+        );
+      }
+      return secretName;
+    }
+    case "none":
+    case undefined: {
+      throw new Error(`${type}: auth-code auth method has no access secret`);
+    }
+  }
+}
+
+function refreshTokenSecretNameForAuthCodeMethod(
+  type: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): string | undefined {
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
+  return accessMetadata?.kind === "refresh-token"
+    ? accessMetadata.refreshToken
+    : undefined;
 }
 
 interface ProviderSuccessCase {
@@ -2213,32 +2275,38 @@ describe("GET /api/connectors/:type/callback", () => {
         userId,
         type: providerCase.type,
       });
+      const authMethod = authCodeAuthMethodForTest(providerCase.type);
       expect(connector).toMatchObject({
         type: providerCase.type,
-        authMethod: "oauth",
+        authMethod,
         externalId: providerCase.externalId,
         externalUsername: providerCase.externalUsername,
         externalEmail: providerCase.externalEmail,
         needsReconnect: false,
       });
 
-      const secretMetadata = getConnectorAuthProviderSecretMetadata(
+      const accessTokenSecretName = accessTokenSecretNameForAuthCodeMethod(
         providerCase.type,
+        authMethod,
       );
       await expect(
         findDecryptedSecret({
           orgId,
           userId,
-          name: secretMetadata.accessSecretName,
+          name: accessTokenSecretName,
         }),
       ).resolves.toBe(accessToken);
 
-      if (secretMetadata.isRefreshable) {
+      const refreshTokenSecretName = refreshTokenSecretNameForAuthCodeMethod(
+        providerCase.type,
+        authMethod,
+      );
+      if (refreshTokenSecretName) {
         await expect(
           findDecryptedSecret({
             orgId,
             userId,
-            name: secretMetadata.refreshSecretName,
+            name: refreshTokenSecretName,
           }),
         ).resolves.toBe(refreshToken);
         expect(connector?.tokenExpiresAt).toBeInstanceOf(Date);

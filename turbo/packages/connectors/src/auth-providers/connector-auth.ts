@@ -14,10 +14,6 @@ import {
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
 } from "@vm0/connectors/connector-utils";
-import {
-  getAuthProviderSecretMetadata,
-  type AuthProviderSecretMetadata,
-} from "./secret-metadata";
 import type {
   AuthCodeConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
@@ -132,8 +128,6 @@ type ConnectorRefreshTokenAccessProviderEntries<
 type ConnectorRefreshTokenAccessProviderMap = {
   readonly [Type in RefreshTokenAccessConnectorType]: ConnectorRefreshTokenAccessProviderEntries<Type>;
 };
-
-export type ConnectorAuthProviderSecretMetadata = AuthProviderSecretMetadata;
 
 export interface ConnectorAuthProviderClientArgs {
   readonly clientId?: string;
@@ -321,30 +315,6 @@ export function hasConnectorRefreshTokenAccessProvider(
     type as RefreshTokenAccessConnectorType
   ] as Readonly<Record<string, unknown>>;
   return Object.hasOwn(providers, authMethod);
-}
-
-export function getConnectorAuthProviderSecretMetadata(
-  type: ConnectorAuthProviderType,
-): ConnectorAuthProviderSecretMetadata;
-export function getConnectorAuthProviderSecretMetadata(
-  type: string,
-): ConnectorAuthProviderSecretMetadata | undefined;
-export function getConnectorAuthProviderSecretMetadata(
-  type: string,
-): ConnectorAuthProviderSecretMetadata | undefined {
-  if (hasConnectorAuthCodeGrantProvider(type)) {
-    return getAuthProviderSecretMetadata(
-      AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[type],
-    );
-  }
-
-  if (hasConnectorDeviceAuthGrantProvider(type)) {
-    return getAuthProviderSecretMetadata(
-      DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type],
-    );
-  }
-
-  return undefined;
 }
 
 export async function buildConnectorAuthCodeAuthorizationUrl<
