@@ -115,7 +115,7 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
 
         try:
             decoded_run = unquote_to_bytes(host[index:run_end]).decode("utf-8")
-        except UnicodeDecodeError:
+        except UnicodeError:
             return host, True
         if any(char in _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS for char in decoded_run):
             has_percent_encoded_syntax = True
@@ -123,7 +123,7 @@ def _percent_decode_authority_host(host: str) -> tuple[str, bool]:
 
     try:
         decoded = unquote_to_bytes(host).decode("utf-8")
-    except UnicodeDecodeError:
+    except UnicodeError:
         return host, True
     if has_percent_encoded_syntax:
         return decoded.translate(_IDNA_DOT_TRANSLATION), True

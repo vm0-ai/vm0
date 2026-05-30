@@ -2090,6 +2090,38 @@ class TestCompiledFirewallMatching:
     @pytest.mark.parametrize(
         "base",
         [
+            "https://\ud800.example.com",
+            "https://%\ud800.example.com",
+        ],
+    )
+    def test_malformed_base_invalid_unicode_host_does_not_crash(self, base):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": base,
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    ],
+                }
+            ],
+            name="github",
+        )
+        compiled_firewalls = self._compiled(fws)
+        policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            compiled_firewalls,
+            policies,
+        )
+
+        assert result is None
+
+    @pytest.mark.parametrize(
+        "base",
+        [
             "https://api.github.com/repos?token=1",
             "https://api.github.com/repos#section",
         ],
