@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.398.0](https://github.com/vm0-ai/vm0/compare/app-v0.397.0...app-v0.398.0) (2026-05-30)
+
+
+### Features
+
+* persist raw ad click IDs for offline conversion import ([#15500](https://github.com/vm0-ai/vm0/issues/15500)) ([55b15d8](https://github.com/vm0-ai/vm0/commit/55b15d8ff1b2b02b1bbad9a519a089115c1d1755))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.0
+    * @vm0/connectors bumped to 1.39.0
+    * @vm0/core bumped to 8.304.2
+
 ## [0.397.0](https://github.com/vm0-ai/vm0/compare/app-v0.396.1...app-v0.397.0) (2026-05-30)
 
 
