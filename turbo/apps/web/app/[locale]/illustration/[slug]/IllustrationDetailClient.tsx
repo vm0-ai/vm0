@@ -40,32 +40,32 @@ export function IllustrationDetailClient({
 
   const seoTitle = t(`content.${slug}.seoTitle`);
   const lede = t(`content.${slug}.lede`);
-  const definition = t(`content.${slug}.definition`);
   const ctaBody = t(`content.${slug}.ctaBody`);
-  const valueProps = t.raw(`content.${slug}.valueProps`) as {
+  const capabilities = t.raw(`content.${slug}.capabilities`) as {
     title: string;
     body: string;
   }[];
-  const anatomy = t.raw(`content.${slug}.anatomy`) as {
+  const shipsWith = t.raw(`content.${slug}.shipsWith`) as {
     label: string;
     body: string;
   }[];
-  const whenToUse = t.raw(`content.${slug}.whenToUse`) as {
+  const useCases = t.raw(`content.${slug}.useCases`) as {
     persona: string;
     body: string;
   }[];
-  const recipe = t.raw(`content.${slug}.recipe`) as {
-    prompt: string;
-    note: string;
+  const cookbook = t.raw(`content.${slug}.cookbook`) as {
+    command: string;
+    entries: {
+      ref: string;
+      title: string;
+      brief: string;
+      caption: string;
+    }[];
   };
-  const comparison = t.raw(`content.${slug}.comparison`) as {
-    versus: string;
-    body: string;
-  }[];
-  const variationCaptions = t.raw(`content.${slug}.variationCaptions`) as Record<
-    string,
-    string
-  >;
+  const captionsByRef: Record<string, string> = {};
+  for (const entry of cookbook.entries) {
+    captionsByRef[entry.ref] = entry.caption;
+  }
   const faq = t.raw(`content.${slug}.faq`) as {
     question: string;
     answer: string;
@@ -187,78 +187,26 @@ export function IllustrationDetailClient({
                 src={heroSrc}
                 width={style.width}
                 height={style.height}
-                alt={`${style.title} — ${variationCaptions[style.sample] ?? style.title}`}
+                alt={`${style.title} — ${captionsByRef[style.sample] ?? style.title}`}
               />
             </button>
           </header>
 
-          {/* Definition — Google snippet target */}
-          <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">
-              {t("definitionHeading", { title: style.title })}
-            </h2>
-            <p className="illu-detail-body illu-detail-definition">
-              {definition}
-            </p>
-          </section>
+          {/* Capabilities — deep named sections, one big claim each */}
+          {capabilities.map((cap) => {
+            return (
+              <section key={cap.title} className="illu-detail-section">
+                <h2 className="illu-detail-h2">{cap.title}</h2>
+                <p className="illu-detail-body">{cap.body}</p>
+              </section>
+            );
+          })}
 
-          {/* Value props — marketing punch */}
+          {/* What ships in the spec — broad grid of style atoms */}
           <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">
-              {t("summaryHeading", { title: style.title })}
-            </h2>
-            <div className="illu-detail-valueprops">
-              {valueProps.map((vp) => {
-                return (
-                  <div key={vp.title} className="illu-detail-valueprop">
-                    <h3>{vp.title}</h3>
-                    <p>{vp.body}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Variation gallery — single column stack */}
-          <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">
-              {t("variationsHeading", { count: style.refs.length })}
-            </h2>
-            <p className="illu-detail-body illu-detail-muted">
-              {t("variationsLede")}
-            </p>
-            <div className="illu-detail-stack">
-              {style.refs.map((ref) => {
-                const caption = variationCaptions[ref] ?? style.title;
-                return (
-                  <figure key={ref} className="illu-detail-figure">
-                    <button
-                      type="button"
-                      className="illu-detail-figure-plate"
-                      onClick={() => {
-                        return openLightbox(ref);
-                      }}
-                      aria-label={`${style.title} — ${caption}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`${ASSET_BASE}/refs/${slug}/${ref}`}
-                        loading="lazy"
-                        alt={`${style.title} — ${caption}`}
-                      />
-                    </button>
-                    <figcaption>{caption}</figcaption>
-                  </figure>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Anatomy — single column stack */}
-          <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">{t("anatomyHeading")}</h2>
+            <h2 className="illu-detail-h2">{t("shipsWithHeading")}</h2>
             <div className="illu-detail-rows">
-              {anatomy.map((row) => {
+              {shipsWith.map((row) => {
                 return (
                   <div key={row.label} className="illu-detail-row">
                     <h3>{row.label}</h3>
@@ -269,13 +217,13 @@ export function IllustrationDetailClient({
             </div>
           </section>
 
-          {/* When to use — single column stack */}
+          {/* Use cases — where the style fits */}
           <section className="illu-detail-section">
             <h2 className="illu-detail-h2">
-              {t("whenToUseHeading", { title: style.title })}
+              {t("useCasesHeading", { title: style.title })}
             </h2>
             <div className="illu-detail-rows">
-              {whenToUse.map((row) => {
+              {useCases.map((row) => {
                 return (
                   <div key={row.persona} className="illu-detail-row">
                     <h3>{row.persona}</h3>
@@ -286,22 +234,50 @@ export function IllustrationDetailClient({
             </div>
           </section>
 
-          {/* Recipe — slash command + sample prompt + CTA */}
+          {/* Recipe cookbook — every variation paired with the brief that produced it */}
           <section className="illu-detail-section">
             <h2 className="illu-detail-h2">
-              {t("recipeHeading", { title: style.title })}
+              {t("cookbookHeading", { title: style.title })}
             </h2>
-            <p className="illu-detail-body">{t("recipeIntro")}</p>
-            {style.slashCommand && (
-              <div className="illu-detail-recipe-command">
-                <span className="illu-detail-recipe-label">
-                  {t("recipeCommandLabel")}
-                </span>
-                <code>{style.slashCommand}</code>
-              </div>
-            )}
-            <div className="illu-detail-recipe-prompt">{recipe.prompt}</div>
-            <p className="illu-detail-body illu-detail-muted">{recipe.note}</p>
+            <p className="illu-detail-body">{t("cookbookIntro")}</p>
+            <div className="illu-detail-recipe-command">
+              <span className="illu-detail-recipe-label">
+                {t("cookbookCommandLabel")}
+              </span>
+              <code>{cookbook.command}</code>
+            </div>
+            <div className="illu-detail-stack">
+              {cookbook.entries.map((entry) => {
+                return (
+                  <figure key={entry.ref} className="illu-detail-figure">
+                    <button
+                      type="button"
+                      className="illu-detail-figure-plate"
+                      onClick={() => {
+                        return openLightbox(entry.ref);
+                      }}
+                      aria-label={`${style.title} — ${entry.caption}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`${ASSET_BASE}/refs/${slug}/${entry.ref}`}
+                        loading="lazy"
+                        alt={`${style.title} — ${entry.caption}`}
+                      />
+                    </button>
+                    <figcaption>
+                      <strong>{entry.title}</strong> — {entry.caption}
+                    </figcaption>
+                    <div className="illu-detail-recipe-prompt">
+                      <span className="illu-detail-recipe-label">
+                        {t("cookbookBriefLabel")}
+                      </span>
+                      {entry.brief}
+                    </div>
+                  </figure>
+                );
+              })}
+            </div>
             <div className="illu-detail-recipe-cta">
               <a
                 href={appUrl}
@@ -312,23 +288,6 @@ export function IllustrationDetailClient({
                 {t("primaryCta")}
                 <IconArrowUpRight size={16} />
               </a>
-            </div>
-          </section>
-
-          {/* Comparison — SEO clustering */}
-          <section className="illu-detail-section">
-            <h2 className="illu-detail-h2">
-              {t("comparisonHeading", { title: style.title })}
-            </h2>
-            <div className="illu-detail-rows">
-              {comparison.map((row) => {
-                return (
-                  <div key={row.versus} className="illu-detail-row">
-                    <h3>{row.versus}</h3>
-                    <p>{row.body}</p>
-                  </div>
-                );
-              })}
             </div>
           </section>
 
@@ -413,7 +372,7 @@ export function IllustrationDetailClient({
         <Lightbox
           style={style}
           activeRef={lightbox.activeRef}
-          captions={variationCaptions}
+          captions={captionsByRef}
           onClose={closeLightbox}
           onSelectRef={(ref) => {
             return setLightbox({ activeRef: ref });
