@@ -2387,6 +2387,43 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("classifies connector network refresh failures as upstream", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        return HttpResponse.error();
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["notion"],
+      failureReason: "upstream_provider",
+    });
+    await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+  });
+
   it.each(["temporarily_unavailable", "server_error"] as const)(
     "classifies standard OAuth %s refresh failures as upstream",
     async (oauthError) => {

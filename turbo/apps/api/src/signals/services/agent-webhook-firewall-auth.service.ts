@@ -462,7 +462,16 @@ function refreshFailureReasonFromError(
       return "upstream_provider";
     }
   }
+  if (isFetchNetworkError(error)) {
+    return "upstream_provider";
+  }
   return undefined;
+}
+
+function isFetchNetworkError(error: unknown): boolean {
+  return (
+    error instanceof TypeError && error.message.toLowerCase().includes("fetch")
+  );
 }
 
 function isReconnectRequiredRefreshErrorCode(
