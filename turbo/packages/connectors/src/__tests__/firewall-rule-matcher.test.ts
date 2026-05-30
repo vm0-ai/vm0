@@ -191,7 +191,7 @@ describe("findMatchingPermissions", () => {
     ]);
   });
 
-  it("returns multiple permissions when rules overlap", () => {
+  it("returns only the most-specific permission when rules overlap", () => {
     const overlapConfig: FirewallConfig = {
       name: "overlap",
       apis: [
@@ -206,8 +206,148 @@ describe("findMatchingPermissions", () => {
       ],
     };
     expect(findMatchingPermissions("GET", "/api/users", overlapConfig)).toEqual(
-      ["specific", "catchall"],
+      ["specific"],
     );
+  });
+
+  it("returns multiple permissions when best-specificity rules tie", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "read", rules: ["GET /api/users"] },
+            { name: "audit", rules: ["ANY /api/users"] },
+            { name: "catchall", rules: ["ANY /{path*}"] },
+          ],
+        },
+      ],
+    };
+    expect(findMatchingPermissions("GET", "/api/users", overlapConfig)).toEqual(
+      ["read", "audit"],
+    );
+  });
+
+  it("considers later rules in the same permission for specificity", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "read",
+              rules: ["ANY /{path*}", "GET /api/users"],
+            },
+            { name: "catchall", rules: ["ANY /{path*}"] },
+          ],
+        },
+      ],
+    };
+    expect(findMatchingPermissions("GET", "/api/users", overlapConfig)).toEqual(
+      ["read"],
+    );
+  });
+
+  it("uses mixed segment specificity before plain params", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "plain", rules: ["GET /files/{id}"] },
+            { name: "mixed", rules: ["GET /files/file-{id}"] },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/files/file-123", overlapConfig),
+    ).toEqual(["mixed"]);
+  });
+
+  it("uses plain params before greedy params", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "greedy", rules: ["GET /files/{rest+}"] },
+            { name: "plain", rules: ["GET /files/{id}"] },
+          ],
+        },
+      ],
+    };
+    expect(findMatchingPermissions("GET", "/files/123", overlapConfig)).toEqual(
+      ["plain"],
+    );
+  });
+
+  it("uses plus greedy params before star greedy params", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "star", rules: ["GET /files/{rest*}"] },
+            { name: "plus", rules: ["GET /files/{rest+}"] },
+          ],
+        },
+      ],
+    };
+    expect(findMatchingPermissions("GET", "/files/123", overlapConfig)).toEqual(
+      ["plus"],
+    );
+  });
+
+  it("counts Unicode code points for literal-char specificity", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "emoji-prefix", rules: ["GET /files/😀{id}"] },
+            { name: "ascii-suffix", rules: ["GET /files/{id}ab"] },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/files/😀xab", overlapConfig),
+    ).toEqual(["ascii-suffix"]);
+  });
+
+  it("does not compare path specificity across API entries", () => {
+    const multiApi: FirewallConfig = {
+      name: "multi",
+      apis: [
+        {
+          base: "https://api1.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "catchall", rules: ["GET /{path*}"] }],
+        },
+        {
+          base: "https://api2.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "specific", rules: ["GET /data"] }],
+        },
+      ],
+    };
+    expect(findMatchingPermissions("GET", "/data", multiApi)).toEqual([
+      "catchall",
+      "specific",
+    ]);
   });
 
   it("returns empty array for config with no permissions", () => {
