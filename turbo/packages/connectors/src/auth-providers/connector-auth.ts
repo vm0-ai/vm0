@@ -361,7 +361,7 @@ export function hasConnectorRefreshTokenAccessProvider(
 export function hasConnectorTokenRevokeProvider(
   type: string,
   authMethod?: string,
-): type is ConnectorTokenRevokeProviderType {
+): type is TokenRevokeConnectorType {
   if (!Object.hasOwn(CONNECTOR_TOKEN_REVOKE_PROVIDERS, type)) {
     return false;
   }
