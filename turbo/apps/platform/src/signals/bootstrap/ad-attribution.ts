@@ -37,6 +37,7 @@ const STRIPE_CLICK_ID_PRESENT_PARAMS = [
 
 type AdAttributionMetadata = Partial<
   Record<(typeof STRIPE_METADATA_PARAMS)[number], string> &
+    Record<(typeof STRIPE_CLICK_ID_PRESENT_PARAMS)[number][0], string> &
     Record<(typeof STRIPE_CLICK_ID_PRESENT_PARAMS)[number][1], "true">
 >;
 
@@ -127,7 +128,9 @@ export function getStoredAdAttributionMetadata(
   }
 
   for (const [clickIdParam, metadataParam] of STRIPE_CLICK_ID_PRESENT_PARAMS) {
-    if (attributionParams.has(clickIdParam)) {
+    const value = attributionParams.get(clickIdParam);
+    if (value) {
+      metadata[clickIdParam] = value;
       metadata[metadataParam] = "true";
     }
   }

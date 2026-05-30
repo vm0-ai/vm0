@@ -277,6 +277,7 @@ describe("POST /api/zero/billing/checkout", () => {
             utm_medium: "cpc",
             utm_campaign: "presentation_search_en",
             utm_content: "hero",
+            gclid: "test-gclid",
             gclid_present: "true",
           },
         },
@@ -295,6 +296,7 @@ describe("POST /api/zero/billing/checkout", () => {
       utm_medium: "cpc",
       utm_campaign: "presentation_search_en",
       utm_content: "hero",
+      gclid: "test-gclid",
       gclid_present: "true",
     };
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(

@@ -148,6 +148,7 @@ describe("onboarding Pro trial checkout", () => {
       utm_campaign: "presentation_search_en",
       vm0_experiment: "presentation_lp",
       vm0_variant: "a",
+      gclid: "test-click",
       gclid_present: "true",
     });
     await waitFor(() => {
