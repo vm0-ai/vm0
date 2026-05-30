@@ -356,11 +356,6 @@ const FEATURED_ONBOARDING_TYPES: readonly string[] = [
   "x",
 ];
 
-const ONBOARDING_CONNECTOR_TYPE_SET: ReadonlySet<string> = new Set<string>([
-  ...EXTERNAL_ADOPTED_ONBOARDING_TYPES,
-  ...FEATURED_ONBOARDING_TYPES,
-]);
-
 /**
  * Connector list shown in the onboarding picker: curated to external adoption
  * plus famous tools, most-adopted first. Unknown ids are ignored because this
@@ -368,6 +363,10 @@ const ONBOARDING_CONNECTOR_TYPE_SET: ReadonlySet<string> = new Set<string>([
  */
 export const onboardingConnectorTypes$ = computed(async (get) => {
   const all = await get(allConnectorTypes$);
+  const onboardingTypes = new Set<string>([
+    ...EXTERNAL_ADOPTED_ONBOARDING_TYPES,
+    ...FEATURED_ONBOARDING_TYPES,
+  ]);
   const adoptionRank = new Map<string, number>(
     EXTERNAL_ADOPTED_ONBOARDING_TYPES.map((type, index) => {
       return [type, index];
@@ -375,7 +374,7 @@ export const onboardingConnectorTypes$ = computed(async (get) => {
   );
   return all
     .filter((connector) => {
-      return ONBOARDING_CONNECTOR_TYPE_SET.has(connector.type);
+      return onboardingTypes.has(connector.type);
     })
     .sort((a, b) => {
       const ra = adoptionRank.get(a.type) ?? Number.MAX_SAFE_INTEGER;
@@ -383,7 +382,6 @@ export const onboardingConnectorTypes$ = computed(async (get) => {
       return ra - rb;
     });
 });
-
 
 // ---------------------------------------------------------------------------
 // Hidden connector types (removed from list by user; persisted in localStorage)
