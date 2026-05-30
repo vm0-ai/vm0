@@ -1113,6 +1113,14 @@ export {
   type GithubOauthInstallQuery,
 } from "./github-oauth";
 export {
+  adAttributionMetadataSchema,
+  zeroAttributionContract,
+  type AdAttributionMetadata,
+  type RecordSignupAttributionRequest,
+  type RecordSignupAttributionResponse,
+  type ZeroAttributionContract,
+} from "./zero-attribution";
+export {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,

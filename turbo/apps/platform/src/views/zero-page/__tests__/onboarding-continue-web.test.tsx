@@ -11,6 +11,7 @@ import {
   onboardingStatusContract,
   onboardingSetupContract,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
@@ -93,7 +94,12 @@ describe("onboarding Pro trial checkout", () => {
   it("preserves ad attribution params through Stripe checkout URLs", async () => {
     mockAdminOnboarding();
     let checkoutBody: Record<string, unknown> | null = null;
+    let signupAttributionBody: Record<string, unknown> | null = null;
     server.use(
+      mockApi(zeroAttributionContract.recordSignup, ({ body, respond }) => {
+        signupAttributionBody = body as Record<string, unknown>;
+        return respond(200, { recorded: true });
+      }),
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
@@ -143,6 +149,11 @@ describe("onboarding Pro trial checkout", () => {
       vm0_experiment: "presentation_lp",
       vm0_variant: "a",
       gclid_present: "true",
+    });
+    await waitFor(() => {
+      expect(signupAttributionBody).toStrictEqual({
+        attribution: checkoutBody!.adAttribution,
+      });
     });
   });
 });

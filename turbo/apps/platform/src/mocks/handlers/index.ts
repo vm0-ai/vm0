@@ -73,6 +73,7 @@ import {
   resetMockOnboardingStatus,
 } from "./api-onboarding.ts";
 import { apiBillingHandlers, resetMockBilling } from "./api-billing.ts";
+import { apiAttributionHandlers } from "./api-attribution.ts";
 import { apiSchedulesHandlers, resetMockSchedules } from "./api-schedules.ts";
 import { apiInsightsHandlers } from "./api-insights.ts";
 import { apiQueuePositionHandlers } from "./api-queue-position.ts";
@@ -110,6 +111,7 @@ export const handlers = [
   ...apiUserModelPreferenceHandlers,
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
+  ...apiAttributionHandlers,
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,

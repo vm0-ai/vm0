@@ -5,10 +5,17 @@ import { clerk$, needsOrgSelection$, resolveWebOrigin } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+  resetSignal,
+} from "./utils.ts";
 import { logger } from "./log.ts";
 import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
 import { recordAdAttribution } from "./bootstrap/ad-attribution.ts";
+import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 
 const L = logger("Route");
 
@@ -123,6 +130,7 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   await set(currentRoute.setup, routeSignal);
   signal.throwIfAborted();
   capturePageView();
+  await bestEffort(set(recordSignupAttribution$, routeSignal), routeSignal);
 });
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {

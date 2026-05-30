@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { adAttributionMetadataSchema } from "./zero-attribution";
 
 const c = initContract();
 
@@ -89,29 +90,12 @@ const redeemResponseSchema = z.discriminatedUnion("status", [
 // Request schemas
 // ---------------------------------------------------------------------------
 
-const checkoutAdAttributionSchema = z
-  .object({
-    vm0_source: z.string().min(1).max(100).optional(),
-    utm_source: z.string().min(1).max(100).optional(),
-    utm_medium: z.string().min(1).max(100).optional(),
-    utm_campaign: z.string().min(1).max(200).optional(),
-    utm_content: z.string().min(1).max(200).optional(),
-    utm_term: z.string().min(1).max(200).optional(),
-    vm0_experiment: z.string().min(1).max(100).optional(),
-    vm0_variant: z.string().min(1).max(100).optional(),
-    lp_variant: z.string().min(1).max(100).optional(),
-    gclid_present: z.literal("true").optional(),
-    gbraid_present: z.literal("true").optional(),
-    wbraid_present: z.literal("true").optional(),
-  })
-  .strict();
-
 const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
   trialDays: z.literal(7).optional(),
-  adAttribution: checkoutAdAttributionSchema.optional(),
+  adAttribution: adAttributionMetadataSchema.optional(),
 });
 
 const checkoutCompleteRequestSchema = z.object({
