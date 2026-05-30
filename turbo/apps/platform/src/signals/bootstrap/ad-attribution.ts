@@ -35,7 +35,7 @@ const STRIPE_CLICK_ID_PRESENT_PARAMS = [
   ["wbraid", "wbraid_present"],
 ] as const;
 
-export type AdAttributionMetadata = Partial<
+type AdAttributionMetadata = Partial<
   Record<(typeof STRIPE_METADATA_PARAMS)[number], string> &
     Record<(typeof STRIPE_CLICK_ID_PRESENT_PARAMS)[number][1], "true">
 >;

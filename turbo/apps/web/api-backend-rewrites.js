@@ -341,6 +341,7 @@ const ZERO_API_KEY_BY_ID_REWRITE_SOURCE = `/api/zero/api-keys/:id(${UUID_PATH_SE
 const ZERO_API_KEY_BY_ID_PATH_RE = new RegExp(
   `^/api/zero/api-keys/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const ZERO_ATTRIBUTION_SIGNUP_REWRITE_SOURCE = "/api/zero/attribution/signup";
 const ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE =
   "/api/zero/billing/auto-recharge";
 const ZERO_BILLING_CHECKOUT_REWRITE_SOURCE = "/api/zero/billing/checkout";
@@ -674,6 +675,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/api-keys/:id",
     ZERO_API_KEY_BY_ID_PATH_RE,
   ],
+  [ZERO_ATTRIBUTION_SIGNUP_REWRITE_SOURCE, "/api/zero/attribution/signup"],
   [
     ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE,
     "/api/zero/billing/auto-recharge",
