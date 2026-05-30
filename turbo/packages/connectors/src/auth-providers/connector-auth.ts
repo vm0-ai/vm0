@@ -1,15 +1,17 @@
 import type {
   ConnectorType,
   AuthCodeGrantConnectorType,
+  ConnectorAuthMethodIdsByRevokeKind,
   ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
   ConnectorAuthMethodIdsByAccessKind,
   RefreshTokenAccessConnectorType,
+  TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   connectorAuthMethodSupportsRefreshTokenAccess,
+  connectorAuthMethodSupportsTokenRevoke,
   getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
-  hasConnectorAuthCodeGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
@@ -129,15 +131,34 @@ type ConnectorRefreshTokenAccessProviderMap = {
   readonly [Type in RefreshTokenAccessConnectorType]: ConnectorRefreshTokenAccessProviderEntries<Type>;
 };
 
+type ConnectorTokenRevokeProviderType = Extract<
+  TokenRevokeConnectorType,
+  ConnectorAuthProviderType
+>;
+
+type ConnectorTokenRevokeProvider<
+  Type extends ConnectorTokenRevokeProviderType,
+> = Extract<
+  ConnectorAuthProviderRevoke<Type>,
+  { readonly kind: "token-revoke" }
+>;
+
+type ConnectorTokenRevokeProviderEntries<
+  Type extends ConnectorTokenRevokeProviderType,
+> = {
+  readonly [Method in ConnectorAuthMethodIdsByRevokeKind<
+    Type,
+    "token-revoke"
+  >]: ConnectorTokenRevokeProvider<Type>;
+};
+
+type ConnectorTokenRevokeProviderMap = {
+  readonly [Type in ConnectorTokenRevokeProviderType]: ConnectorTokenRevokeProviderEntries<Type>;
+};
+
 export interface ConnectorAuthProviderClientArgs {
   readonly clientId?: string;
   readonly clientSecret?: string;
-}
-
-function deviceAuthConnectorProviderFor<T extends DeviceAuthGrantConnectorType>(
-  type: T,
-): DeviceAuthConnectorAuthProviderMap[T] {
-  return DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type];
 }
 
 function connectorRefreshTokenAccessProviderFor<
@@ -149,16 +170,26 @@ function connectorRefreshTokenAccessProviderFor<
   return providers[authMethod];
 }
 
-function connectorRevokeProviderFor<T extends ConnectorAuthProviderType>(
-  type: T,
-): ConnectorAuthProviderRevoke<T> {
-  if (hasConnectorAuthCodeGrant(type)) {
-    return AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[type]
-      .revoke as ConnectorAuthProviderRevoke<T>;
-  }
+function connectorTokenRevokeProviderFor<
+  T extends ConnectorTokenRevokeProviderType,
+>(type: T, authMethod: string): ConnectorTokenRevokeProvider<T> | undefined {
+  const providers = CONNECTOR_TOKEN_REVOKE_PROVIDERS[type] as Readonly<
+    Record<string, ConnectorTokenRevokeProvider<T>>
+  >;
+  return providers[authMethod];
+}
 
-  return deviceAuthConnectorProviderFor(type)
-    .revoke as ConnectorAuthProviderRevoke<T>;
+function tokenRevokeProvider<Type extends ConnectorTokenRevokeProviderType>(
+  type: Type,
+  authMethod: ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke">,
+  provider: ConnectorAuthProviderRevoke<Type>,
+): ConnectorTokenRevokeProvider<Type> {
+  if (provider.kind !== "token-revoke") {
+    throw new Error(
+      `${type} connector auth method ${authMethod} has no token-revoke provider`,
+    );
+  }
+  return provider;
 }
 
 function connectorAuthProviderClientArgs(
@@ -280,6 +311,16 @@ const CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS: ConnectorRefreshTokenAccessProvi
     zoom: { oauth: zoomProvider.access },
   };
 
+const CONNECTOR_TOKEN_REVOKE_PROVIDERS: ConnectorTokenRevokeProviderMap = {
+  github: {
+    oauth: tokenRevokeProvider("github", "oauth", githubProvider.revoke),
+  },
+  linear: {
+    oauth: tokenRevokeProvider("linear", "oauth", linearProvider.revoke),
+  },
+  slack: { oauth: tokenRevokeProvider("slack", "oauth", slackProvider.revoke) },
+};
+
 export function hasConnectorAuthProvider(
   type: string,
 ): type is ConnectorAuthProviderType {
@@ -313,6 +354,22 @@ export function hasConnectorRefreshTokenAccessProvider(
   }
   const providers = CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[
     type as RefreshTokenAccessConnectorType
+  ] as Readonly<Record<string, unknown>>;
+  return Object.hasOwn(providers, authMethod);
+}
+
+export function hasConnectorTokenRevokeProvider(
+  type: string,
+  authMethod?: string,
+): type is ConnectorTokenRevokeProviderType {
+  if (!Object.hasOwn(CONNECTOR_TOKEN_REVOKE_PROVIDERS, type)) {
+    return false;
+  }
+  if (authMethod === undefined) {
+    return true;
+  }
+  const providers = CONNECTOR_TOKEN_REVOKE_PROVIDERS[
+    type as ConnectorTokenRevokeProviderType
   ] as Readonly<Record<string, unknown>>;
   return Object.hasOwn(providers, authMethod);
 }
@@ -417,26 +474,33 @@ export async function refreshConnectorAuthProviderAccessToken<
   } as ConnectorAuthProviderRefreshArgs<T>);
 }
 
-export async function revokeConnectorAuthProviderAccessToken<
-  T extends ConnectorAuthProviderType,
+export async function revokeConnectorAuthMethodAccessToken<
+  T extends ConnectorType,
 >(args: {
   readonly type: T;
+  readonly authMethod: string;
   readonly authClient: ConnectorAuthClient;
   readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
-  const revoke = connectorRevokeProviderFor(args.type);
-
-  switch (revoke.kind) {
-    case "none":
-      return { status: "unsupported" };
-
-    case "token-revoke":
-      await revoke.revokeToken({
-        ...connectorAuthProviderClientArgs(args.authClient),
-        accessToken: await args.loadAccessToken(),
-      } as ConnectorAuthProviderRevokeArgs<T>);
-      return { status: "revoked" };
+  if (!connectorAuthMethodSupportsTokenRevoke(args.type, args.authMethod)) {
+    return { status: "unsupported" };
   }
+
+  const type = args.type as Extract<T, ConnectorTokenRevokeProviderType>;
+  const revoke = connectorTokenRevokeProviderFor(type, args.authMethod);
+  if (!revoke) {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} has no token-revoke provider`,
+    );
+  }
+
+  await revoke.revokeToken({
+    ...connectorAuthProviderClientArgs(args.authClient),
+    accessToken: await args.loadAccessToken(),
+  } as ConnectorAuthProviderRevokeArgs<
+    Extract<T, ConnectorTokenRevokeProviderType>
+  >);
+  return { status: "revoked" };
 }
 
 /**

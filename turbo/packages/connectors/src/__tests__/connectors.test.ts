@@ -24,6 +24,7 @@ import {
   type ConnectorType,
   type AuthCodeGrantConnectorType,
   type RefreshTokenAccessConnectorType,
+  type TokenRevokeConnectorType,
 } from "../connectors";
 import {
   connectorAuthMethodSupportsRefreshTokenAccess,
@@ -63,9 +64,10 @@ import {
   hasConnectorAuthCodeGrantProvider,
   hasConnectorDeviceAuthGrantProvider,
   hasConnectorRefreshTokenAccessProvider,
+  hasConnectorTokenRevokeProvider,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
-  revokeConnectorAuthProviderAccessToken,
+  revokeConnectorAuthMethodAccessToken,
   startConnectorDeviceAuthorization,
 } from "../auth-providers/connector-auth";
 import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../auth-providers/oauth/google-connectors";
@@ -480,7 +482,35 @@ describe("connector provider capability checks", () => {
     }
   });
 
-  it("detects token revoke support from provider capability", () => {
+  it("matches exactly the auth methods that declare token revoke", () => {
+    expectTypeOf<"github">().toMatchTypeOf<TokenRevokeConnectorType>();
+    expectTypeOf<"notion">().not.toMatchTypeOf<TokenRevokeConnectorType>();
+
+    const tokenRevokeTypes = new Set<ConnectorType>(
+      connectorTypeSchema.options.filter((type) => {
+        return getConfiguredConnectorAuthMethods(type).some((authMethod) => {
+          return connectorAuthMethodSupportsTokenRevoke(type, authMethod);
+        });
+      }),
+    );
+
+    for (const type of connectorTypeSchema.options) {
+      expect(hasConnectorTokenRevokeProvider(type)).toBe(
+        tokenRevokeTypes.has(type),
+      );
+      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+        const supportsTokenRevoke = connectorAuthMethodSupportsTokenRevoke(
+          type,
+          authMethod,
+        );
+        expect(hasConnectorTokenRevokeProvider(type, authMethod)).toBe(
+          supportsTokenRevoke,
+        );
+      }
+    }
+  });
+
+  it("detects token revoke support from selected auth method config", () => {
     expect(connectorAuthMethodSupportsTokenRevoke("github", "oauth")).toBe(
       true,
     );
@@ -542,8 +572,9 @@ describe("connector provider capability checks", () => {
     );
 
     await expect(
-      revokeConnectorAuthProviderAccessToken({
+      revokeConnectorAuthMethodAccessToken({
         type: "github",
+        authMethod: "oauth",
         authClient: oauthClient,
         loadAccessToken: () => {
           return "gh-access-token";
@@ -575,12 +606,45 @@ describe("connector provider capability checks", () => {
     let loadedAccessToken = false;
 
     await expect(
-      revokeConnectorAuthProviderAccessToken({
+      revokeConnectorAuthMethodAccessToken({
         type: "notion",
+        authMethod: "oauth",
         authClient: oauthClient,
         loadAccessToken: () => {
           loadedAccessToken = true;
           return "notion-access-token";
+        },
+      }),
+    ).resolves.toStrictEqual({ status: "unsupported" });
+    expect(loadedAccessToken).toBe(false);
+  });
+
+  it("returns unsupported for selected auth methods without token revoke", async () => {
+    const oauthClient = getOauthAuthClient("github", (name) => {
+      if (name === "GH_OAUTH_CLIENT_ID") {
+        return "test-github-client";
+      }
+      if (name === "GH_OAUTH_CLIENT_SECRET") {
+        return "test-github-secret";
+      }
+      return undefined;
+    });
+    expect(oauthClient).toBeDefined();
+
+    if (!oauthClient) {
+      throw new Error("Expected github OAuth client");
+    }
+
+    let loadedAccessToken = false;
+
+    await expect(
+      revokeConnectorAuthMethodAccessToken({
+        type: "github",
+        authMethod: "api-token",
+        authClient: oauthClient,
+        loadAccessToken: () => {
+          loadedAccessToken = true;
+          return "gh-access-token";
         },
       }),
     ).resolves.toStrictEqual({ status: "unsupported" });

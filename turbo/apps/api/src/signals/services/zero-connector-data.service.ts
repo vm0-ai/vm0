@@ -19,7 +19,7 @@ import {
   getRuntimeAvailableConnectorTypes,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
-import { revokeConnectorAuthProviderAccessToken } from "@vm0/connectors/auth-providers";
+import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -557,8 +557,9 @@ async function revokePendingConnectorToken(args: {
 
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
-    revokeConnectorAuthProviderAccessToken({
+    revokeConnectorAuthMethodAccessToken({
       type: args.pending.type,
+      authMethod: args.pending.authMethod,
       authClient,
       loadAccessToken: () => {
         return decryptStoredSecretValue(

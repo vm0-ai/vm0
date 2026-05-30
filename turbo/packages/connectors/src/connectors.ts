@@ -955,6 +955,17 @@ export type ConnectorAuthMethodIdsByAccessKind<
     : never;
 }[ConnectorAuthMethodKeys<Type>];
 
+export type ConnectorAuthMethodIdsByRevokeKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorRevokeKind,
+> = {
+  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+    readonly revoke: { readonly kind: Kind };
+  }
+    ? Method
+    : never;
+}[ConnectorAuthMethodKeys<Type>];
+
 type ConnectorTypeWithMultipleAuthMethodsForGrantKind<
   Kind extends ConnectorGrantKind,
 > = {
@@ -1011,6 +1022,9 @@ export type RefreshTokenAccessConnectorType =
   ConnectorTypesByAccessKind<"refresh-token">;
 export type TokenRevokeConnectorType =
   ConnectorTypesByRevokeKind<"token-revoke">;
+export type TokenRevokeConnectorTypesUseAuthProviders = AssertNever<
+  Exclude<TokenRevokeConnectorType, ConnectorAuthProviderType>
+>;
 
 export type ConnectorInvalidDefaultAuthMethodType<
   Configs extends Record<string, ConnectorConfig>,
