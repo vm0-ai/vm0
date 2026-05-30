@@ -568,7 +568,24 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
       agentId: params.id,
     }),
   );
-  return { status: 200 as const, body: { enabledTypes: [...enabledTypes] } };
+  // Filter out connector types that are no longer available to the user (e.g.
+  // a connector gated behind a feature switch that has since been turned off).
+  // The update endpoint validates the entire submitted set and rejects it
+  // wholesale if any one type is unavailable; since the client replays the set
+  // returned here when authorizing a new connector, a stale unavailable type
+  // would otherwise block the user from authorizing any other connector on
+  // this agent.
+  const availability = await get(
+    userConnectorAvailability(auth.orgId, auth.userId),
+  );
+  const availableEnabledTypes = enabledTypes.filter((type) => {
+    const parsed = connectorTypeSchema.safeParse(type);
+    return parsed.success && availability.isConnectorTypeAvailable(parsed.data);
+  });
+  return {
+    status: 200 as const,
+    body: { enabledTypes: availableEnabledTypes },
+  };
 });
 
 const getAgentCustomConnectorsInner$ = computed(async (get) => {
