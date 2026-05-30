@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.89.0](https://github.com/vm0-ai/vm0/compare/api-v1.88.4...api-v1.89.0) (2026-05-30)
+
+
+### Features
+
+* persist ad attribution to Stripe and Clerk ([#15451](https://github.com/vm0-ai/vm0/issues/15451)) ([920f02e](https://github.com/vm0-ai/vm0/commit/920f02e53e47602e87c195ba37fadc71de43f6a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.49.0
+    * @vm0/core bumped to 8.304.1
+    * @vm0/db bumped to 1.23.4
+
 ## [1.88.4](https://github.com/vm0-ai/vm0/compare/api-v1.88.3...api-v1.88.4) (2026-05-30)
 
 
