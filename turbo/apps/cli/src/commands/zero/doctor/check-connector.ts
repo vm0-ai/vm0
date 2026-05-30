@@ -53,6 +53,15 @@ interface UrlLookupResult {
   relativePath: string;
 }
 
+function stripUrlQueryAndFragment(url: string): string {
+  const queryIndex = url.indexOf("?");
+  const fragmentIndex = url.indexOf("#");
+  let end = url.length;
+  if (queryIndex !== -1) end = Math.min(end, queryIndex);
+  if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
+  return url.slice(0, end);
+}
+
 function isConnectorType(type: string): type is ConnectorType {
   return type in CONNECTOR_TYPES;
 }
@@ -76,7 +85,10 @@ function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
   const allTypes = CONNECTOR_TYPE_KEYS;
 
   // Normalize: strip trailing slash for comparison
-  const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
+  const urlWithoutQuery = stripUrlQueryAndFragment(url);
+  const normalized = urlWithoutQuery.endsWith("/")
+    ? urlWithoutQuery.slice(0, -1)
+    : urlWithoutQuery;
 
   let bestMatch: {
     connectorType: string;
@@ -393,6 +405,7 @@ function resolvePermissionFromUrl(
     method,
     relativePath,
     config,
+    { apiBase: matchedBase },
   );
 
   if (matchedPermissions.length === 0) {

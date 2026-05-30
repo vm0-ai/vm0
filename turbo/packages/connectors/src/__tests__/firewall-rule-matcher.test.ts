@@ -350,6 +350,34 @@ describe("findMatchingPermissions", () => {
     ]);
   });
 
+  it("can restrict matching to one API base", () => {
+    const multiApi: FirewallConfig = {
+      name: "multi",
+      apis: [
+        {
+          base: "https://api1.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "catchall", rules: ["GET /{path*}"] }],
+        },
+        {
+          base: "https://api2.example.com/",
+          auth: { headers: {} },
+          permissions: [{ name: "specific", rules: ["GET /data"] }],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/data", multiApi, {
+        apiBase: "https://api1.example.com",
+      }),
+    ).toEqual(["catchall"]);
+    expect(
+      findMatchingPermissions("GET", "/data", multiApi, {
+        apiBase: "https://api2.example.com",
+      }),
+    ).toEqual(["specific"]);
+  });
+
   it("returns empty array for config with no permissions", () => {
     const emptyConfig: FirewallConfig = {
       name: "empty",

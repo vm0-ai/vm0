@@ -763,6 +763,71 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should strip query and match permissions only on the resolved API base", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["xero"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/xero", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "xero",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["xero"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "xero",
+                apis: [
+                  { base: "https://api.xero.com", permissions: [] },
+                  {
+                    base: "https://api.xero.com/api.xro/2.0",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              xero: {
+                allow: ["accounting.settings", "accounting.settings.read"],
+                deny: ["connections"],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.xero.com/api.xro/2.0/Accounts?where=Name",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Xero connector");
+      expect(output).toContain(
+        "Matched base URL: https://api.xero.com/api.xro/2.0",
+      );
+      expect(output).toContain("Relative path:    /Accounts");
+      expect(output).toContain(
+        "Matched permissions: [accounting.settings, accounting.settings.read]",
+      );
+      expect(output).not.toContain("Matched permissions: [connections");
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([

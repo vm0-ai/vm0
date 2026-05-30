@@ -11,6 +11,15 @@ type PathSpecificity = readonly [
   segmentCount: number,
 ];
 
+export interface FindMatchingPermissionsOptions {
+  apiBase?: string;
+}
+
+interface ApiMatchState {
+  bestSpecificity: PathSpecificity | null;
+  matched: string[];
+}
+
 /**
  * Match a runtime segment against a mixed pattern's literal prefix/suffix.
  *
@@ -38,6 +47,10 @@ function hasNonEmptySegment(segments: string[], start: number): boolean {
 
 function codePointLength(value: string): number {
   return [...value].length;
+}
+
+function stripTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
 function pathSpecificity(pattern: string): PathSpecificity | null {
@@ -91,6 +104,35 @@ function comparePathSpecificity(
     if (difference !== 0) return difference;
   }
   return 0;
+}
+
+function matchingRulePath(rule: string, upperMethod: string): string | null {
+  const spaceIdx = rule.indexOf(" ");
+  if (spaceIdx === -1) return null;
+  const ruleMethod = rule.slice(0, spaceIdx).toUpperCase();
+  if (ruleMethod !== "ANY" && ruleMethod !== upperMethod) return null;
+  return rule.slice(spaceIdx + 1);
+}
+
+function recordPermissionMatch(
+  state: ApiMatchState,
+  permission: string,
+  specificity: PathSpecificity,
+): void {
+  if (
+    state.bestSpecificity === null ||
+    comparePathSpecificity(specificity, state.bestSpecificity) > 0
+  ) {
+    state.bestSpecificity = specificity;
+    state.matched.length = 0;
+  }
+  if (
+    state.bestSpecificity !== null &&
+    comparePathSpecificity(specificity, state.bestSpecificity) === 0 &&
+    !state.matched.includes(permission)
+  ) {
+    state.matched.push(permission);
+  }
 }
 
 /**
@@ -171,45 +213,32 @@ export function findMatchingPermissions(
   method: string,
   path: string,
   config: FirewallConfig,
+  options: FindMatchingPermissionsOptions = {},
 ): string[] {
   const upperMethod = method.toUpperCase();
+  const apiBase =
+    options.apiBase === undefined ? null : stripTrailingSlash(options.apiBase);
   const matched: string[] = [];
 
   for (const api of config.apis) {
+    if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) continue;
     if (!api.permissions) continue;
-    let bestSpecificity: PathSpecificity | null = null;
-    const apiMatched: string[] = [];
+    const state: ApiMatchState = { bestSpecificity: null, matched: [] };
 
     for (const perm of api.permissions) {
       for (const rule of perm.rules) {
-        const spaceIdx = rule.indexOf(" ");
-        if (spaceIdx === -1) continue;
-        const ruleMethod = rule.slice(0, spaceIdx).toUpperCase();
-        const rest = rule.slice(spaceIdx + 1);
-        if (ruleMethod !== "ANY" && ruleMethod !== upperMethod) continue;
+        const rest = matchingRulePath(rule, upperMethod);
+        if (rest === null) continue;
 
         if (matchFirewallPath(path, rest) !== null) {
           const specificity = pathSpecificity(rest);
           if (specificity === null) continue;
-          if (
-            bestSpecificity === null ||
-            comparePathSpecificity(specificity, bestSpecificity) > 0
-          ) {
-            bestSpecificity = specificity;
-            apiMatched.length = 0;
-          }
-          if (
-            bestSpecificity !== null &&
-            comparePathSpecificity(specificity, bestSpecificity) === 0 &&
-            !apiMatched.includes(perm.name)
-          ) {
-            apiMatched.push(perm.name);
-          }
+          recordPermissionMatch(state, perm.name, specificity);
         }
       }
     }
 
-    for (const permission of apiMatched) {
+    for (const permission of state.matched) {
       if (!matched.includes(permission)) {
         matched.push(permission);
       }
