@@ -115,6 +115,7 @@ describe("zero doctor check-connector command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("GH_TOKEN", "");
   });
@@ -813,7 +814,7 @@ describe("zero doctor check-connector command", () => {
         "node",
         "cli",
         "--url",
-        "https://API.XERO.COM:443/api.xro/2.0/Accounts?where=Name#ignored",
+        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?where=Name#ignored",
       ]);
 
       const output = getOutput();
@@ -841,6 +842,25 @@ describe("zero doctor check-connector command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No connector found for URL"),
       );
+    });
+
+    it.each([
+      ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
+      ["raw whitespace", "https://api.github.com/foo bar"],
+      ["authority backslash", "https://api.github.com\\repos/owner/repo"],
+      [
+        "percent-encoded authority dot",
+        "https://api%2egithub.com/repos/owner/repo",
+      ],
+    ])("should fail for URL with %s", async (_label, url) => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync(["node", "cli", "--url", url]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No connector found for URL"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should include --method in re-diagnose hint when not GET", async () => {

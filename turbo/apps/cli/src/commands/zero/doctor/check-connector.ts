@@ -59,6 +59,111 @@ interface BaseUrlMatch {
   score: number;
 }
 
+const ASCII_CONTROL_MAX = 0x20;
+const ASCII_DELETE = 0x7f;
+const UNICODE_HIGH_SURROGATE_MIN = 0xd800;
+const UNICODE_HIGH_SURROGATE_MAX = 0xdbff;
+const UNICODE_LOW_SURROGATE_MIN = 0xdc00;
+const UNICODE_LOW_SURROGATE_MAX = 0xdfff;
+const PERCENT_ESCAPE_LENGTH = 3;
+const HEX_DIGITS = new Set("0123456789abcdefABCDEF".split(""));
+const PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = new Set([
+  "{",
+  "}",
+  ".",
+  "\u3002",
+  "\uff0e",
+  "\uff61",
+  ":",
+]);
+
+function hasRawWhitespace(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]!;
+    if (
+      char === " " ||
+      char === "\t" ||
+      char === "\n" ||
+      char === "\r" ||
+      char === "\f" ||
+      char === "\v"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasUnsafeUrlCodepoint(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const codeUnit = value.charCodeAt(i);
+    if (codeUnit < ASCII_CONTROL_MAX || codeUnit === ASCII_DELETE) {
+      return true;
+    }
+    if (
+      UNICODE_HIGH_SURROGATE_MIN <= codeUnit &&
+      codeUnit <= UNICODE_HIGH_SURROGATE_MAX
+    ) {
+      const nextCodeUnit = value.charCodeAt(i + 1);
+      if (
+        !(
+          UNICODE_LOW_SURROGATE_MIN <= nextCodeUnit &&
+          nextCodeUnit <= UNICODE_LOW_SURROGATE_MAX
+        )
+      ) {
+        return true;
+      }
+      i += 1;
+      continue;
+    }
+    if (
+      UNICODE_LOW_SURROGATE_MIN <= codeUnit &&
+      codeUnit <= UNICODE_LOW_SURROGATE_MAX
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasUnsafeRuntimeUrlSyntax(value: string): boolean {
+  return hasUnsafeUrlCodepoint(value) || hasRawWhitespace(value);
+}
+
+function hasPercentEncodedAuthoritySyntax(value: string): boolean {
+  let index = value.indexOf("%");
+  while (index !== -1) {
+    let runEnd = index;
+    while (runEnd < value.length && value[runEnd] === "%") {
+      const firstHexDigit = value[runEnd + 1];
+      const secondHexDigit = value[runEnd + 2];
+      if (
+        !firstHexDigit ||
+        !secondHexDigit ||
+        !HEX_DIGITS.has(firstHexDigit) ||
+        !HEX_DIGITS.has(secondHexDigit)
+      ) {
+        return true;
+      }
+      runEnd += PERCENT_ESCAPE_LENGTH;
+    }
+
+    let decodedRun: string;
+    try {
+      decodedRun = decodeURIComponent(value.slice(index, runEnd));
+    } catch {
+      return true;
+    }
+    for (const char of decodedRun) {
+      if (PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS.has(char)) {
+        return true;
+      }
+    }
+    index = value.indexOf("%", runEnd);
+  }
+  return false;
+}
+
 function stripUrlQueryAndFragment(url: string): string {
   const queryIndex = url.indexOf("?");
   const fragmentIndex = url.indexOf("#");
@@ -66,6 +171,27 @@ function stripUrlQueryAndFragment(url: string): string {
   if (queryIndex !== -1) end = Math.min(end, queryIndex);
   if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
   return url.slice(0, end);
+}
+
+function rawAuthorityFromUrl(url: string): string | null {
+  const urlWithoutQuery = stripUrlQueryAndFragment(url);
+  const schemeEnd = urlWithoutQuery.indexOf("://");
+  if (schemeEnd === -1) return null;
+  const authorityStart = schemeEnd + 3;
+  const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
+  const authority =
+    pathStart === -1
+      ? urlWithoutQuery.slice(authorityStart)
+      : urlWithoutQuery.slice(authorityStart, pathStart);
+  return authority === "" ? null : authority;
+}
+
+function hasMalformedRuntimeAuthoritySyntax(url: string): boolean {
+  const authority = rawAuthorityFromUrl(url);
+  if (authority === null) return false;
+  return (
+    authority.includes("\\") || hasPercentEncodedAuthoritySyntax(authority)
+  );
 }
 
 function stripTrailingSlash(value: string): string {
@@ -96,11 +222,41 @@ function relativePathForBase(
   return null;
 }
 
+function normalizeUrlHostname(hostname: string): string | null {
+  let normalized = hostname.toLowerCase();
+  if (normalized.endsWith(".")) {
+    normalized = normalized.slice(0, -1);
+    if (normalized === "" || normalized.endsWith(".")) {
+      return null;
+    }
+  }
+  return normalized;
+}
+
+function normalizedUrlAuthority(parsed: URL): string | null {
+  if (parsed.username !== "" || parsed.password !== "") {
+    return null;
+  }
+
+  const hostname = normalizeUrlHostname(parsed.hostname);
+  if (hostname === null || hostname === "") {
+    return null;
+  }
+
+  return parsed.port === "" ? hostname : `${hostname}:${parsed.port}`;
+}
+
 function matchStaticBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
   const parsedUrl = new URL(url);
   const parsedBase = new URL(rawBase);
-  if (parsedUrl.protocol !== parsedBase.protocol) return null;
-  if (parsedUrl.host !== parsedBase.host) return null;
+  if (parsedUrl.protocol.toLowerCase() !== parsedBase.protocol.toLowerCase()) {
+    return null;
+  }
+
+  const urlAuthority = normalizedUrlAuthority(parsedUrl);
+  const baseAuthority = normalizedUrlAuthority(parsedBase);
+  if (urlAuthority === null || baseAuthority === null) return null;
+  if (urlAuthority !== baseAuthority) return null;
 
   const basePath = normalizeBasePath(rawPathFromUrl(rawBase));
   const relativePath = relativePathForBase(rawPathFromUrl(url), basePath);
@@ -154,6 +310,13 @@ async function connectorTypeIsAvailable(type: string): Promise<boolean> {
  * starts with any registered base URL (scheme + host + optional path prefix).
  */
 function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
+  if (
+    hasUnsafeRuntimeUrlSyntax(url) ||
+    hasMalformedRuntimeAuthoritySyntax(url)
+  ) {
+    return null;
+  }
+
   const allTypes = CONNECTOR_TYPE_KEYS;
 
   let bestMatch: {
