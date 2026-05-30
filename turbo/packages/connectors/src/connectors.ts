@@ -1025,6 +1025,22 @@ export type TokenRevokeConnectorType =
 export type TokenRevokeConnectorTypesUseAuthProviders = AssertNever<
   Exclude<TokenRevokeConnectorType, ConnectorAuthProviderType>
 >;
+type TokenRevokeConnectorTypeWithNonConfidentialClient = {
+  [Type in TokenRevokeConnectorType]: {
+    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly revoke: { readonly kind: "token-revoke" };
+      readonly client: StaticConfidentialConnectorAuthClientConfig;
+    }
+      ? never
+      : ConnectorAuthMethodsOf<Type>[Method] extends {
+            readonly revoke: { readonly kind: "token-revoke" };
+          }
+        ? Type
+        : never;
+  }[ConnectorAuthMethodKeys<Type>];
+}[TokenRevokeConnectorType];
+export type TokenRevokeConnectorAuthMethodsUseConfidentialClients =
+  AssertNever<TokenRevokeConnectorTypeWithNonConfidentialClient>;
 
 export type ConnectorInvalidDefaultAuthMethodType<
   Configs extends Record<string, ConnectorConfig>,

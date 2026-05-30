@@ -4,6 +4,7 @@ import type {
   ConnectorType,
   DeviceAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
+  TokenRevokeConnectorType,
 } from "../connectors";
 import type {
   AuthUrlResult,
@@ -77,8 +78,9 @@ interface TokenRevokeProvider<T extends ConnectorAuthProviderType> {
 }
 
 export type ConnectorAuthProviderRevoke<T extends ConnectorAuthProviderType> =
-  | NoneRevokeProvider
-  | TokenRevokeProvider<T>;
+  T extends TokenRevokeConnectorType
+    ? TokenRevokeProvider<T>
+    : NoneRevokeProvider;
 
 export interface AuthProvider<TGrant, TAccess, TRevoke> {
   readonly grant: TGrant;

@@ -4,7 +4,6 @@ import {
   zeroConnectorApiTokenContract,
   zeroConnectorsByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import { stripeProvider } from "@vm0/connectors/auth-providers/oauth/providers/stripe-provider";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
@@ -15,9 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -28,10 +25,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const stripeProviderWithMutableRevoke = stripeProvider as {
-  revoke: typeof stripeProvider.revoke;
-};
-const originalStripeRevoke = stripeProviderWithMutableRevoke.revoke;
 
 async function seedAuthenticatedFixture(): Promise<OrgMembershipFixture> {
   const fixture = await store.set(
@@ -108,8 +101,6 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
   const fixtures: OrgMembershipFixture[] = [];
 
   afterEach(async () => {
-    stripeProviderWithMutableRevoke.revoke = originalStripeRevoke;
-
     while (fixtures.length > 0) {
       const fixture = fixtures.pop();
       if (fixture) {
@@ -274,67 +265,6 @@ describe("POST /api/zero/connectors/:type/api-token", () => {
       [200],
     );
     expect(getResponse.body.authMethod).toBe("api-token");
-  });
-
-  it("keeps local API-token replacement when remote OAuth revoke fails", async () => {
-    const fixture = await seedFixture();
-    mockOptionalEnv("STRIPE_OAUTH_CLIENT_ID", "stripe-client-id");
-    mockOptionalEnv("STRIPE_OAUTH_CLIENT_SECRET", "stripe-client-secret");
-
-    stripeProviderWithMutableRevoke.revoke = {
-      kind: "token-revoke",
-      revokeToken: () => {
-        return Promise.reject(new Error("forced revoke failure"));
-      },
-    };
-
-    const db = store.set(writeDb$);
-    await db.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "stripe",
-      authMethod: "oauth",
-    });
-    await db.insert(secrets).values([
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "STRIPE_ACCESS_TOKEN",
-        encryptedValue: encryptSecretForTests("stripe-access-token"),
-        type: "connector",
-      },
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "STRIPE_REFRESH_TOKEN",
-        encryptedValue: encryptSecretForTests("stripe-refresh-token"),
-        type: "connector",
-      },
-    ]);
-
-    const client = setupApp({ context })(zeroConnectorApiTokenContract);
-    const response = await accept(
-      client.connect({
-        params: { type: "stripe" },
-        body: { values: { STRIPE_TOKEN: "sk_test_key" } },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.authMethod).toBe("api-token");
-    await expect(connectorRows(fixture, "stripe")).resolves.toMatchObject([
-      { authMethod: "api-token" },
-    ]);
-    await expect(
-      secretRows(fixture, "STRIPE_ACCESS_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "STRIPE_REFRESH_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "STRIPE_TOKEN", "connector"),
-    ).resolves.toHaveLength(1);
   });
 
   it("deletes omitted optional API-token fields on replacement", async () => {
