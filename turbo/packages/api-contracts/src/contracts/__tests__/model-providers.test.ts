@@ -71,6 +71,7 @@ describe("model-first canonical catalog", () => {
       "kimi-k2.5",
       "MiniMax-M2.7",
       "glm-5.1",
+      "gpt-5.6",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
@@ -387,6 +388,7 @@ describe("openai-api-key codex provider", () => {
 
   it("offers codex-compatible models with gpt-5.5 default", () => {
     expect(getModels("openai-api-key")).toEqual([
+      "gpt-5.6",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
@@ -571,6 +573,7 @@ describe("codex-oauth-token codex provider", () => {
 
   it("offers gpt-5.x models with gpt-5.5 default", () => {
     expect(getModels("codex-oauth-token")).toEqual([
+      "gpt-5.6",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
@@ -750,6 +753,7 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
     "%s offers GPT models with gpt-5.5 default",
     (type) => {
       expect(getModels(type)).toEqual([
+        "openai/gpt-5.6",
         "openai/gpt-5.5",
         "openai/gpt-5.4",
         "openai/gpt-5.4-mini",

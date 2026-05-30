@@ -143,13 +143,13 @@ fn build_codex_memories_config() -> String {
     "features.memories=true".to_string()
 }
 
-/// Per-model default for the codex `model_reasoning_effort` config. GPT-5.5
-/// invests heavily in reasoning depth, so default it to `xhigh` rather than
-/// the codex CLI's stock `medium`.
+/// Per-model default for the codex `model_reasoning_effort` config. The latest
+/// GPT-5.x flagships invest heavily in reasoning depth, so default them to
+/// `xhigh` rather than the codex CLI's stock `medium`.
 fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
     let bare = model.strip_prefix("openai/").unwrap_or(model);
     match bare {
-        "gpt-5.5" => Some("xhigh"),
+        "gpt-5.6" | "gpt-5.5" => Some("xhigh"),
         _ => None,
     }
 }
@@ -379,6 +379,24 @@ mod tests {
         let args = build_codex_args_for_test("/wd", "gpt-5", "", "p");
         let m_idx = args.iter().position(|a| a == "-m").unwrap();
         assert_eq!(args[m_idx + 1], "gpt-5");
+    }
+
+    #[test]
+    fn build_codex_args_gpt_5_6_defaults_reasoning_effort_xhigh() {
+        let args = build_codex_args_for_test("/wd", "gpt-5.6", "", "p");
+        assert!(codex_args_have_config(
+            &args,
+            "model_reasoning_effort=xhigh"
+        ));
+    }
+
+    #[test]
+    fn build_codex_args_openai_prefixed_gpt_5_6_defaults_reasoning_effort_xhigh() {
+        let args = build_codex_args_for_test("/wd", "openai/gpt-5.6", "", "p");
+        assert!(codex_args_have_config(
+            &args,
+            "model_reasoning_effort=xhigh"
+        ));
     }
 
     #[test]

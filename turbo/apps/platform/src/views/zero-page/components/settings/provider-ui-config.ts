@@ -215,6 +215,7 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "kimi-k2.5": "moonshot-api-key",
     "MiniMax-M2.7": "minimax-api-key",
     "glm-5.1": "zai-api-key",
+    "gpt-5.6": "openai-api-key",
     "gpt-5.5": "openai-api-key",
     "gpt-5.4": "openai-api-key",
     "gpt-5.4-mini": "openai-api-key",

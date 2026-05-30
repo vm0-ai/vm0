@@ -77,6 +77,7 @@ describe("VM0 managed model provider", () => {
         "MiniMax-M2.7",
         "deepseek-v4-pro",
         "deepseek-v4-flash",
+        "gpt-5.6",
         "gpt-5.5",
         "gpt-5.4",
         "gpt-5.4-mini",

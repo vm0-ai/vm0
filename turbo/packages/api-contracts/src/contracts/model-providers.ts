@@ -61,6 +61,7 @@ export const SUPPORTED_RUN_MODELS = [
   "kimi-k2.5",
   "MiniMax-M2.7",
   "glm-5.1",
+  "gpt-5.6",
   "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",
@@ -89,6 +90,8 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   "kimi-k2.5": 0.2,
   "MiniMax-M2.7": 0.1,
   "glm-5.1": 0.4,
+  // gpt-5.6 mirrors gpt-5.5 pricing for now (#15470).
+  "gpt-5.6": 2,
   "gpt-5.5": 2,
   "gpt-5.4": 1,
   "gpt-5.4-mini": 0.3,
@@ -132,6 +135,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "kimi-k2.5": "Kimi K2.5",
   "MiniMax-M2.7": "MiniMax M2.7",
   "glm-5.1": "GLM-5.1",
+  "gpt-5.6": "GPT-5.6",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
@@ -234,6 +238,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   "deepseek-v4-flash": {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
+  },
+  "gpt-5.6": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
   },
   "gpt-5.5": {
     concreteType: "openai-api-key",
@@ -562,6 +570,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "openai/gpt-5.6",
       "openai/gpt-5.5",
       "openai/gpt-5.4",
       "openai/gpt-5.4-mini",
@@ -585,6 +594,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
     models: [
+      "openai/gpt-5.6",
       "openai/gpt-5.5",
       "openai/gpt-5.4",
       "openai/gpt-5.4-mini",
@@ -601,7 +611,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
+    models: ["gpt-5.6", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
   "codex-oauth-token": {
@@ -670,7 +680,7 @@ export const MODEL_PROVIDER_TYPES = {
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
+    models: ["gpt-5.6", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] as string[],
     defaultModel: "gpt-5.5",
   },
   "azure-foundry": {
@@ -816,6 +826,13 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway",
   ],
   "claude-haiku-4-5": ["vm0", "openrouter-api-key"],
+  "gpt-5.6": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
   "gpt-5.5": [
     "vm0",
     "openai-api-key",
@@ -880,11 +897,13 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "kimi-k2.5": "moonshotai/kimi-k2.5",
   },
   "openrouter-codex": {
+    "gpt-5.6": "openai/gpt-5.6",
     "gpt-5.5": "openai/gpt-5.5",
     "gpt-5.4": "openai/gpt-5.4",
     "gpt-5.4-mini": "openai/gpt-5.4-mini",
   },
   "vercel-ai-gateway-codex": {
+    "gpt-5.6": "openai/gpt-5.6",
     "gpt-5.5": "openai/gpt-5.5",
     "gpt-5.4": "openai/gpt-5.4",
     "gpt-5.4-mini": "openai/gpt-5.4-mini",
