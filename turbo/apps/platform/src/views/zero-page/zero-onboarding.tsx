@@ -61,6 +61,7 @@ import {
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
+  onboardingConnectorTypes$,
   connectConnectorOAuthAuthCode$,
   matchesConnectorSearch,
   pollingOAuthAuthCodeConnectorType$,
@@ -169,7 +170,7 @@ function SelectConnectorsContent() {
   const toggleConnector = useSet(toggleZeroConnector$);
   const search = useGet(connectorSearch$);
   const setSearch = useSet(setConnectorSearch$);
-  const connectorEntries = useLastResolved(allConnectorTypes$) ?? [];
+  const connectorEntries = useLastResolved(onboardingConnectorTypes$) ?? [];
 
   const filtered = connectorEntries.filter((connector) => {
     return matchesConnectorSearch(search, connector);
