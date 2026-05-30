@@ -274,6 +274,7 @@ interface RefreshState {
   readonly refreshToken: string | null;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
   readonly updatedAtMicros: bigint;
 }
 
@@ -444,9 +445,7 @@ function refreshFailureReasonFromError(
   error: unknown,
 ): FirewallAuthFailureReason | undefined {
   if (isChatgptRefreshError(error)) {
-    return error.code === "refresh_token_expired" ||
-      error.code === "refresh_token_reused" ||
-      error.code === "refresh_token_invalidated"
+    return isReconnectRequiredRefreshErrorCode(error.code)
       ? "reconnect_required"
       : undefined;
   }
@@ -459,6 +458,17 @@ function refreshFailureReasonFromError(
     }
   }
   return undefined;
+}
+
+function isReconnectRequiredRefreshErrorCode(
+  errorCode: string | null | undefined,
+): boolean {
+  return (
+    errorCode === "refresh_token_expired" ||
+    errorCode === "refresh_token_reused" ||
+    errorCode === "refresh_token_invalidated" ||
+    errorCode === "invalid_grant"
+  );
 }
 
 async function getSecretValue(args: {
@@ -953,19 +963,44 @@ function didLockedRefreshFailDuringRequest(args: {
 }
 
 function lockedRefreshFailureReasonDuringRequest(args: {
+  readonly initialState: RefreshState | null;
   readonly requestStartedAtMicros: bigint | null;
   readonly state: RefreshState;
 }): FirewallAuthFailureReason | undefined {
   if (
-    args.requestStartedAtMicros !== null &&
-    args.state.updatedAtMicros > args.requestStartedAtMicros &&
-    tokenExpiresAtNeedsRefresh(args.state.tokenExpiresAt)
+    args.requestStartedAtMicros === null ||
+    args.state.updatedAtMicros <= args.requestStartedAtMicros
   ) {
-    return args.state.needsReconnect
+    return undefined;
+  }
+
+  if (args.state.needsReconnect) {
+    return !args.state.refreshToken ||
+      isReconnectRequiredRefreshErrorCode(args.state.lastRefreshErrorCode)
       ? "reconnect_required"
-      : "upstream_provider";
+      : undefined;
+  }
+
+  if (tokenExpiresAtNeedsRefresh(args.state.tokenExpiresAt)) {
+    return "upstream_provider";
+  }
+
+  if (
+    args.initialState &&
+    args.initialState.accessToken === args.state.accessToken &&
+    args.initialState.refreshToken === args.state.refreshToken &&
+    sameTokenExpiresAt(
+      args.initialState.tokenExpiresAt,
+      args.state.tokenExpiresAt,
+    )
+  ) {
+    return "upstream_provider";
   }
   return undefined;
+}
+
+function sameTokenExpiresAt(left: Date | null, right: Date | null): boolean {
+  return (left?.getTime() ?? null) === (right?.getTime() ?? null);
 }
 
 async function loadRefreshState(
@@ -979,6 +1014,7 @@ async function loadRefreshState(
           .select({
             tokenExpiresAt: modelProviders.tokenExpiresAt,
             needsReconnect: modelProviders.needsReconnect,
+            lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
             updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${modelProviders.updatedAt}) * 1000000)::bigint`,
           })
           .from(modelProviders)
@@ -994,6 +1030,7 @@ async function loadRefreshState(
           .select({
             tokenExpiresAt: connectors.tokenExpiresAt,
             needsReconnect: connectors.needsReconnect,
+            lastRefreshErrorCode: sql<string | null>`NULL`,
             updatedAtMicros: sql<string>`(EXTRACT(EPOCH FROM ${connectors.updatedAt}) * 1000000)::bigint`,
           })
           .from(connectors)
@@ -1034,6 +1071,7 @@ async function loadRefreshState(
     refreshToken,
     tokenExpiresAt: row.tokenExpiresAt,
     needsReconnect: row.needsReconnect,
+    lastRefreshErrorCode: row.lastRefreshErrorCode,
     updatedAtMicros: BigInt(row.updatedAtMicros),
   };
 }
@@ -1213,6 +1251,7 @@ async function refreshAccessTokenForSource(
     ) {
       return refreshFailedResult(
         lockedRefreshFailureReasonDuringRequest({
+          initialState,
           requestStartedAtMicros,
           state: lockedState,
         }),
