@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.395.2](https://github.com/vm0-ai/vm0/compare/app-v0.395.1...app-v0.395.2) (2026-05-30)
+
+
+### Refactoring
+
+* clean connector oauth naming ([#15440](https://github.com/vm0-ai/vm0/issues/15440)) ([98ecec6](https://github.com/vm0-ai/vm0/commit/98ecec6297caf5065693159ba417caf654f88149))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.2
+    * @vm0/connectors bumped to 1.38.1
+    * @vm0/core bumped to 8.303.1
+
 ## [0.395.1](https://github.com/vm0-ai/vm0/compare/app-v0.395.0...app-v0.395.1) (2026-05-29)
 
 

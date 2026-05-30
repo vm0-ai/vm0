@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.402.0](https://github.com/vm0-ai/vm0/compare/web-v12.401.2...web-v12.402.0) (2026-05-30)
+
+
+### Features
+
+* add sprite generation showcase page ([#15446](https://github.com/vm0-ai/vm0/issues/15446)) ([dc8709b](https://github.com/vm0-ai/vm0/commit/dc8709b8c05deb43846cfea0cce185c5efd3a941))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.2
+    * @vm0/core bumped to 8.303.1
+    * @vm0/db bumped to 1.23.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.38.1
+
 ## [12.401.2](https://github.com/vm0-ai/vm0/compare/web-v12.401.1...web-v12.401.2) (2026-05-29)
 
 

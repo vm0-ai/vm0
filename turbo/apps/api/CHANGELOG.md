@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.88.3](https://github.com/vm0-ai/vm0/compare/api-v1.88.2...api-v1.88.3) (2026-05-30)
+
+
+### Refactoring
+
+* clean connector oauth naming ([#15440](https://github.com/vm0-ai/vm0/issues/15440)) ([98ecec6](https://github.com/vm0-ai/vm0/commit/98ecec6297caf5065693159ba417caf654f88149))
+* split connector access provider registry ([#15432](https://github.com/vm0-ai/vm0/issues/15432)) ([5eab41a](https://github.com/vm0-ai/vm0/commit/5eab41ade4769804987d43789e591bac21d790aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.2
+    * @vm0/connectors bumped to 1.38.1
+    * @vm0/core bumped to 8.303.1
+    * @vm0/db bumped to 1.23.2
+
 ## [1.88.2](https://github.com/vm0-ai/vm0/compare/api-v1.88.1...api-v1.88.2) (2026-05-29)
 
 
