@@ -1,4 +1,4 @@
-export const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
+const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 
