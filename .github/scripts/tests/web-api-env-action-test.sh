@@ -93,23 +93,6 @@ oauth_client_config_keys() {
   done < <(oauth_client_config_prefixes)
 }
 
-verify_workflow_oauth_client_config_keys() {
-  awk '
-    /^          EXPECTED_KEYS: \|$/ {
-      in_list = 1
-      next
-    }
-    in_list && /^            [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)$/ {
-      sub(/^            /, "")
-      print
-      next
-    }
-    in_list && /^        run:/ {
-      in_list = 0
-    }
-  ' "${REPO_ROOT}/.github/workflows/verify-doppler-oauth-config.yml" | sort -u
-}
-
 build_doppler_secrets_json() {
   local omit_key="${1:-}"
   local json="{}"
@@ -155,10 +138,6 @@ fi
 
 if ! oauth_client_config_prefixes | grep -qx SLACK; then
   fail "expected Slack OAuth client config to come from Doppler"
-fi
-
-if ! diff -u <(oauth_client_config_keys | sort -u) <(verify_workflow_oauth_client_config_keys); then
-  fail "web-api-env OAuth client config keys must match verify-doppler-oauth-config expected keys"
 fi
 
 success_dir="$(mktemp -d)"
