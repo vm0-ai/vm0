@@ -89,6 +89,50 @@ describe("onboarding Pro trial checkout", () => {
       expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
+
+  it("preserves ad attribution params through Stripe checkout URLs", async () => {
+    mockAdminOnboarding();
+    let checkoutBody: Record<string, unknown> | null = null;
+    server.use(
+      mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
+        checkoutBody = body as Record<string, unknown>;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?mode=trial",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?vm0_source=presentation&gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=presentation_search_en",
+    });
+    await walkAdminToContinue();
+
+    click(screen.getByText(/Get Started/));
+
+    await waitFor(() => {
+      expect(checkoutBody).not.toBeNull();
+    });
+
+    const successUrl = new URL(String(checkoutBody!.successUrl));
+    const cancelUrl = new URL(String(checkoutBody!.cancelUrl));
+
+    expect(successUrl.searchParams.get("billing")).toBe("pro");
+    expect(successUrl.searchParams.get("billing_session_id")).toBe(
+      "{CHECKOUT_SESSION_ID}",
+    );
+    expect(cancelUrl.searchParams.get("billing")).toBe("canceled");
+
+    for (const url of [successUrl, cancelUrl]) {
+      expect(url.searchParams.get("vm0_source")).toBe("presentation");
+      expect(url.searchParams.get("gclid")).toBe("test-click");
+      expect(url.searchParams.get("utm_source")).toBe("google");
+      expect(url.searchParams.get("utm_medium")).toBe("cpc");
+      expect(url.searchParams.get("utm_campaign")).toBe(
+        "presentation_search_en",
+      );
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,20 @@ export interface PresentationItem {
   readonly previewImage: string;
 }
 
+export const PRESENTATION_ATTRIBUTION_PARAM = "vm0_source";
+export const PRESENTATION_ATTRIBUTION_VALUE = "presentation";
+
+const AD_ATTRIBUTION_PARAMS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+] as const;
+
 export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
   {
     slug: "starship-v3-investor-update",
@@ -748,9 +762,22 @@ export const PRESENTATION_ITEMS: readonly PresentationItem[] = [
 export function buildPresentationRemixHref(
   item: PresentationItem,
   appUrl: string,
+  landingSearch = "",
 ): string {
   const url = new URL("/onboarding", appUrl);
   url.searchParams.set("prompt", item.prompt);
   url.searchParams.set("showcase", item.embedUrl);
+  url.searchParams.set(
+    PRESENTATION_ATTRIBUTION_PARAM,
+    PRESENTATION_ATTRIBUTION_VALUE,
+  );
+
+  const landingParams = new URLSearchParams(landingSearch);
+  for (const param of AD_ATTRIBUTION_PARAMS) {
+    for (const value of landingParams.getAll(param)) {
+      url.searchParams.append(param, value);
+    }
+  }
+
   return url.toString();
 }
