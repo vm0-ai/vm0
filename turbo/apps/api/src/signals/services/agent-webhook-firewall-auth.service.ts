@@ -995,22 +995,32 @@ function lockedRefreshFailureReasonDuringRequest(args: {
       : undefined;
   }
 
+  const tokenStateUnchanged = sameRefreshTokenState(
+    args.initialState,
+    args.state,
+  );
   if (tokenExpiresAtNeedsRefresh(args.state.tokenExpiresAt)) {
-    return "upstream_provider";
+    return !args.initialState || tokenStateUnchanged
+      ? "upstream_provider"
+      : undefined;
   }
 
-  if (
-    args.initialState &&
-    args.initialState.accessToken === args.state.accessToken &&
-    args.initialState.refreshToken === args.state.refreshToken &&
-    sameTokenExpiresAt(
-      args.initialState.tokenExpiresAt,
-      args.state.tokenExpiresAt,
-    )
-  ) {
+  if (tokenStateUnchanged) {
     return "upstream_provider";
   }
   return undefined;
+}
+
+function sameRefreshTokenState(
+  initialState: RefreshState | null,
+  state: RefreshState,
+): boolean {
+  return (
+    initialState !== null &&
+    initialState.accessToken === state.accessToken &&
+    initialState.refreshToken === state.refreshToken &&
+    sameTokenExpiresAt(initialState.tokenExpiresAt, state.tokenExpiresAt)
+  );
 }
 
 function sameTokenExpiresAt(left: Date | null, right: Date | null): boolean {
@@ -1225,9 +1235,7 @@ async function refreshAccessTokenForSource(
   const requestStartedAtMicros = args.forceRefresh
     ? args.forceRefreshStartedAtMicros
     : await currentDatabaseTimestampMicros(args.db);
-  const initialState = args.forceRefresh
-    ? await loadRefreshState(args.db, args, prepared.context)
-    : null;
+  const initialState = await loadRefreshState(args.db, args, prepared.context);
 
   return await args.db.transaction(async (tx) => {
     if (prepared.sourceType === "connector") {
