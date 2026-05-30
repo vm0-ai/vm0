@@ -8,16 +8,19 @@
 #
 # Uses GNU timeout to ensure the entire process tree is killed on
 # timeout (timeout creates a process group and sends SIGTERM to the
-# whole group). CLI_TIMEOUT defaults to BATS_TEST_TIMEOUT minus cleanup
-# headroom when Bats provides a timeout, so runner tests do not get cut short
-# by a fixed wrapper timeout.
+# whole group). CLI_TIMEOUT stays at 90s unless Bats provides a larger timeout
+# budget, then it leaves headroom for setup, diagnostics, and timeout's
+# kill-after window.
+DEFAULT_CLI_TIMEOUT=90
+CLI_TIMEOUT_HEADROOM=20
+
 default_cli_timeout() {
   local bats_timeout="${BATS_TEST_TIMEOUT:-}"
-  if [[ "$bats_timeout" =~ ^[0-9]+$ ]] && ((bats_timeout > 15)); then
-    echo $((bats_timeout - 10))
+  if [[ "$bats_timeout" =~ ^[0-9]+$ ]] && ((bats_timeout > DEFAULT_CLI_TIMEOUT + CLI_TIMEOUT_HEADROOM)); then
+    echo $((bats_timeout - CLI_TIMEOUT_HEADROOM))
     return
   fi
-  echo 90
+  echo "$DEFAULT_CLI_TIMEOUT"
 }
 
 CLI_TIMEOUT="${CLI_TIMEOUT:-$(default_cli_timeout)}"
