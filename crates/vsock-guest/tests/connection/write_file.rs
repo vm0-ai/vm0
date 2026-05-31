@@ -34,7 +34,7 @@ fn malformed_write_file_payload_returns_error_and_keeps_connection_open() {
 
     send_control_payload(&mut host_stream, MSG_WRITE_FILE, 31, b"bad");
     let error = read_error_response(&mut host_stream, 31);
-    assert!(error.contains("write_file"));
+    assert_eq!(error, "invalid payload: write_file path truncated");
 
     assert_ping_pong(&mut host_stream, 32);
 
