@@ -298,7 +298,7 @@ def fake_firewall_headers():
 def sync_usage_executor():
     """Swap ``usage.webhook.usage_executor`` for a synchronous stub.
 
-    Tests that mock ``usage._opener`` and want the webhook payloads to
+    Tests that mock ``usage.webhook._opener`` and want the webhook payloads to
     appear on the mock by the time they inspect it need submission to
     happen inline rather than on a background thread — otherwise they
     have to thread ``fresh_usage_executor`` + ``shutdown(wait=True)``
