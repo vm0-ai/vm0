@@ -517,6 +517,18 @@ describe("validateRule", () => {
     }).toThrow('path must start with "/"');
   });
 
+  it("should reject malformed rule separators", () => {
+    expect(() => {
+      return validateRule("GET  /foo", "read", "github");
+    }).toThrow('path must start with "/"');
+    expect(() => {
+      return validateRule("GET\t/foo", "read", "github");
+    }).toThrow('must be "METHOD /path"');
+    expect(() => {
+      return validateRule("GET /foo bar", "read", "github");
+    }).toThrow("path must not contain whitespace");
+  });
+
   it("should reject path with raw whitespace", () => {
     expect(() => {
       return validateRule("GET /pa th", "read", "github");
