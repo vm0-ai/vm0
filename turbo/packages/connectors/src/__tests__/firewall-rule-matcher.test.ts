@@ -254,6 +254,10 @@ describe("matchFirewallPathPrefix", () => {
     expect(matchFirewallPathPrefix("/api/", "/api/{rest+}")).toBeNull();
   });
 
+  it("allows plus greedy path params to consume remaining segments", () => {
+    expect(matchFirewallPathPrefix("/api/users/123", "/api/{rest+}")).toBe("/");
+  });
+
   it("allows star greedy path params to consume zero segments", () => {
     expect(matchFirewallPathPrefix("/api", "/api/{rest*}")).toBe("/");
     expect(matchFirewallPathPrefix("/api/users/123", "/api/{rest*}")).toBe("/");
