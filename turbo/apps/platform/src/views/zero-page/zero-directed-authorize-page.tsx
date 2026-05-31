@@ -10,7 +10,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getSingleConnectorAuthCodeConnectMethod,
+  getOnlyAvailableAuthCodeAuthMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -136,7 +136,7 @@ function canAuthorizeConnector(
   return (
     isConnected ||
     (item
-      ? getSingleConnectorAuthCodeConnectMethod(
+      ? getOnlyAvailableAuthCodeAuthMethod(
           connectorType,
           item.availableAuthMethods,
         ) !== null
@@ -175,7 +175,7 @@ function DirectedAuthorizeCard() {
   const isLoading = catalogLoading || permissionLoading;
   const canAuthorize = canAuthorizeConnector(connectorType, item, isConnected);
   const selectedAuthMethod = item
-    ? getSingleConnectorAuthCodeConnectMethod(
+    ? getOnlyAvailableAuthCodeAuthMethod(
         connectorType,
         item.availableAuthMethods,
       )

@@ -5,6 +5,7 @@ import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
   type ConnectorType,
   type ConnectorDisplayCategory,
@@ -135,12 +136,36 @@ export function getConnectorConnectLaunchMode({
   return "oauth-auth-code";
 }
 
-export function getSingleConnectorAuthCodeConnectMethod(
+export function getAvailableAuthCodeAuthMethod(
+  type: ConnectorType,
+  availableAuthMethods: readonly ConnectorAuthMethodId[],
+  authMethod: string,
+): ConnectorAuthMethodId | null {
+  const authMethodResult = connectorAuthMethodIdSchema.safeParse(authMethod);
+  if (!authMethodResult.success) {
+    return null;
+  }
+  if (!availableAuthMethods.includes(authMethodResult.data)) {
+    return null;
+  }
+  if (
+    getConnectorAuthMethod(type, authMethodResult.data)?.grant.kind !==
+    "auth-code"
+  ) {
+    return null;
+  }
+  return authMethodResult.data;
+}
+
+export function getOnlyAvailableAuthCodeAuthMethod(
   type: ConnectorType,
   availableAuthMethods: readonly ConnectorAuthMethodId[],
 ): ConnectorAuthMethodId | null {
   const authCodeAuthMethods = availableAuthMethods.filter((authMethod) => {
-    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
+    return (
+      getAvailableAuthCodeAuthMethod(type, availableAuthMethods, authMethod) !==
+      null
+    );
   });
   const [authMethod] = authCodeAuthMethods;
   if (authCodeAuthMethods.length === 1 && authMethod) {

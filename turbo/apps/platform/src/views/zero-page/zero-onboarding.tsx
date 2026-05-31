@@ -69,7 +69,7 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   setPermissionDialogType$,
-  getSingleConnectorAuthCodeConnectMethod,
+  getOnlyAvailableAuthCodeAuthMethod,
   getConnectorConnectLaunchMode,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -282,7 +282,7 @@ function ConnectStepContent() {
     if (launchMode === "modal") {
       setSelectedConnector(type);
     } else {
-      const authMethod = getSingleConnectorAuthCodeConnectMethod(
+      const authMethod = getOnlyAvailableAuthCodeAuthMethod(
         type,
         connector.availableAuthMethods,
       );

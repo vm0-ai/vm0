@@ -23,6 +23,7 @@ import {
   zeroConnectorScopeDiffContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -48,16 +49,6 @@ async function openScopeReviewModal(
     ).toBeInTheDocument();
   });
   context.store.set(setScopeReviewType$, connectorType);
-}
-
-function mockConnectorOauthStart() {
-  server.use(
-    mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
-      return respond(200, {
-        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
-      });
-    }),
-  );
 }
 
 function createMockAuthWindow() {
@@ -206,7 +197,25 @@ describe("scope review modal - states", () => {
 
 describe("scope review modal - interactions", () => {
   it("reconnect button triggers connector reconnection (CONN-I-039)", async () => {
-    mockConnectorOauthStart();
+    let capturedAuthMethod: string | undefined;
+    server.use(
+      mockApi(
+        zeroConnectorOauthStartContract.start,
+        ({ body, params, respond }) => {
+          capturedAuthMethod = body.authMethod;
+          return respond(200, {
+            authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          });
+        },
+      ),
+    );
+    mockConnectors([
+      {
+        type: "github",
+        authMethod: "oauth",
+        oauthScopes: [],
+      },
+    ]);
     const mockWindow = createMockAuthWindow();
     const openSpy = vi
       .spyOn(window, "open")
@@ -242,6 +251,7 @@ describe("scope review modal - interactions", () => {
       expect(mockWindow.location.href).toBe(
         "https://oauth.test/github/authorize",
       );
+      expect(capturedAuthMethod).toBe("oauth");
     });
   });
 
