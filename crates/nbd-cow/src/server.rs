@@ -557,8 +557,9 @@ mod tests {
         let max_reusable_data = read_payload(&mut reader, MAX_REUSABLE_PAYLOAD_LENGTH).await;
         assert!(max_reusable_data.iter().all(|&b| b == 0x44));
 
-        // If the previous small read emitted stale bytes from the earlier large
-        // payload, this next reply header would be misaligned.
+        // The max reusable request above proves the stream stayed aligned after
+        // the small read. This next request proves it also stays aligned after
+        // a max-size reusable payload.
         let alignment_read = NbdRequest {
             flags: 0,
             command: Command::Read,
@@ -567,7 +568,7 @@ mod tests {
             length: crate::BLOCK_SIZE as u32,
         };
         let error = send_and_recv_reply(&mut reader, &mut writer, &alignment_read).await;
-        assert_eq!(error, 0, "read after small read should stay aligned");
+        assert_eq!(error, 0, "read after max reusable read should stay aligned");
         let alignment_data = read_payload(&mut reader, crate::BLOCK_SIZE).await;
         assert!(alignment_data.iter().all(|&b| b == 0x33));
 
