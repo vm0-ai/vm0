@@ -333,7 +333,7 @@ describe("directed authorize page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not enable auth-code authorization for device-auth OAuth connectors", async () => {
+  it("opens the method picker when authorization needs a device-auth connector", async () => {
     detachedSetupPage({
       context,
       path: `/connectors/test-oauth-device/authorize?agentId=${AGENT_ID}`,
@@ -346,6 +346,39 @@ describe("directed authorize page", () => {
       ).toBeInTheDocument();
     });
 
-    expect(getButtonByText("Authorize Zero")).toBeDisabled();
+    click(getButtonByText("Authorize Zero"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Connect Test OAuth Device (internal)"),
+    ).toBeInTheDocument();
+  });
+
+  it("opens the method picker when authorization needs a multi-method connector", async () => {
+    detachedSetupPage({
+      context,
+      path: `/connectors/stripe/authorize?agentId=${AGENT_ID}`,
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Stripe to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    click(getButtonByText("Authorize Zero"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Stripe" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("OAuth (Recommended)")).toBeInTheDocument();
+      expect(screen.getAllByText("API Key").length).toBeGreaterThan(0);
+    });
   });
 });
