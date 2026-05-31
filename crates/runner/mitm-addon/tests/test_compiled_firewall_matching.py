@@ -1743,6 +1743,60 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
+    def test_more_specific_malformed_base_blocks_earlier_broad_allow(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad", "rules": ["ANY /{path+}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "admin",
+                "apis": [
+                    {
+                        "base": "https://api.example.com/admin?token=1",
+                        "auth": {"headers": {"Authorization": "Bearer admin"}},
+                        "permissions": [
+                            {"name": "admin", "rules": ["GET /delete"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {
+                "allow": ["broad"],
+                "deny": [],
+                "unknownPolicy": "allow",
+            },
+            "admin": {
+                "allow": ["admin"],
+                "deny": [],
+                "unknownPolicy": "allow",
+            },
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com/admin?token=1"
+        assert result.name == "admin"
+        assert result.path == "/delete"
+        assert result.permissions == ()
+        assert result.reason == "malformed_firewall_config"
+
     def test_more_specific_base_malformed_policy_blocks_earlier_broad_allow(self):
         fws = [
             {
