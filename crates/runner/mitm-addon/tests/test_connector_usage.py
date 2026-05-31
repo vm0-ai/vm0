@@ -243,7 +243,7 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
         assert payloads == []
 
-    def test_soft_error_emits_no_billing(self, tmp_path, real_flow):
+    def test_soft_error_with_request_hints_emits_no_billing(self, tmp_path, real_flow):
         """HTTP 200 + errors array + no data field emits no usage_event
         row (issue #9620)."""
         body = json.dumps(
@@ -263,9 +263,10 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
-            path="/2/tweets/999999999999999999",
+            path="/2/tweets",
+            query="ids=999999999999999999",
             body=body,
-            rule="GET /2/tweets/{id}",
+            rule="GET /2/tweets",
         )
         payloads = self._call_and_get_billing(flow)
         assert payloads == []
@@ -883,7 +884,7 @@ class TestReportConnectorUsage:
 
     # ---- fallback / unparseable cases ----
 
-    def test_legacy_x_json_metadata_extracts_selective_fields(self, tmp_path, real_flow):
+    def test_legacy_x_json_fallback_extracts_selective_field_counts(self, tmp_path, real_flow):
         """Buffered fallback should share X JSON field semantics with the selective parser."""
         body = json.dumps(
             {
@@ -899,45 +900,23 @@ class TestReportConnectorUsage:
         ).encode()
         flow = self._make_x_flow(real_flow, tmp_path, body=body)
 
-        metadata = usage_x_connector._parse_response_metadata(flow)
+        payloads = self._call_and_get_billing(flow)
 
-        assert metadata == {
-            "body_parsed": True,
-            "body_truncated": False,
-            "response_data_count": 2,
-            "response_errors_count": 1,
-            "response_includes": {"users": 1, "media": 0},
-            "response_result_count": 3,
-        }
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat == {"posts.read": 3, "user.read": 1}
 
-    def test_legacy_x_json_metadata_preserves_truncated_state(self, tmp_path, real_flow):
-        body = json.dumps({"data": [{"id": "1"}]}).encode()
-        flow = self._make_x_flow(real_flow, tmp_path, body=body)
-        flow.metadata["stream_buffer_state"] = {"truncated": True}
-
-        metadata = usage_x_connector._parse_response_metadata(flow)
-
-        assert metadata["body_parsed"] is True
-        assert metadata["body_truncated"] is True
-        assert metadata["response_data_count"] == 1
-
-    @pytest.mark.parametrize("body", [b"not json", b"[1,2,3]"])
-    def test_legacy_x_json_metadata_keeps_unparseable_bodies_unparsed(
-        self, tmp_path, real_flow, body
-    ):
-        flow = self._make_x_flow(real_flow, tmp_path, body=body)
-
-        metadata = usage_x_connector._parse_response_metadata(flow)
-
-        assert metadata == {"body_parsed": False, "body_truncated": False}
-
-    def test_legacy_x_json_metadata_ignores_boolean_result_count(self, tmp_path, real_flow):
+    def test_legacy_x_json_fallback_ignores_boolean_result_count(self, tmp_path, real_flow):
         body = json.dumps({"meta": {"result_count": True}}).encode()
         flow = self._make_x_flow(real_flow, tmp_path, body=body)
+        proxy_log = tmp_path / "proxy.jsonl"
 
-        metadata = usage_x_connector._parse_response_metadata(flow)
+        payloads = self._call_and_get_billing(flow)
 
-        assert metadata == {"body_parsed": True, "body_truncated": False}
+        assert payloads == []
+        if proxy_log.exists():
+            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+            assert all(entry["level"] != "error" for entry in entries)
+            assert all("unparseable" not in entry["message"].lower() for entry in entries)
 
     def test_truncated_buffer_with_no_hints_skips_billing(self, tmp_path, real_flow):
         """Unparseable body + no URL hints → skip emission and log an
