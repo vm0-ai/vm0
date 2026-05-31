@@ -182,10 +182,22 @@ describe("matchFirewallPathPrefix", () => {
     );
   });
 
+  it("preserves repeated slashes after the base prefix", () => {
+    expect(matchFirewallPathPrefix("/api/v1//users", "/api/v1")).toBe(
+      "//users",
+    );
+  });
+
   it("returns relative path after parameterized base prefix", () => {
     expect(
       matchFirewallPathPrefix("/owner/repo/main/README.md", "/{owner}/{repo}"),
     ).toBe("/main/README.md");
+  });
+
+  it("rejects empty segments for plain params in base prefixes", () => {
+    expect(
+      matchFirewallPathPrefix("/owner//main", "/{owner}/{repo}"),
+    ).toBeNull();
   });
 
   it("matches mixed path segments in base prefixes", () => {
