@@ -163,7 +163,7 @@ connect_test_oauth_via_authorization_code() {
     enable_test_oauth_feature_switch || return 1
 
     local start_body
-    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{}')
+    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
     local authorization_url
     authorization_url=$(printf '%s' "$start_body" | jq -r '.authorizationUrl // empty')
     [ -n "$authorization_url" ] || {
