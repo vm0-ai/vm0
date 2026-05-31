@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.105.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.11...runner-rs-v0.105.12) (2026-05-31)
+
+
+### Refactoring
+
+* clarify x parser internals ([#15580](https://github.com/vm0-ai/vm0/issues/15580)) ([8514cef](https://github.com/vm0-ai/vm0/commit/8514cef79680410406c207ced7ec83fe8aac536e))
+
+
+### Performance Improvements
+
+* **mitm-addon:** avoid json loads for string decoding ([#15581](https://github.com/vm0-ai/vm0/issues/15581)) ([f69794a](https://github.com/vm0-ai/vm0/commit/f69794a6dbaf857103fdea5aaf47b55f56cc3faa))
+
 ## [0.105.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.10...runner-rs-v0.105.11) (2026-05-31)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.399.4](https://github.com/vm0-ai/vm0/compare/app-v0.399.3...app-v0.399.4) (2026-05-31)
+
+
+### Refactoring
+
+* support multiple connector auth methods ([#15582](https://github.com/vm0-ai/vm0/issues/15582)) ([e00abe8](https://github.com/vm0-ai/vm0/commit/e00abe8ce57f5e14d56dfe8b1ae0e18e2e1e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.4
+    * @vm0/connectors bumped to 1.39.4
+    * @vm0/core bumped to 8.304.6
+
 ## [0.399.3](https://github.com/vm0-ai/vm0/compare/app-v0.399.2...app-v0.399.3) (2026-05-31)
 
 
