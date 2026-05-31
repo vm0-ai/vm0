@@ -46,6 +46,13 @@ const FORBIDDEN_RUNTIME_HOST_CHARS = new Set("#%,/<>?@\\^|{}".split(""));
 const FORBIDDEN_BASE_PATTERN_HOST_CHARS = new Set("#%,/<>?@\\^|".split(""));
 const PERCENT_ESCAPE_LENGTH = 3;
 const HEX_DIGITS = new Set("0123456789abcdefABCDEF".split(""));
+const PATH_SCORE_MULTIPLIER = 1_000_000;
+const AUTHORITY_SCORE_MULTIPLIER = 100;
+const LITERAL_SEGMENT_SCORE = 1_000;
+const MIXED_PARAM_SEGMENT_SCORE = 100;
+const PLAIN_PARAM_SEGMENT_SCORE = 10;
+const PLUS_GREEDY_SEGMENT_SCORE = 1;
+const STATIC_BASE_SCORE_BONUS = 1;
 const PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = new Set([
   "{",
   "}",
@@ -313,6 +320,14 @@ function rawPathFromUrl(url: string): string {
   return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
 }
 
+function rawBasePathFromUrl(url: string): string {
+  const urlWithoutQuery = stripUrlQueryAndFragment(url);
+  const schemeEnd = urlWithoutQuery.indexOf("://");
+  const authorityStart = schemeEnd === -1 ? 0 : schemeEnd + 3;
+  const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
+  return pathStart === -1 ? "" : urlWithoutQuery.slice(pathStart);
+}
+
 function rawAuthorityFromUrl(url: string): string | null {
   const urlWithoutQuery = stripUrlQueryAndFragment(url);
   const schemeEnd = urlWithoutQuery.indexOf("://");
@@ -368,16 +383,64 @@ function hasMalformedRuntimeAuthoritySyntax(url: string): boolean {
   );
 }
 
-function normalizeBasePath(pathname: string): string {
-  return pathname.length > 1 ? stripTrailingSlash(pathname) : "/";
+function scorePatternSegment(segment: string): number {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "error") return 0;
+  if (parsed.kind === "literal") {
+    return LITERAL_SEGMENT_SCORE + codePointLength(parsed.value);
+  }
+
+  const literalChars =
+    codePointLength(parsed.prefix) + codePointLength(parsed.suffix);
+  if (parsed.prefix !== "" || parsed.suffix !== "") {
+    return MIXED_PARAM_SEGMENT_SCORE + literalChars;
+  }
+  if (parsed.greedy === "+") return PLUS_GREEDY_SEGMENT_SCORE;
+  if (parsed.greedy === "*") return 0;
+  return PLAIN_PARAM_SEGMENT_SCORE;
+}
+
+function scorePatternSegments(segments: string[]): number {
+  return segments.reduce((score, segment) => {
+    return score + scorePatternSegment(segment);
+  }, 0);
+}
+
+function splitAuthoritySegments(authority: string): string[] {
+  if (authority.startsWith("[")) return [authority];
+  const normalized = authority.endsWith(".")
+    ? authority.slice(0, -1)
+    : authority;
+  return normalized === "" ? [] : normalized.split(".");
+}
+
+function baseUrlSpecificityScore(rawBase: string, hasParams: boolean): number {
+  const baseForMatch = stripTrailingSlash(rawBase);
+  const authorityScore = scorePatternSegments(
+    splitAuthoritySegments(rawAuthorityFromUrl(baseForMatch) ?? ""),
+  );
+  const pathScore = scorePatternSegments(
+    splitPathSegments(rawBasePathFromUrl(baseForMatch)),
+  );
+  return (
+    pathScore * PATH_SCORE_MULTIPLIER +
+    authorityScore * AUTHORITY_SCORE_MULTIPLIER +
+    (hasParams ? 0 : STATIC_BASE_SCORE_BONUS)
+  );
 }
 
 function matchStaticBasePathPrefix(
   path: string,
   pattern: string,
 ): string | null {
-  if (pattern === "/") {
+  if (pattern === "") {
     return path === "" ? "/" : path;
+  }
+  if (pattern === "/") {
+    if (!path.startsWith(pattern)) return null;
+    const relativePath = path.slice(pattern.length);
+    if (relativePath !== "" && !relativePath.startsWith("/")) return null;
+    return relativePath === "" ? "/" : relativePath;
   }
   if (!path.startsWith(pattern)) return null;
   const relativePath = path.slice(pattern.length);
@@ -444,6 +507,7 @@ function matchStaticFirewallBaseUrl(
     return null;
   }
   const baseHasParams = hasBaseUrlParams(rawBase);
+  const baseForMatch = stripTrailingSlash(rawBase);
 
   const urlAuthority = normalizedUrlAuthority(parsedUrl);
   const baseAuthority = normalizedUrlAuthority(parsedBase, {
@@ -456,7 +520,7 @@ function matchStaticFirewallBaseUrl(
     return null;
   }
 
-  const basePath = normalizeBasePath(rawPathFromUrl(rawBase));
+  const basePath = rawBasePathFromUrl(baseForMatch);
   const relativePath = baseHasParams
     ? matchFirewallPathPrefix(rawPathFromUrl(url), basePath)
     : matchStaticBasePathPrefix(rawPathFromUrl(url), basePath);
@@ -466,7 +530,7 @@ function matchStaticFirewallBaseUrl(
   return {
     displayBase,
     relativePath,
-    score: displayBase.length,
+    score: baseUrlSpecificityScore(rawBase, baseHasParams),
   };
 }
 

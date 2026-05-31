@@ -297,6 +297,15 @@ class TestMatchBaseUrl:
         result = matching.match_base_url("https://api.example.com/v1//foo", base)
         assert result == ("/foo", {})
 
+    def test_static_base_preserves_repeated_root_terminal_empty_segments(self):
+        base = "https://api.example.com//"
+
+        result = matching.match_base_url("https://api.example.com/foo", base)
+        assert result is None
+
+        result = matching.match_base_url("https://api.example.com//foo", base)
+        assert result == ("/foo", {})
+
     def test_static_base_query_only_case_insensitive_authority(self):
         result = matching.match_base_url(
             "https://API.GitHub.com?tab=repos", "https://api.github.com"

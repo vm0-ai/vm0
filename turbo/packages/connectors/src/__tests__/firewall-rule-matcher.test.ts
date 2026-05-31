@@ -303,7 +303,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.xero.com/api.xro/2.0",
       relativePath: "/Accounts",
-      score: "https://api.xero.com/api.xro/2.0".length,
+      score: expect.any(Number),
     });
   });
 
@@ -316,7 +316,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.github.com.",
       relativePath: "/repos",
-      score: "https://api.github.com.".length,
+      score: expect.any(Number),
     });
 
     expect(
@@ -327,7 +327,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.github.com.:08443",
       relativePath: "/repos",
-      score: "https://api.github.com.:08443".length,
+      score: expect.any(Number),
     });
   });
 
@@ -356,7 +356,7 @@ describe("matchFirewallBaseUrl", () => {
     expect(matchFirewallBaseUrl(url, base)).toEqual({
       displayBase: base,
       relativePath: "/repos",
-      score: base.length,
+      score: expect.any(Number),
     });
   });
 
@@ -391,7 +391,7 @@ describe("matchFirewallBaseUrl", () => {
       expect(matchFirewallBaseUrl(url, base)).toEqual({
         displayBase: base,
         relativePath,
-        score: base.length,
+        score: expect.any(Number),
       });
     },
   );
@@ -410,7 +410,7 @@ describe("matchFirewallBaseUrl", () => {
     expect(matchFirewallBaseUrl(`${base}/repos`, base)).toEqual({
       displayBase: base,
       relativePath: "/repos",
-      score: base.length,
+      score: expect.any(Number),
     });
   });
 
@@ -423,7 +423,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://raw.githubusercontent.com/{owner}/{repo}",
       relativePath: "/main/README.md",
-      score: "https://raw.githubusercontent.com/{owner}/{repo}".length,
+      score: expect.any(Number),
     });
   });
 
@@ -436,7 +436,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com/v1/{org}",
       relativePath: "/projects/123",
-      score: "https://api.example.com/v1/{org}".length,
+      score: expect.any(Number),
     });
   });
 
@@ -449,8 +449,56 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://{network}.g.alchemy.com",
       relativePath: "/v2/demo",
-      score: "https://{network}.g.alchemy.com".length,
+      score: expect.any(Number),
     });
+  });
+
+  it("scores static host bases above wildcard host bases with the same path scope", () => {
+    const staticMatch = matchFirewallBaseUrl(
+      "https://api.g.alchemy.com/v2/demo",
+      "https://api.g.alchemy.com",
+    );
+    const wildcardMatch = matchFirewallBaseUrl(
+      "https://api.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    );
+
+    expect(staticMatch).toMatchObject({
+      displayBase: "https://api.g.alchemy.com",
+      relativePath: "/v2/demo",
+    });
+    expect(wildcardMatch).toMatchObject({
+      displayBase: "https://{network}.g.alchemy.com",
+      relativePath: "/v2/demo",
+    });
+    if (staticMatch === null || wildcardMatch === null) {
+      throw new Error("expected both base URLs to match");
+    }
+    expect(staticMatch.score).toBeGreaterThan(wildcardMatch.score);
+  });
+
+  it("scores longer path bases above root bases even when the longer path has params", () => {
+    const rootMatch = matchFirewallBaseUrl(
+      "https://api.example.com/v1/acme/projects",
+      "https://api.example.com",
+    );
+    const pathMatch = matchFirewallBaseUrl(
+      "https://api.example.com/v1/acme/projects",
+      "https://api.example.com/v1/{org}",
+    );
+
+    expect(rootMatch).toMatchObject({
+      displayBase: "https://api.example.com",
+      relativePath: "/v1/acme/projects",
+    });
+    expect(pathMatch).toMatchObject({
+      displayBase: "https://api.example.com/v1/{org}",
+      relativePath: "/projects",
+    });
+    if (rootMatch === null || pathMatch === null) {
+      throw new Error("expected both base URLs to match");
+    }
+    expect(pathMatch.score).toBeGreaterThan(rootMatch.score);
   });
 
   it("returns slash when URL exactly matches the base URL", () => {
@@ -462,7 +510,27 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.github.com",
       relativePath: "/",
-      score: "https://api.github.com".length,
+      score: expect.any(Number),
+    });
+  });
+
+  it("keeps repeated root base slashes as a path boundary", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/users",
+        "https://api.example.com//",
+      ),
+    ).toBeNull();
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com//users",
+        "https://api.example.com//",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com/",
+      relativePath: "/users",
+      score: expect.any(Number),
     });
   });
 
@@ -475,7 +543,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com/api",
       relativePath: "/users",
-      score: "https://api.example.com/api".length,
+      score: expect.any(Number),
     });
   });
 
@@ -488,7 +556,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://{deployment+}.bentoml.ai",
       relativePath: "/api/v1/models",
-      score: "https://{deployment+}.bentoml.ai".length,
+      score: expect.any(Number),
     });
   });
 
@@ -501,7 +569,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://{deployment*}.bentoml.ai",
       relativePath: "/api/v1/models",
-      score: "https://{deployment*}.bentoml.ai".length,
+      score: expect.any(Number),
     });
   });
 
@@ -514,7 +582,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com:443",
       relativePath: "/v1/users",
-      score: "https://api.example.com:443".length,
+      score: expect.any(Number),
     });
 
     expect(
@@ -525,7 +593,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "http://api.example.com:80",
       relativePath: "/v1/users",
-      score: "http://api.example.com:80".length,
+      score: expect.any(Number),
     });
   });
 
@@ -538,7 +606,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://[2001:db8::1]:443",
       relativePath: "/v1/users",
-      score: "https://[2001:db8::1]:443".length,
+      score: expect.any(Number),
     });
   });
 
@@ -551,7 +619,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com:8443",
       relativePath: "/v1/users",
-      score: "https://api.example.com:8443".length,
+      score: expect.any(Number),
     });
 
     expect(
@@ -596,7 +664,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com/api/",
       relativePath: "/users",
-      score: "https://api.example.com/api/".length,
+      score: expect.any(Number),
     });
   });
 
@@ -632,7 +700,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com/v1/{org}",
       relativePath: "//projects",
-      score: "https://api.example.com/v1/{org}".length,
+      score: expect.any(Number),
     });
 
     expect(
@@ -650,7 +718,7 @@ describe("matchFirewallBaseUrl", () => {
     ).toEqual({
       displayBase: "https://api.example.com/v1//{org}",
       relativePath: "/projects",
-      score: "https://api.example.com/v1//{org}".length,
+      score: expect.any(Number),
     });
   });
 
