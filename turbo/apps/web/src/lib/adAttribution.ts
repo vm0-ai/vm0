@@ -49,7 +49,9 @@ const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 //   on them surviving the Clerk redirect.
 export function buildSignupHref(appUrl: string, landingSearch: string): string {
   const params = new URLSearchParams(landingSearch);
-  const isAdTraffic = AD_TRAFFIC_MARKERS.some((param) => params.has(param));
+  const isAdTraffic = AD_TRAFFIC_MARKERS.some((param) => {
+    return params.has(param);
+  });
   if (!isAdTraffic) {
     return "/sign-up";
   }
