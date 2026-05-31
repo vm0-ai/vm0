@@ -233,6 +233,28 @@ class TestUsageWebhookDelivery:
         assert entry["payload"]["error"] == "payload-error"
         assert entry["payload"]["attempt"] == 99
 
+    def test_sync_executor_worker_error_preserves_other_pending_reports(
+        self, tmp_path, sync_usage_executor
+    ):
+        """Synchronous executor fixture should store worker exceptions on its Future."""
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        usage.counters.increment_pending_reports()
+
+        with patch.object(usage.webhook, "_opener") as mock_opener:
+            mock_opener.open.side_effect = TypeError("boom")
+            usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage",
+            )
+
+        assert mock_opener.open.call_count == 1  # urllib external boundary (#9991)
+        assert usage.counters._pending_reports == 1
+        assert "non-retryable" in proxy_log.read_text()
+
     def test_sleeps_between_retries(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
         with (
