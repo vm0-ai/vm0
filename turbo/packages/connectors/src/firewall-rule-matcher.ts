@@ -86,7 +86,12 @@ function codePointLength(value: string): number {
 }
 
 function hasUnsafeRuntimeUrlSyntax(value: string): boolean {
-  return hasUnsafeUrlCodepoint(value) || hasRawWhitespace(value);
+  return (
+    hasUnsafeUrlCodepoint(value) ||
+    hasRawWhitespace(value) ||
+    value.includes("\\") ||
+    !value.includes("://")
+  );
 }
 
 function stripTrailingSlash(value: string): string {

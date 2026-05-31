@@ -657,9 +657,16 @@ describe("matchFirewallBaseUrl", () => {
   it.each([
     ["raw whitespace", "https://api.github.com/foo bar"],
     ["authority backslash", "https://api.github.com\\repos/owner/repo"],
+    ["scheme backslash", "https:\\api.github.com/repos/owner/repo"],
+    ["single-slash scheme delimiter", "https:/api.github.com/repos/owner/repo"],
+    ["missing scheme delimiter", "https:api.github.com/repos/owner/repo"],
     ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
     ["invalid authority percent escape", "https://api%zz.github.com/repos"],
     ["percent-encoded authority dot", "https://api%2egithub.com/repos"],
+    [
+      "percent-encoded authority dot after scheme backslash",
+      "https:\\api%2egithub.com/repos",
+    ],
     ["malformed IPv6 authority", "https://[::1/repos"],
     ["non-default port", "https://api.github.com:8443/repos"],
   ])("rejects runtime URLs with %s", (_label, url) => {
