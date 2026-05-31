@@ -1514,7 +1514,7 @@ class TestCompiledFirewallMatching:
                 "name": "broad",
                 "apis": [
                     {
-                        "base": "https://{workspace}.example.com",
+                        "base": "https://api.example.com",
                         "auth": {"headers": {"Authorization": "Bearer broad"}},
                         "permissions": [
                             {"name": "broad", "rules": ["ANY /{path+}"]},
@@ -1566,7 +1566,7 @@ class TestCompiledFirewallMatching:
                 "name": "broad",
                 "apis": [
                     {
-                        "base": "https://api.example.com",
+                        "base": "https://{workspace}.example.com",
                         "auth": {"headers": {"Authorization": "Bearer broad"}},
                         "permissions": [
                             {"name": "broad", "rules": ["ANY /{path+}"]},
