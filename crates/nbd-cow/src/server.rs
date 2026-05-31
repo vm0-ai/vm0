@@ -106,12 +106,22 @@ async fn handle_read(
     }
     let len = request.length as usize;
     if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
-        payload_buf.resize(len, 0);
+        resize_reusable_payload(payload_buf, len);
         read_and_reply(request, cow, writer, payload_buf.as_mut_slice()).await
     } else {
         let mut data = vec![0u8; len];
         read_and_reply(request, cow, writer, data.as_mut_slice()).await
     }
+}
+
+fn resize_reusable_payload(payload_buf: &mut Vec<u8>, len: usize) {
+    debug_assert!(len <= MAX_REUSABLE_PAYLOAD_LENGTH);
+    if payload_buf.capacity() < len {
+        *payload_buf = vec![0u8; len];
+    } else {
+        payload_buf.resize(len, 0);
+    }
+    debug_assert!(payload_buf.capacity() <= MAX_REUSABLE_PAYLOAD_LENGTH);
 }
 
 async fn read_and_reply(
@@ -156,7 +166,7 @@ async fn handle_write(
     }
     let len = request.length as usize;
     if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
-        payload_buf.resize(len, 0);
+        resize_reusable_payload(payload_buf, len);
         read_and_apply_write(request, reader, cow, writer, payload_buf.as_mut_slice()).await
     } else {
         let mut data = vec![0u8; len];
