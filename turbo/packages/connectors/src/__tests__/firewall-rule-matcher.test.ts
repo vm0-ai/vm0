@@ -396,6 +396,30 @@ describe("matchFirewallBaseUrl", () => {
       relativePath: "/v1/users",
       score: "https://api.example.com:443".length,
     });
+
+    expect(
+      matchFirewallBaseUrl(
+        "http://api.example.com/v1/users",
+        "http://api.example.com:80",
+      ),
+    ).toEqual({
+      displayBase: "http://api.example.com:80",
+      relativePath: "/v1/users",
+      score: "http://api.example.com:80".length,
+    });
+  });
+
+  it("matches IPv6 base URLs with normalized default ports", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://[2001:db8::1]/v1/users",
+        "https://[2001:db8::1]:443",
+      ),
+    ).toEqual({
+      displayBase: "https://[2001:db8::1]:443",
+      relativePath: "/v1/users",
+      score: "https://[2001:db8::1]:443".length,
+    });
   });
 
   it("matches explicit non-default base ports only on the same port", () => {
@@ -427,6 +451,26 @@ describe("matchFirewallBaseUrl", () => {
     ).toBeNull();
   });
 
+  it("does not collapse repeated trailing base slashes", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/api/users",
+        "https://api.example.com/api//",
+      ),
+    ).toBeNull();
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/api//users",
+        "https://api.example.com/api//",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com/api/",
+      relativePath: "/users",
+      score: "https://api.example.com/api/".length,
+    });
+  });
+
   it.each([
     ["raw whitespace", "https://api.github.com/foo bar"],
     ["authority backslash", "https://api.github.com\\repos/owner/repo"],
@@ -450,6 +494,10 @@ describe("matchFirewallBaseUrl", () => {
     ["fragment", "https://api.github.com#fragment"],
     ["backslash", "https://api.github.com\\repos"],
     ["userinfo", "https://user:pass@api.github.com"],
+    ["invalid percent escape", "https://api%zz.github.com"],
+    ["percent-encoded braces", "https://%7Benv%7D.github.com"],
+    ["percent-encoded dot", "https://api%2egithub.com"],
+    ["percent-encoded comma", "https://api%2Cgithub.com"],
   ])("rejects base URLs with %s", (_label, base) => {
     expect(
       matchFirewallBaseUrl("https://api.github.com/repos", base),
