@@ -1014,6 +1014,14 @@ describe("zero doctor check-connector command", () => {
       ["raw host braces", "https://{eth}.g.alchemy.com/v2/demo"],
       ["raw host comma", "https://eth,mainnet.g.alchemy.com/v2/demo"],
       [
+        "non-default port without a matching connector base",
+        "https://api.github.com:8443/repos/owner/repo",
+      ],
+      [
+        "invalid authority percent escape",
+        "https://api%zz.github.com/repos/owner/repo",
+      ],
+      [
         "percent-encoded host comma",
         "https://eth%2Cmainnet.g.alchemy.com/v2/demo",
       ],
