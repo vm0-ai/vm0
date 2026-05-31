@@ -1,7 +1,6 @@
 """Tests for model-provider streaming usage reporting paths."""
 
 import json
-import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -146,7 +145,6 @@ class TestModelProviderStreamUsage:
             b'"usage":{"input_tokens":50,"output_tokens":20,'
             b'"input_tokens_details":{"cached_tokens":10}}}}'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -175,7 +173,6 @@ class TestModelProviderStreamUsage:
             b'"usage":{"input_tokens":8000,"output_tokens":1024,'
             b'"input_tokens_details":{"cached_tokens":2000}}}}\n\n'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -208,7 +205,6 @@ class TestModelProviderStreamUsage:
         response_stream(flow)(
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -240,7 +236,6 @@ class TestModelProviderStreamUsage:
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
         flow.error = Error("connection reset by peer")
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -269,7 +264,6 @@ class TestModelProviderStreamUsage:
             firewall_name="model-provider:anthropic-api-key",
         )
         response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -304,7 +298,6 @@ class TestModelProviderStreamUsage:
             b"event: message_delta\n"
             b'data: {"type":"message_delta","usage":{"output_tokens":'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -333,7 +326,6 @@ class TestModelProviderStreamUsage:
             b"event: response.completed\n"
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -359,7 +351,6 @@ class TestModelProviderStreamUsage:
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt\n'
             b"event: response.completed\n\n"
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -390,7 +381,6 @@ class TestModelProviderStreamUsage:
         response_stream(flow)(
             b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -422,7 +412,6 @@ class TestModelProviderStreamUsage:
             b"event: content_block_delta\n"
             b'data: {"type":"content_block_delta","delta":{"text":"hello'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -443,7 +432,6 @@ class TestModelProviderStreamUsage:
         response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -465,7 +453,6 @@ class TestModelProviderStreamUsage:
             b"event: response.in_progress\n"
             b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -491,7 +478,6 @@ class TestModelProviderStreamUsage:
             b'data: {"response":{"id":"resp_sse_empty","model":"gpt-5.4",'
             b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map
@@ -42,7 +43,7 @@ class TestUsageReportingIdempotency:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
         with (
             mitm_ctx(),
@@ -50,6 +51,7 @@ class TestUsageReportingIdempotency:
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon.response(flow)
+            assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
             flow.error = Error("connection reset after response")
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
@@ -84,7 +86,6 @@ class TestUsageReportingIdempotency:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -130,7 +131,6 @@ class TestUsageReportingIdempotency:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://api.vm0.ai"),
@@ -170,7 +170,6 @@ class TestUsageReportingIdempotency:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://api.vm0.ai"),

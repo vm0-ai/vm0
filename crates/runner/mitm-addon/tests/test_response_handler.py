@@ -52,13 +52,13 @@ class TestResponseHandler:
         )
 
         # Simulate tracked start time
-        mitm_addon._request_start_times[flow.id] = time.time() - 0.1
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic() - 0.1
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
         # Start time should be cleaned up
-        assert flow.id not in mitm_addon._request_start_times
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
         # Network log should be written
         lines = Path(log_path).read_text().splitlines()
@@ -171,7 +171,6 @@ class TestResponseHandler:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b"x" * 40)
         response_stream(flow)(b"y" * 60)
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -203,7 +202,6 @@ class TestResponseHandler:
         response_stream(flow)(body[123:])
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -228,8 +226,6 @@ class TestResponseHandler:
             status_code=200, headers=header_map({"content-length": "50000"})
         )
 
-        mitm_addon._request_start_times[flow.id] = time.time()
-
         with mitm_ctx():
             mitm_addon.response(flow)
 
@@ -252,8 +248,6 @@ class TestResponseHandler:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
-
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -278,7 +272,6 @@ class TestResponseHandler:
         )
 
         mitm_addon.responseheaders(flow)
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -307,7 +300,6 @@ class TestResponseHandler:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(body[:123])
         response_stream(flow)(body[123:])
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -446,15 +438,14 @@ class TestResponseHandler:
     def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
         # If the request handler tracked this flow's start time but the
         # metadata ended up without vm_run_id (registry missing runId),
-        # response() must still pop the entry to avoid leaking into
-        # ``_request_start_times``.
+        # response() must still pop the timing state.
         flow = real_flow(with_response=False)
-        mitm_addon._request_start_times[flow.id] = 12345.0
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
-        assert flow.id not in mitm_addon._request_start_times
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
     def test_response_releases_streaming_state(self, tmp_path, real_flow, mitm_ctx):
         """The completed response hook must not retain parser/buffer closures."""
@@ -473,7 +464,6 @@ class TestResponseHandler:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"model":"claude-sonnet-4-6"}')
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -573,7 +563,6 @@ class TestResponseHandler:
         vm0_stream = response_stream(flow)
         vm0_stream(b'{"model":"claude-sonnet-4-6"}')
         flow.response.stream = external_stream
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)

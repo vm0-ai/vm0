@@ -167,8 +167,10 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-# Track request start times for latency calculation
-_request_start_times: dict = {}
+def _elapsed_ms(start_time: float | None) -> int:
+    if start_time is None:
+        return 0
+    return max(0, int((time.monotonic() - start_time) * 1000))
 
 
 def _set_network_log_target(flow: http.HTTPFlow, *, url: str, host: str, port: int) -> None:
@@ -337,8 +339,8 @@ async def request(flow: http.HTTPFlow) -> None:
 
     run_id = vm_info.get("runId", "")
 
-    # Track request start time (after early returns to avoid leaking entries)
-    _request_start_times[flow.id] = time.time()
+    # Track request start time after early returns so unregistered flows do not carry it.
+    flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
     try:
         # Store info for response handler
@@ -456,7 +458,7 @@ async def request(flow: http.HTTPFlow) -> None:
         # No firewall match — pass through directly
         flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
     except Exception:
-        _request_start_times.pop(flow.id, None)
+        flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         _release_tracked_usage_flow(flow)
         raise
 
@@ -555,11 +557,8 @@ def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
     """
-    # Pop the start-time tracking entry before any early return so that
-    # flows the request handler tracked (line 181) but whose metadata
-    # indicates we should skip (e.g. registry entry without a runId) do
-    # not leak into ``_request_start_times``. Mirrors ``error()``.
-    start_time = _request_start_times.pop(flow.id, None)
+    # Pop before any early return so tracked flows consume timing exactly once.
+    start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
 
     run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
     if not run_id:
@@ -567,7 +566,7 @@ def response(flow: http.HTTPFlow) -> None:
         # metadata, so none of this handler's work applies.
         return
 
-    latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
+    latency_ms = _elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
@@ -682,7 +681,7 @@ def error(flow: http.HTTPFlow) -> None:
     Log connection-level errors (timeout, RST, TLS failure) to the
     per-run JSONL network log and clean up request tracking state.
     """
-    start_time = _request_start_times.pop(flow.id, None)
+    start_time = flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
 
     run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
     network_log_path = flow.metadata.get(metadata_keys.VM_NETWORK_LOG_PATH, "")
@@ -691,7 +690,7 @@ def error(flow: http.HTTPFlow) -> None:
     if not run_id or not network_log_path:
         return
 
-    latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
+    latency_ms = _elapsed_ms(start_time)
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
     firewall_action = flow.metadata.get(metadata_keys.FIREWALL_ACTION, "ALLOW")
 
@@ -780,7 +779,7 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     flow.metadata[metadata_keys.VM_RUN_ID] = vm_info.get("runId", "")
     flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
     flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
-    flow.metadata["tcp_start_time"] = time.time()
+    flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
 
 
 def tcp_end(flow: tcp.TCPFlow) -> None:
@@ -799,8 +798,8 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
     if not run_id or not network_log_path:
         return
 
-    start_time = flow.metadata.get("tcp_start_time")
-    latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
+    start_time = flow.metadata.get(metadata_keys.TCP_START_MONOTONIC)
+    latency_ms = _elapsed_ms(start_time)
 
     request_size = sum(len(m.content) for m in flow.messages if m.from_client)
     response_size = sum(len(m.content) for m in flow.messages if not m.from_client)

@@ -38,13 +38,11 @@ def _reset_module_state() -> Iterator[None]:
 
     ``registry`` and ``auth`` cache registry data and firewall header
     lookups in module-level dicts.  Without a reset, earlier tests leak
-    entries that change later tests' behaviour (e.g. a request from IP X
-    in test A primes ``_request_start_times`` seen by test B).
+    entries that change later tests' behaviour.
 
     The usage buffer owns a background timer in production, so tests reset
     it before and after each case to avoid cross-test callbacks.
     """
-    mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()

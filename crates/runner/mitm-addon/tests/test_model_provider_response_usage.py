@@ -2,7 +2,6 @@
 
 import gzip
 import json
-import time
 import zlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -51,7 +50,6 @@ class TestModelProviderResponseUsage:
                 {"content-type": "application/json", "content-length": str(len(body))}
             ),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -103,7 +101,6 @@ class TestModelProviderResponseUsage:
                 {"content-type": "application/json", "content-length": str(len(body))}
             ),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -149,7 +146,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -197,7 +193,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -240,7 +235,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -361,7 +355,6 @@ class TestModelProviderResponseUsage:
                 }
             ),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -433,7 +426,6 @@ class TestModelProviderResponseUsage:
                 }
             ),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -522,7 +514,6 @@ class TestModelProviderResponseUsage:
                 }
             ),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -578,7 +569,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -615,7 +605,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -677,7 +666,6 @@ class TestModelProviderResponseUsage:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(status_code=200, headers=header_map(response_headers))
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -713,7 +701,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -781,7 +768,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -829,7 +815,6 @@ class TestModelProviderResponseUsage:
                 {"content-type": "application/json", "content-length": str(len(body))}
             ),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -878,7 +863,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -913,7 +897,6 @@ class TestModelProviderResponseUsage:
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -955,7 +938,6 @@ class TestModelProviderResponseUsage:
         callback(b'"}],"usage":{"input_tokens":50,"output_tokens":200}}')
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1019,7 +1001,6 @@ class TestModelProviderResponseUsage:
         midpoint = len(compressed) // 2
         response_stream(flow)(compressed[:midpoint])
         response_stream(flow)(compressed[midpoint:])
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1072,7 +1053,6 @@ class TestModelProviderResponseUsage:
             b'{"id":"msg_1","model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":50,"output_tokens":200}'
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1122,7 +1102,6 @@ class TestModelProviderResponseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(raw_json)
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1164,7 +1143,6 @@ class TestModelProviderResponseUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(body)
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1196,7 +1174,6 @@ class TestModelProviderResponseUsage:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1237,7 +1214,6 @@ class TestModelProviderResponseUsage:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://api.vm0.ai"),

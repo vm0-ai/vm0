@@ -110,12 +110,10 @@ The addon uses module-level caches. Reset between tests:
 
 ```python
 import pytest
-import mitm_addon
 import registry
 
 @pytest.fixture(autouse=True)
 def _reset_module_state():
-    mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
     yield
 ```
