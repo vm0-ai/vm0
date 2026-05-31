@@ -380,6 +380,27 @@ describe("findMatchingPermissions", () => {
     );
   });
 
+  it("deduplicates one permission when multiple best-specificity rules match", () => {
+    const overlapConfig: FirewallConfig = {
+      name: "overlap",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "read",
+              rules: ["GET /api/{id}", "ANY /api/{id}"],
+            },
+          ],
+        },
+      ],
+    };
+    expect(findMatchingPermissions("GET", "/api/users", overlapConfig)).toEqual(
+      ["read"],
+    );
+  });
+
   it("considers later rules in the same permission for specificity", () => {
     const overlapConfig: FirewallConfig = {
       name: "overlap",
