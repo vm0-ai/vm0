@@ -20,25 +20,25 @@ from usage.providers.connectors import x as usage_x_connector
 
 
 class TestIsStreamPath:
-    """Tests for is_stream_path predicate (issue #9534)."""
+    """Tests for _is_stream_path predicate (issue #9534)."""
 
     def test_all_five_stream_endpoints_match(self):
-        assert usage_x_connector.is_stream_path("/2/tweets/search/stream") is True
-        assert usage_x_connector.is_stream_path("/2/tweets/sample/stream") is True
-        assert usage_x_connector.is_stream_path("/2/tweets/sample10/stream") is True
-        assert usage_x_connector.is_stream_path("/2/tweets/compliance/stream") is True
-        assert usage_x_connector.is_stream_path("/2/users/compliance/stream") is True
+        assert usage_x_connector._is_stream_path("/2/tweets/search/stream") is True
+        assert usage_x_connector._is_stream_path("/2/tweets/sample/stream") is True
+        assert usage_x_connector._is_stream_path("/2/tweets/sample10/stream") is True
+        assert usage_x_connector._is_stream_path("/2/tweets/compliance/stream") is True
+        assert usage_x_connector._is_stream_path("/2/users/compliance/stream") is True
 
     def test_stream_rules_is_not_stream(self):
         # Rules management is a regular JSON request/response endpoint.
-        assert usage_x_connector.is_stream_path("/2/tweets/search/stream/rules") is False
+        assert usage_x_connector._is_stream_path("/2/tweets/search/stream/rules") is False
 
     def test_non_stream_paths_do_not_match(self):
-        assert usage_x_connector.is_stream_path("/2/tweets/search/recent") is False
-        assert usage_x_connector.is_stream_path("/2/users/by") is False
-        assert usage_x_connector.is_stream_path("/2/tweets/1") is False
-        assert usage_x_connector.is_stream_path("") is False
-        assert usage_x_connector.is_stream_path("/") is False
+        assert usage_x_connector._is_stream_path("/2/tweets/search/recent") is False
+        assert usage_x_connector._is_stream_path("/2/users/by") is False
+        assert usage_x_connector._is_stream_path("/2/tweets/1") is False
+        assert usage_x_connector._is_stream_path("") is False
+        assert usage_x_connector._is_stream_path("/") is False
 
 
 class TestReportConnectorUsage:

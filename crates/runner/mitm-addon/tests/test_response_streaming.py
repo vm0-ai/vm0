@@ -12,10 +12,10 @@ from usage.providers.connectors import x as usage_x_connector
 
 
 class TestNdjsonExtractor:
-    """Tests for create_ndjson_extractor incremental parser (issue #9534)."""
+    """Tests for _create_ndjson_extractor incremental parser (issue #9534)."""
 
     def test_single_line(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         assert state["data_count"] == 1
         assert state["includes"] == {"users": 1}
@@ -23,7 +23,7 @@ class TestNdjsonExtractor:
         assert state["lines_failed"] == 0
 
     def test_multiple_lines_aggregate_counts(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         parse(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"},{"id":"u3"}]}}\n')
         assert state["data_count"] == 2
@@ -31,7 +31,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_chunked_line_split_mid_json(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":{"id":"1"},"include')
         parse(b's":{"users":[{"id":"u1"}]}}\n')
         assert state["data_count"] == 1
@@ -39,7 +39,7 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 1
 
     def test_keep_alive_blank_lines(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b"\n\n")
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"\n")
@@ -48,13 +48,13 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
 
     def test_crlf_line_endings(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\r\n{"data":{"id":"2"}}\r\n')
         assert state["data_count"] == 2
         assert state["lines_parsed"] == 2
 
     def test_malformed_line_increments_failures(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"not json at all\n")
         parse(b'{"data":{"id":"2"}}\n')
@@ -63,7 +63,7 @@ class TestNdjsonExtractor:
         assert state["lines_failed"] == 1
 
     def test_invalid_utf8_line_increments_failures_and_continues(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'\x80{"data":{"id":"bad"}}\n{"data":{"id":"after"}}\n')
 
         assert state["data_count"] == 1
@@ -72,22 +72,22 @@ class TestNdjsonExtractor:
 
     def test_truncated_trailing_line_not_counted(self):
         """Connection drops mid-line — partial trailing line stays in buf, not counted."""
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')  # no trailing \n
         assert state["data_count"] == 1
         assert state["lines_parsed"] == 1
 
     def test_empty_chunks_safe(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b"")
         parse(b'{"data":{"id":"1"}}\n')
         parse(b"")
         assert state["data_count"] == 1
 
     def test_oversized_line_dropped(self):
-        """Line > MAX_NDJSON_LINE_BYTES is dropped; subsequent lines parse normally."""
-        parse, state = usage_x_connector.create_ndjson_extractor()
-        big = b"x" * (usage_x_connector.MAX_NDJSON_LINE_BYTES + 1024)
+        """Line > _MAX_NDJSON_LINE_BYTES is dropped; subsequent lines parse normally."""
+        parse, state = usage_x_connector._create_ndjson_extractor()
+        big = b"x" * (usage_x_connector._MAX_NDJSON_LINE_BYTES + 1024)
         parse(big)
         parse(b"\n")
         parse(b'{"data":{"id":"after"}}\n')
@@ -97,8 +97,8 @@ class TestNdjsonExtractor:
 
     def test_oversized_line_discards_until_newline(self):
         """A valid-looking tail of an overlong line must not be counted as its own row."""
-        parse, state = usage_x_connector.create_ndjson_extractor()
-        big = b"x" * (usage_x_connector.MAX_NDJSON_LINE_BYTES + 1024)
+        parse, state = usage_x_connector._create_ndjson_extractor()
+        big = b"x" * (usage_x_connector._MAX_NDJSON_LINE_BYTES + 1024)
         parse(big)
         parse(b'{"data":{"id":"tail"}}\n')
         parse(b'{"data":{"id":"next"}}\n')
@@ -109,8 +109,8 @@ class TestNdjsonExtractor:
 
     def test_oversized_line_with_newline_continues_in_same_chunk(self):
         """Dropping an overlong row should not discard valid later rows in the same chunk."""
-        parse, state = usage_x_connector.create_ndjson_extractor()
-        big = b"x" * (usage_x_connector.MAX_NDJSON_LINE_BYTES + 1024)
+        parse, state = usage_x_connector._create_ndjson_extractor()
+        big = b"x" * (usage_x_connector._MAX_NDJSON_LINE_BYTES + 1024)
         parse(big + b'\n{"data":{"id":"after"}}\n')
 
         assert state["data_count"] == 1
@@ -118,7 +118,7 @@ class TestNdjsonExtractor:
         assert state["lines_failed"] == 1
 
     def test_includes_multiple_keys(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(
             b'{"data":{"id":"1"},"includes":'
             b'{"users":[{"id":"u1"}],'
@@ -129,13 +129,13 @@ class TestNdjsonExtractor:
 
     def test_data_array_not_counted(self):
         """Line where top-level ``data`` is an array (not a dict) contributes 0 to data_count."""
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'{"data":[1,2,3]}\n')
         assert state["data_count"] == 0
         assert state["lines_parsed"] == 1
 
     def test_non_dict_top_level_skipped(self):
-        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse, state = usage_x_connector._create_ndjson_extractor()
         parse(b'"some string"\n')
         parse(b"42\n")
         parse(b'{"data":{"id":"1"}}\n')

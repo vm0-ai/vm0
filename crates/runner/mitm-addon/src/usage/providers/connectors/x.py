@@ -52,7 +52,7 @@ _STREAM_ENDPOINTS = frozenset(
 )
 
 
-def is_stream_path(path: str) -> bool:
+def _is_stream_path(path: str) -> bool:
     """Return True when *path* is one of the X v2 NDJSON streaming endpoints.
 
     Exact match only — ``/2/tweets/search/stream/rules`` (rules management)
@@ -66,7 +66,7 @@ def is_stream_path(path: str) -> bool:
 # ``matching_rules`` with full expansion) should never approach this size;
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
-MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
+_MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
@@ -120,10 +120,10 @@ def _parse_x_json_response_fields_from_body(body: bytes) -> dict | None:
     return _parse_x_json_response_fields(extracted)
 
 
-class NdjsonState(TypedDict):
+class _NdjsonState(TypedDict):
     """Accumulated parser state for an X NDJSON stream.
 
-    Populated by :func:`create_ndjson_extractor`'s ``parse_chunk`` and
+    Populated by :func:`_create_ndjson_extractor`'s ``parse_chunk`` and
     read by :func:`_parse_response_metadata` when emitting the billing
     log entry.
     """
@@ -138,7 +138,7 @@ class NdjsonState(TypedDict):
     """Lines that failed JSON decoding or exceeded the single-line safety cap."""
 
 
-def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
+def _create_ndjson_extractor() -> tuple[Callable[[bytes], None], _NdjsonState]:
     """Create an incremental NDJSON parser for X v2 streaming responses.
 
     X v2 streaming endpoints deliver one JSON object per line separated by
@@ -162,12 +162,12 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
 
     The parser keeps a ``line_buf`` holding the in-flight partial line
     across chunk boundaries.  If a single line ever exceeds
-    :data:`MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
+    :data:`_MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
     terminating newline (malformed / hostile upstream).  A truncated
     trailing line at connection close (no final ``\\n``) stays in the buffer
     uncounted — worst-case under-count is 1.
     """
-    state: NdjsonState = {
+    state: _NdjsonState = {
         "data_count": 0,
         "includes": {},
         "lines_parsed": 0,
@@ -195,7 +195,7 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
                 start = newline + 1
                 continue
 
-            if len(line_buf) + fragment_len > MAX_NDJSON_LINE_BYTES:
+            if len(line_buf) + fragment_len > _MAX_NDJSON_LINE_BYTES:
                 line_buf[:] = b""
                 state["lines_failed"] += 1
                 if newline == -1:
@@ -235,7 +235,7 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
     return parse_chunk, state
 
 
-class XJsonResponseExtractor:
+class _XJsonResponseExtractor:
     """Incrementally extract billing metadata from non-streaming X JSON."""
 
     def __init__(self) -> None:
@@ -257,10 +257,6 @@ class XJsonResponseExtractor:
         return result, None
 
 
-def create_json_response_extractor() -> XJsonResponseExtractor:
-    return XJsonResponseExtractor()
-
-
 def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
     """Create the X response-body parser needed for this flow, if any."""
     if not flow.response:
@@ -274,8 +270,8 @@ def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | Non
         # firewall flow, ``request()`` has already populated ``original_url``
         # before ``responseheaders`` fires.
         stream_path = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, "")).path
-        if is_stream_path(stream_path):
-            parser_fn, ndjson_state = create_ndjson_extractor()
+        if _is_stream_path(stream_path):
+            parser_fn, ndjson_state = _create_ndjson_extractor()
             # Deliberately NOT "model_provider_usage" — that key routes through
             # report_model_provider_usage and triggers the model-provider webhook.
             # x_ndjson_state is only consumed by report_connector_usage.
@@ -285,7 +281,7 @@ def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | Non
     if not (_HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN):
         return None
 
-    extractor = create_json_response_extractor()
+    extractor = _XJsonResponseExtractor()
 
     def finish_json_state() -> None:
         state, error = extractor.finish()
@@ -336,7 +332,7 @@ def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
         "request_ids_count": ids_count,
         "has_expansions": "expansions" in qs,
         "max_results": max_results,
-        "is_stream": is_stream_path(parsed.path),
+        "is_stream": _is_stream_path(parsed.path),
     }
 
 
