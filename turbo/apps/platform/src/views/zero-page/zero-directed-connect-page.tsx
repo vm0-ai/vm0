@@ -62,19 +62,24 @@ type ManualGrantMethod = {
   readonly grant: ConnectorManualGrantConfig;
 };
 
-function getManualGrantMethod(
+function getOnlyManualGrantMethod(
   connectorType: ConnectorType,
   authMethods: readonly ConnectorAuthMethodId[],
 ): ManualGrantMethod | null {
+  let manualGrantMethod: ManualGrantMethod | null = null;
   for (const authMethod of authMethods) {
     const method = getConnectorAuthMethod(connectorType, authMethod);
     switch (method?.grant.kind) {
       case "manual": {
-        return {
+        if (manualGrantMethod) {
+          return null;
+        }
+        manualGrantMethod = {
           authMethod,
           method,
           grant: method.grant,
         };
+        continue;
       }
       case "auth-code":
       case "device-auth":
@@ -84,7 +89,7 @@ function getManualGrantMethod(
       }
     }
   }
-  return null;
+  return manualGrantMethod;
 }
 
 function hasProviderDrivenConnectMethod(
@@ -134,7 +139,7 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const manualGrantMethod = getManualGrantMethod(
+  const manualGrantMethod = getOnlyManualGrantMethod(
     params.connectorType,
     params.authMethods,
   );
@@ -471,7 +476,10 @@ function DirectedConnectCard() {
   const isConnected =
     justConnected.has(connectorType) || (item?.connected ?? false);
   const authMethods = item?.availableAuthMethods ?? [];
-  const manualGrantMethod = getManualGrantMethod(connectorType, authMethods);
+  const manualGrantMethod = getOnlyManualGrantMethod(
+    connectorType,
+    authMethods,
+  );
   const canConnect = authMethods.length > 0;
 
   const runPostConnectActions = async () => {

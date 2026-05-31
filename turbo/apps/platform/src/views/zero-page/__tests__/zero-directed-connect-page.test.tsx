@@ -19,6 +19,8 @@ import {
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -369,6 +371,47 @@ describe("directed connect page", () => {
     });
   });
 
+  it("opens the method picker when a directed connector has multiple manual grants", async () => {
+    const authMethods: Partial<
+      Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
+    > = CONNECTOR_TYPES.axiom.authMethods;
+    const apiTokenMethod = authMethods["api-token"];
+    if (!apiTokenMethod) {
+      throw new Error("axiom connector must have an api-token auth method");
+    }
+    const originalApiMethod = authMethods.api;
+    authMethods.api = {
+      ...apiTokenMethod,
+      label: "Secondary API Token",
+    };
+
+    try {
+      detachedSetupPage({
+        context,
+        path: "/connectors/axiom/connect",
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Zero needs Axiom to proceed"),
+        ).toBeInTheDocument();
+      });
+
+      click(screen.getByText("Connect"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Secondary API Token")).toBeInTheDocument();
+        expect(screen.getAllByText("Save")).toHaveLength(2);
+      });
+    } finally {
+      if (originalApiMethod) {
+        authMethods.api = originalApiMethod;
+      } else {
+        delete authMethods.api;
+      }
+    }
+  });
+
   it("keeps directed manual grant save disabled for whitespace-only required values", async () => {
     const user = userEvent.setup();
     let requestCalled = false;
@@ -495,6 +538,33 @@ describe("directed connect page", () => {
         "https://oauth.test/gmail/authorize",
       );
     });
+  });
+
+  it("opens the method picker when a connector has auth-code and manual grants", async () => {
+    const openSpy = vi.spyOn(window, "open");
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/stripe/connect",
+      featureSwitches: { [FeatureSwitchKey.StripeConnector]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Stripe to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Connect"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Stripe" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("OAuth (Recommended)")).toBeInTheDocument();
+      expect(screen.getAllByText("API Key").length).toBeGreaterThan(0);
+    });
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   it("opens device auth dialog before provider verification for device-auth OAuth connectors", async () => {

@@ -124,10 +124,11 @@ export function getConnectorConnectLaunchMode({
   readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
   readonly preferModalForGoogleOAuth?: boolean;
 }): ConnectorConnectLaunchMode {
-  const authCodeAuthMethods = availableAuthMethods.filter((authMethod) => {
-    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
-  });
-  if (authCodeAuthMethods.length !== 1) {
+  const [authMethod] = availableAuthMethods;
+  if (availableAuthMethods.length !== 1 || !authMethod) {
+    return "modal";
+  }
+  if (getConnectorAuthMethod(type, authMethod)?.grant.kind !== "auth-code") {
     return "modal";
   }
   if (preferModalForGoogleOAuth && isGoogleOAuthConnector(type)) {
@@ -161,17 +162,11 @@ export function getOnlyAvailableAuthCodeAuthMethod(
   type: ConnectorType,
   availableAuthMethods: readonly ConnectorAuthMethodId[],
 ): ConnectorAuthMethodId | null {
-  const authCodeAuthMethods = availableAuthMethods.filter((authMethod) => {
-    return (
-      getAvailableAuthCodeAuthMethod(type, availableAuthMethods, authMethod) !==
-      null
-    );
-  });
-  const [authMethod] = authCodeAuthMethods;
-  if (authCodeAuthMethods.length === 1 && authMethod) {
-    return authMethod;
+  const [authMethod] = availableAuthMethods;
+  if (availableAuthMethods.length !== 1 || !authMethod) {
+    return null;
   }
-  return null;
+  return getAvailableAuthCodeAuthMethod(type, availableAuthMethods, authMethod);
 }
 
 function buildConnectorTypeStatus(params: {
