@@ -82,6 +82,10 @@ type ConnectorAuthorizeRoute = AppRoute & {
 
 const connectorSessionIdSchema = z.uuid();
 
+type ResolvedAuthCodeStartMethod =
+  | ReturnType<typeof resolveConnectorAuthCodeStartType>
+  | ReturnType<typeof resolveConnectorAuthCodeStartMethod>;
+
 const connectorReadAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
@@ -248,8 +252,18 @@ function resolveAvailableAuthCodeStartMethod(
     ) => boolean;
   },
 ) {
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-    const resolved = resolveConnectorAuthCodeStartMethod(type, authMethod);
+  const authCodeStartType = resolveConnectorAuthCodeStartType(type);
+  if (!authCodeStartType.ok) {
+    return authCodeStartType;
+  }
+
+  for (const authMethod of getConfiguredConnectorAuthMethods(
+    authCodeStartType.type,
+  )) {
+    const resolved = resolveConnectorAuthCodeStartMethod(
+      authCodeStartType.type,
+      authMethod,
+    );
     if (
       resolved.ok &&
       availability.isAuthMethodAvailable(resolved.type, resolved.authMethod)
@@ -258,7 +272,21 @@ function resolveAvailableAuthCodeStartMethod(
     }
   }
 
-  return resolveConnectorAuthCodeStartType(type);
+  return authCodeStartType;
+}
+
+function resolveRequestedAuthCodeStartMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ResolvedAuthCodeStartMethod {
+  const authCodeStartType = resolveConnectorAuthCodeStartType(type);
+  if (!authCodeStartType.ok) {
+    return authCodeStartType;
+  }
+  return resolveConnectorAuthCodeStartMethod(
+    authCodeStartType.type,
+    authMethod,
+  );
 }
 
 async function resolveSessionAuthCodeStartMethod(args: {
@@ -267,7 +295,7 @@ async function resolveSessionAuthCodeStartMethod(args: {
   readonly type: ConnectorType;
   readonly userId: string;
 }): Promise<
-  | ReturnType<typeof resolveConnectorAuthCodeStartMethod>
+  | ResolvedAuthCodeStartMethod
   | { readonly ok: false; readonly reason: "invalid_session" }
 > {
   const [session] = await args.writeDb
@@ -299,7 +327,7 @@ async function resolveSessionAuthCodeStartMethod(args: {
     return { ok: false, reason: "missing_auth_method" };
   }
 
-  return resolveConnectorAuthCodeStartMethod(args.type, authMethodResult.data);
+  return resolveRequestedAuthCodeStartMethod(args.type, authMethodResult.data);
 }
 
 function internalServerError(message: string) {
@@ -602,7 +630,7 @@ const startConnectorOauthInner$ = command(
     const auth = get(authContext$);
     const type = params.type;
 
-    const authCodeStartType = resolveConnectorAuthCodeStartMethod(
+    const authCodeStartType = resolveRequestedAuthCodeStartMethod(
       type,
       bodyResult.data.authMethod,
     );
@@ -697,7 +725,7 @@ const createConnectorSessionInner$ = command(
       return bodyResult.response;
     }
 
-    const authCodeStartType = resolveConnectorAuthCodeStartMethod(
+    const authCodeStartType = resolveRequestedAuthCodeStartMethod(
       params.type,
       bodyResult.data.authMethod,
     );

@@ -49,10 +49,7 @@ type ResolveConnectorAuthCodeStartMethodResult =
     }
   | {
       readonly ok: false;
-      readonly reason:
-        | "missing_auth_code_grant"
-        | "missing_auth_method"
-        | "wrong_grant_kind";
+      readonly reason: "missing_auth_method" | "wrong_grant_kind";
     };
 
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
@@ -73,13 +70,9 @@ export function resolveConnectorAuthCodeStartType(
 }
 
 export function resolveConnectorAuthCodeStartMethod(
-  type: ConnectorType,
+  type: AuthCodeGrantConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ResolveConnectorAuthCodeStartMethodResult {
-  if (!hasConnectorAuthCodeGrant(type)) {
-    return { ok: false, reason: "missing_auth_code_grant" };
-  }
-
   const method = getConnectorAuthMethod(type, authMethod);
   if (!method) {
     return { ok: false, reason: "missing_auth_method" };
