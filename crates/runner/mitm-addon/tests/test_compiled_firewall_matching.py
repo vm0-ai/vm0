@@ -1331,6 +1331,88 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ("items-read",)
         assert result.reason == "permission_denied"
 
+    def test_more_specific_base_deny_blocks_earlier_broad_allow(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer broad"}},
+                    "permissions": [
+                        {"name": "broad", "rules": ["ANY /{path+}"]},
+                    ],
+                },
+                {
+                    "base": "https://api.example.com/admin",
+                    "auth": {"headers": {"Authorization": "Bearer admin"}},
+                    "permissions": [
+                        {"name": "admin", "rules": ["GET /delete"]},
+                    ],
+                },
+            ],
+            name="example",
+        )
+        policies = {
+            "example": {
+                "allow": ["broad"],
+                "deny": ["admin"],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com/admin"
+        assert result.path == "/delete"
+        assert result.permissions == ("admin",)
+        assert result.reason == "permission_denied"
+
+    def test_same_base_specific_deny_blocks_earlier_broad_allow(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer broad"}},
+                    "permissions": [
+                        {"name": "broad", "rules": ["ANY /{path+}"]},
+                    ],
+                },
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer admin"}},
+                    "permissions": [
+                        {"name": "admin", "rules": ["GET /admin/delete"]},
+                    ],
+                },
+            ],
+            name="example",
+        )
+        policies = {
+            "example": {
+                "allow": ["broad"],
+                "deny": ["admin"],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com"
+        assert result.path == "/admin/delete"
+        assert result.permissions == ("admin",)
+        assert result.reason == "permission_denied"
+
     def test_later_malformed_policy_wins_after_earlier_unknown_allow(self):
         fws = [
             {
