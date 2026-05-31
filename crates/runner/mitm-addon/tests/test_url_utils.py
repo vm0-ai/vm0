@@ -111,6 +111,7 @@ class TestBuildRewriteUrl:
             ("https://[::1/hook", "Invalid IPv6 URL"),
             ("https://example%2ecom/hook", "unsafe percent encoding"),
             ("https://example%2ccom/hook", "unsafe percent encoding"),
+            ("https://example%3a443.com/hook", "invalid host"),
             ("https://%7bparam%7d.example/hook", "unsafe percent encoding"),
             ("https://example%zz.com/hook", "invalid percent encoding"),
         ],
