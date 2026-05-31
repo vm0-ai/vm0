@@ -53,6 +53,15 @@ function stripTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
+function isInvalidGreedyParam(
+  patternIndex: number,
+  lastPatternIndex: number,
+  prefix: string,
+  suffix: string,
+): boolean {
+  return patternIndex !== lastPatternIndex || prefix !== "" || suffix !== "";
+}
+
 function pathSpecificity(pattern: string): PathSpecificity | null {
   let literalSegments = 0;
   let mixedParamSegments = 0;
@@ -165,6 +174,7 @@ export function matchFirewallHost(
 
   const params: Record<string, string> = {};
   let hi = 0;
+  const lastPatternIndex = patternSegs.length - 1;
 
   for (
     let patternIndex = 0;
@@ -187,13 +197,15 @@ export function matchFirewallHost(
 
     const { name, prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (patternIndex !== patternSegs.length - 1) return null;
+      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
+        return null;
       if (hi >= hostSegsOrig.length) return null;
       params[name] = hostSegsOrig.slice(hi).reverse().join(".");
       return params;
     }
     if (greedy === "*") {
-      if (patternIndex !== patternSegs.length - 1) return null;
+      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
+        return null;
       params[name] = hostSegsOrig.slice(hi).reverse().join(".");
       return params;
     }
@@ -229,6 +241,7 @@ export function matchFirewallPathPrefix(
   const patternSegs = splitPathSegments(pattern);
 
   let pi = 0;
+  const lastPatternIndex = patternSegs.length - 1;
   for (
     let patternIndex = 0;
     patternIndex < patternSegs.length;
@@ -245,14 +258,16 @@ export function matchFirewallPathPrefix(
 
     const { prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
-      if (patternIndex !== patternSegs.length - 1) return null;
+      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
+        return null;
       if (pi >= pathSegs.length || !hasNonEmptySegment(pathSegs, pi)) {
         return null;
       }
       return "/";
     }
     if (greedy === "*") {
-      if (patternIndex !== patternSegs.length - 1) return null;
+      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
+        return null;
       return "/";
     }
     if (pi >= pathSegs.length) return null;
@@ -294,8 +309,14 @@ export function matchFirewallPath(
 
   const params: Record<string, string> = {};
   let pi = 0;
+  const lastPatternIndex = patternSegs.length - 1;
 
-  for (const seg of patternSegs) {
+  for (
+    let patternIndex = 0;
+    patternIndex < patternSegs.length;
+    patternIndex++
+  ) {
+    const seg = patternSegs[patternIndex]!;
     const parsed = parseSegment(seg);
     // Invalid patterns are rejected by validateRule at ingest time, so
     // kind "error" should never appear here on validated inputs.
@@ -307,6 +328,8 @@ export function matchFirewallPath(
     }
     const { name, prefix, suffix, greedy } = parsed;
     if (greedy === "+") {
+      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
+        return null;
       if (pi >= pathSegs.length || !hasNonEmptySegment(pathSegs, pi)) {
         return null;
       }
@@ -314,6 +337,8 @@ export function matchFirewallPath(
       return params;
     }
     if (greedy === "*") {
+      if (isInvalidGreedyParam(patternIndex, lastPatternIndex, prefix, suffix))
+        return null;
       params[name] = pathSegs.slice(pi).join("/");
       return params;
     }

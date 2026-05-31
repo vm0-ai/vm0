@@ -169,6 +169,15 @@ def _format_param_segment(parsed: "SegmentParam") -> str:
     return f"{parsed.prefix.lower()}{{{parsed.name}{parsed.greedy}}}{parsed.suffix.lower()}"
 
 
+def _is_invalid_greedy_param(
+    pattern_index: int,
+    last_pattern_index: int,
+    prefix: str,
+    suffix: str,
+) -> bool:
+    return pattern_index != last_pattern_index or bool(prefix) or bool(suffix)
+
+
 def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
     normalized = _normalize_host_pattern_dots(host)
     labels: list[str] = []
@@ -517,7 +526,8 @@ def match_host(host: str, pattern: str) -> dict | None:
     pattern_segs_orig = list(reversed(pattern_segs_orig))
 
     hi = 0
-    for seg_orig in pattern_segs_orig:
+    last_pattern_index = len(pattern_segs_orig) - 1
+    for pattern_index, seg_orig in enumerate(pattern_segs_orig):
         parsed = parse_segment(seg_orig)
         # Invalid patterns are rejected at config load time; a runtime
         # error here means the config is already broken, so bail.
@@ -533,12 +543,16 @@ def match_host(host: str, pattern: str) -> dict | None:
         prefix = parsed["prefix"]
         suffix = parsed["suffix"]
         if greedy == "+":
+            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
+                return None
             if hi >= len(host_segs_orig):
                 return None
             remaining = list(reversed(host_segs_orig[hi:]))
             params[name] = ".".join(remaining)
             return params
         if greedy == "*":
+            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
+                return None
             remaining = list(reversed(host_segs_orig[hi:]))
             params[name] = ".".join(remaining)
             return params
@@ -565,16 +579,17 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
     """Match pattern segments against the beginning of path segments.
 
     Unlike match_path(), does NOT require full path consumption.
-    Does NOT support greedy params (not allowed in base URL paths).
-    Mixed segments (prefix{name}suffix) are supported with non-empty
-    middle capture.
+    Terminal pure greedy params consume the remaining path so malformed
+    firewall base scopes stay conservative. Mixed segments
+    (prefix{name}suffix) are supported with non-empty middle capture.
 
     Returns (params, consumed_count) on match, None on no match.
     """
     params: dict[str, str] = {}
     pi = 0
 
-    for seg in pattern_segs:
+    last_pattern_index = len(pattern_segs) - 1
+    for pattern_index, seg in enumerate(pattern_segs):
         parsed = parse_segment(seg)
         if parsed["kind"] == "error":
             return None
@@ -583,11 +598,24 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
                 return None
             pi += 1
             continue
-        if pi >= len(path_segs):
-            return None
         name = parsed["name"]
+        greedy = parsed["greedy"]
         prefix = parsed["prefix"]
         suffix = parsed["suffix"]
+        if greedy == "+":
+            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
+                return None
+            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
+                return None
+            params[name] = "/".join(path_segs[pi:])
+            return params, len(path_segs)
+        if greedy == "*":
+            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
+                return None
+            params[name] = "/".join(path_segs[pi:])
+            return params, len(path_segs)
+        if pi >= len(path_segs):
+            return None
         runtime = path_segs[pi]
         if prefix == "" and suffix == "":
             if runtime == "":
@@ -715,7 +743,8 @@ def match_path(path: str, pattern: str) -> dict | None:
 
     # Note: greedy params ({name+}, {name*}) must be the last segment.
     # This invariant is enforced at compose time by validateRule() in firewall-expander.ts.
-    for seg in pattern_segs:
+    last_pattern_index = len(pattern_segs) - 1
+    for pattern_index, seg in enumerate(pattern_segs):
         parsed = parse_segment(seg)
         if parsed["kind"] == "error":
             return None
@@ -729,11 +758,15 @@ def match_path(path: str, pattern: str) -> dict | None:
         prefix = parsed["prefix"]
         suffix = parsed["suffix"]
         if greedy == "+":
+            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
+                return None
             if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
                 return None
             params[name] = "/".join(path_segs[pi:])
             return params
         if greedy == "*":
+            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
+                return None
             params[name] = "/".join(path_segs[pi:])
             return params
         if pi >= len(path_segs):
@@ -1005,7 +1038,8 @@ def _match_compiled_path_segments(
     params: dict[str, str] = {}
     pi = 0
 
-    for parsed in pattern_segs:
+    last_pattern_index = len(pattern_segs) - 1
+    for pattern_index, parsed in enumerate(pattern_segs):
         if isinstance(parsed, SegmentLiteral):
             if pi >= len(path_segs) or path_segs[pi] != parsed.value:
                 return None
@@ -1016,11 +1050,25 @@ def _match_compiled_path_segments(
             return None
 
         if parsed.greedy == "+":
+            if _is_invalid_greedy_param(
+                pattern_index,
+                last_pattern_index,
+                parsed.prefix,
+                parsed.suffix,
+            ):
+                return None
             if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
                 return None
             params[parsed.name] = "/".join(path_segs[pi:])
             return params
         if parsed.greedy == "*":
+            if _is_invalid_greedy_param(
+                pattern_index,
+                last_pattern_index,
+                parsed.prefix,
+                parsed.suffix,
+            ):
+                return None
             params[parsed.name] = "/".join(path_segs[pi:])
             return params
         if pi >= len(path_segs):
@@ -1055,7 +1103,8 @@ def _match_compiled_path_prefix(
     params: dict[str, str] = {}
     pi = 0
 
-    for parsed in pattern_segs:
+    last_pattern_index = len(pattern_segs) - 1
+    for pattern_index, parsed in enumerate(pattern_segs):
         if isinstance(parsed, SegmentLiteral):
             if pi >= len(path_segs) or path_segs[pi] != parsed.value:
                 return None
@@ -1065,11 +1114,25 @@ def _match_compiled_path_prefix(
         if isinstance(parsed, SegmentError):
             return None
         if parsed.greedy == "+":
+            if _is_invalid_greedy_param(
+                pattern_index,
+                last_pattern_index,
+                parsed.prefix,
+                parsed.suffix,
+            ):
+                return None
             if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
                 return None
             params[parsed.name] = "/".join(path_segs[pi:])
             return params, len(path_segs)
         if parsed.greedy == "*":
+            if _is_invalid_greedy_param(
+                pattern_index,
+                last_pattern_index,
+                parsed.prefix,
+                parsed.suffix,
+            ):
+                return None
             params[parsed.name] = "/".join(path_segs[pi:])
             return params, len(path_segs)
         if pi >= len(path_segs):
@@ -1101,7 +1164,8 @@ def _match_compiled_host(
 
     params: dict[str, str] = {}
     hi = 0
-    for parsed in pattern_segs_reversed:
+    last_pattern_index = len(pattern_segs_reversed) - 1
+    for pattern_index, parsed in enumerate(pattern_segs_reversed):
         if isinstance(parsed, SegmentLiteral):
             if hi >= len(host_segs_lower) or host_segs_lower[hi] != parsed.value.lower():
                 return None
@@ -1112,12 +1176,26 @@ def _match_compiled_host(
             return None
 
         if parsed.greedy == "+":
+            if _is_invalid_greedy_param(
+                pattern_index,
+                last_pattern_index,
+                parsed.prefix,
+                parsed.suffix,
+            ):
+                return None
             if hi >= len(host_segs_orig):
                 return None
             remaining = list(reversed(host_segs_orig[hi:]))
             params[parsed.name] = ".".join(remaining)
             return params
         if parsed.greedy == "*":
+            if _is_invalid_greedy_param(
+                pattern_index,
+                last_pattern_index,
+                parsed.prefix,
+                parsed.suffix,
+            ):
+                return None
             remaining = list(reversed(host_segs_orig[hi:]))
             params[parsed.name] = ".".join(remaining)
             return params

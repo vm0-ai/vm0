@@ -49,6 +49,14 @@ class TestMatchPath:
         result = matching.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
         assert result == {"rest": "anything/here"}
 
+    @pytest.mark.parametrize("pattern", ["/api/{rest+}/tail", "/api/{rest*}/tail"])
+    def test_greedy_param_rejects_non_terminal_position(self, pattern):
+        assert matching.match_path("/api/a/b/tail", pattern) is None
+
+    @pytest.mark.parametrize("pattern", ["/api/file-{id+}", "/api/file-{id*}"])
+    def test_greedy_param_rejects_mixed_segment(self, pattern):
+        assert matching.match_path("/api/file-123", pattern) is None
+
     def test_star_param_matches_rest(self):
         result = matching.match_path("/repos/octocat/hello-world", "/{path*}")
         assert result == {"path": "repos/octocat/hello-world"}
@@ -117,6 +125,20 @@ class TestMatchPath:
 
         assert matching.match_compiled_path("/api/v1//report", pattern) == {"rest": "/report"}
 
+    @pytest.mark.parametrize("pattern", ["/api/{rest+}/tail", "/api/{rest*}/tail"])
+    def test_compiled_greedy_param_rejects_non_terminal_position(self, pattern):
+        compiled = matching.compile_path_pattern(pattern)
+        assert compiled is not None
+
+        assert matching.match_compiled_path("/api/a/b/tail", compiled) is None
+
+    @pytest.mark.parametrize("pattern", ["/api/file-{id+}", "/api/file-{id*}"])
+    def test_compiled_greedy_param_rejects_mixed_segment(self, pattern):
+        compiled = matching.compile_path_pattern(pattern)
+        assert compiled is not None
+
+        assert matching.match_compiled_path("/api/file-123", compiled) is None
+
 
 class TestMatchHost:
     def test_exact_host(self):
@@ -150,6 +172,14 @@ class TestMatchHost:
     def test_greedy_star_matches_zero(self):
         result = matching.match_host("example.com", "{sub*}.example.com")
         assert result == {"sub": ""}
+
+    @pytest.mark.parametrize("pattern", ["foo.{sub+}.example.com", "foo.{sub*}.example.com"])
+    def test_greedy_param_rejects_non_leading_position(self, pattern):
+        assert matching.match_host("foo.bar.example.com", pattern) is None
+
+    @pytest.mark.parametrize("pattern", ["api-{region+}.example.com", "api-{region*}.example.com"])
+    def test_greedy_param_rejects_mixed_segment(self, pattern):
+        assert matching.match_host("api-us.example.com", pattern) is None
 
     def test_literal_mismatch(self):
         assert matching.match_host("api.gitlab.com", "api.github.com") is None
@@ -197,6 +227,26 @@ class TestMatchPathPrefix:
     def test_path_too_short(self):
         result = matching.match_path_prefix(["v1"], ["v1", "{org}"])
         assert result is None
+
+    def test_plus_greedy_consumes_remaining_segments(self):
+        result = matching.match_path_prefix(["v1", "acme", "projects"], ["v1", "{rest+}"])
+        assert result == ({"rest": "acme/projects"}, 3)
+
+    def test_plus_greedy_rejects_empty_remaining_segments(self):
+        result = matching.match_path_prefix(["v1", ""], ["v1", "{rest+}"])
+        assert result is None
+
+    def test_star_greedy_consumes_zero_remaining_segments(self):
+        result = matching.match_path_prefix(["v1"], ["v1", "{rest*}"])
+        assert result == ({"rest": ""}, 1)
+
+    @pytest.mark.parametrize("pattern", [["v1", "{rest+}", "tail"], ["v1", "{rest*}", "tail"]])
+    def test_greedy_param_rejects_non_terminal_position(self, pattern):
+        assert matching.match_path_prefix(["v1", "acme", "tail"], pattern) is None
+
+    @pytest.mark.parametrize("pattern", [["v1", "file-{id+}"], ["v1", "file-{id*}"]])
+    def test_greedy_param_rejects_mixed_segment(self, pattern):
+        assert matching.match_path_prefix(["v1", "file-123"], pattern) is None
 
 
 # =========================================================================
