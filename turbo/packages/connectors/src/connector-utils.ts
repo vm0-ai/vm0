@@ -1,6 +1,7 @@
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorAuthCodeGrantAuthMethodId,
@@ -57,11 +58,15 @@ export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
   // Configured methods are raw registry entries; callers apply feature flags.
-  return Object.keys(CONNECTOR_TYPES[type].authMethods).sort((a, b) => {
-    const priorityDiff =
-      connectorAuthMethodPriority(a) - connectorAuthMethodPriority(b);
-    return priorityDiff === 0 ? a.localeCompare(b) : priorityDiff;
-  });
+  return Object.keys(CONNECTOR_TYPES[type].authMethods)
+    .map((authMethod) => {
+      return connectorAuthMethodIdSchema.parse(authMethod);
+    })
+    .sort((a, b) => {
+      const priorityDiff =
+        connectorAuthMethodPriority(a) - connectorAuthMethodPriority(b);
+      return priorityDiff === 0 ? a.localeCompare(b) : priorityDiff;
+    });
 }
 
 /**

@@ -423,11 +423,8 @@ export type ConnectorAuthMethodConfig =
  * These values are connector registry keys, not lifecycle categories. Behavior
  * must be derived from the selected auth method lifecycle config.
  */
-export const connectorAuthMethodIdSchema = z
-  .string()
-  .min(1)
-  .max(50)
-  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
+export const CONNECTOR_AUTH_METHOD_IDS = ["oauth", "api-token", "api"] as const;
+export const connectorAuthMethodIdSchema = z.enum(CONNECTOR_AUTH_METHOD_IDS);
 export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;
 
 type AssertNever<T extends never> = T;
@@ -540,7 +537,9 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
     "data-automation-infrastructure",
   ];
 
-type ConnectorAuthMethods = Record<string, ConnectorAuthMethodConfig>;
+type ConnectorAuthMethods = Partial<
+  Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
+>;
 
 type ConnectorConfigBase = {
   readonly label: string;
@@ -832,7 +831,7 @@ type ConnectorAuthMethodsOf<Type extends ConnectorType> =
 
 export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   keyof ConnectorAuthMethodsOf<Type>,
-  string
+  ConnectorAuthMethodId
 >;
 export type ConnectorAuthMethodClientConfig<
   Type extends ConnectorType,

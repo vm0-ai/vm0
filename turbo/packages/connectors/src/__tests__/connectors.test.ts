@@ -235,10 +235,10 @@ const multiAuthMethodFixture = {
     category: "data-automation-infrastructure",
     helpText: "Fixture used for connector auth method type coverage.",
     authMethods: {
-      "app-token": manualAuthMethodConfig,
-      "workspace-token": manualAuthMethodConfig,
+      oauth: manualAuthMethodConfig,
+      "api-token": manualAuthMethodConfig,
     },
-    defaultAuthMethod: "workspace-token",
+    defaultAuthMethod: "api-token",
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
@@ -377,12 +377,14 @@ describe("connector auth method config", () => {
     type MultiFixtureConfig =
       (typeof multiAuthMethodFixture)["multi-auth-method-fixture"];
 
-    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<string>();
-    expectTypeOf<"app-credential">().toMatchTypeOf<ConnectorAuthMethodId>();
-    expectTypeOf<"app-credential">().toMatchTypeOf<
+    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
+      "oauth" | "api-token" | "api"
+    >();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<
       keyof ConnectorConfig["authMethods"]
     >();
-    expectTypeOf<"app-credential">().toMatchTypeOf<
+    expectTypeOf<"app-credential">().not.toMatchTypeOf<
       ConnectorConfig["defaultAuthMethod"]
     >();
     expectTypeOf<
@@ -390,13 +392,13 @@ describe("connector auth method config", () => {
     >().toEqualTypeOf<"api-token">();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<MultiFixtureConfig>
-    >().toEqualTypeOf<"app-token" | "workspace-token">();
+    >().toEqualTypeOf<"oauth" | "api-token">();
     expectTypeOf<
       FixtureConfig["defaultAuthMethod"]
     >().toEqualTypeOf<"api-token">();
     expectTypeOf<
       MultiFixtureConfig["defaultAuthMethod"]
-    >().toEqualTypeOf<"workspace-token">();
+    >().toEqualTypeOf<"api-token">();
     expectTypeOf<
       ConnectorInvalidDefaultAuthMethodType<typeof connectorAuthMethodFixture>
     >().toEqualTypeOf<never>();
@@ -429,7 +431,7 @@ describe("connector auth method config", () => {
 
   it("does not silently choose one type-only auth-code grant when ambiguous", () => {
     const authMethods = CONNECTOR_TYPES.github.authMethods;
-    Object.defineProperty(authMethods, "github-secondary", {
+    Object.defineProperty(authMethods, "api", {
       value: {
         ...authMethods.oauth,
         label: "Secondary OAuth",
@@ -441,12 +443,12 @@ describe("connector auth method config", () => {
     try {
       expect(
         getConnectorAuthMethodIdsForGrantKind("github", "auth-code"),
-      ).toStrictEqual(["oauth", "github-secondary"]);
+      ).toStrictEqual(["oauth", "api"]);
       expect(
         getSingleConnectorAuthMethodIdForGrantKind("github", "auth-code"),
       ).toStrictEqual({
         status: "multiple",
-        authMethods: ["oauth", "github-secondary"],
+        authMethods: ["oauth", "api"],
       });
       expect(hasConnectorAuthCodeGrant("github")).toBe(true);
       expect(() => {
@@ -455,11 +457,10 @@ describe("connector auth method config", () => {
         "github connector has multiple auth-code grants; use the selected auth method",
       );
       expect(
-        getConnectorAuthMethodAuthCodeGrantConfig("github", "github-secondary")
-          ?.tokenUrl,
+        getConnectorAuthMethodAuthCodeGrantConfig("github", "api")?.tokenUrl,
       ).toBe(authMethods.oauth.grant.tokenUrl);
     } finally {
-      Reflect.deleteProperty(authMethods, "github-secondary");
+      Reflect.deleteProperty(authMethods, "api");
     }
   });
 
