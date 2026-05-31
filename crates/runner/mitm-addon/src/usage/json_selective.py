@@ -464,9 +464,9 @@ class JsonSelectiveExtractor:
 
     def _clear_observations_for_path(self, path: Path) -> None:
         can_clear_exact = path in self._clearable_exact_observation_paths
-        can_clear_wildcard = any(
+        can_clear_wildcard = bool(self.wildcard_array_counts) and any(
             _wildcard_observation_can_be_cleared_by_path(pattern, path)
-            for pattern in self.wildcard_array_count_paths
+            for pattern in self.wildcard_array_counts
         )
         if not can_clear_exact and not can_clear_wildcard:
             return
