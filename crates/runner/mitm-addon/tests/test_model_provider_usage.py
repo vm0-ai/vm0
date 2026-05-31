@@ -222,7 +222,10 @@ class TestReportModelProviderUsage:
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
         assert proxy_log.exists()
-        assert "missing sandbox_token or api_url" in proxy_log.read_text()
+        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert entry["level"] == "warn"
+        assert entry["message"] == "Cannot report usage event: missing sandbox_token or api_url"
+        assert entry["type"] == "usage_event"
 
     def test_warns_when_missing_api_url(self, tmp_path, real_flow, fresh_usage_executor):
         """Should write to proxy log and skip when api_url is empty."""
@@ -244,6 +247,10 @@ class TestReportModelProviderUsage:
 
         mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
         assert proxy_log.exists()
+        [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert entry["level"] == "warn"
+        assert entry["message"] == "Cannot report usage event: missing sandbox_token or api_url"
+        assert entry["type"] == "usage_event"
 
     def test_source_dedupe_uses_flow_id_when_message_id_missing(
         self, real_flow, fresh_usage_executor

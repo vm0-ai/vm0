@@ -12,6 +12,10 @@ NETWORK_LOG_TARGET: Final = "network_log_target"
 CAPTURE_BODY: Final = "capture_body"
 CLI_AGENT_TYPE: Final = "cli_agent_type"
 
+# Timing metadata
+HTTP_REQUEST_START_MONOTONIC: Final = "http_request_start_monotonic"
+TCP_START_MONOTONIC: Final = "tcp_start_monotonic"
+
 # Firewall and auth metadata
 FIREWALL_BASE: Final = "firewall_base"
 FIREWALL_API_ID: Final = "firewall_api_id"

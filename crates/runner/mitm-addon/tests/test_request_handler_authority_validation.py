@@ -97,7 +97,7 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert "code=secret" not in entry["url"]
     assert "#frag" not in entry["url"]
     assert entry["status"] == 403
-    assert flow.id not in mitm_addon._request_start_times
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
 
 async def test_matching_sni_and_host_allows_firewall_auth(

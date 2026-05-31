@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import auth
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.pending_helpers import assert_pending
@@ -155,7 +156,7 @@ async def test_unexpected_request_exception_releases_tracking(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.id not in mitm_addon._request_start_times
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(

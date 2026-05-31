@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
@@ -21,19 +22,18 @@ from tests.usage_helpers import (
 class TestErrorHandler:
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)
-        flow.id = "flow-err-1"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
         # Matches the request handler's invariant: original_url is set
         # alongside vm_run_id.
         flow.metadata["original_url"] = "https://example.com/"
         flow.error = Error("connection reset")
-        mitm_addon._request_start_times["flow-err-1"] = 12345.0
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
         with mitm_ctx():
             mitm_addon.error(flow)
 
-        assert "flow-err-1" not in mitm_addon._request_start_times
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
     def test_error_releases_unfinished_json_streaming_state(self, tmp_path, real_flow, mitm_ctx):
         """Connection errors should drop unfinished JSON parser closures."""
@@ -140,7 +140,7 @@ class TestErrorHandler:
         flow.metadata["original_url"] = raw_url
         flow.metadata["firewall_action"] = "ALLOW"
         flow.error = Error("connection reset by peer")
-        mitm_addon._request_start_times[flow.id] = time.time() - 1.5
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic() - 1.5
 
         with mitm_ctx():
             mitm_addon.error(flow)
@@ -186,7 +186,7 @@ class TestErrorHandler:
         assert entry["url"] == "https://api.anthropic.com:8443/v1/messages"
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
-        assert flow.id not in mitm_addon._request_start_times
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
     def test_error_logs_legacy_target_when_original_url_port_is_invalid(
         self, tmp_path, real_flow, mitm_ctx
@@ -373,7 +373,6 @@ class TestErrorHandler:
             "tokens.input": 80,
         }
         flow.error = Error("connection reset by peer")
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://api.vm0.ai"),

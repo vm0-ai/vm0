@@ -15,8 +15,8 @@ Fixtures here exist for two reasons:
 
 import contextlib
 import json
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -38,13 +38,11 @@ def _reset_module_state() -> Iterator[None]:
 
     ``registry`` and ``auth`` cache registry data and firewall header
     lookups in module-level dicts.  Without a reset, earlier tests leak
-    entries that change later tests' behaviour (e.g. a request from IP X
-    in test A primes ``_request_start_times`` seen by test B).
+    entries that change later tests' behaviour.
 
     The usage buffer owns a background timer in production, so tests reset
     it before and after each case to avoid cross-test callbacks.
     """
-    mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
@@ -304,21 +302,54 @@ def sync_usage_executor():
     appear on the mock by the time they inspect it need submission to
     happen inline rather than on a background thread — otherwise they
     have to thread ``fresh_usage_executor`` + ``shutdown(wait=True)``
-    boilerplate through every caller.  The stub's ``submit`` just runs
-    the function synchronously; the original executor is restored on
-    teardown.
+    boilerplate through every caller.  The inline executor returns real
+    ``Future`` objects while still running the function synchronously;
+    the original executor is restored on teardown.
     """
 
-    class _SyncExecutor:
-        def submit(self, fn, *args, **kwargs):
-            fn(*args, **kwargs)
+    class _InlineExecutor:
+        def __init__(self) -> None:
+            self._futures: list[Future[Any]] = []
+            self._shutdown = False
+
+        def submit(
+            self,
+            fn: Callable[..., Any],
+            *args: Any,
+            **kwargs: Any,
+        ) -> Future[Any]:
+            if self._shutdown:
+                raise RuntimeError("cannot schedule new futures after shutdown")
+
+            future: Future[Any] = Future()
+            self._futures.append(future)
+            try:
+                result = fn(*args, **kwargs)
+            except Exception as error:
+                future.set_exception(error)
+            else:
+                future.set_result(result)
+            return future
+
+        def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+            self._shutdown = True
+            if not wait:
+                return
+            futures = self._futures
+            self._futures = []
+            for future in futures:
+                future.result()
 
     original = usage.webhook.usage_executor
-    usage.webhook.usage_executor = _SyncExecutor()
+    executor = _InlineExecutor()
+    usage.webhook.usage_executor = executor
     try:
-        yield usage.webhook.usage_executor
+        yield executor
     finally:
-        usage.webhook.usage_executor = original
+        try:
+            executor.shutdown(wait=True)
+        finally:
+            usage.webhook.usage_executor = original
 
 
 @pytest.fixture

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mitmproxy.flow import Error
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.pending_helpers import assert_pending
@@ -355,7 +356,7 @@ class TestTcpStart:
 
         assert flow.metadata["vm_run_id"] == "run-abc-123"
         assert "vm_network_log_path" in flow.metadata
-        assert "tcp_start_time" in flow.metadata
+        assert metadata_keys.TCP_START_MONOTONIC in flow.metadata
 
     def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
@@ -385,7 +386,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time() - 0.05
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic() - 0.05
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -407,7 +408,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time()
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
 
         with mitm_ctx():
@@ -433,7 +434,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time()
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.server_conn = None
 
         with mitm_ctx():

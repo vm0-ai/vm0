@@ -2,7 +2,6 @@
 
 import gzip
 import json
-import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -439,7 +438,6 @@ class TestReportConnectorUsage:
         callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -477,7 +475,6 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":{"id":"1","text":"hello"}}')
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -527,7 +524,6 @@ class TestReportConnectorUsage:
                 }
             ).encode()
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -563,7 +559,6 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'[{"id":"1"}]')
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(),
@@ -1247,7 +1242,6 @@ class TestReportConnectorUsage:
         # X streams return application/json with chunked transfer, not x-ndjson.
         flow.response.headers = header_map({"content-type": "application/json"})
         flow.response.stream = False
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         # 1. responseheaders - registers NDJSON parser
         mitm_addon.responseheaders(flow)
@@ -1305,7 +1299,6 @@ class TestReportConnectorUsage:
         flow.response = tutils.tresp(status_code=200)
         flow.response.headers = header_map({"content-type": "application/json"})
         flow.response.stream = False
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
@@ -1362,7 +1355,6 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "connector_response_finish" in flow.metadata
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://app.test"),
@@ -1408,7 +1400,6 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * body_utils.STREAM_BUFFER_LIMIT)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://app.test"),
@@ -1453,7 +1444,6 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "connector_response_finish" in flow.metadata
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with (
             mitm_ctx(api_url="https://app.test"),
