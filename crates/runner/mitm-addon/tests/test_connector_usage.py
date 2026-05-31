@@ -1299,7 +1299,6 @@ class TestReportConnectorUsage:
         flow.response = tutils.tresp(status_code=200)
         flow.response.headers = header_map({"content-type": "application/json"})
         flow.response.stream = False
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
