@@ -20,7 +20,7 @@ use crate::protocol::{self, Command, NbdReply, NbdRequest, REQUEST_HEADER_SIZE};
 /// with an I/O error to prevent OOM from malformed requests.
 const MAX_REQUEST_LENGTH: u32 = 32 * 1024 * 1024;
 
-/// Maximum payload buffer capacity retained by one dispatch connection.
+/// Maximum reusable payload buffer capacity retained between requests.
 /// Larger legal requests use temporary buffers to avoid long-lived 32 MB buffers.
 const MAX_REUSABLE_PAYLOAD_LENGTH: usize = 1024 * 1024;
 
@@ -107,7 +107,9 @@ async fn handle_read(
     let len = request.length as usize;
     if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
         resize_reusable_payload(payload_buf, len);
-        read_and_reply(request, cow, writer, payload_buf.as_mut_slice()).await
+        let result = read_and_reply(request, cow, writer, payload_buf.as_mut_slice()).await;
+        reset_reusable_payload_if_oversized(payload_buf);
+        result
     } else {
         let mut data = vec![0u8; len];
         read_and_reply(request, cow, writer, data.as_mut_slice()).await
@@ -121,7 +123,12 @@ fn resize_reusable_payload(payload_buf: &mut Vec<u8>, len: usize) {
     } else {
         payload_buf.resize(len, 0);
     }
-    debug_assert!(payload_buf.capacity() <= MAX_REUSABLE_PAYLOAD_LENGTH);
+}
+
+fn reset_reusable_payload_if_oversized(payload_buf: &mut Vec<u8>) {
+    if payload_buf.capacity() > MAX_REUSABLE_PAYLOAD_LENGTH {
+        *payload_buf = Vec::with_capacity(crate::BLOCK_SIZE);
+    }
 }
 
 async fn read_and_reply(
@@ -167,7 +174,10 @@ async fn handle_write(
     let len = request.length as usize;
     if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
         resize_reusable_payload(payload_buf, len);
-        read_and_apply_write(request, reader, cow, writer, payload_buf.as_mut_slice()).await
+        let result =
+            read_and_apply_write(request, reader, cow, writer, payload_buf.as_mut_slice()).await;
+        reset_reusable_payload_if_oversized(payload_buf);
+        result
     } else {
         let mut data = vec![0u8; len];
         read_and_apply_write(request, reader, cow, writer, data.as_mut_slice()).await
@@ -535,12 +545,24 @@ mod tests {
         let small_read_data = read_payload(&mut reader, small_len).await;
         assert_eq!(small_read_data, small_write_data);
 
+        let max_reusable_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 5,
+            offset: 0,
+            length: MAX_REUSABLE_PAYLOAD_LENGTH as u32,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &max_reusable_read).await;
+        assert_eq!(error, 0, "max reusable read should succeed");
+        let max_reusable_data = read_payload(&mut reader, MAX_REUSABLE_PAYLOAD_LENGTH).await;
+        assert!(max_reusable_data.iter().all(|&b| b == 0x44));
+
         // If the previous small read emitted stale bytes from the earlier large
         // payload, this next reply header would be misaligned.
         let alignment_read = NbdRequest {
             flags: 0,
             command: Command::Read,
-            handle: 5,
+            handle: 6,
             offset: alignment_offset,
             length: crate::BLOCK_SIZE as u32,
         };
@@ -552,7 +574,7 @@ mod tests {
         let disc = NbdRequest {
             flags: 0,
             command: Command::Disconnect,
-            handle: 6,
+            handle: 7,
             offset: 0,
             length: 0,
         };
