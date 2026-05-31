@@ -359,6 +359,16 @@ describe("matchFirewallBaseUrl", () => {
       matchFirewallBaseUrl("https://api.github.com/repos", "https://[::1"),
     ).toBeNull();
   });
+
+  it.each([
+    ["query string", "https://api.github.com?token=1"],
+    ["fragment", "https://api.github.com#fragment"],
+    ["backslash", "https://api.github.com\\repos"],
+  ])("rejects base URLs with %s", (_label, base) => {
+    expect(
+      matchFirewallBaseUrl("https://api.github.com/repos", base),
+    ).toBeNull();
+  });
 });
 
 describe("findMatchingPermissions", () => {

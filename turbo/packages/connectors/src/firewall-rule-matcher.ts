@@ -460,6 +460,7 @@ export function matchFirewallBaseUrl(
   }
 
   try {
+    validateBaseUrl(rawBase, "firewall");
     return matchStaticFirewallBaseUrl(url, rawBase);
   } catch {
     return null;
