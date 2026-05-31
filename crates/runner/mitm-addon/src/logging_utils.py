@@ -6,6 +6,7 @@ log entries, and extracting firewall metadata.
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from mitmproxy import ctx, http
@@ -61,27 +62,27 @@ def log_proxy_entry(
     _write_jsonl_entry(proxy_log_path, entry, "proxy")
 
 
-def _metadata_str(meta: dict, key: str, default: str = "") -> str:
+def _metadata_str(meta: Mapping[str, object], key: str, default: str = "") -> str:
     value = meta.get(key)
     return value if isinstance(value, str) else default
 
 
-def _metadata_optional_str(meta: dict, key: str) -> str | None:
+def _metadata_optional_str(meta: Mapping[str, object], key: str) -> str | None:
     value = meta.get(key)
     return value if isinstance(value, str) else None
 
 
-def _metadata_bool(meta: dict, key: str, default: bool = False) -> bool:
+def _metadata_bool(meta: Mapping[str, object], key: str, default: bool = False) -> bool:
     value = meta.get(key)
     return value if isinstance(value, bool) else default
 
 
-def _metadata_optional_bool(meta: dict, key: str) -> bool | None:
+def _metadata_optional_bool(meta: Mapping[str, object], key: str) -> bool | None:
     value = meta.get(key)
     return value if isinstance(value, bool) else None
 
 
-def _metadata_str_list(meta: dict, key: str) -> list[str] | None:
+def _metadata_str_list(meta: Mapping[str, object], key: str) -> list[str] | None:
     value = meta.get(key)
     if not isinstance(value, list):
         return None
@@ -93,7 +94,7 @@ def _metadata_str_list(meta: dict, key: str) -> list[str] | None:
     return result
 
 
-def _metadata_str_record(meta: dict, key: str) -> dict[str, str] | None:
+def _metadata_str_record(meta: Mapping[str, object], key: str) -> dict[str, str] | None:
     value = meta.get(key)
     if not isinstance(value, dict):
         return None
