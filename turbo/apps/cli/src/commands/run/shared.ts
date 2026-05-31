@@ -1,7 +1,7 @@
 import chalk from "chalk";
 import * as fs from "node:fs";
 import { config as dotenvConfig } from "dotenv";
-import { ApiRequestError, getEvents } from "../../lib/api";
+import { getEvents } from "../../lib/api";
 import type { GetEventsResponse } from "../../lib/api/core/types";
 import { EventStreamNormalizer } from "../../lib/events/event-stream-normalizer";
 import { EventRenderer } from "../../lib/events/event-renderer";
@@ -320,8 +320,6 @@ const POLL_INTERVAL_MS = 1000;
 const TERMINAL_DRAIN_POLL_INTERVAL_MS = 500;
 const TERMINAL_DRAIN_IDLE_MS = 1000;
 const TERMINAL_DRAIN_MAX_MS = 3000;
-const EVENT_FETCH_RETRY_DELAYS_MS = [500, 1000, 2000] as const;
-const TRANSIENT_EVENT_FETCH_STATUSES = new Set([502, 503, 504]);
 
 /**
  * Options for polling/streaming events
@@ -440,30 +438,6 @@ function shouldReturnTerminalRunResult(
   );
 }
 
-function isTransientEventFetchError(error: unknown): boolean {
-  return (
-    error instanceof ApiRequestError &&
-    TRANSIENT_EVENT_FETCH_STATUSES.has(error.status)
-  );
-}
-
-async function getEventsWithTransientRetry(
-  runId: string,
-  options: { since?: number; limit?: number },
-): Promise<GetEventsResponse> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await getEvents(runId, options);
-    } catch (error) {
-      const retryDelayMs = EVENT_FETCH_RETRY_DELAYS_MS[attempt];
-      if (!isTransientEventFetchError(error) || retryDelayMs === undefined) {
-        throw error;
-      }
-      await sleep(retryDelayMs);
-    }
-  }
-}
-
 function renderTerminalRunResult(
   runId: string,
   run: TerminalRunState,
@@ -526,7 +500,7 @@ export async function pollEvents(
 
   for (;;) {
     const previousSequence = nextSequence;
-    const response = await getEventsWithTransientRetry(runId, {
+    const response = await getEvents(runId, {
       since: nextSequence,
     });
     const now = Date.now();
