@@ -585,7 +585,7 @@ function hasRuntimeAvailableAuthMethod(
  * do not require a server auth client, while auth-provider methods require
  * their runtime client env to exist unless their client config is static inline.
  */
-export function getRuntimeAvailableConnectorTypes(
+export function getRuntimeAvailableConnectorTypesFromReader(
   readEnv: ConnectorEnvReader,
 ): ConnectorType[] {
   const runtimeAvailable = new Set<ConnectorType>();
@@ -597,6 +597,12 @@ export function getRuntimeAvailableConnectorTypes(
   }
 
   return [...runtimeAvailable].sort();
+}
+
+export function getRuntimeAvailableConnectorTypes(
+  readEnv: ConnectorEnvReader,
+): ConnectorType[] {
+  return getRuntimeAvailableConnectorTypesFromReader(readEnv);
 }
 
 /**

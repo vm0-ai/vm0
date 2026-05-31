@@ -12,7 +12,7 @@ import {
   connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   getConfiguredConnectorAuthMethods,
-  getRuntimeAvailableConnectorTypes as getRuntimeAvailableConnectorTypesFromEnv,
+  getRuntimeAvailableConnectorTypesFromReader,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
@@ -484,7 +484,7 @@ export async function revokeConnectorAuthMethodAccessToken<
 export function getRuntimeAvailableConnectorTypes(
   currentEnv: ProviderEnv,
 ): ConnectorType[] {
-  return getRuntimeAvailableConnectorTypesFromEnv((name) => {
+  return getRuntimeAvailableConnectorTypesFromReader((name) => {
     const value = currentEnv[name];
     return typeof value === "string" ? value : undefined;
   });
