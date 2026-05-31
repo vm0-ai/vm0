@@ -987,6 +987,12 @@ function lockedRefreshFailureReasonDuringRequest(args: {
   ) {
     return undefined;
   }
+  if (
+    args.initialState &&
+    args.initialState.updatedAtMicros === args.state.updatedAtMicros
+  ) {
+    return undefined;
+  }
 
   if (args.state.needsReconnect) {
     return !args.state.refreshToken ||

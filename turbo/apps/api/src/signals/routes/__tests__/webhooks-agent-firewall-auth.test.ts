@@ -1513,6 +1513,65 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("does not treat an already-observed short-lived connector refresh state as upstream failure", async () => {
+    const fixture = await track(seedFixture());
+    await seedNotionConnector(fixture, {
+      accessToken: "short-lived-observed-notion-token",
+      refreshToken: "short-lived-observed-notion-refresh-token",
+      tokenExpiresAt: new Date(now() + 30_000),
+    });
+    const db = store.set(writeDb$);
+    await db
+      .update(connectors)
+      .set({ updatedAt: sql`clock_timestamp() + interval '5 seconds'` })
+      .where(
+        and(
+          eq(connectors.orgId, fixture.orgId),
+          eq(connectors.userId, fixture.userId),
+          eq(connectors.type, "notion"),
+        ),
+      );
+
+    let refreshCallCount = 0;
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        refreshCallCount += 1;
+        return HttpResponse.json({
+          access_token: "fresh-observed-notion-token",
+          refresh_token: "fresh-observed-notion-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "short-lived-observed-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(refreshCallCount).toBe(1);
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-observed-notion-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual(["notion"]);
+    await expect(notionConnectorState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+    });
+  });
+
   it("serializes concurrent forced connector OAuth refreshes", async () => {
     const fixture = await track(seedFixture());
     await seedNotionConnector(fixture, {
