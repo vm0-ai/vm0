@@ -12,7 +12,6 @@ import {
   connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   getConfiguredConnectorAuthMethods,
-  getRuntimeAvailableConnectorTypesFromReader,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
@@ -475,17 +474,4 @@ export async function revokeConnectorAuthMethodAccessToken<
     loadAccessToken: args.loadAccessToken,
   });
   return { status: "revoked" };
-}
-
-/**
- * Returns connector types the current runtime environment can offer as
- * connection candidates.
- */
-export function getRuntimeAvailableConnectorTypes(
-  currentEnv: ProviderEnv,
-): ConnectorType[] {
-  return getRuntimeAvailableConnectorTypesFromReader((name) => {
-    const value = currentEnv[name];
-    return typeof value === "string" ? value : undefined;
-  });
 }
