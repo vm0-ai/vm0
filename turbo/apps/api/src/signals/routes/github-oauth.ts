@@ -742,10 +742,12 @@ const callbackGithubUserOauth$ = command(
       return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
+    const authMethod = getGithubConnectorAuthCodeMethod();
     const origin = getOAuthWebOrigin(request);
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorAuthCode({
       type: "github",
+      authMethod,
       authClient,
       code: query.code,
       redirectUri,
@@ -765,7 +767,6 @@ const callbackGithubUserOauth$ = command(
       return worksErrorRedirect("No GitHub installation found");
     }
 
-    const authMethod = getGithubConnectorAuthCodeMethod();
     await set(
       upsertConnectorTokenConnection$,
       {

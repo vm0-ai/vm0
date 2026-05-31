@@ -5,6 +5,7 @@ import {
   type ConnectorAuthProviderType,
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
+  type ConnectorAuthMethodIdsByGrantKind,
   type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
@@ -12,6 +13,7 @@ import {
   connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   getConfiguredConnectorAuthMethods,
+  getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
   resolveConnectorAuthClientForMethod,
@@ -40,7 +42,6 @@ import {
   type OAuthRefreshResult,
   type OAuthTokenResult,
 } from "./oauth/types";
-import { getDeviceAuthGrantConfig } from "./oauth/grant-config";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
 import { ahrefsProvider } from "./oauth/providers/ahrefs-provider";
 import { airtableProvider } from "./oauth/providers/airtable-provider";
@@ -110,12 +111,30 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
   | { readonly status: "revoked" }
   | { readonly status: "unsupported" };
 
+type ConnectorAuthCodeGrantProviderEntries<
+  Type extends AuthCodeGrantConnectorType,
+> = {
+  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
+    Type,
+    "auth-code"
+  >]: AuthCodeConnectorAuthProvider<Type>;
+};
+
 type AuthCodeConnectorAuthProviderMap = {
-  readonly [Type in AuthCodeGrantConnectorType]: AuthCodeConnectorAuthProvider<Type>;
+  readonly [Type in AuthCodeGrantConnectorType]: ConnectorAuthCodeGrantProviderEntries<Type>;
+};
+
+type ConnectorDeviceAuthGrantProviderEntries<
+  Type extends DeviceAuthGrantConnectorType,
+> = {
+  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
+    Type,
+    "device-auth"
+  >]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
 type DeviceAuthConnectorAuthProviderMap = {
-  readonly [Type in DeviceAuthGrantConnectorType]: DeviceAuthConnectorAuthProvider<Type>;
+  readonly [Type in DeviceAuthGrantConnectorType]: ConnectorDeviceAuthGrantProviderEntries<Type>;
 };
 
 type ConnectorRefreshTokenAccessProviderEntries<
@@ -142,6 +161,28 @@ function connectorRefreshTokenAccessProviderFor<
   const providers = CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[type] as Readonly<
     Record<string, RefreshTokenAccessProvider<T>>
   >;
+  return providers[authMethod];
+}
+
+function connectorAuthCodeGrantProviderFor<
+  T extends AuthCodeGrantConnectorType,
+>(
+  type: T,
+  authMethod: ConnectorAuthMethodIdsByGrantKind<T, "auth-code">,
+): AuthCodeConnectorAuthProvider<T> {
+  const providers: ConnectorAuthCodeGrantProviderEntries<T> =
+    AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[type];
+  return providers[authMethod];
+}
+
+function connectorDeviceAuthGrantProviderFor<
+  T extends DeviceAuthGrantConnectorType,
+>(
+  type: T,
+  authMethod: ConnectorAuthMethodIdsByGrantKind<T, "device-auth">,
+): DeviceAuthConnectorAuthProvider<T> {
+  const providers: ConnectorDeviceAuthGrantProviderEntries<T> =
+    DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type];
   return providers[authMethod];
 }
 
@@ -226,58 +267,58 @@ async function revokeTokenRevokeConnectorAccessToken(args: {
 }
 
 const AUTH_CODE_CONNECTOR_AUTH_PROVIDERS: AuthCodeConnectorAuthProviderMap = {
-  ahrefs: ahrefsProvider,
-  airtable: airtableProvider,
-  asana: asanaProvider,
-  canva: canvaProvider,
-  close: closeProvider,
-  deel: deelProvider,
-  docusign: docusignProvider,
-  dropbox: dropboxProvider,
-  figma: figmaProvider,
-  "garmin-connect": garminConnectProvider,
-  gumroad: gumroadProvider,
-  github: githubProvider,
-  gmail: gmailProvider,
-  hubspot: hubspotProvider,
-  "google-ads": googleAdsProvider,
-  "google-calendar": googleCalendarProvider,
-  "google-docs": googleDocsProvider,
-  "google-drive": googleDriveProvider,
-  "google-meet": googleMeetProvider,
-  "google-sheets": googleSheetsProvider,
-  linear: linearProvider,
-  mailchimp: mailchimpProvider,
-  mercury: mercuryProvider,
-  monday: mondayProvider,
-  neon: neonProvider,
-  notion: notionProvider,
-  "outlook-calendar": outlookCalendarProvider,
-  "outlook-mail": outlookMailProvider,
-  reddit: redditProvider,
-  "intervals-icu": intervalsIcuProvider,
-  sentry: sentryProvider,
-  slack: slackProvider,
-  strava: stravaProvider,
-  stripe: stripeProvider,
-  todoist: todoistProvider,
-  vercel: vercelProvider,
-  webflow: webflowProvider,
-  supabase: supabaseProvider,
-  "meta-ads": metaAdsProvider,
-  posthog: posthogProvider,
-  spotify: spotifyProvider,
-  x: xProvider,
-  xero: xeroProvider,
-  zoom: zoomProvider,
-  "test-oauth": testOauthProvider,
+  ahrefs: { oauth: ahrefsProvider },
+  airtable: { oauth: airtableProvider },
+  asana: { oauth: asanaProvider },
+  canva: { oauth: canvaProvider },
+  close: { oauth: closeProvider },
+  deel: { oauth: deelProvider },
+  docusign: { oauth: docusignProvider },
+  dropbox: { oauth: dropboxProvider },
+  figma: { oauth: figmaProvider },
+  "garmin-connect": { oauth: garminConnectProvider },
+  gumroad: { oauth: gumroadProvider },
+  github: { oauth: githubProvider },
+  gmail: { oauth: gmailProvider },
+  hubspot: { oauth: hubspotProvider },
+  "google-ads": { oauth: googleAdsProvider },
+  "google-calendar": { oauth: googleCalendarProvider },
+  "google-docs": { oauth: googleDocsProvider },
+  "google-drive": { oauth: googleDriveProvider },
+  "google-meet": { oauth: googleMeetProvider },
+  "google-sheets": { oauth: googleSheetsProvider },
+  linear: { oauth: linearProvider },
+  mailchimp: { oauth: mailchimpProvider },
+  mercury: { oauth: mercuryProvider },
+  monday: { oauth: mondayProvider },
+  neon: { oauth: neonProvider },
+  notion: { oauth: notionProvider },
+  "outlook-calendar": { oauth: outlookCalendarProvider },
+  "outlook-mail": { oauth: outlookMailProvider },
+  reddit: { oauth: redditProvider },
+  "intervals-icu": { oauth: intervalsIcuProvider },
+  sentry: { oauth: sentryProvider },
+  slack: { oauth: slackProvider },
+  strava: { oauth: stravaProvider },
+  stripe: { oauth: stripeProvider },
+  todoist: { oauth: todoistProvider },
+  vercel: { oauth: vercelProvider },
+  webflow: { oauth: webflowProvider },
+  supabase: { oauth: supabaseProvider },
+  "meta-ads": { oauth: metaAdsProvider },
+  posthog: { oauth: posthogProvider },
+  spotify: { oauth: spotifyProvider },
+  x: { oauth: xProvider },
+  xero: { oauth: xeroProvider },
+  zoom: { oauth: zoomProvider },
+  "test-oauth": { oauth: testOauthProvider },
 };
 
 const DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS: DeviceAuthConnectorAuthProviderMap =
   {
-    base44: base44Provider,
-    slock: slockProvider,
-    "test-oauth-device": testOauthDeviceProvider,
+    base44: { oauth: base44Provider },
+    slock: { oauth: slockProvider },
+    "test-oauth-device": { oauth: testOauthDeviceProvider },
   };
 
 const CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS: ConnectorRefreshTokenAccessProviderMap =
@@ -334,14 +375,82 @@ export function hasConnectorAuthProvider(
 
 export function hasConnectorAuthCodeGrantProvider(
   type: string,
-): type is AuthCodeGrantConnectorType {
-  return Object.hasOwn(AUTH_CODE_CONNECTOR_AUTH_PROVIDERS, type);
+): type is AuthCodeGrantConnectorType;
+export function hasConnectorAuthCodeGrantProvider<
+  T extends AuthCodeGrantConnectorType,
+>(
+  type: T,
+  authMethod: string,
+): authMethod is ConnectorAuthMethodIdsByGrantKind<T, "auth-code">;
+export function hasConnectorAuthCodeGrantProvider(
+  type: string,
+  authMethod: string,
+): boolean;
+export function hasConnectorAuthCodeGrantProvider(
+  type: string,
+  authMethod?: string,
+): boolean {
+  if (authMethod === undefined) {
+    return Object.hasOwn(AUTH_CODE_CONNECTOR_AUTH_PROVIDERS, type);
+  }
+  return hasConnectorAuthCodeGrantProviderForMethod(type, authMethod);
+}
+
+function hasConnectorAuthCodeGrantProviderForMethod(
+  type: string,
+  authMethod: string,
+): boolean {
+  const connectorType = connectorTypeSchema.safeParse(type);
+  if (!connectorType.success) {
+    return false;
+  }
+  if (!hasConnectorAuthCodeGrantProvider(connectorType.data)) {
+    return false;
+  }
+  return Object.hasOwn(
+    AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[connectorType.data],
+    authMethod,
+  );
 }
 
 export function hasConnectorDeviceAuthGrantProvider(
   type: string,
-): type is DeviceAuthGrantConnectorType {
-  return Object.hasOwn(DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS, type);
+): type is DeviceAuthGrantConnectorType;
+export function hasConnectorDeviceAuthGrantProvider<
+  T extends DeviceAuthGrantConnectorType,
+>(
+  type: T,
+  authMethod: string,
+): authMethod is ConnectorAuthMethodIdsByGrantKind<T, "device-auth">;
+export function hasConnectorDeviceAuthGrantProvider(
+  type: string,
+  authMethod: string,
+): boolean;
+export function hasConnectorDeviceAuthGrantProvider(
+  type: string,
+  authMethod?: string,
+): boolean {
+  if (authMethod === undefined) {
+    return Object.hasOwn(DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS, type);
+  }
+  return hasConnectorDeviceAuthGrantProviderForMethod(type, authMethod);
+}
+
+function hasConnectorDeviceAuthGrantProviderForMethod(
+  type: string,
+  authMethod: string,
+): boolean {
+  const connectorType = connectorTypeSchema.safeParse(type);
+  if (!connectorType.success) {
+    return false;
+  }
+  if (!hasConnectorDeviceAuthGrantProvider(connectorType.data)) {
+    return false;
+  }
+  return Object.hasOwn(
+    DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[connectorType.data],
+    authMethod,
+  );
 }
 
 export function hasConnectorRefreshTokenAccessProvider(
@@ -385,23 +494,27 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
   T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
+  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "auth-code">;
   readonly authClient: ConnectorAuthClient;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<string | AuthUrlResult> {
-  return await AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[args.type].grant.buildAuthUrl(
-    {
-      ...connectorAuthProviderClientArgs(args.authClient),
-      redirectUri: args.redirectUri,
-      state: args.state,
-    } as ConnectorAuthCodeAuthorizeArgs<T>,
+  const provider = connectorAuthCodeGrantProviderFor(
+    args.type,
+    args.authMethod,
   );
+  return await provider.grant.buildAuthUrl({
+    ...connectorAuthProviderClientArgs(args.authClient),
+    redirectUri: args.redirectUri,
+    state: args.state,
+  } as ConnectorAuthCodeAuthorizeArgs<T>);
 }
 
 export async function exchangeConnectorAuthCode<
   T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
+  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "auth-code">;
   readonly authClient: ConnectorAuthClient;
   readonly code: string;
   readonly redirectUri: string;
@@ -409,30 +522,34 @@ export async function exchangeConnectorAuthCode<
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
 }): Promise<OAuthTokenResult> {
-  return await AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[args.type].grant.exchangeCode(
-    {
-      ...connectorAuthProviderClientArgs(args.authClient),
-      code: args.code,
-      redirectUri: args.redirectUri,
-      state: args.state,
-      codeVerifier: args.codeVerifier,
-      oauthContext: args.oauthContext,
-    } as ConnectorAuthCodeExchangeArgs<T>,
+  const provider = connectorAuthCodeGrantProviderFor(
+    args.type,
+    args.authMethod,
   );
+  return await provider.grant.exchangeCode({
+    ...connectorAuthProviderClientArgs(args.authClient),
+    code: args.code,
+    redirectUri: args.redirectUri,
+    state: args.state,
+    codeVerifier: args.codeVerifier,
+    oauthContext: args.oauthContext,
+  } as ConnectorAuthCodeExchangeArgs<T>);
 }
 
 export async function startConnectorDeviceAuthorization<
   T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
+  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "device-auth">;
   readonly authClient: ConnectorAuthClient;
 }): Promise<OAuthDeviceAuthStartResult> {
-  const grant = getDeviceAuthGrantConfig(args.type);
-  return await DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[
-    args.type
-  ].grant.startDeviceAuth({
+  const provider = connectorDeviceAuthGrantProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  return await provider.grant.startDeviceAuth({
     ...connectorAuthProviderClientArgs(args.authClient),
-    scopes: grant.scopes,
+    scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
   } as ConnectorDeviceAuthorizationStartArgs<T>);
 }
 
@@ -440,12 +557,15 @@ export async function pollConnectorDeviceAuthorization<
   T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
+  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "device-auth">;
   readonly authClient: ConnectorAuthClient;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  return await DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[
-    args.type
-  ].grant.pollDeviceAuth({
+  const provider = connectorDeviceAuthGrantProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  return await provider.grant.pollDeviceAuth({
     ...connectorAuthProviderClientArgs(args.authClient),
     deviceCode: args.deviceCode,
   } as ConnectorDeviceAuthorizationPollArgs<T>);

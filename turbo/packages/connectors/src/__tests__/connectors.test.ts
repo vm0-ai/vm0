@@ -449,6 +449,14 @@ describe("connector provider capability checks", () => {
       expect(hasConnectorDeviceAuthGrantProvider(type)).toBe(
         deviceAuthGrantTypes.has(type),
       );
+      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+        expect(hasConnectorAuthCodeGrantProvider(type, authMethod)).toBe(
+          connectorAuthMethodHasGrantKind(type, authMethod, "auth-code"),
+        );
+        expect(hasConnectorDeviceAuthGrantProvider(type, authMethod)).toBe(
+          connectorAuthMethodHasGrantKind(type, authMethod, "device-auth"),
+        );
+      }
     }
   });
 
@@ -668,6 +676,7 @@ describe("connector provider capability checks", () => {
         }
         const authResult = await buildConnectorAuthCodeAuthorizationUrl({
           type,
+          authMethod: "oauth",
           authClient: oauthClient,
           redirectUri: "https://app.test/callback",
           state: "state-123",
@@ -770,6 +779,7 @@ describe("connector provider capability checks", () => {
 
     const startResult = await startConnectorDeviceAuthorization({
       type: "test-oauth-device",
+      authMethod: "oauth",
       authClient: oauthClient,
     });
     expect(startResult).toStrictEqual({
@@ -785,6 +795,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "pending",
       }),
@@ -792,6 +803,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "slow-down",
       }),
@@ -799,6 +811,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "denied",
       }),
@@ -810,6 +823,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "expired",
       }),
@@ -821,6 +835,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "error",
       }),
@@ -832,6 +847,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "invalid-grant",
       }),
@@ -843,6 +859,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "test-oauth-device",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: startResult.deviceCode,
       }),
@@ -974,6 +991,7 @@ describe("connector provider capability checks", () => {
     await expect(
       startConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
       }),
     ).resolves.toStrictEqual({
@@ -989,6 +1007,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "pending",
       }),
@@ -996,6 +1015,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "slow-down",
       }),
@@ -1003,6 +1023,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "denied",
       }),
@@ -1014,6 +1035,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "expired",
       }),
@@ -1025,6 +1047,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "temporarily-unavailable",
       }),
@@ -1036,6 +1059,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "base44",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "base44-device-code",
       }),
@@ -1258,6 +1282,7 @@ describe("connector provider capability checks", () => {
     await expect(
       startConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
       }),
     ).resolves.toStrictEqual({
@@ -1272,6 +1297,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "pending",
       }),
@@ -1279,6 +1305,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "denied",
       }),
@@ -1290,6 +1317,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "expired",
       }),
@@ -1301,6 +1329,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "no-servers",
       }),
@@ -1312,6 +1341,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "missing-refresh",
       }),
@@ -1322,6 +1352,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "server-error",
       }),
@@ -1334,6 +1365,7 @@ describe("connector provider capability checks", () => {
     await expect(
       pollConnectorDeviceAuthorization({
         type: "slock",
+        authMethod: "oauth",
         authClient: oauthClient,
         deviceCode: "userinfo-error",
       }),
@@ -1345,6 +1377,7 @@ describe("connector provider capability checks", () => {
     });
     const completeResult = await pollConnectorDeviceAuthorization({
       type: "slock",
+      authMethod: "oauth",
       authClient: oauthClient,
       deviceCode: "slock-device-code",
     });
@@ -1379,6 +1412,7 @@ describe("connector provider capability checks", () => {
 
     const malformedCompleteResult = await pollConnectorDeviceAuthorization({
       type: "slock",
+      authMethod: "oauth",
       authClient: oauthClient,
       deviceCode: "malformed-token",
     });

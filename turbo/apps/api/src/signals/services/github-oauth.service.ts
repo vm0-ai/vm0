@@ -12,12 +12,13 @@ import {
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 import {
+  connectorAuthMethodHasGrantKind,
   getConnectorAuthMethodIdForGrantKind,
   resolveConnectorAuthClientForMethod,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
-import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
+import type { ConnectorAuthMethodIdsByGrantKind } from "@vm0/connectors/connectors";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -59,12 +60,18 @@ interface GithubOAuthState {
   readonly sig: string | null;
 }
 
-export function getGithubConnectorAuthCodeMethod(): ConnectorAuthMethodId {
+export function getGithubConnectorAuthCodeMethod(): ConnectorAuthMethodIdsByGrantKind<
+  "github",
+  "auth-code"
+> {
   const authMethod = getConnectorAuthMethodIdForGrantKind(
     "github",
     "auth-code",
   );
-  if (!authMethod) {
+  if (
+    !authMethod ||
+    !connectorAuthMethodHasGrantKind("github", authMethod, "auth-code")
+  ) {
     throw new Error("github connector has no auth-code auth method");
   }
   return authMethod;
@@ -398,6 +405,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   const authResult = normalizeAuthUrlResult(
     await buildConnectorAuthCodeAuthorizationUrl({
       type: "github",
+      authMethod,
       authClient,
       redirectUri,
       state,

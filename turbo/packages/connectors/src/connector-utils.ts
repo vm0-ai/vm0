@@ -4,6 +4,7 @@ import {
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
   type ConnectorAuthMethodIds,
+  type ConnectorAuthMethodIdsByGrantKind,
   type ConnectorAuthMethodClientConfig,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
@@ -86,7 +87,7 @@ export function getConnectorAuthMethodIdForGrantKind(
   grantKind: ConnectorGrantKind,
 ): ConnectorAuthMethodId | undefined {
   for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === grantKind) {
+    if (connectorAuthMethodHasGrantKind(type, authMethod, grantKind)) {
       return authMethod;
     }
   }
@@ -258,11 +259,14 @@ function getConnectorScopeBearingGrantConfig(
   return undefined;
 }
 
-export function connectorAuthMethodHasGrantKind(
-  type: ConnectorType,
+export function connectorAuthMethodHasGrantKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorGrantKind,
+>(
+  type: Type,
   authMethod: string,
-  grantKind: ConnectorGrantKind,
-): boolean {
+  grantKind: Kind,
+): authMethod is ConnectorAuthMethodIdsByGrantKind<Type, Kind> {
   const method = getConnectorAuthMethod(type, authMethod);
   return method?.grant.kind === grantKind;
 }

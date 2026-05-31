@@ -945,7 +945,7 @@ type InvalidAuthMethodRevokeKindConnectorType = {
 export type ConnectorAuthMethodRevokeKindsMatchKeys =
   AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
 
-type ConnectorAuthMethodIdsByGrantKind<
+export type ConnectorAuthMethodIdsByGrantKind<
   Type extends ConnectorType,
   Kind extends ConnectorGrantKind,
 > = {

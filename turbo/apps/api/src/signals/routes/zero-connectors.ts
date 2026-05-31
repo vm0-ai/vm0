@@ -534,6 +534,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
+      authMethod: authCodeStartType.authMethod,
       authClient: prepared.authClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
@@ -636,6 +637,7 @@ const startConnectorOauthInner$ = command(
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,
+      authMethod: authCodeStartType.authMethod,
       authClient: prepared.authClient,
       redirectUri: prepared.redirectUri,
       state: prepared.state,
