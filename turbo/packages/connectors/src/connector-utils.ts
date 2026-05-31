@@ -39,19 +39,12 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,
   "api-token": 1,
   api: 2,
-} as const;
+} as const satisfies Record<ConnectorAuthMethodId, number>;
 
-function connectorAuthMethodPriority(authMethod: string): number {
-  switch (authMethod) {
-    case "oauth":
-      return CONNECTOR_AUTH_METHOD_PRIORITY.oauth;
-    case "api-token":
-      return CONNECTOR_AUTH_METHOD_PRIORITY["api-token"];
-    case "api":
-      return CONNECTOR_AUTH_METHOD_PRIORITY.api;
-    default:
-      return Number.POSITIVE_INFINITY;
-  }
+function connectorAuthMethodPriority(
+  authMethod: ConnectorAuthMethodId,
+): number {
+  return CONNECTOR_AUTH_METHOD_PRIORITY[authMethod];
 }
 
 export function getConfiguredConnectorAuthMethods(
@@ -365,53 +358,6 @@ function connectorGrantScopes(
     case undefined:
       return [];
   }
-}
-
-export function getConnectorAuthCodeGrantConfig(
-  type: AuthCodeGrantConnectorType,
-): ConnectorAuthCodeGrantConfig;
-export function getConnectorAuthCodeGrantConfig(
-  type: ConnectorType,
-): ConnectorAuthCodeGrantConfig | undefined;
-export function getConnectorAuthCodeGrantConfig(
-  type: ConnectorType,
-): ConnectorAuthCodeGrantConfig | undefined {
-  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, "auth-code");
-  const [authMethod] = authMethods;
-  if (authMethods.length === 0 || !authMethod) {
-    return undefined;
-  }
-  if (authMethods.length > 1) {
-    throw new Error(
-      `${type} connector has multiple auth-code grants; use the selected auth method`,
-    );
-  }
-  return getConnectorAuthMethodAuthCodeGrantConfig(type, authMethod);
-}
-
-export function getConnectorDeviceAuthGrantConfig(
-  type: DeviceAuthGrantConnectorType,
-): ConnectorDeviceAuthGrantConfig;
-export function getConnectorDeviceAuthGrantConfig(
-  type: ConnectorType,
-): ConnectorDeviceAuthGrantConfig | undefined;
-export function getConnectorDeviceAuthGrantConfig(
-  type: ConnectorType,
-): ConnectorDeviceAuthGrantConfig | undefined {
-  const authMethods = getConnectorAuthMethodIdsForGrantKind(
-    type,
-    "device-auth",
-  );
-  const [authMethod] = authMethods;
-  if (authMethods.length === 0 || !authMethod) {
-    return undefined;
-  }
-  if (authMethods.length > 1) {
-    throw new Error(
-      `${type} connector has multiple device-auth grants; use the selected auth method`,
-    );
-  }
-  return getConnectorAuthMethodDeviceAuthGrantConfig(type, authMethod);
 }
 
 export function getConnectorAuthMethodGrantScopes(
