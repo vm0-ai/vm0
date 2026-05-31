@@ -8,7 +8,6 @@ import pytest
 import mitm_addon
 import usage
 from tests.pending_helpers import assert_pending
-from usage.providers import model_provider as usage_model_provider
 
 
 class TestUsagePendingCounter:
@@ -106,7 +105,7 @@ class TestUsagePendingCounter:
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
     def test_buffered_usage_blocks_pending_until_flush(
-        self, tmp_path, real_flow, fresh_usage_executor
+        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -118,17 +117,13 @@ class TestUsagePendingCounter:
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
-        with (
-            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             usage.report_model_provider_usage(flow, "run-1")
             usage.write_pending_snapshot(flush_request_id="request-1")
             assert_pending(
                 pending_path, flows=0, buffered=1, reports=0, flush_request_id="request-1"
             )
-            mock_opener.open.assert_not_called()
+            assert webhook.request_count == 0
 
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -309,7 +304,9 @@ class TestUsagePendingCounter:
         ):
             usage.write_pending_snapshot(flush_request_id="request-1")  # should not raise
 
-    def test_report_decrements_after_completion(self, tmp_path, real_flow, fresh_usage_executor):
+    def test_report_decrements_after_completion(
+        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
         """Retry exhaustion still runs the decrement finally-block."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -322,10 +319,11 @@ class TestUsagePendingCounter:
         flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
         with (
-            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
+            usage_webhook_api() as webhook,
+            patch.object(usage.webhook.time, "sleep"),
         ):
-            mock_opener.open.side_effect = ConnectionError("boom")
+            webhook.queue_response(500)
+            webhook.queue_response(500)
             usage.report_model_provider_usage(flow, "run-1")
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -334,7 +332,9 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
-    def test_enqueue_increments_and_drains_reports(self, tmp_path, real_flow, fresh_usage_executor):
+    def test_enqueue_increments_and_drains_reports(
+        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
         """Public entry increments pending on enqueue; executor drain decrements to 0."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -346,11 +346,7 @@ class TestUsagePendingCounter:
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
-        with (
-            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api():
             usage.report_model_provider_usage(flow, "run-1")
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -394,7 +390,9 @@ class TestUsagePendingCounter:
         fake_handler(flow)
         assert usage.counters._in_flight_flows == 1  # unchanged
 
-    def test_sync_fallback_decrements_reports(self, tmp_path, real_flow, fresh_usage_executor):
+    def test_sync_fallback_decrements_reports(
+        self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
         """When the executor is already shut down, the sync fallback still decrements."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -409,11 +407,7 @@ class TestUsagePendingCounter:
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
-        with (
-            patch.object(usage_model_provider, "get_api_url", return_value="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api():
             usage.report_model_provider_usage(flow, "run-1")
             usage.flush_usage_events(trigger="test")
 

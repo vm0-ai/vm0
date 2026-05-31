@@ -4,7 +4,6 @@ import json
 import uuid
 from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from mitmproxy import http, websocket
 from mitmproxy.flow import Error
@@ -15,7 +14,6 @@ import mitm_addon
 import response_streaming
 import usage
 from tests.flow_helpers import header_map, response_stream
-from tests.usage_helpers import usage_event_events_from_calls
 
 
 def _openai_model_websocket_flow(
@@ -135,7 +133,7 @@ class TestModelProviderStreamUsage:
     """Tests for model-provider SSE and WebSocket usage reporting."""
 
     def test_full_pipeline_model_sse_finalizes_trailing_event(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """response() must flush a trailing SSE usage event before reporting."""
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
@@ -146,16 +144,12 @@ class TestModelProviderStreamUsage:
             b'"input_tokens_details":{"cached_tokens":10}}}}'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
@@ -164,7 +158,7 @@ class TestModelProviderStreamUsage:
         }
 
     def test_full_pipeline_model_sse_reports_response_incomplete_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
@@ -174,16 +168,12 @@ class TestModelProviderStreamUsage:
             b'"input_tokens_details":{"cached_tokens":2000}}}}\n\n'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 6000,
@@ -193,7 +183,7 @@ class TestModelProviderStreamUsage:
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
     def test_full_pipeline_anthropic_sse_logs_truncated_message_start(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _model_provider_sse_flow(
             tmp_path,
@@ -206,16 +196,12 @@ class TestModelProviderStreamUsage:
             b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","mod'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -223,7 +209,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_anthropic_sse_error_logs_truncated_message_start(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _model_provider_sse_flow(
             tmp_path,
@@ -237,16 +223,12 @@ class TestModelProviderStreamUsage:
         )
         flow.error = Error("connection reset by peer")
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -254,7 +236,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_anthropic_sse_logs_malformed_message_start(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _model_provider_sse_flow(
             tmp_path,
@@ -265,16 +247,12 @@ class TestModelProviderStreamUsage:
         )
         response_stream(flow)(b"event: message_start\ndata: {invalid json}\n\n")
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -282,7 +260,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_anthropic_sse_logs_truncated_message_delta_after_start(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _model_provider_sse_flow(
             tmp_path,
@@ -299,16 +277,12 @@ class TestModelProviderStreamUsage:
             b'data: {"type":"message_delta","usage":{"output_tokens":'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50}
         assert {event["provider"] for event in events} == {"claude-sonnet-4-6"}
@@ -319,7 +293,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_openai_sse_logs_truncated_terminal_event(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
@@ -327,16 +301,12 @@ class TestModelProviderStreamUsage:
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="openai_responses_sse",
@@ -344,7 +314,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_openai_sse_logs_truncated_late_event_name(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
@@ -352,16 +322,12 @@ class TestModelProviderStreamUsage:
             b"event: response.completed\n\n"
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="openai_responses_sse",
@@ -369,7 +335,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_eventless_incomplete_anthropic_usage_sse_warns(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _model_provider_sse_flow(
             tmp_path,
@@ -382,16 +348,12 @@ class TestModelProviderStreamUsage:
             b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="anthropic_messages_sse",
@@ -399,7 +361,7 @@ class TestModelProviderStreamUsage:
         )
 
     def test_full_pipeline_anthropic_non_usage_incomplete_sse_does_not_warn(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _model_provider_sse_flow(
             tmp_path,
@@ -413,40 +375,32 @@ class TestModelProviderStreamUsage:
             b'data: {"type":"content_block_delta","delta":{"text":"hello'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert _model_sse_parse_warnings(flow) == []
 
     def test_full_pipeline_openai_eventless_incomplete_sse_does_not_warn(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
             b'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert _model_sse_parse_warnings(flow) == []
 
     def test_full_pipeline_openai_non_terminal_incomplete_sse_does_not_warn(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
@@ -454,20 +408,16 @@ class TestModelProviderStreamUsage:
             b'data: {"type":"response.in_progress","response":{"id":"resp_1","model":"gpt'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert _model_sse_parse_warnings(flow) == []
 
     def test_full_pipeline_model_sse_zero_event_preserves_billed_usage_and_id(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         response_stream(flow)(
@@ -479,16 +429,12 @@ class TestModelProviderStreamUsage:
             b'"usage":{"input_tokens":0,"output_tokens":0}}}\n\n'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
         assert by_category == {
@@ -501,7 +447,7 @@ class TestModelProviderStreamUsage:
         assert {event["provider"] for event in events} == {"gpt-5.5"}
 
     def test_full_pipeline_model_websocket_reports_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Codex Responses WebSocket frames should bill like SSE events."""
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
@@ -528,17 +474,13 @@ class TestModelProviderStreamUsage:
             ).encode(),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.websocket_message(flow)
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert flow.metadata["model_provider_usage"]["message_id"] == "resp_ws_1"
         assert by_category == {
@@ -548,7 +490,7 @@ class TestModelProviderStreamUsage:
         }
 
     def test_full_pipeline_model_websocket_zero_frame_preserves_billed_usage_and_id(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
 
@@ -586,16 +528,12 @@ class TestModelProviderStreamUsage:
             ).encode(),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         idempotency_by_category = {event["category"]: event["idempotencyKey"] for event in events}
         assert by_category == {
@@ -822,7 +760,7 @@ class TestModelProviderStreamUsage:
         assert flow.metadata["model_provider_usage"] == "invalid"
 
     def test_model_websocket_ignores_client_messages(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
         _set_websocket_message(
@@ -840,14 +778,11 @@ class TestModelProviderStreamUsage:
             ).encode(),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
+        with usage_webhook_api() as webhook:
             mitm_addon.websocket_message(flow)
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert flow.metadata["model_provider_usage"] == {}

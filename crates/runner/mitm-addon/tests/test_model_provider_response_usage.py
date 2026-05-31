@@ -4,7 +4,6 @@ import gzip
 import json
 import zlib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import zstandard
@@ -14,14 +13,14 @@ import body_utils
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
-from tests.usage_helpers import set_stream_buffer, usage_event_events_from_calls
+from tests.usage_helpers import set_stream_buffer
 
 
 class TestModelProviderResponseUsage:
     """Tests for model-provider JSON usage extraction and response reporting."""
 
     def test_non_streaming_json_fallback(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """Non-streaming JSON response should extract usage from buffer."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -51,13 +50,7 @@ class TestModelProviderResponseUsage:
             ),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api():
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -69,7 +62,7 @@ class TestModelProviderResponseUsage:
         assert extracted["tokens.output"] == 200
 
     def test_openai_non_streaming_json_fallback(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """Legacy JSON fallback should use OpenAI Responses mapping."""
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -102,11 +95,7 @@ class TestModelProviderResponseUsage:
             ),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -117,7 +106,7 @@ class TestModelProviderResponseUsage:
         assert extracted["tokens.input"] == 40
         assert extracted["tokens.output"] == 200
         assert extracted["tokens.cache_read"] == 10
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
@@ -126,7 +115,7 @@ class TestModelProviderResponseUsage:
         }
 
     def test_anthropic_json_fallback_parse_error_logs_proxy_warning(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Legacy JSON fallback parse failures should be observable."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -147,16 +136,12 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
         assert len(entries) == 1
@@ -166,7 +151,7 @@ class TestModelProviderResponseUsage:
         assert entries[0]["error"] == "incomplete json"
 
     def test_json_fallback_parser_bound_error_logs_proxy_warning(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Bounded parser failures should be observable without logging body content."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -194,16 +179,12 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
         assert len(entries) == 1
@@ -214,7 +195,7 @@ class TestModelProviderResponseUsage:
         assert oversized_model not in proxy_log_path.read_text()
 
     def test_openai_json_fallback_parse_error_logs_proxy_warning(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """OpenAI fallback parse failures should use the same proxy warning."""
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -236,16 +217,12 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
         assert len(entries) == 1
@@ -272,7 +249,14 @@ class TestModelProviderResponseUsage:
     )
     @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case, provider_case
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fresh_usage_executor,
+        usage_webhook_api,
+        encoding_case,
+        provider_case,
     ):
         """One-shot decompression failures leave compressed bytes and log parse failure."""
         if provider_case == "openai":
@@ -356,16 +340,12 @@ class TestModelProviderResponseUsage:
             ),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
         assert len(entries) == 1
@@ -382,6 +362,7 @@ class TestModelProviderResponseUsage:
         real_flow,
         mitm_ctx,
         fresh_usage_executor,
+        usage_webhook_api,
         encoding_case,
         provider_case,
     ):
@@ -427,11 +408,7 @@ class TestModelProviderResponseUsage:
             ),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api():
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -459,6 +436,7 @@ class TestModelProviderResponseUsage:
         real_flow,
         mitm_ctx,
         fresh_usage_executor,
+        usage_webhook_api,
         encoding_case,
         provider_case,
     ):
@@ -515,11 +493,7 @@ class TestModelProviderResponseUsage:
             ),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -532,7 +506,7 @@ class TestModelProviderResponseUsage:
         assert extracted["tokens.output"] == 200
         if provider_case == "openai":
             assert extracted["tokens.cache_read"] == 10
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         expected = {
             "tokens.input": 40 if provider_case == "openai" else 50,
@@ -549,7 +523,7 @@ class TestModelProviderResponseUsage:
             )
 
     def test_json_fallback_valid_body_without_usage_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Valid JSON without usage is not a parser failure."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -570,21 +544,17 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
     def test_openai_json_fallback_valid_body_without_usage_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """OpenAI fallback should also keep valid no-usage JSON quiet."""
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -606,16 +576,12 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
@@ -624,7 +590,14 @@ class TestModelProviderResponseUsage:
     )
     @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_empty_body_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, encoding_case, provider_case
+        self,
+        tmp_path,
+        real_flow,
+        mitm_ctx,
+        fresh_usage_executor,
+        usage_webhook_api,
+        encoding_case,
+        provider_case,
     ):
         """Empty model-provider bodies are not JSON parser failures."""
         if provider_case == "openai":
@@ -667,21 +640,17 @@ class TestModelProviderResponseUsage:
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(status_code=200, headers=header_map(response_headers))
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
     def test_anthropic_json_fallback_metadata_only_usage_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Anthropic metadata without positive token usage is not a parser failure."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -702,16 +671,12 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert flow.metadata["model_provider_usage"] == {
             "message_id": "msg_1",
             "model": "claude-sonnet-4-6",
@@ -720,7 +685,7 @@ class TestModelProviderResponseUsage:
 
     @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_json_fallback_zero_token_usage_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, provider_case
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api, provider_case
     ):
         """Valid zero-token usage is not a parser failure and does not bill."""
         proxy_log_path = tmp_path / "proxy.jsonl"
@@ -769,21 +734,17 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert flow.metadata["model_provider_usage"] == expected_usage
         assert not proxy_log_path.exists()
 
     def test_codex_oauth_non_streaming_json_fallback(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Codex OAuth model-provider fallback uses OpenAI Responses mapping."""
         flow = real_flow(with_response=False, host="chatgpt.com")
@@ -816,11 +777,7 @@ class TestModelProviderResponseUsage:
             ),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -831,7 +788,7 @@ class TestModelProviderResponseUsage:
         assert extracted["tokens.input"] == 40
         assert extracted["tokens.output"] == 200
         assert extracted["tokens.cache_read"] == 10
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {
             "tokens.input": 40,
@@ -840,7 +797,7 @@ class TestModelProviderResponseUsage:
         }
 
     def test_non_billable_openai_json_does_not_report_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         flow = real_flow(with_response=False, host="api.openai.com")
         body = json.dumps(
@@ -864,20 +821,16 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
 
     def test_non_billable_json_fallback_parse_error_stays_quiet(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """Non-billable model-provider fallback must not emit usage warnings."""
         flow = real_flow(with_response=False, host="api.openai.com")
@@ -898,21 +851,17 @@ class TestModelProviderResponseUsage:
             headers=header_map({"content-type": "application/json"}),
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
     def test_full_pipeline_large_model_json_uses_bounded_buffer(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """responseheaders + response report model usage without full-body buffering."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -939,22 +888,18 @@ class TestModelProviderResponseUsage:
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50, "tokens.output": 200}
 
     @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
     def test_full_pipeline_compressed_model_json_reports_usage(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, provider_case
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api, provider_case
     ):
         """responseheaders parser should decompress non-SSE model JSON before extraction."""
         if provider_case == "openai":
@@ -1002,11 +947,7 @@ class TestModelProviderResponseUsage:
         response_stream(flow)(compressed[:midpoint])
         response_stream(flow)(compressed[midpoint:])
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
@@ -1019,7 +960,7 @@ class TestModelProviderResponseUsage:
         assert extracted["tokens.output"] == 200
         if provider_case == "openai":
             assert extracted["tokens.cache_read"] == 10
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         expected = {
             "tokens.input": 40 if provider_case == "openai" else 50,
@@ -1030,7 +971,7 @@ class TestModelProviderResponseUsage:
         assert by_category == expected
 
     def test_full_pipeline_incomplete_model_json_does_not_report_partial_usage(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """Fields seen before EOF are ignored unless the JSON document completes."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
@@ -1054,16 +995,12 @@ class TestModelProviderResponseUsage:
             b'"usage":{"input_tokens":50,"output_tokens":200}'
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         usage_warnings = [
@@ -1075,7 +1012,7 @@ class TestModelProviderResponseUsage:
         assert usage_warnings[0]["error"] == "incomplete json"
 
     def test_full_pipeline_corrupt_model_json_encoding_does_not_fallback_to_raw_buffer(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """A bad Content-Encoding must not parse raw stream_buffer and bill usage."""
         raw_json = json.dumps(
@@ -1103,21 +1040,17 @@ class TestModelProviderResponseUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(raw_json)
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         assert "stream_buffer" not in flow.metadata
 
     def test_full_pipeline_model_json_ignores_usage_array_shape(
-        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):
         """usage fields inside array elements must not be treated as usage object fields."""
         body = json.dumps(
@@ -1144,19 +1077,15 @@ class TestModelProviderResponseUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(body)
 
-        with (
-            mitm_ctx(),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
 
     def test_no_usage_report_for_non_model_provider(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """Non-model-provider requests should not trigger usage reporting."""
         flow = real_flow(with_response=False, host="api.github.com")
@@ -1175,26 +1104,21 @@ class TestModelProviderResponseUsage:
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
 
-        with (
-            mitm_ctx(),
-            # report_model_provider_usage early-returns on the firewall_name == "github"
-            # filter, so no urllib request should ever reach the external boundary.
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert mock_opener.open.call_count == 0  # urllib external boundary (#9991)
+        assert webhook.request_count == 0
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
-    def test_full_path_response_to_opener(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    def test_full_path_response_to_webhook(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
-        """Integration: response() → _maybe_report → _enqueue → _retry → _opener.
+        """Integration: response() -> _maybe_report -> _enqueue -> _retry -> webhook.
 
-        Only _opener is mocked — verifies wiring between all intermediate layers.
+        Verifies wiring between all intermediate layers through loopback HTTP.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
@@ -1215,21 +1139,15 @@ class TestModelProviderResponseUsage:
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
 
-        with (
-            mitm_ctx(api_url="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             # Flush the executor to ensure the background POST completes
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        # Verify the webhook POST reached _opener with correct payload
-        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
-        req = mock_opener.open.call_args[0][0]
-        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage-event"
-        body = json.loads(req.data)
+        assert webhook.request_count == 1
+        assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
+        body = webhook.requests[0].json_body()
         assert body["runId"] == "run-int-001"
         by_category = {event["category"]: event for event in body["events"]}
         assert by_category["tokens.input"]["quantity"] == 100

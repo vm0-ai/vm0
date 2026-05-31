@@ -3,7 +3,6 @@
 import gzip
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 from mitmproxy.test import tutils
@@ -12,10 +11,6 @@ import body_utils
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
-from tests.usage_helpers import (
-    request_bodies_from_calls,
-    usage_event_events_from_calls,
-)
 from usage.providers.connectors import x as usage_x_connector
 
 
@@ -45,11 +40,12 @@ class TestReportConnectorUsage:
     """Tests for report_connector_usage helper (issue #9504)."""
 
     @pytest.fixture(autouse=True)
-    def _sync_executor(self, sync_usage_executor):
+    def _sync_executor(self, sync_usage_executor, usage_webhook_api):
         """All tests here route billing through ``_call_and_get_billing`` which
-        inspects ``_opener.open`` inline; the sync executor makes that work
+        inspects webhook delivery inline; the sync executor makes that work
         without each test needing its own ``fresh_usage_executor`` + shutdown.
         """
+        self._usage_webhook_api = usage_webhook_api
 
     def _make_x_flow(
         self,
@@ -91,20 +87,16 @@ class TestReportConnectorUsage:
         """Call report_connector_usage and return the webhook payload(s).
 
         Relies on the class-level ``_sync_executor`` autouse fixture to
-        route submissions inline; only the urllib boundary is mocked here.
+        route submissions inline.
         """
-        with (
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
+            start_count = webhook.request_count
             usage.report_connector_usage(flow, run_id)
             usage.flush_usage_events(trigger="test")
         return [
             event
-            for body in request_bodies_from_calls(mock_opener.open.call_args_list)
+            for request in webhook.requests[start_count:]
+            for body in [request.json_body()]
             for event in body["events"]
         ]
 
@@ -178,17 +170,13 @@ class TestReportConnectorUsage:
             body=body,
         )
 
-        with (
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             usage.report_connector_usage(flow, "run-abc-123")
-            mock_opener.open.assert_not_called()
+            assert webhook.request_count == 0
             usage.flush_usage_events(trigger="test")
 
-        mock_opener.open.assert_called_once()
-        [payload] = request_bodies_from_calls(mock_opener.open.call_args_list)
+        assert webhook.request_count == 1
+        [payload] = webhook.json_bodies()
         assert payload["runId"] == "run-abc-123"
         assert "idempotencyKey" not in payload
         by_cat = {event["category"]: event for event in payload["events"]}
@@ -208,15 +196,11 @@ class TestReportConnectorUsage:
         ).encode()
         flow = self._make_x_flow(real_flow, tmp_path, query="expansions=future", body=body)
 
-        with (
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             usage.report_connector_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
-        bodies = request_bodies_from_calls(mock_opener.open.call_args_list)
+        bodies = webhook.json_bodies()
         assert [len(body["events"]) for body in bodies] == [100, 1]
         assert {body["runId"] for body in bodies} == {"run-abc-123"}
         assert all(
@@ -440,16 +424,11 @@ class TestReportConnectorUsage:
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"posts.read": 1, "user.read": 1}
 
@@ -477,16 +456,11 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":{"id":"1","text":"hello"}}')
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 1
@@ -526,16 +500,11 @@ class TestReportConnectorUsage:
             ).encode()
         )
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
 
     def test_full_response_pipeline_x_root_array_uses_request_hints(
         self, tmp_path, real_flow, mitm_ctx
@@ -561,16 +530,11 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'[{"id":"1"}]')
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
@@ -1296,19 +1260,13 @@ class TestReportConnectorUsage:
             callback(chunk)
 
         # 3. Simulated disconnect - response() fires and logs via webhook
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
-        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = webhook.usage_events()
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 3 tweets primary + 0 from includes.tweets (none here) = 3
         assert by_cat["posts.read"] == 3
@@ -1352,18 +1310,12 @@ class TestReportConnectorUsage:
         assert state["lines_parsed"] == 1
         assert state["lines_failed"] == 0
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = webhook.usage_events()
         by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
         assert by_cat == {"posts.read": 1, "media.read": 1}
 
@@ -1391,14 +1343,10 @@ class TestReportConnectorUsage:
         response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "connector_response_finish" in flow.metadata
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         lost_visibility_entries = [
@@ -1436,14 +1384,10 @@ class TestReportConnectorUsage:
         response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * body_utils.STREAM_BUFFER_LIMIT)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         lost_visibility_entries = [
@@ -1480,15 +1424,11 @@ class TestReportConnectorUsage:
         response_stream(flow)(b'{"data":[{"id":"1"}')
         assert "connector_response_finish" in flow.metadata
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3

@@ -4,7 +4,6 @@ import json
 import time
 import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 from mitmproxy.flow import Error
 from mitmproxy.test import tutils
@@ -14,9 +13,6 @@ import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
-from tests.usage_helpers import (
-    usage_event_events_from_calls,
-)
 
 
 class TestErrorHandler:
@@ -88,7 +84,7 @@ class TestErrorHandler:
         assert "connector_response_finish" not in flow.metadata
 
     def test_error_does_not_bill_partial_x_json_response(
-        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor, usage_webhook_api
     ):
         """Interrupted non-stream JSON must not be billed via request-hint fallback."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
@@ -111,14 +107,10 @@ class TestErrorHandler:
         response_stream(flow)(b'{"data":[{"id":"1"}')
         flow.error = Error("connection reset")
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         assert flow.response.stream is False
         assert "stream_buffer" not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
@@ -251,7 +243,7 @@ class TestErrorHandler:
         assert "#frag" not in entry["message"]
 
     def test_error_logs_connector_usage_for_x_stream(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """Mid-flight stream crash: partial counts still reported (issue #9534)."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
@@ -280,26 +272,19 @@ class TestErrorHandler:
         flow.error = Error("connection reset by peer")
         flow.metadata["vm_sandbox_token"] = "test-token"
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        # Connector billing webhook should have been posted to _opener.
-        assert mock_opener.open.called
-        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        assert webhook.request_count > 0
+        payloads = webhook.usage_events()
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 23
         assert by_cat["user.read"] == 5
 
     def test_full_pipeline_stream_error_midflight(
-        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
     ):
         """End-to-end: responseheaders → partial chunks → error() logs observed counts.
 
@@ -337,27 +322,23 @@ class TestErrorHandler:
         flow.error = Error("connection reset by peer")
         flow.metadata["vm_sandbox_token"] = "test-token"
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Billing must reflect the 2 complete tweets (partial 3rd is dropped)
-        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = webhook.usage_events()
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         assert by_cat["posts.read"] == 2  # not 3 — partial trailing dropped
         assert by_cat["user.read"] == 1
 
-    def test_full_path_error_to_opener(self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor):
-        """Integration: error() → _maybe_report → _enqueue → _retry → _opener.
+    def test_full_path_error_to_webhook(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
+    ):
+        """Integration: error() -> _maybe_report -> _enqueue -> _retry -> webhook.
 
-        Verifies that error() hook delivers partial usage all the way to _opener.
+        Verifies that error() hook delivers partial usage through loopback HTTP.
         """
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
@@ -374,18 +355,13 @@ class TestErrorHandler:
         }
         flow.error = Error("connection reset by peer")
 
-        with (
-            mitm_ctx(api_url="https://api.vm0.ai"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with usage_webhook_api() as webhook:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
-        req = mock_opener.open.call_args[0][0]
-        body = json.loads(req.data)
+        assert webhook.request_count == 1
+        body = webhook.requests[0].json_body()
         assert body["runId"] == "run-int-002"
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}

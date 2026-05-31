@@ -13,10 +13,8 @@ Two paths:
 
 This package exposes the stable surface consumed by ``mitm_addon.py`` and
 ``response_streaming.py``.
-For test patching, target the submodule that **reads** the name (e.g.
-``usage.webhook._opener`` rather than ``usage._opener``) — Python's
-``from X import Y`` creates a module-local binding that facade-level
-patches can't reach.
+Tests should exercise these public hook/provider paths and the local HTTP
+webhook boundary instead of patching private transport internals.
 """
 
 from . import webhook

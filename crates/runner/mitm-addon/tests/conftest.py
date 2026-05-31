@@ -29,6 +29,7 @@ import mitm_addon
 import registry
 import usage
 from tests.auth_state_helpers import clear_auth_state
+from tests.usage_helpers import UsageWebhookServer
 from usage.providers import connectors as _usage_connectors
 
 
@@ -295,16 +296,31 @@ def fake_firewall_headers():
 
 
 @pytest.fixture
+def usage_webhook_server() -> Iterator[UsageWebhookServer]:
+    server = UsageWebhookServer()
+    with server.run():
+        yield server
+
+
+@pytest.fixture
+def usage_webhook_api(usage_webhook_server, mitm_ctx):
+    @contextlib.contextmanager
+    def _api() -> Iterator[UsageWebhookServer]:
+        with mitm_ctx(api_url=usage_webhook_server.api_url):
+            yield usage_webhook_server
+
+    return _api
+
+
+@pytest.fixture
 def sync_usage_executor():
     """Swap ``usage.webhook.usage_executor`` for a synchronous stub.
 
-    Tests that mock ``usage.webhook._opener`` and want the webhook payloads to
-    appear on the mock by the time they inspect it need submission to
-    happen inline rather than on a background thread — otherwise they
-    have to thread ``fresh_usage_executor`` + ``shutdown(wait=True)``
-    boilerplate through every caller.  The inline executor returns real
-    ``Future`` objects while still running the function synchronously;
-    the original executor is restored on teardown.
+    Tests that want webhook side effects to complete before inline
+    assertions can use this instead of a background thread plus explicit
+    ``fresh_usage_executor`` + ``shutdown(wait=True)`` boilerplate.  The
+    inline executor returns real ``Future`` objects while still running the
+    function synchronously; the original executor is restored on teardown.
     """
 
     class _InlineExecutor:
