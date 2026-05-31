@@ -122,6 +122,7 @@ seed_test_oauth_connector() {
         --argjson expiresIn "$expires_in" \
         '{
             connectorName: "test-oauth",
+            authMethod: "oauth",
             accessToken: $accessToken,
             refreshToken: $refreshToken,
             expiresIn: $expiresIn
