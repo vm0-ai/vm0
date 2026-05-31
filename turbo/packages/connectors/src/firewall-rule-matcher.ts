@@ -265,19 +265,20 @@ function isValidApiEntry(
   return true;
 }
 
-function getPermissionRules(permission: unknown): {
-  name: string;
-  rules: string[];
-} | null {
+function getPermissionName(permission: unknown): string | null {
   if (!isObjectRecord(permission)) return null;
   if (typeof permission.name !== "string") return null;
   if (!isValidPermissionName(permission.name)) return null;
-  if (!Array.isArray(permission.rules)) return null;
+  return permission.name;
+}
+
+function getPermissionRules(permission: unknown): string[] {
+  if (!isObjectRecord(permission)) return [];
+  if (!Array.isArray(permission.rules)) return [];
   const rules = permission.rules.filter((rule) => {
     return typeof rule === "string";
   });
-  if (rules.length === 0) return null;
-  return { name: permission.name, rules };
+  return rules;
 }
 
 function getApiPermissionsForMatch(
@@ -559,18 +560,18 @@ export function findMatchingPermissions(
     const seenPermissionNames = new Set<string>();
 
     for (const rawPermission of permissions) {
-      const permission = getPermissionRules(rawPermission);
-      if (permission === null) continue;
-      if (seenPermissionNames.has(permission.name)) continue;
-      seenPermissionNames.add(permission.name);
-      for (const rule of permission.rules) {
+      const permissionName = getPermissionName(rawPermission);
+      if (permissionName === null) continue;
+      if (seenPermissionNames.has(permissionName)) continue;
+      seenPermissionNames.add(permissionName);
+      for (const rule of getPermissionRules(rawPermission)) {
         const rest = matchingRulePath(rule, upperMethod);
         if (rest === null) continue;
 
         if (matchFirewallPath(path, rest) !== null) {
           const specificity = pathSpecificity(rest);
           if (specificity === null) continue;
-          recordPermissionMatch(state, permission.name, specificity);
+          recordPermissionMatch(state, permissionName, specificity);
         }
       }
     }
