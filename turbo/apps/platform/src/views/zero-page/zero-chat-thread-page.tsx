@@ -60,8 +60,10 @@ import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-provider
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { getSingleConnectorAuthMethodIdForGrantKind } from "@vm0/connectors/connector-utils";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorAuthMethodIdsByGrantKind,
+} from "@vm0/connectors/connectors";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -201,6 +203,11 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
+const GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD =
+  "oauth" satisfies ConnectorAuthMethodIdsByGrantKind<
+    "google-drive",
+    "auth-code"
+  >;
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -721,20 +728,6 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Agent is still loading");
     return;
   }
-  const authMethodResult = getSingleConnectorAuthMethodIdForGrantKind(
-    "google-drive",
-    "auth-code",
-  );
-  if (authMethodResult.status === "multiple") {
-    toast.error("Choose a Google Drive connection method from settings");
-    return;
-  }
-  const authMethod =
-    authMethodResult.status === "single" ? authMethodResult.authMethod : null;
-  if (!authMethod) {
-    toast.error("Google Drive connection is not available");
-    return;
-  }
   const authWindow = window.open(
     "about:blank",
     "_blank",
@@ -753,7 +746,7 @@ function startGoogleDriveConnectAndSync(params: {
       const result = await accept(
         client.start({
           params: { type: "google-drive" },
-          body: { authMethod },
+          body: { authMethod: GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD },
           fetchOptions: { signal: params.pageSignal },
         }),
         [200],

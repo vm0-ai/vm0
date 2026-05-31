@@ -38,7 +38,6 @@ import {
   getConnectorAuthMethodIdsForRevokeKind,
   getConnectorAuthMethodScopeDiff,
   getConfiguredConnectorAuthMethods,
-  getSingleConnectorAuthMethodIdForGrantKind,
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethodAuthCodeGrantConfig,
@@ -289,24 +288,6 @@ describe("connector auth method lifecycle helpers", () => {
     ).toStrictEqual([]);
 
     expect(
-      getSingleConnectorAuthMethodIdForGrantKind("github", "auth-code"),
-    ).toStrictEqual({
-      status: "single",
-      authMethod: "oauth",
-    });
-    expect(
-      getSingleConnectorAuthMethodIdForGrantKind("github", "manual"),
-    ).toStrictEqual({
-      status: "none",
-    });
-    expect(
-      getSingleConnectorAuthMethodIdForGrantKind("stripe", "manual"),
-    ).toStrictEqual({
-      status: "single",
-      authMethod: "api-token",
-    });
-
-    expect(
       connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
     ).toBe(true);
     expect(
@@ -444,12 +425,6 @@ describe("connector auth method config", () => {
       expect(
         getConnectorAuthMethodIdsForGrantKind("github", "auth-code"),
       ).toStrictEqual(["oauth", "api"]);
-      expect(
-        getSingleConnectorAuthMethodIdForGrantKind("github", "auth-code"),
-      ).toStrictEqual({
-        status: "multiple",
-        authMethods: ["oauth", "api"],
-      });
       expect(hasConnectorAuthCodeGrant("github")).toBe(true);
       expect(() => {
         getConnectorAuthCodeGrantConfig("github");

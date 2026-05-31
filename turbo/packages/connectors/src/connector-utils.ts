@@ -168,29 +168,6 @@ export function getConnectorAuthMethodIdsForRevokeKind<
   );
 }
 
-export type SingleConnectorAuthMethodIdResult =
-  | { readonly status: "none" }
-  | { readonly status: "single"; readonly authMethod: ConnectorAuthMethodId }
-  | {
-      readonly status: "multiple";
-      readonly authMethods: readonly ConnectorAuthMethodId[];
-    };
-
-export function getSingleConnectorAuthMethodIdForGrantKind(
-  type: ConnectorType,
-  grantKind: ConnectorGrantKind,
-): SingleConnectorAuthMethodIdResult {
-  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, grantKind);
-  const [authMethod] = authMethods;
-  if (authMethods.length === 0) {
-    return { status: "none" };
-  }
-  if (authMethods.length === 1 && authMethod) {
-    return { status: "single", authMethod };
-  }
-  return { status: "multiple", authMethods };
-}
-
 function getManualGrantFields(
   method: ConnectorAuthMethodConfig | undefined,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
