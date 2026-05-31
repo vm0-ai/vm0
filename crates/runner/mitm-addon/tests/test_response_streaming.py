@@ -62,6 +62,14 @@ class TestNdjsonExtractor:
         assert state["lines_parsed"] == 2
         assert state["lines_failed"] == 1
 
+    def test_invalid_utf8_line_increments_failures_and_continues(self):
+        parse, state = usage_x_connector.create_ndjson_extractor()
+        parse(b'\x80{"data":{"id":"bad"}}\n{"data":{"id":"after"}}\n')
+
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 1
+
     def test_truncated_trailing_line_not_counted(self):
         """Connection drops mid-line — partial trailing line stays in buf, not counted."""
         parse, state = usage_x_connector.create_ndjson_extractor()
