@@ -1,4 +1,8 @@
-import type { FirewallConfig } from "./firewall-types";
+import {
+  type FirewallConfig,
+  validateAuthBaseUrl,
+  validateBaseUrl,
+} from "./firewall-types";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
 type PathSpecificity = readonly [
@@ -219,6 +223,21 @@ function matchingRulePath(rule: string, upperMethod: string): string | null {
 
 function isValidPermissionName(permissionName: string): boolean {
   return permissionName !== "" && permissionName !== "all";
+}
+
+function isValidApiEntry(
+  api: FirewallConfig["apis"][number],
+  serviceName: string,
+): boolean {
+  try {
+    validateBaseUrl(api.base, serviceName);
+    if (api.auth.base !== undefined) {
+      validateAuthBaseUrl(api.auth.base, serviceName);
+    }
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 function recordPermissionMatch(
@@ -481,6 +500,7 @@ export function findMatchingPermissions(
 
   for (const api of config.apis) {
     if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) continue;
+    if (!isValidApiEntry(api, config.name)) continue;
     if (!api.permissions) continue;
     const state: ApiMatchState = { bestSpecificity: null, matched: [] };
     const seenPermissionNames = new Set<string>();

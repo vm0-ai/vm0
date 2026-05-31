@@ -460,6 +460,48 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
   });
 
+  it("ignores API entries that fail base or auth validation", () => {
+    const malformedApiConfig: FirewallConfig = {
+      name: "malformed-api",
+      apis: [
+        {
+          base: "https://example.com?token=1",
+          auth: { headers: {} },
+          permissions: [{ name: "query-base", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "ftp://example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "bad-scheme", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://auth.example.com",
+          auth: { base: "ftp://auth.example.com/token" },
+          permissions: [{ name: "bad-auth", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://valid.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "valid", rules: ["GET /items/{id}"] }],
+        },
+      ],
+    };
+
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedApiConfig),
+    ).toEqual(["valid"]);
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedApiConfig, {
+        apiBase: "https://example.com?token=1",
+      }),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedApiConfig, {
+        apiBase: "https://auth.example.com",
+      }),
+    ).toEqual([]);
+  });
+
   it("matches ANY method rule", () => {
     const anyConfig: FirewallConfig = {
       name: "any-test",
