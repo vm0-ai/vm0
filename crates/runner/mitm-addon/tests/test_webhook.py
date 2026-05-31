@@ -254,6 +254,8 @@ class TestUsageWebhookDelivery:
         assert mock_opener.open.call_count == 1  # urllib external boundary (#9991)
         assert usage.counters._pending_reports == 1
         assert "non-retryable" in proxy_log.read_text()
+        with pytest.raises(TypeError, match="boom"):
+            sync_usage_executor.shutdown(wait=True)
 
     def test_sleeps_between_retries(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
