@@ -23,6 +23,7 @@ Path = tuple[str, ...]
 WildcardPath = tuple[str, ...]
 ScalarKind = Literal["string", "int"]
 _JsonStringScanner = Callable[[str, int, bool], tuple[str, int]]
+# `scanstring` is the stdlib JSON string scanner, but typeshed does not expose it.
 _SCAN_JSON_STRING = cast(_JsonStringScanner, vars(json.decoder)["scanstring"])
 _UNKNOWN_KEY = "\0__vm0_json_unknown_key__"
 _ARRAY_ELEMENT = "\0__vm0_json_array_element__"
@@ -798,11 +799,10 @@ def _is_hex_byte(b: int) -> bool:
 
 
 def _decode_json_string(raw: bytearray, *, has_escape: bool) -> str:
-    raw_bytes = bytes(raw)
+    text = raw.decode("utf-8")
     if not has_escape:
-        return raw_bytes.decode("utf-8")
+        return text
 
-    text = raw_bytes.decode("utf-8")
     scan_input = f'{text}"'
     value, end = _SCAN_JSON_STRING(scan_input, 0, True)
     if end != len(scan_input):
