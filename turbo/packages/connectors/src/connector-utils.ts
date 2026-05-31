@@ -3,6 +3,8 @@ import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorAuthMethodIds,
+  type ConnectorAuthMethodClientConfig,
   type ConnectorAccessConfig,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
@@ -16,7 +18,10 @@ import {
   type ConnectorAuthProviderType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
+  type DynamicPublicConnectorAuthClientConfig,
   type RefreshTokenAccessConnectorType,
+  type StaticConfidentialConnectorAuthClientConfig,
+  type StaticPublicConnectorAuthClientConfig,
   type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
@@ -471,6 +476,21 @@ export type ConnectorAuthClient =
   | StaticConnectorAuthClient
   | DynamicPublicConnectorAuthClient;
 
+export type ConnectorAuthClientForConfig<
+  Client extends ConnectorAuthClientConfig,
+> = Client extends StaticConfidentialConnectorAuthClientConfig
+  ? StaticConfidentialConnectorAuthClient
+  : Client extends StaticPublicConnectorAuthClientConfig
+    ? StaticPublicConnectorAuthClient
+    : Client extends DynamicPublicConnectorAuthClientConfig
+      ? DynamicPublicConnectorAuthClient
+      : never;
+
+export type ConnectorAuthClientForMethod<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = ConnectorAuthClientForConfig<ConnectorAuthMethodClientConfig<Type, Method>>;
+
 export function isStaticConnectorAuthClient(
   authClient: ConnectorAuthClient,
 ): authClient is StaticConnectorAuthClient {
@@ -486,6 +506,17 @@ export function isStaticConfidentialConnectorAuthClient(
   );
 }
 
+export function getConnectorAuthClientConfigForMethod<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+>(
+  type: Type,
+  authMethod: Method,
+): ConnectorAuthMethodClientConfig<Type, Method> | undefined;
+export function getConnectorAuthClientConfigForMethod(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthClientConfig | undefined;
 export function getConnectorAuthClientConfigForMethod(
   type: ConnectorType,
   authMethod: string,
@@ -493,6 +524,12 @@ export function getConnectorAuthClientConfigForMethod(
   return getConnectorAuthMethod(type, authMethod)?.client;
 }
 
+export function resolveConnectorAuthClient<
+  Client extends ConnectorAuthClientConfig,
+>(
+  client: Client,
+  readEnv: ConnectorEnvReader,
+): ConnectorAuthClientForConfig<Client> | undefined;
 export function resolveConnectorAuthClient(
   client: ConnectorAuthClientConfig,
   readEnv: ConnectorEnvReader,
@@ -539,6 +576,19 @@ export function resolveConnectorAuthClient(
   };
 }
 
+export function resolveConnectorAuthClientForMethod<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+>(
+  type: Type,
+  authMethod: Method,
+  readEnv: ConnectorEnvReader,
+): ConnectorAuthClientForMethod<Type, Method> | undefined;
+export function resolveConnectorAuthClientForMethod(
+  type: ConnectorType,
+  authMethod: string,
+  readEnv: ConnectorEnvReader,
+): ConnectorAuthClient | undefined;
 export function resolveConnectorAuthClientForMethod(
   type: ConnectorType,
   authMethod: string,

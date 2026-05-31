@@ -14,7 +14,9 @@ import {
   getConfiguredConnectorAuthMethods,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
+  resolveConnectorAuthClientForMethod,
   type ConnectorAuthClient,
+  type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
@@ -158,18 +160,6 @@ function connectorAuthProviderClientArgs(
   return { clientId: authClient.clientId };
 }
 
-function staticConfidentialConnectorAuthProviderClientArgs(
-  authClient: ConnectorAuthClient,
-): { readonly clientId: string; readonly clientSecret: string } {
-  if (!isStaticConfidentialConnectorAuthClient(authClient)) {
-    throw new Error("Connector token revoke requires a confidential client");
-  }
-  return {
-    clientId: authClient.clientId,
-    clientSecret: authClient.clientSecret,
-  };
-}
-
 export function getConnectorAuthProviderClientArgs(
   authClient: ConnectorAuthClient,
 ): ConnectorAuthProviderClientArgs {
@@ -178,23 +168,58 @@ export function getConnectorAuthProviderClientArgs(
 
 async function revokeTokenRevokeConnectorAccessToken(args: {
   readonly type: TokenRevokeConnectorType;
-  readonly authClient: ConnectorAuthClient;
+  readonly readEnv: ConnectorEnvReader;
   readonly loadAccessToken: () => string | Promise<string>;
-}): Promise<void> {
-  const clientArgs = staticConfidentialConnectorAuthProviderClientArgs(
-    args.authClient,
-  );
-  const accessToken = await args.loadAccessToken();
+}): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
   switch (args.type) {
-    case "github":
-      await githubProvider.revoke.revokeToken({ ...clientArgs, accessToken });
-      return;
-    case "linear":
-      await linearProvider.revoke.revokeToken({ ...clientArgs, accessToken });
-      return;
-    case "slack":
-      await slackProvider.revoke.revokeToken({ ...clientArgs, accessToken });
-      return;
+    case "github": {
+      const authClient = resolveConnectorAuthClientForMethod(
+        "github",
+        "oauth",
+        args.readEnv,
+      );
+      if (!authClient) {
+        return { status: "unsupported" };
+      }
+      await githubProvider.revoke.revokeToken({
+        clientId: authClient.clientId,
+        clientSecret: authClient.clientSecret,
+        accessToken: await args.loadAccessToken(),
+      });
+      return { status: "revoked" };
+    }
+    case "linear": {
+      const authClient = resolveConnectorAuthClientForMethod(
+        "linear",
+        "oauth",
+        args.readEnv,
+      );
+      if (!authClient) {
+        return { status: "unsupported" };
+      }
+      await linearProvider.revoke.revokeToken({
+        clientId: authClient.clientId,
+        clientSecret: authClient.clientSecret,
+        accessToken: await args.loadAccessToken(),
+      });
+      return { status: "revoked" };
+    }
+    case "slack": {
+      const authClient = resolveConnectorAuthClientForMethod(
+        "slack",
+        "oauth",
+        args.readEnv,
+      );
+      if (!authClient) {
+        return { status: "unsupported" };
+      }
+      await slackProvider.revoke.revokeToken({
+        clientId: authClient.clientId,
+        clientSecret: authClient.clientSecret,
+        accessToken: await args.loadAccessToken(),
+      });
+      return { status: "revoked" };
+    }
   }
   const exhaustive: never = args.type;
   return exhaustive;
@@ -461,17 +486,16 @@ export async function revokeConnectorAuthMethodAccessToken<
 >(args: {
   readonly type: T;
   readonly authMethod: string;
-  readonly authClient: ConnectorAuthClient;
+  readonly readEnv: ConnectorEnvReader;
   readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
   if (!connectorAuthMethodSupportsTokenRevoke(args.type, args.authMethod)) {
     return { status: "unsupported" };
   }
 
-  await revokeTokenRevokeConnectorAccessToken({
+  return await revokeTokenRevokeConnectorAccessToken({
     type: args.type,
-    authClient: args.authClient,
+    readEnv: args.readEnv,
     loadAccessToken: args.loadAccessToken,
   });
-  return { status: "revoked" };
 }

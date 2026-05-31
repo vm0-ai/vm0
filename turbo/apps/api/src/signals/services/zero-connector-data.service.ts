@@ -9,7 +9,6 @@ import {
   connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodAccessMetadata,
-  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
@@ -546,21 +545,12 @@ async function loadPendingConnectorTokenRevoke(args: {
 async function revokePendingConnectorToken(args: {
   readonly pending: PendingConnectorTokenRevoke;
 }): Promise<void> {
-  const authClient = resolveConnectorAuthClientForMethod(
-    args.pending.type,
-    args.pending.authMethod,
-    optionalEnv,
-  );
-  if (!authClient) {
-    return;
-  }
-
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
     revokeConnectorAuthMethodAccessToken({
       type: args.pending.type,
       authMethod: args.pending.authMethod,
-      authClient,
+      readEnv: optionalEnv,
       loadAccessToken: () => {
         return decryptStoredSecretValue(
           args.pending.encryptedAccessToken,

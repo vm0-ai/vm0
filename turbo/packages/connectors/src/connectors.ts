@@ -837,6 +837,14 @@ export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   keyof ConnectorAuthMethodsOf<Type>,
   string
 >;
+export type ConnectorAuthMethodClientConfig<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = "client" extends keyof ConnectorAuthMethodsOf<Type>[Method]
+  ? ConnectorAuthMethodsOf<Type>[Method]["client"] extends ConnectorAuthClientConfig
+    ? ConnectorAuthMethodsOf<Type>[Method]["client"]
+    : never
+  : never;
 type ConnectorAuthMethodKeys<Type extends ConnectorType> =
   ConnectorAuthMethodIds<Type> & keyof ConnectorAuthMethodGrantKindById;
 
