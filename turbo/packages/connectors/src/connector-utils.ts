@@ -23,7 +23,6 @@ import {
   type ConnectorManualGrantFieldConfig,
   type ConnectorRevokeKind,
   type ConnectorType,
-  type ConnectorAuthProviderType,
   type AuthCodeGrantConnectorType,
   type DeviceAuthGrantConnectorType,
   type DynamicPublicConnectorAuthClientConfig,
@@ -316,52 +315,6 @@ function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
   }
 }
 
-type ConnectorScopeBearingGrantConfig =
-  | ConnectorAuthCodeGrantConfig
-  | ConnectorDeviceAuthGrantConfig;
-
-function isConnectorScopeBearingGrantConfig(
-  method: ConnectorAuthMethodConfig,
-): method is ConnectorAuthMethodConfig & {
-  readonly grant: ConnectorScopeBearingGrantConfig;
-} {
-  switch (method.grant.kind) {
-    case "auth-code":
-    case "device-auth":
-      return true;
-    case "manual":
-    case "managed":
-      return false;
-  }
-}
-
-function getConnectorScopeBearingGrantConfig(
-  type: ConnectorAuthProviderType,
-): ConnectorScopeBearingGrantConfig;
-function getConnectorScopeBearingGrantConfig(
-  type: ConnectorType,
-): ConnectorScopeBearingGrantConfig | undefined;
-function getConnectorScopeBearingGrantConfig(
-  type: ConnectorType,
-): ConnectorScopeBearingGrantConfig | undefined {
-  const grants: ConnectorScopeBearingGrantConfig[] = [];
-  for (const method of connectorAuthMethodValues(type)) {
-    if (isConnectorScopeBearingGrantConfig(method)) {
-      grants.push(method.grant);
-    }
-  }
-  const [grant] = grants;
-  if (grants.length === 0 || !grant) {
-    return undefined;
-  }
-  if (grants.length > 1) {
-    throw new Error(
-      `${type} connector has multiple scope-bearing grants; use the selected auth method`,
-    );
-  }
-  return grant;
-}
-
 export function connectorAuthMethodHasGrantKind<
   Type extends ConnectorType,
   Kind extends ConnectorGrantKind,
@@ -494,10 +447,6 @@ export function getConnectorDeviceAuthGrantConfig(
     );
   }
   return getConnectorAuthMethodDeviceAuthGrantConfig(type, authMethod);
-}
-
-export function getConnectorGrantScopes(type: ConnectorType): string[] {
-  return [...connectorGrantScopes(getConnectorScopeBearingGrantConfig(type))];
 }
 
 export function getConnectorAuthMethodGrantScopes(
@@ -1019,20 +968,6 @@ function scopeDiff(
   };
 }
 
-/**
- * Check if stored scopes cover all currently required scopes for the first
- * scope-bearing grant on a connector type.
- */
-export function hasRequiredScopes(
-  connectorType: ConnectorType,
-  storedScopes: string[] | null,
-): boolean {
-  return hasRequiredGrantScopes(
-    getConnectorGrantScopes(connectorType),
-    storedScopes,
-  );
-}
-
 export function hasRequiredConnectorAuthMethodScopes(
   connectorType: ConnectorType,
   authMethod: string,
@@ -1042,17 +977,6 @@ export function hasRequiredConnectorAuthMethodScopes(
     getConnectorAuthMethodGrantScopes(connectorType, authMethod),
     storedScopes,
   );
-}
-
-/**
- * Compute the diff between currently required scopes and stored scopes for the
- * first scope-bearing grant on a connector type.
- */
-export function getScopeDiff(
-  connectorType: ConnectorType,
-  storedScopes: string[] | null,
-): ScopeDiff {
-  return scopeDiff(getConnectorGrantScopes(connectorType), storedScopes);
 }
 
 export function getConnectorAuthMethodScopeDiff(

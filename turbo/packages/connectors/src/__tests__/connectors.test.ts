@@ -39,7 +39,6 @@ import {
   getConnectorAuthMethodScopeDiff,
   getConfiguredConnectorAuthMethods,
   getSingleConnectorAuthMethodIdForGrantKind,
-  hasRequiredScopes,
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
   getConnectorAuthMethodAuthCodeGrantConfig,
@@ -50,7 +49,6 @@ import {
   getConnectorDeviceAuthGrantConfig,
   getConnectorTypeForSecretName,
   getConnectorEnvBindings,
-  getConnectorGrantScopes,
   getConnectorManualGrantFieldNames,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
@@ -249,52 +247,7 @@ type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
   string
 >;
 
-describe("hasRequiredScopes", () => {
-  it("returns true for connector type without grant scopes", () => {
-    expect(hasRequiredScopes("cloudinary", null)).toBe(true);
-    expect(
-      hasRequiredConnectorAuthMethodScopes("cloudinary", "api-token", null),
-    ).toBe(true);
-  });
-
-  it("returns true when connector has empty required scopes", () => {
-    // notion has scopes: []
-    expect(hasRequiredScopes("notion", null)).toBe(true);
-    expect(hasRequiredScopes("notion", [])).toBe(true);
-    expect(hasRequiredScopes("notion", ["some-scope"])).toBe(true);
-  });
-
-  it("returns false when storedScopes is null", () => {
-    // github requires ["repo"]
-    expect(hasRequiredScopes("github", null)).toBe(false);
-  });
-
-  it("returns false when required scope is missing", () => {
-    expect(hasRequiredScopes("github", [])).toBe(false);
-    expect(hasRequiredScopes("github", ["read:org"])).toBe(false);
-    expect(hasRequiredScopes("github", ["repo"])).toBe(false);
-    // tokens without "workflow" scope (e.g. pre-existing tokens) must reconnect
-    expect(hasRequiredScopes("github", ["repo", "project"])).toBe(false);
-  });
-
-  it("returns true when all required scopes are present", () => {
-    expect(hasRequiredScopes("github", ["repo", "project", "workflow"])).toBe(
-      true,
-    );
-  });
-
-  it("returns true when stored scopes are a superset of required", () => {
-    expect(
-      hasRequiredScopes("github", [
-        "repo",
-        "project",
-        "workflow",
-        "read:org",
-        "user",
-      ]),
-    ).toBe(true);
-  });
-
+describe("connector auth method lifecycle helpers", () => {
   it("checks required scopes from the selected auth method grant", () => {
     expect(
       getConnectorAuthMethodIdsForGrantKind("github", "auth-code"),
@@ -499,11 +452,6 @@ describe("connector auth method config", () => {
         getConnectorAuthCodeGrantConfig("github");
       }).toThrow(
         "github connector has multiple auth-code grants; use the selected auth method",
-      );
-      expect(() => {
-        getConnectorGrantScopes("github");
-      }).toThrow(
-        "github connector has multiple scope-bearing grants; use the selected auth method",
       );
       expect(
         getConnectorAuthMethodAuthCodeGrantConfig("github", "github-secondary")
@@ -2103,10 +2051,10 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 });
 
-describe("getConnectorGrantScopes - google-meet scopes", () => {
+describe("getConnectorAuthMethodGrantScopes - google-meet scopes", () => {
   it("uses meetings.space.readonly for google meet oauth scopes", () => {
     const grant = getConnectorAuthCodeGrantConfig("google-meet");
-    const scopes = getConnectorGrantScopes("google-meet");
+    const scopes = getConnectorAuthMethodGrantScopes("google-meet", "oauth");
     expect(scopes).toStrictEqual(grant?.scopes);
     expect(scopes).toContain(
       "https://www.googleapis.com/auth/meetings.space.readonly",
@@ -2116,9 +2064,9 @@ describe("getConnectorGrantScopes - google-meet scopes", () => {
     );
 
     scopes.push("test-mutated-scope");
-    expect(getConnectorGrantScopes("google-meet")).not.toContain(
-      "test-mutated-scope",
-    );
+    expect(
+      getConnectorAuthMethodGrantScopes("google-meet", "oauth"),
+    ).not.toContain("test-mutated-scope");
   });
 });
 
@@ -2196,7 +2144,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
 
   it("returns undefined for connectors without authorization grants", () => {
     expect(hasConnectorAuthorizationGrant("axiom")).toBe(false);
-    expect(getConnectorGrantScopes("axiom")).toStrictEqual([]);
     expect(getConnectorAuthCodeGrantConfig("base44")).toBeUndefined();
     expect(getConnectorDeviceAuthGrantConfig("github")).toBeUndefined();
   });
