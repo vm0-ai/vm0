@@ -22,7 +22,6 @@ from tests.usage_helpers import (
 class TestErrorHandler:
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)
-        flow.id = "flow-err-1"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
         # Matches the request handler's invariant: original_url is set

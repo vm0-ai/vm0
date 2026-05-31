@@ -168,7 +168,7 @@ def get_registry_path() -> str:
 
 
 def _elapsed_ms(start_time: float | None) -> int:
-    if start_time is None:
+    if not start_time:
         return 0
     return max(0, int((time.monotonic() - start_time) * 1000))
 
