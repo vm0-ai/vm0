@@ -1424,6 +1424,58 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "unknown_endpoint"
 
+    def test_more_specific_base_unknown_allow_wins_after_earlier_broad_deny(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad", "rules": ["ANY /{path+}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "admin",
+                "apis": [
+                    {
+                        "base": "https://api.example.com/admin",
+                        "auth": {"headers": {"Authorization": "Bearer admin"}},
+                        "permissions": [],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {
+                "allow": [],
+                "deny": ["broad"],
+                "unknownPolicy": "deny",
+            },
+            "admin": {
+                "allow": [],
+                "deny": [],
+                "unknownPolicy": "allow",
+            },
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer admin"
+        assert result.name == "admin"
+        assert result.permission is None
+        assert result.rule is None
+        assert result.rel_path == "/delete"
+
     def test_more_specific_base_allow_wins_after_earlier_broad_deny(self):
         fws = [
             {
