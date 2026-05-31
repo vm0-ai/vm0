@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.399.0](https://github.com/vm0-ai/vm0/compare/app-v0.398.0...app-v0.399.0) (2026-05-31)
+
+
+### Features
+
+* **onboarding:** curate connector picker to adopted + famous tools ([#15502](https://github.com/vm0-ai/vm0/issues/15502)) ([8957502](https://github.com/vm0-ai/vm0/commit/89575022a58f9b254283b15625c63d568a80cb96))
+
 ## [0.398.0](https://github.com/vm0-ai/vm0/compare/app-v0.397.0...app-v0.398.0) (2026-05-30)
 
 
