@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import flow_metadata_keys as metadata_keys
 import logging_utils
 import matching
 import registry
@@ -651,3 +652,123 @@ class TestLogNetworkEntry:
         log.warn.assert_called_once()
         assert "Failed to write network log:" in log.warn.call_args.args[0]
         assert not log_path.exists()
+
+
+class TestAddFirewallMetadata:
+    def test_copies_valid_firewall_metadata(self):
+        flow = MagicMock()
+        flow.metadata = {
+            metadata_keys.FIREWALL_BASE: "https://api.example.com",
+            metadata_keys.FIREWALL_NAME: "example",
+            metadata_keys.FIREWALL_PERMISSION: "read",
+            metadata_keys.FIREWALL_RULE_MATCH: "GET /items",
+            metadata_keys.FIREWALL_BILLABLE: True,
+            metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "repo": "vm0"},
+            metadata_keys.FIREWALL_ERROR: "TOKEN_REFRESH_FAILED",
+            metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN"],
+            metadata_keys.AUTH_REFRESHED_CONNECTORS: ["github"],
+            metadata_keys.AUTH_REFRESHED_SECRETS: ["GITHUB_TOKEN"],
+            metadata_keys.AUTH_CACHE_HIT: False,
+            metadata_keys.AUTH_URL_REWRITE: True,
+        }
+        log_entry = {}
+
+        logging_utils.add_firewall_metadata(flow, log_entry)
+
+        assert log_entry == {
+            "firewall_base": "https://api.example.com",
+            "firewall_name": "example",
+            "firewall_permission": "read",
+            "firewall_rule_match": "GET /items",
+            "firewall_billable": True,
+            "firewall_params": {"owner": "vm0-ai", "repo": "vm0"},
+            "firewall_error": "TOKEN_REFRESH_FAILED",
+            "auth_resolved_secrets": ["GITHUB_TOKEN"],
+            "auth_refreshed_connectors": ["github"],
+            "auth_refreshed_secrets": ["GITHUB_TOKEN"],
+            "auth_cache_hit": False,
+            "auth_url_rewrite": True,
+        }
+
+    def test_defaults_missing_required_firewall_metadata(self):
+        flow = MagicMock()
+        flow.metadata = {}
+        log_entry = {}
+
+        logging_utils.add_firewall_metadata(flow, log_entry)
+
+        assert log_entry == {
+            "firewall_base": "",
+            "firewall_name": "",
+            "firewall_permission": "",
+            "firewall_rule_match": "",
+            "firewall_billable": False,
+        }
+
+    def test_defaults_malformed_required_firewall_metadata(self):
+        for billable in (None, "true", 1):
+            flow = MagicMock()
+            flow.metadata = {
+                metadata_keys.FIREWALL_BASE: None,
+                metadata_keys.FIREWALL_NAME: 42,
+                metadata_keys.FIREWALL_PERMISSION: False,
+                metadata_keys.FIREWALL_RULE_MATCH: ["GET /items"],
+                metadata_keys.FIREWALL_BILLABLE: billable,
+            }
+            log_entry = {}
+
+            logging_utils.add_firewall_metadata(flow, log_entry)
+
+            assert log_entry == {
+                "firewall_base": "",
+                "firewall_name": "",
+                "firewall_permission": "",
+                "firewall_rule_match": "",
+                "firewall_billable": False,
+            }
+
+    def test_omits_optional_none_metadata(self):
+        flow = MagicMock()
+        flow.metadata = {
+            metadata_keys.FIREWALL_PARAMS: None,
+            metadata_keys.FIREWALL_ERROR: None,
+            metadata_keys.AUTH_RESOLVED_SECRETS: None,
+            metadata_keys.AUTH_REFRESHED_CONNECTORS: None,
+            metadata_keys.AUTH_REFRESHED_SECRETS: None,
+            metadata_keys.AUTH_CACHE_HIT: None,
+            metadata_keys.AUTH_URL_REWRITE: None,
+        }
+        log_entry = {}
+
+        logging_utils.add_firewall_metadata(flow, log_entry)
+
+        assert log_entry == {
+            "firewall_base": "",
+            "firewall_name": "",
+            "firewall_permission": "",
+            "firewall_rule_match": "",
+            "firewall_billable": False,
+        }
+
+    def test_omits_malformed_optional_metadata(self):
+        flow = MagicMock()
+        flow.metadata = {
+            metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "branch": None},
+            metadata_keys.FIREWALL_ERROR: 123,
+            metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN", None],
+            metadata_keys.AUTH_REFRESHED_CONNECTORS: "github",
+            metadata_keys.AUTH_REFRESHED_SECRETS: [1],
+            metadata_keys.AUTH_CACHE_HIT: "false",
+            metadata_keys.AUTH_URL_REWRITE: 1,
+        }
+        log_entry = {}
+
+        logging_utils.add_firewall_metadata(flow, log_entry)
+
+        assert log_entry == {
+            "firewall_base": "",
+            "firewall_name": "",
+            "firewall_permission": "",
+            "firewall_rule_match": "",
+            "firewall_billable": False,
+        }

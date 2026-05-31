@@ -61,26 +61,78 @@ def log_proxy_entry(
     _write_jsonl_entry(proxy_log_path, entry, "proxy")
 
 
+def _metadata_str(meta: dict, key: str, default: str = "") -> str:
+    value = meta.get(key)
+    return value if isinstance(value, str) else default
+
+
+def _metadata_optional_str(meta: dict, key: str) -> str | None:
+    value = meta.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _metadata_bool(meta: dict, key: str, default: bool = False) -> bool:
+    value = meta.get(key)
+    return value if isinstance(value, bool) else default
+
+
+def _metadata_optional_bool(meta: dict, key: str) -> bool | None:
+    value = meta.get(key)
+    return value if isinstance(value, bool) else None
+
+
+def _metadata_str_list(meta: dict, key: str) -> list[str] | None:
+    value = meta.get(key)
+    if not isinstance(value, list):
+        return None
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        result.append(item)
+    return result
+
+
+def _metadata_str_record(meta: dict, key: str) -> dict[str, str] | None:
+    value = meta.get(key)
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, str] = {}
+    for item_key, item_value in value.items():
+        if not isinstance(item_key, str) or not isinstance(item_value, str):
+            return None
+        result[item_key] = item_value
+    return result
+
+
 def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
-    log_entry["firewall_base"] = meta.get(metadata_keys.FIREWALL_BASE, "")
-    log_entry["firewall_name"] = meta.get(metadata_keys.FIREWALL_NAME, "")
-    log_entry["firewall_permission"] = meta.get(metadata_keys.FIREWALL_PERMISSION, "")
-    log_entry["firewall_rule_match"] = meta.get(metadata_keys.FIREWALL_RULE_MATCH, "")
-    log_entry["firewall_billable"] = meta.get(metadata_keys.FIREWALL_BILLABLE, False)
+    log_entry["firewall_base"] = _metadata_str(meta, metadata_keys.FIREWALL_BASE)
+    log_entry["firewall_name"] = _metadata_str(meta, metadata_keys.FIREWALL_NAME)
+    log_entry["firewall_permission"] = _metadata_str(meta, metadata_keys.FIREWALL_PERMISSION)
+    log_entry["firewall_rule_match"] = _metadata_str(meta, metadata_keys.FIREWALL_RULE_MATCH)
+    log_entry["firewall_billable"] = _metadata_bool(meta, metadata_keys.FIREWALL_BILLABLE)
 
-    # Optional fields — only include when present
-    for metadata_key, log_key in (
-        (metadata_keys.FIREWALL_PARAMS, "firewall_params"),
-        (metadata_keys.FIREWALL_ERROR, "firewall_error"),
-        (metadata_keys.AUTH_RESOLVED_SECRETS, "auth_resolved_secrets"),
-        (metadata_keys.AUTH_REFRESHED_CONNECTORS, "auth_refreshed_connectors"),
-        (metadata_keys.AUTH_REFRESHED_SECRETS, "auth_refreshed_secrets"),
-        (metadata_keys.AUTH_CACHE_HIT, "auth_cache_hit"),
-        (metadata_keys.AUTH_URL_REWRITE, "auth_url_rewrite"),
+    # Optional fields — only include when present with the network-log schema type.
+    for log_key, value in (
+        ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
+        ("firewall_error", _metadata_optional_str(meta, metadata_keys.FIREWALL_ERROR)),
+        (
+            "auth_resolved_secrets",
+            _metadata_str_list(meta, metadata_keys.AUTH_RESOLVED_SECRETS),
+        ),
+        (
+            "auth_refreshed_connectors",
+            _metadata_str_list(meta, metadata_keys.AUTH_REFRESHED_CONNECTORS),
+        ),
+        (
+            "auth_refreshed_secrets",
+            _metadata_str_list(meta, metadata_keys.AUTH_REFRESHED_SECRETS),
+        ),
+        ("auth_cache_hit", _metadata_optional_bool(meta, metadata_keys.AUTH_CACHE_HIT)),
+        ("auth_url_rewrite", _metadata_optional_bool(meta, metadata_keys.AUTH_URL_REWRITE)),
     ):
-        value = meta.get(metadata_key)
         if value is not None:
             log_entry[log_key] = value
