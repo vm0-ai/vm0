@@ -613,6 +613,10 @@ describe("findMatchingPermissions", () => {
             { name: "string-rules", rules: ["GET /string-rules"] },
             { name: "empty-rules", rules: [] },
             { name: "empty-rules", rules: ["GET /empty-rules"] },
+            { name: "invalid-rule", rules: ["BREW /invalid-rule"] },
+            { name: "invalid-rule", rules: ["GET /invalid-rule"] },
+            { name: "non-string-rule", rules: [123] },
+            { name: "non-string-rule", rules: ["GET /non-string-rule"] },
             { name: "mixed-rules", rules: ["GET /mixed", 123] },
             { name: "valid", rules: ["GET /items/{id}"] },
           ],
@@ -642,6 +646,20 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
     expect(
       findMatchingPermissions("GET", "/empty-rules", malformedPermissionConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions(
+        "GET",
+        "/invalid-rule",
+        malformedPermissionConfig,
+      ),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions(
+        "GET",
+        "/non-string-rule",
+        malformedPermissionConfig,
+      ),
     ).toEqual([]);
   });
 
