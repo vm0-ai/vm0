@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+#[cfg(not(test))]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -32,6 +33,11 @@ const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;
 const MAX_ENTRY_BYTES_CAP: u64 = 32 * GIB;
 const WORKSPACE_IMAGE_COPY_TIMEOUT: Duration = Duration::from_secs(300);
 
+#[cfg(test)]
+const TEST_FS_TOTAL_BYTES: u64 = 2_000 * GIB;
+#[cfg(test)]
+const TEST_FS_AVAILABLE_BYTES: u64 = 1_000 * GIB;
+
 #[derive(Clone)]
 pub(crate) struct SessionWorkspaceCache {
     inner: Arc<SessionWorkspaceCacheInner>,
@@ -42,6 +48,8 @@ struct SessionWorkspaceCacheInner {
     cache_dir: PathBuf,
     lock_dir: PathBuf,
     cache_scope: String,
+    #[cfg(test)]
+    fs_stats_override: FsStats,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,6 +215,11 @@ impl SessionWorkspaceCache {
                 cache_dir,
                 lock_dir,
                 cache_scope: cache_scope.to_owned(),
+                #[cfg(test)]
+                fs_stats_override: FsStats {
+                    total_bytes: TEST_FS_TOTAL_BYTES,
+                    available_bytes: TEST_FS_AVAILABLE_BYTES,
+                },
             }),
         }
     }
@@ -219,11 +232,24 @@ impl SessionWorkspaceCache {
         &self.inner.cache_dir
     }
 
+    #[cfg(not(test))]
     fn workspace_image_cache_fs_stats_path(&self) -> &Path {
         self.inner
             .cache_dir
             .parent()
             .unwrap_or(self.workspace_image_cache_dir())
+    }
+
+    async fn fs_stats(&self) -> RunnerResult<FsStats> {
+        #[cfg(test)]
+        {
+            Ok(self.inner.fs_stats_override)
+        }
+
+        #[cfg(not(test))]
+        {
+            statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await
+        }
     }
 
     fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
@@ -366,7 +392,7 @@ impl SessionWorkspaceCache {
                 true,
             );
         };
-        let Ok(mut stats) = statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await else {
+        let Ok(mut stats) = self.fs_stats().await else {
             warn!(
                 run_id = %request.run_id,
                 "workspace image cache disabled because filesystem stats are unavailable"
@@ -383,19 +409,17 @@ impl SessionWorkspaceCache {
         let mut budget = CacheBudget::from_fs_stats(stats);
         if stats.available_bytes < budget.min_free_bytes {
             match self.gc(false).await {
-                Ok(freed) if freed > 0 => {
-                    match statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await {
-                        Ok(updated) => {
-                            stats = updated;
-                            budget = CacheBudget::from_fs_stats(stats);
-                        }
-                        Err(e) => warn!(
-                            run_id = %request.run_id,
-                            error = %e,
-                            "workspace image cache stats refresh failed after GC"
-                        ),
+                Ok(freed) if freed > 0 => match self.fs_stats().await {
+                    Ok(updated) => {
+                        stats = updated;
+                        budget = CacheBudget::from_fs_stats(stats);
                     }
-                }
+                    Err(e) => warn!(
+                        run_id = %request.run_id,
+                        error = %e,
+                        "workspace image cache stats refresh failed after GC"
+                    ),
+                },
                 Ok(_) => {}
                 Err(e) => warn!(
                     run_id = %request.run_id,
@@ -457,20 +481,18 @@ impl SessionWorkspaceCache {
             Ok(Some(metadata)) => {
                 if !has_copy_headroom(stats, budget, metadata.allocated_bytes) {
                     match self.gc(false).await {
-                        Ok(freed) if freed > 0 => {
-                            match statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await {
-                                Ok(updated) => {
-                                    stats = updated;
-                                    budget = CacheBudget::from_fs_stats(stats);
-                                }
-                                Err(e) => warn!(
-                                    run_id = %request.run_id,
-                                    cache_key,
-                                    error = %e,
-                                    "workspace image cache stats refresh failed after cache-hit GC"
-                                ),
+                        Ok(freed) if freed > 0 => match self.fs_stats().await {
+                            Ok(updated) => {
+                                stats = updated;
+                                budget = CacheBudget::from_fs_stats(stats);
                             }
-                        }
+                            Err(e) => warn!(
+                                run_id = %request.run_id,
+                                cache_key,
+                                error = %e,
+                                "workspace image cache stats refresh failed after cache-hit GC"
+                            ),
+                        },
                         Ok(_) => {}
                         Err(e) => warn!(
                             run_id = %request.run_id,
@@ -644,7 +666,7 @@ impl SessionWorkspaceCache {
         let temporary_freed = self.gc_temporary_images(dry_run).await?;
         let stale_entry_freed = self.gc_entries_without_current_image(dry_run).await?;
         let unusable_current_freed = self.gc_unusable_current_entries(dry_run).await?;
-        let stats = statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await?;
+        let stats = self.fs_stats().await?;
         let budget = CacheBudget::from_fs_stats(stats);
         let mut candidates = self.gc_candidates().await?;
         let mut entry_count = candidates.len();
@@ -1242,12 +1264,12 @@ impl WorkspaceImageLease {
             return Ok(false);
         };
 
-        let mut stats = statvfs_bytes(self.cache.workspace_image_cache_fs_stats_path()).await?;
+        let mut stats = self.cache.fs_stats().await?;
         let mut budget = CacheBudget::from_fs_stats(stats);
         if stats.available_bytes < budget.min_free_bytes {
             match self.cache.gc(false).await {
                 Ok(freed) if freed > 0 => {
-                    stats = statvfs_bytes(self.cache.workspace_image_cache_fs_stats_path()).await?;
+                    stats = self.cache.fs_stats().await?;
                     budget = CacheBudget::from_fs_stats(stats);
                 }
                 Ok(_) => {}
@@ -1284,7 +1306,7 @@ impl WorkspaceImageLease {
         if !has_copy_headroom(stats, budget, active_allocated) {
             match self.cache.gc(false).await {
                 Ok(freed) if freed > 0 => {
-                    stats = statvfs_bytes(self.cache.workspace_image_cache_fs_stats_path()).await?;
+                    stats = self.cache.fs_stats().await?;
                     budget = CacheBudget::from_fs_stats(stats);
                 }
                 Ok(_) => {}
@@ -1671,6 +1693,7 @@ where
     Ok(bytes)
 }
 
+#[cfg(not(test))]
 async fn statvfs_bytes(path: &Path) -> RunnerResult<FsStats> {
     let path = path.to_owned();
     tokio::task::spawn_blocking(move || statvfs_bytes_sync(&path))
@@ -1697,6 +1720,7 @@ async fn entry_file_type_matches(
     }
 }
 
+#[cfg(not(test))]
 fn statvfs_bytes_sync(path: &Path) -> RunnerResult<FsStats> {
     let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
     let bytes = path.as_os_str().as_bytes();
