@@ -1851,6 +1851,50 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_network_policy"
 
+    def test_more_specific_base_top_level_malformed_policy_blocks_earlier_broad_allow(
+        self,
+    ):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad", "rules": ["ANY /{path+}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "admin",
+                "apis": [
+                    {
+                        "base": "https://api.example.com/admin",
+                        "auth": {"headers": {"Authorization": "Bearer admin"}},
+                        "permissions": [
+                            {"name": "admin", "rules": ["GET /delete"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            matching.compile_network_policies("broken"),
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com/admin"
+        assert result.name == "admin"
+        assert result.path == "/delete"
+        assert result.permissions == ()
+        assert result.reason == "malformed_network_policy"
+
     def test_parameterized_path_base_deny_blocks_earlier_root_allow(self):
         fws = wrap_firewalls(
             [
