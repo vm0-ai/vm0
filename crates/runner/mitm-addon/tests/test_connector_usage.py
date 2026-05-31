@@ -1286,6 +1286,59 @@ class TestReportConnectorUsage:
         # 3 users from includes
         assert by_cat["user.read"] == 3
 
+    def test_full_streaming_pipeline_ignores_malformed_include_values(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
+        """Malformed include values are ignored while valid siblings still bill."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.headers = header_map({"content-type": "application/json"})
+        flow.response.stream = False
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        assert "x_ndjson_state" in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+
+        callback(
+            b'{"data":{"id":"1"},"includes":'
+            b'{"users":null,'
+            b'"tweets":{"id":"t1"},'
+            b'"media":[{"media_key":"m1"}]}}\n'
+        )
+        state = flow.metadata["x_ndjson_state"]
+        assert state["data_count"] == 1
+        assert state["includes"] == {"media": 1}
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 0
+
+        with (
+            mitm_ctx(api_url="https://app.test"),
+            patch.object(
+                usage.webhook, "_opener"
+            ) as mock_opener,  # urllib external boundary (#9991)
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert by_cat == {"posts.read": 1, "media.read": 1}
+
     def test_response_logs_incremental_x_json_parse_error(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
     ):
