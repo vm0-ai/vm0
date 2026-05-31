@@ -43,9 +43,10 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { testOverride } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import type { Db } from "../external/db";
@@ -68,7 +69,20 @@ type SecretType = AccessSecretSource;
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
+const FIREWALL_AUTH_REFRESH_TIMEOUT_MS = 30_000;
 const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
+const refreshTimeoutMsForTests = testOverride<number | undefined>(() => {
+  return undefined;
+});
+
+export function setFirewallAuthRefreshTimeoutMsForTests(
+  timeoutMs: number,
+): () => void {
+  refreshTimeoutMsForTests.set(timeoutMs);
+  return () => {
+    refreshTimeoutMsForTests.clear();
+  };
+}
 
 interface FirewallAuthBody {
   readonly encryptedSecrets: string;
@@ -503,7 +517,9 @@ function isFetchAbortError(error: unknown): boolean {
 }
 
 function firewallAuthRefreshTimeoutSignal(): AbortSignal {
-  return AbortSignal.timeout(env("FIREWALL_AUTH_REFRESH_TIMEOUT_MS"));
+  return AbortSignal.timeout(
+    refreshTimeoutMsForTests.get() ?? FIREWALL_AUTH_REFRESH_TIMEOUT_MS,
+  );
 }
 
 function isReconnectRequiredRefreshErrorCode(

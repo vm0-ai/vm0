@@ -77,11 +77,6 @@ const SCHEMA = {
   DB_POOL_MAX: z.coerce.number().int().min(1).default(10),
   DB_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().min(0).default(5000),
   DB_POOL_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(0).optional(),
-  FIREWALL_AUTH_REFRESH_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .default(30_000),
   TELEGRAM_OFFICIAL_BOT_TOKEN: z.string().optional(),
   TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().optional(),
   TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().optional(),

@@ -19,12 +19,18 @@ import { secrets } from "@vm0/db/schema/secret";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import { setFirewallAuthRefreshTimeoutMsForTests } from "../../services/agent-webhook-firewall-auth.service";
 import { upsertOrgMultiAuthModelProvider$ } from "../../services/zero-model-provider.service";
+import {
+  decryptSecretForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
+import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -32,11 +38,6 @@ import {
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
-import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  decryptSecretForTests,
-  encryptSecretForTests,
-} from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -621,6 +622,7 @@ async function codexProviderState(fixture: FirewallFixture): Promise<{
 
 describe("POST /api/webhooks/agent/firewall/auth", () => {
   let restoreDynamicTestOAuthRefresh: (() => void) | undefined;
+  let restoreFirewallAuthRefreshTimeout: (() => void) | undefined;
 
   beforeEach(() => {
     mockOptionalEnv("NOTION_OAUTH_CLIENT_ID", "notion-client");
@@ -630,6 +632,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
   afterEach(() => {
     restoreDynamicTestOAuthRefresh?.();
     restoreDynamicTestOAuthRefresh = undefined;
+    restoreFirewallAuthRefreshTimeout?.();
+    restoreFirewallAuthRefreshTimeout = undefined;
   });
 
   it("rejects missing sandbox auth before parsing the body", async () => {
@@ -2635,7 +2639,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
   });
 
   it("classifies connector refresh timeouts as upstream without marking reconnect", async () => {
-    mockEnv("FIREWALL_AUTH_REFRESH_TIMEOUT_MS", 25);
+    restoreFirewallAuthRefreshTimeout =
+      setFirewallAuthRefreshTimeoutMsForTests(25);
     const fixture = await track(seedFixture());
     await seedExpiredNotionConnector(fixture);
     const providerAbortObserved = deferred();
@@ -3792,7 +3797,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
   });
 
   it("classifies model-provider refresh timeouts as upstream without marking reconnect", async () => {
-    mockEnv("FIREWALL_AUTH_REFRESH_TIMEOUT_MS", 25);
+    restoreFirewallAuthRefreshTimeout =
+      setFirewallAuthRefreshTimeoutMsForTests(25);
     const fixture = await track(seedFixture());
     await seedCodexModelProvider(fixture, {
       accessToken: "stale-chatgpt-token",
