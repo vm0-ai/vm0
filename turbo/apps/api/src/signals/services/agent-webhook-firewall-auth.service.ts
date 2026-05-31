@@ -468,6 +468,19 @@ function refreshFailureReasonFromError(
   return undefined;
 }
 
+function refreshErrorCodeFromError(error: unknown): string | null {
+  if (isChatgptRefreshError(error)) {
+    return error.code;
+  }
+  if (
+    isOAuthProviderHttpError(error) &&
+    isReconnectRequiredRefreshErrorCode(error.oauthError)
+  ) {
+    return error.oauthError ?? null;
+  }
+  return null;
+}
+
 function isFetchNetworkError(error: unknown): boolean {
   return (
     error instanceof TypeError && error.message.toLowerCase().includes("fetch")
@@ -1325,7 +1338,7 @@ async function refreshAccessTokenForSource(
     if (!refreshResult.ok) {
       const error = refreshResult.error;
       const message = error instanceof Error ? error.message : "Unknown error";
-      const errorCode = isChatgptRefreshError(error) ? error.code : null;
+      const errorCode = refreshErrorCodeFromError(error);
       const failureReason = refreshFailureReasonFromError(error);
       L.warn(`${args.connectorType} token refresh failed: ${message}`, {
         connectorType: args.connectorType,
