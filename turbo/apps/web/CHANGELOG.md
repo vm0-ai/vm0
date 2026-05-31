@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.404.2](https://github.com/vm0-ai/vm0/compare/web-v12.404.1...web-v12.404.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* **web:** allow paid-onboarding origin in Clerk allowedRedirectOrigins ([#15518](https://github.com/vm0-ai/vm0/issues/15518)) ([4f09b12](https://github.com/vm0-ai/vm0/commit/4f09b122c0dbdd763e8fe4a725bb8b3d9631468d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.1
+    * @vm0/core bumped to 8.304.3
+    * @vm0/db bumped to 1.23.6
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.1
+
 ## [12.404.1](https://github.com/vm0-ai/vm0/compare/web-v12.404.0...web-v12.404.1) (2026-05-30)
 
 

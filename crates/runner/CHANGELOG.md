@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.105.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.8...runner-rs-v0.105.9) (2026-05-31)
+
+
+### Bug Fixes
+
+* add firewall auth failure reason ([#15386](https://github.com/vm0-ai/vm0/issues/15386)) ([6c7e09c](https://github.com/vm0-ai/vm0/commit/6c7e09c76e9a184478fddbcb1a9ceefdc94bb3f2))
+
 ## [0.105.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.7...runner-rs-v0.105.8) (2026-05-30)
 
 

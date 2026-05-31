@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.90.1](https://github.com/vm0-ai/vm0/compare/api-v1.90.0...api-v1.90.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* add firewall auth failure reason ([#15386](https://github.com/vm0-ai/vm0/issues/15386)) ([6c7e09c](https://github.com/vm0-ai/vm0/commit/6c7e09c76e9a184478fddbcb1a9ceefdc94bb3f2))
+
+
+### Refactoring
+
+* bind connector revoke providers to auth method ([#15457](https://github.com/vm0-ai/vm0/issues/15457)) ([6e1a2b8](https://github.com/vm0-ai/vm0/commit/6e1a2b8dd09e6cf8e26d91f327c66601aa5a5e02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.1
+    * @vm0/connectors bumped to 1.39.1
+    * @vm0/core bumped to 8.304.3
+    * @vm0/db bumped to 1.23.6
+
 ## [1.90.0](https://github.com/vm0-ai/vm0/compare/api-v1.89.0...api-v1.90.0) (2026-05-30)
 
 
