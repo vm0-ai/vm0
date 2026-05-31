@@ -103,6 +103,17 @@ struct PendingControlSlot {
     sink: Arc<ControlSinkState>,
 }
 
+struct ControlForwardOutcome {
+    status: ExecControlStatus,
+    diagnostic: String,
+    sink_disposition: ControlSinkDisposition,
+}
+
+enum ControlSinkDisposition {
+    Keep,
+    Fail,
+}
+
 impl PendingControlSlot {
     fn new(sink: Arc<ControlSinkState>) -> Self {
         Self { sink }
@@ -583,36 +594,52 @@ fn forward_control_request(
         message_id,
         payload,
     } = request;
-    let (status, diagnostic, mark_failed) = {
+    let outcome = {
         match sink.wait_for_stream(deadline) {
             Ok(stream) => match stream.lock_until(deadline, &sink.active) {
                 Ok(mut stream) => {
                     if !sink.active.load(Ordering::Acquire) {
-                        (
-                            ExecControlStatus::Inactive,
-                            EXEC_OPERATION_INACTIVE_MESSAGE.to_owned(),
-                            false,
-                        )
+                        ControlForwardOutcome {
+                            status: ExecControlStatus::Inactive,
+                            diagnostic: EXEC_OPERATION_INACTIVE_MESSAGE.to_owned(),
+                            sink_disposition: ControlSinkDisposition::Keep,
+                        }
                     } else if request_expired(deadline) {
-                        (
-                            ExecControlStatus::SinkTimeout,
-                            EXEC_REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
-                            false,
-                        )
+                        ControlForwardOutcome {
+                            status: ExecControlStatus::SinkTimeout,
+                            diagnostic: EXEC_REQUEST_TIMEOUT_DIAGNOSTIC.to_owned(),
+                            sink_disposition: ControlSinkDisposition::Keep,
+                        }
                     } else {
                         forward_to_connected_sink(&mut stream, &message_id, payload, deadline)
                     }
                 }
-                Err(error) if is_timeout(&error) => {
-                    (ExecControlStatus::SinkTimeout, error.to_string(), false)
-                }
-                Err(error) => (ExecControlStatus::SinkError, error.to_string(), false),
+                Err(error) if is_timeout(&error) => ControlForwardOutcome {
+                    status: ExecControlStatus::SinkTimeout,
+                    diagnostic: error.to_string(),
+                    sink_disposition: ControlSinkDisposition::Keep,
+                },
+                Err(error) => ControlForwardOutcome {
+                    status: ExecControlStatus::SinkError,
+                    diagnostic: error.to_string(),
+                    sink_disposition: ControlSinkDisposition::Keep,
+                },
             },
-            Err((status, diagnostic)) => (status, diagnostic, false),
+            Err((status, diagnostic)) => ControlForwardOutcome {
+                status,
+                diagnostic,
+                sink_disposition: ControlSinkDisposition::Keep,
+            },
         }
     };
 
-    if mark_failed {
+    let ControlForwardOutcome {
+        status,
+        diagnostic,
+        sink_disposition,
+    } = outcome;
+
+    if matches!(sink_disposition, ControlSinkDisposition::Fail) {
         sink.fail(diagnostic.clone());
     }
 
@@ -641,7 +668,7 @@ fn forward_to_connected_sink(
     message_id: &str,
     payload: Vec<u8>,
     deadline: Instant,
-) -> (ExecControlStatus, String, bool) {
+) -> ControlForwardOutcome {
     let request_frame = ControlRequest {
         message_id: message_id.to_owned(),
         payload,
@@ -649,58 +676,102 @@ fn forward_to_connected_sink(
     let write_timeout = match control_sink_io_timeout(deadline) {
         Ok(timeout) => timeout,
         Err(error) if is_timeout(&error) => {
-            return return_control_result(ExecControlStatus::SinkTimeout, error, false);
+            return control_forward_io_error(
+                ExecControlStatus::SinkTimeout,
+                error,
+                ControlSinkDisposition::Keep,
+            );
         }
-        Err(error) => return return_control_result(ExecControlStatus::SinkError, error, false),
+        Err(error) => {
+            return control_forward_io_error(
+                ExecControlStatus::SinkError,
+                error,
+                ControlSinkDisposition::Keep,
+            );
+        }
     };
     if let Err(error) = write_control_request(stream, &request_frame, write_timeout) {
         return if is_timeout(&error) {
-            return_control_result(ExecControlStatus::SinkTimeout, error, true)
+            control_forward_io_error(
+                ExecControlStatus::SinkTimeout,
+                error,
+                ControlSinkDisposition::Fail,
+            )
         } else {
-            return_control_result(ExecControlStatus::SinkError, error, true)
+            control_forward_io_error(
+                ExecControlStatus::SinkError,
+                error,
+                ControlSinkDisposition::Fail,
+            )
         };
     }
 
     let read_timeout = match control_sink_io_timeout(deadline) {
         Ok(timeout) => timeout,
         Err(error) if is_timeout(&error) => {
-            return return_control_result(ExecControlStatus::SinkTimeout, error, true);
+            return control_forward_io_error(
+                ExecControlStatus::SinkTimeout,
+                error,
+                ControlSinkDisposition::Fail,
+            );
         }
-        Err(error) => return return_control_result(ExecControlStatus::SinkError, error, true),
+        Err(error) => {
+            return control_forward_io_error(
+                ExecControlStatus::SinkError,
+                error,
+                ControlSinkDisposition::Fail,
+            );
+        }
     };
     match read_control_response(stream, read_timeout) {
-        Ok(response) if response.message_id != message_id => (
-            ExecControlStatus::SinkError,
-            format!(
+        Ok(response) if response.message_id != message_id => ControlForwardOutcome {
+            status: ExecControlStatus::SinkError,
+            diagnostic: format!(
                 "{}: expected {}, got {}",
                 EXEC_CONTROL_MESSAGE_ID_MISMATCH_PREFIX, message_id, response.message_id
             ),
-            true,
-        ),
-        Ok(response) => match response.status {
-            ControlResponseStatus::Accepted => {
-                (ExecControlStatus::Delivered, response.diagnostic, false)
-            }
-            ControlResponseStatus::Rejected => {
-                (ExecControlStatus::Rejected, response.diagnostic, false)
-            }
-            ControlResponseStatus::Error => {
-                (ExecControlStatus::SinkError, response.diagnostic, false)
-            }
+            sink_disposition: ControlSinkDisposition::Fail,
         },
-        Err(error) if is_timeout(&error) => {
-            (ExecControlStatus::SinkTimeout, error.to_string(), true)
-        }
-        Err(error) => (ExecControlStatus::SinkError, error.to_string(), true),
+        Ok(response) => match response.status {
+            ControlResponseStatus::Accepted => ControlForwardOutcome {
+                status: ExecControlStatus::Delivered,
+                diagnostic: response.diagnostic,
+                sink_disposition: ControlSinkDisposition::Keep,
+            },
+            ControlResponseStatus::Rejected => ControlForwardOutcome {
+                status: ExecControlStatus::Rejected,
+                diagnostic: response.diagnostic,
+                sink_disposition: ControlSinkDisposition::Keep,
+            },
+            ControlResponseStatus::Error => ControlForwardOutcome {
+                status: ExecControlStatus::SinkError,
+                diagnostic: response.diagnostic,
+                sink_disposition: ControlSinkDisposition::Keep,
+            },
+        },
+        Err(error) if is_timeout(&error) => control_forward_io_error(
+            ExecControlStatus::SinkTimeout,
+            error,
+            ControlSinkDisposition::Fail,
+        ),
+        Err(error) => control_forward_io_error(
+            ExecControlStatus::SinkError,
+            error,
+            ControlSinkDisposition::Fail,
+        ),
     }
 }
 
-fn return_control_result(
+fn control_forward_io_error(
     status: ExecControlStatus,
     error: io::Error,
-    mark_failed: bool,
-) -> (ExecControlStatus, String, bool) {
-    (status, error.to_string(), mark_failed)
+    sink_disposition: ControlSinkDisposition,
+) -> ControlForwardOutcome {
+    ControlForwardOutcome {
+        status,
+        diagnostic: error.to_string(),
+        sink_disposition,
+    }
 }
 
 fn request_deadline(request_timeout_ms: u32) -> Instant {
