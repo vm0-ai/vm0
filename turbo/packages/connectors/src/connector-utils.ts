@@ -186,12 +186,6 @@ export function getSingleConnectorAuthMethodIdForGrantKind(
   return { status: "multiple", authMethods };
 }
 
-function connectorAuthMethodValues(
-  type: ConnectorType,
-): ConnectorAuthMethodConfig[] {
-  return Object.values(CONNECTOR_TYPES[type].authMethods);
-}
-
 function getManualGrantFields(
   method: ConnectorAuthMethodConfig | undefined,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
@@ -301,17 +295,6 @@ export function getConnectorAuthMethodAccessMetadata(
         kind: "none",
         envBindings: {},
       };
-  }
-}
-
-function authMethodAccessPriority(method: ConnectorAuthMethodConfig): number {
-  switch (method.grant.kind) {
-    case "auth-code":
-    case "device-auth":
-      return 2;
-    case "managed":
-    case "manual":
-      return 1;
   }
 }
 
@@ -857,20 +840,29 @@ export function getConnectorAuthMethodEnvBindings(
   return method ? connectorAccessEnvBindings(method.access) : {};
 }
 
+export interface ConnectorEnvBindingEntry {
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly envName: string;
+  readonly valueRef: string;
+}
+
 /**
- * Get runtime environment bindings for a connector type.
+ * Get all configured environment binding entries across auth methods.
+ *
+ * This is for discovery and reverse lookup. Runtime injection must use
+ * getConnectorAuthMethodEnvBindings() with the selected auth method.
  */
-export function getConnectorEnvBindings(
+export function getConnectorEnvBindingEntries(
   type: ConnectorType,
-): ConnectorEnvBindings {
-  const methods = connectorAuthMethodValues(type).sort((a, b) => {
-    return authMethodAccessPriority(a) - authMethodAccessPriority(b);
-  });
-  const envBindings: ConnectorEnvBindings = {};
-  for (const method of methods) {
-    Object.assign(envBindings, connectorAccessEnvBindings(method.access));
+): ConnectorEnvBindingEntry[] {
+  const entries: ConnectorEnvBindingEntry[] = [];
+  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+    const envBindings = getConnectorAuthMethodEnvBindings(type, authMethod);
+    for (const [envName, valueRef] of Object.entries(envBindings)) {
+      entries.push({ authMethod, envName, valueRef });
+    }
   }
-  return envBindings;
+  return entries;
 }
 
 /**
@@ -896,15 +888,17 @@ export function getConnectorEnvNamesForSecret(
       continue;
     }
 
-    // Find all environment names that reference this secret.
-    const envBindings = getConnectorEnvBindings(type);
-    const envNames = Object.entries(envBindings)
-      .filter(([, valueRef]) => {
-        return valueRef === `$secrets.${secretName}`;
-      })
-      .map(([envName]) => {
-        return envName;
-      });
+    const envNames = [
+      ...new Set(
+        getConnectorEnvBindingEntries(type)
+          .filter(({ valueRef }) => {
+            return valueRef === `$secrets.${secretName}`;
+          })
+          .map(({ envName }) => {
+            return envName;
+          }),
+      ),
+    ];
 
     if (envNames.length > 0) {
       return { connectorLabel: config.label, envNames };
@@ -1011,9 +1005,12 @@ export function getConnectorTypeForSecretName(
         return type;
       }
     }
-    // Check envBindings names
-    const envBindings = getConnectorEnvBindings(type);
-    if (name in envBindings) {
+    const hasEnvName = getConnectorEnvBindingEntries(type).some(
+      ({ envName }) => {
+        return envName === name;
+      },
+    );
+    if (hasEnvName) {
       return type;
     }
   }

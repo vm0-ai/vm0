@@ -48,7 +48,7 @@ import {
   getConnectorAuthMethod,
   getConnectorDeviceAuthGrantConfig,
   getConnectorTypeForSecretName,
-  getConnectorEnvBindings,
+  getConnectorEnvBindingEntries,
   getConnectorManualGrantFieldNames,
   getRuntimeAvailableConnectorTypes,
   getConnectorSecretNames,
@@ -1651,65 +1651,85 @@ describe("getConnectorVariableNames", () => {
   });
 });
 
-describe("getConnectorEnvBindings", () => {
-  it("returns non-empty envBindings for connector types that surface environment entries to the sandbox", () => {
+describe("getConnectorEnvBindingEntries", () => {
+  function envBindingsForSingleMethod(type: ConnectorType, authMethod: string) {
+    return Object.fromEntries(
+      getConnectorEnvBindingEntries(type)
+        .filter((entry) => {
+          return entry.authMethod === authMethod;
+        })
+        .map((entry) => {
+          return [entry.envName, entry.valueRef];
+        }),
+    );
+  }
+
+  it("returns non-empty env binding entries for connector types that surface environment entries to the sandbox", () => {
     for (const type of connectorTypeSchema.options) {
-      const envBindings = getConnectorEnvBindings(type);
       expect(
-        Object.keys(envBindings).length,
-        `${type} has empty envBindings`,
+        getConnectorEnvBindingEntries(type).length,
+        `${type} has empty env binding entries`,
       ).toBeGreaterThan(0);
     }
   });
 
-  it("returns correct envBindings for API-token-only connector", () => {
-    expect(getConnectorEnvBindings("axiom")).toEqual({
+  it("returns correct env binding entries for API-token-only connector", () => {
+    expect(envBindingsForSingleMethod("axiom", "api-token")).toEqual({
       AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
     });
   });
 
-  it("returns correct envBindings for apollo connector", () => {
-    expect(getConnectorEnvBindings("apollo")).toEqual({
+  it("returns correct env binding entries for apollo connector", () => {
+    expect(envBindingsForSingleMethod("apollo", "api-token")).toEqual({
       APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
     });
   });
 
-  it("returns correct envBindings for SproutGigs connector", () => {
-    expect(getConnectorEnvBindings("sproutgigs")).toEqual({
+  it("returns correct env binding entries for SproutGigs connector", () => {
+    expect(envBindingsForSingleMethod("sproutgigs", "api-token")).toEqual({
       SPROUTGIGS_USER_ID: "$vars.SPROUTGIGS_USER_ID",
       SPROUTGIGS_API_SECRET: "$secrets.SPROUTGIGS_API_SECRET",
     });
   });
 
-  it("returns correct envBindings for API-token connector with variables", () => {
-    expect(getConnectorEnvBindings("jira")).toEqual({
+  it("returns correct env binding entries for API-token connector with variables", () => {
+    expect(envBindingsForSingleMethod("jira", "api-token")).toEqual({
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
       JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
       JIRA_EMAIL: "$vars.JIRA_EMAIL",
     });
   });
 
-  it("returns correct envBindings for hybrid connector", () => {
-    expect(getConnectorEnvBindings("ahrefs")).toEqual({
-      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
-    });
+  it("preserves all env binding entries for hybrid connectors", () => {
+    expect(getConnectorEnvBindingEntries("ahrefs")).toEqual([
+      {
+        authMethod: "oauth",
+        envName: "AHREFS_TOKEN",
+        valueRef: "$secrets.AHREFS_ACCESS_TOKEN",
+      },
+      {
+        authMethod: "api-token",
+        envName: "AHREFS_TOKEN",
+        valueRef: "$secrets.AHREFS_TOKEN",
+      },
+    ]);
   });
 
-  it("returns correct envBindings for OAuth-only connector", () => {
-    expect(getConnectorEnvBindings("github")).toEqual({
+  it("returns correct env binding entries for OAuth-only connector", () => {
+    expect(envBindingsForSingleMethod("github", "oauth")).toEqual({
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
     });
   });
 
-  it("returns correct envBindings for Base44", () => {
-    expect(getConnectorEnvBindings("base44")).toEqual({
+  it("returns correct env binding entries for Base44", () => {
+    expect(envBindingsForSingleMethod("base44", "oauth")).toEqual({
       BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
     });
   });
 
-  it("returns correct envBindings for Slock", () => {
-    expect(getConnectorEnvBindings("slock")).toEqual({
+  it("returns correct env binding entries for Slock", () => {
+    expect(envBindingsForSingleMethod("slock", "oauth")).toEqual({
       SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
       SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",
     });
@@ -1760,7 +1780,7 @@ describe("getConnectorEnvBindings", () => {
         ).toContain(refreshSecretName);
       }
 
-      const envBindings = getConnectorEnvBindings(type);
+      const envBindings = getConnectorAuthMethodEnvBindings(type, "oauth");
       const mappedSecretNames = Object.values(envBindings).map((valueRef) => {
         expect(
           valueRef.startsWith("$secrets."),
@@ -1833,7 +1853,7 @@ describe("getConnectorEnvBindings", () => {
       if (!fields) continue;
 
       const fieldNames = Object.keys(fields);
-      const envBindings = getConnectorEnvBindings(type);
+      const envBindings = envBindingsForSingleMethod(type, "api-token");
       const envBindingNames = Object.keys(envBindings);
 
       // envBindings names must be exactly the same set as secrets
@@ -1855,11 +1875,10 @@ describe("getConnectorEnvBindings", () => {
 
   it("all envBindings values use $secrets. or $vars. prefix", () => {
     for (const type of connectorTypeSchema.options) {
-      const envBindings = getConnectorEnvBindings(type);
-      for (const [key, value] of Object.entries(envBindings)) {
+      for (const { envName, valueRef } of getConnectorEnvBindingEntries(type)) {
         expect(
-          value.startsWith("$secrets.") || value.startsWith("$vars."),
-          `${type}.envBindings["${key}"] = "${value}" — must start with $secrets. or $vars.`,
+          valueRef.startsWith("$secrets.") || valueRef.startsWith("$vars."),
+          `${type}.envBindings["${envName}"] = "${valueRef}" — must start with $secrets. or $vars.`,
         ).toBe(true);
       }
     }

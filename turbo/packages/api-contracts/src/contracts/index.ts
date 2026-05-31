@@ -710,7 +710,7 @@ export {
 } from "@vm0/connectors/connectors";
 export {
   getConnectorSecretNames,
-  getConnectorEnvBindings,
+  getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
   isGoogleOAuthConnector,

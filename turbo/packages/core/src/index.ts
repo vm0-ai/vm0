@@ -224,7 +224,7 @@ export {
   connectorTypeSchema,
   CONNECTOR_TYPES,
   getConnectorSecretNames,
-  getConnectorEnvBindings,
+  getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
   isGoogleOAuthConnector,
