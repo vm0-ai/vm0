@@ -1,5 +1,6 @@
 import {
   type FirewallConfig,
+  hasBaseUrlParams,
   validateAuthBaseUrl,
   validateBaseUrl,
 } from "./firewall-types";
@@ -366,6 +367,19 @@ function normalizeBasePath(pathname: string): string {
   return pathname.length > 1 ? stripTrailingSlash(pathname) : "/";
 }
 
+function matchStaticBasePathPrefix(
+  path: string,
+  pattern: string,
+): string | null {
+  if (pattern === "/") {
+    return path === "" ? "/" : path;
+  }
+  if (!path.startsWith(pattern)) return null;
+  const relativePath = path.slice(pattern.length);
+  if (relativePath !== "" && !relativePath.startsWith("/")) return null;
+  return relativePath === "" ? "/" : relativePath;
+}
+
 function normalizeUrlHostname(
   hostname: string,
   options: { allowHostParams?: boolean } = {},
@@ -424,20 +438,23 @@ function matchStaticFirewallBaseUrl(
   if (parsedUrl.protocol.toLowerCase() !== parsedBase.protocol.toLowerCase()) {
     return null;
   }
+  const baseHasParams = hasBaseUrlParams(rawBase);
 
   const urlAuthority = normalizedUrlAuthority(parsedUrl);
   const baseAuthority = normalizedUrlAuthority(parsedBase, {
-    allowHostParams: rawBase.includes("{") || rawBase.includes("}"),
+    allowHostParams: baseHasParams,
   });
   if (urlAuthority === null || baseAuthority === null) return null;
-  if (rawBase.includes("{") || rawBase.includes("}")) {
+  if (baseHasParams) {
     if (matchFirewallHost(urlAuthority, baseAuthority) === null) return null;
   } else if (urlAuthority !== baseAuthority) {
     return null;
   }
 
   const basePath = normalizeBasePath(rawPathFromUrl(rawBase));
-  const relativePath = matchFirewallPathPrefix(rawPathFromUrl(url), basePath);
+  const relativePath = baseHasParams
+    ? matchFirewallPathPrefix(rawPathFromUrl(url), basePath)
+    : matchStaticBasePathPrefix(rawPathFromUrl(url), basePath);
   if (relativePath === null) return null;
 
   const displayBase = stripTrailingSlash(rawBase);

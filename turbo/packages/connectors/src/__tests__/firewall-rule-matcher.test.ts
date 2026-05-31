@@ -331,6 +331,17 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it.each([
+    ["opening brace", "https://api.github.com/static{"],
+    ["closing brace", "https://api.github.com/static}"],
+  ])("matches static base paths with a literal single %s", (_label, base) => {
+    expect(matchFirewallBaseUrl(`${base}/repos`, base)).toEqual({
+      displayBase: base,
+      relativePath: "/repos",
+      score: base.length,
+    });
+  });
+
   it("matches parameterized path base URLs", () => {
     expect(
       matchFirewallBaseUrl(
