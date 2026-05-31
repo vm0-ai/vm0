@@ -444,6 +444,22 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
   });
 
+  it("ignores empty firewall names that fail firewall validation", () => {
+    const malformedNameConfig: FirewallConfig = {
+      name: "",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /items/{id}"] }],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedNameConfig),
+    ).toEqual([]);
+  });
+
   it("matches ANY method rule", () => {
     const anyConfig: FirewallConfig = {
       name: "any-test",

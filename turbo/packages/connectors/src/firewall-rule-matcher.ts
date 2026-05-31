@@ -472,6 +472,8 @@ export function findMatchingPermissions(
   config: FirewallConfig,
   options: FindMatchingPermissionsOptions = {},
 ): string[] {
+  if (config.name === "") return [];
+
   const upperMethod = method.toUpperCase();
   const apiBase =
     options.apiBase === undefined ? null : stripTrailingSlash(options.apiBase);
