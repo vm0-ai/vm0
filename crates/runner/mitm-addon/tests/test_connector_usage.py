@@ -14,26 +14,55 @@ from tests.flow_helpers import header_map, response_stream
 from usage.providers.connectors import x as usage_x_connector
 
 
-class TestIsStreamPath:
-    """Tests for _is_stream_path predicate (issue #9534)."""
+class TestXStreamPathRouting:
+    """Tests for stream path routing through responseheaders (issue #9534)."""
 
-    def test_all_five_stream_endpoints_match(self):
-        assert usage_x_connector._is_stream_path("/2/tweets/search/stream") is True
-        assert usage_x_connector._is_stream_path("/2/tweets/sample/stream") is True
-        assert usage_x_connector._is_stream_path("/2/tweets/sample10/stream") is True
-        assert usage_x_connector._is_stream_path("/2/tweets/compliance/stream") is True
-        assert usage_x_connector._is_stream_path("/2/users/compliance/stream") is True
+    def _make_x_response_flow(self, real_flow, path: str):
+        flow = real_flow(with_response=False, host="api.x.com", path=path)
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = f"https://api.x.com{path}"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+        return flow
 
-    def test_stream_rules_is_not_stream(self):
-        # Rules management is a regular JSON request/response endpoint.
-        assert usage_x_connector._is_stream_path("/2/tweets/search/stream/rules") is False
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/2/tweets/search/stream",
+            "/2/tweets/sample/stream",
+            "/2/tweets/sample10/stream",
+            "/2/tweets/compliance/stream",
+            "/2/users/compliance/stream",
+        ],
+    )
+    def test_stream_endpoints_register_ndjson_parser(self, real_flow, path):
+        flow = self._make_x_response_flow(real_flow, path)
 
-    def test_non_stream_paths_do_not_match(self):
-        assert usage_x_connector._is_stream_path("/2/tweets/search/recent") is False
-        assert usage_x_connector._is_stream_path("/2/users/by") is False
-        assert usage_x_connector._is_stream_path("/2/tweets/1") is False
-        assert usage_x_connector._is_stream_path("") is False
-        assert usage_x_connector._is_stream_path("/") is False
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/2/tweets/search/stream/rules",
+            "/2/tweets/search/recent",
+            "/2/users/by",
+            "/2/tweets/1",
+            "/",
+        ],
+    )
+    def test_non_stream_paths_register_json_parser(self, real_flow, path):
+        flow = self._make_x_response_flow(real_flow, path)
+
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
 
 class TestReportConnectorUsage:
