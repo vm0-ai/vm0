@@ -943,6 +943,45 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("reports secrets resolved only from auth base and query templates", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            BASE_TOKEN: "base-token",
+            QUERY_TOKEN: "query-token",
+          }),
+          authHeaders: {},
+          authBase: `https://api.example.com/${secretTemplate("BASE_TOKEN")}`,
+          authQuery: {
+            api_key: secretTemplate("QUERY_TOKEN"),
+            workspace: varTemplate("WORKSPACE_ID"),
+          },
+          vars: {
+            WORKSPACE_ID: "workspace-1",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      headers: {},
+      base: "https://api.example.com/base-token",
+      query: {
+        api_key: "query-token",
+        workspace: "workspace-1",
+      },
+      expiresAt: null,
+      resolvedSecrets: ["BASE_TOKEN", "QUERY_TOKEN"],
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+    });
+  });
+
   it("resolves basic auth template edge cases", async () => {
     const fixture = await track(seedFixture());
     const encode = (value: string): string => {
