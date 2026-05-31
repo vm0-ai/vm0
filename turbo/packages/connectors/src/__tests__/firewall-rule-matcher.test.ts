@@ -188,6 +188,12 @@ describe("matchFirewallPathPrefix", () => {
     );
   });
 
+  it("preserves non-terminal empty base path segments", () => {
+    expect(matchFirewallPathPrefix("/api/v1//users", "/api/v1/")).toBe(
+      "/users",
+    );
+  });
+
   it("returns relative path after parameterized base prefix", () => {
     expect(
       matchFirewallPathPrefix("/owner/repo/main/README.md", "/{owner}/{repo}"),
