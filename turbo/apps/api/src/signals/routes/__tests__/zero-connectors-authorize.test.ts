@@ -9,6 +9,7 @@ import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
@@ -18,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -160,6 +161,29 @@ async function requestAuthorize(
   );
 }
 
+async function createPendingConnectorSession(args: {
+  readonly userId: string;
+  readonly type?: string;
+  readonly authMethod?: ConnectorAuthMethodId;
+}): Promise<string> {
+  const [session] = await store
+    .set(writeDb$)
+    .insert(connectorSessions)
+    .values({
+      code: `${randomUUID().slice(0, 4).toUpperCase()}-${randomUUID().slice(0, 4).toUpperCase()}`,
+      type: args.type ?? "github",
+      authMethod: args.authMethod ?? "oauth",
+      userId: args.userId,
+      status: "pending",
+      expiresAt: new Date(nowDate().getTime() + 600_000),
+    })
+    .returning({ id: connectorSessions.id });
+  if (!session) {
+    throw new Error("Failed to create connector session");
+  }
+  return session.id;
+}
+
 async function requestOauthStart(
   type: string,
   options: {
@@ -205,6 +229,9 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       .where(
         like(connectorOauthStates.userId, `${AUTH_REQUEST_USER_ID_PREFIX}%`),
       );
+    await db
+      .delete(connectorSessions)
+      .where(like(connectorSessions.userId, `${AUTH_REQUEST_USER_ID_PREFIX}%`));
     while (orgIds.length > 0) {
       const orgId = orgIds.pop();
       if (orgId) {
@@ -390,10 +417,14 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("stores the connector session id when provided", async () => {
-    const sessionId = randomUUID();
-    const response = await requestAuthorize("github", {
-      authenticated: true,
-      session: sessionId,
+    const userId = `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+    const sessionId = await createPendingConnectorSession({ userId });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("github", sessionId), {
+      method: "GET",
+      headers: sessionHeaders(),
     });
 
     const cookies = response.headers.getSetCookie();

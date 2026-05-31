@@ -516,7 +516,8 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       }),
       mockApi(
         zeroConnectorOauthDeviceAuthSessionContract.create,
-        ({ params, respond }) => {
+        ({ body, params, respond }) => {
+          expect(body).toStrictEqual({ authMethod: "oauth" });
           return respond(200, {
             sessionId: "00000000-0000-4000-8000-000000000123",
             sessionToken: "device-session-token",
@@ -549,6 +550,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthDeviceAuth$,
       "test-oauth-device",
+      "oauth",
       {},
       context.signal,
     );
@@ -567,6 +569,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(
       openConnectorOAuthDeviceAuthVerificationPage$,
       "test-oauth-device",
+      "oauth",
     );
 
     await expect(connectPromise).resolves.toBeTruthy();
@@ -619,6 +622,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthDeviceAuth$,
       "test-oauth-device",
+      "oauth",
       {},
       context.signal,
     );
@@ -632,6 +636,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(
       openConnectorOAuthDeviceAuthVerificationPage$,
       "test-oauth-device",
+      "oauth",
     );
 
     await expect(connectPromise).resolves.toBeTruthy();
@@ -683,6 +688,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
         return await context.store.set(
           connectConnectorOAuthDeviceAuth$,
           "test-oauth-device",
+          "oauth",
           {},
           context.signal,
         );
@@ -703,6 +709,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(
       openConnectorOAuthDeviceAuthVerificationPage$,
       "test-oauth-device",
+      "oauth",
     );
 
     await vi.waitFor(() => {
@@ -757,6 +764,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
         return await context.store.set(
           connectConnectorOAuthDeviceAuth$,
           "test-oauth-device",
+          "oauth",
           {},
           flowSignal,
         );

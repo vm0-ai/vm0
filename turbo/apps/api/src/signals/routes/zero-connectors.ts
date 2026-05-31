@@ -14,6 +14,7 @@ import {
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
+  connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
   type ConnectorType,
@@ -38,7 +39,7 @@ import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import {
   connectManualGrantConnector$,
   deleteZeroConnectorLocalState$,
@@ -206,6 +207,38 @@ function connectorAuthCodeStartErrorMessage(
   }
 }
 
+function connectorAuthorizeAuthCodeStartErrorResponse(
+  type: string,
+  reason:
+    | "invalid_session"
+    | "missing_auth_code_grant"
+    | "missing_auth_method"
+    | "wrong_grant_kind",
+) {
+  if (reason === "invalid_session") {
+    return jsonResponse({ error: "Invalid connector session" }, 400);
+  }
+  if (reason === "missing_auth_method" || reason === "wrong_grant_kind") {
+    return jsonResponse(
+      { error: "Invalid connector session auth method" },
+      500,
+    );
+  }
+  return connectorMissingAuthCodeGrantResponse(type);
+}
+
+function connectorAuthorizeMissingOrgResponse() {
+  return jsonResponse(
+    {
+      error: {
+        message: "Explicit org context required — ensure active org in session",
+        code: "BAD_REQUEST",
+      },
+    },
+    400,
+  );
+}
+
 function resolveAvailableAuthCodeStartMethod(
   type: ConnectorType,
   availability: {
@@ -226,6 +259,47 @@ function resolveAvailableAuthCodeStartMethod(
   }
 
   return resolveConnectorAuthCodeStartType(type);
+}
+
+async function resolveSessionAuthCodeStartMethod(args: {
+  readonly writeDb: Db;
+  readonly sessionId: string;
+  readonly type: ConnectorType;
+  readonly userId: string;
+}): Promise<
+  | ReturnType<typeof resolveConnectorAuthCodeStartMethod>
+  | { readonly ok: false; readonly reason: "invalid_session" }
+> {
+  const [session] = await args.writeDb
+    .select({
+      type: connectorSessions.type,
+      authMethod: connectorSessions.authMethod,
+      userId: connectorSessions.userId,
+      status: connectorSessions.status,
+      expiresAt: connectorSessions.expiresAt,
+    })
+    .from(connectorSessions)
+    .where(eq(connectorSessions.id, args.sessionId))
+    .limit(1);
+
+  if (
+    !session ||
+    session.type !== args.type ||
+    session.userId !== args.userId ||
+    session.status !== "pending" ||
+    session.expiresAt <= nowDate()
+  ) {
+    return { ok: false, reason: "invalid_session" };
+  }
+
+  const authMethodResult = connectorAuthMethodIdSchema.safeParse(
+    session.authMethod,
+  );
+  if (!authMethodResult.success) {
+    return { ok: false, reason: "missing_auth_method" };
+  }
+
+  return resolveConnectorAuthCodeStartMethod(args.type, authMethodResult.data);
 }
 
 function internalServerError(message: string) {
@@ -420,16 +494,7 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
 
     if (!auth.orgId) {
-      return jsonResponse(
-        {
-          error: {
-            message:
-              "Explicit org context required — ensure active org in session",
-            code: "BAD_REQUEST",
-          },
-        },
-        400,
-      );
+      return connectorAuthorizeMissingOrgResponse();
     }
 
     const sessionResult = query.session
@@ -444,12 +509,21 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    const authCodeStartType = resolveAvailableAuthCodeStartMethod(
-      type,
-      availability,
-    );
+    const writeDb = set(writeDb$);
+    const authCodeStartType = sessionId
+      ? await resolveSessionAuthCodeStartMethod({
+          writeDb,
+          sessionId,
+          type,
+          userId: auth.userId,
+        })
+      : resolveAvailableAuthCodeStartMethod(type, availability);
+    signal.throwIfAborted();
     if (!authCodeStartType.ok) {
-      return connectorMissingAuthCodeGrantResponse(type);
+      return connectorAuthorizeAuthCodeStartErrorResponse(
+        type,
+        authCodeStartType.reason,
+      );
     }
     if (
       !availability.isAuthMethodAvailable(
@@ -484,7 +558,6 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     );
     signal.throwIfAborted();
 
-    const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
       type: authCodeStartType.type,

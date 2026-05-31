@@ -1034,6 +1034,7 @@ async function seedClerkOauthDeviceAuthSession(
       orgId: fixture.orgId,
       userId: fixture.userId,
       connectorType: "test-oauth-device",
+      authMethod: "oauth",
       sessionTokenHash: `test-session-token-${randomUUID()}`,
       encryptedProviderState: "encrypted-provider-state",
       userCode: "TEST-DEVICE",
