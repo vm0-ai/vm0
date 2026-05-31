@@ -7,6 +7,23 @@ use crate::ids::RunId;
 use crate::workspace_image_cache::normalize_safe_guest_working_dir;
 
 const WORKSPACE_MOUNT_TIMEOUT: Duration = Duration::from_secs(30);
+const WORKSPACE_SYMLINK_PATH_GUARD: &str = r#"refuse_workspace_symlink_path() {
+  check_path=
+  remaining=${workspace_dir#/}
+  while [ -n "$remaining" ]; do
+    component=${remaining%%/*}
+    if [ "$remaining" = "$component" ]; then
+      remaining=
+    else
+      remaining=${remaining#*/}
+    fi
+    check_path="$check_path/$component"
+    if [ -L "$check_path" ]; then
+      echo "refusing to use symlink workspace path component: $check_path" >&2
+      exit 64
+    fi
+  done
+}"#;
 
 pub(crate) async fn mount_workspace_drive(
     sandbox: &dyn Sandbox,
@@ -72,14 +89,14 @@ fn shell_quote(value: &str) -> String {
 fn workspace_mount_command(working_dir: &str) -> String {
     let working_dir = shell_quote(working_dir);
     format!(
-        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\nrefuse_workspace_symlink() {{\n  if [ -L \"$workspace_dir\" ]; then\n    echo \"refusing to use symlink workspace mountpoint: $workspace_dir\" >&2\n    exit 64\n  fi\n}}\nensure_workspace_owner() {{\n  chown -h user:user -- \"$workspace_dir\"\n}}\nrefuse_workspace_symlink\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace image over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nrefuse_workspace_symlink\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
+        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\n{WORKSPACE_SYMLINK_PATH_GUARD}\nensure_workspace_owner() {{\n  chown -h user:user -- \"$workspace_dir\"\n}}\nrefuse_workspace_symlink_path\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace image over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nrefuse_workspace_symlink_path\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
     )
 }
 
 fn workspace_unmount_command(working_dir: &str) -> String {
     let working_dir = shell_quote(working_dir);
     format!(
-        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\nif [ -L \"$workspace_dir\" ]; then\n  echo \"refusing to use symlink workspace mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -z \"$workspace_dev\" ] || [ \"$target_dev\" != \"$workspace_dev\" ]; then\n    echo \"refusing to unmount non-workspace mountpoint: $workspace_dir\" >&2\n    exit 64\n  fi\n  sync -f -- \"$workspace_dir\" 2>/dev/null || true\n  umount -- \"$workspace_dir\"\nelse\n  echo \"workspace image is not mounted: $workspace_dir\" >&2\n  exit 65\nfi"
+        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\n{WORKSPACE_SYMLINK_PATH_GUARD}\nrefuse_workspace_symlink_path\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -z \"$workspace_dev\" ] || [ \"$target_dev\" != \"$workspace_dev\" ]; then\n    echo \"refusing to unmount non-workspace mountpoint: $workspace_dir\" >&2\n    exit 64\n  fi\n  sync -f -- \"$workspace_dir\" 2>/dev/null || true\n  umount -- \"$workspace_dir\"\nelse\n  echo \"workspace image is not mounted: $workspace_dir\" >&2\n  exit 65\nfi"
     )
 }
 
@@ -138,19 +155,23 @@ mod tests {
     }
 
     #[test]
-    fn mount_and_unmount_commands_reject_workspace_symlink() {
+    fn mount_and_unmount_commands_reject_workspace_symlink_components() {
         let mount_cmd = workspace_mount_command("/workspace");
         let unmount_cmd = workspace_unmount_command("/workspace");
 
-        assert!(mount_cmd.contains("refuse_workspace_symlink()"));
+        assert!(mount_cmd.contains("refuse_workspace_symlink_path()"));
         assert_eq!(
-            mount_cmd.matches("refuse_workspace_symlink").count(),
+            mount_cmd.matches("refuse_workspace_symlink_path").count(),
             3,
             "definition plus pre-mount and post-mkdir checks should be present"
         );
-        assert!(mount_cmd.contains("refusing to use symlink workspace mountpoint"));
-        assert!(unmount_cmd.contains("if [ -L \"$workspace_dir\" ]; then"));
-        assert!(unmount_cmd.contains("refusing to use symlink workspace mountpoint"));
+        assert!(mount_cmd.contains("remaining=${workspace_dir#/}"));
+        assert!(mount_cmd.contains("remaining=${remaining#*/}"));
+        assert!(mount_cmd.contains("refusing to use symlink workspace path component"));
+        assert!(unmount_cmd.contains("refuse_workspace_symlink_path()"));
+        assert!(unmount_cmd.contains("remaining=${workspace_dir#/}"));
+        assert!(unmount_cmd.contains("remaining=${remaining#*/}"));
+        assert!(unmount_cmd.contains("refusing to use symlink workspace path component"));
     }
 
     #[test]
