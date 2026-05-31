@@ -1376,6 +1376,53 @@ class TestCompiledFirewallMatching:
         assert result.permission == "items-read"
         assert result.rule == "GET /items/{id}"
 
+    def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match(
+        self,
+    ):
+        fws = [
+            {
+                "name": "primary",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer primary"}},
+                        "permissions": [
+                            {"name": "items-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "auditor",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer auditor"}},
+                        "permissions": [
+                            {"name": "audit-read", "rules": ["GET /items/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "primary": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+            "auditor": {"allow": [], "deny": ["audit-read"], "unknownPolicy": "deny"},
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
+        assert result.name == "primary"
+        assert result.permission == "items-read"
+        assert result.rule == "GET /items/{id}"
+
     def test_more_specific_base_deny_blocks_earlier_broad_allow(self):
         fws = wrap_firewalls(
             [
