@@ -829,6 +829,22 @@ describe("zero doctor check-connector command", () => {
       expect(output).not.toContain("Matched permissions: [connections");
     });
 
+    it("should not resolve connector base paths without a segment boundary", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://slack.com/apix/chat.postMessage",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No connector found for URL"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should resolve parameterized connector base URLs", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
