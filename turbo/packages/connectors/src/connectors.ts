@@ -1022,9 +1022,6 @@ export type RefreshTokenAccessConnectorType =
   ConnectorTypesByAccessKind<"refresh-token">;
 export type TokenRevokeConnectorType =
   ConnectorTypesByRevokeKind<"token-revoke">;
-export type TokenRevokeConnectorTypesUseAuthProviders = AssertNever<
-  Exclude<TokenRevokeConnectorType, ConnectorAuthProviderType>
->;
 type TokenRevokeConnectorTypeWithNonConfidentialClient = {
   [Type in TokenRevokeConnectorType]: {
     [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
