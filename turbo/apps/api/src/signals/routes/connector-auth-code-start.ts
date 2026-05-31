@@ -1,5 +1,5 @@
 import {
-  connectorAuthMethodHasGrantKind,
+  connectorAuthMethodSelectionHasGrantKind,
   getConnectorAuthMethod,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClient,
@@ -45,29 +45,20 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
-function connectorTypeHasSelectedAuthCodeGrant(
-  type: ConnectorType,
-  authMethod: string,
-): type is AuthCodeGrantConnectorType {
-  return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
-}
-
 export function resolveConnectorAuthCodeStartMethod(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ResolveConnectorAuthCodeStartMethodResult {
+  const selected = { type, authMethod };
   const method = getConnectorAuthMethod(type, authMethod);
   if (!method) {
     return { ok: false, reason: "missing_auth_method" };
   }
-  if (!connectorAuthMethodHasGrantKind(type, authMethod, "auth-code")) {
-    return { ok: false, reason: "wrong_grant_kind" };
-  }
-  if (!connectorTypeHasSelectedAuthCodeGrant(type, authMethod)) {
+  if (!connectorAuthMethodSelectionHasGrantKind(selected, "auth-code")) {
     return { ok: false, reason: "wrong_grant_kind" };
   }
 
-  return { ok: true, type, authMethod };
+  return { ok: true, type: selected.type, authMethod: selected.authMethod };
 }
 
 // Prepare only synchronous auth-code start data after callers have validated

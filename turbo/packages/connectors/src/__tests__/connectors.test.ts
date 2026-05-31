@@ -30,6 +30,7 @@ import {
   connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   connectorAuthMethodHasGrantKind,
+  connectorAuthMethodSelectionHasGrantKind,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodIdsForAccessKind,
@@ -357,6 +358,18 @@ describe("hasRequiredScopes", () => {
     ).toBe(true);
     expect(
       connectorAuthMethodHasGrantKind("github", "api-token", "auth-code"),
+    ).toBe(false);
+    expect(
+      connectorAuthMethodSelectionHasGrantKind(
+        { type: "github", authMethod: "oauth" },
+        "auth-code",
+      ),
+    ).toBe(true);
+    expect(
+      connectorAuthMethodSelectionHasGrantKind(
+        { type: "stripe", authMethod: "api-token" },
+        "auth-code",
+      ),
     ).toBe(false);
     expect(getConnectorAuthMethodGrantScopes("github", "oauth")).toStrictEqual([
       "repo",

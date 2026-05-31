@@ -9,6 +9,7 @@ import {
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByGrantKind,
   type ConnectorAuthMethodIdsByRevokeKind,
+  type ConnectorTypesByGrantKind,
   type ConnectorAuthMethodClientConfig,
   type ConnectorAccessConfig,
   type ConnectorAccessKind,
@@ -371,6 +372,32 @@ export function connectorAuthMethodHasGrantKind<
 ): authMethod is ConnectorAuthMethodIdsByGrantKind<Type, Kind> {
   const method = getConnectorAuthMethod(type, authMethod);
   return method?.grant.kind === grantKind;
+}
+
+export interface ConnectorAuthMethodSelection {
+  readonly type: ConnectorType;
+  readonly authMethod: ConnectorAuthMethodId;
+}
+
+export type ConnectorAuthMethodSelectionByGrantKind<
+  Kind extends ConnectorGrantKind,
+> = {
+  readonly [Type in ConnectorTypesByGrantKind<Kind>]: {
+    readonly type: Type;
+    readonly authMethod: ConnectorAuthMethodIdsByGrantKind<Type, Kind>;
+  };
+}[ConnectorTypesByGrantKind<Kind>];
+
+export function connectorAuthMethodSelectionHasGrantKind<
+  Kind extends ConnectorGrantKind,
+>(
+  selection: ConnectorAuthMethodSelection,
+  grantKind: Kind,
+): selection is ConnectorAuthMethodSelectionByGrantKind<Kind> {
+  return (
+    getConnectorAuthMethod(selection.type, selection.authMethod)?.grant.kind ===
+    grantKind
+  );
 }
 
 export function getConnectorAuthMethodAuthCodeGrantConfig<
