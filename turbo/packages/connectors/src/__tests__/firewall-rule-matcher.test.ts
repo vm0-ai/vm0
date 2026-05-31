@@ -133,6 +133,12 @@ describe("matchFirewallHost", () => {
     });
   });
 
+  it("rejects mixed host params with an empty capture", () => {
+    expect(
+      matchFirewallHost("api-.example.com", "api-{region}.example.com"),
+    ).toBeNull();
+  });
+
   it("matches leading greedy host params", () => {
     expect(
       matchFirewallHost("foo.bar.bentoml.ai", "{deployment+}.bentoml.ai"),
@@ -213,6 +219,12 @@ describe("matchFirewallPathPrefix", () => {
         "/{owner}/{repo}.git",
       ),
     ).toBe("/info/refs");
+  });
+
+  it("rejects mixed path base prefixes with an empty capture", () => {
+    expect(
+      matchFirewallPathPrefix("/owner/.git/info/refs", "/{owner}/{repo}.git"),
+    ).toBeNull();
   });
 
   it("keeps base boundary strict", () => {
