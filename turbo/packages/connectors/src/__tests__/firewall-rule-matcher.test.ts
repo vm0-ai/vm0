@@ -307,6 +307,30 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it("matches case-insensitive schemes and normalized base authorities", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "HTTPS://API.GitHub.com/repos",
+        "https://api.github.com.",
+      ),
+    ).toEqual({
+      displayBase: "https://api.github.com.",
+      relativePath: "/repos",
+      score: "https://api.github.com.".length,
+    });
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.github.com:8443/repos",
+        "https://api.github.com.:08443",
+      ),
+    ).toEqual({
+      displayBase: "https://api.github.com.:08443",
+      relativePath: "/repos",
+      score: "https://api.github.com.:08443".length,
+    });
+  });
+
   it("matches parameterized path base URLs", () => {
     expect(
       matchFirewallBaseUrl(
@@ -317,6 +341,19 @@ describe("matchFirewallBaseUrl", () => {
       displayBase: "https://raw.githubusercontent.com/{owner}/{repo}",
       relativePath: "/main/README.md",
       score: "https://raw.githubusercontent.com/{owner}/{repo}".length,
+    });
+  });
+
+  it("treats encoded slash as segment content in parameterized path bases", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1/acme%2Fteam/projects/123",
+        "https://api.example.com/v1/{org}",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com/v1/{org}",
+      relativePath: "/projects/123",
+      score: "https://api.example.com/v1/{org}".length,
     });
   });
 
@@ -477,6 +514,60 @@ describe("matchFirewallBaseUrl", () => {
       displayBase: "https://api.example.com/api/",
       relativePath: "/users",
       score: "https://api.example.com/api/".length,
+    });
+  });
+
+  it("keeps base path matching case-sensitive and byte-oriented", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/API/users",
+        "https://api.example.com/api",
+      ),
+    ).toBeNull();
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/api%2Fv1/users",
+        "https://api.example.com/api/v1",
+      ),
+    ).toBeNull();
+  });
+
+  it("does not collapse empty segments inside parameterized base paths", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1//acme/projects",
+        "https://api.example.com/v1/{org}",
+      ),
+    ).toBeNull();
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1/acme//projects",
+        "https://api.example.com/v1/{org}",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com/v1/{org}",
+      relativePath: "//projects",
+      score: "https://api.example.com/v1/{org}".length,
+    });
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1/acme/projects",
+        "https://api.example.com/v1//{org}",
+      ),
+    ).toBeNull();
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1//acme/projects",
+        "https://api.example.com/v1//{org}",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com/v1//{org}",
+      relativePath: "/projects",
+      score: "https://api.example.com/v1//{org}".length,
     });
   });
 
