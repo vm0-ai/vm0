@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import {
+  connectorAuthMethodIdSchema,
+  connectorTypeSchema,
+} from "@vm0/connectors/connectors";
 import {
   connectorOauthDeviceAuthSessionPollRequestSchema,
   connectorOauthDeviceAuthSessionPollResponseSchema,
@@ -128,8 +131,6 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
-const connectorAuthMethodSchema = z.enum(["oauth", "api-token", "api"]);
-
 export const zeroConnectorManualGrantContract = c.router({
   connect: {
     method: "POST",
@@ -137,7 +138,7 @@ export const zeroConnectorManualGrantContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ type: connectorTypeSchema }),
     body: z.object({
-      authMethod: connectorAuthMethodSchema,
+      authMethod: connectorAuthMethodIdSchema,
       values: z.record(z.string(), z.string()),
     }),
     responses: {
@@ -190,14 +191,14 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
 });
 
 export type ConnectorSearchAuthMethod = z.infer<
-  typeof connectorAuthMethodSchema
+  typeof connectorAuthMethodIdSchema
 >;
 
 const connectorSearchItemSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string(),
-  authMethods: z.array(connectorAuthMethodSchema),
+  authMethods: z.array(connectorAuthMethodIdSchema),
 });
 
 const connectorSearchResponseSchema = z.object({
