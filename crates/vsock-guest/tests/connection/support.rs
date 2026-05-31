@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use vsock_guest::handle_connection;
 use vsock_proto::{
     self, ExecCapturedOutput, ExecOutputPolicy, ExecOutputStream, ExecTermination, MSG_ERROR,
-    MSG_EXEC_CANCEL, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_QUIESCE_OPERATIONS,
-    MSG_RESUME_OPERATIONS,
+    MSG_EXEC_CANCEL, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT, MSG_EXEC_START, MSG_PING, MSG_PONG,
+    MSG_QUIESCE_OPERATIONS, MSG_RESUME_OPERATIONS,
 };
 
 pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
@@ -220,6 +220,18 @@ pub(crate) fn read_error_response(stream: &mut impl std::io::Read, seq: u32) -> 
     assert_eq!(msg.msg_type, MSG_ERROR);
     assert_eq!(msg.seq, seq);
     vsock_proto::decode_error(&msg.payload).unwrap().to_owned()
+}
+
+pub(crate) fn assert_ping_pong<T>(stream: &mut T, seq: u32)
+where
+    T: std::io::Read + std::io::Write,
+{
+    let ping = vsock_proto::encode(MSG_PING, seq, &[]).unwrap();
+    stream.write_all(&ping).unwrap();
+    let pong = read_message(stream);
+    assert_eq!(pong.msg_type, MSG_PONG);
+    assert_eq!(pong.seq, seq);
+    assert!(pong.payload.is_empty());
 }
 
 pub(crate) fn send_exec_cancel(stream: &mut impl std::io::Write, seq: u32) {

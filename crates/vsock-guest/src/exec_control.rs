@@ -841,6 +841,7 @@ fn encode_control_result(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn handle_exec_control(
     seq: u32,
     payload: &[u8],
@@ -848,6 +849,15 @@ pub(crate) fn handle_exec_control(
     writer: &GuestWriter,
 ) -> io::Result<()> {
     let request = vsock_proto::decode_exec_control(payload).map_err(to_io_error)?;
+    handle_decoded_exec_control(seq, request, registry, writer)
+}
+
+pub(crate) fn handle_decoded_exec_control(
+    seq: u32,
+    request: vsock_proto::DecodedExecControl<'_>,
+    registry: &ExecControlRegistry,
+    writer: &GuestWriter,
+) -> io::Result<()> {
     let owned = OwnedExecControlRequest {
         response_seq: seq,
         target_seq: request.target_seq,
