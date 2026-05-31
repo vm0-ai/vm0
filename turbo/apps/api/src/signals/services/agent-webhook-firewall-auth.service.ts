@@ -1326,6 +1326,27 @@ async function markAndReturnRefreshFailure(
   return refreshFailedResult(failureReason);
 }
 
+function refreshPreparedAccessToken(args: {
+  readonly prepared: PreparedRefreshTokenContext;
+  readonly refreshToken: string;
+  readonly signal: AbortSignal;
+}) {
+  return args.prepared.sourceType === "connector"
+    ? refreshConnectorAuthProviderAccessToken({
+        type: args.prepared.connectorType,
+        authMethod: args.prepared.authMethod,
+        clientArgs: args.prepared.clientArgs,
+        refreshToken: args.refreshToken,
+        signal: args.signal,
+      })
+    : refreshModelProviderOAuthToken({
+        providerKey: args.prepared.providerKey,
+        currentEnv: args.prepared.currentEnv,
+        refreshToken: args.refreshToken,
+        signal: args.signal,
+      });
+}
+
 async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
 ): Promise<RefreshAccessTokenResult> {
@@ -1402,22 +1423,13 @@ async function refreshAccessTokenForSource(
       return markRefreshTokenMissing({ ...args, db: tx }, prepared.context);
     }
     const refreshSignal = firewallAuthRefreshTimeoutSignal();
-    const refreshPromise =
-      prepared.sourceType === "connector"
-        ? refreshConnectorAuthProviderAccessToken({
-            type: prepared.connectorType,
-            authMethod: prepared.authMethod,
-            clientArgs: prepared.clientArgs,
-            refreshToken: lockedState.refreshToken,
-            signal: refreshSignal,
-          })
-        : refreshModelProviderOAuthToken({
-            providerKey: prepared.providerKey,
-            currentEnv: prepared.currentEnv,
-            refreshToken: lockedState.refreshToken,
-            signal: refreshSignal,
-          });
-    const refreshResult = await settle(refreshPromise);
+    const refreshResult = await settle(
+      refreshPreparedAccessToken({
+        prepared,
+        refreshToken: lockedState.refreshToken,
+        signal: refreshSignal,
+      }),
+    );
     if (!refreshResult.ok) {
       return markAndReturnRefreshFailure(
         { ...args, db: tx },
