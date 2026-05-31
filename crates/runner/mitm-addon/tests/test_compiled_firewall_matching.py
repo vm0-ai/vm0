@@ -1627,6 +1627,47 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ("project",)
         assert result.reason == "permission_denied"
 
+    def test_base_specificity_wins_before_rule_specificity(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer root"}},
+                    "permissions": [
+                        {"name": "root-admin", "rules": ["GET /admin/delete"]},
+                    ],
+                },
+                {
+                    "base": "https://api.example.com/admin",
+                    "auth": {"headers": {"Authorization": "Bearer admin"}},
+                    "permissions": [
+                        {"name": "admin-catchall", "rules": ["ANY /{path+}"]},
+                    ],
+                },
+            ],
+            name="example",
+        )
+        policies = {
+            "example": {
+                "allow": ["root-admin"],
+                "deny": ["admin-catchall"],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com/admin"
+        assert result.path == "/delete"
+        assert result.permissions == ("admin-catchall",)
+        assert result.reason == "permission_denied"
+
     def test_static_host_base_deny_blocks_earlier_wildcard_host_allow(self):
         fws = wrap_firewalls(
             [
