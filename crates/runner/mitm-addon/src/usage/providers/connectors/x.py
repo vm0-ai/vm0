@@ -20,7 +20,7 @@ from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR
-from ...json_selective import JsonSelectiveExtractor, ScalarField
+from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
     classify_bucket,
@@ -72,6 +72,52 @@ _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
     ("meta", "total_tweet_count"): ScalarField("int", max_bytes=64),
 }
+
+
+def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
+    return JsonSelectiveExtractor(
+        scalar_fields=_X_JSON_RESULT_COUNT_FIELDS,
+        array_count_paths={("data",), ("errors",)},
+        wildcard_array_count_paths={("includes", "*")},
+        object_presence_paths={(), ("data",)},
+    )
+
+
+def _parse_x_json_response_fields(extracted: JsonExtractionResult) -> dict:
+    result: dict = {}
+
+    data_count = extracted.array_counts.get(("data",))
+    if data_count is not None:
+        result["response_data_count"] = data_count
+    elif ("data",) in extracted.object_present:
+        result["response_data_count"] = 1
+
+    errors_count = extracted.array_counts.get(("errors",), 0)
+    if errors_count:
+        result["response_errors_count"] = errors_count
+
+    includes = extracted.wildcard_array_counts.get(("includes", "*"), {})
+    if includes:
+        result["response_includes"] = dict(includes)
+
+    rcs = [
+        value
+        for path in (("meta", "result_count"), ("meta", "total_tweet_count"))
+        if isinstance((value := extracted.values.get(path)), int) and not isinstance(value, bool)
+    ]
+    if rcs:
+        result["response_result_count"] = max(rcs)
+
+    return result
+
+
+def _parse_x_json_response_fields_from_body(body: bytes) -> dict | None:
+    extractor = _create_x_json_selective_extractor()
+    extractor.feed(body)
+    extracted = extractor.finish()
+    if not extracted.complete or () not in extracted.object_present:
+        return None
+    return _parse_x_json_response_fields(extracted)
 
 
 class NdjsonState(TypedDict):
@@ -193,12 +239,7 @@ class XJsonResponseExtractor:
     """Incrementally extract billing metadata from non-streaming X JSON."""
 
     def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(
-            scalar_fields=_X_JSON_RESULT_COUNT_FIELDS,
-            array_count_paths={("data",), ("errors",)},
-            wildcard_array_count_paths={("includes", "*")},
-            object_presence_paths={(), ("data",)},
-        )
+        self._extractor = _create_x_json_selective_extractor()
 
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
@@ -212,28 +253,7 @@ class XJsonResponseExtractor:
             return result, None
 
         result["body_parsed"] = True
-        data_count = extracted.array_counts.get(("data",))
-        if data_count is not None:
-            result["response_data_count"] = data_count
-        elif ("data",) in extracted.object_present:
-            result["response_data_count"] = 1
-
-        errors_count = extracted.array_counts.get(("errors",), 0)
-        if errors_count:
-            result["response_errors_count"] = errors_count
-
-        includes = extracted.wildcard_array_counts.get(("includes", "*"), {})
-        if includes:
-            result["response_includes"] = dict(includes)
-
-        rcs = [
-            value
-            for path in (("meta", "result_count"), ("meta", "total_tweet_count"))
-            if isinstance((value := extracted.values.get(path)), int)
-        ]
-        if rcs:
-            result["response_result_count"] = max(rcs)
-
+        result.update(_parse_x_json_response_fields(extracted))
         return result, None
 
 
@@ -340,7 +360,7 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     incremental parser that populates ``flow.metadata[metadata_keys.X_NDJSON_STATE]``
     as response bytes arrive.  When that state is present we return its
     accumulated counters directly (``body_format: "ndjson"``) and skip
-    the legacy buffered ``json.loads`` fallback, since stream buffers are
+    the legacy buffered fallback, since stream buffers are
     capped at ``STREAM_BUFFER_LIMIT`` and don't contain the full response.
     For streams ``body_truncated`` is always ``False`` — the incremental
     parser saw every byte even if the forensic ``stream_buffer`` filled up.
@@ -388,43 +408,12 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     body = body_utils.decompress_body(
         bytes(buf), flow.response.headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
     )
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        return result
-    if not isinstance(data, dict):
+    fields = _parse_x_json_response_fields_from_body(body)
+    if fields is None:
         return result
 
     result["body_parsed"] = True
-
-    payload = data.get("data")
-    if isinstance(payload, list):
-        result["response_data_count"] = len(payload)
-    elif isinstance(payload, dict):
-        result["response_data_count"] = 1
-
-    errors = data.get("errors")
-    if isinstance(errors, list) and errors:
-        result["response_errors_count"] = len(errors)
-
-    includes = data.get("includes")
-    if isinstance(includes, dict):
-        counts = {k: len(v) for k, v in includes.items() if isinstance(v, list)}
-        if counts:
-            result["response_includes"] = counts
-
-    meta = data.get("meta")
-    if isinstance(meta, dict):
-        # ``result_count`` is the standard search/paginated field;
-        # ``total_tweet_count`` is the counts-endpoint variant where
-        # ``data`` is time buckets rather than tweets.  Prefer whichever
-        # is present (mutually exclusive in practice; if both appear,
-        # take the larger to stay on the safe side of billing).
-        candidates = [meta.get("result_count"), meta.get("total_tweet_count")]
-        rcs = [c for c in candidates if isinstance(c, int)]
-        if rcs:
-            result["response_result_count"] = max(rcs)
-
+    result.update(fields)
     return result
 
 

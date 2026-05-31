@@ -883,6 +883,62 @@ class TestReportConnectorUsage:
 
     # ---- fallback / unparseable cases ----
 
+    def test_legacy_x_json_metadata_extracts_selective_fields(self, tmp_path, real_flow):
+        """Buffered fallback should share X JSON field semantics with the selective parser."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}],
+                "errors": [{"title": "partial failure"}],
+                "includes": {
+                    "users": [{"id": "u1"}],
+                    "media": [],
+                    "topics": "ignored",
+                },
+                "meta": {"result_count": 2, "total_tweet_count": 3},
+            }
+        ).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+
+        metadata = usage_x_connector._parse_response_metadata(flow)
+
+        assert metadata == {
+            "body_parsed": True,
+            "body_truncated": False,
+            "response_data_count": 2,
+            "response_errors_count": 1,
+            "response_includes": {"users": 1, "media": 0},
+            "response_result_count": 3,
+        }
+
+    def test_legacy_x_json_metadata_preserves_truncated_state(self, tmp_path, real_flow):
+        body = json.dumps({"data": [{"id": "1"}]}).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+        flow.metadata["stream_buffer_state"] = {"truncated": True}
+
+        metadata = usage_x_connector._parse_response_metadata(flow)
+
+        assert metadata["body_parsed"] is True
+        assert metadata["body_truncated"] is True
+        assert metadata["response_data_count"] == 1
+
+    @pytest.mark.parametrize("body", [b"not json", b"[1,2,3]"])
+    def test_legacy_x_json_metadata_keeps_unparseable_bodies_unparsed(
+        self, tmp_path, real_flow, body
+    ):
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+
+        metadata = usage_x_connector._parse_response_metadata(flow)
+
+        assert metadata == {"body_parsed": False, "body_truncated": False}
+
+    def test_legacy_x_json_metadata_ignores_boolean_result_count(self, tmp_path, real_flow):
+        body = json.dumps({"meta": {"result_count": True}}).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+
+        metadata = usage_x_connector._parse_response_metadata(flow)
+
+        assert metadata == {"body_parsed": True, "body_truncated": False}
+
     def test_truncated_buffer_with_no_hints_skips_billing(self, tmp_path, real_flow):
         """Unparseable body + no URL hints → skip emission and log an
         error.  The previous blind fallback of 100 units was removed;
