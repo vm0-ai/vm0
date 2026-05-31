@@ -10,8 +10,8 @@ from types import MappingProxyType
 from typing import Literal, NamedTuple
 from urllib.parse import unquote_to_bytes, urlsplit
 
-from path_security import has_unsafe_dot_segment
 from host_normalization import normalize_idna_hostname
+from path_security import has_unsafe_dot_segment
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
 
