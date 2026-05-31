@@ -6,9 +6,9 @@ import type {
   ConnectorAuthClientConfig,
 } from "@vm0/connectors/connectors";
 import {
+  connectorAuthMethodHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodIdsForGrantKind,
 } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -1039,13 +1039,12 @@ function staticAccessSecretName(
   return secretNames.size === 1 ? [...secretNames][0] : undefined;
 }
 
-function authCodeAuthMethodForTest(
+function callbackAuthMethodForTest(
   type: AuthCodeGrantConnectorType,
 ): ConnectorAuthMethodId {
-  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, "auth-code");
-  const [authMethod] = authMethods;
-  if (authMethods.length !== 1 || !authMethod) {
-    throw new Error(`${type}: expected exactly one auth-code auth method`);
+  const authMethod = "oauth" satisfies ConnectorAuthMethodId;
+  if (!connectorAuthMethodHasGrantKind(type, authMethod, "auth-code")) {
+    throw new Error(`${type}: oauth auth method should use auth-code grant`);
   }
   return authMethod;
 }
@@ -2429,7 +2428,7 @@ describe("GET /api/connectors/:type/callback", () => {
         userId,
         type: providerCase.type,
       });
-      const authMethod = authCodeAuthMethodForTest(providerCase.type);
+      const authMethod = callbackAuthMethodForTest(providerCase.type);
       expect(connector).toMatchObject({
         type: providerCase.type,
         authMethod,
