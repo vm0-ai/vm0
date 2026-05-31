@@ -68,7 +68,7 @@ impl CowLayer {
     /// full blocks internally, so partial final blocks are not supported.
     ///
     /// Returns an I/O error if the base image cannot be opened, or if an
-    /// existing bitmap sidecar cannot be restored with the expected block count.
+    /// existing bitmap sidecar or its associated COW file cannot be restored.
     pub fn new(
         base_path: &Path,
         cow_path: &Path,
