@@ -639,8 +639,9 @@ fn forward_control_request(
         sink_disposition,
     } = outcome;
 
-    if matches!(sink_disposition, ControlSinkDisposition::Fail) {
-        sink.fail(diagnostic.clone());
+    match sink_disposition {
+        ControlSinkDisposition::Keep => {}
+        ControlSinkDisposition::Fail => sink.fail(diagnostic.clone()),
     }
 
     let result = writer.write_generated_frame_after_lock(|| {
