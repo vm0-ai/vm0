@@ -333,6 +333,39 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it("matches greedy parameterized host base URLs", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://foo.bar.bentoml.ai/api/v1/models",
+        "https://{deployment+}.bentoml.ai",
+      ),
+    ).toEqual({
+      displayBase: "https://{deployment+}.bentoml.ai",
+      relativePath: "/api/v1/models",
+      score: "https://{deployment+}.bentoml.ai".length,
+    });
+  });
+
+  it("matches explicit non-default base ports only on the same port", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com:8443/v1/users",
+        "https://api.example.com:8443",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com:8443",
+      relativePath: "/v1/users",
+      score: "https://api.example.com:8443".length,
+    });
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1/users",
+        "https://api.example.com:8443",
+      ),
+    ).toBeNull();
+  });
+
   it("keeps static base path boundaries strict", () => {
     expect(
       matchFirewallBaseUrl(
@@ -364,9 +397,22 @@ describe("matchFirewallBaseUrl", () => {
     ["query string", "https://api.github.com?token=1"],
     ["fragment", "https://api.github.com#fragment"],
     ["backslash", "https://api.github.com\\repos"],
+    ["userinfo", "https://user:pass@api.github.com"],
   ])("rejects base URLs with %s", (_label, base) => {
     expect(
       matchFirewallBaseUrl("https://api.github.com/repos", base),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["whole URL template", "${{ vars.N8N_BASE_URL }}/api/v1"],
+    [
+      "host segment template",
+      "https://${{ vars.FRESHDESK_DOMAIN }}.freshdesk.com",
+    ],
+  ])("does not reverse-match %s base URLs", (_label, base) => {
+    expect(
+      matchFirewallBaseUrl("https://example.com/api/v1/users", base),
     ).toBeNull();
   });
 });
