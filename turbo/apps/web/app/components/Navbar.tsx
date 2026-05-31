@@ -23,11 +23,6 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NavMenu, type NavMenuItem } from "./NavMenu";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
-import {
-  buildSignupHref,
-  currentLandingAttributionContext,
-  type LandingAttributionContext,
-} from "../../src/lib/adAttribution";
 import { isBlogEnabled } from "../../src/env";
 
 interface NavbarProps {
@@ -310,16 +305,9 @@ export function Navbar({
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
   const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const { signOut } = useClerk();
-  // Forward acquisition attribution into the app for signed-out CTAs.
-  const appUrl = getAppUrl();
-  const [landingSearch, setLandingSearch] = useState("");
-  const [landingContext, setLandingContext] =
-    useState<LandingAttributionContext>({});
-  useEffect(() => {
-    setLandingSearch(window.location.search);
-    setLandingContext(currentLandingAttributionContext());
-  }, []);
-  const signupHref = buildSignupHref(appUrl, landingSearch, landingContext);
+  // Attribution is carried by the shared .vm0.ai cookie (AttributionCapture),
+  // so the signup CTAs are plain links.
+  const signupHref = "/sign-up";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const desktopNavRef = useRef<HTMLDivElement | null>(null);
   const {

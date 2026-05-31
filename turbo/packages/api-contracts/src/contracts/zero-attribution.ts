@@ -4,18 +4,28 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+// Canonical acquisition source-type taxonomy. Single source of truth shared by
+// the web classifier (apps/web), the app capture layer (apps/platform), and the
+// signup contract below, so the enum can't drift across the three.
+export const SOURCE_TYPES = [
+  "paid",
+  "organic_search",
+  "referral",
+  "direct",
+  "internal",
+  "unknown",
+] as const;
+
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+// First-party, root-domain (.vm0.ai) cookie carrying first-touch acquisition
+// attribution across the www.vm0.ai -> app.vm0.ai subdomain hop. Written by the
+// marketing site (consent-gated), read by the app on first load.
+export const ACQUISITION_ATTRIBUTION_COOKIE = "vm0_attribution";
+
 export const adAttributionMetadataSchema = z
   .object({
-    source_type: z
-      .enum([
-        "paid",
-        "organic_search",
-        "referral",
-        "direct",
-        "internal",
-        "unknown",
-      ])
-      .optional(),
+    source_type: z.enum(SOURCE_TYPES).optional(),
     referrer_domain: z.string().min(1).max(253).optional(),
     landing_host: z.string().min(1).max(253).optional(),
     landing_path: z.string().min(1).max(500).optional(),

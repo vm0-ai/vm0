@@ -1,17 +1,13 @@
-import type { AdAttributionMetadata } from "@vm0/api-contracts/contracts/zero-attribution";
+import {
+  ACQUISITION_ATTRIBUTION_COOKIE,
+  SOURCE_TYPES,
+  type AdAttributionMetadata,
+  type SourceType,
+} from "@vm0/api-contracts/contracts/zero-attribution";
 
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
-
-const SOURCE_TYPES = [
-  "paid",
-  "organic_search",
-  "referral",
-  "direct",
-  "internal",
-  "unknown",
-] as const;
 
 const AD_ATTRIBUTION_PARAMS = [
   "source_type",
@@ -75,24 +71,64 @@ function collectAttributionParams(
   return attributionParams;
 }
 
-function isSourceType(
-  value: string | null,
-): value is (typeof SOURCE_TYPES)[number] {
+function isSourceType(value: string | null): value is SourceType {
   return SOURCE_TYPES.some((candidate) => {
     return candidate === value;
   });
 }
 
+function getCookieString(): string {
+  if (typeof document === "undefined") {
+    return "";
+  }
+  return document.cookie;
+}
+
+function readCookie(name: string, cookieString: string): string | null {
+  for (const part of cookieString.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const eq = trimmed.indexOf("=");
+    const key = eq === -1 ? trimmed : trimmed.slice(0, eq);
+    if (key === name) {
+      return decodeURIComponent(trimmed.slice(eq + 1));
+    }
+  }
+  return null;
+}
+
+// First-touch attribution forwarded across the www.vm0.ai -> app.vm0.ai hop in
+// the shared .vm0.ai cookie. Re-collected through the whitelist so only known
+// params are persisted.
+function collectAttributionFromCookie(cookieString: string): string {
+  const stored = readCookie(ACQUISITION_ATTRIBUTION_COOKIE, cookieString);
+  if (!stored) {
+    return "";
+  }
+  return collectAttributionParams(new URLSearchParams(stored)).toString();
+}
+
 export function recordAdAttribution(
   searchParams: URLSearchParams,
   storage: Storage | null = getSessionStorage(),
+  cookieString: string = getCookieString(),
 ): void {
   if (!storage) {
     return;
   }
 
-  const attributionParams = collectAttributionParams(searchParams);
-  const serializedAttribution = attributionParams.toString();
+  // First-touch: once captured this session, never overwrite.
+  if (storage.getItem(STORED_AD_ATTRIBUTION_KEY)) {
+    return;
+  }
+
+  // Prefer params on the current URL (an ad pointing straight at the app),
+  // otherwise fall back to the shared .vm0.ai cookie set by the marketing site.
+  const serializedAttribution =
+    collectAttributionParams(searchParams).toString() ||
+    collectAttributionFromCookie(cookieString);
   if (!serializedAttribution) {
     return;
   }

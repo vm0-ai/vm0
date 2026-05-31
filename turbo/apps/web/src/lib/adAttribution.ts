@@ -1,8 +1,19 @@
-// Forward acquisition attribution from www.vm0.ai into the app. The app's
-// capture layer is URL-query driven, then stores in app sessionStorage before
-// recording to Clerk/Stripe, so marketing surfaces must carry the source facts
-// across the domain hop.
+// Forward first-touch acquisition attribution from www.vm0.ai into the app.
+//
+// www.vm0.ai and app.vm0.ai are different origins but share the vm0.ai
+// registrable domain, so a first-party cookie scoped to `.vm0.ai` is readable
+// on both — the standard way to share attribution across subdomains (this is
+// how the Clerk session already crosses the hop). The marketing site computes
+// first-touch attribution and writes the cookie (consent-gated); the app reads
+// it on first load. No link decoration / DOM mutation is involved.
 
+import {
+  ACQUISITION_ATTRIBUTION_COOKIE,
+  type SourceType,
+} from "@vm0/api-contracts/contracts/zero-attribution";
+
+// Inbound ad params forwarded verbatim into the cookie. Mirrors the app capture
+// layer (apps/platform ad-attribution.ts).
 const AD_ATTRIBUTION_PARAMS = [
   "gclid",
   "gbraid",
@@ -19,8 +30,11 @@ const AD_ATTRIBUTION_PARAMS = [
 
 const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
-const STORED_ACQUISITION_ATTRIBUTION_KEY = "vm0.acquisitionAttribution";
 const VM0_ROOT_DOMAIN = "vm0.ai";
+
+// 90 days: covers the signup -> paid funnel, and is the standard ad
+// click-attribution window. First-touch, so it is never extended on revisit.
+const COOKIE_MAX_AGE_SECONDS = 90 * 24 * 60 * 60;
 
 const PAID_MEDIUMS = new Set([
   "cpc",
@@ -96,10 +110,10 @@ function truncate(value: string, maxLength: number): string {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
 }
 
-function sourceType(
+export function sourceType(
   params: URLSearchParams,
   referrerHostname: string | undefined,
-): "paid" | "organic_search" | "referral" | "direct" | "internal" | "unknown" {
+): SourceType {
   const medium = params.get("utm_medium")?.toLowerCase();
   if (
     params.has("gclid") ||
@@ -134,22 +148,12 @@ function sourceType(
     return "organic_search";
   }
 
-  if (params.has("utm_source") || params.has("utm_campaign")) {
-    return "referral";
-  }
-
   return "referral";
 }
 
-function getSessionStorage(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.sessionStorage;
-}
-
-function acquisitionAttributionParams(
+// Pure builder: derive the attribution param set from the landing URL + page
+// context. No DOM / storage access, so it is unit-testable in isolation.
+export function acquisitionAttributionParams(
   landingSearch: string,
   context: LandingAttributionContext = {},
 ): URLSearchParams {
@@ -157,6 +161,7 @@ function acquisitionAttributionParams(
   const attribution = new URLSearchParams();
   const referrerHostname = referrerDomain(context.referrer);
 
+  attribution.set(ATTRIBUTION_SOURCE_PARAM, HOMEPAGE_ATTRIBUTION_VALUE);
   attribution.set("source_type", sourceType(sourceParams, referrerHostname));
   if (referrerHostname) {
     attribution.set("referrer_domain", truncate(referrerHostname, 253));
@@ -180,29 +185,6 @@ function acquisitionAttributionParams(
   return attribution;
 }
 
-function storedAcquisitionAttributionParams(
-  landingSearch: string,
-  context: LandingAttributionContext = {},
-  storage: Storage | null = getSessionStorage(),
-): URLSearchParams {
-  const attribution = acquisitionAttributionParams(landingSearch, context);
-  if (!storage) {
-    return attribution;
-  }
-
-  const stored = storage.getItem(STORED_ACQUISITION_ATTRIBUTION_KEY);
-  if (stored) {
-    return new URLSearchParams(stored);
-  }
-
-  const serialized = attribution.toString();
-  if (serialized) {
-    storage.setItem(STORED_ACQUISITION_ATTRIBUTION_KEY, serialized);
-  }
-
-  return attribution;
-}
-
 export function currentLandingAttributionContext(): LandingAttributionContext {
   if (typeof window === "undefined") {
     return {};
@@ -215,68 +197,81 @@ export function currentLandingAttributionContext(): LandingAttributionContext {
   };
 }
 
-function applyAcquisitionAttribution(
-  url: URL,
-  landingSearch: string,
-  context?: LandingAttributionContext,
-): void {
-  url.searchParams.set(ATTRIBUTION_SOURCE_PARAM, HOMEPAGE_ATTRIBUTION_VALUE);
-  const attribution = storedAcquisitionAttributionParams(
-    landingSearch,
-    context,
-  );
-  for (const [key, value] of attribution) {
-    if (!url.searchParams.has(key)) {
-      url.searchParams.append(key, value);
-    }
-  }
+// Cookie I/O is isolated behind this interface so the write path is testable
+// without a DOM (apps/web tests run in the node environment).
+export interface CookieJar {
+  get(): string;
+  set(value: string): void;
 }
 
-export function buildSignupHref(
-  appUrl: string,
-  landingSearch: string,
-  context?: LandingAttributionContext,
-): string {
-  const url = new URL("/onboarding", appUrl);
-  applyAcquisitionAttribution(url, landingSearch, context);
-  return url.toString();
+function documentCookieJar(): CookieJar {
+  return {
+    get: () => {
+      return document.cookie;
+    },
+    set: (value: string) => {
+      document.cookie = value;
+    },
+  };
 }
 
-export function decorateAttributionHref(
-  href: string,
-  appUrl: string,
-  landingSearch: string,
-  context?: LandingAttributionContext,
-): string {
-  const currentOrigin =
-    context?.hostname === undefined
-      ? "https://www.vm0.ai"
-      : `https://${context.hostname}`;
-  let url: URL;
-  let app: URL;
-  try {
-    url = new URL(href, currentOrigin);
-    app = new URL(appUrl);
-  } catch {
-    return href;
-  }
-
-  if (url.hostname === app.hostname && url.pathname === "/onboarding") {
-    applyAcquisitionAttribution(url, landingSearch, context);
-    return url.toString();
-  }
-
-  if (
-    rootDomainOf(url.hostname) === VM0_ROOT_DOMAIN &&
-    url.pathname === "/sign-up"
-  ) {
-    const onboardingUrl = new URL("/onboarding", appUrl);
-    for (const [key, value] of url.searchParams) {
-      onboardingUrl.searchParams.append(key, value);
+export function readAttributionCookie(cookieString: string): string | null {
+  for (const part of cookieString.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) {
+      continue;
     }
-    applyAcquisitionAttribution(onboardingUrl, landingSearch, context);
-    return onboardingUrl.toString();
+    const eq = trimmed.indexOf("=");
+    const key = eq === -1 ? trimmed : trimmed.slice(0, eq);
+    if (key === ACQUISITION_ATTRIBUTION_COOKIE) {
+      return decodeURIComponent(trimmed.slice(eq + 1));
+    }
+  }
+  return null;
+}
+
+// `.vm0.ai` so app.vm0.ai can read it. On non-vm0.ai hosts (local dev, preview)
+// fall back to a host-only cookie rather than a domain the browser rejects.
+function cookieDomainFor(hostname: string | undefined): string | undefined {
+  const host =
+    hostname ??
+    (typeof window === "undefined" ? undefined : window.location.hostname);
+  if (!host) {
+    return undefined;
+  }
+  return rootDomainOf(host) === VM0_ROOT_DOMAIN
+    ? `.${VM0_ROOT_DOMAIN}`
+    : undefined;
+}
+
+// Write first-touch acquisition attribution to the shared `.vm0.ai` cookie.
+// First-touch: an existing cookie is never overwritten. Callers MUST gate this
+// on marketing/advertising consent. Returns whether a cookie was written.
+export function writeAcquisitionAttributionCookie(
+  context: LandingAttributionContext = {},
+  landingSearch = "",
+  jar: CookieJar = documentCookieJar(),
+): boolean {
+  if (readAttributionCookie(jar.get()) !== null) {
+    return false;
   }
 
-  return href;
+  const value = acquisitionAttributionParams(landingSearch, context).toString();
+  if (!value) {
+    return false;
+  }
+
+  const segments = [
+    `${ACQUISITION_ATTRIBUTION_COOKIE}=${encodeURIComponent(value)}`,
+    "Path=/",
+    `Max-Age=${COOKIE_MAX_AGE_SECONDS}`,
+    "SameSite=Lax",
+    "Secure",
+  ];
+  const domain = cookieDomainFor(context.hostname);
+  if (domain) {
+    segments.push(`Domain=${domain}`);
+  }
+  jar.set(segments.join("; "));
+  return true;
 }
