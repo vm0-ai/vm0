@@ -333,6 +333,32 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it("returns slash when URL exactly matches the base URL", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.github.com?per_page=1#ignored",
+        "https://api.github.com",
+      ),
+    ).toEqual({
+      displayBase: "https://api.github.com",
+      relativePath: "/",
+      score: "https://api.github.com".length,
+    });
+  });
+
+  it("treats a single trailing base slash as optional", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/api/users",
+        "https://api.example.com/api/",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com/api",
+      relativePath: "/users",
+      score: "https://api.example.com/api".length,
+    });
+  });
+
   it("matches greedy parameterized host base URLs", () => {
     expect(
       matchFirewallBaseUrl(
@@ -343,6 +369,32 @@ describe("matchFirewallBaseUrl", () => {
       displayBase: "https://{deployment+}.bentoml.ai",
       relativePath: "/api/v1/models",
       score: "https://{deployment+}.bentoml.ai".length,
+    });
+  });
+
+  it("allows star-greedy host bases to match an empty leading host", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://bentoml.ai/api/v1/models",
+        "https://{deployment*}.bentoml.ai",
+      ),
+    ).toEqual({
+      displayBase: "https://{deployment*}.bentoml.ai",
+      relativePath: "/api/v1/models",
+      score: "https://{deployment*}.bentoml.ai".length,
+    });
+  });
+
+  it("treats explicit default base ports as equivalent to omitted ports", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://api.example.com/v1/users",
+        "https://api.example.com:443",
+      ),
+    ).toEqual({
+      displayBase: "https://api.example.com:443",
+      relativePath: "/v1/users",
+      score: "https://api.example.com:443".length,
     });
   });
 
