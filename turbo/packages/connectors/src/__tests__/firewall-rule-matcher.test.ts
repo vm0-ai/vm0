@@ -461,6 +461,8 @@ describe("findMatchingPermissions", () => {
   });
 
   it("ignores malformed top-level firewall shapes", () => {
+    const nullConfig = null as unknown as FirewallConfig;
+    const arrayConfig = [] as unknown as FirewallConfig;
     const nonStringNameConfig = {
       name: 123,
       apis: [
@@ -476,6 +478,8 @@ describe("findMatchingPermissions", () => {
       apis: { base: "https://example.com" },
     } as unknown as FirewallConfig;
 
+    expect(findMatchingPermissions("GET", "/items/1", nullConfig)).toEqual([]);
+    expect(findMatchingPermissions("GET", "/items/1", arrayConfig)).toEqual([]);
     expect(
       findMatchingPermissions("GET", "/items/1", nonStringNameConfig),
     ).toEqual([]);
@@ -550,6 +554,11 @@ describe("findMatchingPermissions", () => {
           permissions: [{ name: "bad-headers", rules: ["GET /items/{id}"] }],
         },
         {
+          base: "https://date-headers.example.com",
+          auth: { headers: new Date() },
+          permissions: [{ name: "date-headers", rules: ["GET /items/{id}"] }],
+        },
+        {
           base: "https://bad-auth-base.example.com",
           auth: { base: 123 },
           permissions: [{ name: "bad-auth-base", rules: ["GET /items/{id}"] }],
@@ -558,6 +567,11 @@ describe("findMatchingPermissions", () => {
           base: "https://bad-query.example.com",
           auth: { query: { api_key: 123 } },
           permissions: [{ name: "bad-query", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://date-query.example.com",
+          auth: { query: new Date() },
+          permissions: [{ name: "date-query", rules: ["GET /items/{id}"] }],
         },
         {
           base: "https://valid.example.com",

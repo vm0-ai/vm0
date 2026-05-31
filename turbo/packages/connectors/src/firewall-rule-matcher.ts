@@ -226,7 +226,11 @@ function isValidPermissionName(permissionName: string): boolean {
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -539,6 +543,7 @@ export function findMatchingPermissions(
   config: FirewallConfig,
   options: FindMatchingPermissionsOptions = {},
 ): string[] {
+  if (!isObjectRecord(config)) return [];
   if (typeof config.name !== "string" || config.name === "") return [];
   if (!Array.isArray(config.apis)) return [];
 
