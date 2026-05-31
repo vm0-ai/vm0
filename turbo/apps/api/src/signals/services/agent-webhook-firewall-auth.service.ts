@@ -2120,20 +2120,17 @@ function resolveTemplates(
     headers[name] = resolved;
   }
 
-  const base = authBase ? resolveSimple(authBase) : undefined;
-  const query = authQuery
-    ? Object.fromEntries(
-        Object.entries(authQuery).map(([key, value]) => {
-          return [key, resolveSimple(value)];
-        }),
-      )
-    : undefined;
-
   return {
     headers,
     resolvedSecrets: [...resolvedKeys].sort(),
-    base,
-    query,
+    base: authBase ? resolveSimple(authBase) : undefined,
+    query: authQuery
+      ? Object.fromEntries(
+          Object.entries(authQuery).map(([key, value]) => {
+            return [key, resolveSimple(value)];
+          }),
+        )
+      : undefined,
   };
 }
 
