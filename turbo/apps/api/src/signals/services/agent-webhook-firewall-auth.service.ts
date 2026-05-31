@@ -385,10 +385,14 @@ interface RefreshBatchContext {
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
-interface ConnectorAccessState {
+interface RefreshSourceState {
+  readonly tokenExpiresAt: number | null;
+  readonly needsReconnect: boolean;
+}
+
+interface ConnectorAccessState extends RefreshSourceState {
   readonly authMethod: string;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
-  readonly tokenExpiresAt: number | null;
 }
 
 interface BasicArgContext extends BasicAuthTemplateArg {
@@ -702,6 +706,7 @@ async function loadConnectorAccessStates(
       type: connectors.type,
       authMethod: connectors.authMethod,
       tokenExpiresAt: connectors.tokenExpiresAt,
+      needsReconnect: connectors.needsReconnect,
     })
     .from(connectors)
     .where(
@@ -727,62 +732,122 @@ async function loadConnectorAccessStates(
     result.set(row.type, {
       authMethod: row.authMethod,
       accessMetadata,
-      tokenExpiresAt: row.tokenExpiresAt
-        ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
-        : null,
+      ...refreshSourceStateFromRow(row),
     });
   }
   return result;
 }
 
-async function getModelProviderExpiry(
-  db: Db,
-  orgId: string,
-  userId: string,
-  modelProviderTypes: readonly string[],
-  options: { readonly sourceUserId?: string } = {},
-): Promise<Map<string, number | null>> {
-  const result = new Map<string, number | null>();
-  if (modelProviderTypes.length === 0) {
+interface ModelProviderSourceLookup {
+  readonly providerKey: string;
+  readonly providerType: string;
+  readonly userId: string;
+}
+
+interface SourceStateSnapshot {
+  readonly sourceStateMap: Map<string, RefreshSourceState>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+}
+
+function modelProviderSourceLookup(args: {
+  readonly providerKey: string;
+  readonly userId: string;
+  readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+}): ModelProviderSourceLookup {
+  const metadata = resolveRefreshMetadata(
+    args.providerKey,
+    args.metadataByConnector.get(args.providerKey),
+  );
+  return {
+    providerKey: args.providerKey,
+    providerType:
+      metadata.metadataKey ??
+      modelProviderTypeForOAuthProviderKey(args.providerKey) ??
+      args.providerKey,
+    userId: resolveSecretUserId(
+      "model-provider",
+      args.userId,
+      metadata.sourceUserId,
+    ),
+  };
+}
+
+async function loadModelProviderSourceStates(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly providerKeys: readonly string[];
+  readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+}): Promise<Map<string, RefreshSourceState>> {
+  const result = new Map<string, RefreshSourceState>();
+  if (args.providerKeys.length === 0) {
     return result;
   }
 
-  const rows = await db
-    .select({
-      type: modelProviders.type,
-      tokenExpiresAt: modelProviders.tokenExpiresAt,
-    })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(
-          modelProviders.userId,
-          resolveSecretUserId("model-provider", userId, options.sourceUserId),
-        ),
-        inArray(modelProviders.type, [...modelProviderTypes]),
-      ),
-    );
+  const lookupsByUserId = new Map<string, ModelProviderSourceLookup[]>();
+  for (const providerKey of args.providerKeys) {
+    const lookup = modelProviderSourceLookup({
+      providerKey,
+      userId: args.userId,
+      metadataByConnector: args.metadataByConnector,
+    });
+    const lookups = lookupsByUserId.get(lookup.userId) ?? [];
+    lookups.push(lookup);
+    lookupsByUserId.set(lookup.userId, lookups);
+  }
 
-  for (const row of rows) {
-    result.set(
-      row.type,
-      row.tokenExpiresAt
-        ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
-        : null,
-    );
+  const stateEntries = await Promise.all(
+    [...lookupsByUserId].map(async ([sourceUserId, lookups]) => {
+      const providerTypes = [
+        ...new Set(
+          lookups.map((lookup) => {
+            return lookup.providerType;
+          }),
+        ),
+      ];
+      const rows = await args.db
+        .select({
+          type: modelProviders.type,
+          tokenExpiresAt: modelProviders.tokenExpiresAt,
+          needsReconnect: modelProviders.needsReconnect,
+        })
+        .from(modelProviders)
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, sourceUserId),
+            inArray(modelProviders.type, providerTypes),
+          ),
+        );
+
+      const stateByType = new Map<string, RefreshSourceState>();
+      for (const row of rows) {
+        stateByType.set(row.type, refreshSourceStateFromRow(row));
+      }
+
+      return lookups.flatMap((lookup) => {
+        const state = stateByType.get(lookup.providerType);
+        return state ? [[lookup.providerKey, state] as const] : [];
+      });
+    }),
+  );
+
+  for (const entries of stateEntries) {
+    for (const [providerKey, state] of entries) {
+      result.set(providerKey, state);
+    }
   }
   return result;
 }
 
-async function getExpiryByProviderKey(args: {
+async function getSourceStateByProviderKey(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly connectorTypes: readonly string[];
   readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
   readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
-}): Promise<Map<string, number | null>> {
+}): Promise<Map<string, RefreshSourceState>> {
   const connectorOnly = args.connectorTypes.filter((connectorType) => {
     return (
       resolveRefreshMetadata(
@@ -802,38 +867,59 @@ async function getExpiryByProviderKey(args: {
     },
   );
 
-  const modelProviderEntries = await Promise.all(
-    modelProviderOAuthProviderKeys.map(async (providerKey) => {
-      const metadata = resolveRefreshMetadata(
-        providerKey,
-        args.metadataByConnector.get(providerKey),
-      );
-      const metadataKey =
-        metadata.metadataKey ??
-        modelProviderTypeForOAuthProviderKey(providerKey) ??
-        providerKey;
-      const expiryMap = await getModelProviderExpiry(
-        args.db,
-        args.orgId,
-        args.userId,
-        [metadataKey],
-        { sourceUserId: metadata.sourceUserId },
-      );
-      return [providerKey, expiryMap.get(metadataKey) ?? null] as const;
-    }),
-  );
-
-  const merged = new Map<string, number | null>();
+  const merged = new Map<string, RefreshSourceState>();
   for (const connectorType of connectorOnly) {
     const state = args.connectorAccessByType.get(connectorType);
     if (state) {
-      merged.set(connectorType, state.tokenExpiresAt);
+      merged.set(connectorType, state);
     }
   }
-  for (const [providerKey, expiry] of modelProviderEntries) {
-    merged.set(providerKey, expiry);
+
+  const modelProviderStates = await loadModelProviderSourceStates({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    providerKeys: modelProviderOAuthProviderKeys,
+    metadataByConnector: args.metadataByConnector,
+  });
+  for (const [providerKey, state] of modelProviderStates) {
+    merged.set(providerKey, state);
   }
   return merged;
+}
+
+async function loadCurrentSourceStateSnapshot(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorTypes: readonly string[];
+  readonly metadataByConnector: Map<string, SecretConnectorMetadata>;
+}): Promise<SourceStateSnapshot> {
+  const connectorOnly = args.connectorTypes.filter((connectorType) => {
+    return (
+      resolveRefreshMetadata(
+        connectorType,
+        args.metadataByConnector.get(connectorType),
+      ).sourceType === "connector"
+    );
+  });
+  const connectorAccessByType = await loadConnectorAccessStates(
+    args.db,
+    args.orgId,
+    args.userId,
+    connectorOnly,
+  );
+  return {
+    connectorAccessByType,
+    sourceStateMap: await getSourceStateByProviderKey({
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorTypes: args.connectorTypes,
+      metadataByConnector: args.metadataByConnector,
+      connectorAccessByType,
+    }),
+  };
 }
 
 function prepareRefreshTokenContext(
@@ -955,6 +1041,18 @@ function tokenExpiresAtNeedsRefresh(tokenExpiresAt: Date | null): boolean {
 
 function currentSecond(): number {
   return Math.floor(nowDate().getTime() / 1000);
+}
+
+function refreshSourceStateFromRow(args: {
+  readonly tokenExpiresAt: Date | null;
+  readonly needsReconnect: boolean;
+}): RefreshSourceState {
+  return {
+    tokenExpiresAt: args.tokenExpiresAt
+      ? Math.floor(args.tokenExpiresAt.getTime() / 1000)
+      : null,
+    needsReconnect: args.needsReconnect,
+  };
 }
 
 async function currentDatabaseTimestampMicros(db: Db): Promise<bigint> {
@@ -1958,7 +2056,7 @@ async function decryptFirewallAuthSecrets(
 
 function connectorTypesNeedingRefresh(args: {
   readonly connectorTypes: readonly string[];
-  readonly expiryMap: Map<string, number | null>;
+  readonly sourceStateMap: Map<string, RefreshSourceState>;
   readonly forceRefresh: boolean;
 }): readonly string[] {
   const nowSeconds = Math.floor(nowDate().getTime() / 1000);
@@ -1966,11 +2064,14 @@ function connectorTypesNeedingRefresh(args: {
     if (args.forceRefresh) {
       return true;
     }
-    const tokenExpiry = args.expiryMap.get(connectorType);
-    if (tokenExpiry === undefined || tokenExpiry === null) {
+    const sourceState = args.sourceStateMap.get(connectorType);
+    if (!sourceState) {
       return true;
     }
-    return tokenExpiry <= nowSeconds + REFRESH_BUFFER_SECS;
+    if (sourceState.needsReconnect || sourceState.tokenExpiresAt === null) {
+      return true;
+    }
+    return sourceState.tokenExpiresAt <= nowSeconds + REFRESH_BUFFER_SECS;
   });
 }
 
@@ -2045,9 +2146,25 @@ async function refreshSelectedTokens(
 async function syncSkippedTokens(
   context: RefreshBatchContext,
   skippedTypes: readonly string[],
-): Promise<void> {
+  sourceStateMap: Map<string, RefreshSourceState>,
+): Promise<readonly RefreshExecutionResult[]> {
+  const results: RefreshExecutionResult[] = [];
   const currentTokens = await Promise.all(
     skippedTypes.map(async (connectorType) => {
+      const sourceState = sourceStateMap.get(connectorType);
+      if (!sourceState) {
+        return {
+          connectorType,
+          token: null,
+        };
+      }
+      if (sourceState?.needsReconnect) {
+        return {
+          connectorType,
+          token: null,
+          failureReason: "reconnect_required" as const,
+        };
+      }
       const metadata = resolveRefreshMetadata(
         connectorType,
         context.metadataByConnector.get(connectorType),
@@ -2068,7 +2185,22 @@ async function syncSkippedTokens(
       };
     }),
   );
-  for (const { connectorType, token } of currentTokens) {
+  for (const { connectorType, token, failureReason } of currentTokens) {
+    if (failureReason) {
+      L.warn(
+        `[${context.auth.runId}] Skipped connector ${connectorType} still requires reconnect`,
+      );
+      for (const envVar of context.envVarsByConnector.get(connectorType) ??
+        []) {
+        delete context.secrets[envVar];
+      }
+      results.push({
+        connectorType,
+        status: "failed",
+        failureReason,
+      });
+      continue;
+    }
     if (!token) {
       L.warn(
         `[${context.auth.runId}] No DB token for skipped connector ${connectorType}, marking access unresolved`,
@@ -2083,6 +2215,7 @@ async function syncSkippedTokens(
       context.secrets[envVar] = token;
     }
   }
+  return results;
 }
 
 function summarizeRefreshResults(
@@ -2135,11 +2268,11 @@ function summarizeRefreshResults(
 
 function earliestConnectorExpiry(
   connectorTypes: readonly string[],
-  finalExpiryMap: Map<string, number | null>,
+  finalSourceStateMap: Map<string, RefreshSourceState>,
 ): number | null {
   let earliestExpiry: number | null = null;
   for (const connectorType of connectorTypes) {
-    const expiry = finalExpiryMap.get(connectorType);
+    const expiry = finalSourceStateMap.get(connectorType)?.tokenExpiresAt;
     if (expiry !== undefined && expiry !== null) {
       earliestExpiry =
         earliestExpiry === null ? expiry : Math.min(earliestExpiry, expiry);
@@ -2166,7 +2299,7 @@ async function refreshExpiredTokens(
     refreshable,
     args.secretConnectorMetadataMap,
   );
-  const expiryMap = await getExpiryByProviderKey({
+  const sourceStateMap = await getSourceStateByProviderKey({
     db: args.db,
     orgId: args.orgId,
     userId: args.auth.userId,
@@ -2176,7 +2309,7 @@ async function refreshExpiredTokens(
   });
   const toRefresh = connectorTypesNeedingRefresh({
     connectorTypes,
-    expiryMap,
+    sourceStateMap,
     forceRefresh: args.forceRefresh,
   });
   const envVarsByConnector = buildEnvVarsByConnector(refreshable);
@@ -2194,11 +2327,32 @@ async function refreshExpiredTokens(
     envVarsByConnector,
     featureSwitchContext: args.featureSwitchContext,
   } satisfies RefreshBatchContext;
-  const refreshResults = await refreshSelectedTokens(context, toRefresh);
+  const selectedRefreshResults = await refreshSelectedTokens(
+    context,
+    toRefresh,
+  );
   const skippedTypes = connectorTypes.filter((connectorType) => {
     return !toRefresh.includes(connectorType);
   });
-  await syncSkippedTokens(context, skippedTypes);
+  const skippedStateSnapshot =
+    skippedTypes.length === 0
+      ? { connectorAccessByType: context.connectorAccessByType, sourceStateMap }
+      : await loadCurrentSourceStateSnapshot({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.auth.userId,
+          connectorTypes: skippedTypes,
+          metadataByConnector,
+        });
+  const skippedResults = await syncSkippedTokens(
+    {
+      ...context,
+      connectorAccessByType: skippedStateSnapshot.connectorAccessByType,
+    },
+    skippedTypes,
+    skippedStateSnapshot.sourceStateMap,
+  );
+  const refreshResults = [...selectedRefreshResults, ...skippedResults];
 
   const summary = summarizeRefreshResults(refreshResults, envVarsByConnector);
   const hasCurrentOrRefreshed = refreshResults.some((result) => {
@@ -2215,8 +2369,8 @@ async function refreshExpiredTokens(
         )),
       ])
     : args.connectorAccessByType;
-  const finalExpiryMap = hasCurrentOrRefreshed
-    ? await getExpiryByProviderKey({
+  const finalSourceStateMap = hasCurrentOrRefreshed
+    ? await getSourceStateByProviderKey({
         db: args.db,
         orgId: args.orgId,
         userId: args.auth.userId,
@@ -2224,10 +2378,10 @@ async function refreshExpiredTokens(
         metadataByConnector,
         connectorAccessByType: finalConnectorAccessByType,
       })
-    : expiryMap;
+    : new Map([...sourceStateMap, ...skippedStateSnapshot.sourceStateMap]);
 
   return {
-    expiresAt: earliestConnectorExpiry(connectorTypes, finalExpiryMap),
+    expiresAt: earliestConnectorExpiry(connectorTypes, finalSourceStateMap),
     ...summary,
   };
 }
