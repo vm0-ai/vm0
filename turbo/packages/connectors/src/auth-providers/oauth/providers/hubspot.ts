@@ -111,7 +111,7 @@ export async function refreshHubSpotToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<HubSpotRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("hubspot");
   const response = await fetch(authCodeGrant.tokenUrl, {

@@ -131,7 +131,7 @@ export async function refreshNotionToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<NotionRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("notion");
   const response = await fetch(authCodeGrant.tokenUrl, {

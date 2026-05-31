@@ -95,7 +95,7 @@ export async function refreshSupabaseToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<SupabaseRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(

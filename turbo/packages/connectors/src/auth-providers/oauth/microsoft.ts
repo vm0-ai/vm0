@@ -128,7 +128,7 @@ export async function refreshMicrosoftToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<MicrosoftRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const response = await fetch(authCodeGrant.tokenUrl, {

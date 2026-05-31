@@ -170,7 +170,7 @@ const tokenResponseSchema = z.object({
 async function postToken(
   body: URLSearchParams,
   operation: "exchange" | "refresh",
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
 ): Promise<TokenResponse> {
   const response = await fetch(getTestOAuthTokenUrl(), {
     signal,
@@ -211,6 +211,7 @@ export async function exchangeTestOAuthCode(
       redirect_uri: redirectUri,
     }),
     "exchange",
+    undefined,
   );
 }
 
@@ -218,7 +219,7 @@ export async function refreshTestOAuthToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<TokenResponse> {
   return postToken(
     new URLSearchParams({

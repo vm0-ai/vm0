@@ -119,7 +119,7 @@ export async function refreshLinearToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<LinearRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("linear");
   const response = await fetch(authCodeGrant.tokenUrl, {

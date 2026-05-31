@@ -95,7 +95,7 @@ export async function refreshDeelToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<DeelRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("deel");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(

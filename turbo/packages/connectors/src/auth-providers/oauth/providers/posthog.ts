@@ -113,7 +113,7 @@ export async function refreshPosthogToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<PosthogRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("posthog");
   const response = await fetch(authCodeGrant.tokenUrl, {

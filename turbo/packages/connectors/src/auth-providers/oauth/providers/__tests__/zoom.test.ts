@@ -8,6 +8,10 @@ import {
 } from "../zoom";
 import { server } from "./test-server";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 describe("connector/providers/zoom", () => {
   describe("buildZoomAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and response_type", () => {
@@ -135,6 +139,7 @@ describe("connector/providers/zoom", () => {
         "client-id",
         "client-secret",
         "old-refresh-token",
+        testRefreshSignal(),
       );
 
       expect(result.accessToken).toBe("new-zoom-token");
@@ -152,7 +157,12 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       await expect(
-        refreshZoomToken("client-id", "client-secret", "bad-refresh-token"),
+        refreshZoomToken(
+          "client-id",
+          "client-secret",
+          "bad-refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Refresh token revoked");
     });
 
@@ -163,7 +173,12 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       await expect(
-        refreshZoomToken("client-id", "client-secret", "refresh-token"),
+        refreshZoomToken(
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("No access token in Zoom refresh response");
     });
 
@@ -174,7 +189,12 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       await expect(
-        refreshZoomToken("client-id", "client-secret", "refresh-token"),
+        refreshZoomToken(
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Zoom token refresh failed");
     });
   });

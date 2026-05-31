@@ -133,7 +133,7 @@ export async function refreshStravaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<StravaRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("strava");
   const response = await fetch(authCodeGrant.tokenUrl, {

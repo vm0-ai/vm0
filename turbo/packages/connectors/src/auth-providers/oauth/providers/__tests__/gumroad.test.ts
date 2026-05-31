@@ -8,6 +8,10 @@ import {
 } from "../gumroad";
 import { server } from "./test-server";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 describe("connector/providers/gumroad", () => {
   describe("buildGumroadAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scope", () => {
@@ -132,6 +136,7 @@ describe("connector/providers/gumroad", () => {
         "client-id",
         "client-secret",
         "old-refresh-token",
+        testRefreshSignal(),
       );
 
       expect(result.accessToken).toBe("new-gumroad-token");
@@ -148,7 +153,12 @@ describe("connector/providers/gumroad", () => {
       server.use(handler);
 
       await expect(
-        refreshGumroadToken("client-id", "client-secret", "bad-refresh-token"),
+        refreshGumroadToken(
+          "client-id",
+          "client-secret",
+          "bad-refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Refresh token revoked");
     });
 
@@ -159,7 +169,12 @@ describe("connector/providers/gumroad", () => {
       server.use(handler);
 
       await expect(
-        refreshGumroadToken("client-id", "client-secret", "refresh-token"),
+        refreshGumroadToken(
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("No access token in Gumroad refresh response");
     });
 
@@ -170,7 +185,12 @@ describe("connector/providers/gumroad", () => {
       server.use(handler);
 
       await expect(
-        refreshGumroadToken("client-id", "client-secret", "refresh-token"),
+        refreshGumroadToken(
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Gumroad token refresh failed");
     });
   });

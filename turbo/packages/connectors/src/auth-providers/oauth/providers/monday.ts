@@ -114,7 +114,7 @@ export async function refreshMondayToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<MondayRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("monday");
   const response = await fetch(authCodeGrant.tokenUrl, {

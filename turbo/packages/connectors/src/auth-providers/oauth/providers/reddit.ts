@@ -160,7 +160,7 @@ export async function refreshRedditToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<RedditRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const response = await fetch(authCodeGrant.tokenUrl, {

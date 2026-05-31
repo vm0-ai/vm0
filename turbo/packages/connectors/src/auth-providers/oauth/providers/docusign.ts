@@ -160,7 +160,7 @@ export async function refreshDocuSignToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<DocuSignRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(

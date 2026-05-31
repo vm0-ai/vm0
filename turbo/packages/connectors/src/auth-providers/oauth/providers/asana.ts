@@ -159,7 +159,7 @@ export async function refreshAsanaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<AsanaRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("asana");
   const response = await fetch(authCodeGrant.tokenUrl, {

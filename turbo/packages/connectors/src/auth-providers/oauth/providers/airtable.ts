@@ -156,7 +156,7 @@ export async function refreshAirtableToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<AirtableRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const basicAuth = btoa(`${clientId}:${clientSecret}`);

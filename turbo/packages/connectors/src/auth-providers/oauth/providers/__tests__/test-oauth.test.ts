@@ -18,6 +18,10 @@ import {
 
 const server = setupServer();
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
 });
@@ -117,6 +121,7 @@ describe("test-oauth provider URLs", () => {
       "test-oauth-client",
       "test-oauth-secret",
       "refresh-1",
+      testRefreshSignal(),
     );
 
     expect(tokenRequestHeaders?.get("x-vercel-protection-bypass")).toBe(

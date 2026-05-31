@@ -95,7 +95,7 @@ export async function refreshXToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<XRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("x");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(

@@ -120,7 +120,7 @@ export async function refreshZoomToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<ZoomRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("zoom");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(

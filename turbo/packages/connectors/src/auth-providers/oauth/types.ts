@@ -41,7 +41,7 @@ interface OAuthExchangeFlowArgs {
 
 interface OAuthRefreshFlowArgs {
   readonly refreshToken: string;
-  readonly signal?: AbortSignal;
+  readonly signal: AbortSignal;
 }
 
 interface OAuthRevokeFlowArgs {

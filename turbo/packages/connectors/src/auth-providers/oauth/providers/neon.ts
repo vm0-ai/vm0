@@ -116,7 +116,7 @@ export async function refreshNeonToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<NeonRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("neon");
   const response = await fetch(authCodeGrant.tokenUrl, {

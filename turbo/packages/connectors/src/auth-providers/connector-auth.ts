@@ -458,7 +458,7 @@ export async function refreshConnectorAuthProviderAccessToken<
   readonly authMethod: string;
   readonly clientArgs: ConnectorAuthProviderClientArgs;
   readonly refreshToken: string;
-  readonly signal?: AbortSignal;
+  readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
   if (
     !connectorAuthMethodSupportsRefreshTokenAccess(args.type, args.authMethod)

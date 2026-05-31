@@ -8,6 +8,10 @@ import { server } from "./test-server";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 describe("connector/providers/google-ads", () => {
   describe("googleAdsProvider", () => {
     it("registers google-ads as an auth-code grant provider", () => {
@@ -136,6 +140,7 @@ describe("connector/providers/google-ads", () => {
         clientId: "client-id",
         clientSecret: "client-secret",
         refreshToken: "refresh-token",
+        signal: testRefreshSignal(),
       });
 
       expect(result).toEqual({

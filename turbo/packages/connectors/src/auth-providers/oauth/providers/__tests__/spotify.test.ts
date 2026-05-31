@@ -8,6 +8,10 @@ import {
 } from "../spotify";
 import { server } from "./test-server";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 describe("connector/providers/spotify", () => {
   describe("buildSpotifyAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scope", () => {
@@ -145,6 +149,7 @@ describe("connector/providers/spotify", () => {
         "client-id",
         "client-secret",
         "old-refresh-token",
+        testRefreshSignal(),
       );
 
       expect(result.accessToken).toBe("new-spotify-token");
@@ -165,7 +170,12 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       await expect(
-        refreshSpotifyToken("client-id", "client-secret", "bad-refresh-token"),
+        refreshSpotifyToken(
+          "client-id",
+          "client-secret",
+          "bad-refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Refresh token revoked");
     });
 
@@ -179,7 +189,12 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       await expect(
-        refreshSpotifyToken("client-id", "client-secret", "refresh-token"),
+        refreshSpotifyToken(
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("No access token in Spotify refresh response");
     });
 
@@ -193,7 +208,12 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       await expect(
-        refreshSpotifyToken("client-id", "client-secret", "refresh-token"),
+        refreshSpotifyToken(
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Spotify token refresh failed");
     });
   });

@@ -115,7 +115,7 @@ export async function refreshCloseToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<CloseRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("close");
   const response = await fetch(authCodeGrant.tokenUrl, {

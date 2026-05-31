@@ -126,7 +126,7 @@ export async function refreshSentryToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<SentryRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("sentry");
   const response = await fetch(authCodeGrant.tokenUrl, {

@@ -74,6 +74,10 @@ import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../auth-providers/oauth/google-con
 import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
 import { getConnectorFirewall } from "../firewalls";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 function getApiTokenManualGrantFields(
   type: ConnectorType,
 ): Record<string, ConnectorManualGrantFieldConfig> | undefined {
@@ -536,6 +540,7 @@ describe("connector provider capability checks", () => {
         authMethod: "api-token",
         clientArgs: {},
         refreshToken: "stripe-refresh-token",
+        signal: testRefreshSignal(),
       }),
     ).rejects.toThrow(
       "stripe connector auth method api-token does not support token refresh",
@@ -1055,6 +1060,7 @@ describe("connector provider capability checks", () => {
         authMethod: "oauth",
         clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "base44-refresh-rotation",
+        signal: testRefreshSignal(),
       }),
     ).resolves.toStrictEqual({
       accessToken: "base44-access-refreshed",
@@ -1067,6 +1073,7 @@ describe("connector provider capability checks", () => {
         authMethod: "oauth",
         clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "base44-refresh-without-rotation",
+        signal: testRefreshSignal(),
       }),
     ).resolves.toStrictEqual({
       accessToken: "base44-access-refreshed",
@@ -1389,6 +1396,7 @@ describe("connector provider capability checks", () => {
       authMethod: "oauth",
       clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
       refreshToken: "slock-refresh-token",
+      signal: testRefreshSignal(),
     });
     expect(refreshResult).toStrictEqual({
       accessToken: slockRefreshedAccessToken,
@@ -1409,6 +1417,7 @@ describe("connector provider capability checks", () => {
         authMethod: "oauth",
         clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
         refreshToken: "slock-refresh-malformed",
+        signal: testRefreshSignal(),
       }),
     ).resolves.toStrictEqual({
       accessToken: slockMalformedAccessToken,

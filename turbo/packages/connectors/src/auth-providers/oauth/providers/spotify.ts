@@ -117,7 +117,7 @@ export async function refreshSpotifyToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<SpotifyRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("spotify");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(

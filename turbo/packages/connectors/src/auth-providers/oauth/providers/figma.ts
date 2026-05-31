@@ -118,7 +118,7 @@ export async function refreshFigmaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<FigmaRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(

@@ -74,7 +74,7 @@ export async function refreshChatgptToken(
   _clientId: string,
   _clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<ChatgptRefreshResult> {
   const response = await fetch(CHATGPT_OAUTH_TOKEN_URL, {
     signal,

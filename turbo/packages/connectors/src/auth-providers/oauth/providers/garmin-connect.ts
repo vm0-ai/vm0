@@ -156,7 +156,7 @@ export async function refreshGarminConnectToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<GarminConnectRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("garmin-connect");
   const response = await fetch(authCodeGrant.tokenUrl, {
