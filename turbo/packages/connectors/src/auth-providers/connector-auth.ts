@@ -14,6 +14,8 @@ import {
   connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   getConfiguredConnectorAuthMethods,
+  getConnectorAuthMethodAuthCodeGrantConfig,
+  getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
@@ -204,6 +206,7 @@ export function getConnectorAuthProviderClientArgs(
 
 async function revokeTokenRevokeConnectorAccessToken(args: {
   readonly type: TokenRevokeConnectorType;
+  readonly authMethod: string;
   readonly readEnv: ConnectorEnvReader;
   readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
@@ -211,10 +214,10 @@ async function revokeTokenRevokeConnectorAccessToken(args: {
     case "github": {
       const authClient = resolveConnectorAuthClientForMethod(
         "github",
-        "oauth",
+        args.authMethod,
         args.readEnv,
       );
-      if (!authClient) {
+      if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
         return { status: "unsupported" };
       }
       await githubProvider.revoke.revokeToken({
@@ -227,10 +230,10 @@ async function revokeTokenRevokeConnectorAccessToken(args: {
     case "linear": {
       const authClient = resolveConnectorAuthClientForMethod(
         "linear",
-        "oauth",
+        args.authMethod,
         args.readEnv,
       );
-      if (!authClient) {
+      if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
         return { status: "unsupported" };
       }
       await linearProvider.revoke.revokeToken({
@@ -243,10 +246,10 @@ async function revokeTokenRevokeConnectorAccessToken(args: {
     case "slack": {
       const authClient = resolveConnectorAuthClientForMethod(
         "slack",
-        "oauth",
+        args.authMethod,
         args.readEnv,
       );
-      if (!authClient) {
+      if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
         return { status: "unsupported" };
       }
       await slackProvider.revoke.revokeToken({
@@ -498,8 +501,13 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
     args.type,
     args.authMethod,
   );
+  const authCodeGrant = getConnectorAuthMethodAuthCodeGrantConfig(
+    args.type,
+    args.authMethod,
+  );
   return await provider.grant.buildAuthUrl({
     ...connectorAuthProviderClientArgs(args.authClient),
+    authCodeGrant,
     redirectUri: args.redirectUri,
     state: args.state,
   } as ConnectorAuthCodeAuthorizeArgs<T>);
@@ -521,8 +529,13 @@ export async function exchangeConnectorAuthCode<
     args.type,
     args.authMethod,
   );
+  const authCodeGrant = getConnectorAuthMethodAuthCodeGrantConfig(
+    args.type,
+    args.authMethod,
+  );
   return await provider.grant.exchangeCode({
     ...connectorAuthProviderClientArgs(args.authClient),
+    authCodeGrant,
     code: args.code,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -542,8 +555,13 @@ export async function startConnectorDeviceAuthorization<
     args.type,
     args.authMethod,
   );
+  const deviceAuthGrant = getConnectorAuthMethodDeviceAuthGrantConfig(
+    args.type,
+    args.authMethod,
+  );
   return await provider.grant.startDeviceAuth({
     ...connectorAuthProviderClientArgs(args.authClient),
+    deviceAuthGrant,
     scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
   } as ConnectorDeviceAuthorizationStartArgs<T>);
 }
@@ -560,8 +578,13 @@ export async function pollConnectorDeviceAuthorization<
     args.type,
     args.authMethod,
   );
+  const deviceAuthGrant = getConnectorAuthMethodDeviceAuthGrantConfig(
+    args.type,
+    args.authMethod,
+  );
   return await provider.grant.pollDeviceAuth({
     ...connectorAuthProviderClientArgs(args.authClient),
+    deviceAuthGrant,
     deviceCode: args.deviceCode,
   } as ConnectorDeviceAuthorizationPollArgs<T>);
 }
@@ -612,6 +635,7 @@ export async function revokeConnectorAuthMethodAccessToken<
 
   return await revokeTokenRevokeConnectorAccessToken({
     type: args.type,
+    authMethod: args.authMethod,
     readEnv: args.readEnv,
     loadAccessToken: args.loadAccessToken,
   });

@@ -32,12 +32,16 @@ import {
   connectorAuthMethodHasGrantKind,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodGrantScopes,
-  getConnectorAuthMethodIdForGrantKind,
+  getConnectorAuthMethodIdsForAccessKind,
+  getConnectorAuthMethodIdsForGrantKind,
+  getConnectorAuthMethodIdsForRevokeKind,
   getConnectorAuthMethodScopeDiff,
   getConfiguredConnectorAuthMethods,
+  getSingleConnectorAuthMethodIdForGrantKind,
   hasRequiredScopes,
   hasRequiredConnectorAuthMethodScopes,
   getConnectorAuthCodeGrantConfig,
+  getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodAccessMetadata,
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodEnvBindings,
@@ -226,6 +230,19 @@ const connectorAuthMethodFixture = {
   },
 } as const satisfies Record<string, ConnectorConfig>;
 
+const multiAuthMethodFixture = {
+  "multi-auth-method-fixture": {
+    label: "Multi Auth Method Fixture",
+    category: "data-automation-infrastructure",
+    helpText: "Fixture used for connector auth method type coverage.",
+    authMethods: {
+      "app-token": manualAuthMethodConfig,
+      "workspace-token": manualAuthMethodConfig,
+    },
+    defaultAuthMethod: "workspace-token",
+  },
+} as const satisfies Record<string, ConnectorConfig>;
+
 type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
   keyof Config["authMethods"],
   string
@@ -278,22 +295,69 @@ describe("hasRequiredScopes", () => {
   });
 
   it("checks required scopes from the selected auth method grant", () => {
-    expect(getConnectorAuthMethodIdForGrantKind("github", "auth-code")).toBe(
-      "oauth",
-    );
     expect(
-      getConnectorAuthMethodIdForGrantKind("test-oauth-device", "device-auth"),
-    ).toBe("oauth");
-    expect(getConnectorAuthMethodIdForGrantKind("stripe", "manual")).toBe(
-      "api-token",
-    );
+      getConnectorAuthMethodIdsForGrantKind("github", "auth-code"),
+    ).toStrictEqual(["oauth"]);
     expect(
-      getConnectorAuthMethodIdForGrantKind("github", "manual"),
-    ).toBeUndefined();
+      getConnectorAuthMethodIdsForGrantKind("github", "manual"),
+    ).toStrictEqual([]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("github", "static"),
+    ).toStrictEqual(["oauth"]);
+    expect(
+      getConnectorAuthMethodIdsForRevokeKind("github", "token-revoke"),
+    ).toStrictEqual(["oauth"]);
+
+    expect(
+      getConnectorAuthMethodIdsForGrantKind("stripe", "auth-code"),
+    ).toStrictEqual(["oauth"]);
+    expect(
+      getConnectorAuthMethodIdsForGrantKind("stripe", "manual"),
+    ).toStrictEqual(["api-token"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("stripe", "refresh-token"),
+    ).toStrictEqual(["oauth"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("stripe", "static"),
+    ).toStrictEqual(["api-token"]);
+    expect(
+      getConnectorAuthMethodIdsForRevokeKind("stripe", "token-revoke"),
+    ).toStrictEqual([]);
+    expect(
+      getConnectorAuthMethodIdsForRevokeKind("stripe", "none"),
+    ).toStrictEqual(["oauth", "api-token"]);
+
+    expect(
+      getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "device-auth"),
+    ).toStrictEqual(["oauth"]);
+    expect(
+      getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "auth-code"),
+    ).toStrictEqual([]);
+
+    expect(
+      getSingleConnectorAuthMethodIdForGrantKind("github", "auth-code"),
+    ).toStrictEqual({
+      status: "single",
+      authMethod: "oauth",
+    });
+    expect(
+      getSingleConnectorAuthMethodIdForGrantKind("github", "manual"),
+    ).toStrictEqual({
+      status: "none",
+    });
+    expect(
+      getSingleConnectorAuthMethodIdForGrantKind("stripe", "manual"),
+    ).toStrictEqual({
+      status: "single",
+      authMethod: "api-token",
+    });
 
     expect(
       connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
     ).toBe(true);
+    expect(
+      connectorAuthMethodHasGrantKind("github", "api-token", "auth-code"),
+    ).toBe(false);
     expect(getConnectorAuthMethodGrantScopes("github", "oauth")).toStrictEqual([
       "repo",
       "project",
@@ -344,25 +408,34 @@ describe("connector auth method config", () => {
   it("keeps connector auth method ids explicit and typed", () => {
     type FixtureConfig =
       (typeof connectorAuthMethodFixture)["connector-auth-method-fixture"];
+    type MultiFixtureConfig =
+      (typeof multiAuthMethodFixture)["multi-auth-method-fixture"];
 
-    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<
-      "oauth" | "api-token" | "api"
-    >();
-    expectTypeOf<"app-credential">().not.toMatchTypeOf<ConnectorAuthMethodId>();
-    expectTypeOf<"app-credential">().not.toMatchTypeOf<
+    expectTypeOf<ConnectorAuthMethodId>().toEqualTypeOf<string>();
+    expectTypeOf<"app-credential">().toMatchTypeOf<ConnectorAuthMethodId>();
+    expectTypeOf<"app-credential">().toMatchTypeOf<
       keyof ConnectorConfig["authMethods"]
     >();
-    expectTypeOf<"app-credential">().not.toMatchTypeOf<
+    expectTypeOf<"app-credential">().toMatchTypeOf<
       ConnectorConfig["defaultAuthMethod"]
     >();
     expectTypeOf<
       ConnectorConfigAuthMethodIds<FixtureConfig>
     >().toEqualTypeOf<"api-token">();
     expectTypeOf<
+      ConnectorConfigAuthMethodIds<MultiFixtureConfig>
+    >().toEqualTypeOf<"app-token" | "workspace-token">();
+    expectTypeOf<
       FixtureConfig["defaultAuthMethod"]
     >().toEqualTypeOf<"api-token">();
     expectTypeOf<
+      MultiFixtureConfig["defaultAuthMethod"]
+    >().toEqualTypeOf<"workspace-token">();
+    expectTypeOf<
       ConnectorInvalidDefaultAuthMethodType<typeof connectorAuthMethodFixture>
+    >().toEqualTypeOf<never>();
+    expectTypeOf<
+      ConnectorInvalidDefaultAuthMethodType<typeof multiAuthMethodFixture>
     >().toEqualTypeOf<never>();
 
     const missingDefaultMethodFixture = {
@@ -386,6 +459,46 @@ describe("connector auth method config", () => {
       "API Key",
     );
     expect(getConnectorAuthMethod("github", "api-token")).toBeUndefined();
+  });
+
+  it("does not silently choose one type-only auth-code grant when ambiguous", () => {
+    const authMethods = CONNECTOR_TYPES.github.authMethods;
+    Object.defineProperty(authMethods, "github-secondary", {
+      value: {
+        ...authMethods.oauth,
+        label: "Secondary OAuth",
+      },
+      configurable: true,
+      enumerable: true,
+    });
+
+    try {
+      expect(
+        getConnectorAuthMethodIdsForGrantKind("github", "auth-code"),
+      ).toStrictEqual(["oauth", "github-secondary"]);
+      expect(
+        getSingleConnectorAuthMethodIdForGrantKind("github", "auth-code"),
+      ).toStrictEqual({
+        status: "multiple",
+        authMethods: ["oauth", "github-secondary"],
+      });
+      expect(() => {
+        getConnectorAuthCodeGrantConfig("github");
+      }).toThrow(
+        "github connector has multiple auth-code grants; use the selected auth method",
+      );
+      expect(() => {
+        getConnectorGrantScopes("github");
+      }).toThrow(
+        "github connector has multiple scope-bearing grants; use the selected auth method",
+      );
+      expect(
+        getConnectorAuthMethodAuthCodeGrantConfig("github", "github-secondary")
+          ?.tokenUrl,
+      ).toBe(authMethods.oauth.grant.tokenUrl);
+    } finally {
+      Reflect.deleteProperty(authMethods, "github-secondary");
+    }
   });
 
   it("groups all manual grant field names by storage", () => {

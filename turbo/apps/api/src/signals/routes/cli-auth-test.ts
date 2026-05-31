@@ -7,12 +7,11 @@ import {
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import {
-  type AuthCodeGrantConnectorType,
+  type ConnectorAuthProviderType,
   connectorTypeSchema,
-  type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConnectorAuthMethodIdForGrantKind,
+  getConnectorAuthMethodIdsForGrantKind,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
@@ -216,28 +215,36 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    let grantConnectorType:
-      | AuthCodeGrantConnectorType
-      | DeviceAuthGrantConnectorType;
-    let authMethodGrantKind: "auth-code" | "device-auth";
-    if (hasConnectorAuthCodeGrant(connectorType)) {
-      grantConnectorType = connectorType;
-      authMethodGrantKind = "auth-code";
-    } else if (hasConnectorDeviceAuthGrant(connectorType)) {
-      grantConnectorType = connectorType;
-      authMethodGrantKind = "device-auth";
-    } else {
+    const authCodeMethods = hasConnectorAuthCodeGrant(connectorType)
+      ? getConnectorAuthMethodIdsForGrantKind(connectorType, "auth-code")
+      : [];
+    const deviceAuthMethods = hasConnectorDeviceAuthGrant(connectorType)
+      ? getConnectorAuthMethodIdsForGrantKind(connectorType, "device-auth")
+      : [];
+    const providerDrivenAuthMethods = [
+      ...authCodeMethods,
+      ...deviceAuthMethods,
+    ];
+    const [authMethod] = providerDrivenAuthMethods;
+    if (providerDrivenAuthMethods.length === 0) {
       return stringError(
         400,
         `${connectorType} connector does not use an auth-code or device-auth grant`,
       );
     }
-    const authMethod = getConnectorAuthMethodIdForGrantKind(
-      grantConnectorType,
-      authMethodGrantKind,
-    );
-    if (!authMethod) {
-      throw new Error(`${grantConnectorType} connector has no auth method`);
+    if (providerDrivenAuthMethods.length > 1 || !authMethod) {
+      return stringError(
+        400,
+        `${connectorType} connector has multiple auth-code or device-auth auth methods`,
+      );
+    }
+    let grantConnectorType: ConnectorAuthProviderType;
+    if (hasConnectorAuthCodeGrant(connectorType)) {
+      grantConnectorType = connectorType;
+    } else if (hasConnectorDeviceAuthGrant(connectorType)) {
+      grantConnectorType = connectorType;
+    } else {
+      throw new Error(`${connectorType} connector has no auth method`);
     }
     await set(
       upsertConnectorTokenConnection$,

@@ -15,7 +15,6 @@ import {
   getConnectorTags,
   hasRequiredConnectorAuthMethodScopes,
   isGoogleOAuthConnector,
-  hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -124,13 +123,10 @@ export function getConnectorConnectLaunchMode({
   readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
   readonly preferModalForGoogleOAuth?: boolean;
 }): ConnectorConnectLaunchMode {
-  const hasAuthCodeGrant = availableAuthMethods.some((authMethod) => {
+  const authCodeAuthMethods = availableAuthMethods.filter((authMethod) => {
     return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
   });
-  if (!hasAuthCodeGrant) {
-    return "modal";
-  }
-  if (!hasConnectorAuthCodeGrant(type)) {
+  if (authCodeAuthMethods.length !== 1) {
     return "modal";
   }
   if (preferModalForGoogleOAuth && isGoogleOAuthConnector(type)) {
@@ -139,14 +135,16 @@ export function getConnectorConnectLaunchMode({
   return "oauth-auth-code";
 }
 
-export function getConnectorAuthCodeConnectMethod(
+export function getSingleConnectorAuthCodeConnectMethod(
   type: ConnectorType,
   availableAuthMethods: readonly ConnectorAuthMethodId[],
 ): ConnectorAuthMethodId | null {
-  for (const authMethod of availableAuthMethods) {
-    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code") {
-      return authMethod;
-    }
+  const authCodeAuthMethods = availableAuthMethods.filter((authMethod) => {
+    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
+  });
+  const [authMethod] = authCodeAuthMethods;
+  if (authCodeAuthMethods.length === 1 && authMethod) {
+    return authMethod;
   }
   return null;
 }

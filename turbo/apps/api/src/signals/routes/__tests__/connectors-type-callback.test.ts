@@ -8,7 +8,7 @@ import type {
 import {
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodIdForGrantKind,
+  getConnectorAuthMethodIdsForGrantKind,
 } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
@@ -1042,9 +1042,10 @@ function staticAccessSecretName(
 function authCodeAuthMethodForTest(
   type: AuthCodeGrantConnectorType,
 ): ConnectorAuthMethodId {
-  const authMethod = getConnectorAuthMethodIdForGrantKind(type, "auth-code");
-  if (!authMethod) {
-    throw new Error(`${type}: auth-code auth method is missing`);
+  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, "auth-code");
+  const [authMethod] = authMethods;
+  if (authMethods.length !== 1 || !authMethod) {
+    throw new Error(`${type}: expected exactly one auth-code auth method`);
   }
   return authMethod;
 }

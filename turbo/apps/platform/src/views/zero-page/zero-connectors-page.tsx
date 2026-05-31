@@ -46,7 +46,7 @@ import {
   setPermissionDialogType$,
   isStandaloneMode,
   matchesConnectorSearch,
-  getConnectorAuthCodeConnectMethod,
+  getSingleConnectorAuthCodeConnectMethod,
   getConnectorConnectLaunchMode,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -642,7 +642,7 @@ export function ZeroConnectorsPage() {
     if (launchMode === "modal") {
       setSelected(type);
     } else {
-      const authMethod = getConnectorAuthCodeConnectMethod(
+      const authMethod = getSingleConnectorAuthCodeConnectMethod(
         type,
         ct.availableAuthMethods,
       );
@@ -820,7 +820,7 @@ export function ZeroConnectorsPage() {
               return connector.type === type;
             });
             const authMethod = connector
-              ? getConnectorAuthCodeConnectMethod(
+              ? getSingleConnectorAuthCodeConnectMethod(
                   type,
                   connector.availableAuthMethods,
                 )

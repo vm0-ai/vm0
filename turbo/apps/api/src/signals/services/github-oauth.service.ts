@@ -13,7 +13,7 @@ import {
 } from "@vm0/connectors/auth-providers";
 import {
   connectorAuthMethodHasGrantKind,
-  getConnectorAuthMethodIdForGrantKind,
+  getConnectorAuthMethodIdsForGrantKind,
   resolveConnectorAuthClientForMethod,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
@@ -61,15 +61,19 @@ interface GithubOAuthState {
 }
 
 export function getGithubConnectorAuthCodeMethod(): ConnectorAuthCodeGrantAuthMethodId<"github"> {
-  const authMethod = getConnectorAuthMethodIdForGrantKind(
+  const authMethods = getConnectorAuthMethodIdsForGrantKind(
     "github",
     "auth-code",
   );
+  const [authMethod] = authMethods;
   if (
+    authMethods.length !== 1 ||
     !authMethod ||
     !connectorAuthMethodHasGrantKind("github", authMethod, "auth-code")
   ) {
-    throw new Error("github connector has no auth-code auth method");
+    throw new Error(
+      "github connector must have exactly one auth-code auth method",
+    );
   }
   return authMethod;
 }

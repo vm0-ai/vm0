@@ -420,22 +420,17 @@ export type ConnectorAuthMethodConfig =
 /**
  * Connector auth method ids exposed as configured connection flows.
  *
- * These values describe user-selectable connection choices. Behavior must be
- * derived from the auth method lifecycle config, not from the id itself.
+ * These values are connector registry keys, not lifecycle categories. Behavior
+ * must be derived from the selected auth method lifecycle config.
  */
-export const CONNECTOR_AUTH_METHOD_IDS = ["oauth", "api-token", "api"] as const;
-export const connectorAuthMethodIdSchema = z.enum(CONNECTOR_AUTH_METHOD_IDS);
+export const connectorAuthMethodIdSchema = z
+  .string()
+  .min(1)
+  .max(50)
+  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/);
 export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;
 
 type AssertNever<T extends never> = T;
-
-type IsUnion<T, U = T> = [T] extends [never]
-  ? false
-  : T extends unknown
-    ? [U] extends [T]
-      ? false
-      : true
-    : false;
 
 export type ConnectorDisplayCategory =
   | "ai-general-models"
@@ -545,9 +540,7 @@ export const CONNECTOR_DISPLAY_CATEGORY_ORDER: readonly ConnectorDisplayCategory
     "data-automation-infrastructure",
   ];
 
-type ConnectorAuthMethods = Partial<
-  Record<ConnectorAuthMethodId, ConnectorAuthMethodConfig>
->;
+type ConnectorAuthMethods = Record<string, ConnectorAuthMethodConfig>;
 
 type ConnectorConfigBase = {
   readonly label: string;
@@ -849,142 +842,39 @@ export type ConnectorAuthMethodClientConfig<
     ? ConnectorAuthMethodsOf<Type>[Method]["client"]
     : never
   : never;
-type ConnectorAuthMethodKeys<Type extends ConnectorType> =
-  ConnectorAuthMethodIds<Type> & keyof ConnectorAuthMethodGrantKindById;
-
-type ConnectorAuthMethodGrantKindById = {
-  readonly oauth: "auth-code" | "device-auth";
-  readonly "api-token": "manual";
-  readonly api: "managed";
-};
-
-type ConnectorAuthMethodAccessKindById = {
-  readonly oauth: "refresh-token" | "static";
-  readonly "api-token": "static";
-  readonly api: "none";
-};
-
-type ConnectorAuthMethodRevokeKindById = {
-  readonly oauth: "none" | "token-revoke";
-  readonly "api-token": "none";
-  readonly api: "none";
-};
-
-export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<
-  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodGrantKindById>
-  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodAccessKindById>
-  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodRevokeKindById>
->;
-
-export type ConnectorAuthMethodKindMapsMatchConfigUnions = AssertNever<
-  | Exclude<
-      ConnectorAuthMethodGrantKindById[keyof ConnectorAuthMethodGrantKindById],
-      ConnectorGrantKind
-    >
-  | Exclude<
-      ConnectorGrantKind,
-      ConnectorAuthMethodGrantKindById[keyof ConnectorAuthMethodGrantKindById]
-    >
-  | Exclude<
-      ConnectorAuthMethodAccessKindById[keyof ConnectorAuthMethodAccessKindById],
-      ConnectorAccessKind
-    >
-  | Exclude<
-      ConnectorAccessKind,
-      ConnectorAuthMethodAccessKindById[keyof ConnectorAuthMethodAccessKindById]
-    >
-  | Exclude<
-      ConnectorAuthMethodRevokeKindById[keyof ConnectorAuthMethodRevokeKindById],
-      ConnectorRevokeKind
-    >
-  | Exclude<
-      ConnectorRevokeKind,
-      ConnectorAuthMethodRevokeKindById[keyof ConnectorAuthMethodRevokeKindById]
-    >
->;
-
-type InvalidAuthMethodGrantKindConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly grant: {
-        readonly kind: ConnectorAuthMethodGrantKindById[Method];
-      };
-    }
-      ? never
-      : Type;
-  }[ConnectorAuthMethodKeys<Type>];
-}[ConnectorType];
-export type ConnectorAuthMethodGrantKindsMatchKeys =
-  AssertNever<InvalidAuthMethodGrantKindConnectorType>;
-
-type InvalidAuthMethodAccessKindConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly access: {
-        readonly kind: ConnectorAuthMethodAccessKindById[Method];
-      };
-    }
-      ? never
-      : Type;
-  }[ConnectorAuthMethodKeys<Type>];
-}[ConnectorType];
-export type ConnectorAuthMethodAccessKindsMatchKeys =
-  AssertNever<InvalidAuthMethodAccessKindConnectorType>;
-
-type InvalidAuthMethodRevokeKindConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly revoke: {
-        readonly kind: ConnectorAuthMethodRevokeKindById[Method];
-      };
-    }
-      ? never
-      : Type;
-  }[ConnectorAuthMethodKeys<Type>];
-}[ConnectorType];
-export type ConnectorAuthMethodRevokeKindsMatchKeys =
-  AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
 
 export type ConnectorAuthMethodIdsByGrantKind<
   Type extends ConnectorType,
   Kind extends ConnectorGrantKind,
 > = {
-  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+  [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
     readonly grant: { readonly kind: Kind };
   }
     ? Method
     : never;
-}[ConnectorAuthMethodKeys<Type>];
+}[ConnectorAuthMethodIds<Type>];
 
 export type ConnectorAuthMethodIdsByAccessKind<
   Type extends ConnectorType,
   Kind extends ConnectorAccessKind,
 > = {
-  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+  [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
     readonly access: { readonly kind: Kind };
   }
     ? Method
     : never;
-}[ConnectorAuthMethodKeys<Type>];
+}[ConnectorAuthMethodIds<Type>];
 
-type ConnectorTypeWithMultipleAuthMethodsForGrantKind<
-  Kind extends ConnectorGrantKind,
+export type ConnectorAuthMethodIdsByRevokeKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorRevokeKind,
 > = {
-  [Type in ConnectorType]: IsUnion<
-    ConnectorAuthMethodIdsByGrantKind<Type, Kind>
-  > extends true
-    ? Type
+  [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+    readonly revoke: { readonly kind: Kind };
+  }
+    ? Method
     : never;
-}[ConnectorType];
-export type ConnectorAuthCodeGrantMethodsAreSingle = AssertNever<
-  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"auth-code">
->;
-export type ConnectorDeviceAuthGrantMethodsAreSingle = AssertNever<
-  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"device-auth">
->;
-export type ConnectorManualGrantMethodsAreSingle = AssertNever<
-  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"manual">
->;
+}[ConnectorAuthMethodIds<Type>];
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {
@@ -1034,7 +924,7 @@ export type TokenRevokeConnectorType =
   ConnectorTypesByRevokeKind<"token-revoke">;
 type TokenRevokeConnectorTypeWithNonConfidentialClient = {
   [Type in TokenRevokeConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+    [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
       readonly revoke: { readonly kind: "token-revoke" };
       readonly client: StaticConfidentialConnectorAuthClientConfig;
     }
@@ -1044,7 +934,7 @@ type TokenRevokeConnectorTypeWithNonConfidentialClient = {
           }
         ? Type
         : never;
-  }[ConnectorAuthMethodKeys<Type>];
+  }[ConnectorAuthMethodIds<Type>];
 }[TokenRevokeConnectorType];
 export type TokenRevokeConnectorAuthMethodsUseConfidentialClients =
   AssertNever<TokenRevokeConnectorTypeWithNonConfidentialClient>;

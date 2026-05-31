@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
@@ -13,7 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isConnectorAuthMethodId(
   value: unknown,
 ): value is ConnectorAuthMethodId {
-  return value === "oauth" || value === "api-token" || value === "api";
+  return connectorAuthMethodIdSchema.safeParse(value).success;
 }
 
 function defaultAvailableConnectors() {

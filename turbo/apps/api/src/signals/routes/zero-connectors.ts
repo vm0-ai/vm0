@@ -21,7 +21,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorAuthMethod,
-  hasConnectorAuthCodeGrant,
+  getConnectorAuthMethodIdsForGrantKind,
 } from "@vm0/connectors/connector-utils";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -81,9 +81,9 @@ type ConnectorAuthorizeRoute = AppRoute & {
 
 const connectorSessionIdSchema = z.uuid();
 
-type ResolvedAuthCodeStartMethod =
-  | ReturnType<typeof resolveConnectorAuthCodeStartMethod>
-  | { readonly ok: false; readonly reason: "missing_auth_code_grant" };
+type ResolvedAuthCodeStartMethod = ReturnType<
+  typeof resolveConnectorAuthCodeStartMethod
+>;
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -189,8 +189,12 @@ function connectorMissingAuthCodeGrantResponse(type: string) {
   );
 }
 
+function connectorTypeHasAuthCodeGrant(type: ConnectorType): boolean {
+  return getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length > 0;
+}
+
 function connectorAuthCodeStartErrorMessage(
-  type: string,
+  type: ConnectorType,
   authMethod: string,
   reason:
     | "missing_auth_code_grant"
@@ -202,16 +206,22 @@ function connectorAuthCodeStartErrorMessage(
       return `${type} connector does not use an auth-code grant`;
     }
     case "missing_auth_method": {
+      if (!connectorTypeHasAuthCodeGrant(type)) {
+        return `${type} connector does not use an auth-code grant`;
+      }
       return `${type} connector does not have ${authMethod} auth method`;
     }
     case "wrong_grant_kind": {
+      if (!connectorTypeHasAuthCodeGrant(type)) {
+        return `${type} connector does not use an auth-code grant`;
+      }
       return `${type} ${authMethod} auth method does not use an auth-code grant`;
     }
   }
 }
 
 function connectorAuthorizeAuthCodeStartErrorResponse(
-  type: string,
+  type: ConnectorType,
   reason:
     | "invalid_session"
     | "missing_auth_code_grant"
@@ -220,6 +230,9 @@ function connectorAuthorizeAuthCodeStartErrorResponse(
 ) {
   if (reason === "invalid_session") {
     return jsonResponse({ error: "Invalid connector session" }, 400);
+  }
+  if (!connectorTypeHasAuthCodeGrant(type)) {
+    return connectorMissingAuthCodeGrantResponse(type);
   }
   if (reason === "missing_auth_method" || reason === "wrong_grant_kind") {
     return jsonResponse(
@@ -246,10 +259,11 @@ function resolveRequestedAuthCodeStartMethod(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ResolvedAuthCodeStartMethod {
-  if (!hasConnectorAuthCodeGrant(type)) {
-    return { ok: false, reason: "missing_auth_code_grant" };
+  const result = resolveConnectorAuthCodeStartMethod(type, authMethod);
+  if (result.ok || result.reason === "missing_auth_method") {
+    return result;
   }
-  return resolveConnectorAuthCodeStartMethod(type, authMethod);
+  return { ok: false, reason: "wrong_grant_kind" };
 }
 
 async function resolveSessionAuthCodeStartMethod(args: {

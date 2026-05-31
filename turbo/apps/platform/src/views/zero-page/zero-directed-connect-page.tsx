@@ -22,7 +22,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
-  getConnectorAuthCodeConnectMethod,
+  getSingleConnectorAuthCodeConnectMethod,
   getConnectorConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
@@ -148,7 +148,7 @@ function runDirectedConnect(params: {
     return;
   }
 
-  const authMethod = getConnectorAuthCodeConnectMethod(
+  const authMethod = getSingleConnectorAuthCodeConnectMethod(
     params.connectorType,
     params.authMethods,
   );

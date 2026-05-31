@@ -20,8 +20,6 @@ import type { ReactElement } from "react";
 import {
   getConnectorAuthMethod,
   isGoogleOAuthConnector,
-  hasConnectorAuthCodeGrant,
-  hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
@@ -492,21 +490,14 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
 }
 
 function getConnectMethodContentComponent(
-  item: ConnectorTypeWithStatus,
   method: ConnectorAuthMethodConfig,
 ): ConnectMethodContentComponent | null {
   switch (method.grant.kind) {
     case "auth-code": {
-      if (hasConnectorAuthCodeGrant(item.type)) {
-        return OAuthAuthCodeConnectMethodContent;
-      }
-      return null;
+      return OAuthAuthCodeConnectMethodContent;
     }
     case "device-auth": {
-      if (hasConnectorDeviceAuthGrant(item.type)) {
-        return OAuthDeviceAuthConnectMethodContent;
-      }
-      return null;
+      return OAuthDeviceAuthConnectMethodContent;
     }
     case "manual": {
       return ManualGrantConnectMethodContent;
@@ -525,7 +516,7 @@ function getConnectMethodContentEntries(
     if (!method) {
       return [];
     }
-    const Content = getConnectMethodContentComponent(item, method);
+    const Content = getConnectMethodContentComponent(method);
     return Content ? [{ authMethod, method, Content }] : [];
   });
 }
@@ -708,14 +699,12 @@ function ConnectModalContent({
       );
     };
 
-  const progressContent =
-    hasAuthCodeGrant(item.type, item.availableAuthMethods) &&
-    hasConnectorAuthCodeGrant(item.type)
-      ? getOAuthAuthCodeProgressContent({
-          isPolling,
-          settling,
-        })
-      : null;
+  const progressContent = hasAuthCodeGrant(item.type, item.availableAuthMethods)
+    ? getOAuthAuthCodeProgressContent({
+        isPolling,
+        settling,
+      })
+    : null;
   if (progressContent) {
     return progressContent;
   }

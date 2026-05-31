@@ -3,10 +3,15 @@ import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorAuthCodeGrantAuthMethodId,
+  type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorAuthMethodIds,
+  type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByGrantKind,
+  type ConnectorAuthMethodIdsByRevokeKind,
   type ConnectorAuthMethodClientConfig,
   type ConnectorAccessConfig,
+  type ConnectorAccessKind,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorAuthClientConfig,
   type ConnectorDeviceAuthGrantConfig,
@@ -15,6 +20,7 @@ import {
   type ConnectorGrantConfig,
   type ConnectorGrantKind,
   type ConnectorManualGrantFieldConfig,
+  type ConnectorRevokeKind,
   type ConnectorType,
   type ConnectorAuthProviderType,
   type AuthCodeGrantConnectorType,
@@ -32,25 +38,30 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,
   "api-token": 1,
   api: 2,
-} as const satisfies Record<ConnectorAuthMethodId, number>;
+} as const;
 
-function isConnectorAuthMethodId(
-  authMethod: string,
-): authMethod is ConnectorAuthMethodId {
-  return Object.hasOwn(CONNECTOR_AUTH_METHOD_PRIORITY, authMethod);
+function connectorAuthMethodPriority(authMethod: string): number {
+  switch (authMethod) {
+    case "oauth":
+      return CONNECTOR_AUTH_METHOD_PRIORITY.oauth;
+    case "api-token":
+      return CONNECTOR_AUTH_METHOD_PRIORITY["api-token"];
+    case "api":
+      return CONNECTOR_AUTH_METHOD_PRIORITY.api;
+    default:
+      return Number.POSITIVE_INFINITY;
+  }
 }
 
 export function getConfiguredConnectorAuthMethods(
   type: ConnectorType,
 ): ConnectorAuthMethodId[] {
   // Configured methods are raw registry entries; callers apply feature flags.
-  return Object.keys(CONNECTOR_TYPES[type].authMethods)
-    .filter(isConnectorAuthMethodId)
-    .sort((a, b) => {
-      return (
-        CONNECTOR_AUTH_METHOD_PRIORITY[a] - CONNECTOR_AUTH_METHOD_PRIORITY[b]
-      );
-    });
+  return Object.keys(CONNECTOR_TYPES[type].authMethods).sort((a, b) => {
+    const priorityDiff =
+      connectorAuthMethodPriority(a) - connectorAuthMethodPriority(b);
+    return priorityDiff === 0 ? a.localeCompare(b) : priorityDiff;
+  });
 }
 
 /**
@@ -82,16 +93,97 @@ export function getConnectorAuthMethod(
   return undefined;
 }
 
-export function getConnectorAuthMethodIdForGrantKind(
+export function getConnectorAuthMethodIdsForGrantKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorGrantKind,
+>(
+  type: Type,
+  grantKind: Kind,
+): ConnectorAuthMethodIdsByGrantKind<Type, Kind>[] {
+  return getConfiguredConnectorAuthMethods(type).filter(
+    (
+      authMethod,
+    ): authMethod is ConnectorAuthMethodIdsByGrantKind<Type, Kind> => {
+      return connectorAuthMethodHasGrantKind(type, authMethod, grantKind);
+    },
+  );
+}
+
+function connectorAuthMethodHasAccessKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorAccessKind,
+>(
+  type: Type,
+  authMethod: string,
+  accessKind: Kind,
+): authMethod is ConnectorAuthMethodIdsByAccessKind<Type, Kind> {
+  return getConnectorAuthMethod(type, authMethod)?.access.kind === accessKind;
+}
+
+export function getConnectorAuthMethodIdsForAccessKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorAccessKind,
+>(
+  type: Type,
+  accessKind: Kind,
+): ConnectorAuthMethodIdsByAccessKind<Type, Kind>[] {
+  return getConfiguredConnectorAuthMethods(type).filter(
+    (
+      authMethod,
+    ): authMethod is ConnectorAuthMethodIdsByAccessKind<Type, Kind> => {
+      return connectorAuthMethodHasAccessKind(type, authMethod, accessKind);
+    },
+  );
+}
+
+function connectorAuthMethodHasRevokeKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorRevokeKind,
+>(
+  type: Type,
+  authMethod: string,
+  revokeKind: Kind,
+): authMethod is ConnectorAuthMethodIdsByRevokeKind<Type, Kind> {
+  return getConnectorAuthMethod(type, authMethod)?.revoke.kind === revokeKind;
+}
+
+export function getConnectorAuthMethodIdsForRevokeKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorRevokeKind,
+>(
+  type: Type,
+  revokeKind: Kind,
+): ConnectorAuthMethodIdsByRevokeKind<Type, Kind>[] {
+  return getConfiguredConnectorAuthMethods(type).filter(
+    (
+      authMethod,
+    ): authMethod is ConnectorAuthMethodIdsByRevokeKind<Type, Kind> => {
+      return connectorAuthMethodHasRevokeKind(type, authMethod, revokeKind);
+    },
+  );
+}
+
+export type SingleConnectorAuthMethodIdResult =
+  | { readonly status: "none" }
+  | { readonly status: "single"; readonly authMethod: ConnectorAuthMethodId }
+  | {
+      readonly status: "multiple";
+      readonly authMethods: readonly ConnectorAuthMethodId[];
+    };
+
+export function getSingleConnectorAuthMethodIdForGrantKind(
   type: ConnectorType,
   grantKind: ConnectorGrantKind,
-): ConnectorAuthMethodId | undefined {
-  for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-    if (connectorAuthMethodHasGrantKind(type, authMethod, grantKind)) {
-      return authMethod;
-    }
+): SingleConnectorAuthMethodIdResult {
+  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, grantKind);
+  const [authMethod] = authMethods;
+  if (authMethods.length === 0) {
+    return { status: "none" };
   }
-  return undefined;
+  if (authMethods.length === 1 && authMethod) {
+    return { status: "single", authMethod };
+  }
+  return { status: "multiple", authMethods };
 }
 
 function connectorAuthMethodValues(
@@ -251,12 +343,22 @@ function getConnectorScopeBearingGrantConfig(
 function getConnectorScopeBearingGrantConfig(
   type: ConnectorType,
 ): ConnectorScopeBearingGrantConfig | undefined {
+  const grants: ConnectorScopeBearingGrantConfig[] = [];
   for (const method of connectorAuthMethodValues(type)) {
     if (isConnectorScopeBearingGrantConfig(method)) {
-      return method.grant;
+      grants.push(method.grant);
     }
   }
-  return undefined;
+  const [grant] = grants;
+  if (grants.length === 0 || !grant) {
+    return undefined;
+  }
+  if (grants.length > 1) {
+    throw new Error(
+      `${type} connector has multiple scope-bearing grants; use the selected auth method`,
+    );
+  }
+  return grant;
 }
 
 export function connectorAuthMethodHasGrantKind<
@@ -269,6 +371,42 @@ export function connectorAuthMethodHasGrantKind<
 ): authMethod is ConnectorAuthMethodIdsByGrantKind<Type, Kind> {
   const method = getConnectorAuthMethod(type, authMethod);
   return method?.grant.kind === grantKind;
+}
+
+export function getConnectorAuthMethodAuthCodeGrantConfig<
+  Type extends AuthCodeGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>,
+): ConnectorAuthCodeGrantConfig;
+export function getConnectorAuthMethodAuthCodeGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthCodeGrantConfig | undefined;
+export function getConnectorAuthMethodAuthCodeGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthCodeGrantConfig | undefined {
+  const grant = getConnectorAuthMethod(type, authMethod)?.grant;
+  return grant?.kind === "auth-code" ? grant : undefined;
+}
+
+export function getConnectorAuthMethodDeviceAuthGrantConfig<
+  Type extends DeviceAuthGrantConnectorType,
+>(
+  type: Type,
+  authMethod: ConnectorDeviceAuthGrantAuthMethodId<Type>,
+): ConnectorDeviceAuthGrantConfig;
+export function getConnectorAuthMethodDeviceAuthGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorDeviceAuthGrantConfig | undefined;
+export function getConnectorAuthMethodDeviceAuthGrantConfig(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorDeviceAuthGrantConfig | undefined {
+  const grant = getConnectorAuthMethod(type, authMethod)?.grant;
+  return grant?.kind === "device-auth" ? grant : undefined;
 }
 
 function connectorGrantScopes(
@@ -294,17 +432,17 @@ export function getConnectorAuthCodeGrantConfig(
 export function getConnectorAuthCodeGrantConfig(
   type: ConnectorType,
 ): ConnectorAuthCodeGrantConfig | undefined {
-  for (const method of connectorAuthMethodValues(type)) {
-    switch (method.grant.kind) {
-      case "auth-code":
-        return method.grant;
-      case "device-auth":
-      case "manual":
-      case "managed":
-        break;
-    }
+  const authMethods = getConnectorAuthMethodIdsForGrantKind(type, "auth-code");
+  const [authMethod] = authMethods;
+  if (authMethods.length === 0 || !authMethod) {
+    return undefined;
   }
-  return undefined;
+  if (authMethods.length > 1) {
+    throw new Error(
+      `${type} connector has multiple auth-code grants; use the selected auth method`,
+    );
+  }
+  return getConnectorAuthMethodAuthCodeGrantConfig(type, authMethod);
 }
 
 export function getConnectorDeviceAuthGrantConfig(
@@ -316,17 +454,20 @@ export function getConnectorDeviceAuthGrantConfig(
 export function getConnectorDeviceAuthGrantConfig(
   type: ConnectorType,
 ): ConnectorDeviceAuthGrantConfig | undefined {
-  for (const method of connectorAuthMethodValues(type)) {
-    switch (method.grant.kind) {
-      case "device-auth":
-        return method.grant;
-      case "auth-code":
-      case "manual":
-      case "managed":
-        break;
-    }
+  const authMethods = getConnectorAuthMethodIdsForGrantKind(
+    type,
+    "device-auth",
+  );
+  const [authMethod] = authMethods;
+  if (authMethods.length === 0 || !authMethod) {
+    return undefined;
   }
-  return undefined;
+  if (authMethods.length > 1) {
+    throw new Error(
+      `${type} connector has multiple device-auth grants; use the selected auth method`,
+    );
+  }
+  return getConnectorAuthMethodDeviceAuthGrantConfig(type, authMethod);
 }
 
 export function getConnectorGrantScopes(type: ConnectorType): string[] {

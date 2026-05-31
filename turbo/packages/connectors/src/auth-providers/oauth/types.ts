@@ -1,7 +1,9 @@
 import type {
   AuthCodeGrantConnectorType,
   CONNECTOR_TYPES,
+  ConnectorAuthCodeGrantConfig,
   ConnectorAuthClientConfig,
+  ConnectorDeviceAuthGrantConfig,
   ConnectorAuthProviderType,
   DeviceAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
@@ -192,12 +194,16 @@ type TokenCredentialArgs<Client extends ConnectorAuthClientConfig> =
 export type ConnectorAuthCodeAuthorizeArgs<
   T extends AuthCodeGrantConnectorType,
 > = OAuthAuthorizeFlowArgs &
-  StaticClientIdArgs<ConnectorGrantProviderClientFor<T>>;
+  StaticClientIdArgs<ConnectorGrantProviderClientFor<T>> & {
+    readonly authCodeGrant?: ConnectorAuthCodeGrantConfig;
+  };
 
 export type ConnectorAuthCodeExchangeArgs<
   T extends AuthCodeGrantConnectorType,
 > = OAuthExchangeFlowArgs &
-  TokenCredentialArgs<ConnectorGrantProviderClientFor<T>>;
+  TokenCredentialArgs<ConnectorGrantProviderClientFor<T>> & {
+    readonly authCodeGrant?: ConnectorAuthCodeGrantConfig;
+  };
 
 export type ConnectorAuthProviderRefreshArgs<
   T extends RefreshTokenAccessConnectorType,
@@ -212,9 +218,13 @@ export type ConnectorAuthProviderRevokeArgs<
 export type ConnectorDeviceAuthorizationStartArgs<
   T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthStartFlowArgs &
-  StaticClientIdArgs<ConnectorGrantProviderClientFor<T>>;
+  StaticClientIdArgs<ConnectorGrantProviderClientFor<T>> & {
+    readonly deviceAuthGrant?: ConnectorDeviceAuthGrantConfig;
+  };
 
 export type ConnectorDeviceAuthorizationPollArgs<
   T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthPollFlowArgs &
-  TokenCredentialArgs<ConnectorGrantProviderClientFor<T>>;
+  TokenCredentialArgs<ConnectorGrantProviderClientFor<T>> & {
+    readonly deviceAuthGrant?: ConnectorDeviceAuthGrantConfig;
+  };

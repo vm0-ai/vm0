@@ -61,7 +61,7 @@ import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethodIdForGrantKind } from "@vm0/connectors/connector-utils";
+import { getSingleConnectorAuthMethodIdForGrantKind } from "@vm0/connectors/connector-utils";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -721,10 +721,16 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Agent is still loading");
     return;
   }
-  const authMethod = getConnectorAuthMethodIdForGrantKind(
+  const authMethodResult = getSingleConnectorAuthMethodIdForGrantKind(
     "google-drive",
     "auth-code",
   );
+  if (authMethodResult.status === "multiple") {
+    toast.error("Choose a Google Drive connection method from settings");
+    return;
+  }
+  const authMethod =
+    authMethodResult.status === "single" ? authMethodResult.authMethod : null;
   if (!authMethod) {
     toast.error("Google Drive connection is not available");
     return;

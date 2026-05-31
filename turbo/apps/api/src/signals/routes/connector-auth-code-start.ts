@@ -9,6 +9,7 @@ import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthCodeGrantAuthMethodId,
   ConnectorAuthMethodId,
+  ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
@@ -44,8 +45,15 @@ function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
 
+function connectorTypeHasSelectedAuthCodeGrant(
+  type: ConnectorType,
+  authMethod: string,
+): type is AuthCodeGrantConnectorType {
+  return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code";
+}
+
 export function resolveConnectorAuthCodeStartMethod(
-  type: AuthCodeGrantConnectorType,
+  type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ResolveConnectorAuthCodeStartMethodResult {
   const method = getConnectorAuthMethod(type, authMethod);
@@ -53,6 +61,9 @@ export function resolveConnectorAuthCodeStartMethod(
     return { ok: false, reason: "missing_auth_method" };
   }
   if (!connectorAuthMethodHasGrantKind(type, authMethod, "auth-code")) {
+    return { ok: false, reason: "wrong_grant_kind" };
+  }
+  if (!connectorTypeHasSelectedAuthCodeGrant(type, authMethod)) {
     return { ok: false, reason: "wrong_grant_kind" };
   }
 
