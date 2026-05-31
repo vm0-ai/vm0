@@ -2321,6 +2321,7 @@ describe("isGoogleOAuthConnector", () => {
     for (const type of GOOGLE_OAUTH_CONNECTOR_TYPES) {
       const authorizationUrl = new URL(
         buildGoogleAuthorizationUrl(
+          getConnectorAuthMethodAuthCodeGrantConfig(type, "oauth"),
           type,
           "client-id",
           "https://app.test/callback",

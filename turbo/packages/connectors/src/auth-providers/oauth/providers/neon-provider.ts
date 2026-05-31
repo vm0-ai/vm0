@@ -10,13 +10,19 @@ export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
     kind: "auth-code",
     buildAuthUrl: (args) => {
       const { clientId } = args;
-      return buildNeonAuthorizationUrl(clientId, args.redirectUri, args.state);
+      return buildNeonAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeNeonCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -44,6 +50,7 @@ export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshNeonToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

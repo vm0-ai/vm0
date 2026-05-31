@@ -11,6 +11,7 @@ export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildHubSpotAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeHubSpotCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,6 +50,7 @@ export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshHubSpotToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

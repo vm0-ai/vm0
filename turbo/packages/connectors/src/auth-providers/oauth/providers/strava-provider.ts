@@ -11,6 +11,7 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildStravaAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -19,7 +20,12 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
       const code = args.code;
-      const result = await exchangeStravaCode(clientId, clientSecret, code);
+      const result = await exchangeStravaCode(
+        args.authCodeGrant,
+        clientId,
+        clientSecret,
+        code,
+      );
       return {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
@@ -42,6 +48,7 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshStravaToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

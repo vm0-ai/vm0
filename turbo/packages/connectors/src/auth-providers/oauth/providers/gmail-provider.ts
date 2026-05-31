@@ -10,13 +10,19 @@ export const gmailProvider: AuthCodeConnectorAuthProvider<"gmail"> = {
     kind: "auth-code",
     buildAuthUrl: (args) => {
       const { clientId } = args;
-      return buildGmailAuthorizationUrl(clientId, args.redirectUri, args.state);
+      return buildGmailAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGmailCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -45,6 +51,7 @@ export const gmailProvider: AuthCodeConnectorAuthProvider<"gmail"> = {
       const { clientId, clientSecret } = args;
       const refreshToken = args.refreshToken;
       return refreshGoogleToken(
+        args.tokenGrant,
         "gmail",
         clientId,
         clientSecret,

@@ -11,6 +11,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildStripeAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -19,7 +20,12 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
       const code = args.code;
-      const result = await exchangeStripeCode(clientId, clientSecret, code);
+      const result = await exchangeStripeCode(
+        args.authCodeGrant,
+        clientId,
+        clientSecret,
+        code,
+      );
       return {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
@@ -41,6 +47,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshStripeToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

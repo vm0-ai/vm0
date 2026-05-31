@@ -12,6 +12,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildGitHubAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -22,6 +23,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const { accessToken, scopes } = await exchangeGitHubCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,

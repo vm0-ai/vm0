@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/github-oauth";
 import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
 import {
+  getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
   resolveConnectorAuthClientForMethod,
   isStaticConfidentialConnectorAuthClient,
@@ -346,9 +347,11 @@ const connectGithubUserAfterSetup$ = command(
         sendsRedirectUri: false,
       });
 
+      const authMethod = getGithubOAuthAuthMethod();
       const tokenResult = await settle(
         (async () => {
           const { accessToken, scopes } = await exchangeGitHubCode(
+            getConnectorAuthMethodAuthCodeGrantConfig("github", authMethod),
             credentials.clientId,
             credentials.clientSecret,
             code,
@@ -381,7 +384,6 @@ const connectGithubUserAfterSetup$ = command(
         scopes,
       });
 
-      const authMethod = getGithubOAuthAuthMethod();
       await set(
         upsertConnectorTokenConnection$,
         {

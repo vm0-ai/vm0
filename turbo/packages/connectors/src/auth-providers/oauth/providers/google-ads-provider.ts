@@ -12,6 +12,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       const redirectUri = args.redirectUri;
       const state = args.state;
       return buildGoogleAuthorizationUrl(
+        args.authCodeGrant,
         "google-ads",
         clientId,
         redirectUri,
@@ -23,6 +24,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGoogleOAuthCode(
+        args.authCodeGrant,
         "google-ads",
         clientId,
         clientSecret,
@@ -54,6 +56,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       const { clientId, clientSecret } = args;
       const refreshToken = args.refreshToken;
       return refreshGoogleToken(
+        args.tokenGrant,
         "google-ads",
         clientId,
         clientSecret,

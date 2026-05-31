@@ -13,6 +13,7 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-docs",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-docs",
           clientId,
           clientSecret,
@@ -55,6 +57,7 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
+          args.tokenGrant,
           "google-docs",
           clientId,
           clientSecret,

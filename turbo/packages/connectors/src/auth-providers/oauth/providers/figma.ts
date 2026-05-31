@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const FIGMA_AUTHORIZATION_URL = "https://www.figma.com/oauth";
@@ -31,11 +31,11 @@ interface FigmaRefreshResult {
  * Build Figma OAuth authorization URL.
  */
 export function buildFigmaAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("figma");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,12 +52,12 @@ export function buildFigmaAuthorizationUrl(
  * Figma uses HTTP Basic Auth for token exchange.
  */
 export async function exchangeFigmaCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<FigmaTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -115,12 +115,12 @@ export async function exchangeFigmaCode(
  * Access token expires_in: ~7776000s (90 days). Ref: https://developers.figma.com/docs/rest-api/authentication/
  */
 export async function refreshFigmaToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<FigmaRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("figma");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );

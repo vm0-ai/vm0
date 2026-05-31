@@ -11,6 +11,7 @@ export const sentryProvider: AuthCodeConnectorAuthProvider<"sentry"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildSentryAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const sentryProvider: AuthCodeConnectorAuthProvider<"sentry"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeSentryCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,6 +50,7 @@ export const sentryProvider: AuthCodeConnectorAuthProvider<"sentry"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshSentryToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

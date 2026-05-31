@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const WEBFLOW_AUTHORIZATION_URL = "https://webflow.com/oauth/authorize";
@@ -19,11 +19,11 @@ interface WebflowTokenResult {
  * Build Webflow OAuth authorization URL.
  */
 export function buildWebflowAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("webflow");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -40,12 +40,12 @@ export function buildWebflowAuthorizationUrl(
  * Webflow tokens are long-lived — no refresh token is returned.
  */
 export async function exchangeWebflowCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<WebflowTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("webflow");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {

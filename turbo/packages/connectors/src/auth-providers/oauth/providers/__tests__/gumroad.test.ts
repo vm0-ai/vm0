@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../../connector-utils";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
@@ -12,10 +13,15 @@ function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
 }
 
+function authCodeGrant() {
+  return getConnectorAuthMethodAuthCodeGrantConfig("gumroad", "oauth");
+}
+
 describe("connector/providers/gumroad", () => {
   describe("buildGumroadAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scope", () => {
       const url = buildGumroadAuthorizationUrl(
+        authCodeGrant(),
         "test-client-id",
         "https://example.com/callback",
         "test-state",
@@ -52,6 +58,7 @@ describe("connector/providers/gumroad", () => {
       server.use(tokenHandler, userHandler);
 
       const result = await exchangeGumroadCode(
+        authCodeGrant(),
         "client-id",
         "client-secret",
         "test-code",
@@ -81,6 +88,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         exchangeGumroadCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "bad-code",
@@ -97,6 +105,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         exchangeGumroadCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",
@@ -113,6 +122,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         exchangeGumroadCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",
@@ -133,6 +143,7 @@ describe("connector/providers/gumroad", () => {
       server.use(handler);
 
       const result = await refreshGumroadToken(
+        authCodeGrant(),
         "client-id",
         "client-secret",
         "old-refresh-token",
@@ -154,6 +165,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         refreshGumroadToken(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "bad-refresh-token",
@@ -170,6 +182,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         refreshGumroadToken(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "refresh-token",
@@ -186,6 +199,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         refreshGumroadToken(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "refresh-token",

@@ -10,7 +10,12 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
     kind: "auth-code",
     buildAuthUrl: (args) => {
       const { clientId } = args;
-      return buildDeelAuthorizationUrl(clientId, args.redirectUri, args.state);
+      return buildDeelAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
@@ -23,6 +28,7 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
         );
       }
       const result = await exchangeDeelCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -51,6 +57,7 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshDeelToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

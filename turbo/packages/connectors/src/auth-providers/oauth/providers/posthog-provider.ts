@@ -11,6 +11,7 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildPosthogAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangePosthogCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,6 +50,7 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshPosthogToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

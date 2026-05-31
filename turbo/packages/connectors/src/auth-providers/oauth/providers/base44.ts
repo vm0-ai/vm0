@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getDeviceAuthGrantConfig } from "../grant-config";
+import type { ConnectorDeviceAuthGrantConfig } from "@vm0/connectors/connectors";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -50,10 +50,6 @@ const userInfoResponseSchema = z
     email: z.string().nullable().optional(),
   })
   .passthrough();
-
-function base44DeviceAuthGrant() {
-  return getDeviceAuthGrantConfig("base44");
-}
 
 function parseScopes(scope: string | undefined): string[] {
   return scope?.split(/\s+/).filter(Boolean) ?? [];
@@ -105,9 +101,10 @@ function requireAccessToken(
 
 export async function startBase44DeviceAuth(args: {
   readonly clientId: string;
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(base44DeviceAuthGrant().deviceAuthUrl, {
+  const response = await fetch(args.deviceAuthGrant.deviceAuthUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -135,9 +132,10 @@ export async function startBase44DeviceAuth(args: {
 
 export async function pollBase44DeviceAuth(args: {
   readonly clientId: string;
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
+  const response = await fetch(args.deviceAuthGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -187,10 +185,11 @@ export async function pollBase44DeviceAuth(args: {
 
 export async function refreshBase44Token(args: {
   readonly clientId: string;
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
+  const response = await fetch(args.deviceAuthGrant.tokenUrl, {
     signal: args.signal,
     method: "POST",
     headers: {

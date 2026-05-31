@@ -11,6 +11,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildAirtableAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -22,6 +23,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
       const redirectUri = args.redirectUri;
       const codeVerifier = args.codeVerifier;
       const result = await exchangeAirtableCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -50,6 +52,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshAirtableToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

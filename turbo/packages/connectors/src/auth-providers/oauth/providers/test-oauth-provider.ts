@@ -13,6 +13,7 @@ export const testOauthProvider: AuthCodeConnectorAuthProvider<"test-oauth"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildTestOAuthAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -23,6 +24,7 @@ export const testOauthProvider: AuthCodeConnectorAuthProvider<"test-oauth"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const token = await exchangeTestOAuthCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -50,6 +52,7 @@ export const testOauthProvider: AuthCodeConnectorAuthProvider<"test-oauth"> = {
       const { clientId, clientSecret } = args;
       const refreshToken = args.refreshToken;
       const result = await refreshTestOAuthToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         refreshToken,

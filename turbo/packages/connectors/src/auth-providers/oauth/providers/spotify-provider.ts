@@ -11,6 +11,7 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildSpotifyAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeSpotifyCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,6 +50,7 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshSpotifyToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

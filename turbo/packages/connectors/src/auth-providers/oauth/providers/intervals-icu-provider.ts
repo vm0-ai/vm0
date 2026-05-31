@@ -11,6 +11,7 @@ export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"
       buildAuthUrl: (args) => {
         const { clientId } = args;
         return buildIntervalsIcuAuthorizationUrl(
+          args.authCodeGrant,
           clientId,
           args.redirectUri,
           args.state,
@@ -20,6 +21,7 @@ export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"
         const { clientId, clientSecret } = args;
         const code = args.code;
         const result = await exchangeIntervalsIcuCode(
+          args.authCodeGrant,
           clientId,
           clientSecret,
           code,

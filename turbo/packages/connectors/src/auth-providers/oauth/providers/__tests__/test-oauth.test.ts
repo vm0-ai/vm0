@@ -1,4 +1,5 @@
 import { HttpResponse, http } from "msw";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../../connector-utils";
 import { setupServer } from "msw/node";
 import {
   afterAll,
@@ -17,6 +18,10 @@ import {
 } from "../test-oauth";
 
 const server = setupServer();
+
+function authCodeGrant() {
+  return getConnectorAuthMethodAuthCodeGrantConfig("test-oauth", "oauth");
+}
 
 function testRefreshSignal(): AbortSignal {
   return new AbortController().signal;
@@ -51,6 +56,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -71,6 +77,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -87,6 +94,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -118,6 +126,7 @@ describe("test-oauth provider URLs", () => {
     );
 
     await refreshTestOAuthToken(
+      authCodeGrant(),
       "test-oauth-client",
       "test-oauth-secret",
       "refresh-1",
@@ -138,6 +147,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -152,6 +162,7 @@ describe("test-oauth provider URLs", () => {
 
     expect(() => {
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",

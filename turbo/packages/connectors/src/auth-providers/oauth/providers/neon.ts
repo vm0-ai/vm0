@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const NEON_AUTHORIZATION_URL = "https://oauth2.neon.tech/oauth2/auth";
@@ -32,11 +32,11 @@ interface NeonRefreshResult {
  * Requests offline_access to obtain a refresh token.
  */
 export function buildNeonAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("neon");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -53,12 +53,12 @@ export function buildNeonAuthorizationUrl(
  * Uses client_secret_post (form body) for token exchange.
  */
 export async function exchangeNeonCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<NeonTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("neon");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -113,12 +113,12 @@ export async function exchangeNeonCode(
  * Access token expires_in: expected (OIDC-compliant) but not explicitly documented. Ref: https://neon.com/docs/guides/oauth-integration
  */
 export async function refreshNeonToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<NeonRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("neon");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

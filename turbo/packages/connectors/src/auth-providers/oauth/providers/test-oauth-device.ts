@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getDeviceAuthGrantConfig } from "../grant-config";
+import type { ConnectorDeviceAuthGrantConfig } from "@vm0/connectors/connectors";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -42,25 +42,27 @@ const tokenErrorResponseSchema = z.object({
   error_description: z.string().optional(),
 });
 
-function getDeviceAuthUrl(): string {
+function getDeviceAuthUrl(
+  deviceAuthGrant: ConnectorDeviceAuthGrantConfig,
+): string {
   return resolveTestOAuthProviderUrl(
     "deviceAuthUrl",
-    getDeviceAuthGrantConfig("test-oauth-device").deviceAuthUrl,
+    deviceAuthGrant.deviceAuthUrl,
   );
 }
 
-function getDeviceTokenUrl(): string {
-  return resolveTestOAuthProviderUrl(
-    "tokenUrl",
-    getDeviceAuthGrantConfig("test-oauth-device").tokenUrl,
-  );
+function getDeviceTokenUrl(
+  deviceAuthGrant: ConnectorDeviceAuthGrantConfig,
+): string {
+  return resolveTestOAuthProviderUrl("tokenUrl", deviceAuthGrant.tokenUrl);
 }
 
 export async function startTestOAuthDeviceAuth(args: {
   readonly clientId: string;
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(getDeviceAuthUrl(), {
+  const response = await fetch(getDeviceAuthUrl(args.deviceAuthGrant), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -123,9 +125,10 @@ function devicePollErrorResult(args: {
 
 export async function pollTestOAuthDeviceAuth(args: {
   readonly clientId: string;
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(getDeviceTokenUrl(), {
+  const response = await fetch(getDeviceTokenUrl(args.deviceAuthGrant), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

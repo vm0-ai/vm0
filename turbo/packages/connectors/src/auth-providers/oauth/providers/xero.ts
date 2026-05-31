@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const XERO_AUTHORIZATION_URL =
@@ -32,11 +32,11 @@ interface XeroRefreshResult {
  * Build Xero OAuth authorization URL.
  */
 export function buildXeroAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("xero");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -53,12 +53,12 @@ export function buildXeroAuthorizationUrl(
  * Xero uses form-encoded body with client_id and client_secret.
  */
 export async function exchangeXeroCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<XeroTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("xero");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -114,12 +114,12 @@ export async function exchangeXeroCode(
  * Access token expires_in: 1800s (30 min). Ref: https://developer.xero.com/documentation/guides/oauth2/auth-flow/
  */
 export async function refreshXeroToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<XeroRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("xero");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

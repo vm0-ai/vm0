@@ -14,6 +14,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       const { clientId } = args;
       return await startBase44DeviceAuth({
         clientId,
+        deviceAuthGrant: args.deviceAuthGrant,
         scopes: args.scopes,
       });
     },
@@ -21,6 +22,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       const { clientId } = args;
       return await pollBase44DeviceAuth({
         clientId,
+        deviceAuthGrant: args.deviceAuthGrant,
         deviceCode: args.deviceCode,
       });
     },
@@ -37,6 +39,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       const { clientId } = args;
       return await refreshBase44Token({
         clientId,
+        deviceAuthGrant: args.tokenGrant,
         refreshToken: args.refreshToken,
         signal: args.signal,
       });

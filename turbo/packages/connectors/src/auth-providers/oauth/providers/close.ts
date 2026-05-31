@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const CLOSE_AUTHORIZATION_URL = "https://app.close.com/oauth2/authorize/";
@@ -47,12 +47,12 @@ export function buildCloseAuthorizationUrl(
  * Exchange authorization code for access token and user info.
  */
 export async function exchangeCloseCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<CloseTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("close");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -112,12 +112,12 @@ export async function exchangeCloseCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://developer.close.com/topics/authentication-oauth2/
  */
 export async function refreshCloseToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<CloseRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("close");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

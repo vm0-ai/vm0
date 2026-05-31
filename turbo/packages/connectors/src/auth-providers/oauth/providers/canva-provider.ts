@@ -10,7 +10,12 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
     kind: "auth-code",
     buildAuthUrl: (args) => {
       const { clientId } = args;
-      return buildCanvaAuthorizationUrl(clientId, args.redirectUri, args.state);
+      return buildCanvaAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
@@ -23,6 +28,7 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
         );
       }
       const result = await exchangeCanvaCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -51,6 +57,7 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshCanvaToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

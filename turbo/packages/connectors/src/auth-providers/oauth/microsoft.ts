@@ -1,7 +1,9 @@
-import type { AuthCodeGrantConnectorType } from "@vm0/connectors/connectors";
+import type {
+  AuthCodeGrantConnectorType,
+  ConnectorAuthCodeGrantConfig,
+} from "@vm0/connectors/connectors";
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "./grant-config";
 import { throwOAuthError } from "./error";
 
 const MICROSOFT_AUTHORIZATION_URL =
@@ -39,12 +41,12 @@ interface MicrosoftRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildMicrosoftAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -62,13 +64,13 @@ export function buildMicrosoftAuthorizationUrl(
  * Uses the Microsoft Graph /me endpoint to identify the user.
  */
 export async function exchangeMicrosoftOAuthCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<MicrosoftTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -124,13 +126,13 @@ export async function exchangeMicrosoftOAuthCode(
  * Access token expires_in: 3600-5400s (~75 min). Ref: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
  */
 export async function refreshMicrosoftToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MicrosoftRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const REDDIT_AUTHORIZATION_URL = "https://www.reddit.com/api/v1/authorize";
@@ -35,11 +35,11 @@ function encodeBasicAuth(clientId: string, clientSecret: string): string {
  * Requests permanent duration to obtain a refresh token.
  */
 export function buildRedditAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -57,12 +57,12 @@ export function buildRedditAuthorizationUrl(
  * Reddit uses Basic Auth header (like Notion) with form-encoded body (like Strava).
  */
 export async function exchangeRedditCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<RedditTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -157,12 +157,12 @@ interface RedditRefreshResult {
  * Access token expires_in: 3600s (1 hour). Ref: https://github.com/reddit-archive/reddit/wiki/oauth2
  */
 export async function refreshRedditToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<RedditRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const POSTHOG_AUTHORIZATION_URL = "https://us.posthog.com/oauth/authorize";
@@ -31,11 +31,11 @@ interface PosthogRefreshResult {
  * Build PostHog OAuth authorization URL.
  */
 export function buildPosthogAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("posthog");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -51,12 +51,12 @@ export function buildPosthogAuthorizationUrl(
  * Exchange authorization code for access token and user info.
  */
 export async function exchangePosthogCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<PosthogTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("posthog");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -110,12 +110,12 @@ export async function exchangePosthogCode(
  * Access token expires_in: 36000s (10 hours). Ref: https://posthog.com/handbook/engineering/oauth-development-guide
  */
 export async function refreshPosthogToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<PosthogRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("posthog");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

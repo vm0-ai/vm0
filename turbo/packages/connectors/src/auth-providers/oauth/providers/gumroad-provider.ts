@@ -11,6 +11,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildGumroadAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGumroadCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,6 +50,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshGumroadToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

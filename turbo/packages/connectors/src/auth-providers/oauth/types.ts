@@ -159,6 +159,23 @@ type ConnectorAccessProviderClientFor<
 }[keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]] &
   ConnectorAuthClientConfig;
 
+type ConnectorRefreshTokenGrantConfigFor<
+  T extends RefreshTokenAccessConnectorType,
+> = {
+  [Method in keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]]: (typeof CONNECTOR_TYPES)[T]["authMethods"][Method] extends {
+    readonly access: {
+      readonly kind: "refresh-token";
+    };
+    readonly grant: infer Grant;
+  }
+    ? Grant extends ConnectorAuthCodeGrantConfig
+      ? ConnectorAuthCodeGrantConfig
+      : Grant extends ConnectorDeviceAuthGrantConfig
+        ? ConnectorDeviceAuthGrantConfig
+        : never
+    : never;
+}[keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]];
+
 type ConnectorRevokeProviderClientFor<T extends ConnectorAuthProviderType> = {
   [Method in keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]]: (typeof CONNECTOR_TYPES)[T]["authMethods"][Method] extends {
     readonly client: infer Client;
@@ -208,7 +225,9 @@ export type ConnectorAuthCodeExchangeArgs<
 export type ConnectorAuthProviderRefreshArgs<
   T extends RefreshTokenAccessConnectorType,
 > = OAuthRefreshFlowArgs &
-  TokenCredentialArgs<ConnectorAccessProviderClientFor<T>>;
+  TokenCredentialArgs<ConnectorAccessProviderClientFor<T>> & {
+    readonly tokenGrant: ConnectorRefreshTokenGrantConfigFor<T>;
+  };
 
 export type ConnectorAuthProviderRevokeArgs<
   T extends ConnectorAuthProviderType,

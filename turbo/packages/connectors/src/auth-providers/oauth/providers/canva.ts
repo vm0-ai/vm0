@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize";
@@ -65,11 +65,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build Canva OAuth authorization URL with PKCE code_challenge.
  */
 export async function buildCanvaAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -92,12 +92,12 @@ export async function buildCanvaAuthorizationUrl(
  * Access token expires_in: 14400s (4 hours). Ref: https://www.canva.dev/docs/connect/authentication/
  */
 export async function refreshCanvaToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<CanvaRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -148,13 +148,13 @@ export async function refreshCanvaToken(
  * Exchange authorization code for access token and user info with PKCE code_verifier.
  */
 export async function exchangeCanvaCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<CanvaTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

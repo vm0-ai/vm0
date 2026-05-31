@@ -14,6 +14,7 @@ import {
   connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   getConfiguredConnectorAuthMethods,
+  getConnectorAuthMethod,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodGrantScopes,
@@ -614,8 +615,15 @@ export async function refreshConnectorAuthProviderAccessToken<
       `${args.type} connector auth method ${args.authMethod} has no refresh-token access provider`,
     );
   }
+  const tokenGrant = getConnectorAuthMethod(args.type, args.authMethod)?.grant;
+  if (tokenGrant?.kind !== "auth-code" && tokenGrant?.kind !== "device-auth") {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} has no token grant config`,
+    );
+  }
   return await access.refreshToken({
     ...args.clientArgs,
+    tokenGrant,
     refreshToken: args.refreshToken,
     signal: args.signal,
   } as ConnectorAuthProviderRefreshArgs<T>);

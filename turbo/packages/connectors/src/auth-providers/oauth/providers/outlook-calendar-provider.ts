@@ -13,6 +13,7 @@ export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-cal
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildMicrosoftAuthorizationUrl(
+          args.authCodeGrant,
           "outlook-calendar",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-cal
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeMicrosoftOAuthCode(
+          args.authCodeGrant,
           "outlook-calendar",
           clientId,
           clientSecret,
@@ -55,6 +57,7 @@ export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-cal
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshMicrosoftToken(
+          args.tokenGrant,
           "outlook-calendar",
           clientId,
           clientSecret,

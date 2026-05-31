@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../../connector-utils";
 import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
@@ -9,10 +10,15 @@ import {
 } from "../slack";
 import { server } from "./test-server";
 
+function authCodeGrant() {
+  return getConnectorAuthMethodAuthCodeGrantConfig("slack", "oauth");
+}
+
 describe("connector/providers/slack", () => {
   describe("buildSlackAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and user_scope", () => {
       const url = buildSlackAuthorizationUrl(
+        authCodeGrant(),
         "test-client-id",
         "https://example.com/callback",
         "test-state",
@@ -42,6 +48,7 @@ describe("connector/providers/slack", () => {
       server.use(handler);
 
       const result = await exchangeSlackCode(
+        authCodeGrant(),
         "client-id",
         "client-secret",
         "test-code",
@@ -64,6 +71,7 @@ describe("connector/providers/slack", () => {
 
       await expect(
         exchangeSlackCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "bad-code",
@@ -83,6 +91,7 @@ describe("connector/providers/slack", () => {
 
       await expect(
         exchangeSlackCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",

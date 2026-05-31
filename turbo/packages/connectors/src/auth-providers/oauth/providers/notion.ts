@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const NOTION_AUTHORIZATION_URL = "https://api.notion.com/v1/oauth/authorize";
@@ -57,12 +57,12 @@ export function buildNotionAuthorizationUrl(
  * User info is embedded in the token response (no separate API call needed).
  */
 export async function exchangeNotionCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<NotionTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("notion");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -128,12 +128,12 @@ export async function exchangeNotionCode(
  * Note: Notion does not return expires_in. Token lifetime ~1 hour (undocumented). Ref: https://developers.notion.com/reference/refresh-a-token
  */
 export async function refreshNotionToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<NotionRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("notion");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

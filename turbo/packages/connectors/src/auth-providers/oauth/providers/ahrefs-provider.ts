@@ -11,6 +11,7 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildAhrefsAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeAhrefsCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,6 +50,7 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshAhrefsToken(
+        args.tokenGrant,
         clientId,
         clientSecret,
         args.refreshToken,

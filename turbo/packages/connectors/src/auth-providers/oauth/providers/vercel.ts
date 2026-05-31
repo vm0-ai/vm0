@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 interface VercelUserInfo {
@@ -38,12 +38,12 @@ export function buildVercelAuthorizationUrl(
  * Exchange authorization code for access token via Vercel Integration OAuth.
  */
 export async function exchangeVercelCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<VercelTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("vercel");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {

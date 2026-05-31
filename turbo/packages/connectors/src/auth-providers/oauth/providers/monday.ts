@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const MONDAY_AUTHORIZATION_URL = "https://auth.monday.com/oauth2/authorize";
@@ -31,11 +31,11 @@ const MONDAY_GRAPHQL_URL = "https://api.monday.com/v2";
  * Build Monday.com OAuth authorization URL.
  */
 export function buildMondayAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("monday");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,12 +52,12 @@ export function buildMondayAuthorizationUrl(
  * Monday.com returns user info via GraphQL after token exchange.
  */
 export async function exchangeMondayCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<MondayTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("monday");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -111,12 +111,12 @@ export async function exchangeMondayCode(
  * Note: Monday.com tokens reportedly do not expire. expires_in may not be returned. Ref: https://developer.monday.com/apps/docs/oauth
  */
 export async function refreshMondayToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MondayRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("monday");
   const response = await fetch(authCodeGrant.tokenUrl, {
     signal,
     method: "POST",

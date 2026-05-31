@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const SUPABASE_AUTHORIZATION_URL =
@@ -65,11 +65,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build Supabase OAuth authorization URL with PKCE code_challenge.
  */
 export async function buildSupabaseAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -92,12 +92,12 @@ export async function buildSupabaseAuthorizationUrl(
  * Access token expires_in: 3600s (1 hour, configurable). Ref: https://supabase.com/docs/guides/auth/oauth-server/oauth-flows
  */
 export async function refreshSupabaseToken(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<SupabaseRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -149,13 +149,13 @@ export async function refreshSupabaseToken(
  * Supabase uses Basic Auth (Base64 of clientId:clientSecret) for token exchange.
  */
 export async function exchangeSupabaseCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<SupabaseTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
