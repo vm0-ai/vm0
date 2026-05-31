@@ -297,6 +297,7 @@ def _split_base_match_url(
     allow_malformed_authority: bool = False,
     allow_host_params: bool = False,
     allow_unsafe_runtime_url_syntax: bool = False,
+    allow_runtime_backslash_syntax: bool = False,
 ) -> _BaseUrlParts | None:
     """Split a URL-like string for firewall base matching.
 
@@ -306,7 +307,10 @@ def _split_base_match_url(
     callers can apply base-path prefix semantics without accidentally comparing
     query strings.
     """
-    if not allow_unsafe_runtime_url_syntax and has_unsafe_runtime_url_syntax(value):
+    if not allow_unsafe_runtime_url_syntax and has_unsafe_runtime_url_syntax(
+        value,
+        allow_backslash=allow_runtime_backslash_syntax,
+    ):
         return None
 
     try:
@@ -1610,7 +1614,11 @@ def match_compiled_firewall_request(
     if not compiled_firewalls:
         return None
 
-    url_parts = _split_base_match_url(url)
+    url_has_backslash = "\\" in url
+    url_parts = _split_base_match_url(
+        url,
+        allow_runtime_backslash_syntax=url_has_backslash,
+    )
     if url_parts is None:
         return None
 
@@ -1635,7 +1643,7 @@ def match_compiled_firewall_request(
 
             rel_path, base_params = base_result
 
-            if has_unsafe_dot_segment(url_parts.path):
+            if url_has_backslash or has_unsafe_dot_segment(url_parts.path):
                 return FirewallBlock(
                     api_entry.base.raw,
                     fw_entry.name,

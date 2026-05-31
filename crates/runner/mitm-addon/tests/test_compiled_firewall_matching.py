@@ -1100,6 +1100,7 @@ class TestCompiledFirewallMatching:
         [
             "https://api.example.com/items/../admin",
             "https://api.example.com/items/%2e%2e/admin",
+            "https://api.example.com/items\\admin",
         ],
     )
     def test_compiled_blocks_unsafe_path(self, url):
@@ -2055,9 +2056,7 @@ class TestCompiledFirewallMatching:
         [
             ("https://api.github.com/re\tpos", "https://api.github.com/repos/org/repo"),
             ("\x00https://api.github.com/repos", "https://api.github.com/repos/org/repo"),
-            ("https://api.github.com/repos\\foo", "https://api.github.com/repos\\foo/org/repo"),
             ("ftp://api.github.com/repos", "ftp://api.github.com/repos/org/repo"),
-            ("https://{sub}.github.com/repos\\{owner}", "https://api.github.com/repos\\org/repo"),
             ("ssh://{sub}.github.com/repos/{owner}", "ssh://api.github.com/repos/org/repo"),
         ],
     )

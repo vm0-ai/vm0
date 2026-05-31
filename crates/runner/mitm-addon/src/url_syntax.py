@@ -20,8 +20,12 @@ def has_raw_whitespace(value: str) -> bool:
     return any(char in RAW_WHITESPACE_CHARS for char in value)
 
 
-def has_unsafe_runtime_url_syntax(value: str) -> bool:
-    return has_unsafe_url_codepoint(value) or has_raw_whitespace(value)
+def has_unsafe_runtime_url_syntax(value: str, *, allow_backslash: bool = False) -> bool:
+    return (
+        (not allow_backslash and "\\" in value)
+        or has_unsafe_url_codepoint(value)
+        or has_raw_whitespace(value)
+    )
 
 
 def strip_optional_terminal_slash(value: str) -> str:

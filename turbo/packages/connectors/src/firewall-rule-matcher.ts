@@ -52,6 +52,7 @@ const LITERAL_SEGMENT_SCORE = 1_000;
 const MIXED_PARAM_SEGMENT_SCORE = 100;
 const PLAIN_PARAM_SEGMENT_SCORE = 10;
 const PLUS_GREEDY_SEGMENT_SCORE = 1;
+const ROOT_PATH_SCORE = 1;
 const STATIC_BASE_SCORE_BONUS = 1;
 const PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = new Set([
   "{",
@@ -383,11 +384,17 @@ function hasMalformedRuntimeAuthoritySyntax(url: string): boolean {
   );
 }
 
-function scorePatternSegment(segment: string): number {
+function scoreLiteralSegment(segment: string): number {
+  return LITERAL_SEGMENT_SCORE + codePointLength(segment);
+}
+
+function scorePatternSegment(segment: string, allowParams: boolean): number {
+  if (!allowParams) return scoreLiteralSegment(segment);
+
   const parsed = parseSegment(segment);
   if (parsed.kind === "error") return 0;
   if (parsed.kind === "literal") {
-    return LITERAL_SEGMENT_SCORE + codePointLength(parsed.value);
+    return scoreLiteralSegment(parsed.value);
   }
 
   const literalChars =
@@ -400,10 +407,19 @@ function scorePatternSegment(segment: string): number {
   return PLAIN_PARAM_SEGMENT_SCORE;
 }
 
-function scorePatternSegments(segments: string[]): number {
+function scorePatternSegments(
+  segments: string[],
+  allowParams: boolean,
+): number {
   return segments.reduce((score, segment) => {
-    return score + scorePatternSegment(segment);
+    return score + scorePatternSegment(segment, allowParams);
   }, 0);
+}
+
+function scorePathPattern(path: string, allowParams: boolean): number {
+  if (path === "") return 0;
+  if (path === "/") return ROOT_PATH_SCORE;
+  return scorePatternSegments(splitPathSegments(path), allowParams);
 }
 
 function splitAuthoritySegments(authority: string): string[] {
@@ -418,9 +434,11 @@ function baseUrlSpecificityScore(rawBase: string, hasParams: boolean): number {
   const baseForMatch = stripTrailingSlash(rawBase);
   const authorityScore = scorePatternSegments(
     splitAuthoritySegments(rawAuthorityFromUrl(baseForMatch) ?? ""),
+    hasParams,
   );
-  const pathScore = scorePatternSegments(
-    splitPathSegments(rawBasePathFromUrl(baseForMatch)),
+  const pathScore = scorePathPattern(
+    rawBasePathFromUrl(baseForMatch),
+    hasParams,
   );
   return (
     pathScore * PATH_SCORE_MULTIPLIER +

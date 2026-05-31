@@ -562,6 +562,7 @@ class TestMatchBaseUrl:
             "https://api.github.com/re\rpos",
             "https://api.github.com/re\x0cpos",
             "https://api.github.com/re pos",
+            "https://api.github.com/re\\pos",
             "https://api.github.com/repos ",
             "https://api.github.com/re\x7fpos",
             "https://api.github.com/re\ud800pos",

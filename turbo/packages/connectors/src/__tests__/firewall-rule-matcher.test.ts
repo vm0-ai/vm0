@@ -414,6 +414,33 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it.each([
+    ["opening brace", "https://api.github.com/static{"],
+    ["closing brace", "https://api.github.com/static}"],
+  ])(
+    "scores static literal single-%s path bases above root bases",
+    (_label, base) => {
+      const rootMatch = matchFirewallBaseUrl(
+        `${base}/repos`,
+        "https://api.github.com",
+      );
+      const braceMatch = matchFirewallBaseUrl(`${base}/repos`, base);
+
+      expect(rootMatch).toMatchObject({
+        displayBase: "https://api.github.com",
+        relativePath: expect.stringMatching(/^\/static[{}]\/repos$/),
+      });
+      expect(braceMatch).toMatchObject({
+        displayBase: base,
+        relativePath: "/repos",
+      });
+      if (rootMatch === null || braceMatch === null) {
+        throw new Error("expected both base URLs to match");
+      }
+      expect(braceMatch.score).toBeGreaterThan(rootMatch.score);
+    },
+  );
+
   it("matches parameterized path base URLs", () => {
     expect(
       matchFirewallBaseUrl(
@@ -515,6 +542,15 @@ describe("matchFirewallBaseUrl", () => {
   });
 
   it("keeps repeated root base slashes as a path boundary", () => {
+    const rootMatch = matchFirewallBaseUrl(
+      "https://api.example.com//users",
+      "https://api.example.com",
+    );
+    const repeatedRootMatch = matchFirewallBaseUrl(
+      "https://api.example.com//users",
+      "https://api.example.com//",
+    );
+
     expect(
       matchFirewallBaseUrl(
         "https://api.example.com/users",
@@ -532,6 +568,15 @@ describe("matchFirewallBaseUrl", () => {
       relativePath: "/users",
       score: expect.any(Number),
     });
+
+    expect(rootMatch).toMatchObject({
+      displayBase: "https://api.example.com",
+      relativePath: "//users",
+    });
+    if (rootMatch === null || repeatedRootMatch === null) {
+      throw new Error("expected both base URLs to match");
+    }
+    expect(repeatedRootMatch.score).toBeGreaterThan(rootMatch.score);
   });
 
   it("treats a single trailing base slash as optional", () => {
@@ -724,6 +769,7 @@ describe("matchFirewallBaseUrl", () => {
 
   it.each([
     ["raw whitespace", "https://api.github.com/foo bar"],
+    ["path backslash", "https://api.github.com/repos\\owner/repo"],
     ["authority backslash", "https://api.github.com\\repos/owner/repo"],
     ["scheme backslash", "https:\\api.github.com/repos/owner/repo"],
     ["single-slash scheme delimiter", "https:/api.github.com/repos/owner/repo"],
