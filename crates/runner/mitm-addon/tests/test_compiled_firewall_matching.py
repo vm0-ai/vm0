@@ -2058,7 +2058,7 @@ class TestCompiledFirewallMatching:
             ("https://api.github.com/repos\\foo", "https://api.github.com/repos\\foo/org/repo"),
             ("ftp://api.github.com/repos", "ftp://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com/repos\\{owner}", "https://api.github.com/repos\\org/repo"),
-            ("ws://{sub}.github.com/repos/{owner}", "ws://api.github.com/repos/org/repo"),
+            ("ssh://{sub}.github.com/repos/{owner}", "ssh://api.github.com/repos/org/repo"),
         ],
     )
     def test_malformed_base_raw_syntax_fails_closed_after_base_match(self, base, url):
