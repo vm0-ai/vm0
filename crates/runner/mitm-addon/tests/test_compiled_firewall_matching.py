@@ -1476,6 +1476,59 @@ class TestCompiledFirewallMatching:
         assert result.rule is None
         assert result.rel_path == "/delete"
 
+    def test_more_specific_parameterized_base_unknown_allow_preserves_params(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad", "rules": ["ANY /{path+}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "tenant",
+                "apis": [
+                    {
+                        "base": "https://{workspace}.example.com/api/{tenant}",
+                        "auth": {"headers": {"Authorization": "Bearer tenant"}},
+                        "permissions": [],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {
+                "allow": [],
+                "deny": ["broad"],
+                "unknownPolicy": "deny",
+            },
+            "tenant": {
+                "allow": [],
+                "deny": [],
+                "unknownPolicy": "allow",
+            },
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://acme.example.com/api/customer-1/users",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer tenant"
+        assert result.name == "tenant"
+        assert result.permission is None
+        assert result.rule is None
+        assert result.rel_path == "/users"
+        assert result.params == {"workspace": "acme", "tenant": "customer-1"}
+
     def test_more_specific_base_invalid_unknown_policy_blocks_earlier_broad_allow(self):
         fws = [
             {
