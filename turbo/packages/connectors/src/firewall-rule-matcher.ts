@@ -225,19 +225,67 @@ function isValidPermissionName(permissionName: string): boolean {
   return permissionName !== "" && permissionName !== "all";
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isObjectRecord(value)) return false;
+  return Object.values(value).every((entry) => {
+    return typeof entry === "string";
+  });
+}
+
+function isValidAuthConfig(auth: unknown, serviceName: string): boolean {
+  if (!isObjectRecord(auth)) return false;
+  if (auth.headers !== undefined && !isStringRecord(auth.headers)) return false;
+  if (auth.base !== undefined) {
+    if (typeof auth.base !== "string") return false;
+    validateAuthBaseUrl(auth.base, serviceName);
+  }
+  return auth.query === undefined || isStringRecord(auth.query);
+}
+
 function isValidApiEntry(
   api: FirewallConfig["apis"][number],
   serviceName: string,
 ): boolean {
+  if (!isObjectRecord(api)) return false;
+  if (typeof api.base !== "string") return false;
   try {
     validateBaseUrl(api.base, serviceName);
-    if (api.auth.base !== undefined) {
-      validateAuthBaseUrl(api.auth.base, serviceName);
-    }
+    if (!isValidAuthConfig(api.auth, serviceName)) return false;
   } catch {
     return false;
   }
   return true;
+}
+
+function getPermissionRules(permission: unknown): {
+  name: string;
+  rules: string[];
+} | null {
+  if (!isObjectRecord(permission)) return null;
+  if (typeof permission.name !== "string") return null;
+  if (!isValidPermissionName(permission.name)) return null;
+  if (!Array.isArray(permission.rules)) return null;
+  const rules = permission.rules.filter((rule) => {
+    return typeof rule === "string";
+  });
+  if (rules.length === 0) return null;
+  return { name: permission.name, rules };
+}
+
+function getApiPermissionsForMatch(
+  api: FirewallConfig["apis"][number],
+  serviceName: string,
+  apiBase: string | null,
+): unknown[] | null {
+  if (!isValidApiEntry(api, serviceName)) return null;
+  if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) return null;
+  if (api.permissions === undefined) return null;
+  if (!Array.isArray(api.permissions)) return null;
+  return api.permissions;
 }
 
 function recordPermissionMatch(
@@ -491,7 +539,8 @@ export function findMatchingPermissions(
   config: FirewallConfig,
   options: FindMatchingPermissionsOptions = {},
 ): string[] {
-  if (config.name === "") return [];
+  if (typeof config.name !== "string" || config.name === "") return [];
+  if (!Array.isArray(config.apis)) return [];
 
   const upperMethod = method.toUpperCase();
   const apiBase =
@@ -499,24 +548,24 @@ export function findMatchingPermissions(
   const matched: string[] = [];
 
   for (const api of config.apis) {
-    if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) continue;
-    if (!isValidApiEntry(api, config.name)) continue;
-    if (!api.permissions) continue;
+    const permissions = getApiPermissionsForMatch(api, config.name, apiBase);
+    if (permissions === null) continue;
     const state: ApiMatchState = { bestSpecificity: null, matched: [] };
     const seenPermissionNames = new Set<string>();
 
-    for (const perm of api.permissions) {
-      if (!isValidPermissionName(perm.name)) continue;
-      if (seenPermissionNames.has(perm.name)) continue;
-      seenPermissionNames.add(perm.name);
-      for (const rule of perm.rules) {
+    for (const rawPermission of permissions) {
+      const permission = getPermissionRules(rawPermission);
+      if (permission === null) continue;
+      if (seenPermissionNames.has(permission.name)) continue;
+      seenPermissionNames.add(permission.name);
+      for (const rule of permission.rules) {
         const rest = matchingRulePath(rule, upperMethod);
         if (rest === null) continue;
 
         if (matchFirewallPath(path, rest) !== null) {
           const specificity = pathSpecificity(rest);
           if (specificity === null) continue;
-          recordPermissionMatch(state, perm.name, specificity);
+          recordPermissionMatch(state, permission.name, specificity);
         }
       }
     }

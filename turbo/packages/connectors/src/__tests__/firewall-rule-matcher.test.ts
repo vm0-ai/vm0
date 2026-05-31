@@ -460,6 +460,30 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
   });
 
+  it("ignores malformed top-level firewall shapes", () => {
+    const nonStringNameConfig = {
+      name: 123,
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "read", rules: ["GET /items/{id}"] }],
+        },
+      ],
+    } as unknown as FirewallConfig;
+    const nonArrayApisConfig = {
+      name: "malformed-apis",
+      apis: { base: "https://example.com" },
+    } as unknown as FirewallConfig;
+
+    expect(
+      findMatchingPermissions("GET", "/items/1", nonStringNameConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/items/1", nonArrayApisConfig),
+    ).toEqual([]);
+  });
+
   it("ignores API entries that fail base or auth validation", () => {
     const malformedApiConfig: FirewallConfig = {
       name: "malformed-api",
@@ -499,6 +523,98 @@ describe("findMatchingPermissions", () => {
       findMatchingPermissions("GET", "/items/1", malformedApiConfig, {
         apiBase: "https://auth.example.com",
       }),
+    ).toEqual([]);
+  });
+
+  it("ignores API entries with malformed auth shapes", () => {
+    const malformedApiConfig = {
+      name: "malformed-api-shape",
+      apis: [
+        "not-an-api",
+        {
+          auth: { headers: {} },
+          permissions: [{ name: "missing-base", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://missing-auth.example.com",
+          permissions: [{ name: "missing-auth", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://string-auth.example.com",
+          auth: "token",
+          permissions: [{ name: "string-auth", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://bad-headers.example.com",
+          auth: { headers: { Authorization: 123 } },
+          permissions: [{ name: "bad-headers", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://bad-auth-base.example.com",
+          auth: { base: 123 },
+          permissions: [{ name: "bad-auth-base", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://bad-query.example.com",
+          auth: { query: { api_key: 123 } },
+          permissions: [{ name: "bad-query", rules: ["GET /items/{id}"] }],
+        },
+        {
+          base: "https://valid.example.com",
+          auth: { headers: {} },
+          permissions: [{ name: "valid", rules: ["GET /items/{id}"] }],
+        },
+      ],
+    } as unknown as FirewallConfig;
+
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedApiConfig),
+    ).toEqual(["valid"]);
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedApiConfig, {
+        apiBase: "https://missing-auth.example.com",
+      }),
+    ).toEqual([]);
+  });
+
+  it("ignores malformed permission shapes while keeping valid rules", () => {
+    const malformedPermissionConfig = {
+      name: "malformed-permission-shape",
+      apis: [
+        {
+          base: "https://ignored.example.com",
+          auth: { headers: {} },
+          permissions: "read",
+        },
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            "not-a-permission",
+            { rules: ["GET /missing-name"] },
+            { name: 123, rules: ["GET /non-string-name"] },
+            { name: "missing-rules" },
+            { name: "string-rules", rules: "GET /string-rules" },
+            { name: "empty-rules", rules: [] },
+            { name: "mixed-rules", rules: ["GET /mixed", 123] },
+            { name: "valid", rules: ["GET /items/{id}"] },
+          ],
+        },
+      ],
+    } as unknown as FirewallConfig;
+
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedPermissionConfig),
+    ).toEqual(["valid"]);
+    expect(
+      findMatchingPermissions("GET", "/mixed", malformedPermissionConfig),
+    ).toEqual(["mixed-rules"]);
+    expect(
+      findMatchingPermissions(
+        "GET",
+        "/string-rules",
+        malformedPermissionConfig,
+      ),
     ).toEqual([]);
   });
 
