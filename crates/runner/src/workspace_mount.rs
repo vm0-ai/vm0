@@ -72,7 +72,7 @@ fn shell_quote(value: &str) -> String {
 fn workspace_mount_command(working_dir: &str) -> String {
     let working_dir = shell_quote(working_dir);
     format!(
-        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\nrefuse_workspace_symlink() {{\n  if [ -L \"$workspace_dir\" ]; then\n    echo \"refusing to use symlink workspace mountpoint: $workspace_dir\" >&2\n    exit 64\n  fi\n}}\nensure_workspace_owner() {{\n  chown user:user -- \"$workspace_dir\"\n  chmod u+rwx -- \"$workspace_dir\"\n}}\nrefuse_workspace_symlink\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace image over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nrefuse_workspace_symlink\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
+        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\nrefuse_workspace_symlink() {{\n  if [ -L \"$workspace_dir\" ]; then\n    echo \"refusing to use symlink workspace mountpoint: $workspace_dir\" >&2\n    exit 64\n  fi\n}}\nensure_workspace_owner() {{\n  chown -h user:user -- \"$workspace_dir\"\n}}\nrefuse_workspace_symlink\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace image over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nrefuse_workspace_symlink\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
     )
 }
 
@@ -128,8 +128,8 @@ mod tests {
     fn mount_command_ensures_workspace_root_owned_by_user() {
         let cmd = workspace_mount_command("/workspace");
 
-        assert!(cmd.contains("chown user:user -- \"$workspace_dir\""));
-        assert!(cmd.contains("chmod u+rwx -- \"$workspace_dir\""));
+        assert!(cmd.contains("chown -h user:user -- \"$workspace_dir\""));
+        assert!(!cmd.contains("chmod "));
         assert_eq!(
             cmd.matches("ensure_workspace_owner").count(),
             3,
