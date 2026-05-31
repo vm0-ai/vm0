@@ -459,8 +459,9 @@ function currentProviderEnv(): ProviderEnv {
 
 function refreshFailureReasonFromError(
   error: unknown,
+  refreshTimedOut: boolean,
 ): FirewallAuthFailureReason | undefined {
-  if (isFetchAbortError(error)) {
+  if (refreshTimedOut) {
     return "upstream_provider";
   }
   if (isChatgptRefreshError(error)) {
@@ -487,8 +488,11 @@ function refreshFailureReasonFromError(
   return undefined;
 }
 
-function refreshErrorCodeFromError(error: unknown): string | null {
-  if (isFetchAbortError(error)) {
+function refreshErrorCodeFromError(
+  error: unknown,
+  refreshTimedOut: boolean,
+): string | null {
+  if (refreshTimedOut) {
     return REFRESH_TIMEOUT_ERROR_CODE;
   }
   if (isChatgptRefreshError(error)) {
@@ -503,16 +507,37 @@ function refreshErrorCodeFromError(error: unknown): string | null {
   return null;
 }
 
+function classifyRefreshFailure(
+  error: unknown,
+  signal: AbortSignal,
+): {
+  readonly errorCode: string | null;
+  readonly failureReason: FirewallAuthFailureReason | undefined;
+} {
+  const refreshTimedOut = isRefreshTimeoutError(error, signal);
+  return {
+    errorCode: refreshErrorCodeFromError(error, refreshTimedOut),
+    failureReason: refreshFailureReasonFromError(error, refreshTimedOut),
+  };
+}
+
 function isFetchNetworkError(error: unknown): boolean {
   return (
     error instanceof TypeError && error.message.toLowerCase().includes("fetch")
   );
 }
 
-function isFetchAbortError(error: unknown): boolean {
+function isRefreshTimeoutError(error: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted || !(error instanceof Error)) {
+    return false;
+  }
+  if (error === signal.reason) {
+    return true;
+  }
   return (
-    error instanceof Error &&
-    (error.name === "AbortError" || error.name === "TimeoutError")
+    signal.reason instanceof Error &&
+    signal.reason.name === "TimeoutError" &&
+    (error.name === "TimeoutError" || error.name === "AbortError")
   );
 }
 
@@ -1282,6 +1307,25 @@ async function markRefreshTokenMissing(
   return refreshTokenMissingResult();
 }
 
+async function markAndReturnRefreshFailure(
+  args: RefreshAccessTokenArgs,
+  context: RefreshTokenContext,
+  error: unknown,
+  signal: AbortSignal,
+): Promise<RefreshAccessTokenResult> {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  const { errorCode, failureReason } = classifyRefreshFailure(error, signal);
+  L.warn(`${args.connectorType} token refresh failed: ${message}`, {
+    connectorType: args.connectorType,
+    orgId: args.orgId,
+    userId: args.userId,
+    errorCode,
+    failureReason,
+  });
+  await markRefreshFailure(args, context, errorCode, failureReason);
+  return refreshFailedResult(failureReason);
+}
+
 async function refreshAccessTokenForSource(
   args: RefreshAccessTokenArgs,
 ): Promise<RefreshAccessTokenResult> {
@@ -1296,7 +1340,6 @@ async function refreshAccessTokenForSource(
     ? args.forceRefreshStartedAtMicros
     : await currentDatabaseTimestampMicros(args.db);
   const initialState = await loadRefreshState(args.db, args, prepared.context);
-
   return await args.db.transaction(async (tx) => {
     if (prepared.sourceType === "connector") {
       await lockConnectorState(tx, {
@@ -1311,7 +1354,6 @@ async function refreshAccessTokenForSource(
         type: args.metadataKey ?? prepared.providerKey,
       });
     }
-
     const lockedState = await loadRefreshState(tx, args, prepared.context);
     if (!lockedState) {
       L.warn(`${args.connectorType} token refresh source missing`, {
@@ -1322,7 +1364,6 @@ async function refreshAccessTokenForSource(
       });
       return markRefreshTokenMissing({ ...args, db: tx }, prepared.context);
     }
-
     const currentAccessToken = lockedState.accessToken;
     if (
       didLockedRefreshFailDuringRequest({
@@ -1339,7 +1380,6 @@ async function refreshAccessTokenForSource(
         }),
       );
     }
-
     if (
       currentAccessToken &&
       shouldUseLockedCurrentAccess({
@@ -1361,7 +1401,6 @@ async function refreshAccessTokenForSource(
       L.debug(`No ${args.connectorType} refresh token available, skipping`);
       return markRefreshTokenMissing({ ...args, db: tx }, prepared.context);
     }
-
     const refreshSignal = firewallAuthRefreshTimeoutSignal();
     const refreshPromise =
       prepared.sourceType === "connector"
@@ -1379,29 +1418,14 @@ async function refreshAccessTokenForSource(
             signal: refreshSignal,
           });
     const refreshResult = await settle(refreshPromise);
-
     if (!refreshResult.ok) {
-      const error = refreshResult.error;
-      const message = error instanceof Error ? error.message : "Unknown error";
-      const errorCode = refreshErrorCodeFromError(error);
-      const failureReason = refreshFailureReasonFromError(error);
-      L.warn(`${args.connectorType} token refresh failed: ${message}`, {
-        connectorType: args.connectorType,
-        orgId: args.orgId,
-        userId: args.userId,
-        errorCode,
-        failureReason,
-      });
-
-      await markRefreshFailure(
+      return markAndReturnRefreshFailure(
         { ...args, db: tx },
         prepared.context,
-        errorCode,
-        failureReason,
+        refreshResult.error,
+        refreshSignal,
       );
-      return refreshFailedResult(failureReason);
     }
-
     const result = refreshResult.value;
     await markRefreshSuccess({ ...args, db: tx }, prepared.context, result);
     args.connectorSecrets[prepared.context.accessTokenSecret] =
