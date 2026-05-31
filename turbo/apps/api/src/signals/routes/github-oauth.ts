@@ -31,6 +31,7 @@ import {
   findGithubInstallationByInstallationId,
   getGithubInstallationAccessToken,
   getGithubInstallationInfo,
+  getGithubConnectorAuthCodeMethod,
   githubUserConnectCallbackRedirectUri,
   isGithubOauthStateSignatureValid,
   linkGithubVm0User,
@@ -53,7 +54,6 @@ import {
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_TYPE = "github" satisfies AuthCodeGrantConnectorType;
-const GITHUB_CONNECTOR_AUTH_METHOD = "oauth";
 const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
 const L = logger("GithubOAuthRoute");
 
@@ -89,9 +89,10 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
 function githubUserOauthClient():
   | StaticConfidentialConnectorAuthClient
   | undefined {
+  const authMethod = getGithubConnectorAuthCodeMethod();
   const authClient = resolveConnectorAuthClientForMethod(
     GITHUB_CONNECTOR_TYPE,
-    GITHUB_CONNECTOR_AUTH_METHOD,
+    authMethod,
     optionalEnv,
   );
   if (!authClient) {
@@ -380,13 +381,14 @@ const connectGithubUserAfterSetup$ = command(
         scopes,
       });
 
+      const authMethod = getGithubConnectorAuthCodeMethod();
       await set(
         upsertConnectorTokenConnection$,
         {
           orgId: args.orgId,
           userId: vm0UserId,
           type: GITHUB_CONNECTOR_TYPE,
-          authMethod: GITHUB_CONNECTOR_AUTH_METHOD,
+          authMethod,
           accessToken,
           userInfo,
           oauthScopes:
@@ -394,7 +396,7 @@ const connectGithubUserAfterSetup$ = command(
               ? scopes
               : getConnectorAuthMethodGrantScopes(
                   GITHUB_CONNECTOR_TYPE,
-                  GITHUB_CONNECTOR_AUTH_METHOD,
+                  authMethod,
                 ),
         },
         signal,
@@ -763,18 +765,19 @@ const callbackGithubUserOauth$ = command(
       return worksErrorRedirect("No GitHub installation found");
     }
 
+    const authMethod = getGithubConnectorAuthCodeMethod();
     await set(
       upsertConnectorTokenConnection$,
       {
         orgId: state.orgId,
         userId: state.vm0UserId,
         type: GITHUB_CONNECTOR_TYPE,
-        authMethod: GITHUB_CONNECTOR_AUTH_METHOD,
+        authMethod,
         accessToken: token.accessToken,
         userInfo: token.userInfo,
         oauthScopes: getConnectorAuthMethodGrantScopes(
           GITHUB_CONNECTOR_TYPE,
-          GITHUB_CONNECTOR_AUTH_METHOD,
+          authMethod,
         ),
         extraConnectorSecrets: token.extraConnectorSecrets,
       },

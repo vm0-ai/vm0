@@ -69,6 +69,7 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   setPermissionDialogType$,
+  getConnectorAuthCodeConnectMethod,
   getConnectorConnectLaunchMode,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -281,9 +282,17 @@ function ConnectStepContent() {
     if (launchMode === "modal") {
       setSelectedConnector(type);
     } else {
+      const authMethod = getConnectorAuthCodeConnectMethod(
+        type,
+        connector.availableAuthMethods,
+      );
+      if (!authMethod) {
+        setSelectedConnector(type);
+        return;
+      }
       detach(
         (async () => {
-          await connect(type, {}, pageSignal);
+          await connect(type, authMethod, {}, pageSignal);
           await clearPermissionDialog(null);
         })(),
         Reason.DomCallback,

@@ -32,6 +32,7 @@ describe("connector OAuth state claim", () => {
       .values({
         state,
         type: args.type ?? "github",
+        authMethod: "oauth",
         userId: `user_${randomUUID()}`,
         orgId: `org_${randomUUID()}`,
         redirectUri: "https://app.vm0.test/api/connectors/github/callback",
@@ -73,6 +74,7 @@ describe("connector OAuth state claim", () => {
         id: row.id,
         state: row.state,
         type: "github",
+        authMethod: "oauth",
       },
     });
     if (result.kind === "usable") {

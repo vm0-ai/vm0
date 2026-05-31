@@ -934,6 +934,7 @@ async function seedSession(userId: string): Promise<string> {
     .values({
       code: randomUUID().slice(0, 9).toUpperCase(),
       type: "github",
+      authMethod: "oauth",
       userId,
       status: "pending",
       expiresAt: new Date(now() + 15 * 60 * 1000),
@@ -945,6 +946,7 @@ async function seedSession(userId: string): Promise<string> {
 
 async function seedOauthState(args: {
   readonly type: string;
+  readonly authMethod?: string;
   readonly userId: string;
   readonly orgId: string;
   readonly state?: string;
@@ -961,6 +963,7 @@ async function seedOauthState(args: {
     .values({
       state: args.state ?? `state-${randomUUID()}`,
       type: args.type,
+      authMethod: args.authMethod ?? "oauth",
       userId: args.userId,
       orgId: args.orgId,
       sessionId: args.sessionId,
@@ -1244,6 +1247,14 @@ describe("GET /api/connectors/:type/callback", () => {
     mockOAuthEnv();
   });
 
+  async function seedTrackedOauthState(
+    args: Parameters<typeof seedOauthState>[0],
+  ): Promise<string> {
+    const oauthStateId = await seedOauthState(args);
+    oauthStateIds.push(oauthStateId);
+    return oauthStateId;
+  }
+
   afterEach(async () => {
     restoreDynamicTestOAuthExchange?.();
     restoreDynamicTestOAuthExchange = undefined;
@@ -1280,7 +1291,7 @@ describe("GET /api/connectors/:type/callback", () => {
     }
   });
 
-  it("redirects unauthenticated users to the connector error page", async () => {
+  it("rejects callbacks without trusted OAuth state", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
@@ -1297,7 +1308,9 @@ describe("GET /api/connectors/:type/callback", () => {
     const url = new URL(location!);
     expect(url.pathname).toBe("/connector/error");
     expect(url.searchParams.get("type")).toBe("github");
-    expect(url.searchParams.get("message")).toBe("Not authenticated");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid state - please try again",
+    );
   });
 
   it("redirects unknown connector types to the connector error page", async () => {
@@ -1349,6 +1362,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+    });
 
     const response = await requestCallback({
       type: "github",
@@ -1380,6 +1399,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+    });
 
     const response = await requestCallback({
       type: "github",
@@ -1535,6 +1560,13 @@ describe("GET /api/connectors/:type/callback", () => {
     authenticate({ userId, orgId });
     const sessionId = await seedSession(userId);
     sessionIds.push(sessionId);
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+      sessionId,
+    });
     mockGitHubOAuth({ accessToken: "github-token", userError: true });
 
     const response = await requestCallback({
@@ -1568,6 +1600,14 @@ describe("GET /api/connectors/:type/callback", () => {
     authenticate({ userId, orgId });
     const sessionId = await seedSession(userId);
     sessionIds.push(sessionId);
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+      sessionId,
+      oauthContext: "opaque-context",
+    });
     mockGitHubOAuth({
       accessToken: "github-token",
       userId: 98_765,
@@ -1632,6 +1672,71 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(session?.completedAt).toBeInstanceOf(Date);
   });
 
+  it("rejects callbacks when the stored session auth method changed", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const sessionId = await seedSession(userId);
+    sessionIds.push(sessionId);
+
+    const db = store.set(writeDb$);
+    await db
+      .update(connectorSessions)
+      .set({ authMethod: "api-token" })
+      .where(eq(connectorSessions.id, sessionId));
+
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+      sessionId,
+    });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid state - please try again",
+    });
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects callbacks when the stored auth method is not auth-code", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "github",
+      authMethod: "api-token",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid connector auth method - please try again",
+    });
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
+  });
+
   it("links a GitHub integration after GitHub connector OAuth completes", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -1660,6 +1765,12 @@ describe("GET /api/connectors/:type/callback", () => {
     if (!installation) {
       throw new Error("Expected GitHub installation insert to return a row");
     }
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockGitHubOAuth({
       accessToken: "github-token",
       userId: 98_765,
@@ -1997,7 +2108,7 @@ describe("GET /api/connectors/:type/callback", () => {
     });
   });
 
-  it("uses cookie-backed direct callback state when no stored handoff state exists", async () => {
+  it("rejects cookie-backed callback state when no stored OAuth state exists", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -2015,13 +2126,13 @@ describe("GET /api/connectors/:type/callback", () => {
       headers: callbackHeaders({ stateCookie: "state-123" }),
     });
 
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
-    expect(url.pathname).toBe("/connector/success");
-    expect(url.searchParams.get("type")).toBe("github");
-    expect(url.searchParams.get("username")).toBe("octocat");
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid state - please try again",
+    });
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
   });
 
   it("passes OAuth context to dynamic public connector exchange", async () => {
@@ -2032,6 +2143,14 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      userId,
+      orgId,
+      state: "state-123",
+      codeVerifier: "pkce-verifier",
+      oauthContext: "dynamic-oauth-context; tenant=example",
+    });
 
     const response = await requestCallback({
       type: "test-oauth",
@@ -2096,6 +2215,14 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      userId,
+      orgId,
+      state: "state-123",
+      codeVerifier: "pkce-verifier",
+      oauthContext: "dynamic-oauth-context; tenant=example",
+    });
 
     const response = await requestCallback({
       type: "test-oauth",
@@ -2128,6 +2255,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "slack",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockSlackOAuth({ accessToken: "xoxp-stored-token" });
 
     const response = await requestCallback({
@@ -2163,6 +2296,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "notion",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockNotionOAuth({
       accessToken: "notion-access",
       refreshToken: "notion-refresh",
@@ -2212,6 +2351,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "notion",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockNotionOAuth({
       accessToken: "notion-access",
       refreshToken: "notion-refresh",
@@ -2243,6 +2388,14 @@ describe("GET /api/connectors/:type/callback", () => {
       const refreshToken = `${providerCase.type}-stored-refresh-token`;
       orgIds.push(orgId);
       authenticate({ userId, orgId });
+      await seedTrackedOauthState({
+        type: providerCase.type,
+        userId,
+        orgId,
+        state: "state-123",
+        codeVerifier:
+          providerCase.type === "x" ? "x-test-code-verifier" : undefined,
+      });
       mockProviderOAuth({
         type: providerCase.type,
         accessToken,
@@ -2322,6 +2475,14 @@ describe("GET /api/connectors/:type/callback", () => {
       const userId = `user_${randomUUID()}`;
       orgIds.push(orgId);
       authenticate({ userId, orgId });
+      await seedTrackedOauthState({
+        type: providerCase.type,
+        userId,
+        orgId,
+        state: "state-123",
+        codeVerifier:
+          providerCase.type === "x" ? "x-test-code-verifier" : undefined,
+      });
       mockProviderOAuth({
         type: providerCase.type,
         tokenError: "bad code",
@@ -2367,6 +2528,14 @@ describe("GET /api/connectors/:type/callback", () => {
       const userId = `user_${randomUUID()}`;
       orgIds.push(orgId);
       authenticate({ userId, orgId });
+      await seedTrackedOauthState({
+        type: providerCase.type,
+        userId,
+        orgId,
+        state: "state-123",
+        codeVerifier:
+          providerCase.type === "x" ? "x-test-code-verifier" : undefined,
+      });
       mockProviderOAuth({
         type: providerCase.type,
         userError: true,
@@ -2405,6 +2574,13 @@ describe("GET /api/connectors/:type/callback", () => {
     authenticate({ userId, orgId });
     const sessionId = await seedSession(userId);
     sessionIds.push(sessionId);
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+      sessionId,
+    });
     mockGitHubOAuth({ tokenError: "bad code" });
 
     const response = await requestCallback({

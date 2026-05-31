@@ -31,6 +31,7 @@ async function seedSession(args: {
     .values({
       code: randomUUID().slice(0, 9).toUpperCase(),
       type: args.type ?? "github",
+      authMethod: "oauth",
       userId: args.userId,
       status: args.status ?? "pending",
       expiresAt: args.expiresAt ?? new Date(now() + 15 * 60 * 1000),

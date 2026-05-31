@@ -228,8 +228,6 @@ export {
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
   isGoogleOAuthConnector,
-  hasRequiredScopes,
-  getScopeDiff,
   connectorSessionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,

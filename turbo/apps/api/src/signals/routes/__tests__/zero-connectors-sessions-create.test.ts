@@ -37,7 +37,7 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     const response = await accept(
       client.create({
         params: { type: "github" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -61,6 +61,7 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
       .select({
         code: connectorSessions.code,
         type: connectorSessions.type,
+        authMethod: connectorSessions.authMethod,
         userId: connectorSessions.userId,
         status: connectorSessions.status,
       })
@@ -69,6 +70,7 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     expect(session).toStrictEqual({
       code: response.body.code,
       type: "github",
+      authMethod: "oauth",
       userId,
       status: "pending",
     });
@@ -82,7 +84,7 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     const response = await accept(
       client.create({
         params: { type: "docusign" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -114,7 +116,7 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     const response = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -138,12 +140,44 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     expect(rows).toStrictEqual([]);
   });
 
+  it("rejects connector sessions for a missing selected auth method", async () => {
+    const userId = `user_${randomUUID()}`;
+    mocks.clerk.session(userId, `org_${randomUUID()}`);
+
+    const client = setupApp({ context })(zeroConnectorSessionsContract);
+    const response = await accept(
+      client.create({
+        params: { type: "github" },
+        body: { authMethod: "api-token" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: "github connector does not have api-token auth method",
+      code: "BAD_REQUEST",
+    });
+
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({ id: connectorSessions.id })
+      .from(connectorSessions)
+      .where(
+        and(
+          eq(connectorSessions.userId, userId),
+          eq(connectorSessions.type, "github"),
+        ),
+      );
+    expect(rows).toStrictEqual([]);
+  });
+
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroConnectorSessionsContract);
     const response = await accept(
       client.create({
         params: { type: "github" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: {},
       }),
       [401],
@@ -159,7 +193,7 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     const response = await accept(
       client.create({
         params: { type: "github" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [401],

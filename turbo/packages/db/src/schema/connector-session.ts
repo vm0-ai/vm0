@@ -27,6 +27,7 @@ export const connectorSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     code: varchar("code", { length: 9 }).notNull(), // XXXX-XXXX format
     type: varchar("type", { length: 50 }).notNull(), // "github"
+    authMethod: varchar("auth_method", { length: 50 }).notNull(),
     userId: text("user_id").notNull(), // Clerk user ID (CLI is already logged in)
     status: connectorSessionStatusEnum("status").default("pending").notNull(),
     errorMessage: text("error_message"),

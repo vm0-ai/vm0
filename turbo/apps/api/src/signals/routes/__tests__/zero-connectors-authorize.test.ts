@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import type { ConnectorAuthClientConfig } from "@vm0/connectors/connectors";
+import type {
+  ConnectorAuthClientConfig,
+  ConnectorAuthMethodId,
+} from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
@@ -9,7 +12,7 @@ import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -31,6 +34,7 @@ const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const LOCAL_ORIGIN = "http://localhost:3000";
 const LOCAL_WEB_ORIGIN = "https://www.vm0.ai:8443";
+const AUTH_REQUEST_USER_ID_PREFIX = "user_zero_connectors_authorize_";
 
 function authorizeUrl(
   type: string,
@@ -139,7 +143,8 @@ async function requestAuthorize(
   } = {},
 ): Promise<Response> {
   if (options.authenticated) {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(`${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`, orgId);
   }
   const headers = new Headers(options.headers);
   if (options.authenticated) {
@@ -158,22 +163,26 @@ async function requestAuthorize(
 async function requestOauthStart(
   type: string,
   options: {
+    readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
     readonly headers?: HeadersInit;
     readonly origin?: string;
   } = {},
 ): Promise<Response> {
   if (options.authenticated) {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(`${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`, orgId);
   }
   const headers = new Headers(options.headers);
   if (options.authenticated) {
     headers.set("authorization", "Bearer clerk-session");
   }
+  headers.set("content-type", "application/json");
   const app = createApp({ signal: context.signal });
   return await app.request(oauthStartUrl(type, options.origin), {
     method: "POST",
     headers,
+    body: JSON.stringify({ authMethod: options.authMethod ?? "oauth" }),
   });
 }
 
@@ -191,9 +200,17 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     restoreDynamicTestOAuthAuthorize = undefined;
 
     const db = store.set(writeDb$);
+    await db
+      .delete(connectorOauthStates)
+      .where(
+        like(connectorOauthStates.userId, `${AUTH_REQUEST_USER_ID_PREFIX}%`),
+      );
     while (orgIds.length > 0) {
       const orgId = orgIds.pop();
       if (orgId) {
+        await db
+          .delete(connectorOauthStates)
+          .where(eq(connectorOauthStates.orgId, orgId));
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
         await db
@@ -373,17 +390,36 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("stores the connector session id when provided", async () => {
+    const sessionId = randomUUID();
     const response = await requestAuthorize("github", {
       authenticated: true,
-      session: "session-123",
+      session: sessionId,
     });
 
     const cookies = response.headers.getSetCookie();
     expect(
       cookies.some((cookie) => {
-        return cookie.startsWith("connector_oauth_session=session-123");
+        return cookie.startsWith(`connector_oauth_session=${sessionId}`);
       }),
     ).toBeTruthy();
+
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const state = new URL(location!).searchParams.get("state");
+    expect(state).not.toBeNull();
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select({
+        authMethod: connectorOauthStates.authMethod,
+        sessionId: connectorOauthStates.sessionId,
+      })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toStrictEqual({
+      authMethod: "oauth",
+      sessionId,
+    });
   });
 
   it("allows dynamic public OAuth authorize without env credentials", async () => {
@@ -821,6 +857,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(storedState).toMatchObject({
       state,
       type: "github",
+      authMethod: "oauth",
       userId,
       orgId,
       redirectUri: `${WEB_ORIGIN}/api/connectors/github/callback`,
@@ -908,6 +945,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(storedState).toMatchObject({
       state,
       type: "airtable",
+      authMethod: "oauth",
       userId,
       orgId,
       redirectUri: `${WEB_ORIGIN}/api/connectors/airtable/callback`,
@@ -957,6 +995,33 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await expect(response.json()).resolves.toStrictEqual({
       error: {
         message: "test-oauth-device connector does not use an auth-code grant",
+        code: "BAD_REQUEST",
+      },
+    });
+
+    const db = store.set(writeDb$);
+    const states = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.userId, userId));
+    expect(states).toHaveLength(0);
+  });
+
+  it("returns 400 when starting OAuth with a missing selected auth method", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+
+    const response = await requestOauthStart("github", {
+      authMethod: "api-token",
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: {
+        message: "github connector does not have api-token auth method",
         code: "BAD_REQUEST",
       },
     });

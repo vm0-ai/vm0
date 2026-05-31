@@ -22,6 +22,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  getConnectorAuthCodeConnectMethod,
   getConnectorConnectLaunchMode,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
@@ -113,6 +114,7 @@ function runDirectedConnect(params: {
   signal: AbortSignal;
   connect: (
     type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
     options: { readonly showPermissionDialog?: boolean },
     signal: AbortSignal,
   ) => Promise<boolean>;
@@ -146,10 +148,24 @@ function runDirectedConnect(params: {
     return;
   }
 
+  const authMethod = getConnectorAuthCodeConnectMethod(
+    params.connectorType,
+    params.authMethods,
+  );
+  if (!authMethod) {
+    params.openConnectModal();
+    return;
+  }
+
   detach(
     (async () => {
       let connected = true;
-      connected = await params.connect(params.connectorType, {}, params.signal);
+      connected = await params.connect(
+        params.connectorType,
+        authMethod,
+        {},
+        params.signal,
+      );
       if (connected) {
         await params.onConnected();
       }

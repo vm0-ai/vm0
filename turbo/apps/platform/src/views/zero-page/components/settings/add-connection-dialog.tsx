@@ -80,12 +80,18 @@ type SubmitManualGrantFn = (
 
 type ConnectOAuthAuthCodeAndSettleFn = (
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   onSuccess: () => void | Promise<void>,
   options: PostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
 
-type ConnectOAuthDeviceAuthAndSettleFn = ConnectOAuthAuthCodeAndSettleFn;
+type ConnectOAuthDeviceAuthAndSettleFn = (
+  type: ConnectorType,
+  onSuccess: () => void | Promise<void>,
+  options: PostConnectOptions,
+  signal: AbortSignal,
+) => Promise<void>;
 
 type ConnectModalContentProps = {
   item: ConnectorTypeWithStatus;
@@ -253,11 +259,13 @@ function getOAuthAuthCodeProgressContent({
 
 function OAuthAuthCodeConnectButton({
   item,
+  authMethod,
   onSuccess,
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   signal,
 }: ConnectModalContentProps & {
+  authMethod: ConnectorAuthMethodId;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
@@ -268,6 +276,7 @@ function OAuthAuthCodeConnectButton({
         return detach(
           connectOAuthAuthCodeAndSettle(
             item.type,
+            authMethod,
             onSuccess,
             {
               showPermissionDialog: showPermissionDialogOnConnect,
@@ -288,6 +297,7 @@ function OAuthAuthCodeConnectMethodContent(props: ConnectMethodContentProps) {
   return (
     <OAuthAuthCodeConnectButton
       item={props.item}
+      authMethod={props.authMethod}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={props.connectOAuthAuthCodeAndSettle}
@@ -631,7 +641,7 @@ function ConnectModalContent({
   onSuccess,
   showPermissionDialogOnConnect,
 }: ConnectModalContentProps) {
-  const [settleLoadable, connectOAuthAuthCodeAndSettle] = useLoadableSet(
+  const [settleLoadable, connectOAuthAuthCodeAndSettleCommand] = useLoadableSet(
     connectConnectorOAuthAuthCodeAndSettle$,
   );
   const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
@@ -660,6 +670,18 @@ function ConnectModalContent({
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
     await runConnectSuccess(item.type, onSuccess, pageSignal);
+  };
+  const connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn = async (
+    type,
+    authMethod,
+    connectSuccess,
+    options,
+    signal,
+  ) => {
+    await connectOAuthAuthCodeAndSettleCommand(
+      { type, authMethod, onSuccess: connectSuccess, options },
+      signal,
+    );
   };
 
   const progressContent =

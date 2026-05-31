@@ -2899,6 +2899,13 @@
       "when": 1780054787507,
       "tag": "0413_remove_schedule_model_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 414,
+      "version": "7",
+      "when": 1780219650411,
+      "tag": "0414_light_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

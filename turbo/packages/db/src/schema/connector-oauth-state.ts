@@ -14,6 +14,7 @@ export const connectorOauthStates = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     state: text("state").notNull(),
     type: varchar("type", { length: 50 }).notNull(),
+    authMethod: varchar("auth_method", { length: 50 }).notNull(),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     redirectUri: text("redirect_uri").notNull(),

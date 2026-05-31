@@ -137,6 +137,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -174,6 +175,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -202,6 +204,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
       context.store.set(
         connectConnectorOAuthAuthCode$,
         "github",
+        "oauth",
         {},
         context.signal,
       ),
@@ -225,11 +228,13 @@ describe("connectConnectorOAuthAuthCode$", () => {
 
     let pollCount = 0;
     let startRequestUrl: string | null = null;
+    let startRequestBody: unknown;
     server.use(
       mockApi(
         zeroConnectorOauthStartContract.start,
-        ({ request, params, respond }) => {
+        ({ request, body, params, respond }) => {
           startRequestUrl = request.url;
+          startRequestBody = body;
           return respond(200, {
             authorizationUrl: `https://oauth.test/${params.type}/authorize`,
           });
@@ -247,6 +252,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -260,6 +266,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
       expect(startRequestUrl).toBe(
         "https://www.vm0.ai/api/zero/connectors/github/oauth/start",
       );
+      expect(startRequestBody).toStrictEqual({ authMethod: "oauth" });
       expect(mockWindow.location.href).toBe(
         "https://oauth.test/github/authorize",
       );
@@ -318,6 +325,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -359,6 +367,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       { showPermissionDialog: true },
       context.signal,
     );
@@ -390,6 +399,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -426,6 +436,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -472,10 +483,13 @@ describe("connectConnectorOAuthAuthCode$", () => {
       context.store.set(
         connectConnectorOAuthAuthCode$,
         "test-oauth-device",
+        "oauth",
         {},
         context.signal,
       ),
-    ).rejects.toThrow("test-oauth-device does not use an auth-code grant");
+    ).rejects.toThrow(
+      "test-oauth-device oauth does not use an auth-code grant",
+    );
 
     expect(open).not.toHaveBeenCalled();
     expect(startCalled).toBeFalsy();

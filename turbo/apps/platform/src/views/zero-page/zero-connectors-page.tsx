@@ -46,6 +46,7 @@ import {
   setPermissionDialogType$,
   isStandaloneMode,
   matchesConnectorSearch,
+  getConnectorAuthCodeConnectMethod,
   getConnectorConnectLaunchMode,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -641,8 +642,16 @@ export function ZeroConnectorsPage() {
     if (launchMode === "modal") {
       setSelected(type);
     } else {
+      const authMethod = getConnectorAuthCodeConnectMethod(
+        type,
+        ct.availableAuthMethods,
+      );
+      if (!authMethod) {
+        setSelected(type);
+        return;
+      }
       detach(
-        connect(type, { showPermissionDialog: true }, signal),
+        connect(type, authMethod, { showPermissionDialog: true }, signal),
         Reason.DomCallback,
       );
     }
@@ -807,8 +816,21 @@ export function ZeroConnectorsPage() {
           }}
           onReconnect={(type) => {
             setScopeReviewType(null);
+            const connector = allConnectors.find((connector) => {
+              return connector.type === type;
+            });
+            const authMethod = connector
+              ? getConnectorAuthCodeConnectMethod(
+                  type,
+                  connector.availableAuthMethods,
+                )
+              : null;
+            if (!authMethod) {
+              setSelected(type);
+              return;
+            }
             detach(
-              connect(type, { showPermissionDialog: true }, signal),
+              connect(type, authMethod, { showPermissionDialog: true }, signal),
               Reason.DomCallback,
             );
           }}

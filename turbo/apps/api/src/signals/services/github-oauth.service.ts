@@ -12,10 +12,12 @@ import {
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 import {
+  getConnectorAuthMethodIdForGrantKind,
   resolveConnectorAuthClientForMethod,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
+import type { ConnectorAuthMethodId } from "@vm0/connectors/connectors";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -55,6 +57,17 @@ interface GithubOAuthState {
   readonly orgId: string | null;
   readonly composeId: string | null;
   readonly sig: string | null;
+}
+
+export function getGithubConnectorAuthCodeMethod(): ConnectorAuthMethodId {
+  const authMethod = getConnectorAuthMethodIdForGrantKind(
+    "github",
+    "auth-code",
+  );
+  if (!authMethod) {
+    throw new Error("github connector has no auth-code auth method");
+  }
+  return authMethod;
 }
 
 function validateInstallationId(installationId: string): string {
@@ -370,9 +383,10 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   readonly readEnv: ConnectorEnvReader;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
+  const authMethod = getGithubConnectorAuthCodeMethod();
   const authClient = resolveConnectorAuthClientForMethod(
     "github",
-    "oauth",
+    authMethod,
     args.readEnv,
   );
   if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
@@ -393,6 +407,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   await args.db.insert(connectorOauthStates).values({
     state,
     type: "github",
+    authMethod,
     userId: args.vm0UserId,
     orgId: args.orgId,
     redirectUri,

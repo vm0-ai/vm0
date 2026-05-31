@@ -139,6 +139,18 @@ export function getConnectorConnectLaunchMode({
   return "oauth-auth-code";
 }
 
+export function getConnectorAuthCodeConnectMethod(
+  type: ConnectorType,
+  availableAuthMethods: readonly ConnectorAuthMethodId[],
+): ConnectorAuthMethodId | null {
+  for (const authMethod of availableAuthMethods) {
+    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code") {
+      return authMethod;
+    }
+  }
+  return null;
+}
+
 function buildConnectorTypeStatus(params: {
   readonly type: ConnectorType;
   readonly connector: ConnectorResponse | null;
@@ -1197,15 +1209,27 @@ const resetOAuthAuthCodeConnectorPopupSignal$ = resetSignal();
 // Connect command
 // ---------------------------------------------------------------------------
 
-function assertConnectorUsesOAuthAuthCode(type: ConnectorType): void {
-  if (!hasConnectorAuthCodeGrant(type)) {
-    throw new Error(`${type} does not use an auth-code grant`);
+function assertConnectorUsesAuthCodeMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): void {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    throw new Error(`${type} does not have ${authMethod} auth method`);
+  }
+  if (method.grant.kind !== "auth-code") {
+    throw new Error(`${type} ${authMethod} does not use an auth-code grant`);
   }
 }
 
 const openConnectorOAuthAuthCodeWindow$ = command(
-  async ({ get }, type: ConnectorType, signal: AbortSignal) => {
-    assertConnectorUsesOAuthAuthCode(type);
+  async (
+    { get },
+    type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
+    signal: AbortSignal,
+  ) => {
+    assertConnectorUsesAuthCodeMethod(type, authMethod);
 
     const standalone = isStandaloneMode();
 
@@ -1224,7 +1248,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     const startResult = await accept(
       startClient.start({
         params: { type },
-        body: {},
+        body: { authMethod },
         fetchOptions: { signal },
       }),
       [200],
@@ -1245,10 +1269,11 @@ export const connectConnectorOAuthAuthCode$ = command(
   async (
     { get, set },
     type: ConnectorType,
+    authMethod: ConnectorAuthMethodId,
     options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
-    assertConnectorUsesOAuthAuthCode(type);
+    assertConnectorUsesAuthCodeMethod(type, authMethod);
 
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
@@ -1259,6 +1284,7 @@ export const connectConnectorOAuthAuthCode$ = command(
         const authWindow = await set(
           openConnectorOAuthAuthCodeWindow$,
           type,
+          authMethod,
           signal,
         );
         signal.throwIfAborted();
@@ -1397,19 +1423,23 @@ export const connectConnectorOAuthAuthCode$ = command(
 export const connectConnectorOAuthAuthCodeAndSettle$ = command(
   async (
     { set },
-    type: ConnectorType,
-    onSuccess: () => void | Promise<void>,
-    options: PostConnectOptions,
+    args: {
+      readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+      readonly onSuccess: () => void | Promise<void>;
+      readonly options: PostConnectOptions;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
     const connected = await set(
       connectConnectorOAuthAuthCode$,
-      type,
-      options,
+      args.type,
+      args.authMethod,
+      args.options,
       signal,
     );
     if (connected) {
-      await onSuccess();
+      await args.onSuccess();
     }
   },
 );

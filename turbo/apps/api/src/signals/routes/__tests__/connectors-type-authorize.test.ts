@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
-import { describe, expect, it, beforeEach } from "vitest";
+import { eq, like } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -17,6 +18,7 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
+const AUTH_REQUEST_USER_ID_PREFIX = "user_connectors_type_authorize_";
 
 function authorizeUrl(type: string, session?: string): string {
   const url = new URL(`/api/connectors/${type}/authorize`, BASE_URL);
@@ -35,7 +37,8 @@ async function requestAuthorize(
   options: { readonly session?: string; readonly authenticated?: boolean } = {},
 ): Promise<Response> {
   if (options.authenticated) {
-    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(`${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`, orgId);
   }
   const app = createApp({ signal: context.signal });
   return await app.request(authorizeUrl(type, options.session), {
@@ -48,7 +51,7 @@ async function requestAuthorizeWithFeature(
   type: string,
   featureKey: FeatureSwitchKey,
 ): Promise<Response> {
-  const userId = `user_${randomUUID()}`;
+  const userId = `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`;
   const orgId = `org_${randomUUID()}`;
   const db = store.set(writeDb$);
   await db.insert(userFeatureSwitches).values({
@@ -91,6 +94,15 @@ describe("GET /api/connectors/:type/authorize", () => {
     mockOptionalEnv("SLACK_OAUTH_CLIENT_SECRET", "test-slack-client-secret");
     mockOptionalEnv("X_OAUTH_CLIENT_ID", "x-test-client-id");
     mockOptionalEnv("X_OAUTH_CLIENT_SECRET", "x-test-client-secret");
+  });
+
+  afterEach(async () => {
+    const db = store.set(writeDb$);
+    await db
+      .delete(connectorOauthStates)
+      .where(
+        like(connectorOauthStates.userId, `${AUTH_REQUEST_USER_ID_PREFIX}%`),
+      );
   });
 
   it("returns 400 for an unknown connector type", async () => {
@@ -148,15 +160,16 @@ describe("GET /api/connectors/:type/authorize", () => {
   });
 
   it("stores the connector session id when provided", async () => {
+    const sessionId = randomUUID();
     const response = await requestAuthorize("github", {
       authenticated: true,
-      session: "session-123",
+      session: sessionId,
     });
 
     const cookies = response.headers.getSetCookie();
     expect(
       cookies.some((cookie) => {
-        return cookie.startsWith("connector_oauth_session=session-123");
+        return cookie.startsWith(`connector_oauth_session=${sessionId}`);
       }),
     ).toBeTruthy();
   });

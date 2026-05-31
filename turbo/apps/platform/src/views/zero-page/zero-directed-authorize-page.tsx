@@ -2,16 +2,15 @@ import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   CONNECTOR_TYPES,
   connectorTypeSchema,
+  type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  isGoogleOAuthConnector,
-  hasConnectorAuthCodeGrant,
-} from "@vm0/connectors/connector-utils";
+import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnectorOAuthAuthCode$,
+  getConnectorAuthCodeConnectMethod,
   justConnectedTypes$,
   pollingOAuthAuthCodeConnectorType$,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -129,13 +128,19 @@ function useDirectedAuthorizePermissionState(
 
 function canAuthorizeConnector(
   connectorType: ConnectorType,
-  item: { readonly availableAuthMethods: readonly string[] } | undefined,
+  item:
+    | { readonly availableAuthMethods: readonly ConnectorAuthMethodId[] }
+    | undefined,
   isConnected: boolean,
 ): boolean {
   return (
     isConnected ||
-    (hasConnectorAuthCodeGrant(connectorType) &&
-      (item?.availableAuthMethods.includes("oauth") ?? false))
+    (item
+      ? getConnectorAuthCodeConnectMethod(
+          connectorType,
+          item.availableAuthMethods,
+        ) !== null
+      : false)
   );
 }
 
@@ -169,6 +174,12 @@ function DirectedAuthorizeCard() {
 
   const isLoading = catalogLoading || permissionLoading;
   const canAuthorize = canAuthorizeConnector(connectorType, item, isConnected);
+  const selectedAuthMethod = item
+    ? getConnectorAuthCodeConnectMethod(
+        connectorType,
+        item.availableAuthMethods,
+      )
+    : null;
   const showGoogleOAuthNotice =
     !isAuthorized && !isConnected && isGoogleOAuthConnector(connectorType);
 
@@ -178,14 +189,16 @@ function DirectedAuthorizeCard() {
     }
     if (isConnected) {
       detach(authorize(connectorType, agentId, signal), Reason.DomCallback);
-    } else {
+    } else if (selectedAuthMethod) {
       detach(
         (async () => {
-          await connect(connectorType, {}, signal);
+          await connect(connectorType, selectedAuthMethod, {}, signal);
           await authorize(connectorType, agentId, signal);
         })(),
         Reason.DomCallback,
       );
+    } else {
+      return;
     }
   };
 

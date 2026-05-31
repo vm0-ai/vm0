@@ -1,4 +1,5 @@
 import {
+  getConnectorAuthMethod,
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodIdForGrantKind,
   hasConnectorAuthCodeGrant,
@@ -40,6 +41,20 @@ type ResolveConnectorAuthCodeStartTypeResult =
       readonly reason: "missing_auth_code_grant";
     };
 
+type ResolveConnectorAuthCodeStartMethodResult =
+  | {
+      readonly ok: true;
+      readonly type: AuthCodeGrantConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "missing_auth_code_grant"
+        | "missing_auth_method"
+        | "wrong_grant_kind";
+    };
+
 function normalizeAuthUrlResult(result: string | AuthUrlResult): AuthUrlResult {
   return typeof result === "string" ? { url: result } : result;
 }
@@ -54,6 +69,25 @@ export function resolveConnectorAuthCodeStartType(
   if (!authMethod) {
     throw new Error(`${type} connector has no auth-code auth method`);
   }
+  return { ok: true, type, authMethod };
+}
+
+export function resolveConnectorAuthCodeStartMethod(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): ResolveConnectorAuthCodeStartMethodResult {
+  if (!hasConnectorAuthCodeGrant(type)) {
+    return { ok: false, reason: "missing_auth_code_grant" };
+  }
+
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return { ok: false, reason: "missing_auth_method" };
+  }
+  if (method.grant.kind !== "auth-code") {
+    return { ok: false, reason: "wrong_grant_kind" };
+  }
+
   return { ok: true, type, authMethod };
 }
 

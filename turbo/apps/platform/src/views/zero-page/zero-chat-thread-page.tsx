@@ -61,7 +61,7 @@ import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { hasConnectorAuthCodeGrant } from "@vm0/connectors/connector-utils";
+import { getConnectorAuthMethodIdForGrantKind } from "@vm0/connectors/connector-utils";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -721,7 +721,11 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Agent is still loading");
     return;
   }
-  if (!hasConnectorAuthCodeGrant("google-drive")) {
+  const authMethod = getConnectorAuthMethodIdForGrantKind(
+    "google-drive",
+    "auth-code",
+  );
+  if (!authMethod) {
     toast.error("Google Drive connection is not available");
     return;
   }
@@ -743,7 +747,7 @@ function startGoogleDriveConnectAndSync(params: {
       const result = await accept(
         client.start({
           params: { type: "google-drive" },
-          body: {},
+          body: { authMethod },
           fetchOptions: { signal: params.pageSignal },
         }),
         [200],
