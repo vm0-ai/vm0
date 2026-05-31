@@ -574,6 +574,19 @@ describe("validateRule", () => {
     }).toThrow("{path*} must be the last segment");
   });
 
+  it("should reject greedy params mixed with path literals", () => {
+    expect(() => {
+      return validateRule("GET /files/file-{id+}", "read", "github");
+    }).toThrow(
+      'greedy parameter {id+} cannot be combined with a literal prefix or suffix in segment "file-{id+}"',
+    );
+    expect(() => {
+      return validateRule("GET /files/file-{id*}", "read", "github");
+    }).toThrow(
+      'greedy parameter {id*} cannot be combined with a literal prefix or suffix in segment "file-{id*}"',
+    );
+  });
+
   it("should reject duplicate parameter names", () => {
     expect(() => {
       return validateRule("GET /repos/{owner}/{owner}", "p", "fw");
@@ -737,6 +750,19 @@ describe("validateBaseUrl", () => {
     }).toThrow("{sub*} must be the first host segment");
   });
 
+  it("should reject greedy host params mixed with host literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://api-{sub+}.example.com", "fw");
+    }).toThrow(
+      'greedy parameter {sub+} cannot be combined with a literal prefix or suffix in host segment "api-{sub+}"',
+    );
+    expect(() => {
+      return validateBaseUrl("https://api-{sub*}.example.com", "fw");
+    }).toThrow(
+      'greedy parameter {sub*} cannot be combined with a literal prefix or suffix in host segment "api-{sub*}"',
+    );
+  });
+
   it("should reject greedy path param in base URL", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/{path+}", "fw");
@@ -744,6 +770,15 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/{path*}", "fw");
     }).toThrow("greedy parameter {path*} is not allowed in base URL path");
+  });
+
+  it("should reject greedy path params mixed with base path literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/files/file-{id+}", "fw");
+    }).toThrow("greedy parameter {id+} is not allowed in base URL path");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/files/file-{id*}", "fw");
+    }).toThrow("greedy parameter {id*} is not allowed in base URL path");
   });
 
   it("should reject host with no static segments", () => {
