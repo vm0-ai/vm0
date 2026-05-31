@@ -617,6 +617,17 @@ describe("findMatchingPermissions", () => {
             { name: "invalid-rule", rules: ["GET /invalid-rule"] },
             { name: "non-string-rule", rules: [123] },
             { name: "non-string-rule", rules: ["GET /non-string-rule"] },
+            {
+              name: "valid-after-invalid-rule",
+              rules: [
+                "BREW /valid-after-invalid-rule",
+                "GET /valid-after-invalid-rule",
+              ],
+            },
+            {
+              name: "valid-after-non-string-rule",
+              rules: [123, "GET /valid-after-non-string-rule"],
+            },
             { name: "mixed-rules", rules: ["GET /mixed", 123] },
             { name: "valid", rules: ["GET /items/{id}"] },
           ],
@@ -661,6 +672,20 @@ describe("findMatchingPermissions", () => {
         malformedPermissionConfig,
       ),
     ).toEqual([]);
+    expect(
+      findMatchingPermissions(
+        "GET",
+        "/valid-after-invalid-rule",
+        malformedPermissionConfig,
+      ),
+    ).toEqual(["valid-after-invalid-rule"]);
+    expect(
+      findMatchingPermissions(
+        "GET",
+        "/valid-after-non-string-rule",
+        malformedPermissionConfig,
+      ),
+    ).toEqual(["valid-after-non-string-rule"]);
   });
 
   it("matches ANY method rule", () => {
