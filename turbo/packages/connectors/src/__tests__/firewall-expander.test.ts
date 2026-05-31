@@ -277,6 +277,9 @@ describe("resolveFirewallSelections", () => {
       );
     }).toThrow("must not contain userinfo");
     expect(() => {
+      return collectAndValidatePermissions(config("https://example.com\\hook"));
+    }).toThrow("must not contain backslash");
+    expect(() => {
       return collectAndValidatePermissions(
         config("https://example.com/\x00hook"),
       );
@@ -301,6 +304,11 @@ describe("resolveFirewallSelections", () => {
         config("${{ secrets.WEBHOOK_URL }} /v1"),
       );
     }).toThrow("must not contain whitespace");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}\\v1"),
+      );
+    }).toThrow("must not contain backslash");
     expect(() => {
       return collectAndValidatePermissions(
         config("${{ secrets.WEBHOOK_URL }}/\x00v1"),
