@@ -911,13 +911,13 @@ export function getConnectorEnvNamesForSecret(
 export function hasConnectorAuthCodeGrant(
   type: ConnectorType,
 ): type is AuthCodeGrantConnectorType {
-  return getConnectorAuthCodeGrantConfig(type) !== undefined;
+  return getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length > 0;
 }
 
 export function hasConnectorDeviceAuthGrant(
   type: ConnectorType,
 ): type is DeviceAuthGrantConnectorType {
-  return getConnectorDeviceAuthGrantConfig(type) !== undefined;
+  return getConnectorAuthMethodIdsForGrantKind(type, "device-auth").length > 0;
 }
 
 function hasRequiredGrantScopes(

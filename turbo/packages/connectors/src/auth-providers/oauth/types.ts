@@ -195,14 +195,14 @@ export type ConnectorAuthCodeAuthorizeArgs<
   T extends AuthCodeGrantConnectorType,
 > = OAuthAuthorizeFlowArgs &
   StaticClientIdArgs<ConnectorGrantProviderClientFor<T>> & {
-    readonly authCodeGrant?: ConnectorAuthCodeGrantConfig;
+    readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
 export type ConnectorAuthCodeExchangeArgs<
   T extends AuthCodeGrantConnectorType,
 > = OAuthExchangeFlowArgs &
   TokenCredentialArgs<ConnectorGrantProviderClientFor<T>> & {
-    readonly authCodeGrant?: ConnectorAuthCodeGrantConfig;
+    readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
 export type ConnectorAuthProviderRefreshArgs<
@@ -219,12 +219,12 @@ export type ConnectorDeviceAuthorizationStartArgs<
   T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthStartFlowArgs &
   StaticClientIdArgs<ConnectorGrantProviderClientFor<T>> & {
-    readonly deviceAuthGrant?: ConnectorDeviceAuthGrantConfig;
+    readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   };
 
 export type ConnectorDeviceAuthorizationPollArgs<
   T extends DeviceAuthGrantConnectorType,
 > = OAuthDeviceAuthPollFlowArgs &
   TokenCredentialArgs<ConnectorGrantProviderClientFor<T>> & {
-    readonly deviceAuthGrant?: ConnectorDeviceAuthGrantConfig;
+    readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   };

@@ -448,6 +448,7 @@ describe("connector auth method config", () => {
         status: "multiple",
         authMethods: ["oauth", "github-secondary"],
       });
+      expect(hasConnectorAuthCodeGrant("github")).toBe(true);
       expect(() => {
         getConnectorAuthCodeGrantConfig("github");
       }).toThrow(

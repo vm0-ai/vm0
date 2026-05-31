@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { resolveConnectorAuthClientForMethod } from "../../../../connector-utils";
+import {
+  getConnectorAuthMethodAuthCodeGrantConfig,
+  resolveConnectorAuthClientForMethod,
+} from "../../../../connector-utils";
 import { hasConnectorAuthCodeGrantProvider } from "../../../connector-auth";
 import { googleAdsProvider } from "../google-ads-provider";
 import { server } from "./test-server";
@@ -20,6 +23,10 @@ describe("connector/providers/google-ads", () => {
 
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
       const url = googleAdsProvider.grant.buildAuthUrl({
+        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
+          "google-ads",
+          "oauth",
+        ),
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -100,6 +107,10 @@ describe("connector/providers/google-ads", () => {
       server.use(tokenHandler, userInfoHandler);
 
       const result = await googleAdsProvider.grant.exchangeCode({
+        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
+          "google-ads",
+          "oauth",
+        ),
         clientId: "client-id",
         clientSecret: "client-secret",
         code: "auth-code",

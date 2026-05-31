@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { resolveConnectorAuthClientForMethod } from "../../../../connector-utils";
+import {
+  getConnectorAuthMethodAuthCodeGrantConfig,
+  resolveConnectorAuthClientForMethod,
+} from "../../../../connector-utils";
 import { hasConnectorAuthCodeGrantProvider } from "../../../connector-auth";
 import {
   buildMetaAdsAuthorizationUrl,
@@ -144,6 +147,10 @@ describe("connector/providers/meta-ads", () => {
 
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {
       const url = metaAdsProvider.grant.buildAuthUrl({
+        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
+          "meta-ads",
+          "oauth",
+        ),
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
         state: "test-state",
