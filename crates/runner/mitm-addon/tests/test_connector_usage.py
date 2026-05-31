@@ -53,6 +53,7 @@ class TestXStreamPathRouting:
             "/2/tweets/search/recent",
             "/2/users/by",
             "/2/tweets/1",
+            "",
             "/",
         ],
     )

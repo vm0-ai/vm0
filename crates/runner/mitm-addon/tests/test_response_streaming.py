@@ -5,11 +5,12 @@ import gzip
 import pytest
 from mitmproxy.test import tutils
 
+import body_utils
 import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
 
-_OVERSIZED_NDJSON_LINE_BYTES = 6 * 1024 * 1024
+_OVERSIZED_NDJSON_LINE_BYTES = body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 
 
 class TestNdjsonExtractor:
