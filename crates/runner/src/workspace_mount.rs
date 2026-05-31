@@ -72,7 +72,7 @@ fn shell_quote(value: &str) -> String {
 fn workspace_mount_command(working_dir: &str) -> String {
     let working_dir = shell_quote(working_dir);
     format!(
-        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then exit 0; fi\n  echo \"refusing to mount workspace image over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\""
+        "set -eu\nworkspace_dir={working_dir}\nworkspace_device=/dev/vdb\nensure_workspace_owner() {{\n  chown user:user -- \"$workspace_dir\"\n  chmod 755 -- \"$workspace_dir\"\n}}\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace image over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
     )
 }
 
@@ -122,6 +122,19 @@ mod tests {
         assert!(mount_cmd.contains("refusing to mount workspace image over existing mountpoint"));
         assert!(unmount_cmd.contains("mountpoint -x -- \"$workspace_device\""));
         assert!(unmount_cmd.contains("refusing to unmount non-workspace mountpoint"));
+    }
+
+    #[test]
+    fn mount_command_ensures_workspace_root_owned_by_user() {
+        let cmd = workspace_mount_command("/workspace");
+
+        assert!(cmd.contains("chown user:user -- \"$workspace_dir\""));
+        assert!(cmd.contains("chmod 755 -- \"$workspace_dir\""));
+        assert_eq!(
+            cmd.matches("ensure_workspace_owner").count(),
+            3,
+            "definition plus mounted and freshly mounted calls should be present"
+        );
     }
 
     #[test]
