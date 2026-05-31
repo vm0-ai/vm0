@@ -718,6 +718,62 @@ class TestHandleFirewallRequest:
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
 
+    @pytest.mark.parametrize(
+        ("network_error", "expected_message"),
+        [
+            (
+                urllib.error.URLError("connection refused"),
+                "connection refused",
+            ),
+            (
+                TimeoutError("timed out"),
+                "timed out",
+            ),
+            (
+                ConnectionResetError("connection reset"),
+                "connection reset",
+            ),
+        ],
+        ids=["url-error", "socket-timeout", "connection-reset"],
+    )
+    async def test_urlopen_transport_failure_returns_502(
+        self,
+        network_error: Exception,
+        expected_message: str,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {"base": "https://api.github.com", "auth": {"headers": {}}}
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        allow = _allow(api_entry)
+
+        with (
+            patch("auth.urllib.request.urlopen", side_effect=network_error),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        body = json.loads(flow.response.content)
+        assert body["error"] == "auth_failed"
+        assert expected_message in body["message"]
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
+
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
