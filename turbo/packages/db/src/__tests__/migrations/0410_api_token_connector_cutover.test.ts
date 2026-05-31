@@ -10,6 +10,9 @@ import { db, uniqueId } from "../test-db";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
+// Connectors added after the 0410 cutover never used legacy user-scoped rows.
+const POST_CUTOVER_API_TOKEN_CONNECTOR_TYPES = new Set(["tripo"]);
+
 interface ApiTokenMigrationField {
   readonly connectorType: string;
   readonly fieldName: string;
@@ -56,6 +59,9 @@ function apiTokenMigrationFieldsFromSql(): readonly ApiTokenMigrationField[] {
 function apiTokenRegistryFields(): readonly ApiTokenMigrationField[] {
   const fields: ApiTokenMigrationField[] = [];
   for (const connectorType of [...CONNECTOR_TYPE_KEYS].sort()) {
+    if (POST_CUTOVER_API_TOKEN_CONNECTOR_TYPES.has(connectorType)) {
+      continue;
+    }
     const method = getConnectorAuthMethod(connectorType, "api-token");
     if (method?.grant.kind !== "manual") {
       continue;
@@ -329,7 +335,7 @@ async function readVariableState(args: {
 }
 
 describe("migration 0410 api-token connector cutover", () => {
-  it("keeps the full migration field list in sync with the connector registry", () => {
+  it("keeps the cutover migration field list in sync with cutover-era registry fields", () => {
     expect(apiTokenMigrationFieldsFromSql()).toStrictEqual(
       apiTokenRegistryFields(),
     );
