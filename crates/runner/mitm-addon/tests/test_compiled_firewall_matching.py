@@ -1532,6 +1532,142 @@ class TestCompiledFirewallMatching:
         assert result.permissions == ()
         assert result.reason == "malformed_firewall_config"
 
+    def test_more_specific_base_malformed_policy_blocks_earlier_broad_allow(self):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad", "rules": ["ANY /{path+}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "admin",
+                "apis": [
+                    {
+                        "base": "https://api.example.com/admin",
+                        "auth": {"headers": {"Authorization": "Bearer admin"}},
+                        "permissions": [
+                            {"name": "admin", "rules": ["GET /delete"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {
+                "allow": ["broad"],
+                "deny": [],
+                "unknownPolicy": "allow",
+            },
+            "admin": {
+                "allow": "admin",
+                "deny": [],
+                "unknownPolicy": "allow",
+            },
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/admin/delete",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com/admin"
+        assert result.name == "admin"
+        assert result.path == "/delete"
+        assert result.permissions == ()
+        assert result.reason == "malformed_network_policy"
+
+    def test_parameterized_path_base_deny_blocks_earlier_root_allow(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer root"}},
+                    "permissions": [
+                        {"name": "root", "rules": ["ANY /{path+}"]},
+                    ],
+                },
+                {
+                    "base": "https://api.example.com/v1/{org}",
+                    "auth": {"headers": {"Authorization": "Bearer org"}},
+                    "permissions": [
+                        {"name": "project", "rules": ["GET /projects/{id}"]},
+                    ],
+                },
+            ],
+            name="example",
+        )
+        policies = {
+            "example": {
+                "allow": ["root"],
+                "deny": ["project"],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/v1/acme/projects/123",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.example.com/v1/{org}"
+        assert result.path == "/projects/123"
+        assert result.permissions == ("project",)
+        assert result.reason == "permission_denied"
+
+    def test_static_host_base_deny_blocks_earlier_wildcard_host_allow(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://{network}.g.alchemy.com",
+                    "auth": {"headers": {"Authorization": "Bearer wildcard"}},
+                    "permissions": [
+                        {"name": "wildcard", "rules": ["ANY /{path+}"]},
+                    ],
+                },
+                {
+                    "base": "https://api.g.alchemy.com",
+                    "auth": {"headers": {"Authorization": "Bearer static"}},
+                    "permissions": [
+                        {"name": "static", "rules": ["GET /v2/demo"]},
+                    ],
+                },
+            ],
+            name="alchemy",
+        )
+        policies = {
+            "alchemy": {
+                "allow": ["wildcard"],
+                "deny": ["static"],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.g.alchemy.com/v2/demo",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.base == "https://api.g.alchemy.com"
+        assert result.path == "/v2/demo"
+        assert result.permissions == ("static",)
+        assert result.reason == "permission_denied"
+
     def test_same_base_specific_deny_blocks_earlier_broad_allow(self):
         fws = wrap_firewalls(
             [
