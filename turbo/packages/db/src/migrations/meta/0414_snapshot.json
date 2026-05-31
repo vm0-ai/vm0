@@ -1,5 +1,5 @@
 {
-  "id": "167c75b3-26a5-4627-ad5a-6dd215679ad8",
+  "id": "c4f2d7ea-abad-4ae4-826c-b3001b2224f0",
   "prevId": "626306d3-8a89-4f38-8dff-0faff65a3407",
   "version": "7",
   "dialect": "postgresql",
@@ -3174,6 +3174,12 @@
         },
         "connector_type": {
           "name": "connector_type",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_method": {
+          "name": "auth_method",
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
