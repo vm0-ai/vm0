@@ -149,7 +149,7 @@ function getSessionStorage(): Storage | null {
   return window.sessionStorage;
 }
 
-export function acquisitionAttributionParams(
+function acquisitionAttributionParams(
   landingSearch: string,
   context: LandingAttributionContext = {},
 ): URLSearchParams {
@@ -180,7 +180,7 @@ export function acquisitionAttributionParams(
   return attribution;
 }
 
-export function storedAcquisitionAttributionParams(
+function storedAcquisitionAttributionParams(
   landingSearch: string,
   context: LandingAttributionContext = {},
   storage: Storage | null = getSessionStorage(),
