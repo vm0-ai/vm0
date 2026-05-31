@@ -1018,8 +1018,20 @@ describe("zero doctor check-connector command", () => {
         "https://eth%2Cmainnet.g.alchemy.com/v2/demo",
       ],
       [
+        "percent-encoded host braces",
+        "https://%7Beth%7D.g.alchemy.com/v2/demo",
+      ],
+      [
+        "percent-encoded authority colon",
+        "https://api.github.com%3A443/repos/owner/repo",
+      ],
+      [
         "percent-encoded authority dot",
         "https://api%2egithub.com/repos/owner/repo",
+      ],
+      [
+        "multiple trailing host dots",
+        "https://api.github.com../repos/owner/repo",
       ],
     ])("should fail for URL with %s", async (_label, url) => {
       await expect(async () => {
