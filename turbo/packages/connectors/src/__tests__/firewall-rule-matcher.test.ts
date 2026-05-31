@@ -372,6 +372,48 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
   });
 
+  it("ignores rule paths that fail firewall validation", () => {
+    const malformedPathConfig: FirewallConfig = {
+      name: "malformed-path",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "missing-slash", rules: ["GET data"] },
+            { name: "query", rules: ["GET /data?debug=1"] },
+            { name: "fragment", rules: ["GET /data#section"] },
+            { name: "backslash", rules: ["GET /data\\debug"] },
+            { name: "whitespace", rules: ["GET /space path"] },
+            { name: "control", rules: ["GET /data\x00debug"] },
+            { name: "duplicate-param", rules: ["GET /items/{id}/{id}"] },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/data", malformedPathConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/data?debug=1", malformedPathConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/data#section", malformedPathConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/data\\debug", malformedPathConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/space path", malformedPathConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/data\x00debug", malformedPathConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/items/a/b", malformedPathConfig),
+    ).toEqual([]);
+  });
+
   it("matches ANY method rule", () => {
     const anyConfig: FirewallConfig = {
       name: "any-test",

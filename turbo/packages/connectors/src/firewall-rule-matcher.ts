@@ -30,6 +30,61 @@ const VALID_RULE_METHODS = new Set([
   "OPTIONS",
   "ANY",
 ]);
+const ASCII_CONTROL_MAX = 0x20;
+const ASCII_DELETE = 0x7f;
+const UNICODE_HIGH_SURROGATE_MIN = 0xd800;
+const UNICODE_HIGH_SURROGATE_MAX = 0xdbff;
+const UNICODE_LOW_SURROGATE_MIN = 0xdc00;
+const UNICODE_LOW_SURROGATE_MAX = 0xdfff;
+
+function hasRawWhitespace(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i]!;
+    if (
+      char === " " ||
+      char === "\t" ||
+      char === "\n" ||
+      char === "\r" ||
+      char === "\f" ||
+      char === "\v"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasUnsafeUrlCodepoint(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const codeUnit = value.charCodeAt(i);
+    if (codeUnit < ASCII_CONTROL_MAX || codeUnit === ASCII_DELETE) {
+      return true;
+    }
+    if (
+      UNICODE_HIGH_SURROGATE_MIN <= codeUnit &&
+      codeUnit <= UNICODE_HIGH_SURROGATE_MAX
+    ) {
+      const nextCodeUnit = value.charCodeAt(i + 1);
+      if (
+        !(
+          UNICODE_LOW_SURROGATE_MIN <= nextCodeUnit &&
+          nextCodeUnit <= UNICODE_LOW_SURROGATE_MAX
+        )
+      ) {
+        return true;
+      }
+      i += 1;
+      continue;
+    }
+    if (
+      UNICODE_LOW_SURROGATE_MIN <= codeUnit &&
+      codeUnit <= UNICODE_LOW_SURROGATE_MAX
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Match a runtime segment against a mixed pattern's literal prefix/suffix.
@@ -74,6 +129,17 @@ function isInvalidGreedyParam(
 }
 
 function pathSpecificity(pattern: string): PathSpecificity | null {
+  if (
+    !pattern.startsWith("/") ||
+    pattern.includes("?") ||
+    pattern.includes("#") ||
+    pattern.includes("\\") ||
+    hasRawWhitespace(pattern) ||
+    hasUnsafeUrlCodepoint(pattern)
+  ) {
+    return null;
+  }
+
   let literalSegments = 0;
   let mixedParamSegments = 0;
   let plainParamSegments = 0;
@@ -81,14 +147,30 @@ function pathSpecificity(pattern: string): PathSpecificity | null {
   let starGreedySegments = 0;
   let literalChars = 0;
   const segments = splitPathSegments(pattern);
+  const paramNames = new Set<string>();
+  const lastSegmentIndex = segments.length - 1;
 
-  for (const seg of segments) {
+  for (let index = 0; index < segments.length; index += 1) {
+    const seg = segments[index]!;
     const parsed = parseSegment(seg);
     if (parsed.kind === "error") return null;
     if (parsed.kind === "literal") {
       literalSegments += 1;
       literalChars += codePointLength(parsed.value);
       continue;
+    }
+    if (paramNames.has(parsed.name)) return null;
+    paramNames.add(parsed.name);
+    if (
+      parsed.greedy !== "" &&
+      isInvalidGreedyParam(
+        index,
+        lastSegmentIndex,
+        parsed.prefix,
+        parsed.suffix,
+      )
+    ) {
+      return null;
     }
 
     literalChars +=
