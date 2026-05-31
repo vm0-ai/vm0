@@ -451,6 +451,15 @@ describe("matchFirewallBaseUrl", () => {
     ).toBeNull();
   });
 
+  it("requires runtime URLs to use the same scheme as the base URL", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "http://api.github.com/repos/owner/repo",
+        "https://api.github.com",
+      ),
+    ).toBeNull();
+  });
+
   it("does not collapse repeated trailing base slashes", () => {
     expect(
       matchFirewallBaseUrl(
@@ -482,6 +491,49 @@ describe("matchFirewallBaseUrl", () => {
   ])("rejects runtime URLs with %s", (_label, url) => {
     expect(matchFirewallBaseUrl(url, "https://api.github.com")).toBeNull();
   });
+
+  it.each([
+    [
+      "empty host label",
+      "https://.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "raw host braces",
+      "https://{eth}.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "raw host comma",
+      "https://eth,mainnet.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "percent-encoded host comma",
+      "https://eth%2Cmainnet.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "percent-encoded host braces",
+      "https://%7Beth%7D.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "percent-encoded authority colon",
+      "https://api.github.com%3A443/repos",
+      "https://api.github.com",
+    ],
+    [
+      "multiple trailing host dots",
+      "https://api.github.com../repos",
+      "https://api.github.com",
+    ],
+  ])(
+    "rejects runtime URLs with %s before host matching",
+    (_label, url, base) => {
+      expect(matchFirewallBaseUrl(url, base)).toBeNull();
+    },
+  );
 
   it("rejects malformed base URLs without string-prefix fallback", () => {
     expect(
