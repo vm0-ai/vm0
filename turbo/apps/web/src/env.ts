@@ -272,6 +272,9 @@ function initEnv() {
       NEXT_PUBLIC_STRAPI_URL: z.url().optional(),
       // App UI URL (for settings page links, Navbar, LandingPage)
       NEXT_PUBLIC_APP_URL: z.url(),
+      // Paid-onboarding origin (e.g. so.vm0.ai) allowed to receive post-auth
+      // redirects from Clerk. Set per environment; omit to keep app-only.
+      NEXT_PUBLIC_PAID_ONBOARDING_URL: z.url().optional(),
       // Analytics (Plausible)
       NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: z.url().optional(),
     },
@@ -422,6 +425,8 @@ function initEnv() {
       GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
       GITHUB_APP_WEBHOOK_SECRET: process.env.GITHUB_APP_WEBHOOK_SECRET,
       NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      NEXT_PUBLIC_PAID_ONBOARDING_URL:
+        process.env.NEXT_PUBLIC_PAID_ONBOARDING_URL,
       RESEND_API_KEY: process.env.RESEND_API_KEY,
       RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
       RESEND_FROM_DOMAIN: process.env.RESEND_FROM_DOMAIN,
