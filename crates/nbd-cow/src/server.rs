@@ -20,6 +20,10 @@ use crate::protocol::{self, Command, NbdReply, NbdRequest, REQUEST_HEADER_SIZE};
 /// with an I/O error to prevent OOM from malformed requests.
 const MAX_REQUEST_LENGTH: u32 = 32 * 1024 * 1024;
 
+/// Maximum payload buffer capacity retained by one dispatch connection.
+/// Larger legal requests use temporary buffers to avoid long-lived 32 MB buffers.
+const MAX_REUSABLE_PAYLOAD_LENGTH: usize = 1024 * 1024;
+
 /// Run the NBD dispatch loop on a Unix stream.
 ///
 /// Reads NBD requests from the socket, dispatches to the COW layer,
@@ -42,6 +46,7 @@ pub async fn dispatch(
     let (mut reader, mut writer) = stream.into_split();
 
     let mut header_buf = [0u8; REQUEST_HEADER_SIZE];
+    let mut payload_buf = Vec::with_capacity(crate::BLOCK_SIZE);
 
     loop {
         // Wait for either a request or shutdown signal
@@ -69,10 +74,10 @@ pub async fn dispatch(
 
         match request.command {
             Command::Read => {
-                handle_read(&request, &cow, &mut writer).await?;
+                handle_read(&request, &cow, &mut writer, &mut payload_buf).await?;
             }
             Command::Write => {
-                handle_write(&request, &mut reader, &cow, &mut writer).await?;
+                handle_write(&request, &mut reader, &cow, &mut writer, &mut payload_buf).await?;
             }
             Command::Flush => {
                 handle_flush(&request, &cow, &mut writer).await?;
@@ -93,15 +98,31 @@ async fn handle_read(
     request: &NbdRequest,
     cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
+    payload_buf: &mut Vec<u8>,
 ) -> Result<()> {
     if request.length > MAX_REQUEST_LENGTH {
         send_error_reply(writer, request.handle, libc::EIO as u32).await?;
         return Ok(());
     }
-    let mut data = vec![0u8; request.length as usize];
+    let len = request.length as usize;
+    if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
+        payload_buf.resize(len, 0);
+        read_and_reply(request, cow, writer, payload_buf.as_mut_slice()).await
+    } else {
+        let mut data = vec![0u8; len];
+        read_and_reply(request, cow, writer, data.as_mut_slice()).await
+    }
+}
+
+async fn read_and_reply(
+    request: &NbdRequest,
+    cow: &Arc<RwLock<CowLayer>>,
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    data: &mut [u8],
+) -> Result<()> {
     let result = {
         let cow = cow.read().await;
-        cow.read(request.offset, &mut data)
+        cow.read(request.offset, data)
     };
     if let Err(e) = result {
         tracing::warn!(
@@ -116,7 +137,7 @@ async fn handle_read(
     let reply = success_reply(request.handle);
     let reply_buf = protocol::serialize_reply(&reply);
     writer.write_all(&reply_buf).await?;
-    writer.write_all(&data).await?;
+    writer.write_all(data).await?;
     Ok(())
 }
 
@@ -125,6 +146,7 @@ async fn handle_write(
     reader: &mut tokio::net::unix::OwnedReadHalf,
     cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
+    payload_buf: &mut Vec<u8>,
 ) -> Result<()> {
     if request.length > MAX_REQUEST_LENGTH {
         // Must consume the payload to keep the protocol stream in sync
@@ -132,13 +154,28 @@ async fn handle_write(
         send_error_reply(writer, request.handle, libc::EIO as u32).await?;
         return Ok(());
     }
-    // Read the write payload from the socket
-    let mut data = vec![0u8; request.length as usize];
-    reader.read_exact(&mut data).await?;
+    let len = request.length as usize;
+    if len <= MAX_REUSABLE_PAYLOAD_LENGTH {
+        payload_buf.resize(len, 0);
+        read_and_apply_write(request, reader, cow, writer, payload_buf.as_mut_slice()).await
+    } else {
+        let mut data = vec![0u8; len];
+        read_and_apply_write(request, reader, cow, writer, data.as_mut_slice()).await
+    }
+}
+
+async fn read_and_apply_write(
+    request: &NbdRequest,
+    reader: &mut tokio::net::unix::OwnedReadHalf,
+    cow: &Arc<RwLock<CowLayer>>,
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    data: &mut [u8],
+) -> Result<()> {
+    reader.read_exact(data).await?;
 
     let failed = {
         let mut cow = cow.write().await;
-        match cow.write(request.offset, &data) {
+        match cow.write(request.offset, data) {
             Ok(needs_flush) => {
                 if needs_flush && let Err(e) = cow.flush() {
                     tracing::warn!("flush error after write: {e}");
@@ -399,6 +436,118 @@ mod tests {
             protocol::REPLY_MAGIC
         );
         u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]])
+    }
+
+    async fn send_write_and_recv_reply(
+        reader: &mut tokio::net::unix::OwnedReadHalf,
+        writer: &mut tokio::net::unix::OwnedWriteHalf,
+        req: &NbdRequest,
+        data: &[u8],
+    ) -> u32 {
+        assert_eq!(data.len(), req.length as usize);
+        writer.write_all(&serialize_request(req)).await.unwrap();
+        writer.write_all(data).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        assert_eq!(
+            u32::from_be_bytes([reply_buf[0], reply_buf[1], reply_buf[2], reply_buf[3]]),
+            protocol::REPLY_MAGIC
+        );
+        u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]])
+    }
+
+    async fn read_payload(reader: &mut tokio::net::unix::OwnedReadHalf, len: usize) -> Vec<u8> {
+        let mut data = vec![0u8; len];
+        reader.read_exact(&mut data).await.unwrap();
+        data
+    }
+
+    #[tokio::test]
+    async fn dispatch_large_then_small_requests_keep_stream_aligned() {
+        let large_len = MAX_REUSABLE_PAYLOAD_LENGTH + crate::BLOCK_SIZE;
+        let small_len = 512usize;
+        let small_offset = large_len as u64;
+        let alignment_offset = (large_len + crate::BLOCK_SIZE) as u64;
+        let mut base_data = vec![0x11; large_len + 2 * crate::BLOCK_SIZE];
+        base_data[large_len + crate::BLOCK_SIZE..].fill(0x33);
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(RwLock::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        let large_write = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: large_len as u32,
+        };
+        let large_write_data = vec![0x44; large_len];
+        let error =
+            send_write_and_recv_reply(&mut reader, &mut writer, &large_write, &large_write_data)
+                .await;
+        assert_eq!(error, 0, "large write should succeed");
+
+        let small_write = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 2,
+            offset: small_offset,
+            length: small_len as u32,
+        };
+        let small_write_data = vec![0x55; small_len];
+        let error =
+            send_write_and_recv_reply(&mut reader, &mut writer, &small_write, &small_write_data)
+                .await;
+        assert_eq!(error, 0, "small write after large write should succeed");
+
+        let large_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 3,
+            offset: 0,
+            length: large_len as u32,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &large_read).await;
+        assert_eq!(error, 0, "large read should succeed");
+        let large_read_data = read_payload(&mut reader, large_len).await;
+        assert!(large_read_data.iter().all(|&b| b == 0x44));
+
+        let small_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 4,
+            offset: small_offset,
+            length: small_len as u32,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &small_read).await;
+        assert_eq!(error, 0, "small read after large read should succeed");
+        let small_read_data = read_payload(&mut reader, small_len).await;
+        assert_eq!(small_read_data, small_write_data);
+
+        // If the previous small read emitted stale bytes from the earlier large
+        // payload, this next reply header would be misaligned.
+        let alignment_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 5,
+            offset: alignment_offset,
+            length: crate::BLOCK_SIZE as u32,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &alignment_read).await;
+        assert_eq!(error, 0, "read after small read should stay aligned");
+        let alignment_data = read_payload(&mut reader, crate::BLOCK_SIZE).await;
+        assert!(alignment_data.iter().all(|&b| b == 0x33));
+
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 6,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
     }
 
     #[tokio::test]
