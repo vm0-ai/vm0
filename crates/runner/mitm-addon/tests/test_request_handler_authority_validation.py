@@ -62,13 +62,14 @@ async def test_authority_validation_deny_response_logs_network_target(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
+    raw_url = "https://attacker.example.com:8443/repos?code=secret#frag"
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
         port=8443,
         sni="attacker.example.com",
-        path="/repos",
+        path="/repos?code=secret#frag",
         request_headers=headers(("Host", "api.github.com")),
     )
 
@@ -81,6 +82,8 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert flow.response is not None
     assert flow.response.status_code == 403
     auth_fetch.assert_not_called()
+    assert flow.metadata["original_url"] == raw_url
+    assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
 
     with mitm_ctx():
         mitm_addon.response(flow)
@@ -91,6 +94,8 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert entry["host"] == "attacker.example.com"
     assert entry["port"] == 8443
     assert entry["url"] == "https://attacker.example.com:8443/repos"
+    assert "code=secret" not in entry["url"]
+    assert "#frag" not in entry["url"]
     assert entry["status"] == 403
     assert flow.id not in mitm_addon._request_start_times
 

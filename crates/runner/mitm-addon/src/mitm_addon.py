@@ -197,6 +197,22 @@ def _set_network_log_target_from_url(flow: http.HTTPFlow, url: str) -> None:
     _set_network_log_target(flow, url=url, host=host, port=port)
 
 
+def _sanitize_url_for_log(url: str) -> str:
+    """Return a URL string safe for persistent logs.
+
+    Runtime metadata keeps the raw URL because firewall/auth and connector
+    billing can need query parameters. Persistent logs do not.
+    """
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        cut_points = [index for marker in ("?", "#") if (index := url.find(marker)) != -1]
+        if not cut_points:
+            return url
+        return url[: min(cut_points)]
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
 def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
     target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
     if target is not None:
@@ -223,7 +239,7 @@ def _http_network_log_entry(
         "host": host,
         "port": port,
         "method": flow.request.method,
-        "url": url,
+        "url": _sanitize_url_for_log(url),
         "status": status_code,
         "latency_ms": latency_ms,
         "request_size": request_size,
@@ -650,10 +666,11 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
+        safe_url = _sanitize_url_for_log(original_url)
         log_proxy_entry(
             proxy_log_path,
             "warn",
-            f"Response {flow.response.status_code}: {original_url}",
+            f"Response {flow.response.status_code}: {safe_url}",
             type="http_error",
             status=flow.response.status_code,
         )
@@ -718,7 +735,7 @@ def error(flow: http.HTTPFlow) -> None:
     log_proxy_entry(
         proxy_log_path,
         "warn",
-        f"Error: {error_msg}: {original_url}",
+        f"Error: {error_msg}: {_sanitize_url_for_log(original_url)}",
         type="connection_error",
         error=error_msg,
     )

@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 from mitmproxy import http
 from mitmproxy.test import tutils
 
@@ -92,6 +93,46 @@ class TestResponseHandler:
         assert entry["port"] == 9443
         assert entry["url"] == "https://target.example.com:9443/path"
 
+    @pytest.mark.parametrize(
+        ("raw_url", "expected_url"),
+        [
+            (
+                "https://target.example.com:9443/path?access_token=secret#fragment",
+                "https://target.example.com:9443/path",
+            ),
+            (
+                "https://[invalid.example.com/path?access_token=secret#fragment",
+                "https://[invalid.example.com/path",
+            ),
+        ],
+    )
+    def test_network_log_target_url_strips_query_and_fragment(
+        self, tmp_path, real_flow, mitm_ctx, raw_url, expected_url
+    ):
+        flow = real_flow(with_response=False, host="request.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = raw_url
+        flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+            "url": raw_url,
+            "host": "target.example.com",
+            "port": 9443,
+        }
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["host"] == "target.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == expected_url
+        assert flow.metadata["original_url"] == raw_url
+        assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
+
     def test_logs_legacy_target_when_original_url_port_is_invalid(
         self, tmp_path, real_flow, mitm_ctx
     ):
@@ -101,7 +142,7 @@ class TestResponseHandler:
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://invalid.example.com:bad/path"
+        flow.metadata["original_url"] = "https://invalid.example.com:bad/path?secret=value#frag"
         flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
 
         with mitm_ctx():
@@ -390,16 +431,17 @@ class TestResponseHandler:
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "domain:*.example.com"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata["original_url"] = "https://api.example.com/fail?api_key=secret#frag"
 
         flow.response = tutils.tresp(status_code=500, headers=http.Headers())
 
         mitm_addon.response(flow)
 
         assert proxy_log.exists()
-        content = proxy_log.read_text()
-        assert "500" in content
-        assert "api.example.com" in content
+        entry = json.loads(proxy_log.read_text().strip())
+        assert entry["message"] == "Response 500: https://api.example.com/fail"
+        assert "api_key=secret" not in entry["message"]
+        assert "#frag" not in entry["message"]
 
     def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
         # If the request handler tracked this flow's start time but the

@@ -134,9 +134,10 @@ class TestErrorHandler:
         flow = real_flow(with_response=False, host="slack.com", path="/api/chat.postMessage")
         flow.request.method = "POST"
         log_path = str(tmp_path / "network.jsonl")
+        raw_url = "https://slack.com/api/chat.postMessage?token=secret#frag"
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["original_url"] = "https://slack.com/api/chat.postMessage"
+        flow.metadata["original_url"] = raw_url
         flow.metadata["firewall_action"] = "ALLOW"
         flow.error = Error("connection reset by peer")
         mitm_addon._request_start_times[flow.id] = time.time() - 1.5
@@ -151,11 +152,13 @@ class TestErrorHandler:
         assert entry["action"] == "ALLOW"
         assert entry["host"] == "slack.com"
         assert entry["method"] == "POST"
+        assert entry["url"] == "https://slack.com/api/chat.postMessage"
         assert entry["status"] == 0
         assert entry["response_size"] == 0
         assert entry["error"] == "connection reset by peer"
         assert entry["latency_ms"] > 0
         assert_utc_millisecond_timestamp(entry["timestamp"])
+        assert flow.metadata["original_url"] == raw_url
 
     async def test_request_classified_error_logs_network_target(
         self, registry_file, real_flow, mitm_ctx, headers
@@ -236,15 +239,16 @@ class TestErrorHandler:
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
-        flow.metadata["original_url"] = "https://slack.com/api/test"
+        flow.metadata["original_url"] = "https://slack.com/api/test?api_key=secret#frag"
         flow.error = Error("connection reset by peer")
 
         mitm_addon.error(flow)
 
         assert proxy_log.exists()
-        content = proxy_log.read_text()
-        assert "connection reset by peer" in content
-        assert "slack.com" in content
+        entry = json.loads(proxy_log.read_text().strip())
+        assert entry["message"] == "Error: connection reset by peer: https://slack.com/api/test"
+        assert "api_key=secret" not in entry["message"]
+        assert "#frag" not in entry["message"]
 
     def test_error_logs_connector_usage_for_x_stream(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
