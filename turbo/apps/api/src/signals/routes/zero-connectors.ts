@@ -20,8 +20,8 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getConfiguredConnectorAuthMethods,
   getConnectorAuthMethod,
+  hasConnectorAuthCodeGrant,
 } from "@vm0/connectors/connector-utils";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
@@ -67,7 +67,6 @@ import {
   buildResolvedConnectorAuthCodeAuthUrl,
   prepareResolvedConnectorAuthCodeStart,
   resolveConnectorAuthCodeStartMethod,
-  resolveConnectorAuthCodeStartType,
 } from "./connector-auth-code-start";
 
 const CONNECTOR_SESSION_TTL_SECONDS = 15 * 60;
@@ -83,8 +82,8 @@ type ConnectorAuthorizeRoute = AppRoute & {
 const connectorSessionIdSchema = z.uuid();
 
 type ResolvedAuthCodeStartMethod =
-  | ReturnType<typeof resolveConnectorAuthCodeStartType>
-  | ReturnType<typeof resolveConnectorAuthCodeStartMethod>;
+  | ReturnType<typeof resolveConnectorAuthCodeStartMethod>
+  | { readonly ok: false; readonly reason: "missing_auth_code_grant" };
 
 const connectorReadAuth = {
   requireOrganization: true,
@@ -243,50 +242,14 @@ function connectorAuthorizeMissingOrgResponse() {
   );
 }
 
-function resolveAvailableAuthCodeStartMethod(
-  type: ConnectorType,
-  availability: {
-    readonly isAuthMethodAvailable: (
-      connectorType: ConnectorType,
-      authMethod: ConnectorAuthMethodId,
-    ) => boolean;
-  },
-) {
-  const authCodeStartType = resolveConnectorAuthCodeStartType(type);
-  if (!authCodeStartType.ok) {
-    return authCodeStartType;
-  }
-
-  for (const authMethod of getConfiguredConnectorAuthMethods(
-    authCodeStartType.type,
-  )) {
-    const resolved = resolveConnectorAuthCodeStartMethod(
-      authCodeStartType.type,
-      authMethod,
-    );
-    if (
-      resolved.ok &&
-      availability.isAuthMethodAvailable(resolved.type, resolved.authMethod)
-    ) {
-      return resolved;
-    }
-  }
-
-  return authCodeStartType;
-}
-
 function resolveRequestedAuthCodeStartMethod(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): ResolvedAuthCodeStartMethod {
-  const authCodeStartType = resolveConnectorAuthCodeStartType(type);
-  if (!authCodeStartType.ok) {
-    return authCodeStartType;
+  if (!hasConnectorAuthCodeGrant(type)) {
+    return { ok: false, reason: "missing_auth_code_grant" };
   }
-  return resolveConnectorAuthCodeStartMethod(
-    authCodeStartType.type,
-    authMethod,
-  );
+  return resolveConnectorAuthCodeStartMethod(type, authMethod);
 }
 
 async function resolveSessionAuthCodeStartMethod(args: {
@@ -502,6 +465,14 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
     }
     const type = typeResult.data;
 
+    const sessionResult = query.session
+      ? connectorSessionIdSchema.safeParse(query.session)
+      : undefined;
+    if (!sessionResult?.success) {
+      return jsonResponse({ error: "Invalid connector session" }, 400);
+    }
+    const sessionId = sessionResult.data;
+
     const auth = await set(
       requiredAuthContext$,
       { requireOrganization: true },
@@ -525,27 +496,17 @@ export function createAuthorizeConnectorInner(route: ConnectorAuthorizeRoute) {
       return connectorAuthorizeMissingOrgResponse();
     }
 
-    const sessionResult = query.session
-      ? connectorSessionIdSchema.safeParse(query.session)
-      : undefined;
-    if (sessionResult && !sessionResult.success) {
-      return jsonResponse({ error: "Invalid connector session" }, 400);
-    }
-    const sessionId = sessionResult?.data;
-
     const availability = await get(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
     const writeDb = set(writeDb$);
-    const authCodeStartType = sessionId
-      ? await resolveSessionAuthCodeStartMethod({
-          writeDb,
-          sessionId,
-          type,
-          userId: auth.userId,
-        })
-      : resolveAvailableAuthCodeStartMethod(type, availability);
+    const authCodeStartType = await resolveSessionAuthCodeStartMethod({
+      writeDb,
+      sessionId,
+      type,
+      userId: auth.userId,
+    });
     signal.throwIfAborted();
     if (!authCodeStartType.ok) {
       return connectorAuthorizeAuthCodeStartErrorResponse(

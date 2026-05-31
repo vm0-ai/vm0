@@ -139,26 +139,35 @@ async function requestAuthorize(
   options: {
     readonly session?: string;
     readonly authenticated?: boolean;
+    readonly withSession?: boolean;
+    readonly authMethod?: ConnectorAuthMethodId;
     readonly headers?: HeadersInit;
     readonly origin?: string;
   } = {},
 ): Promise<Response> {
+  const userId = `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`;
   if (options.authenticated) {
     const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(`${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`, orgId);
+    mocks.clerk.session(userId, orgId);
   }
+  const session =
+    options.session ??
+    (options.authenticated && options.withSession !== false
+      ? await createPendingConnectorSession({
+          userId,
+          type,
+          authMethod: options.authMethod,
+        })
+      : undefined);
   const headers = new Headers(options.headers);
   if (options.authenticated) {
     headers.set("cookie", "__session=opaque");
   }
   const app = createApp({ signal: context.signal });
-  return await app.request(
-    authorizeUrl(type, options.session, options.origin),
-    {
-      method: "GET",
-      headers,
-    },
-  );
+  return await app.request(authorizeUrl(type, session, options.origin), {
+    method: "GET",
+    headers,
+  });
 }
 
 async function createPendingConnectorSession(args: {
@@ -255,9 +264,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
     await enableConnectorFeature(userId, orgId, featureKey);
+    const sessionId = await createPendingConnectorSession({ userId, type });
     mocks.clerk.session(userId, orgId);
     const app = createApp({ signal: context.signal });
-    return await app.request(authorizeUrl(type), {
+    return await app.request(authorizeUrl(type, sessionId), {
       method: "GET",
       headers: sessionHeaders(),
     });
@@ -273,7 +283,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
   });
 
   it("redirects unauthenticated users to sign-in", async () => {
-    const response = await requestAuthorize("github");
+    const sessionId = await createPendingConnectorSession({
+      userId: `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`,
+    });
+    const response = await requestAuthorize("github", { session: sessionId });
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
@@ -281,12 +294,16 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     const url = new URL(location!);
     expect(url.pathname).toBe("/sign-in");
     expect(url.searchParams.get("redirect_url")).toBe(
-      authorizeUrl("github", undefined, WEB_ORIGIN),
+      authorizeUrl("github", sessionId, WEB_ORIGIN),
     );
   });
 
   it("redirects unauthenticated users to sign-in on the web rewrite origin", async () => {
+    const sessionId = await createPendingConnectorSession({
+      userId: `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`,
+    });
     const response = await requestAuthorize("github", {
+      session: sessionId,
       origin: API_ORIGIN,
       headers: {
         "x-vm0-web-origin": WEB_ORIGIN,
@@ -299,7 +316,7 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     const url = new URL(location!);
     expect(`${url.origin}${url.pathname}`).toBe(`${WEB_ORIGIN}/sign-in`);
     expect(url.searchParams.get("redirect_url")).toBe(
-      `${WEB_ORIGIN}/api/zero/connectors/github/authorize`,
+      `${WEB_ORIGIN}/api/zero/connectors/github/authorize?session=${sessionId}`,
     );
   });
 
@@ -463,10 +480,14 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       orgId,
       FeatureSwitchKey.TestOauthConnector,
     );
+    const sessionId = await createPendingConnectorSession({
+      userId,
+      type: "test-oauth",
+    });
     mocks.clerk.session(userId, orgId);
 
     const app = createApp({ signal: context.signal });
-    const response = await app.request(authorizeUrl("test-oauth"), {
+    const response = await app.request(authorizeUrl("test-oauth", sessionId), {
       method: "GET",
       headers: sessionHeaders(),
     });
@@ -490,15 +511,16 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     ).toBeTruthy();
   });
 
-  it("does not set a session cookie when the query parameter is absent", async () => {
-    const response = await requestAuthorize("github", { authenticated: true });
+  it("rejects authorization without a pending connector session", async () => {
+    const response = await requestAuthorize("github", {
+      authenticated: true,
+      withSession: false,
+    });
 
-    const cookies = response.headers.getSetCookie();
-    expect(
-      cookies.some((cookie) => {
-        return cookie.startsWith("connector_oauth_session=");
-      }),
-    ).toBeFalsy();
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toStrictEqual({
+      error: "Invalid connector session",
+    });
   });
 
   it("uses Slack user_scope rather than scope", async () => {
@@ -658,9 +680,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       .returning({ id: connectors.id });
     expect(connector).toBeDefined();
 
+    const sessionId = await createPendingConnectorSession({ userId });
     mocks.clerk.session(userId, orgId);
     const app = createApp({ signal: context.signal });
-    const response = await app.request(authorizeUrl("github"), {
+    const response = await app.request(authorizeUrl("github", sessionId), {
       method: "GET",
       headers: sessionHeaders(),
     });
@@ -689,9 +712,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       .returning({ id: connectors.id });
     expect(connector).toBeDefined();
 
+    const sessionId = await createPendingConnectorSession({ userId });
     mocks.clerk.session(userId, orgId);
     const app = createApp({ signal: context.signal });
-    const response = await app.request(authorizeUrl("github"), {
+    const response = await app.request(authorizeUrl("github", sessionId), {
       method: "GET",
       headers: sessionHeaders(),
     });
@@ -736,9 +760,10 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       ),
     );
 
+    const sessionId = await createPendingConnectorSession({ userId });
     mocks.clerk.session(userId, orgId);
     const app = createApp({ signal: context.signal });
-    const response = await app.request(authorizeUrl("github"), {
+    const response = await app.request(authorizeUrl("github", sessionId), {
       method: "GET",
       headers: sessionHeaders(),
     });
@@ -776,9 +801,13 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
       }),
     );
 
+    const sessionId = await createPendingConnectorSession({
+      userId,
+      type: "notion",
+    });
     mocks.clerk.session(userId, orgId);
     const app = createApp({ signal: context.signal });
-    const response = await app.request(authorizeUrl("notion"), {
+    const response = await app.request(authorizeUrl("notion", sessionId), {
       method: "GET",
       headers: sessionHeaders(),
     });
