@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
+use serde::{Deserialize, Serialize};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
@@ -24,7 +25,7 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 /// Used to skip re-downloading unchanged storages on VM reuse.
 ///
 /// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct StorageFingerprints {
     /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
     pub storages: HashMap<String, (String, String)>,
@@ -167,6 +168,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) budget_lease: BudgetLease,
     pub(crate) source_ip: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
+    pub(crate) workspace_drive_available: bool,
 }
 
 /// Active-owned sandbox after `Sandbox::park()` succeeds, before idle-pool
@@ -190,6 +192,9 @@ pub struct ParkedIdleCandidate {
     /// Version fingerprints of storages downloaded in the previous turn.
     /// Used to skip re-downloading unchanged entries on reuse.
     storage_fingerprints: StorageFingerprints,
+    /// Whether this sandbox was created with the optional workspace block
+    /// device, so future same-session reuse can safely mount it.
+    workspace_drive_available: bool,
     /// Local terminal timestamp for this parked session.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
@@ -247,6 +252,7 @@ impl IdleParkRequest {
             budget_lease,
             source_ip,
             storage_fingerprints,
+            workspace_drive_available,
         } = self.parts;
 
         match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
@@ -260,6 +266,7 @@ impl IdleParkRequest {
                 budget_lease,
                 source_ip,
                 storage_fingerprints,
+                workspace_drive_available,
                 last_completed_at: None,
             }),
             Ok(Err(e)) => Err(IdleParkFailure {
@@ -312,12 +319,22 @@ impl ParkedIdleCandidate {
             budget_lease: parts.budget_lease,
             source_ip: parts.source_ip,
             storage_fingerprints: parts.storage_fingerprints,
+            workspace_drive_available: true,
             last_completed_at: None,
         }
     }
 
     fn session_id(&self) -> &str {
         &self.session_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_workspace_drive_available(
+        mut self,
+        workspace_drive_available: bool,
+    ) -> Self {
+        self.workspace_drive_available = workspace_drive_available;
+        self
     }
 
     #[cfg(test)]
@@ -341,6 +358,7 @@ impl ParkedIdleCandidate {
             budget_lease,
             source_ip,
             storage_fingerprints,
+            workspace_drive_available,
             last_completed_at,
         } = self;
 
@@ -356,6 +374,7 @@ impl ParkedIdleCandidate {
             parked_at,
             idle_timeout,
             storage_fingerprints,
+            workspace_drive_available,
             last_completed_at,
         }
     }
@@ -407,6 +426,8 @@ pub struct IdleEntry {
     /// Version fingerprints of storages downloaded in the previous turn.
     /// Used to skip re-downloading unchanged entries on reuse.
     storage_fingerprints: StorageFingerprints,
+    /// Whether this sandbox has the optional workspace block device attached.
+    workspace_drive_available: bool,
     last_completed_at: Option<String>,
 }
 
@@ -441,12 +462,14 @@ pub struct ReusableIdleSandbox {
     sandbox_id: SandboxId,
     source_ip: String,
     storage_fingerprints: StorageFingerprints,
+    workspace_drive_available: bool,
 }
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
+    pub workspace_drive_available: bool,
 }
 
 impl ReusableIdleSandbox {
@@ -460,12 +483,14 @@ impl ReusableIdleSandbox {
             sandbox_id: _,
             source_ip,
             storage_fingerprints,
+            workspace_drive_available,
         } = self;
 
         ReusableIdleSandboxParts {
             sandbox,
             source_ip,
             storage_fingerprints,
+            workspace_drive_available,
         }
     }
 }
@@ -623,6 +648,7 @@ impl IdleEntry {
             sandbox_id,
             source_ip,
             storage_fingerprints,
+            workspace_drive_available,
             budget_lease,
             ..
         } = self;
@@ -633,6 +659,7 @@ impl IdleEntry {
                 sandbox_id,
                 source_ip,
                 storage_fingerprints,
+                workspace_drive_available,
             },
             budget_lease,
         )
@@ -957,6 +984,7 @@ mod tests {
                     memory_mb: 4096,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .expect("create sandbox");
@@ -980,6 +1008,7 @@ mod tests {
                     memory_mb: budget_lease.memory_mb(),
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .expect("create sandbox");
@@ -993,6 +1022,7 @@ mod tests {
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
+            workspace_drive_available: true,
         })
     }
 
@@ -1060,6 +1090,7 @@ mod tests {
                     memory_mb: budget_lease.memory_mb(),
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .expect("create sandbox");
@@ -1084,6 +1115,7 @@ mod tests {
             budget_lease,
             source_ip: source_ip.into(),
             storage_fingerprints,
+            workspace_drive_available: true,
         });
 
         let candidate = match request.park_for_idle().await {
@@ -1119,6 +1151,7 @@ mod tests {
             reused_parts.storage_fingerprints.artifacts,
             expected_storage_fingerprints.artifacts
         );
+        assert!(reused_parts.workspace_drive_available);
         assert_eq!(budget_lease.vcpu(), 2);
         assert_eq!(budget_lease.memory_mb(), 2048);
     }

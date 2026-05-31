@@ -42,6 +42,36 @@ pub(super) fn cleanup_remove_file_result(
     }
 }
 
+pub(super) fn cleanup_workspace_image_file_sync(path: &Path, warning: &'static str) -> bool {
+    let removed = match std::fs::remove_file(path) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %path.display(),
+                "{warning}"
+            );
+            return false;
+        }
+    };
+    if let Some(parent) = path.parent() {
+        match std::fs::File::open(parent).and_then(|dir| dir.sync_all()) {
+            Ok(()) => {}
+            Err(e) if !removed && e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    path = %parent.display(),
+                    "failed to sync snapshot work dir after workspace image cleanup"
+                );
+                return false;
+            }
+        }
+    }
+    true
+}
+
 pub(super) fn cleanup_remove_dir_result(
     result: std::io::Result<()>,
     dir: &Path,

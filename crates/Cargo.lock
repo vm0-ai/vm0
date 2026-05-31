@@ -2570,6 +2570,7 @@ dependencies = [
  "guest-write-file",
  "hex",
  "httpmock",
+ "libc",
  "nbd-cow",
  "nix",
  "reqwest",

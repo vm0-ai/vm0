@@ -59,7 +59,9 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
+mod active_sessions;
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
@@ -74,7 +76,10 @@ mod sandbox_finalization;
 mod signals;
 
 use factory_lifecycle::{shutdown_factories, start_factories};
-use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
+use heartbeat::{
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatRunnerInfo, collect_heartbeat_state,
+    send_heartbeat,
+};
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
     SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
@@ -319,6 +324,8 @@ pub async fn run_start(
 
     // Start proxy before factory so proxy_port is available for netns pool.
     let paths = RunnerPaths::new(runner_config.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(paths.clone(), &home, &runner_config.group);
+    let active_sessions = active_sessions::new_active_sessions();
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
@@ -482,6 +489,7 @@ pub async fn run_start(
         network_log_manager,
         network_log_drain,
         home: home.clone(),
+        workspace_cache: workspace_cache.clone(),
     });
 
     let config = RunConfig {
@@ -502,6 +510,8 @@ pub async fn run_start(
         cancel_tokens,
         cancel,
         exec_config,
+        workspace_cache,
+        active_sessions,
         firecracker: runner_config.firecracker,
         base_dir: runner_config.base_dir,
         min_vcpu,
@@ -540,6 +550,8 @@ struct RunConfig {
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     cancel: CancellationToken,
     exec_config: Arc<ExecutorConfig>,
+    workspace_cache: SessionWorkspaceCache,
+    active_sessions: active_sessions::ActiveSessions,
     firecracker: config::FirecrackerConfig,
     base_dir: std::path::PathBuf,
     min_vcpu: u32,
@@ -856,6 +868,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         cancel_tokens,
         cancel,
         exec_config,
+        workspace_cache,
+        active_sessions,
         firecracker,
         base_dir,
         min_vcpu,
@@ -870,6 +884,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         #[cfg(test)]
         test_observer,
     } = config;
+
+    match workspace_cache.gc(false).await {
+        Ok(freed) if freed > 0 => {
+            info!(
+                freed_bytes = freed,
+                "workspace image cache startup GC removed stale entries"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            warn!(error = %e, "workspace image cache startup GC failed");
+        }
+    }
 
     let mut factories =
         start_factories(&profiles, &firecracker, &base_dir, &home, runtime.as_mut()).await?;
@@ -960,7 +987,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let hb_ctx = HeartbeatContext::new(
-        &idle_pool, &runner_id, &name, &group, &profiles, &budget, &*provider,
+        &idle_pool,
+        &workspace_cache,
+        &active_sessions,
+        HeartbeatRunnerInfo::new(&runner_id, &name, &group, &profiles, &budget),
+        &*provider,
     );
 
     // Pin the discover future so it survives cancellation by other select!
@@ -981,6 +1012,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
         device_rate_limits: device_rate_limits.clone(),
+        workspace_cache: workspace_cache.clone(),
+        active_sessions: active_sessions.clone(),
         #[cfg(test)]
         outer_job_panic,
         #[cfg(test)]
@@ -1211,14 +1244,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // to this runner immediately, without waiting for TTL expiry.
     let phase = teardown.phase_start("final_heartbeat");
     {
+        let workspace_held_session_states = workspace_cache.held_session_states().await;
+        let active_session_ids = active_sessions::active_session_ids(&active_sessions);
         let pool = idle_pool.lock().await;
         let state = collect_heartbeat_state(
-            &runner_id,
-            &name,
-            &group,
-            &profiles,
-            &budget,
+            &hb_ctx.runner,
             &pool,
+            workspace_held_session_states,
+            &active_session_ids,
             RunnerMode::Stopping,
         );
         drop(pool);

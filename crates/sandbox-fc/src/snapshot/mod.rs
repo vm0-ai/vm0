@@ -37,7 +37,7 @@ use self::runtime::run_snapshot_workflow;
 ///  3. Create network namespace
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
-///  6. Configure VM via API (6 parallel PUT calls)
+///  6. Configure VM via API, including rootfs and workspace drives
 ///  7. Bind vsock listener
 ///  8. Start instance
 ///  9. Wait for guest vsock connection

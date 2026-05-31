@@ -5,6 +5,7 @@ mod invariant;
 mod leak_cleaner;
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
@@ -13,6 +14,7 @@ use sandbox::{
 };
 use tracing::{info, warn};
 
+use crate::command;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
@@ -260,6 +262,14 @@ impl SandboxFactory for FirecrackerFactory {
 
                 // Recompute cow_file path after rename (the slot path no longer exists).
                 let cow_file = target_workspace.join("cow.img");
+                let sandbox_paths = crate::paths::SandboxPaths::new(target_workspace.clone());
+                if let Some(workspace_drive) = config.workspace_drive.as_ref() {
+                    prepare_workspace_drive_image(
+                        &sandbox_paths.workspace_image(),
+                        workspace_drive,
+                    )
+                    .await?;
+                }
 
                 // Clean stale sock dir and create vsock directory.
                 let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
@@ -404,6 +414,76 @@ fn convert_device_rate_limits(
 
 fn clean_stale_workspace_dir(id: &str, target_workspace: &Path) -> sandbox::Result<()> {
     clean_stale_create_dir(id, "target workspace", target_workspace)
+}
+
+pub(crate) async fn prepare_workspace_drive_image(
+    path: &Path,
+    config: &sandbox::WorkspaceDriveConfig,
+) -> sandbox::Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("create workspace image dir: {e}"),
+            })?;
+    }
+
+    if let Some(source) = config.source_image.as_ref() {
+        let source_str = source
+            .to_str()
+            .ok_or_else(|| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!(
+                    "workspace source image path is not UTF-8: {}",
+                    source.display()
+                ),
+            })?;
+        let path_str = path.to_str().ok_or_else(|| SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!("workspace image path is not UTF-8: {}", path.display()),
+        })?;
+        command::exec_with_timeout(
+            "cp",
+            &["--sparse=always", "--", source_str, path_str],
+            Duration::from_secs(300),
+        )
+        .await
+        .map_err(|e| SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!("copy workspace image from {}: {e}", source.display()),
+        })?;
+        return Ok(());
+    }
+
+    let file = tokio::fs::File::create(path)
+        .await
+        .map_err(|e| SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!("create workspace image {}: {e}", path.display()),
+        })?;
+    file.set_len(config.size_bytes)
+        .await
+        .map_err(|e| SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!("set workspace image size {}: {e}", path.display()),
+        })?;
+    drop(file);
+    let path_str = path.to_str().ok_or_else(|| SandboxError::Initialization {
+        phase: SandboxInitializationPhase::SandboxAllocation,
+        message: format!("workspace image path is not UTF-8: {}", path.display()),
+    })?;
+    command::exec_with_timeout(
+        "mkfs.ext4",
+        &["-F", "-q", path_str],
+        Duration::from_secs(60),
+    )
+    .await
+    .map_err(|e| SandboxError::Initialization {
+        phase: SandboxInitializationPhase::SandboxAllocation,
+        message: format!("format workspace image: {e}"),
+    })?;
+    Ok(())
 }
 
 fn clean_stale_sock_dir(id: &str, sock_dir: &Path) -> sandbox::Result<()> {
@@ -580,7 +660,23 @@ mod tests {
         netns_ownership: NetnsPoolOwnership,
         leak_cleaner: LeakCleaner,
     ) -> FirecrackerFactory {
-        let factory_paths = FactoryPaths::new(PathBuf::from("/tmp/factory-test"));
+        test_factory_with_resources_at(
+            PathBuf::from("/tmp/factory-test"),
+            PathBuf::from("/tmp/factory-test-base"),
+            netns_pool,
+            netns_ownership,
+            leak_cleaner,
+        )
+    }
+
+    fn test_factory_with_resources_at(
+        factory_base_dir: PathBuf,
+        config_base_dir: PathBuf,
+        netns_pool: NetnsPoolHandle,
+        netns_ownership: NetnsPoolOwnership,
+        leak_cleaner: LeakCleaner,
+    ) -> FirecrackerFactory {
+        let factory_paths = FactoryPaths::new(factory_base_dir);
         let cow_pool = crate::cow_pool::CowPoolHandle::new(crate::cow_pool::CowPoolConfig {
             workspaces_dir: factory_paths.workspaces(),
             base_size: 0,
@@ -589,7 +685,7 @@ mod tests {
         let cleanup_group = FactoryCleanupGroup::new();
         cleanup_group.start_accepting();
         FirecrackerFactory {
-            config: test_config(PathBuf::from("/tmp/factory-test-base")),
+            config: test_config(config_base_dir),
             factory_paths,
             runtime_paths: RuntimePaths::new(),
             device_pool: nbd_cow::pool::DevicePoolHandle::new(
@@ -703,6 +799,7 @@ mod tests {
                 memory_mb: 512,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         };
 
         let err = match factory.create(config).await {
@@ -711,6 +808,53 @@ mod tests {
         };
 
         assert_factory_invalid_state(err, "shutdown");
+    }
+
+    #[tokio::test]
+    async fn create_workspace_drive_prepare_failure_rolls_back_target_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut factory = test_factory_with_resources_at(
+            dir.path().join("factory"),
+            dir.path().join("factory-config"),
+            NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test()),
+            NetnsPoolOwnership::Shared,
+            test_leak_cleaner(),
+        );
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let target_workspace = factory.factory_paths.workspace(&sandbox_id.to_string());
+
+        let err = match factory
+            .create(sandbox::SandboxConfig {
+                id: sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 1,
+                    memory_mb: 512,
+                },
+                device_rate_limits: None,
+                workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+                    size_bytes: 1024 * 1024,
+                    source_image: Some(dir.path().join("missing-source.ext4")),
+                }),
+            })
+            .await
+        {
+            Ok(_) => panic!("create should fail when workspace source image is missing"),
+            Err(err) => err,
+        };
+
+        match err {
+            SandboxError::Initialization { phase, message } => {
+                assert_eq!(phase, SandboxInitializationPhase::SandboxAllocation);
+                assert!(message.contains("copy workspace image from"));
+            }
+            other => panic!("expected workspace image initialization error, got {other:?}"),
+        }
+        assert!(
+            !tokio::fs::try_exists(&target_workspace).await.unwrap(),
+            "failed workspace-drive preparation should roll back the target workspace"
+        );
+
+        factory.shutdown().await;
     }
 
     #[tokio::test]
@@ -736,6 +880,7 @@ mod tests {
                 memory_mb: 512,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         };
         let err = match factory.create(config).await {
             Ok(_) => panic!("create should fail after shutdown"),

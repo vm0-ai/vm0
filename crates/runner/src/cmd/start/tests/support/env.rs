@@ -163,6 +163,12 @@ fn build_mock_run_config_with_runtime(
     let (mitm, mitm_crash_rx) = proxy::MitmProxy::noop();
     let min_vcpu = profiles_min_vcpu(&profiles);
     let min_memory_mb = profiles_min_memory(&profiles);
+    let workspace_cache = crate::workspace_image_cache::SessionWorkspaceCache::shared(
+        crate::paths::RunnerPaths::new(temp_dir.path().join("runner")),
+        &home,
+        "test-group",
+    );
+    let active_sessions = super::super::super::active_sessions::new_active_sessions();
     let idle_pool: SharedIdlePool =
         Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
             IdlePoolConfig {
@@ -199,6 +205,8 @@ fn build_mock_run_config_with_runtime(
         provider,
         cancel_tokens: Arc::clone(&cancel_tokens),
         cancel: cancel.clone(),
+        workspace_cache: workspace_cache.clone(),
+        active_sessions,
         exec_config: Arc::new(executor::ExecutorConfig {
             api_url: api_url.to_string(),
             registry,
@@ -207,6 +215,7 @@ fn build_mock_run_config_with_runtime(
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             home,
+            workspace_cache,
         }),
         firecracker: config::FirecrackerConfig {
             binary: PathBuf::new(),

@@ -1853,6 +1853,34 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn gc_orphaned_locks_removes_free_workspace_image_cache_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let cache_key = "a".repeat(64);
+        let lock_path = home.workspace_image_cache_lock(&cache_key);
+        drop(lock::acquire(lock_path.clone()).await.unwrap());
+
+        let removed = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(!lock_path.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_locks_keeps_held_workspace_image_cache_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let cache_key = "a".repeat(64);
+        let lock_path = home.workspace_image_cache_lock(&cache_key);
+        let _held_lock = lock::acquire(lock_path.clone()).await.unwrap();
+
+        let removed = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(lock_path.exists());
+    }
+
     fn test_home(root: &Path) -> HomePaths {
         HomePaths::with_root(root.to_path_buf())
     }

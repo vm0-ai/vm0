@@ -48,6 +48,30 @@ pub(crate) fn short_digest(s: &str) -> String {
     hex::encode(prefix)
 }
 
+/// Versioned digest key for host-shared session workspace image baselines.
+///
+/// The raw CLI session id and guest working directory are untrusted strings
+/// and must not be embedded directly in host paths.
+#[cfg(test)]
+pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
+    scoped_session_workspace_cache_key("", session_id, working_dir)
+}
+
+pub(crate) fn scoped_session_workspace_cache_key(
+    cache_scope: &str,
+    session_id: &str,
+    working_dir: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"session-workspace-cache:v1\0");
+    hasher.update(cache_scope.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(session_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(working_dir.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 /// Update a directory's mtime to now, so `runner gc` treats it as recently used.
 pub fn touch_mtime(dir: &Path) {
     let Ok(f) = std::fs::File::open(dir) else {
@@ -69,6 +93,7 @@ pub mod guest {
 }
 
 /// Runner-level paths derived from the base directory.
+#[derive(Clone)]
 pub struct RunnerPaths {
     base_dir: PathBuf,
 }
@@ -76,6 +101,11 @@ pub struct RunnerPaths {
 impl RunnerPaths {
     pub fn new(base_dir: PathBuf) -> Self {
         Self { base_dir }
+    }
+
+    #[cfg(test)]
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
     }
 
     pub fn status(&self) -> PathBuf {
@@ -92,6 +122,46 @@ impl RunnerPaths {
 
     pub fn proxy_registry_lock(&self) -> PathBuf {
         self.base_dir.join("proxy-registry.json.lock")
+    }
+
+    pub fn workspaces_dir(&self) -> PathBuf {
+        self.base_dir.join("workspaces")
+    }
+
+    pub fn workspace_dir(&self, sandbox_id: &sandbox::SandboxId) -> PathBuf {
+        self.workspaces_dir().join(sandbox_id.to_string())
+    }
+
+    pub fn active_workspace_image(&self, sandbox_id: &sandbox::SandboxId) -> PathBuf {
+        self.workspace_dir(sandbox_id).join("workspace.ext4")
+    }
+
+    #[cfg(test)]
+    pub fn workspace_image_cache_dir(&self) -> PathBuf {
+        self.base_dir.join("workspace-image-cache")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_dir().join(cache_key)
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_metadata(&self, cache_key: &str) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join("metadata.json")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_current_image(&self, cache_key: &str) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join("current.ext4")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join(format!("current.ext4.tmp.{run_id}"))
     }
 }
 
@@ -150,6 +220,10 @@ impl HomePaths {
         self.root.join("runners")
     }
 
+    pub fn workspace_image_cache_dir(&self) -> PathBuf {
+        self.root.join("workspace-image-cache")
+    }
+
     pub fn groups_dir(&self) -> PathBuf {
         self.root.join("groups")
     }
@@ -195,6 +269,11 @@ impl HomePaths {
         self.locks_dir().join(format!("snapshot-{hash}.lock"))
     }
 
+    #[cfg(test)]
+    pub fn workspace_image_cache_lock(&self, cache_key: &str) -> PathBuf {
+        workspace_image_cache_lock_path(&self.locks_dir(), cache_key)
+    }
+
     /// Root directory for the runner-side storage archive cache.
     ///
     /// Layout: `<storages_dir>/<hash(vasStorageName)>/<hash(vasVersionId)>/archive.tar.gz`.
@@ -233,6 +312,10 @@ impl HomePaths {
         self.locks_dir()
             .join(format!("storage-{name_hash}-{version_hash}.lock"))
     }
+}
+
+pub(crate) fn workspace_image_cache_lock_path(lock_dir: &Path, cache_key: &str) -> PathBuf {
+    lock_dir.join(format!("workspace-image-cache-{cache_key}.lock"))
 }
 
 /// Paths for a rootfs build output, keyed by rootfs hash.
@@ -527,6 +610,62 @@ mod tests {
             rp.proxy_registry_lock(),
             PathBuf::from("/data/r1/proxy-registry.json.lock")
         );
+        let sandbox_id: sandbox::SandboxId =
+            "550e8400-e29b-41d4-a716-446655440000".parse().unwrap();
+        assert_eq!(
+            rp.active_workspace_image(&sandbox_id),
+            PathBuf::from(
+                "/data/r1/workspaces/550e8400-e29b-41d4-a716-446655440000/workspace.ext4"
+            )
+        );
+    }
+
+    #[test]
+    fn home_paths_include_shared_workspace_image_cache() {
+        let home = HomePaths::with_root(PathBuf::from("/var/lib/vm0-runner"));
+
+        assert_eq!(
+            home.workspace_image_cache_dir(),
+            PathBuf::from("/var/lib/vm0-runner/workspace-image-cache")
+        );
+    }
+
+    #[test]
+    fn workspace_image_cache_lock_uses_global_locks_dir() {
+        let home = HomePaths::with_root(PathBuf::from("/var/lib/vm0-runner"));
+        let cache_key = "a".repeat(64);
+
+        assert_eq!(
+            home.workspace_image_cache_lock(&cache_key),
+            PathBuf::from(format!(
+                "/var/lib/vm0-runner/locks/workspace-image-cache-{cache_key}.lock"
+            ))
+        );
+    }
+
+    #[test]
+    fn session_workspace_cache_key_is_stable_and_path_safe() {
+        let key = session_workspace_cache_key("session/../raw", "/home/user/workspace");
+        assert_eq!(key.len(), 64);
+        assert!(key.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(
+            key,
+            session_workspace_cache_key("session/../raw", "/home/user/workspace")
+        );
+        assert_ne!(
+            key,
+            session_workspace_cache_key("session/../raw", "/home/user/other")
+        );
+        assert_ne!(
+            key,
+            scoped_session_workspace_cache_key(
+                "vm0/other",
+                "session/../raw",
+                "/home/user/workspace"
+            )
+        );
+        assert_ne!(key, "session/../raw");
+        assert!(!key.contains('/'));
     }
 
     #[test]

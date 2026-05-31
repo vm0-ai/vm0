@@ -16,6 +16,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+use super::active_sessions::{ActiveSessionGuard, ActiveSessions};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
@@ -35,17 +36,20 @@ use crate::resource_budget::BudgetLease;
 use crate::status::StatusTracker;
 use crate::telemetry::JobTelemetry;
 use crate::types::SandboxReuseResult;
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
 /// Per-job profile parameters resolved from the profile config.
 pub(super) struct JobProfile {
     pub(super) profile_name: String,
     pub(super) vcpu: u32,
     pub(super) memory_mb: u32,
+    pub(super) disk_mb: u32,
     pub(super) budget_lease: BudgetLease,
     pub(super) restore_guest_state: bool,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: SharedFactory,
     pub(super) cancel: CancellationToken,
+    pub(super) active_session_guard: ActiveSessionGuard,
 }
 
 /// Shared state passed to each spawned job task.
@@ -67,6 +71,8 @@ pub(super) struct SpawnContext {
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    pub(super) workspace_cache: SessionWorkspaceCache,
+    pub(super) active_sessions: ActiveSessions,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
     #[cfg(test)]
@@ -105,6 +111,7 @@ pub(super) fn spawn_job(
     let params = executor::JobParams {
         vcpu,
         memory_mb,
+        disk_mb: job_profile.disk_mb,
         restore_guest_state: job_profile.restore_guest_state,
         device_rate_limits: job_profile.device_rate_limits.clone(),
     };
@@ -143,11 +150,13 @@ pub(super) fn spawn_job(
     // Arc before spawning.
     let sandbox_token = context.sandbox_token.clone();
     let exec_config_for_deferred = Arc::clone(&exec_config);
+    let active_session_guard = job_profile.active_session_guard;
 
     let reused = reuse_entry.is_some();
 
     jobs.spawn(async move {
         let body = async move {
+            let mut active_session_guard = active_session_guard;
             #[cfg(test)]
             maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
@@ -181,6 +190,8 @@ pub(super) fn spawn_job(
                 sandbox,
                 source_ip,
                 network_log_session,
+                workspace_image,
+                workspace_promotable,
                 guest_session_id,
                 telemetry,
             ) = match inner.await {
@@ -197,6 +208,8 @@ pub(super) fn spawn_job(
                         outcome.sandbox,
                         outcome.source_ip,
                         outcome.network_log_session,
+                        outcome.workspace_image,
+                        outcome.workspace_promotable,
                         outcome.guest_session_id,
                         telemetry,
                     )
@@ -223,6 +236,8 @@ pub(super) fn spawn_job(
                         String::new(),
                         None,
                         None,
+                        false,
+                        None,
                         empty_telemetry,
                     )
                 }
@@ -239,6 +254,11 @@ pub(super) fn spawn_job(
                     log_job_execution_failed(run_id, exit_code, reused, failure);
                 }
                 (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
+            }
+            if session_id.is_none()
+                && let Some(guest_session_id) = guest_session_id.as_deref()
+            {
+                active_session_guard.activate_late(guest_session_id);
             }
 
             let completion_payload = CompletionPayload::new(
@@ -264,12 +284,14 @@ pub(super) fn spawn_job(
                     guest_session_id,
                     source_ip,
                     network_log_session,
+                    workspace_image,
+                    workspace_promotable,
                     storage_fingerprints,
                     device_rate_limits: job_device_rate_limits,
                     factory: factory_for_cleanup,
                     idle_pool,
                     status: Arc::clone(&status),
-                    park_notify,
+                    park_notify: Arc::clone(&park_notify),
                     parking_gate,
                     network_log_drain: exec_config_for_deferred.network_log_drain.clone(),
                     exit_code,
@@ -291,9 +313,14 @@ pub(super) fn spawn_job(
                 }
             }
             let ownership = OwnershipTransitions::new(status.as_ref());
+            let workspace_cache_promoted = completion_ready.workspace_cache_promoted();
             completion_ready
                 .complete_and_release(provider.as_ref(), &ownership, &cleanup_state_for_body)
                 .await;
+            drop(active_session_guard);
+            if workspace_cache_promoted {
+                park_notify.notify_one();
+            }
 
             // Best-effort telemetry, deferred past `provider.complete` so the
             // user-visible run-complete signal isn't blocked on these uploads.

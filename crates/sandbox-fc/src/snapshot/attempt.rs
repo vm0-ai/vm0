@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use nbd_cow::KeptCow;
@@ -16,7 +16,7 @@ use crate::process::kill_process_group;
 
 use super::SnapshotError;
 use super::cow::{destroy_snapshot_cow_after_error, destroy_snapshot_cow_and_cleanup_attempt_dir};
-use super::output::remove_dir_all_if_exists_sync;
+use super::output::{cleanup_workspace_image_file_sync, remove_dir_all_if_exists_sync};
 use super::publish::SnapshotPublishAttempt;
 use super::runtime::{
     SNAPSHOT_FINALIZER_CHILD_WAIT_TIMEOUT, SNAPSHOT_FINALIZER_PIPE_DRAIN_TIMEOUT, SPAWN_INNER_CMD,
@@ -108,6 +108,7 @@ pub(super) struct SnapshotAttempt {
     stdout_handle: Option<JoinHandle<()>>,
     stderr_handle: Option<JoinHandle<()>>,
     stderr_buf: StderrBuf,
+    workspace_image_cleanup_needed: bool,
     #[cfg(test)]
     cleanup_complete_tx: Option<tokio::sync::oneshot::Sender<SnapshotCleanupReport>>,
 }
@@ -134,6 +135,7 @@ impl SnapshotAttempt {
             stdout_handle: None,
             stderr_handle: None,
             stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
+            workspace_image_cleanup_needed: false,
             #[cfg(test)]
             cleanup_complete_tx: None,
         }
@@ -158,6 +160,7 @@ impl SnapshotAttempt {
             stdout_handle: None,
             stderr_handle: None,
             stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
+            workspace_image_cleanup_needed: false,
             #[cfg(test)]
             cleanup_complete_tx: None,
         }
@@ -193,6 +196,11 @@ impl SnapshotAttempt {
     }
 
     #[cfg(test)]
+    fn track_workspace_image_for_test(&mut self) {
+        self.workspace_image_cleanup_needed = true;
+    }
+
+    #[cfg(test)]
     fn track_publish_attempt_for_test(&mut self, publish_attempt: SnapshotPublishAttempt) {
         self.publish_attempt = Some(publish_attempt);
     }
@@ -219,7 +227,10 @@ impl SnapshotAttempt {
         &self.output
     }
 
-    pub(super) async fn prepare_firecracker_files(&mut self) -> Result<(), SnapshotError> {
+    pub(super) async fn prepare_firecracker_files(
+        &mut self,
+        config: &SnapshotCreateConfig,
+    ) -> Result<(), SnapshotError> {
         // Filesystem pre-requisites that don't require the netns: do these
         // *before* `netns_pool.acquire()` so that a transient fs error
         // (mkdir, write) doesn't leak an acquired netns. A checked-out netns
@@ -239,6 +250,35 @@ impl SnapshotAttempt {
             self.destroy_cow_after_setup_error("create bind target")
                 .await;
             return Err(SnapshotError::Setup(format!("create bind target: {e}")));
+        }
+
+        let workspace_drive_bind = self.paths.workspace_device_bind();
+        if let Err(e) = tokio::fs::write(&workspace_drive_bind, b"").await {
+            self.destroy_cow_after_setup_error("create workspace bind target")
+                .await;
+            return Err(SnapshotError::Setup(format!(
+                "create workspace bind target: {e}"
+            )));
+        }
+
+        self.workspace_image_cleanup_needed = true;
+        if let Err(e) = crate::factory::prepare_workspace_drive_image(
+            &self.paths.workspace_image(),
+            &sandbox::WorkspaceDriveConfig {
+                size_bytes: config.workspace_image_size_bytes,
+                source_image: None,
+            },
+        )
+        .await
+        {
+            self.cleanup_workspace_image(
+                "failed to cleanup snapshot workspace image after prepare failure",
+            );
+            self.destroy_cow_after_setup_error("prepare workspace image")
+                .await;
+            return Err(SnapshotError::Setup(format!(
+                "prepare workspace image: {e}"
+            )));
         }
 
         Ok(())
@@ -274,6 +314,8 @@ impl SnapshotAttempt {
     ) -> Result<(), SnapshotError> {
         let api_sock = self.sock_paths()?.api_sock();
         let drive_bind = self.paths.cow_device_bind();
+        let workspace_image = self.paths.workspace_image();
+        let workspace_drive_bind = self.paths.workspace_device_bind();
         let cow_device_path = self
             .cow_device
             .as_ref()
@@ -308,9 +350,11 @@ impl SnapshotAttempt {
             .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
             .arg(&cow_device_path) // $1
             .arg(&drive_bind) // $2
-            .arg(&network_name) // $3
-            .arg(&config.binary_path) // $4
-            .arg(&api_sock) // $5
+            .arg(&workspace_image) // $3
+            .arg(&workspace_drive_bind) // $4
+            .arg(&network_name) // $5
+            .arg(&config.binary_path) // $6
+            .arg(&api_sock) // $7
             .current_dir(self.paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -412,6 +456,9 @@ impl SnapshotAttempt {
         if let Some(cow_device) = self.cow_device.take() {
             destroy_snapshot_cow_after_error(context, cow_device).await;
         }
+        self.cleanup_workspace_image(
+            "failed to cleanup snapshot workspace image after setup error",
+        );
     }
 
     async fn release_network(&mut self, warning: &'static str) {
@@ -438,6 +485,9 @@ impl SnapshotAttempt {
         })?;
         let kept_cow = publish_attempt.resolve_into_kept_cow().await?;
         self.publish_attempt.take();
+        self.cleanup_workspace_image(
+            "failed to cleanup snapshot workspace image after successful snapshot capture",
+        );
         Ok(kept_cow)
     }
 
@@ -446,6 +496,9 @@ impl SnapshotAttempt {
             destroy_snapshot_cow_after_workflow_error(cow_device).await;
         }
         self.cleanup_publish_attempt().await;
+        self.cleanup_workspace_image(
+            "failed to cleanup snapshot workspace image after snapshot error",
+        );
     }
 
     async fn cleanup_publish_attempt(&mut self) -> bool {
@@ -476,6 +529,18 @@ impl SnapshotAttempt {
             || self.child.is_some()
             || self.stdout_handle.is_some()
             || self.stderr_handle.is_some()
+            || self.workspace_image_cleanup_needed
+    }
+
+    fn cleanup_workspace_image(&mut self, warning: &'static str) -> bool {
+        if !self.workspace_image_cleanup_needed {
+            return true;
+        }
+        let cleaned = cleanup_workspace_image_file_sync(&self.paths.workspace_image(), warning);
+        if cleaned {
+            self.workspace_image_cleanup_needed = false;
+        }
+        cleaned
     }
 
     fn take_cleanup_finalizer(&mut self) -> Option<SnapshotCleanupFinalizer> {
@@ -492,6 +557,9 @@ impl SnapshotAttempt {
             child: self.child.take(),
             stdout_handle: self.stdout_handle.take(),
             stderr_handle: self.stderr_handle.take(),
+            workspace_image: self
+                .workspace_image_cleanup_needed
+                .then(|| self.paths.workspace_image()),
             #[cfg(test)]
             cleanup_complete_tx: self.cleanup_complete_tx.take(),
             #[cfg(test)]
@@ -507,6 +575,7 @@ struct SnapshotCleanupReport {
     network_released: bool,
     publish_cleaned: bool,
     cow_destroyed: bool,
+    workspace_image_cleaned: bool,
     device_pool_cleaned: bool,
     netns_pool_cleaned: bool,
     #[cfg(test)]
@@ -522,6 +591,7 @@ struct SnapshotCleanupFinalizer {
     child: Option<tokio::process::Child>,
     stdout_handle: Option<JoinHandle<()>>,
     stderr_handle: Option<JoinHandle<()>>,
+    workspace_image: Option<PathBuf>,
     #[cfg(test)]
     cleanup_complete_tx: Option<tokio::sync::oneshot::Sender<SnapshotCleanupReport>>,
     #[cfg(test)]
@@ -553,6 +623,7 @@ impl SnapshotCleanupFinalizer {
         let network_released = self.release_network().await;
         let publish_cleaned = self.cleanup_publish_attempt().await;
         let cow_destroyed = self.destroy_cow().await;
+        let workspace_image_cleaned = self.cleanup_workspace_image();
         let device_pool_cleaned = self.cleanup_device_pool().await;
         let netns_pool_cleaned = self.cleanup_netns_pool().await;
 
@@ -563,6 +634,7 @@ impl SnapshotCleanupFinalizer {
             network_released,
             publish_cleaned,
             cow_destroyed,
+            workspace_image_cleaned,
             device_pool_cleaned,
             netns_pool_cleaned,
             #[cfg(test)]
@@ -576,6 +648,7 @@ impl SnapshotCleanupFinalizer {
             network_released = report.network_released,
             publish_cleaned = report.publish_cleaned,
             cow_destroyed = report.cow_destroyed,
+            workspace_image_cleaned = report.workspace_image_cleaned,
             device_pool_cleaned = report.device_pool_cleaned,
             netns_pool_cleaned = report.netns_pool_cleaned,
             "snapshot cancellation cleanup complete"
@@ -635,6 +708,20 @@ impl SnapshotCleanupFinalizer {
         }
     }
 
+    fn cleanup_workspace_image(&mut self) -> bool {
+        let Some(workspace_image) = self.workspace_image.as_ref() else {
+            return true;
+        };
+        let cleaned = cleanup_workspace_image_file_sync(
+            workspace_image,
+            "failed to cleanup snapshot workspace image during cancellation cleanup",
+        );
+        if cleaned {
+            self.workspace_image.take();
+        }
+        cleaned
+    }
+
     async fn cleanup_device_pool(&mut self) -> bool {
         let Some(device_pool) = self.device_pool.as_ref() else {
             return true;
@@ -670,6 +757,7 @@ impl SnapshotCleanupFinalizer {
             || self.child.is_some()
             || self.stdout_handle.is_some()
             || self.stderr_handle.is_some()
+            || self.workspace_image.is_some()
     }
 }
 
@@ -691,6 +779,7 @@ impl Drop for SnapshotCleanupFinalizer {
             has_child = self.child.is_some(),
             has_stdout_forwarder = self.stdout_handle.is_some(),
             has_stderr_forwarder = self.stderr_handle.is_some(),
+            has_workspace_image = self.workspace_image.is_some(),
             "snapshot cancellation finalizer dropped before cleanup completed"
         );
     }
@@ -712,6 +801,7 @@ impl Drop for SnapshotAttempt {
         let has_child = finalizer.child.is_some();
         let has_stdout_forwarder = finalizer.stdout_handle.is_some();
         let has_stderr_forwarder = finalizer.stderr_handle.is_some();
+        let has_workspace_image = finalizer.workspace_image.is_some();
 
         if let Some(child) = finalizer.child.as_ref() {
             // The outer snapshot build lock can be released as soon as the
@@ -732,6 +822,7 @@ impl Drop for SnapshotAttempt {
                     has_child,
                     has_stdout_forwarder,
                     has_stderr_forwarder,
+                    has_workspace_image,
                     "snapshot attempt dropped; scheduling cancellation cleanup"
                 );
                 runtime.spawn(async move {
@@ -748,6 +839,7 @@ impl Drop for SnapshotAttempt {
                 has_child,
                 has_stdout_forwarder,
                 has_stderr_forwarder,
+                has_workspace_image,
                 "snapshot attempt dropped outside Tokio runtime; async cancellation cleanup not scheduled"
             ),
         }
@@ -880,6 +972,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_attempt_drop_handoff_cleans_workspace_image() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let workspace_image = SandboxPaths::new(attempt.output().work_dir()).workspace_image();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        tokio::fs::create_dir_all(workspace_image.parent().expect("workspace image parent"))
+            .await
+            .expect("create work dir");
+        tokio::fs::write(&workspace_image, b"temporary workspace image")
+            .await
+            .expect("write workspace image");
+        attempt.track_workspace_image_for_test();
+        attempt.notify_cleanup_complete_for_test(tx);
+
+        drop(attempt);
+        let report = wait_for_snapshot_cleanup(rx).await;
+
+        assert!(report.workspace_image_cleaned);
+        assert!(
+            !tokio::fs::try_exists(&workspace_image).await.unwrap(),
+            "cancellation cleanup should remove temporary workspace image"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_failure_cleanup_removes_workspace_image() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let workspace_image = SandboxPaths::new(attempt.output().work_dir()).workspace_image();
+
+        tokio::fs::create_dir_all(workspace_image.parent().expect("workspace image parent"))
+            .await
+            .expect("create work dir");
+        tokio::fs::write(&workspace_image, b"temporary workspace image")
+            .await
+            .expect("write workspace image");
+        attempt.track_workspace_image_for_test();
+
+        attempt.cleanup_failure().await;
+
+        assert!(
+            !tokio::fs::try_exists(&workspace_image).await.unwrap(),
+            "snapshot failure cleanup should remove temporary workspace image"
+        );
+        attempt.cleanup_netns_pool().await;
+        attempt.cleanup_sock_dir().await;
+    }
+
+    #[tokio::test]
     async fn cleanup_existing_snapshot_sock_dir_removes_existing_dir() {
         let dir = tempfile::tempdir().expect("tempdir");
         let sock_dir = dir.path().join("sock");
@@ -926,6 +1068,40 @@ mod tests {
             !tokio::fs::try_exists(&sock_dir).await.unwrap(),
             "snapshot attempt should own runtime socket cleanup"
         );
+    }
+
+    #[tokio::test]
+    async fn prepare_firecracker_files_reports_workspace_image_prepare_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        let paths = SandboxPaths::new(output.work_dir());
+        let sock_dir = dir.path().join("sock");
+        let sock_paths = SockPaths::new(sock_dir);
+        tokio::fs::create_dir_all(paths.workspace_image())
+            .await
+            .expect("block workspace image file creation with a directory");
+        let mut attempt = SnapshotAttempt::new_without_cow_for_test(paths, sock_paths, output);
+
+        let err = attempt
+            .prepare_firecracker_files(&sandbox::SnapshotCreateConfig {
+                id: "prepare-workspace-fail".into(),
+                binary_path: "/bin/false".into(),
+                kernel_path: "/tmp/kernel".into(),
+                rootfs_path: "/tmp/rootfs".into(),
+                output_dir: dir.path().join("output"),
+                vcpu_count: 1,
+                memory_mb: 128,
+                workspace_image_size_bytes: 1024 * 1024,
+            })
+            .await
+            .expect_err("workspace image creation should fail");
+
+        assert!(
+            err.to_string().contains("prepare workspace image"),
+            "got: {err}"
+        );
+        attempt.cleanup_netns_pool().await;
+        attempt.cleanup_sock_dir().await;
     }
 
     fn snapshot_attempt_for_test(dir: &tempfile::TempDir) -> (SnapshotAttempt, std::path::PathBuf) {

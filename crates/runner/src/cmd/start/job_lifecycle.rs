@@ -146,11 +146,25 @@ impl CompletionPayload {
 pub(super) struct CompletionReady {
     payload: CompletionPayload,
     budget: BudgetOwnership,
+    workspace_cache_promoted: bool,
 }
 
 impl CompletionReady {
     pub(super) fn new(payload: CompletionPayload, budget: BudgetOwnership) -> Self {
-        Self { payload, budget }
+        Self {
+            payload,
+            budget,
+            workspace_cache_promoted: false,
+        }
+    }
+
+    pub(super) fn with_workspace_cache_promoted(mut self, promoted: bool) -> Self {
+        self.workspace_cache_promoted = promoted;
+        self
+    }
+
+    pub(super) fn workspace_cache_promoted(&self) -> bool {
+        self.workspace_cache_promoted
     }
 
     pub(super) async fn complete_and_release(
@@ -159,7 +173,11 @@ impl CompletionReady {
         ownership: &OwnershipTransitions<'_>,
         cleanup_state: &RunCleanupState,
     ) {
-        let Self { payload, budget } = self;
+        let Self {
+            payload,
+            budget,
+            workspace_cache_promoted: _,
+        } = self;
         let CompletionPayload {
             run_id,
             exit_code,

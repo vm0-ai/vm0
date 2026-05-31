@@ -174,8 +174,7 @@ pub(super) async fn drain_or_abort_forwarder(
     }
 }
 
-pub(super) const SPAWN_INNER_CMD: &str =
-    r#"mount --bind "$1" "$2" && exec ip netns exec "$3" "$4" --api-sock "$5""#;
+pub(super) const SPAWN_INNER_CMD: &str = r#"umount -- "$2" 2>/dev/null; umount -- "$4" 2>/dev/null; mount --bind -- "$1" "$2" && mount --bind -- "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
 pub(super) const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 /// Number of recent stderr lines retained from the spawn chain, used to
@@ -260,7 +259,7 @@ pub(super) async fn run_snapshot_workflow(
     config: &SnapshotCreateConfig,
     attempt: &mut SnapshotAttempt,
 ) -> Result<SnapshotConfig, SnapshotError> {
-    attempt.prepare_firecracker_files().await?;
+    attempt.prepare_firecracker_files(config).await?;
     attempt.acquire_network().await?;
     attempt.spawn_firecracker(config).await?;
 
@@ -293,8 +292,9 @@ async fn run_with_firecracker(
     // at spawn time; `configure_drive` only needs the path string FC will
     // open inside its private mount namespace.
     let drive_bind_str = paths.cow_device_bind().display().to_string();
+    let workspace_drive_bind_str = paths.workspace_device_bind().display().to_string();
 
-    // 6. Configure VM via API (6 parallel PUT calls).
+    // 6. Configure VM via API.
     let inv = InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
     tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
@@ -304,6 +304,7 @@ async fn run_with_firecracker(
         client.configure_machine(config.vcpu_count, config.memory_mb),
         client.configure_boot_source(&kernel_path, &inv.boot_args),
         client.configure_drive("rootfs", &drive_bind_str, true, false, None),
+        client.configure_drive("workspace", &workspace_drive_bind_str, false, false, None),
         client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name, None, None),
         client.configure_vsock(inv.guest_cid, &vsock_uds_str),
         client.configure_balloon(
@@ -597,6 +598,7 @@ mod tests {
             memory_path: "/tmp/memory.bin".into(),
             cow_path: "/tmp/cow.img".into(),
             drive_bind_path: "/tmp/cow-device-bind".into(),
+            workspace_drive_bind_path: "/tmp/workspace-device-bind".into(),
             vsock_bind_dir: "/tmp/vsock".into(),
         }
     }
@@ -751,32 +753,36 @@ mod tests {
     fn spawn_inner_cmd_uses_positional_args() {
         // Only positional args, no $0 or unquoted vars.
         assert!(!SPAWN_INNER_CMD.contains("$0"));
-        for arg in ["$1", "$2", "$3", "$4", "$5"] {
+        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7"] {
             let quoted = format!(r#""{arg}""#);
             assert!(
                 SPAWN_INNER_CMD.contains(&quoted),
                 "expected quoted positional {arg} in inner_cmd: {SPAWN_INNER_CMD}"
             );
         }
-        // Strictly 5 positional args — if someone adds a `$6`..`$9` without
+        // Strictly 7 positional args — if someone adds a `$8`..`$9` without
         // updating the spawn site's `.arg(...)` count, the bash call
         // silently expands to empty strings and fails at runtime.
-        for unexpected in ["$6", "$7", "$8", "$9"] {
+        for unexpected in ["$8", "$9"] {
             assert!(
                 !SPAWN_INNER_CMD.contains(unexpected),
                 "unexpected positional {unexpected} in inner_cmd: {SPAWN_INNER_CMD}"
             );
         }
 
-        // Flow: bind the device, then exec into ip netns exec firecracker.
+        // Flow: bind the devices, then exec into ip netns exec firecracker.
         // `exec` is critical so signals reach FC directly without an extra
         // bash layer holding a process slot.
         assert!(
-            SPAWN_INNER_CMD.starts_with("mount --bind"),
+            SPAWN_INNER_CMD.starts_with(
+                r#"umount -- "$2" 2>/dev/null; umount -- "$4" 2>/dev/null; mount --bind --"#
+            ),
             "inner_cmd must establish bind mount first: {SPAWN_INNER_CMD}"
         );
         assert!(
-            SPAWN_INNER_CMD.contains("&& exec ip netns exec"),
+            SPAWN_INNER_CMD.contains(
+                r#"&& mount --bind -- "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#
+            ),
             "inner_cmd must exec ip netns exec firecracker: {SPAWN_INNER_CMD}"
         );
     }

@@ -261,7 +261,8 @@ impl ExecutionContext {
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
     /// `None`; the executor reads the CLI-generated session ID from the
-    /// guest filesystem post-execution (see `read_guest_session_id`).
+    /// guest filesystem post-execution for parking and workspace cache
+    /// promotion (see `read_guest_session_id`).
     pub fn session_id(&self) -> Option<&str> {
         self.resume_session.as_ref().map(|r| r.session_id.as_str())
     }
@@ -272,6 +273,10 @@ impl ExecutionContext {
 // ---------------------------------------------------------------------------
 
 /// Runner state snapshot sent to the server via heartbeat.
+///
+/// Keep in sync with `MAX_HELD_SESSION_STATES` in the runner API contracts.
+pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HeldSessionState {

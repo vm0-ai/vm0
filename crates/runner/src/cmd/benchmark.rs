@@ -153,6 +153,7 @@ pub async fn run_benchmark(
             memory_mb: profile_config.memory_mb,
         },
         device_rate_limits: None,
+        workspace_drive: Some(benchmark_workspace_drive_config(profile_config)),
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();
@@ -216,6 +217,15 @@ pub async fn run_benchmark(
 async fn stop_benchmark_proxy(mitm: &mut proxy::MitmProxy, phase: &'static str) {
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, phase, "proxy stop failed during benchmark cleanup");
+    }
+}
+
+fn benchmark_workspace_drive_config(
+    profile_config: &config::ProfileConfig,
+) -> sandbox::WorkspaceDriveConfig {
+    sandbox::WorkspaceDriveConfig {
+        size_bytes: u64::from(profile_config.disk_mb) * 1024 * 1024,
+        source_image: None,
     }
 }
 
@@ -414,6 +424,25 @@ mod tests {
 
         assert_eq!(factory.name(), "test");
         assert_eq!(shutdowns.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn benchmark_workspace_drive_uses_profile_disk_size() {
+        let config = config::ProfileConfig {
+            rootfs_hash: "rootfs".into(),
+            snapshot_hash: "snapshot".into(),
+            vcpu: 2,
+            memory_mb: 1024,
+            disk_mb: 2048,
+        };
+
+        assert_eq!(
+            benchmark_workspace_drive_config(&config),
+            sandbox::WorkspaceDriveConfig {
+                size_bytes: 2048 * 1024 * 1024,
+                source_image: None,
+            }
+        );
     }
 
     struct SuccessfulFactoryRuntime {

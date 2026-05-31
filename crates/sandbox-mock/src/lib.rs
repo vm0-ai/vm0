@@ -332,6 +332,9 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of full wait_process exits consumed by factory-created
     /// sandboxes. Empty queue follows the existing default/override behavior.
     wait_process_exits: Mutex<VecDeque<ProcessExit>>,
+    /// FIFO queue of small file read results consumed by factory-created
+    /// sandboxes. Empty queue follows the sandbox-local queue/default behavior.
+    read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// FIFO queue of create results consumed by every factory built with
     /// these overrides. Empty queue → default Ok(()).
     create_results: Mutex<VecDeque<Result<()>>>,
@@ -393,6 +396,7 @@ impl MockSandboxOverrides {
             wait_process_gate: None,
             wait_process_error: None,
             wait_process_exits: Mutex::new(VecDeque::new()),
+            read_file_results: Mutex::new(VecDeque::new()),
             create_results: Mutex::new(VecDeque::new()),
             create_configs: Mutex::new(Vec::new()),
             start_results: Mutex::new(VecDeque::new()),
@@ -448,6 +452,15 @@ impl MockSandboxOverrides {
         self.wait_process_exits
             .lock_ignoring_poison()
             .push_back(exit);
+    }
+
+    /// Queue a small file read result applied to the next factory-created
+    /// sandbox read. Consumed FIFO across all sandboxes built from these
+    /// overrides; empty queue falls back to the sandbox-local queue/default.
+    pub fn push_read_file_result(&self, result: Result<Option<Vec<u8>>>) {
+        self.read_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
     }
 
     /// Register a pattern matcher consumed on first match.
@@ -912,11 +925,18 @@ impl Sandbox for MockSandbox {
             });
         }
 
-        let result = self
-            .read_file_results
-            .lock_ignoring_poison()
-            .pop_front()
-            .unwrap_or(Ok(None))?;
+        let local_result = self.read_file_results.lock_ignoring_poison().pop_front();
+        let result = match local_result {
+            Some(result) => result,
+            None => match &self.overrides {
+                Some(overrides) => overrides
+                    .read_file_results
+                    .lock_ignoring_poison()
+                    .pop_front()
+                    .unwrap_or(Ok(None)),
+                None => Ok(None),
+            },
+        }?;
         if let Some(bytes) = &result
             && bytes.len() as u64 > max_bytes
         {
@@ -1424,6 +1444,7 @@ mod tests {
             output_dir,
             vcpu_count: 2,
             memory_mb: 1024,
+            workspace_image_size_bytes: 1024 * 1024,
         }
     }
 
@@ -1435,6 +1456,7 @@ mod tests {
                 memory_mb: 1024,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         }
     }
 
@@ -1508,6 +1530,7 @@ mod tests {
                 output_dir: output_dir.clone(),
                 vcpu_count: 1,
                 memory_mb: 128,
+                workspace_image_size_bytes: 1024 * 1024,
             })
             .await
             .expect("create snapshot");

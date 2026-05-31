@@ -7,7 +7,7 @@ use nbd_cow::{KeptCow, PooledNbdCowDevice};
 use sandbox::{PendingSnapshotPublish, SnapshotOutput};
 
 use crate::config::SnapshotConfig;
-use crate::paths::SnapshotOutputPaths;
+use crate::paths::{SandboxPaths, SnapshotOutputPaths};
 
 use super::SnapshotError;
 use super::cow::{
@@ -15,8 +15,9 @@ use super::cow::{
     cow_destroy_retry_policy, destroy_snapshot_cow_and_cleanup_attempt_dir,
 };
 use super::output::{
-    cleanup_remove_file_result, publish_snapshot_complete_marker, remove_dir_all_if_exists_sync,
-    remove_file_if_exists_sync, sync_snapshot_output_dir,
+    cleanup_remove_file_result, cleanup_workspace_image_file_sync,
+    publish_snapshot_complete_marker, remove_dir_all_if_exists_sync, remove_file_if_exists_sync,
+    sync_snapshot_output_dir,
 };
 
 type KeepCowFinalizer =
@@ -404,6 +405,7 @@ fn commit_snapshot_cow_output(
     std::fs::rename(&kept_cow.bitmap_file, output.cow_bitmap())?;
     std::fs::rename(&kept_cow.cow_file, output.cow())?;
     cleanup_snapshot_attempt_dir_for_cow_sync(&kept_cow.cow_file);
+    cleanup_snapshot_workspace_image_after_publish(output);
     // Persist the output directory so all four artifact dir entries
     // (snapshot.bin and memory.bin written by Firecracker via the API,
     // cow.img and cow.img.bitmap just renamed in) are durable. Without
@@ -424,6 +426,14 @@ fn commit_snapshot_cow_output(
     Ok(())
 }
 
+fn cleanup_snapshot_workspace_image_after_publish(output: &SnapshotOutputPaths) {
+    let workspace_image = SandboxPaths::new(output.work_dir()).workspace_image();
+    cleanup_workspace_image_file_sync(
+        &workspace_image,
+        "failed to cleanup snapshot build workspace image after publish",
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -431,7 +441,7 @@ mod tests {
     use nbd_cow::KeptCow;
     use sandbox::{PendingSnapshotPublish, SnapshotProvider};
 
-    use crate::paths::SnapshotOutputPaths;
+    use crate::paths::{SandboxPaths, SnapshotOutputPaths};
     use crate::snapshot::cow::snapshot_attempt_cow_file;
     use crate::snapshot::provider::FirecrackerSnapshotProvider;
     use crate::snapshot::{SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError};
@@ -501,6 +511,49 @@ mod tests {
 
         let provider = FirecrackerSnapshotProvider;
         assert!(provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_commit_removes_build_workspace_image_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let work_paths = SandboxPaths::new(output.work_dir());
+        tokio::fs::create_dir_all(work_paths.workspace())
+            .await
+            .expect("create work dir");
+        tokio::fs::write(work_paths.workspace_image(), b"temporary workspace image")
+            .await
+            .expect("write workspace image");
+        tokio::fs::write(work_paths.cow_device_bind(), b"")
+            .await
+            .expect("write cow bind target");
+        tokio::fs::write(work_paths.workspace_device_bind(), b"")
+            .await
+            .expect("write workspace bind target");
+        let kept_cow =
+            write_kept_cow_for_test(work_paths.workspace(), "publish-workspace-cleanup").await;
+
+        commit_snapshot_cow_output(&kept_cow, &output).expect("commit snapshot cow output");
+
+        assert!(
+            !tokio::fs::try_exists(work_paths.workspace_image())
+                .await
+                .unwrap(),
+            "snapshot build workspace image should not remain after publish"
+        );
+        assert!(
+            tokio::fs::try_exists(work_paths.cow_device_bind())
+                .await
+                .unwrap(),
+            "restore bind target should stay in the snapshot work dir"
+        );
+        assert!(
+            tokio::fs::try_exists(work_paths.workspace_device_bind())
+                .await
+                .unwrap(),
+            "workspace restore bind target should stay in the snapshot work dir"
+        );
     }
 
     #[tokio::test]

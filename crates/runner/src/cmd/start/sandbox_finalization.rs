@@ -32,6 +32,8 @@ use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::status::StatusTracker;
+use crate::workspace_image_cache::{WorkspaceCacheTerminalStatus, WorkspaceImageLease};
+use crate::workspace_mount::flush_and_unmount_workspace_drive;
 
 fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -45,6 +47,8 @@ pub(super) struct FinalizeContext {
     pub(super) guest_session_id: Option<String>,
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
+    pub(super) workspace_image: Option<WorkspaceImageLease>,
+    pub(super) workspace_promotable: bool,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
@@ -80,6 +84,8 @@ pub(super) async fn finalize_sandbox_for_completion(
         guest_session_id,
         source_ip,
         mut network_log_session,
+        workspace_image,
+        workspace_promotable,
         storage_fingerprints,
         device_rate_limits,
         factory,
@@ -109,7 +115,24 @@ pub(super) async fn finalize_sandbox_for_completion(
         None
     };
 
+    let mut workspace_cache_promoted = false;
     let budget = if let Some(session_id) = parkable_session {
+        workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
+            sandbox.as_ref(),
+            run_id,
+            workspace_image.as_ref(),
+            workspace_promotable,
+            workspace_terminal_status(exit_code, cancelled),
+            &storage_fingerprints,
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: &profile_name,
+                session_id: Some(&session_id),
+                reason: "park",
+            },
+        )
+        .await;
+
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
@@ -123,6 +146,9 @@ pub(super) async fn finalize_sandbox_for_completion(
             budget_lease: active_lease.into_idle_park_lease(),
             source_ip,
             storage_fingerprints,
+            workspace_drive_available: workspace_image
+                .as_ref()
+                .is_some_and(WorkspaceImageLease::workspace_drive_available),
         });
         let candidate = match park_request.park_for_idle().await {
             Ok(candidate) => candidate,
@@ -139,7 +165,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     error = %failure.error,
                     "sandbox park failed, destroying instead of parking"
                 );
-                let destroy_outcome = stop_and_destroy_sandbox(
+                let cleanup_outcome = stop_and_destroy_sandbox(
                     sandbox,
                     &**failure_factory,
                     ActiveCleanupContext {
@@ -150,10 +176,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                         reason: "park_failed",
                         network_log_session: network_log_session.take(),
                         network_log_drain: network_log_drain.clone(),
+                        workspace_image: None,
+                        workspace_promotable: false,
+                        workspace_storage_fingerprints: None,
+                        workspace_terminal_status: workspace_terminal_status(exit_code, cancelled),
                     },
                 )
                 .await;
-                if destroy_outcome == DestroyOutcome::Completed {
+                workspace_cache_promoted |= cleanup_outcome.workspace_cache_promoted;
+                if cleanup_outcome.destroy == DestroyOutcome::Completed {
                     cleanup_state.mark_destroy_completed();
                 }
                 #[cfg(test)]
@@ -165,7 +196,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                 return CompletionReady::new(
                     completion_payload,
                     BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
-                );
+                )
+                .with_workspace_cache_promoted(workspace_cache_promoted);
             }
         };
         if cancel.is_cancelled() {
@@ -180,7 +212,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 session_id,
                 "job cancelled while parking, destroying VM"
             );
-            let destroy_outcome = stop_and_destroy_sandbox(
+            let cleanup_outcome = stop_and_destroy_sandbox(
                 sandbox,
                 &**candidate_factory,
                 ActiveCleanupContext {
@@ -191,10 +223,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                     reason: "cancelled",
                     network_log_session: None,
                     network_log_drain: network_log_drain.clone(),
+                    workspace_image: None,
+                    workspace_promotable: false,
+                    workspace_storage_fingerprints: None,
+                    workspace_terminal_status: workspace_terminal_status(exit_code, true),
                 },
             )
             .await;
-            if destroy_outcome == DestroyOutcome::Completed {
+            workspace_cache_promoted |= cleanup_outcome.workspace_cache_promoted;
+            if cleanup_outcome.destroy == DestroyOutcome::Completed {
                 cleanup_state.mark_destroy_completed();
             }
             #[cfg(test)]
@@ -221,7 +258,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     factory: candidate_factory,
                     budget_lease,
                 } = candidate.into_active_parts();
-                let destroy_outcome = stop_and_destroy_sandbox(
+                let cleanup_outcome = stop_and_destroy_sandbox(
                     sandbox,
                     &**candidate_factory,
                     ActiveCleanupContext {
@@ -232,10 +269,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                         reason: "cancelled",
                         network_log_session: None,
                         network_log_drain: network_log_drain.clone(),
+                        workspace_image: None,
+                        workspace_promotable: false,
+                        workspace_storage_fingerprints: None,
+                        workspace_terminal_status: workspace_terminal_status(exit_code, true),
                     },
                 )
                 .await;
-                if destroy_outcome == DestroyOutcome::Completed {
+                workspace_cache_promoted |= cleanup_outcome.workspace_cache_promoted;
+                if cleanup_outcome.destroy == DestroyOutcome::Completed {
                     cleanup_state.mark_destroy_completed();
                 }
                 #[cfg(test)]
@@ -247,7 +289,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                 return CompletionReady::new(
                     completion_payload,
                     BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
-                );
+                )
+                .with_workspace_cache_promoted(workspace_cache_promoted);
             }
             let candidate = candidate.with_last_completed_at(local_completed_at());
             match pool.park(candidate) {
@@ -326,7 +369,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable session — stop + destroy.
-        let destroy_outcome = stop_and_destroy_sandbox(
+        let cleanup_outcome = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
             ActiveCleanupContext {
@@ -343,10 +386,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                 ),
                 network_log_session: network_log_session.take(),
                 network_log_drain: network_log_drain.clone(),
+                workspace_image,
+                workspace_promotable,
+                workspace_storage_fingerprints: Some(storage_fingerprints),
+                workspace_terminal_status: workspace_terminal_status(exit_code, cancelled),
             },
         )
         .await;
-        if destroy_outcome == DestroyOutcome::Completed {
+        workspace_cache_promoted |= cleanup_outcome.workspace_cache_promoted;
+        if cleanup_outcome.destroy == DestroyOutcome::Completed {
             cleanup_state.mark_destroy_completed();
         }
         #[cfg(test)]
@@ -359,6 +407,7 @@ pub(super) async fn finalize_sandbox_for_completion(
     };
 
     CompletionReady::new(completion_payload, budget)
+        .with_workspace_cache_promoted(workspace_cache_promoted)
 }
 
 async fn close_network_log_session(
@@ -391,6 +440,85 @@ fn active_cleanup_reason(
     }
 }
 
+fn workspace_terminal_status(exit_code: i32, cancelled: bool) -> WorkspaceCacheTerminalStatus {
+    if cancelled {
+        WorkspaceCacheTerminalStatus::Cancelled
+    } else if exit_code == 0 {
+        WorkspaceCacheTerminalStatus::Success
+    } else {
+        WorkspaceCacheTerminalStatus::NonzeroExit
+    }
+}
+
+struct WorkspacePromotionLogContext<'a> {
+    sandbox_id: SandboxId,
+    profile_name: &'a str,
+    session_id: Option<&'a str>,
+    reason: &'static str,
+}
+
+async fn promote_workspace_image_from_active_sandbox(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    workspace_image: Option<&WorkspaceImageLease>,
+    workspace_promotable: bool,
+    terminal_status: WorkspaceCacheTerminalStatus,
+    storage_fingerprints: &StorageFingerprints,
+    log: &WorkspacePromotionLogContext<'_>,
+) -> bool {
+    if !workspace_promotable {
+        return false;
+    }
+    let Some(workspace_image) = workspace_image else {
+        return false;
+    };
+    if !workspace_image.workspace_drive_available() {
+        return false;
+    }
+
+    match flush_and_unmount_workspace_drive(sandbox, run_id, workspace_image.working_dir()).await {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %log.sandbox_id,
+                profile_name = log.profile_name,
+                session_id = log.session_id.unwrap_or("<none>"),
+                reason = log.reason,
+                error = %e,
+                "workspace image cache promotion skipped because guest unmount failed"
+            );
+            return false;
+        }
+    }
+
+    match workspace_image
+        .promote(
+            run_id,
+            log.session_id,
+            terminal_status,
+            local_completed_at(),
+            storage_fingerprints,
+        )
+        .await
+    {
+        Ok(promoted) => promoted,
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %log.sandbox_id,
+                profile_name = log.profile_name,
+                session_id = log.session_id.unwrap_or("<none>"),
+                reason = log.reason,
+                error = %e,
+                "workspace image cache promotion failed"
+            );
+            false
+        }
+    }
+}
+
 struct ActiveCleanupContext<'a> {
     run_id: RunId,
     sandbox_id: SandboxId,
@@ -399,6 +527,15 @@ struct ActiveCleanupContext<'a> {
     reason: &'static str,
     network_log_session: Option<NetworkLogSession>,
     network_log_drain: NetworkLogDrainCoordinator,
+    workspace_image: Option<WorkspaceImageLease>,
+    workspace_promotable: bool,
+    workspace_storage_fingerprints: Option<StorageFingerprints>,
+    workspace_terminal_status: WorkspaceCacheTerminalStatus,
+}
+
+struct ActiveCleanupOutcome {
+    destroy: DestroyOutcome,
+    workspace_cache_promoted: bool,
 }
 
 /// Stop a sandbox and destroy it via its factory.
@@ -406,19 +543,44 @@ async fn stop_and_destroy_sandbox(
     mut sandbox: Box<dyn Sandbox>,
     factory: &dyn SandboxFactory,
     mut context: ActiveCleanupContext<'_>,
-) -> DestroyOutcome {
+) -> ActiveCleanupOutcome {
     let mut uncertain = false;
+    let default_storage_fingerprints;
+    let workspace_storage_fingerprints = match context.workspace_storage_fingerprints.as_ref() {
+        Some(storage_fingerprints) => storage_fingerprints,
+        None => {
+            default_storage_fingerprints = StorageFingerprints::default();
+            &default_storage_fingerprints
+        }
+    };
+    let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
+        sandbox.as_ref(),
+        context.run_id,
+        context.workspace_image.as_ref(),
+        context.workspace_promotable,
+        context.workspace_terminal_status,
+        workspace_storage_fingerprints,
+        &WorkspacePromotionLogContext {
+            sandbox_id: context.sandbox_id,
+            profile_name: context.profile_name,
+            session_id: context.session_id,
+            reason: context.reason,
+        },
+    )
+    .await;
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => warn!(
-            run_id = %context.run_id,
-            sandbox_id = %context.sandbox_id,
-            profile_name = context.profile_name,
-            session_id = context.session_id.unwrap_or("<none>"),
-            reason = context.reason,
-            error = %e,
-            "sandbox stop failed during active cleanup"
-        ),
+        Ok(Err(e)) => {
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %context.sandbox_id,
+                profile_name = context.profile_name,
+                session_id = context.session_id.unwrap_or("<none>"),
+                reason = context.reason,
+                error = %e,
+                "sandbox stop failed during active cleanup"
+            );
+        }
         Err(_) => {
             warn!(
                 run_id = %context.run_id,
@@ -437,6 +599,16 @@ async fn stop_and_destroy_sandbox(
         &context.network_log_drain,
     )
     .await;
+    if workspace_cache_promoted && uncertain {
+        warn!(
+            run_id = %context.run_id,
+            sandbox_id = %context.sandbox_id,
+            profile_name = context.profile_name,
+            session_id = context.session_id.unwrap_or("<none>"),
+            reason = context.reason,
+            "workspace image cache was promoted before uncertain sandbox cleanup"
+        );
+    }
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()
         .await
@@ -452,10 +624,14 @@ async fn stop_and_destroy_sandbox(
         );
         uncertain = true;
     }
-    if uncertain {
+    let destroy = if uncertain {
         DestroyOutcome::Uncertain
     } else {
         DestroyOutcome::Completed
+    };
+    ActiveCleanupOutcome {
+        destroy,
+        workspace_cache_promoted,
     }
 }
 
@@ -478,6 +654,9 @@ mod tests {
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::types::SandboxReuseResult;
+    use crate::workspace_image_cache::{
+        SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceImageActiveLeaseRequest,
+    };
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
@@ -545,6 +724,8 @@ mod tests {
                 guest_session_id: None,
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
+                workspace_image: None,
+                workspace_promotable: false,
                 storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
@@ -646,5 +827,187 @@ mod tests {
                 .await,
             "cancelled destroyed sandbox must not retain network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn workspace_promotion_skips_guest_unmount_when_workspace_drive_unavailable() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().join("home"));
+        let cache = SessionWorkspaceCache::shared(
+            crate::paths::RunnerPaths::new(dir.path().join("runner")),
+            &home,
+            "test-group",
+        );
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease = cache
+            .lease_active(WorkspaceImageActiveLeaseRequest {
+                run_id,
+                sandbox_id,
+                session_id: Some("sess-no-drive"),
+                working_dir: "/workspace",
+                workspace_drive_available: false,
+            })
+            .await;
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+        assert!(!lease.workspace_drive_available());
+
+        let sandbox = MockSandbox::new("workspace-no-drive");
+        sandbox.push_exec_result(Ok(sandbox::ExecResult::new(
+            64,
+            Vec::new(),
+            b"unexpected guest unmount".to_vec(),
+        )));
+
+        let promoted = promote_workspace_image_from_active_sandbox(
+            &sandbox,
+            run_id,
+            Some(&lease),
+            true,
+            WorkspaceCacheTerminalStatus::Success,
+            &StorageFingerprints::default(),
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some("sess-no-drive"),
+                reason: "test",
+            },
+        )
+        .await;
+
+        assert!(!promoted);
+        assert!(sandbox.exec_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn finalizer_marks_workspace_cache_promotion_for_active_cleanup() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().join("home"));
+        let runner_paths = crate::paths::RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::shared(runner_paths.clone(), &home, "test-group");
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let workspace_lease = cache
+            .lease_active(WorkspaceImageActiveLeaseRequest {
+                run_id,
+                sandbox_id,
+                session_id: Some("sess-active-cleanup"),
+                working_dir: "/workspace",
+                workspace_drive_available: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(runner_paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            runner_paths.active_workspace_image(&sandbox_id),
+            b"workspace image",
+        )
+        .await
+        .unwrap();
+
+        let network_log_session = fixture.network_log_session().await;
+        let mut ctx = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-active-cleanup",
+            network_log_session,
+            CancellationToken::new(),
+        );
+        ctx.workspace_image = Some(workspace_lease);
+        ctx.workspace_promotable = true;
+        ctx.exit_code = 1;
+
+        let completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("workspace-active-cleanup"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                1,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            ctx,
+        )
+        .await;
+
+        assert!(completion_ready.workspace_cache_promoted());
+        let held = cache.held_session_states().await;
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].session_id, "sess-active-cleanup");
+    }
+
+    #[tokio::test]
+    async fn finalizer_promotes_cancelled_first_run_workspace_with_late_guest_session_id() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().join("home"));
+        let runner_paths = crate::paths::RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::shared(runner_paths.clone(), &home, "test-group");
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let workspace_lease = cache
+            .lease_active(WorkspaceImageActiveLeaseRequest {
+                run_id,
+                sandbox_id,
+                session_id: None,
+                working_dir: "/workspace",
+                workspace_drive_available: true,
+            })
+            .await;
+        assert_eq!(
+            workspace_lease.result(),
+            WorkspaceCacheCheckoutResult::NoSession
+        );
+        tokio::fs::create_dir_all(runner_paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            runner_paths.active_workspace_image(&sandbox_id),
+            b"workspace image",
+        )
+        .await
+        .unwrap();
+
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let network_log_session = fixture.network_log_session().await;
+        let mut ctx = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "unused-context-session",
+            network_log_session,
+            cancel,
+        );
+        ctx.session_id = None;
+        ctx.guest_session_id = Some("sess-cancelled-first-run".into());
+        ctx.workspace_image = Some(workspace_lease);
+        ctx.workspace_promotable = true;
+
+        let completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("workspace-cancelled-first-run"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            ctx,
+        )
+        .await;
+
+        assert!(completion_ready.workspace_cache_promoted());
+        assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let held = cache.held_session_states().await;
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].session_id, "sess-cancelled-first-run");
     }
 }

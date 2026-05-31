@@ -49,23 +49,31 @@ enum HostCapability {
     SnapshotPrivateMountCreate,
     SnapshotPrivateMountRestore,
     SparseCopy,
+    WorkspaceImageFormat,
 }
 
-const FACTORY_FRESH_CAPABILITIES: &[HostCapability] = &[HostCapability::NetworkSetup];
+const FACTORY_FRESH_CAPABILITIES: &[HostCapability] = &[
+    HostCapability::NetworkSetup,
+    HostCapability::SparseCopy,
+    HostCapability::WorkspaceImageFormat,
+];
 const FACTORY_SNAPSHOT_RESTORE_CAPABILITIES: &[HostCapability] = &[
     HostCapability::NetworkSetup,
     HostCapability::SparseCopy,
+    HostCapability::WorkspaceImageFormat,
     HostCapability::SnapshotPrivateMountRestore,
 ];
 const SNAPSHOT_CREATE_CAPABILITIES: &[HostCapability] = &[
     HostCapability::NetworkSetup,
+    HostCapability::WorkspaceImageFormat,
     HostCapability::SnapshotPrivateMountCreate,
 ];
 
 const NETWORK_COMMANDS: &[&str] = &["ip", "iptables", "iptables-save", "sysctl"];
-const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount"];
+const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
 const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
 const SPARSE_COPY_COMMANDS: &[&str] = &["cp"];
+const WORKSPACE_IMAGE_FORMAT_COMMANDS: &[&str] = &["mkfs.ext4"];
 
 /// Verify that all required system prerequisites are present.
 ///
@@ -164,6 +172,7 @@ fn commands_for_capability(capability: HostCapability) -> &'static [&'static str
         HostCapability::SnapshotPrivateMountCreate => SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
         HostCapability::SnapshotPrivateMountRestore => SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS,
         HostCapability::SparseCopy => SPARSE_COPY_COMMANDS,
+        HostCapability::WorkspaceImageFormat => WORKSPACE_IMAGE_FORMAT_COMMANDS,
     }
 }
 
@@ -190,22 +199,37 @@ mod tests {
             memory_path: PathBuf::from("/tmp/memory.bin"),
             cow_path: PathBuf::from("/tmp/cow.img"),
             drive_bind_path: PathBuf::from("/tmp/cow-device-bind"),
+            workspace_drive_bind_path: PathBuf::from("/tmp/workspace-device-bind"),
             vsock_bind_dir: PathBuf::from("/tmp/vsock"),
         }
     }
 
     #[test]
-    fn factory_fresh_capabilities_are_network_only() {
+    fn factory_fresh_capabilities_include_workspace_image_commands() {
         let mode = PrerequisiteMode::FactoryFresh;
-        assert_eq!(mode.capabilities(), &[HostCapability::NetworkSetup]);
+        assert_eq!(
+            mode.capabilities(),
+            &[
+                HostCapability::NetworkSetup,
+                HostCapability::SparseCopy,
+                HostCapability::WorkspaceImageFormat,
+            ]
+        );
         assert_eq!(
             required_commands(mode),
-            vec!["ip", "iptables", "iptables-save", "sysctl"]
+            vec![
+                "ip",
+                "iptables",
+                "iptables-save",
+                "sysctl",
+                "cp",
+                "mkfs.ext4"
+            ]
         );
     }
 
     #[test]
-    fn snapshot_restore_capabilities_include_sparse_copy_and_private_mount_restore() {
+    fn snapshot_restore_capabilities_include_workspace_image_and_private_mount_restore() {
         let snapshot = snapshot_config();
         let mode = PrerequisiteMode::FactorySnapshotRestore {
             snapshot: &snapshot,
@@ -216,6 +240,7 @@ mod tests {
             &[
                 HostCapability::NetworkSetup,
                 HostCapability::SparseCopy,
+                HostCapability::WorkspaceImageFormat,
                 HostCapability::SnapshotPrivateMountRestore,
             ]
         );
@@ -227,6 +252,7 @@ mod tests {
                 "iptables-save",
                 "sysctl",
                 "cp",
+                "mkfs.ext4",
                 "unshare",
                 "bash",
                 "mount",
@@ -236,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_create_capabilities_include_private_mount_create_without_sparse_copy() {
+    fn snapshot_create_capabilities_include_workspace_image_format_without_sparse_copy() {
         let mode = PrerequisiteMode::SnapshotCreate;
         let commands = required_commands(mode);
 
@@ -244,6 +270,7 @@ mod tests {
             mode.capabilities(),
             &[
                 HostCapability::NetworkSetup,
+                HostCapability::WorkspaceImageFormat,
                 HostCapability::SnapshotPrivateMountCreate,
             ]
         );
@@ -254,9 +281,11 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "sysctl",
+                "mkfs.ext4",
                 "unshare",
                 "bash",
                 "mount",
+                "umount",
             ]
         );
         assert!(!commands.contains(&"cp"));

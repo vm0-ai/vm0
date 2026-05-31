@@ -9,6 +9,7 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
+export const MAX_HELD_SESSION_STATES = 1024;
 const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
 export function elapsedSinceApiStartMs(
@@ -75,7 +76,10 @@ export const runnersPollContract = c.router({
     body: z.object({
       group: runnerGroupSchema,
       profiles: z.array(z.string()).optional(),
-      heldSessionStates: z.array(heldSessionStateSchema).max(100).optional(),
+      heldSessionStates: z
+        .array(heldSessionStateSchema)
+        .max(MAX_HELD_SESSION_STATES)
+        .optional(),
     }),
     responses: {
       200: z.object({
@@ -283,7 +287,9 @@ export const heartbeatBodySchema = z.object({
   allocatedVcpu: z.number().int().nonnegative(),
   allocatedMemoryMb: z.number().int().nonnegative(),
   runningCount: z.number().int().nonnegative(),
-  heldSessionStates: z.array(heldSessionStateSchema),
+  heldSessionStates: z
+    .array(heldSessionStateSchema)
+    .max(MAX_HELD_SESSION_STATES),
   mode: z.enum(["running", "draining", "stopping"]),
 });
 

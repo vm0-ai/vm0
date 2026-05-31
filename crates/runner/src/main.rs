@@ -34,6 +34,8 @@ mod status;
 mod storage_cache;
 mod telemetry;
 mod types;
+mod workspace_image_cache;
+mod workspace_mount;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -74,6 +76,8 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused image directories
     Gc(cmd::GcArgs),
+    /// Clean up the host-shared workspace image cache
+    GcWorkspaceImageCache(cmd::GcWorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
     /// Local file-queue provider commands
@@ -259,6 +263,9 @@ async fn main() -> ExitCode {
             .map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
+        Command::GcWorkspaceImageCache(args) => cmd::run_gc_workspace_image_cache(args)
+            .await
+            .map(|()| ExitCode::SUCCESS),
         Command::Doctor(args) => cmd::run_doctor(args).await,
         Command::Local(args) => cmd::run_local(args).await,
     };

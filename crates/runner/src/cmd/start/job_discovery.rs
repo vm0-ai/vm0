@@ -11,7 +11,9 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use super::active_sessions::{ActiveSessionGuard, active_session_ids};
 use super::factory_lifecycle::SharedFactory;
+use super::heartbeat::{filter_active_held_session_states, merge_held_session_states};
 use super::idle_lifecycle::{
     SharedIdlePool, add_run_with_idle_status_snapshot, spawn_idle_destroy_job,
 };
@@ -52,6 +54,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     };
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
+    let job_disk_mb = profile_config.disk_mb;
     // Look up factory for this profile.
     let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
@@ -103,6 +106,10 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         return;
     }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
+    let active_session_guard = ActiveSessionGuard::new(
+        Arc::clone(&ctx.spawn_ctx.active_sessions),
+        claimed.context().session_id().map(str::to_owned),
+    );
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
         ctx.spawn_ctx.device_rate_limits.as_ref(),
         claimed.context(),
@@ -135,11 +142,13 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         profile_name,
         vcpu: job_vcpu,
         memory_mb: job_memory,
+        disk_mb: job_disk_mb,
         budget_lease: active_lease,
         restore_guest_state: *restore_guest_state,
         device_rate_limits,
         factory: Arc::clone(factory),
         cancel: job_cancel,
+        active_session_guard,
     };
     spawn_job(
         claimed,
@@ -171,13 +180,19 @@ async fn try_reuse_from_pool(
 
     // Take the entry under the pool lock, then drop the lock before any awaits
     // so unpark does not block other take/park operations.
-    let (taken, snapshot, held_session_states) = {
+    let (taken, snapshot, idle_held_session_states) = {
         let mut pool = ctx.idle_pool.lock().await;
         let taken = pool.take(session_id);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         let held_session_states = pool.held_session_states();
         (taken, snapshot, held_session_states)
     };
+    let workspace_held_session_states = ctx.spawn_ctx.workspace_cache.held_session_states().await;
+    let active_session_ids = active_session_ids(&ctx.spawn_ctx.active_sessions);
+    let held_session_states = merge_held_session_states(
+        idle_held_session_states,
+        filter_active_held_session_states(workspace_held_session_states, &active_session_ids),
+    );
     ctx.spawn_ctx
         .provider
         .set_held_session_states(held_session_states)
