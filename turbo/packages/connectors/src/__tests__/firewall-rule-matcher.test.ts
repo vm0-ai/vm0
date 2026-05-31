@@ -350,6 +350,28 @@ describe("findMatchingPermissions", () => {
     ).toEqual(["repos:read"]);
   });
 
+  it("ignores rule methods that are not valid uppercase firewall methods", () => {
+    const malformedMethodConfig: FirewallConfig = {
+      name: "malformed-method",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "lowercase", rules: ["get /data"] },
+            { name: "unknown", rules: ["BREW /data"] },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/data", malformedMethodConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("BREW", "/data", malformedMethodConfig),
+    ).toEqual([]);
+  });
+
   it("matches ANY method rule", () => {
     const anyConfig: FirewallConfig = {
       name: "any-test",

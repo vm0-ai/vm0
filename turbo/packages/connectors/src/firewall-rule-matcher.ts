@@ -20,6 +20,17 @@ interface ApiMatchState {
   matched: string[];
 }
 
+const VALID_RULE_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+  "ANY",
+]);
+
 /**
  * Match a runtime segment against a mixed pattern's literal prefix/suffix.
  *
@@ -118,7 +129,8 @@ function comparePathSpecificity(
 function matchingRulePath(rule: string, upperMethod: string): string | null {
   const spaceIdx = rule.indexOf(" ");
   if (spaceIdx === -1) return null;
-  const ruleMethod = rule.slice(0, spaceIdx).toUpperCase();
+  const ruleMethod = rule.slice(0, spaceIdx);
+  if (!VALID_RULE_METHODS.has(ruleMethod)) return null;
   if (ruleMethod !== "ANY" && ruleMethod !== upperMethod) return null;
   return rule.slice(spaceIdx + 1);
 }
