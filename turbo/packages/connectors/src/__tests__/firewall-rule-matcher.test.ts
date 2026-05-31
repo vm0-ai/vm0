@@ -332,6 +332,78 @@ describe("matchFirewallBaseUrl", () => {
   });
 
   it.each([
+    [
+      "runtime trailing host dot",
+      "https://api.github.com./repos",
+      "https://api.github.com",
+    ],
+    [
+      "runtime leading-zero port",
+      "https://api.github.com:08443/repos",
+      "https://api.github.com:8443",
+    ],
+    [
+      "canonical IPv6 spelling",
+      "https://[2001:0db8::1]/repos",
+      "https://[2001:db8::1]",
+    ],
+    [
+      "IPv4-mapped IPv6 spelling",
+      "https://[::ffff:127.0.0.1]/repos",
+      "https://[::ffff:7f00:1]",
+    ],
+  ])("matches %s authority normalization", (_label, url, base) => {
+    expect(matchFirewallBaseUrl(url, base)).toEqual({
+      displayBase: base,
+      relativePath: "/repos",
+      score: base.length,
+    });
+  });
+
+  it.each([
+    [
+      "punycode runtime with Unicode base",
+      "https://xn--fsqu00a.xn--0zwm56d/repos",
+      "https://例子.测试",
+      "/repos",
+    ],
+    [
+      "Unicode runtime with punycode base",
+      "https://例子.测试/repos",
+      "https://xn--fsqu00a.xn--0zwm56d",
+      "/repos",
+    ],
+    [
+      "parameterized Unicode base suffix",
+      "https://api.xn--fsqu00a.xn--0zwm56d/api",
+      "https://{sub}.例子.测试",
+      "/api",
+    ],
+    [
+      "parameterized punycode base suffix",
+      "https://api.例子.测试/api",
+      "https://{sub}.xn--fsqu00a.xn--0zwm56d",
+      "/api",
+    ],
+  ])(
+    "matches IDNA-equivalent authorities for %s",
+    (_label, url, base, relativePath) => {
+      expect(matchFirewallBaseUrl(url, base)).toEqual({
+        displayBase: base,
+        relativePath,
+        score: base.length,
+      });
+    },
+  );
+
+  it.each([
+    ["Unicode-to-ASCII alias", "https://faß.de/repos", "https://fass.de"],
+    ["ASCII-to-Unicode alias", "https://fass.de/repos", "https://faß.de"],
+  ])("rejects unsafe IDNA compatibility alias for %s", (_label, url, base) => {
+    expect(matchFirewallBaseUrl(url, base)).toBeNull();
+  });
+
+  it.each([
     ["opening brace", "https://api.github.com/static{"],
     ["closing brace", "https://api.github.com/static}"],
   ])("matches static base paths with a literal single %s", (_label, base) => {
