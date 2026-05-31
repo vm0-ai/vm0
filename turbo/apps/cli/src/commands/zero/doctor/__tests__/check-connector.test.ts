@@ -949,6 +949,12 @@ describe("zero doctor check-connector command", () => {
       ["raw whitespace", "https://api.github.com/foo bar"],
       ["authority backslash", "https://api.github.com\\repos/owner/repo"],
       ["empty host label", "https://.g.alchemy.com/v2"],
+      ["raw host braces", "https://{eth}.g.alchemy.com/v2/demo"],
+      ["raw host comma", "https://eth,mainnet.g.alchemy.com/v2/demo"],
+      [
+        "percent-encoded host comma",
+        "https://eth%2Cmainnet.g.alchemy.com/v2/demo",
+      ],
       [
         "percent-encoded authority dot",
         "https://api%2egithub.com/repos/owner/repo",

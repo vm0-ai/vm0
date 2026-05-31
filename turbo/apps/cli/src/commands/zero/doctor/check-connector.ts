@@ -71,6 +71,8 @@ const UNICODE_LOW_SURROGATE_MIN = 0xdc00;
 const UNICODE_LOW_SURROGATE_MAX = 0xdfff;
 const PERCENT_ESCAPE_LENGTH = 3;
 const HEX_DIGITS = new Set("0123456789abcdefABCDEF".split(""));
+const FORBIDDEN_RUNTIME_HOST_CHARS = new Set("#%,/<>?@\\^|{}".split(""));
+const FORBIDDEN_BASE_PATTERN_HOST_CHARS = new Set("#%,/<>?@\\^|".split(""));
 const PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = new Set([
   "{",
   "}",
@@ -214,7 +216,10 @@ function rawPathFromUrl(url: string): string {
   return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
 }
 
-function normalizeUrlHostname(hostname: string): string | null {
+function normalizeUrlHostname(
+  hostname: string,
+  options: { allowHostParams?: boolean } = {},
+): string | null {
   let normalized = hostname.toLowerCase();
   if (normalized.endsWith(".")) {
     normalized = normalized.slice(0, -1);
@@ -229,15 +234,30 @@ function normalizeUrlHostname(hostname: string): string | null {
   ) {
     return null;
   }
+  const forbiddenChars =
+    options.allowHostParams === true
+      ? FORBIDDEN_BASE_PATTERN_HOST_CHARS
+      : FORBIDDEN_RUNTIME_HOST_CHARS;
+  if (
+    !normalized.startsWith("[") &&
+    [...normalized].some((char) => {
+      return forbiddenChars.has(char);
+    })
+  ) {
+    return null;
+  }
   return normalized;
 }
 
-function normalizedUrlAuthority(parsed: URL): string | null {
+function normalizedUrlAuthority(
+  parsed: URL,
+  options: { allowHostParams?: boolean } = {},
+): string | null {
   if (parsed.username !== "" || parsed.password !== "") {
     return null;
   }
 
-  const hostname = normalizeUrlHostname(parsed.hostname);
+  const hostname = normalizeUrlHostname(parsed.hostname, options);
   if (hostname === null || hostname === "") {
     return null;
   }
@@ -253,7 +273,9 @@ function matchStaticBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
   }
 
   const urlAuthority = normalizedUrlAuthority(parsedUrl);
-  const baseAuthority = normalizedUrlAuthority(parsedBase);
+  const baseAuthority = normalizedUrlAuthority(parsedBase, {
+    allowHostParams: rawBase.includes("{") || rawBase.includes("}"),
+  });
   if (urlAuthority === null || baseAuthority === null) return null;
   if (rawBase.includes("{") || rawBase.includes("}")) {
     if (matchFirewallHost(urlAuthority, baseAuthority) === null) return null;
