@@ -262,8 +262,6 @@ def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | Non
             flow.metadata[metadata_keys.X_NDJSON_STATE] = ndjson_state
             return ConnectorResponseParser(feed=parser_fn)
 
-    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
-        return None
     if not (_HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN):
         return None
 

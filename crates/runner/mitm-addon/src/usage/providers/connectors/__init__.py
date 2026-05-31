@@ -96,7 +96,10 @@ def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponsePa
 
     The returned parser is wired into the response stream and may publish
     connector-owned ``flow.metadata`` state for ``report_connector_usage``.
+    Non-billable flows never need connector billing parser state.
     """
+    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+        return None
     firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
     factory = _RESPONSE_PARSER_FACTORIES.get(firewall_name)
     if factory is None:
