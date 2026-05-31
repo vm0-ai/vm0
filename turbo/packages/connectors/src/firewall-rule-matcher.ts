@@ -306,7 +306,6 @@ function recordPermissionMatch(
     state.matched.length = 0;
   }
   if (
-    state.bestSpecificity !== null &&
     comparePathSpecificity(specificity, state.bestSpecificity) === 0 &&
     !state.matched.includes(permission)
   ) {

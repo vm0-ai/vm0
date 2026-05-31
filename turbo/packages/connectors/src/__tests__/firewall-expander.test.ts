@@ -662,7 +662,7 @@ describe("validateBaseUrl", () => {
       return validateBaseUrl("ftp://api.example.com/v1", "fw");
     }).toThrow("scheme must be http or https");
     expect(() => {
-      return validateBaseUrl("ws://{sub}.example.com/v1", "fw");
+      return validateBaseUrl("ssh://{sub}.example.com/v1", "fw");
     }).toThrow("scheme must be http or https");
   });
 
