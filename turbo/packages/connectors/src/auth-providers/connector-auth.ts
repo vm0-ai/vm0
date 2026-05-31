@@ -615,15 +615,15 @@ export async function refreshConnectorAuthProviderAccessToken<
       `${args.type} connector auth method ${args.authMethod} has no refresh-token access provider`,
     );
   }
-  const tokenGrant = getConnectorAuthMethod(args.type, args.authMethod)?.grant;
-  if (tokenGrant?.kind !== "auth-code" && tokenGrant?.kind !== "device-auth") {
+  const grant = getConnectorAuthMethod(args.type, args.authMethod)?.grant;
+  if (grant?.kind !== "auth-code" && grant?.kind !== "device-auth") {
     throw new Error(
-      `${args.type} connector auth method ${args.authMethod} has no token grant config`,
+      `${args.type} connector auth method ${args.authMethod} has refresh-token access without an OAuth token URL`,
     );
   }
   return await access.refreshToken({
     ...args.clientArgs,
-    tokenGrant,
+    tokenUrl: grant.tokenUrl,
     refreshToken: args.refreshToken,
     signal: args.signal,
   } as ConnectorAuthProviderRefreshArgs<T>);

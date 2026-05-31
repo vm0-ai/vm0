@@ -57,7 +57,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshDocuSignToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

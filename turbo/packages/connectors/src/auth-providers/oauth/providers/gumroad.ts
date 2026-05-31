@@ -100,13 +100,13 @@ export async function exchangeGumroadCode(
 }
 
 export async function refreshGumroadToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<GumroadRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

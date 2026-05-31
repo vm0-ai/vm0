@@ -57,7 +57,7 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
-          args.tokenGrant,
+          args.tokenUrl,
           "google-calendar",
           clientId,
           clientSecret,

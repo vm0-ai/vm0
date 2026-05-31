@@ -152,10 +152,10 @@ describe("connector/providers/google-ads", () => {
         clientSecret: "client-secret",
         refreshToken: "refresh-token",
         signal: testRefreshSignal(),
-        tokenGrant: getConnectorAuthMethodAuthCodeGrantConfig(
+        tokenUrl: getConnectorAuthMethodAuthCodeGrantConfig(
           "google-ads",
           "oauth",
-        ),
+        ).tokenUrl,
       });
 
       expect(result).toEqual({

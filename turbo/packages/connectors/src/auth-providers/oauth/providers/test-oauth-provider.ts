@@ -52,7 +52,7 @@ export const testOauthProvider: AuthCodeConnectorAuthProvider<"test-oauth"> = {
       const { clientId, clientSecret } = args;
       const refreshToken = args.refreshToken;
       const result = await refreshTestOAuthToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         refreshToken,

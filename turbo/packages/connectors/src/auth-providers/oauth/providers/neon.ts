@@ -113,13 +113,13 @@ export async function exchangeNeonCode(
  * Access token expires_in: expected (OIDC-compliant) but not explicitly documented. Ref: https://neon.com/docs/guides/oauth-integration
  */
 export async function refreshNeonToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<NeonRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

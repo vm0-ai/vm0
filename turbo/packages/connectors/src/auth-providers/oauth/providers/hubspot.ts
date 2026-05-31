@@ -108,13 +108,13 @@ export async function exchangeHubSpotCode(
  * Access token expires_in: 1800s (30 min). Ref: https://developers.hubspot.com/docs/api-reference/auth-oauth-v1/guide
  */
 export async function refreshHubSpotToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<HubSpotRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

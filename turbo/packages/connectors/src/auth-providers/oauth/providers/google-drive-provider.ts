@@ -57,7 +57,7 @@ export const googleDriveProvider: AuthCodeConnectorAuthProvider<"google-drive"> 
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
-          args.tokenGrant,
+          args.tokenUrl,
           "google-drive",
           clientId,
           clientSecret,

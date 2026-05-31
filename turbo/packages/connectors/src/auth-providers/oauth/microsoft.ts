@@ -126,14 +126,14 @@ export async function exchangeMicrosoftOAuthCode(
  * Access token expires_in: 3600-5400s (~75 min). Ref: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
  */
 export async function refreshMicrosoftToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MicrosoftRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

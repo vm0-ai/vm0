@@ -50,7 +50,7 @@ export const sentryProvider: AuthCodeConnectorAuthProvider<"sentry"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshSentryToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

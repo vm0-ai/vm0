@@ -92,7 +92,7 @@ export async function buildSupabaseAuthorizationUrl(
  * Access token expires_in: 3600s (1 hour, configurable). Ref: https://supabase.com/docs/guides/auth/oauth-server/oauth-flows
  */
 export async function refreshSupabaseToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +102,7 @@ export async function refreshSupabaseToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

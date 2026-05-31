@@ -143,7 +143,7 @@ describe("connector/providers/gumroad", () => {
       server.use(handler);
 
       const result = await refreshGumroadToken(
-        authCodeGrant(),
+        authCodeGrant().tokenUrl,
         "client-id",
         "client-secret",
         "old-refresh-token",
@@ -165,7 +165,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         refreshGumroadToken(
-          authCodeGrant(),
+          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "bad-refresh-token",
@@ -182,7 +182,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         refreshGumroadToken(
-          authCodeGrant(),
+          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "refresh-token",
@@ -199,7 +199,7 @@ describe("connector/providers/gumroad", () => {
 
       await expect(
         refreshGumroadToken(
-          authCodeGrant(),
+          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "refresh-token",

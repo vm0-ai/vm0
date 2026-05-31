@@ -156,13 +156,13 @@ async function fetchAsanaUserInfo(accessToken: string): Promise<{
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.asana.com/docs/oauth
  */
 export async function refreshAsanaToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<AsanaRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

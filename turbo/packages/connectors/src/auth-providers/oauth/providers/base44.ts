@@ -185,11 +185,11 @@ export async function pollBase44DeviceAuth(args: {
 
 export async function refreshBase44Token(args: {
   readonly clientId: string;
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
+  readonly tokenUrl: string;
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(args.deviceAuthGrant.tokenUrl, {
+  const response = await fetch(args.tokenUrl, {
     signal: args.signal,
     method: "POST",
     headers: {

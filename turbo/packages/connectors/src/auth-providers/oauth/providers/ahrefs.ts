@@ -112,13 +112,13 @@ export async function exchangeAhrefsCode(
  * Access token expires_in: returned but value undocumented. Ref: https://docs.ahrefs.com/docs/ahrefs-connect/developers/oauth-guide
  */
 export async function refreshAhrefsToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<AhrefsRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

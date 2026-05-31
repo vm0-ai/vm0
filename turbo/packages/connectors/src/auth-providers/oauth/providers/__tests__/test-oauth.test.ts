@@ -126,7 +126,7 @@ describe("test-oauth provider URLs", () => {
     );
 
     await refreshTestOAuthToken(
-      authCodeGrant(),
+      authCodeGrant().tokenUrl,
       "test-oauth-client",
       "test-oauth-secret",
       "refresh-1",

@@ -123,13 +123,13 @@ export async function exchangeSentryCode(
  * Access token expires_in: ~2592000s (30 days). Ref: https://docs.sentry.io/api/auth/
  */
 export async function refreshSentryToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<SentryRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

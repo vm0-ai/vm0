@@ -130,13 +130,13 @@ export async function exchangeStravaCode(
  * Access token expires_in: 21600s (6 hours). Ref: https://developers.strava.com/docs/authentication/
  */
 export async function refreshStravaToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<StravaRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

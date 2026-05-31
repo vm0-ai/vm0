@@ -55,7 +55,7 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
       refreshToken: (args) => {
         const { clientId, clientSecret } = args;
         return refreshGarminConnectToken(
-          args.tokenGrant,
+          args.tokenUrl,
           clientId,
           clientSecret,
           args.refreshToken,

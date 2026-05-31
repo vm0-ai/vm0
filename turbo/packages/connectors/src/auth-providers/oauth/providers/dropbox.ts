@@ -115,13 +115,13 @@ export async function exchangeDropboxCode(
  * Access token expires_in: 14400s (4 hours). Ref: https://developers.dropbox.com/oauth-guide
  */
 export async function refreshDropboxToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<DropboxRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

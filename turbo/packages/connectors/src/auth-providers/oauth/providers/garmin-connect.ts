@@ -153,13 +153,13 @@ export async function exchangeGarminConnectCode(
  * Access token expires_in: 86400s (1 day). Ref: https://developerportal.garmin.com
  */
 export async function refreshGarminConnectToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<GarminConnectRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

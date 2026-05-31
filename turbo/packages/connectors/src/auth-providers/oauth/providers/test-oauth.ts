@@ -137,10 +137,8 @@ function getAuthorizationUrl(): string {
   );
 }
 
-function getTestOAuthTokenUrl(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
-): string {
-  return resolveTestOAuthProviderUrl("tokenUrl", authCodeGrant.tokenUrl);
+function getTestOAuthTokenUrl(tokenUrl: string): string {
+  return resolveTestOAuthProviderUrl("tokenUrl", tokenUrl);
 }
 
 export function buildTestOAuthAuthorizationUrl(
@@ -168,12 +166,12 @@ const tokenResponseSchema = z.object({
 });
 
 async function postToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   body: URLSearchParams,
   operation: "exchange" | "refresh",
   signal: AbortSignal | undefined,
 ): Promise<TokenResponse> {
-  const response = await fetch(getTestOAuthTokenUrl(authCodeGrant), {
+  const response = await fetch(getTestOAuthTokenUrl(tokenUrl), {
     signal,
     method: "POST",
     headers: {
@@ -205,7 +203,7 @@ export async function exchangeTestOAuthCode(
   redirectUri: string,
 ): Promise<TokenResponse> {
   return postToken(
-    authCodeGrant,
+    authCodeGrant.tokenUrl,
     new URLSearchParams({
       grant_type: "authorization_code",
       client_id: clientId,
@@ -219,14 +217,14 @@ export async function exchangeTestOAuthCode(
 }
 
 export async function refreshTestOAuthToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<TokenResponse> {
   return postToken(
-    authCodeGrant,
+    tokenUrl,
     new URLSearchParams({
       grant_type: "refresh_token",
       client_id: clientId,

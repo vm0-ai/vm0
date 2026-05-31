@@ -115,7 +115,7 @@ export async function exchangeFigmaCode(
  * Access token expires_in: ~7776000s (90 days). Ref: https://developers.figma.com/docs/rest-api/authentication/
  */
 export async function refreshFigmaToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -125,7 +125,7 @@ export async function refreshFigmaToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

@@ -57,7 +57,7 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshSupabaseToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

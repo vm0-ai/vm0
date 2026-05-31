@@ -114,13 +114,13 @@ export async function exchangeXeroCode(
  * Access token expires_in: 1800s (30 min). Ref: https://developer.xero.com/documentation/guides/oauth2/auth-flow/
  */
 export async function refreshXeroToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<XeroRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

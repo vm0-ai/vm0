@@ -156,7 +156,7 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       const result = await refreshSpotifyToken(
-        authCodeGrant(),
+        authCodeGrant().tokenUrl,
         "client-id",
         "client-secret",
         "old-refresh-token",
@@ -182,7 +182,7 @@ describe("connector/providers/spotify", () => {
 
       await expect(
         refreshSpotifyToken(
-          authCodeGrant(),
+          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "bad-refresh-token",
@@ -202,7 +202,7 @@ describe("connector/providers/spotify", () => {
 
       await expect(
         refreshSpotifyToken(
-          authCodeGrant(),
+          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "refresh-token",
@@ -222,7 +222,7 @@ describe("connector/providers/spotify", () => {
 
       await expect(
         refreshSpotifyToken(
-          authCodeGrant(),
+          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "refresh-token",

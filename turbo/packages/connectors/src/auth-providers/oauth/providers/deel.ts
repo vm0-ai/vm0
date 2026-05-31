@@ -92,7 +92,7 @@ export async function buildDeelAuthorizationUrl(
  * Access token expires_in: 2592000s (30 days). Ref: https://developer.deel.com/docs/oauth2
  */
 export async function refreshDeelToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +102,7 @@ export async function refreshDeelToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

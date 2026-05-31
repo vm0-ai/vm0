@@ -50,7 +50,7 @@ export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshHubSpotToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

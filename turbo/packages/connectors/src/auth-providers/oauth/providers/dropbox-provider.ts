@@ -50,7 +50,7 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshDropboxToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

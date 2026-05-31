@@ -50,7 +50,7 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshRedditToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

@@ -92,7 +92,7 @@ export async function buildCanvaAuthorizationUrl(
  * Access token expires_in: 14400s (4 hours). Ref: https://www.canva.dev/docs/connect/authentication/
  */
 export async function refreshCanvaToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +102,7 @@ export async function refreshCanvaToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

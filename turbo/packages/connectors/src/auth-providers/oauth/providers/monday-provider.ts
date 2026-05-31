@@ -50,7 +50,7 @@ export const mondayProvider: AuthCodeConnectorAuthProvider<"monday"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshMondayToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

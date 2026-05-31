@@ -110,13 +110,13 @@ export async function exchangePosthogCode(
  * Access token expires_in: 36000s (10 hours). Ref: https://posthog.com/handbook/engineering/oauth-development-guide
  */
 export async function refreshPosthogToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<PosthogRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

@@ -52,7 +52,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshAirtableToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

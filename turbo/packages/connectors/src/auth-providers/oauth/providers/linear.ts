@@ -116,13 +116,13 @@ export async function exchangeLinearCode(
  * Access token expires_in: 86399s (24 hours). Ref: https://developers.linear.app/docs/oauth/authentication
  */
 export async function refreshLinearToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<LinearRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

@@ -113,13 +113,13 @@ export async function exchangeStripeCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://docs.stripe.com/stripe-apps/api-authentication/oauth
  */
 export async function refreshStripeToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   _clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<StripeRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

@@ -57,7 +57,7 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
-          args.tokenGrant,
+          args.tokenUrl,
           "google-docs",
           clientId,
           clientSecret,

@@ -120,14 +120,14 @@ export async function exchangeGoogleOAuthCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.google.com/identity/protocols/oauth2/web-server
  */
 export async function refreshGoogleToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<GoogleRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

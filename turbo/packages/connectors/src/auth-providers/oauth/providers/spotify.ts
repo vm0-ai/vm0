@@ -114,7 +114,7 @@ export async function exchangeSpotifyCode(
  * Uses Basic auth header (base64 of clientId:clientSecret).
  */
 export async function refreshSpotifyToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -124,7 +124,7 @@ export async function refreshSpotifyToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

@@ -45,7 +45,7 @@ export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshAsanaToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

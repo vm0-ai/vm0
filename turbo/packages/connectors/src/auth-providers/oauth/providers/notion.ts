@@ -128,13 +128,13 @@ export async function exchangeNotionCode(
  * Note: Notion does not return expires_in. Token lifetime ~1 hour (undocumented). Ref: https://developers.notion.com/reference/refresh-a-token
  */
 export async function refreshNotionToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<NotionRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

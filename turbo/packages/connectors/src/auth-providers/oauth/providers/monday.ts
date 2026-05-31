@@ -111,13 +111,13 @@ export async function exchangeMondayCode(
  * Note: Monday.com tokens reportedly do not expire. expires_in may not be returned. Ref: https://developer.monday.com/apps/docs/oauth
  */
 export async function refreshMondayToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MondayRefreshResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

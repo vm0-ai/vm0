@@ -92,7 +92,7 @@ export async function buildXAuthorizationUrl(
  * Access token expires_in: 7200s (2 hours). Ref: https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code
  */
 export async function refreshXToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +102,7 @@ export async function refreshXToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

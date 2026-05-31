@@ -117,7 +117,7 @@ export async function exchangeZoomCode(
  * Ref: https://developers.zoom.us/docs/integrations/oauth/
  */
 export async function refreshZoomToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -127,7 +127,7 @@ export async function refreshZoomToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

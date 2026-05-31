@@ -157,7 +157,7 @@ export async function exchangeDocuSignCode(
  * Access token expires_in: 28800s (8 hours) for auth code grant. Ref: https://developers.docusign.com/platform/auth/reference/obtain-access-token/
  */
 export async function refreshDocuSignToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -167,7 +167,7 @@ export async function refreshDocuSignToken(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

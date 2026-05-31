@@ -48,7 +48,7 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshStravaToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

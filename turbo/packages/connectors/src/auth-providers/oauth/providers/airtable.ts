@@ -153,7 +153,7 @@ export async function exchangeAirtableCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://airtable.com/developers/web/api/oauth-reference
  */
 export async function refreshAirtableToken(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -161,7 +161,7 @@ export async function refreshAirtableToken(
 ): Promise<AirtableRefreshResult> {
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
     signal,
     method: "POST",
     headers: {

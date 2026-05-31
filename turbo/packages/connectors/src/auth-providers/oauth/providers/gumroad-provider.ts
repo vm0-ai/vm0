@@ -50,7 +50,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       return refreshGumroadToken(
-        args.tokenGrant,
+        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,
