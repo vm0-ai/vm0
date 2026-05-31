@@ -12,7 +12,7 @@ use crate::masker::SecretMasker;
 use crate::paths;
 use agent_diagnostics::FailureReason;
 use guest_common::{log_error, log_info};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const FAILURE_DIAGNOSTIC_MAX_BYTES: usize = 4096;
@@ -37,40 +37,42 @@ pub(crate) struct ClaudeFailureDiagnostic {
 /// checkpoints before preparing the webhook payload.
 pub async fn send_event(
     http: &HttpClient,
-    event: &mut Value,
+    event: Value,
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), AgentError> {
-    capture_session_metadata(event);
+    capture_session_metadata(&event);
 
     if !http.has_api() {
         return Ok(());
     }
 
-    let payload = prepare_event(event, seq, masker);
+    let payload = prepare_event_payload(event, seq, masker);
     post_event(http, &payload).await
 }
 
-/// Prepare an event webhook payload by adding a sequence number, masking
-/// secrets, and wrapping the event in the HTTP payload shape.
+/// Prepare an event webhook payload by adding a sequence number, masking secrets,
+/// and moving the event into the HTTP payload shape.
 ///
 /// This function does not perform filesystem or network I/O; session metadata
 /// capture is handled separately before payload preparation, and network
 /// delivery happens in `post_event` / `send_event`.
-pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Value {
+pub fn prepare_event_payload(mut event: Value, seq: u32, masker: &SecretMasker) -> Value {
     // Add sequence number
     if let Some(obj) = event.as_object_mut() {
         obj.insert("sequenceNumber".to_string(), json!(seq));
     }
 
     // Mask secrets
-    masker.mask_value(event);
+    masker.mask_value(&mut event);
 
-    // Build payload
-    json!({
-        "runId": env::run_id(),
-        "events": [event],
-    })
+    let mut payload = Map::new();
+    payload.insert(
+        "runId".to_string(),
+        Value::String(env::run_id().to_string()),
+    );
+    payload.insert("events".to_string(), Value::Array(vec![event]));
+    Value::Object(payload)
 }
 
 /// Extract a secret-masked Codex failure diagnostic from stdout JSONL.
@@ -387,6 +389,31 @@ fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepare_event_payload_adds_sequence_and_masks_object_event() {
+        let event = serde_json::json!({
+            "type": "test",
+            "data": "contains secret-value"
+        });
+        let masker = SecretMasker::from_raw("c2VjcmV0LXZhbHVl");
+
+        let payload = prepare_event_payload(event, 7, &masker);
+
+        assert_eq!(payload["events"][0]["type"], "test");
+        assert_eq!(payload["events"][0]["sequenceNumber"], 7);
+        assert_eq!(payload["events"][0]["data"], "contains ***");
+    }
+
+    #[test]
+    fn prepare_event_payload_wraps_non_object_event_without_sequence_number() {
+        let event = serde_json::json!("contains secret-value");
+        let masker = SecretMasker::from_raw("c2VjcmV0LXZhbHVl");
+
+        let payload = prepare_event_payload(event, 7, &masker);
+
+        assert_eq!(payload["events"][0], "contains ***");
+    }
 
     #[test]
     fn extract_tool_use() {

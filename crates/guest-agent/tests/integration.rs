@@ -257,22 +257,22 @@ async fn for_current_env_uses_env_api_url_for_webhook_routes()
             .path("/api/webhooks/agent/events")
             .header("Authorization", "Bearer test-token-abc123")
             .header("x-vercel-protection-bypass", "test-bypass-value")
-            .json_body_includes(r#"{"runId": "test-run-001"}"#);
+            .json_body_includes(r#"{"runId": "test-run-001"}"#)
+            .body_includes(r#""sequenceNumber":7"#);
         then.status(200);
     });
 
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({"type": "test", "data": "env route"});
+    let event = json!({"type": "test", "data": "env route"});
     guest_agent::events::send_event(
         &guest_agent::http::HttpClient::for_current_env()?,
-        &mut event,
+        event,
         7,
         &masker,
     )
     .await?;
 
     mock.assert_calls_async(1).await;
-    assert_eq!(event["sequenceNumber"], 7);
     mock.delete_async().await;
     Ok(())
 }
@@ -464,7 +464,8 @@ async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
     let explicit_mock = explicit_server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .header("Authorization", "Bearer explicit-token");
+            .header("Authorization", "Bearer explicit-token")
+            .body_includes(r#""sequenceNumber":3"#);
         then.respond_with(|req| {
             if request_header_absent(req, "x-vercel-protection-bypass") {
                 http_status(200)
@@ -481,12 +482,11 @@ async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
         Duration::ZERO,
     )?;
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({"type": "test", "data": "explicit route"});
-    guest_agent::events::send_event(&http, &mut event, 3, &masker).await?;
+    let event = json!({"type": "test", "data": "explicit route"});
+    guest_agent::events::send_event(&http, event, 3, &masker).await?;
 
     explicit_mock.assert_calls_async(1).await;
     env_mock.assert_calls_async(0).await;
-    assert_eq!(event["sequenceNumber"], 3);
     explicit_mock.delete_async().await;
     env_mock.delete_async().await;
     Ok(())
@@ -1083,17 +1083,17 @@ async fn send_event_correct_payload() {
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/events")
-            .json_body_includes(r#"{"runId": "test-run-001"}"#);
+            .json_body_includes(r#"{"runId": "test-run-001"}"#)
+            .body_includes(r#""sequenceNumber":42"#);
         then.status(200);
     });
 
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({"type": "test", "data": "hello"});
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 42, &masker).await;
+    let event = json!({"type": "test", "data": "hello"});
+    let result = guest_agent::events::send_event(&http_client!(), event, 42, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    assert_eq!(event["sequenceNumber"], 42);
     mock.delete_async().await;
 }
 
@@ -1103,7 +1103,9 @@ async fn send_event_masks_secrets() {
     let server = &*MOCK_SERVER;
 
     let mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/events");
+        when.method(POST)
+            .path("/api/webhooks/agent/events")
+            .body_includes(r#""data":"contains *** here""#);
         then.status(200);
     });
 
@@ -1111,13 +1113,11 @@ async fn send_event_masks_secrets() {
     let encoded_secret = engine.encode("super-secret-value");
     let masker = SecretMasker::from_raw(&encoded_secret);
 
-    let mut event = json!({"type": "test", "data": "contains super-secret-value here"});
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    let event = json!({"type": "test", "data": "contains super-secret-value here"});
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    // The event is mutated in-place; the secret must be replaced.
-    assert_eq!(event["data"], "contains *** here");
     mock.delete_async().await;
 }
 
@@ -1141,20 +1141,16 @@ async fn send_event_captures_session_metadata_before_masking() {
     let engine = base64::engine::general_purpose::STANDARD;
     let encoded_session_id = engine.encode(session_id);
     let masker = SecretMasker::from_raw(&encoded_session_id);
-    let mut event = json!({
+    let event = json!({
         "type": "system",
         "subtype": "init",
         "session_id": session_id
     });
 
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
-    assert_eq!(
-        event["session_id"], "***",
-        "send_event should leave the caller's event masked after payload preparation"
-    );
 
     let stored = std::fs::read_to_string(sid_file).unwrap();
     assert_eq!(
@@ -1184,14 +1180,15 @@ async fn prepare_event_does_not_capture_session_metadata() {
     let hist_file = guest_agent::paths::session_history_path_file();
 
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({
+    let event = json!({
         "type": "system",
         "subtype": "init",
         "session_id": "ses-prepare-only"
     });
-    let payload = guest_agent::events::prepare_event(&mut event, 1, &masker);
+    let payload = guest_agent::events::prepare_event_payload(event, 1, &masker);
 
     assert_eq!(payload["runId"], "test-run-001");
+    assert_eq!(payload["events"][0]["sequenceNumber"], 1);
     assert!(
         !std::path::Path::new(sid_file).exists(),
         "prepare_event must not write the session ID file"
@@ -1219,12 +1216,12 @@ async fn send_event_keeps_existing_session_metadata() {
     });
 
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({
+    let event = json!({
         "type": "system",
         "subtype": "init",
         "session_id": "second-session"
     });
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -1265,12 +1262,12 @@ async fn send_event_extracts_claude_session_id() {
     let masker = SecretMasker::from_raw("");
     // CLI_AGENT_TYPE defaults to "claude-code", so the Claude path is taken:
     // type == "system" && subtype == "init" → reads session_id field.
-    let mut event = json!({
+    let event = json!({
         "type": "system",
         "subtype": "init",
         "session_id": "ses-abc-123"
     });
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -1310,8 +1307,8 @@ async fn send_event_skips_session_id_for_non_init() {
     });
 
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({"type": "assistant", "data": "hello"});
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    let event = json!({"type": "assistant", "data": "hello"});
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -1546,8 +1543,8 @@ async fn send_event_failure_writes_error_flag() {
     });
 
     let masker = SecretMasker::from_raw("");
-    let mut event = json!({"type": "test"});
-    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
+    let event = json!({"type": "test"});
+    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
 
     assert!(result.is_err());
     assert!(

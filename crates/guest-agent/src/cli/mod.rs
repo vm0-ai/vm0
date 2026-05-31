@@ -280,7 +280,7 @@ pub async fn execute_cli(
                             continue;
                         }
 
-                        if let Ok(mut event) = serde_json::from_str::<serde_json::Value>(stripped) {
+                        if let Ok(event) = serde_json::from_str::<serde_json::Value>(stripped) {
                             last_read_event_at = Some(Instant::now());
                             // First event is the CLI init (system/init or thread.started)
                             if seq == 0 {
@@ -348,13 +348,13 @@ pub async fn execute_cli(
                                 }
                             }
                             // Capture checkpoint metadata before event payload preparation
-                            // mutates the event through masking.
+                            // consumes and masks the event.
                             events::capture_session_metadata(&event);
 
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
                             if should_send_events {
-                                let payload = events::prepare_event(&mut event, seq, masker);
+                                let payload = events::prepare_event_payload(event, seq, masker);
                                 if event_tx
                                     .send(PreparedEvent {
                                         sequence: seq,
