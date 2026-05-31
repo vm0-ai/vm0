@@ -1529,6 +1529,67 @@ class TestCompiledFirewallMatching:
         assert result.rel_path == "/users"
         assert result.params == {"workspace": "acme", "tenant": "customer-1"}
 
+    def test_more_specific_parameterized_base_allow_preserves_params_after_broad_deny(
+        self,
+    ):
+        fws = [
+            {
+                "name": "broad",
+                "apis": [
+                    {
+                        "base": "https://{workspace}.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer broad"}},
+                        "permissions": [
+                            {"name": "broad", "rules": ["ANY /{path+}"]},
+                        ],
+                    }
+                ],
+            },
+            {
+                "name": "tenant",
+                "apis": [
+                    {
+                        "base": "https://{workspace}.example.com/api/{tenant}",
+                        "auth": {"headers": {"Authorization": "Bearer tenant"}},
+                        "permissions": [
+                            {"name": "user-read", "rules": ["GET /users/{id}"]},
+                        ],
+                    }
+                ],
+            },
+        ]
+        policies = {
+            "broad": {
+                "allow": [],
+                "deny": ["broad"],
+                "unknownPolicy": "deny",
+            },
+            "tenant": {
+                "allow": ["user-read"],
+                "deny": [],
+                "unknownPolicy": "deny",
+            },
+        }
+
+        result = matching.match_compiled_firewall_request(
+            "https://acme.example.com/api/customer-1/users/42",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer tenant"
+        assert result.name == "tenant"
+        assert result.permission == "user-read"
+        assert result.rule == "GET /users/{id}"
+        assert result.rel_path == "/users/42"
+        assert result.params == {
+            "workspace": "acme",
+            "tenant": "customer-1",
+            "id": "42",
+        }
+
     def test_more_specific_base_invalid_unknown_policy_blocks_earlier_broad_allow(self):
         fws = [
             {
