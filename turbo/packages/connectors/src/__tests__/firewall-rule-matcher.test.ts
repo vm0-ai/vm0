@@ -145,6 +145,12 @@ describe("matchFirewallHost", () => {
     ).toEqual({ deployment: "foo.bar" });
   });
 
+  it("preserves original case for leading greedy host params", () => {
+    expect(
+      matchFirewallHost("Foo.Bar.bentoml.ai", "{deployment+}.bentoml.ai"),
+    ).toEqual({ deployment: "Foo.Bar" });
+  });
+
   it("requires a non-empty leading host for plus greedy params", () => {
     expect(
       matchFirewallHost("bentoml.ai", "{deployment+}.bentoml.ai"),
@@ -160,6 +166,9 @@ describe("matchFirewallHost", () => {
   it("rejects non-leading greedy host params", () => {
     expect(
       matchFirewallHost("foo.bar.example.com", "foo.{deployment+}.com"),
+    ).toBeNull();
+    expect(
+      matchFirewallHost("foo.bar.example.com", "foo.{deployment*}.com"),
     ).toBeNull();
   });
 
@@ -234,6 +243,9 @@ describe("matchFirewallPathPrefix", () => {
   it("rejects non-terminal greedy path params", () => {
     expect(
       matchFirewallPathPrefix("/api/a/b/tail", "/api/{rest+}/tail"),
+    ).toBeNull();
+    expect(
+      matchFirewallPathPrefix("/api/a/b/tail", "/api/{rest*}/tail"),
     ).toBeNull();
   });
 
