@@ -955,17 +955,6 @@ export type ConnectorAuthMethodIdsByAccessKind<
     : never;
 }[ConnectorAuthMethodKeys<Type>];
 
-export type ConnectorAuthMethodIdsByRevokeKind<
-  Type extends ConnectorType,
-  Kind extends ConnectorRevokeKind,
-> = {
-  [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-    readonly revoke: { readonly kind: Kind };
-  }
-    ? Method
-    : never;
-}[ConnectorAuthMethodKeys<Type>];
-
 type ConnectorTypeWithMultipleAuthMethodsForGrantKind<
   Kind extends ConnectorGrantKind,
 > = {
