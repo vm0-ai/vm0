@@ -982,6 +982,9 @@ export type ConnectorAuthCodeGrantMethodsAreSingle = AssertNever<
 export type ConnectorDeviceAuthGrantMethodsAreSingle = AssertNever<
   ConnectorTypeWithMultipleAuthMethodsForGrantKind<"device-auth">
 >;
+export type ConnectorManualGrantMethodsAreSingle = AssertNever<
+  ConnectorTypeWithMultipleAuthMethodsForGrantKind<"manual">
+>;
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {

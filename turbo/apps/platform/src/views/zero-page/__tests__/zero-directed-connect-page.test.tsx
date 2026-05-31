@@ -369,6 +369,43 @@ describe("directed connect page", () => {
     });
   });
 
+  it("keeps directed manual grant save disabled for whitespace-only required values", async () => {
+    const user = userEvent.setup();
+    let requestCalled = false;
+
+    server.use(
+      mockApi(zeroConnectorManualGrantContract.connect, ({ respond }) => {
+        requestCalled = true;
+        return respond(200, manualGrantConnectorResponse("axiom"));
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors/axiom/connect",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Axiom to proceed"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Connect"));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByPlaceholderText("xaat-..."), "   ");
+
+    const saveButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent === "Save";
+    });
+    expect(saveButton).toBeDisabled();
+    expect(requestCalled).toBeFalsy();
+  });
+
   it("has a logo link that navigates to /connectors", async () => {
     detachedSetupPage({ context, path: "/connectors/gmail/connect" });
 

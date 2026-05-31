@@ -35,6 +35,7 @@ import {
   manualGrantFormValuesFor$,
   setManualGrantFormSubmitting$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { hasTokenInputValue } from "../../signals/zero-page/settings/token-input.ts";
 import {
   bestEffort,
   detach,
@@ -194,7 +195,7 @@ function ManualGrantForm({
 
   const fieldEntries = Object.entries(manualGrantMethod.grant.fields);
   const allFilled = fieldEntries.every(([name, cfg]) => {
-    return !cfg.required || fieldValues[name];
+    return !cfg.required || hasTokenInputValue(fieldValues[name]);
   });
 
   const handleSubmit = onDomEventFn(async () => {
