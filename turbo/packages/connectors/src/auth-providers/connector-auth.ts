@@ -1,11 +1,12 @@
 import {
   connectorTypeSchema,
-  type ConnectorType,
+  type ConnectorAuthCodeGrantAuthMethodId,
   type AuthCodeGrantConnectorType,
+  type ConnectorType,
   type ConnectorAuthProviderType,
+  type ConnectorDeviceAuthGrantAuthMethodId,
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
-  type ConnectorAuthMethodIdsByGrantKind,
   type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
@@ -114,10 +115,7 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
 type ConnectorAuthCodeGrantProviderEntries<
   Type extends AuthCodeGrantConnectorType,
 > = {
-  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
-    Type,
-    "auth-code"
-  >]: AuthCodeConnectorAuthProvider<Type>;
+  readonly [Method in ConnectorAuthCodeGrantAuthMethodId<Type>]: AuthCodeConnectorAuthProvider<Type>;
 };
 
 type AuthCodeConnectorAuthProviderMap = {
@@ -127,10 +125,7 @@ type AuthCodeConnectorAuthProviderMap = {
 type ConnectorDeviceAuthGrantProviderEntries<
   Type extends DeviceAuthGrantConnectorType,
 > = {
-  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
-    Type,
-    "device-auth"
-  >]: DeviceAuthConnectorAuthProvider<Type>;
+  readonly [Method in ConnectorDeviceAuthGrantAuthMethodId<Type>]: DeviceAuthConnectorAuthProvider<Type>;
 };
 
 type DeviceAuthConnectorAuthProviderMap = {
@@ -168,7 +163,7 @@ function connectorAuthCodeGrantProviderFor<
   T extends AuthCodeGrantConnectorType,
 >(
   type: T,
-  authMethod: ConnectorAuthMethodIdsByGrantKind<T, "auth-code">,
+  authMethod: ConnectorAuthCodeGrantAuthMethodId<T>,
 ): AuthCodeConnectorAuthProvider<T> {
   const providers: ConnectorAuthCodeGrantProviderEntries<T> =
     AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[type];
@@ -179,7 +174,7 @@ function connectorDeviceAuthGrantProviderFor<
   T extends DeviceAuthGrantConnectorType,
 >(
   type: T,
-  authMethod: ConnectorAuthMethodIdsByGrantKind<T, "device-auth">,
+  authMethod: ConnectorDeviceAuthGrantAuthMethodId<T>,
 ): DeviceAuthConnectorAuthProvider<T> {
   const providers: ConnectorDeviceAuthGrantProviderEntries<T> =
     DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type];
@@ -381,7 +376,7 @@ export function hasConnectorAuthCodeGrantProvider<
 >(
   type: T,
   authMethod: string,
-): authMethod is ConnectorAuthMethodIdsByGrantKind<T, "auth-code">;
+): authMethod is ConnectorAuthCodeGrantAuthMethodId<T>;
 export function hasConnectorAuthCodeGrantProvider(
   type: string,
   authMethod: string,
@@ -421,7 +416,7 @@ export function hasConnectorDeviceAuthGrantProvider<
 >(
   type: T,
   authMethod: string,
-): authMethod is ConnectorAuthMethodIdsByGrantKind<T, "device-auth">;
+): authMethod is ConnectorDeviceAuthGrantAuthMethodId<T>;
 export function hasConnectorDeviceAuthGrantProvider(
   type: string,
   authMethod: string,
@@ -494,7 +489,7 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
   T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "auth-code">;
+  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<T>;
   readonly authClient: ConnectorAuthClient;
   readonly redirectUri: string;
   readonly state: string;
@@ -514,7 +509,7 @@ export async function exchangeConnectorAuthCode<
   T extends AuthCodeGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "auth-code">;
+  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<T>;
   readonly authClient: ConnectorAuthClient;
   readonly code: string;
   readonly redirectUri: string;
@@ -540,7 +535,7 @@ export async function startConnectorDeviceAuthorization<
   T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "device-auth">;
+  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId<T>;
   readonly authClient: ConnectorAuthClient;
 }): Promise<OAuthDeviceAuthStartResult> {
   const provider = connectorDeviceAuthGrantProviderFor(
@@ -557,7 +552,7 @@ export async function pollConnectorDeviceAuthorization<
   T extends DeviceAuthGrantConnectorType,
 >(args: {
   readonly type: T;
-  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<T, "device-auth">;
+  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId<T>;
   readonly authClient: ConnectorAuthClient;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {

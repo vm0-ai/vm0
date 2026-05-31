@@ -1022,6 +1022,12 @@ export type ConnectorAuthProviderType = ConnectorTypesByGrantKind<
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
 export type DeviceAuthGrantConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
+export type ConnectorAuthCodeGrantAuthMethodId<
+  Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<Type, "auth-code">;
+export type ConnectorDeviceAuthGrantAuthMethodId<
+  Type extends DeviceAuthGrantConnectorType = DeviceAuthGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<Type, "device-auth">;
 export type RefreshTokenAccessConnectorType =
   ConnectorTypesByAccessKind<"refresh-token">;
 export type TokenRevokeConnectorType =

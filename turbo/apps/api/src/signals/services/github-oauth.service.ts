@@ -18,7 +18,7 @@ import {
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
-import type { ConnectorAuthMethodIdsByGrantKind } from "@vm0/connectors/connectors";
+import type { ConnectorAuthCodeGrantAuthMethodId } from "@vm0/connectors/connectors";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -60,10 +60,7 @@ interface GithubOAuthState {
   readonly sig: string | null;
 }
 
-export function getGithubConnectorAuthCodeMethod(): ConnectorAuthMethodIdsByGrantKind<
-  "github",
-  "auth-code"
-> {
+export function getGithubConnectorAuthCodeMethod(): ConnectorAuthCodeGrantAuthMethodId<"github"> {
   const authMethod = getConnectorAuthMethodIdForGrantKind(
     "github",
     "auth-code",

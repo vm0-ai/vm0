@@ -8,7 +8,7 @@ import type {
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
-  type ConnectorAuthMethodIdsByGrantKind,
+  type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorType,
   type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
@@ -89,7 +89,7 @@ type PollClaimedSessionArgs = {
   readonly orgId: string;
   readonly userId: string;
   readonly type: DeviceAuthGrantConnectorType;
-  readonly authMethod: DeviceAuthGrantAuthMethod;
+  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId;
   readonly authClient: ConnectorAuthClient;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
@@ -103,14 +103,9 @@ type ResolvedDeviceAuthType = {
   readonly type: DeviceAuthGrantConnectorType;
 };
 
-type DeviceAuthGrantAuthMethod = ConnectorAuthMethodIdsByGrantKind<
-  DeviceAuthGrantConnectorType,
-  "device-auth"
->;
-
 type ResolvedDeviceAuthMethod = {
   readonly type: DeviceAuthGrantConnectorType;
-  readonly authMethod: DeviceAuthGrantAuthMethod;
+  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId;
 };
 
 const connectorOauthDeviceAuthDisabled = Object.freeze({
@@ -258,7 +253,7 @@ function resolveStoredDeviceAuthMethod(
 
 function resolveRequiredAuthClient(
   type: DeviceAuthGrantConnectorType,
-  authMethod: DeviceAuthGrantAuthMethod,
+  authMethod: ConnectorDeviceAuthGrantAuthMethodId,
 ): ConnectorAuthClient | ReturnType<typeof internalServerError> {
   const authClient = resolveConnectorAuthClientForMethod(
     type,

@@ -7,8 +7,8 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeGrantConnectorType,
+  ConnectorAuthCodeGrantAuthMethodId,
   ConnectorAuthMethodId,
-  ConnectorAuthMethodIdsByGrantKind,
 } from "@vm0/connectors/connectors";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
@@ -33,10 +33,7 @@ type ResolveConnectorAuthCodeStartMethodResult =
   | {
       readonly ok: true;
       readonly type: AuthCodeGrantConnectorType;
-      readonly authMethod: ConnectorAuthMethodIdsByGrantKind<
-        AuthCodeGrantConnectorType,
-        "auth-code"
-      >;
+      readonly authMethod: ConnectorAuthCodeGrantAuthMethodId;
     }
   | {
       readonly ok: false;
@@ -66,10 +63,7 @@ export function resolveConnectorAuthCodeStartMethod(
 // the selected auth method for this auth-code flow.
 export function prepareResolvedConnectorAuthCodeStart(args: {
   readonly type: AuthCodeGrantConnectorType;
-  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<
-    AuthCodeGrantConnectorType,
-    "auth-code"
-  >;
+  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
 }): PrepareResolvedConnectorAuthCodeStartResult {
@@ -94,10 +88,7 @@ export function prepareResolvedConnectorAuthCodeStart(args: {
 
 export async function buildResolvedConnectorAuthCodeAuthUrl(args: {
   readonly type: AuthCodeGrantConnectorType;
-  readonly authMethod: ConnectorAuthMethodIdsByGrantKind<
-    AuthCodeGrantConnectorType,
-    "auth-code"
-  >;
+  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId;
   readonly authClient: ConnectorAuthClient;
   readonly redirectUri: string;
   readonly state: string;
