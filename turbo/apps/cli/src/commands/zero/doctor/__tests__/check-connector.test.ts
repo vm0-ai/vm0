@@ -877,6 +877,58 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("Relative path:    /main/README.md");
     });
 
+    it("should resolve parameterized connector host base URLs", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["alchemy"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/alchemy", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "alchemy",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["alchemy"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "alchemy",
+                apis: [
+                  {
+                    base: "https://{network}.g.alchemy.com",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://ETH.G.ALCHEMY.COM/v2/demo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Alchemy connector");
+      expect(output).toContain(
+        "Matched base URL: https://{network}.g.alchemy.com",
+      );
+      expect(output).toContain("Relative path:    /v2/demo");
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([

@@ -139,6 +139,18 @@ describe("matchFirewallHost", () => {
     ).toEqual({ deployment: "foo.bar" });
   });
 
+  it("requires a non-empty leading host for plus greedy params", () => {
+    expect(
+      matchFirewallHost("bentoml.ai", "{deployment+}.bentoml.ai"),
+    ).toBeNull();
+  });
+
+  it("allows an empty leading host for star greedy params", () => {
+    expect(matchFirewallHost("bentoml.ai", "{deployment*}.bentoml.ai")).toEqual(
+      { deployment: "" },
+    );
+  });
+
   it("rejects non-leading greedy host params", () => {
     expect(
       matchFirewallHost("foo.bar.example.com", "foo.{deployment+}.com"),
@@ -156,6 +168,14 @@ describe("matchFirewallHost", () => {
 });
 
 describe("matchFirewallPathPrefix", () => {
+  it("returns the full path for a root base prefix", () => {
+    expect(matchFirewallPathPrefix("/v2/demo", "/")).toBe("/v2/demo");
+  });
+
+  it("returns slash when the path exactly matches the base prefix", () => {
+    expect(matchFirewallPathPrefix("/api/v1", "/api/v1")).toBe("/");
+  });
+
   it("returns relative path after literal base prefix", () => {
     expect(matchFirewallPathPrefix("/api/v1/users/123", "/api/v1")).toBe(
       "/users/123",
@@ -185,6 +205,16 @@ describe("matchFirewallPathPrefix", () => {
     expect(
       matchFirewallPathPrefix("/api/a/b/tail", "/api/{rest+}/tail"),
     ).toBeNull();
+  });
+
+  it("requires plus greedy path params to consume a non-empty segment", () => {
+    expect(matchFirewallPathPrefix("/api", "/api/{rest+}")).toBeNull();
+    expect(matchFirewallPathPrefix("/api/", "/api/{rest+}")).toBeNull();
+  });
+
+  it("allows star greedy path params to consume zero segments", () => {
+    expect(matchFirewallPathPrefix("/api", "/api/{rest*}")).toBe("/");
+    expect(matchFirewallPathPrefix("/api/users/123", "/api/{rest*}")).toBe("/");
   });
 });
 
