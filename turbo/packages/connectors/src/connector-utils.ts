@@ -374,29 +374,28 @@ export function connectorAuthMethodHasGrantKind<
   return method?.grant.kind === grantKind;
 }
 
-export interface ConnectorAuthMethodSelection {
+export interface ConnectorAuthMethodRef {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
 }
 
-export type ConnectorAuthMethodSelectionByGrantKind<
-  Kind extends ConnectorGrantKind,
-> = {
-  readonly [Type in ConnectorTypesByGrantKind<Kind>]: {
-    readonly type: Type;
-    readonly authMethod: ConnectorAuthMethodIdsByGrantKind<Type, Kind>;
-  };
-}[ConnectorTypesByGrantKind<Kind>];
+export type ConnectorAuthMethodRefByGrantKind<Kind extends ConnectorGrantKind> =
+  {
+    readonly [Type in ConnectorTypesByGrantKind<Kind>]: {
+      readonly type: Type;
+      readonly authMethod: ConnectorAuthMethodIdsByGrantKind<Type, Kind>;
+    };
+  }[ConnectorTypesByGrantKind<Kind>];
 
-export function connectorAuthMethodSelectionHasGrantKind<
+export function connectorAuthMethodRefHasGrantKind<
   Kind extends ConnectorGrantKind,
 >(
-  selection: ConnectorAuthMethodSelection,
+  authMethodRef: ConnectorAuthMethodRef,
   grantKind: Kind,
-): selection is ConnectorAuthMethodSelectionByGrantKind<Kind> {
+): authMethodRef is ConnectorAuthMethodRefByGrantKind<Kind> {
   return (
-    getConnectorAuthMethod(selection.type, selection.authMethod)?.grant.kind ===
-    grantKind
+    getConnectorAuthMethod(authMethodRef.type, authMethodRef.authMethod)?.grant
+      .kind === grantKind
   );
 }
 
