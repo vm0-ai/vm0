@@ -383,16 +383,15 @@ async def request(flow: http.HTTPFlow) -> None:
             )
             if isinstance(result, matching.FirewallBlock):
                 proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-                block_message = (
-                    "malformed network policy"
-                    if result.reason == "malformed_network_policy"
-                    else "no matching permission"
-                )
-                response_message = (
-                    "Request blocked: malformed network policy"
-                    if result.reason == "malformed_network_policy"
-                    else "Request blocked: no matching permission rule"
-                )
+                if result.reason == "malformed_network_policy":
+                    block_message = "malformed network policy"
+                    response_message = "Request blocked: malformed network policy"
+                elif result.reason == "unsafe_path":
+                    block_message = "unsafe path"
+                    response_message = "Request blocked: unsafe path"
+                else:
+                    block_message = "no matching permission"
+                    response_message = "Request blocked: no matching permission rule"
                 log_proxy_entry(
                     proxy_log_path,
                     "warn",

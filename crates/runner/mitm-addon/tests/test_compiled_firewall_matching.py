@@ -233,6 +233,70 @@ class TestCompiledFirewallMatching:
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.reason == "unknown_endpoint"
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com/items/../admin",
+            "https://api.example.com/items/%2e%2e/admin",
+        ],
+    )
+    def test_matches_raw_for_unsafe_path_block(self, url):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "full-access", "rules": ["ANY /{path+}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["full-access"], "deny": [], "unknownPolicy": "allow"}}
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, matching.FirewallBlock)
+        assert compiled.reason == "unsafe_path"
+        assert compiled.permissions == ()
+
+    def test_matches_raw_for_unsafe_path_consumed_by_parameterized_base(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/api/{tenant}",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "admin", "rules": ["GET /admin"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        url = "https://api.example.com/api/%2e%2e/admin"
+        policies = {"example": {"allow": ["admin"], "deny": [], "unknownPolicy": "allow"}}
+
+        raw = matching.match_firewall_request(url, "GET", fws, policies)
+        compiled = matching.match_compiled_firewall_request(
+            url,
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        self._assert_same_result(raw, compiled)
+        assert isinstance(compiled, matching.FirewallBlock)
+        assert compiled.reason == "unsafe_path"
+        assert compiled.path == "/admin"
+
     def test_matches_raw_for_ask_permission_block(self):
         fws = wrap_firewalls(
             [

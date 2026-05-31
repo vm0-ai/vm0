@@ -1,5 +1,7 @@
 """Tests for URL reconstruction and rewrite utilities."""
 
+import pytest
+
 import url_utils
 
 
@@ -296,3 +298,21 @@ class TestBuildRewriteUrl:
             "",
         )
         assert url == "https://example.com/hook"
+
+    @pytest.mark.parametrize(
+        "rel_path",
+        [
+            "/./admin",
+            "/../admin",
+            "/%2e/admin",
+            "/%2e%2e/admin",
+            "/%2e%2e%2fadmin",
+        ],
+    )
+    def test_unsafe_rel_path_is_rejected(self, rel_path):
+        with pytest.raises(ValueError, match="Unsafe rewrite path"):
+            url_utils.build_rewrite_url(
+                "https://example.com/hook",
+                rel_path,
+                "",
+            )

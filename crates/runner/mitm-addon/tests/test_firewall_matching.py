@@ -73,6 +73,91 @@ class TestMatchFirewallRequest:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "full-access"
 
+    def test_unsafe_path_blocks_before_greedy_permission_allow(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                }
+            ],
+            name="github",
+        )
+        result = matching.match_firewall_request(
+            "https://api.github.com/repos/../admin",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs, unknown_policy="allow"),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unsafe_path"
+        assert result.path == "/repos/../admin"
+        assert result.permissions == ()
+
+    def test_encoded_unsafe_path_blocks_before_unknown_policy_allow(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}"]}],
+                }
+            ],
+            name="github",
+        )
+        result = matching.match_firewall_request(
+            "https://api.github.com/users/%2e%2e/admin",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs, unknown_policy="allow"),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unsafe_path"
+        assert result.path == "/users/%2e%2e/admin"
+        assert result.permissions == ()
+
+    def test_unsafe_path_consumed_by_parameterized_base_blocks(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/api/{tenant}",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "admin", "rules": ["GET /admin"]}],
+                }
+            ],
+            name="example",
+        )
+        result = matching.match_firewall_request(
+            "https://api.example.com/api/%2e%2e/admin",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs, unknown_policy="allow"),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unsafe_path"
+        assert result.path == "/admin"
+
+    def test_dot_like_regular_segments_can_still_allow(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                }
+            ],
+            name="github",
+        )
+        result = matching.match_firewall_request(
+            "https://api.github.com/repos/..hidden/a..b",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs),
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "full-access"
+
     def test_method_case_insensitive(self, headers):
         fw_configs = wrap_firewalls(
             [

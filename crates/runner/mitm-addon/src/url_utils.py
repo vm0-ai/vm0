@@ -11,6 +11,8 @@ from typing import Literal
 from mitmproxy import http
 from mitmproxy.net.http import url as mitm_url
 
+from path_security import has_unsafe_dot_segment
+
 # Well-known IANA ports for HTTP and HTTPS.  When the connection uses the
 # default port for its scheme we omit ``:port`` from the reconstructed URL.
 _HTTP_DEFAULT_PORT = 80
@@ -340,6 +342,9 @@ def build_rewrite_url(
     incoming request (no leading ``?``). Query key precedence is
     ``resolved_query`` > resolved base query > original request query.
     """
+    if has_unsafe_dot_segment(rel_path):
+        raise ValueError("Unsafe rewrite path: dot segments are not allowed")
+
     base_parsed = urllib.parse.urlsplit(resolved_base)
 
     # Append rel_path to the base path portion

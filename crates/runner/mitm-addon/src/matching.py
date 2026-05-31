@@ -8,6 +8,8 @@ from types import MappingProxyType
 from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 
+from path_security import has_unsafe_dot_segment
+
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
 
 # A segment with two or more ``{`` braces contains more than one parameter,
@@ -935,6 +937,7 @@ FirewallBlockReason = Literal[
     "unknown_endpoint",
     "malformed_firewall_config",
     "malformed_network_policy",
+    "unsafe_path",
 ]
 
 
@@ -992,6 +995,16 @@ def match_compiled_firewall_request(
                 continue
 
             rel_path, base_params = base_result
+
+            if has_unsafe_dot_segment(url_parts.path):
+                return FirewallBlock(
+                    api_entry.base.raw,
+                    fw_entry.name,
+                    upper_method,
+                    rel_path,
+                    (),
+                    "unsafe_path",
+                )
 
             if blocked_match is None:
                 blocked_match = (
@@ -1124,6 +1137,10 @@ def match_firewall_request(
     if not vm_firewalls:
         return None
 
+    url_parts = _split_base_match_url(url)
+    if url_parts is None:
+        return None
+
     compiled_network_policies = _ensure_compiled_network_policies(network_policies)
 
     # Track the first matched base URL and api_entry for unknown endpoint auth.
@@ -1152,6 +1169,16 @@ def match_firewall_request(
                 continue
 
             rel_path, base_params = base_result
+
+            if has_unsafe_dot_segment(url_parts.path):
+                return FirewallBlock(
+                    base,
+                    fw_name,
+                    upper_method,
+                    rel_path,
+                    (),
+                    "unsafe_path",
+                )
 
             # Base URL matched
             if blocked_match is None:
