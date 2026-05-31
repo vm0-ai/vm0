@@ -18,8 +18,8 @@
     "db:reset": "pnpm -F @vm0/db db:reset"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1053.0",
-    "@aws-sdk/s3-request-presigner": "^3.1053.0",
+    "@aws-sdk/client-s3": "^3.1057.0",
+    "@aws-sdk/s3-request-presigner": "^3.1057.0",
     "@clerk/nextjs": "^7.2.7",
     "@neondatabase/serverless": "^1.0.2",
     "@opentelemetry/api": "^1.9.0",
@@ -56,8 +56,8 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "@typescript-eslint/rule-tester": "^8.59.4",
-    "@typescript-eslint/utils": "^8.59.4",
+    "@typescript-eslint/rule-tester": "^8.60.0",
+    "@typescript-eslint/utils": "^8.60.0",
     "@vm0/connectors": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
