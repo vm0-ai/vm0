@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.16](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.15...vsock-guest-v0.18.16) (2026-05-31)
+
+
+### Refactoring
+
+* name exec control sink disposition ([#15560](https://github.com/vm0-ai/vm0/issues/15560)) ([053eaa4](https://github.com/vm0-ai/vm0/commit/053eaa4810ca00339d21add482cd872a1212114a))
+
 ## [0.18.15](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.14...vsock-guest-v0.18.15) (2026-05-28)
 
 ## [0.18.14](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.13...vsock-guest-v0.18.14) (2026-05-27)

@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.177.8](https://github.com/vm0-ai/vm0/compare/cli-v9.177.7...cli-v9.177.8) (2026-05-31)
+
+
+### Refactoring
+
+* route manual connector grants by method ([#15541](https://github.com/vm0-ai/vm0/issues/15541)) ([65eaa81](https://github.com/vm0-ai/vm0/commit/65eaa8144bd0096f741114f97362eeb69a50e503))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.2
+    * @vm0/connectors bumped to 1.39.2
+    * @vm0/core bumped to 8.304.4
+
 ## [9.177.7](https://github.com/vm0-ai/vm0/compare/cli-v9.177.6...cli-v9.177.7) (2026-05-31)
 
 

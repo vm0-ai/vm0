@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.90.2](https://github.com/vm0-ai/vm0/compare/api-v1.90.1...api-v1.90.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* bound firewall auth refresh requests ([#15546](https://github.com/vm0-ai/vm0/issues/15546)) ([a3a301d](https://github.com/vm0-ai/vm0/commit/a3a301dffd5dd9e9de7942c2e2774b1b6c3b4885))
+
+
+### Refactoring
+
+* route manual connector grants by method ([#15541](https://github.com/vm0-ai/vm0/issues/15541)) ([65eaa81](https://github.com/vm0-ai/vm0/commit/65eaa8144bd0096f741114f97362eeb69a50e503))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.2
+    * @vm0/connectors bumped to 1.39.2
+    * @vm0/core bumped to 8.304.4
+    * @vm0/db bumped to 1.23.7
+
 ## [1.90.1](https://github.com/vm0-ai/vm0/compare/api-v1.90.0...api-v1.90.1) (2026-05-31)
 
 

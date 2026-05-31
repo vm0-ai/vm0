@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.1...guest-agent-v0.33.2) (2026-05-31)
+
+
+### Performance Improvements
+
+* **guest-agent:** move event payloads without cloning ([#15558](https://github.com/vm0-ai/vm0/issues/15558)) ([9ebd3fa](https://github.com/vm0-ai/vm0/commit/9ebd3fa72143c81e2a8e5233227f96f51c26fb02))
+
 ## [0.33.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.0...guest-agent-v0.33.1) (2026-05-29)
 
 

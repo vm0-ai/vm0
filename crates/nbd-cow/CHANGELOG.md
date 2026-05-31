@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.26](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.25...nbd-cow-v0.4.26) (2026-05-31)
+
+
+### Performance Improvements
+
+* **nbd-cow:** reuse dispatch payload buffers ([#15557](https://github.com/vm0-ai/vm0/issues/15557)) ([10a236e](https://github.com/vm0-ai/vm0/commit/10a236ee7d5e0d70ba05ef5a8cdcc50ca6f6885c))
+
 ## [0.4.25](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.24...nbd-cow-v0.4.25) (2026-05-25)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.105.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.9...runner-rs-v0.105.10) (2026-05-31)
+
+
+### Bug Fixes
+
+* block unsafe firewall dot-segment paths ([#15550](https://github.com/vm0-ai/vm0/issues/15550)) ([d19c076](https://github.com/vm0-ai/vm0/commit/d19c076ef187e86a067492d15c09fb54957be572))
+* redact query strings from mitm logs ([#15549](https://github.com/vm0-ai/vm0/issues/15549)) ([22a5a69](https://github.com/vm0-ai/vm0/commit/22a5a69aca62082b10b705e61c34336db5e8c1f4))
+* skip non-billable connector response parsers ([#15543](https://github.com/vm0-ai/vm0/issues/15543)) ([daa2732](https://github.com/vm0-ai/vm0/commit/daa2732c913bccf630e1a80ec2eaa5212fedc076))
+
+
+### Refactoring
+
+* **mitm-addon:** store HTTP timing on flows ([#15547](https://github.com/vm0-ai/vm0/issues/15547)) ([3bf5cb0](https://github.com/vm0-ai/vm0/commit/3bf5cb00a42f959b454ef9724fac6d31f3a6794c))
+
 ## [0.105.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.8...runner-rs-v0.105.9) (2026-05-31)
 
 
