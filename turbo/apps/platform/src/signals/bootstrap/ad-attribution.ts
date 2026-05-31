@@ -1,8 +1,23 @@
+import type { AdAttributionMetadata } from "@vm0/api-contracts/contracts/zero-attribution";
+
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 
+const SOURCE_TYPES = [
+  "paid",
+  "organic_search",
+  "referral",
+  "direct",
+  "internal",
+  "unknown",
+] as const;
+
 const AD_ATTRIBUTION_PARAMS = [
+  "source_type",
+  "referrer_domain",
+  "landing_host",
+  "landing_path",
   AD_ATTRIBUTION_SOURCE_PARAM,
   "gclid",
   "gbraid",
@@ -18,6 +33,9 @@ const AD_ATTRIBUTION_PARAMS = [
 ] as const;
 
 const STRIPE_METADATA_PARAMS = [
+  "referrer_domain",
+  "landing_host",
+  "landing_path",
   AD_ATTRIBUTION_SOURCE_PARAM,
   "utm_source",
   "utm_medium",
@@ -34,12 +52,6 @@ const STRIPE_CLICK_ID_PRESENT_PARAMS = [
   ["gbraid", "gbraid_present"],
   ["wbraid", "wbraid_present"],
 ] as const;
-
-type AdAttributionMetadata = Partial<
-  Record<(typeof STRIPE_METADATA_PARAMS)[number], string> &
-    Record<(typeof STRIPE_CLICK_ID_PRESENT_PARAMS)[number][0], string> &
-    Record<(typeof STRIPE_CLICK_ID_PRESENT_PARAMS)[number][1], "true">
->;
 
 function getSessionStorage(): Storage | null {
   if (typeof window === "undefined") {
@@ -61,6 +73,14 @@ function collectAttributionParams(
   }
 
   return attributionParams;
+}
+
+function isSourceType(
+  value: string | null,
+): value is (typeof SOURCE_TYPES)[number] {
+  return SOURCE_TYPES.some((candidate) => {
+    return candidate === value;
+  });
 }
 
 export function recordAdAttribution(
@@ -119,6 +139,11 @@ export function getStoredAdAttributionMetadata(
 
   const attributionParams = new URLSearchParams(stored);
   const metadata: AdAttributionMetadata = {};
+
+  const sourceType = attributionParams.get("source_type");
+  if (isSourceType(sourceType)) {
+    metadata.source_type = sourceType;
+  }
 
   for (const param of STRIPE_METADATA_PARAMS) {
     const value = attributionParams.get(param);

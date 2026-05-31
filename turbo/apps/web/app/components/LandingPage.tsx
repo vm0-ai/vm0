@@ -5,7 +5,11 @@ import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { getAppUrl } from "../../src/lib/zero/url";
-import { buildSignupHref } from "../../src/lib/adAttribution";
+import {
+  buildSignupHref,
+  currentLandingAttributionContext,
+  type LandingAttributionContext,
+} from "../../src/lib/adAttribution";
 import { Footer } from "./Footer";
 import Image from "next/image";
 import { AvatarCustomizer } from "./AvatarCustomizer";
@@ -827,16 +831,21 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
   const revealRef = useScrollReveal();
   const t = useTranslations("landing");
 
-  // Forward inbound ad attribution (gclid/utm) from the homepage into the app
-  // so paid campaigns landing here keep their attribution into Stripe/Clerk.
+  // Forward acquisition attribution from the homepage into the app so the
+  // existing app-side sessionStorage -> Clerk/Stripe chain records it.
   const appUrl = getAppUrl();
   const [landingSearch, setLandingSearch] = useState("");
+  const [landingContext, setLandingContext] =
+    useState<LandingAttributionContext>({});
   useEffect(() => {
     setLandingSearch(window.location.search);
+    setLandingContext(currentLandingAttributionContext());
   }, []);
 
   const ctaText = isSignedIn ? t("hero.ctaOpenApp") : t("hero.ctaGetStarted");
-  const ctaHref = isSignedIn ? appUrl : buildSignupHref(appUrl, landingSearch);
+  const ctaHref = isSignedIn
+    ? appUrl
+    : buildSignupHref(appUrl, landingSearch, landingContext);
 
   return (
     <div

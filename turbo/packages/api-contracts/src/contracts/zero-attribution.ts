@@ -6,6 +6,19 @@ const c = initContract();
 
 export const adAttributionMetadataSchema = z
   .object({
+    source_type: z
+      .enum([
+        "paid",
+        "organic_search",
+        "referral",
+        "direct",
+        "internal",
+        "unknown",
+      ])
+      .optional(),
+    referrer_domain: z.string().min(1).max(253).optional(),
+    landing_host: z.string().min(1).max(253).optional(),
+    landing_path: z.string().min(1).max(500).optional(),
     vm0_source: z.string().min(1).max(100).optional(),
     utm_source: z.string().min(1).max(100).optional(),
     utm_medium: z.string().min(1).max(100).optional(),

@@ -23,7 +23,11 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NavMenu, type NavMenuItem } from "./NavMenu";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
-import { buildSignupHref } from "../../src/lib/adAttribution";
+import {
+  buildSignupHref,
+  currentLandingAttributionContext,
+  type LandingAttributionContext,
+} from "../../src/lib/adAttribution";
 import { isBlogEnabled } from "../../src/env";
 
 interface NavbarProps {
@@ -306,14 +310,16 @@ export function Navbar({
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
   const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const { signOut } = useClerk();
-  // Forward inbound ad attribution (gclid/utm) from the homepage into the app
-  // for the signed-out "Get started" CTAs; organic visits keep /sign-up.
+  // Forward acquisition attribution into the app for signed-out CTAs.
   const appUrl = getAppUrl();
   const [landingSearch, setLandingSearch] = useState("");
+  const [landingContext, setLandingContext] =
+    useState<LandingAttributionContext>({});
   useEffect(() => {
     setLandingSearch(window.location.search);
+    setLandingContext(currentLandingAttributionContext());
   }, []);
-  const signupHref = buildSignupHref(appUrl, landingSearch);
+  const signupHref = buildSignupHref(appUrl, landingSearch, landingContext);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const desktopNavRef = useRef<HTMLDivElement | null>(null);
   const {

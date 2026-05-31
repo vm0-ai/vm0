@@ -16,6 +16,7 @@ import {
 import { getAllowedRedirectOrigins, getAppUrl } from "../src/lib/zero/url";
 import { SafeGoogleOneTap } from "./components/SafeGoogleOneTap";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { AttributionLinkDecorator } from "./components/AttributionLinkDecorator";
 import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
@@ -310,7 +311,10 @@ export default async function RootLayout({
               }),
             }}
           />
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <AttributionLinkDecorator />
+            {children}
+          </ThemeProvider>
           <Script
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
             strategy="lazyOnload"
