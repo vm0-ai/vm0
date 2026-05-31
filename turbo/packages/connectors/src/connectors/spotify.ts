@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://accounts.spotify.com/api/token";
+
 export const spotify = {
   spotify: {
     label: "Spotify",
@@ -20,7 +22,7 @@ export const spotify = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://accounts.spotify.com/api/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "ugc-image-upload",
             "user-read-playback-state",
@@ -45,6 +47,7 @@ export const spotify = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "SPOTIFY_ACCESS_TOKEN",
           refreshToken: "SPOTIFY_REFRESH_TOKEN",
           envBindings: {

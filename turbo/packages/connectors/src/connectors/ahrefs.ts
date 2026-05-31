@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://app.ahrefs.com/api/token";
+
 export const ahrefs = {
   ahrefs: {
     label: "Ahrefs",
@@ -20,11 +22,12 @@ export const ahrefs = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://app.ahrefs.com/api/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["api"],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "AHREFS_ACCESS_TOKEN",
           refreshToken: "AHREFS_REFRESH_TOKEN",
           envBindings: {

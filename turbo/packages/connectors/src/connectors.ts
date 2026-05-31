@@ -361,6 +361,7 @@ export interface ConnectorStaticAccessConfig {
 
 export interface ConnectorRefreshTokenAccessConfig {
   readonly kind: "refresh-token";
+  readonly tokenUrl: string;
   readonly accessToken: string;
   readonly refreshToken: string;
   readonly envBindings: ConnectorEnvBindings;

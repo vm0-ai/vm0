@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
+
 export const testOauth = {
   "test-oauth": {
     label: "Test OAuth (internal)",
@@ -20,11 +22,12 @@ export const testOauth = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "/api/test/oauth-provider/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["read"],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "TEST_OAUTH_ACCESS_TOKEN",
           refreshToken: "TEST_OAUTH_REFRESH_TOKEN",
           envBindings: {

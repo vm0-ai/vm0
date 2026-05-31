@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token";
+
 export const linear = {
   linear: {
     label: "Linear",
@@ -18,7 +20,7 @@ export const linear = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.linear.app/oauth/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "read",
             "write",
@@ -29,6 +31,7 @@ export const linear = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "LINEAR_ACCESS_TOKEN",
           refreshToken: "LINEAR_REFRESH_TOKEN",
           envBindings: {

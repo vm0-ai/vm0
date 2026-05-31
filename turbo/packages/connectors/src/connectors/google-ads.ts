@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const googleAds = {
   "google-ads": {
     label: "Google Ads",
@@ -20,7 +22,7 @@ export const googleAds = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/adwords",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -28,6 +30,7 @@ export const googleAds = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
           envBindings: {

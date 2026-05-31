@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://zoom.us/oauth/token";
+
 export const zoom = {
   zoom: {
     label: "Zoom",
@@ -20,7 +22,7 @@ export const zoom = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://zoom.us/oauth/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "user:read:user",
             "meeting:read:list_meetings",
@@ -40,6 +42,7 @@ export const zoom = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "ZOOM_ACCESS_TOKEN",
           refreshToken: "ZOOM_REFRESH_TOKEN",
           envBindings: {

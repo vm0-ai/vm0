@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://app.asana.com/-/oauth_token";
+
 export const asana = {
   asana: {
     label: "Asana",
@@ -18,11 +20,12 @@ export const asana = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://app.asana.com/-/oauth_token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "ASANA_ACCESS_TOKEN",
           refreshToken: "ASANA_REFRESH_TOKEN",
           envBindings: {

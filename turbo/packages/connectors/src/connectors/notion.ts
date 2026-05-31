@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
+
 export const notion = {
   notion: {
     label: "Notion",
@@ -18,11 +20,12 @@ export const notion = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.notion.com/v1/oauth/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "NOTION_ACCESS_TOKEN",
           refreshToken: "NOTION_REFRESH_TOKEN",
           envBindings: {

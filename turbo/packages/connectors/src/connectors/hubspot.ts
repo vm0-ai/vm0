@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
+
 export const hubspot = {
   hubspot: {
     label: "HubSpot",
@@ -18,7 +20,7 @@ export const hubspot = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "crm.objects.contacts.read",
             "crm.objects.contacts.write",
@@ -36,6 +38,7 @@ export const hubspot = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "HUBSPOT_ACCESS_TOKEN",
           refreshToken: "HUBSPOT_REFRESH_TOKEN",
           envBindings: {

@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
+
 export const mercury = {
   mercury: {
     label: "Mercury",
@@ -20,11 +22,12 @@ export const mercury = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.mercury.com/oauth2/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["offline_access"],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "MERCURY_ACCESS_TOKEN",
           refreshToken: "MERCURY_REFRESH_TOKEN",
           envBindings: {

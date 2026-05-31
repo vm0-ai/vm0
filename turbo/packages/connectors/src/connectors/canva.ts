@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
+
 export const canva = {
   canva: {
     label: "Canva",
@@ -20,7 +22,7 @@ export const canva = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "asset:read",
             "asset:write",
@@ -38,6 +40,7 @@ export const canva = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "CANVA_ACCESS_TOKEN",
           refreshToken: "CANVA_REFRESH_TOKEN",
           envBindings: {

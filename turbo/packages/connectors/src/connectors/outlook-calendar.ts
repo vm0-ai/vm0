@@ -1,6 +1,9 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL =
+  "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+
 export const outlookCalendar = {
   "outlook-calendar": {
     label: "Outlook Calendar",
@@ -20,12 +23,12 @@ export const outlookCalendar = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl:
-            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
           refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
           envBindings: {

@@ -11,7 +11,6 @@ import {
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  connectorAuthMethodSupportsRefreshTokenAccess,
   connectorAuthMethodSupportsTokenRevoke,
   getConfiguredConnectorAuthMethods,
   getConnectorAuthMethod,
@@ -599,9 +598,8 @@ export async function refreshConnectorAuthProviderAccessToken<
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  if (
-    !connectorAuthMethodSupportsRefreshTokenAccess(args.type, args.authMethod)
-  ) {
+  const method = getConnectorAuthMethod(args.type, args.authMethod);
+  if (method?.access.kind !== "refresh-token") {
     throw new Error(
       `${args.type} connector auth method ${args.authMethod} does not support token refresh`,
     );
@@ -615,15 +613,9 @@ export async function refreshConnectorAuthProviderAccessToken<
       `${args.type} connector auth method ${args.authMethod} has no refresh-token access provider`,
     );
   }
-  const grant = getConnectorAuthMethod(args.type, args.authMethod)?.grant;
-  if (grant?.kind !== "auth-code" && grant?.kind !== "device-auth") {
-    throw new Error(
-      `${args.type} connector auth method ${args.authMethod} has refresh-token access without an OAuth token URL`,
-    );
-  }
   return await access.refreshToken({
     ...args.clientArgs,
-    tokenUrl: grant.tokenUrl,
+    tokenUrl: method.access.tokenUrl,
     refreshToken: args.refreshToken,
     signal: args.signal,
   } as ConnectorAuthProviderRefreshArgs<T>);

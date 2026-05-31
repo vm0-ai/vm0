@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const googleSheets = {
   "google-sheets": {
     label: "Google Sheets",
@@ -17,7 +19,7 @@ export const googleSheets = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -25,6 +27,7 @@ export const googleSheets = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_SHEETS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_SHEETS_REFRESH_TOKEN",
           envBindings: {

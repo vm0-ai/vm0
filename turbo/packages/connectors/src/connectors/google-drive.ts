@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const googleDrive = {
   "google-drive": {
     label: "Google Drive",
@@ -17,7 +19,7 @@ export const googleDrive = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/drive",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -25,6 +27,7 @@ export const googleDrive = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_DRIVE_ACCESS_TOKEN",
           refreshToken: "GOOGLE_DRIVE_REFRESH_TOKEN",
           envBindings: {

@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://us.posthog.com/oauth/token";
+
 export const posthog = {
   posthog: {
     label: "PostHog",
@@ -20,7 +22,7 @@ export const posthog = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://us.posthog.com/oauth/token",
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "openid",
             "profile",
@@ -50,6 +52,7 @@ export const posthog = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "POSTHOG_ACCESS_TOKEN",
           refreshToken: "POSTHOG_REFRESH_TOKEN",
           envBindings: {

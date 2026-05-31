@@ -32,6 +32,7 @@ export const slockProvider: DeviceAuthConnectorAuthProvider<"slock"> = {
     },
     refreshToken: async (args) => {
       return await refreshSlockToken({
+        tokenUrl: args.tokenUrl,
         refreshToken: args.refreshToken,
         signal: args.signal,
       });
