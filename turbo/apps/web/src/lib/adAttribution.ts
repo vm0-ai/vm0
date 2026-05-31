@@ -61,7 +61,7 @@ const ORGANIC_SEARCH_DOMAINS = [
 
 const ORGANIC_SEARCH_MEDIUMS = new Set(["organic", "organic_search", "seo"]);
 
-export interface LandingAttributionContext {
+interface LandingAttributionContext {
   readonly referrer?: string;
   readonly hostname?: string;
   readonly pathname?: string;
