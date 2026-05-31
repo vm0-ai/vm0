@@ -1980,6 +1980,29 @@ describe("run command", () => {
       );
     });
 
+    it("should retry transient event fetch gateway errors", async () => {
+      let pollCount = 0;
+      server.use(
+        http.get("http://localhost:3000/api/agent/runs/:id/events", () => {
+          pollCount++;
+          if (pollCount === 1) {
+            return HttpResponse.json(
+              { error: { message: "Bad Gateway", code: "UNKNOWN" } },
+              { status: 502 },
+            );
+          }
+          return HttpResponse.json(defaultEventsResponse);
+        }),
+      );
+
+      await runCommand.parseAsync(["node", "cli", testUuid, "test prompt"]);
+
+      expect(pollCount).toBe(2);
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("completed successfully"),
+      );
+    });
+
     it("should exit with error when run fails (status: failed)", async () => {
       let pollCount = 0;
       server.use(
