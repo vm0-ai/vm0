@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.105.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.10...runner-rs-v0.105.11) (2026-05-31)
+
+
+### Bug Fixes
+
+* **mitm-addon:** distinguish log failure diagnostics ([#15572](https://github.com/vm0-ai/vm0/issues/15572)) ([75bbdf0](https://github.com/vm0-ai/vm0/commit/75bbdf0f5fe5292af4c68aa1c9eada089fb9725b))
+* **mitm-addon:** normalize firewall metadata logs ([#15566](https://github.com/vm0-ai/vm0/issues/15566)) ([df40acb](https://github.com/vm0-ai/vm0/commit/df40acba0a49f2d8db42ca343810536671b12577))
+
+
+### Refactoring
+
+* deduplicate x response field extraction ([#15573](https://github.com/vm0-ai/vm0/issues/15573)) ([3bcedac](https://github.com/vm0-ai/vm0/commit/3bcedacee5f18292d9cf3feb3f5f0920c55fb18a))
+
 ## [0.105.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.9...runner-rs-v0.105.10) (2026-05-31)
 
 

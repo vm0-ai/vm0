@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.23](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.22...sandbox-fc-v0.35.23) (2026-05-31)
+
+
+### Refactoring
+
+* split sandbox-fc control module ([#15576](https://github.com/vm0-ai/vm0/issues/15576)) ([9ec3a2d](https://github.com/vm0-ai/vm0/commit/9ec3a2dd0787c1f9e35fb00fac9a54716596db30))
+
 ## [0.35.22](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.21...sandbox-fc-v0.35.22) (2026-05-31)
 
 ## [0.35.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.20...sandbox-fc-v0.35.21) (2026-05-28)

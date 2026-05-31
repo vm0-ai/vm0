@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.405.0](https://github.com/vm0-ai/vm0/compare/web-v12.404.3...web-v12.405.0) (2026-05-31)
+
+
+### Features
+
+* **web:** allow *.vm6.ai redirect origins on the staging preview domain ([#15577](https://github.com/vm0-ai/vm0/issues/15577)) ([7981e1d](https://github.com/vm0-ai/vm0/commit/7981e1d67f994862823f3c2e43702ca8409b7b78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.3
+    * @vm0/core bumped to 8.304.5
+    * @vm0/db bumped to 1.23.8
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.3
+
 ## [12.404.3](https://github.com/vm0-ai/vm0/compare/web-v12.404.2...web-v12.404.3) (2026-05-31)
 
 

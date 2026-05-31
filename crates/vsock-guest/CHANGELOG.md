@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.17](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.16...vsock-guest-v0.18.17) (2026-05-31)
+
+
+### Bug Fixes
+
+* **vsock-guest:** keep connection alive on malformed payloads ([#15575](https://github.com/vm0-ai/vm0/issues/15575)) ([3cf4da2](https://github.com/vm0-ai/vm0/commit/3cf4da28664fcb258eecb743f3cd58954ee74c96))
+
 ## [0.18.16](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.15...vsock-guest-v0.18.16) (2026-05-31)
 
 

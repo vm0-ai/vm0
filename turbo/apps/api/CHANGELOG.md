@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.90.3](https://github.com/vm0-ai/vm0/compare/api-v1.90.2...api-v1.90.3) (2026-05-31)
+
+
+### Refactoring
+
+* bind connector grant providers to auth methods ([#15574](https://github.com/vm0-ai/vm0/issues/15574)) ([0082e33](https://github.com/vm0-ai/vm0/commit/0082e33df69733193a88272008add2e5610e2617))
+* preserve connector auth method selection ([#15559](https://github.com/vm0-ai/vm0/issues/15559)) ([d3931bb](https://github.com/vm0-ai/vm0/commit/d3931bb34ce30fce1278e79a7ad20d411f3d4605))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.3
+    * @vm0/connectors bumped to 1.39.3
+    * @vm0/core bumped to 8.304.5
+    * @vm0/db bumped to 1.23.8
+
 ## [1.90.2](https://github.com/vm0-ai/vm0/compare/api-v1.90.1...api-v1.90.2) (2026-05-31)
 
 

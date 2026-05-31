@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.27](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.26...nbd-cow-v0.4.27) (2026-05-31)
+
+
+### Bug Fixes
+
+* allow nbd dispatch shutdown during socket io ([#15561](https://github.com/vm0-ai/vm0/issues/15561)) ([da1959e](https://github.com/vm0-ai/vm0/commit/da1959e2bf736f9ab56f1cf07dc12501ed5b3bbf))
+* validate cowlayer constructor invariants ([#15565](https://github.com/vm0-ai/vm0/issues/15565)) ([4555f68](https://github.com/vm0-ai/vm0/commit/4555f689ab30fcd8ce1414943276604626dc8865))
+
 ## [0.4.26](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.25...nbd-cow-v0.4.26) (2026-05-31)
 
 
