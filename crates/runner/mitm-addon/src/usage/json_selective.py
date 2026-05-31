@@ -15,7 +15,7 @@ for keys such as ``includes.users`` and ``includes.tweets``.
 
 import json
 import json.decoder
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
@@ -196,6 +196,9 @@ class JsonSelectiveExtractor:
             | self.array_count_paths
             | self.wildcard_array_count_paths
             | self.object_presence_paths
+        )
+        self._clearable_exact_observation_paths = _build_observation_clear_paths(
+            set(self.scalar_fields) | self.array_count_paths | self.object_presence_paths
         )
 
         self.values: dict[Path, object] = {}
@@ -460,25 +463,29 @@ class JsonSelectiveExtractor:
         return matches
 
     def _clear_observations_for_path(self, path: Path) -> None:
-        self.values = {
-            observed_path: value
-            for observed_path, value in self.values.items()
-            if not _is_path_prefix(path, observed_path)
-        }
-        self.array_counts = {
-            observed_path: count
-            for observed_path, count in self.array_counts.items()
-            if not _is_path_prefix(path, observed_path)
-        }
-        self.object_present = {
-            observed_path
-            for observed_path in self.object_present
-            if not _is_path_prefix(path, observed_path)
-        }
-        for pattern, counts in list(self.wildcard_array_counts.items()):
-            self._clear_wildcard_observations_for_path(pattern, counts, path)
-            if not counts:
-                self.wildcard_array_counts.pop(pattern, None)
+        can_clear_exact = path in self._clearable_exact_observation_paths
+        can_clear_wildcard = any(
+            _wildcard_observation_can_be_cleared_by_path(pattern, path)
+            for pattern in self.wildcard_array_count_paths
+        )
+        if not can_clear_exact and not can_clear_wildcard:
+            return
+
+        if can_clear_exact:
+            for observed_path in _find_paths_with_prefix(self.values, path) or ():
+                del self.values[observed_path]
+            for observed_path in _find_paths_with_prefix(self.array_counts, path) or ():
+                del self.array_counts[observed_path]
+            for observed_path in _find_paths_with_prefix(self.object_present, path) or ():
+                self.object_present.remove(observed_path)
+
+        if can_clear_wildcard:
+            for pattern, counts in list(self.wildcard_array_counts.items()):
+                if not _wildcard_observation_can_be_cleared_by_path(pattern, path):
+                    continue
+                self._clear_wildcard_observations_for_path(pattern, counts, path)
+                if not counts:
+                    self.wildcard_array_counts.pop(pattern, None)
 
     def _clear_wildcard_observations_for_path(
         self, pattern: WildcardPath, counts: dict[str, int], path: Path
@@ -899,3 +906,22 @@ def _is_path_prefix(prefix: Path, path: Path) -> bool:
 
 def _build_key_collection_paths(paths: set[Path]) -> set[Path]:
     return {path[:idx] for path in paths for idx in range(len(path))}
+
+
+def _build_observation_clear_paths(paths: set[Path]) -> set[Path]:
+    return {path[:idx] for path in paths for idx in range(len(path) + 1)}
+
+
+def _wildcard_observation_can_be_cleared_by_path(pattern: WildcardPath, path: Path) -> bool:
+    return len(path) <= len(pattern) and _path_prefix_matches_pattern(pattern, path)
+
+
+def _find_paths_with_prefix(paths: Iterable[Path], prefix: Path) -> list[Path] | None:
+    matches: list[Path] | None = None
+    for observed_path in paths:
+        if not _is_path_prefix(prefix, observed_path):
+            continue
+        if matches is None:
+            matches = []
+        matches.append(observed_path)
+    return matches
