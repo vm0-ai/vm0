@@ -31,7 +31,7 @@ import {
   findGithubInstallationByInstallationId,
   getGithubInstallationAccessToken,
   getGithubInstallationInfo,
-  getGithubConnectorAuthCodeMethod,
+  getGithubOAuthAuthMethod,
   githubUserConnectCallbackRedirectUri,
   isGithubOauthStateSignatureValid,
   linkGithubVm0User,
@@ -89,7 +89,7 @@ function githubAppSetupCallbackRedirectUri(origin: string): string {
 function githubUserOauthClient():
   | StaticConfidentialConnectorAuthClient
   | undefined {
-  const authMethod = getGithubConnectorAuthCodeMethod();
+  const authMethod = getGithubOAuthAuthMethod();
   const authClient = resolveConnectorAuthClientForMethod(
     GITHUB_CONNECTOR_TYPE,
     authMethod,
@@ -381,7 +381,7 @@ const connectGithubUserAfterSetup$ = command(
         scopes,
       });
 
-      const authMethod = getGithubConnectorAuthCodeMethod();
+      const authMethod = getGithubOAuthAuthMethod();
       await set(
         upsertConnectorTokenConnection$,
         {
@@ -742,7 +742,7 @@ const callbackGithubUserOauth$ = command(
       return worksErrorRedirect("GitHub OAuth is not configured");
     }
 
-    const authMethod = getGithubConnectorAuthCodeMethod();
+    const authMethod = getGithubOAuthAuthMethod();
     const origin = getOAuthWebOrigin(request);
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorAuthCode({

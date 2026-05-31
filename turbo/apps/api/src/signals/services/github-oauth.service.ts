@@ -13,7 +13,6 @@ import {
 } from "@vm0/connectors/auth-providers";
 import {
   connectorAuthMethodHasGrantKind,
-  getConnectorAuthMethodIdsForGrantKind,
   resolveConnectorAuthClientForMethod,
   isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
@@ -37,6 +36,7 @@ const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
 const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
 const GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS = 15 * 60;
+const GITHUB_OAUTH_AUTH_METHOD = "oauth";
 
 interface AppInstallation {
   readonly id: number;
@@ -60,22 +60,17 @@ interface GithubOAuthState {
   readonly sig: string | null;
 }
 
-export function getGithubConnectorAuthCodeMethod(): ConnectorAuthCodeGrantAuthMethodId<"github"> {
-  const authMethods = getConnectorAuthMethodIdsForGrantKind(
-    "github",
-    "auth-code",
-  );
-  const [authMethod] = authMethods;
+export function getGithubOAuthAuthMethod(): ConnectorAuthCodeGrantAuthMethodId<"github"> {
   if (
-    authMethods.length !== 1 ||
-    !authMethod ||
-    !connectorAuthMethodHasGrantKind("github", authMethod, "auth-code")
+    !connectorAuthMethodHasGrantKind(
+      "github",
+      GITHUB_OAUTH_AUTH_METHOD,
+      "auth-code",
+    )
   ) {
-    throw new Error(
-      "github connector must have exactly one auth-code auth method",
-    );
+    throw new Error("github oauth auth method must use an auth-code grant");
   }
-  return authMethod;
+  return GITHUB_OAUTH_AUTH_METHOD;
 }
 
 function validateInstallationId(installationId: string): string {
@@ -391,7 +386,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   readonly readEnv: ConnectorEnvReader;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  const authMethod = getGithubConnectorAuthCodeMethod();
+  const authMethod = getGithubOAuthAuthMethod();
   const authClient = resolveConnectorAuthClientForMethod(
     "github",
     authMethod,
@@ -435,7 +430,12 @@ export function parseGithubOauthState(
   state: string | undefined,
 ): GithubOAuthState | null {
   if (!state) {
-    return { vm0UserId: null, orgId: null, composeId: null, sig: null };
+    return {
+      vm0UserId: null,
+      orgId: null,
+      composeId: null,
+      sig: null,
+    };
   }
 
   const parsed = safeJsonParse(state);
