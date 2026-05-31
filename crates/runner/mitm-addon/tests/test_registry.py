@@ -640,7 +640,9 @@ class TestLogNetworkEntry:
             logging_utils.log_network_entry(str(log_path), {"action": "ALLOW"})
 
         log.warn.assert_called_once()
-        assert "Failed to write network log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write network log:" in warning
+        assert "FileNotFoundError" in warning
 
     def test_non_serializable_entry_warns_without_creating_file(self, tmp_path):
         log_path = tmp_path / "net.jsonl"
@@ -650,7 +652,8 @@ class TestLogNetworkEntry:
             logging_utils.log_network_entry(str(log_path), {"payload": b"binary"})
 
         log.warn.assert_called_once()
-        assert "Failed to write network log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to encode network log: TypeError:" in warning
         assert not log_path.exists()
 
 

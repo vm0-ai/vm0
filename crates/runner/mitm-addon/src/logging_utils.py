@@ -26,13 +26,18 @@ def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
         return
     try:
         line = (json.dumps(entry) + "\n").encode()
+    except Exception as e:
+        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+        return
+
+    try:
         fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
         try:
             os.write(fd, line)
         finally:
             os.close(fd)
     except Exception as e:
-        ctx.log.warn(f"Failed to write {log_name} log: {e}")
+        ctx.log.warn(f"Failed to write {log_name} log: {type(e).__name__}: {e}")
 
 
 def log_network_entry(log_path: str, entry: dict) -> None:
