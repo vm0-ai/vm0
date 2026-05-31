@@ -3,6 +3,7 @@
 import gzip
 import json
 
+import pytest
 from mitmproxy.test import tutils
 
 import body_utils
@@ -496,14 +497,18 @@ class TestResponseHeadersHandler:
         assert "x_ndjson_state" not in flow.metadata
         assert "connector_response_finish" not in flow.metadata
 
-    def test_non_billable_x_stream_uses_bounded_forensic_buffer_only(self, real_flow, headers):
+    @pytest.mark.parametrize("firewall_billable", [False, None])
+    def test_non_billable_x_stream_uses_bounded_forensic_buffer_only(
+        self, real_flow, headers, firewall_billable
+    ):
         """Non-billable X streams should not attach the billable NDJSON parser."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "x"
-        flow.metadata["firewall_billable"] = False
+        if firewall_billable is not None:
+            flow.metadata["firewall_billable"] = firewall_billable
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
 
         mitm_addon.responseheaders(flow)
