@@ -189,6 +189,23 @@ async function waitForModelProviderStateLockWaiter(args: {
   );
 }
 
+async function holdModelProviderStateLock(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly providerType: string;
+  readonly release: Promise<void>;
+  readonly onAcquired: () => void;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('model_provider_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.providerType}))`,
+    );
+    args.onAcquired();
+    await args.release;
+  });
+}
+
 function firewallClient() {
   return setupApp({ context })(webhookFirewallAuthContract);
 }
@@ -3256,6 +3273,55 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("returns missing configuration when a model-provider OAuth row is absent", async () => {
+    const fixture = await track(seedFixture());
+    let refreshCallCount = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        refreshCallCount += 1;
+        return HttpResponse.json({
+          access_token: "unexpected-chatgpt-token",
+          refresh_token: "unexpected-chatgpt-refresh",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+    expect(refreshCallCount).toBe(0);
+  });
+
   it("serializes concurrent model-provider OAuth refreshes for rotated refresh tokens", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
@@ -3444,6 +3510,90 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       needsReconnect: true,
       lastRefreshErrorCode: "refresh_token_expired",
     });
+  });
+
+  it("returns missing configuration when a model-provider row disappears before locked refresh", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredCodexModelProvider(fixture);
+    let refreshCallCount = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        refreshCallCount += 1;
+        return HttpResponse.json({
+          access_token: "unexpected-chatgpt-token",
+          refresh_token: "unexpected-chatgpt-refresh",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const lockAcquired = deferred();
+    const releaseLock = deferred();
+    const lockPromise = holdModelProviderStateLock({
+      orgId: fixture.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      providerType: "codex-oauth-token",
+      release: releaseLock.promise,
+      onAcquired: lockAcquired.resolve,
+    });
+    await lockAcquired.promise;
+
+    const responsePromise = accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CHATGPT_ACCESS_TOKEN: "stale-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+    const response = await waitForModelProviderStateLockWaiter({
+      orgId: fixture.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      providerType: "codex-oauth-token",
+    })
+      .then(async () => {
+        const db = store.set(writeDb$);
+        await db
+          .delete(modelProviders)
+          .where(
+            and(
+              eq(modelProviders.orgId, fixture.orgId),
+              eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+              eq(modelProviders.type, "codex-oauth-token"),
+            ),
+          );
+        releaseLock.resolve();
+
+        return responsePromise;
+      })
+      .finally(async () => {
+        releaseLock.resolve();
+        await Promise.allSettled([lockPromise, responsePromise]);
+      });
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+    expect(refreshCallCount).toBe(0);
   });
 
   it("preserves model-provider reauth that races with runtime OAuth refresh", async () => {
