@@ -89,6 +89,36 @@ describe("zero connector connect command", () => {
     expect(output).not.toContain("secret-token");
   });
 
+  it("connects with an explicit manual grant auth method", async () => {
+    let receivedBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        async ({ params, request }) => {
+          receivedBody = await request.json();
+          return HttpResponse.json(connectorResponse(String(params.type)));
+        },
+      ),
+    );
+
+    await connectCommand.parseAsync([
+      "node",
+      "cli",
+      "stripe",
+      "--auth-method",
+      "api-token",
+      "--value",
+      "STRIPE_TOKEN=sk-test",
+    ]);
+
+    expect(receivedBody).toStrictEqual({
+      authMethod: "api-token",
+      values: {
+        STRIPE_TOKEN: "sk-test",
+      },
+    });
+  });
+
   it("prints JSON output when requested", async () => {
     server.use(
       http.post(
@@ -153,6 +183,70 @@ describe("zero connector connect command", () => {
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Invalid --value format");
     expect(errorOutput).toContain("Use --value NAME=VALUE");
+  });
+
+  it("fails before the request when the selected auth method is not configured", async () => {
+    let requestCalled = false;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        () => {
+          requestCalled = true;
+          return HttpResponse.json(connectorResponse("github"));
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--auth-method",
+        "api-token",
+        "--value",
+        "GITHUB_TOKEN=ghp-test",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCalled).toBeFalsy();
+    const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain(
+      "github connector does not have api-token auth method",
+    );
+    expect(errorOutput).not.toContain("ghp-test");
+  });
+
+  it("fails before the request when the selected auth method is not a manual grant", async () => {
+    let requestCalled = false;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        () => {
+          requestCalled = true;
+          return HttpResponse.json(connectorResponse("stripe"));
+        },
+      ),
+    );
+
+    await expect(
+      connectCommand.parseAsync([
+        "node",
+        "cli",
+        "stripe",
+        "--auth-method",
+        "oauth",
+        "--value",
+        "STRIPE_TOKEN=sk-test",
+      ]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(requestCalled).toBeFalsy();
+    const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorOutput).toContain(
+      "stripe oauth auth method does not use a manual grant",
+    );
+    expect(errorOutput).not.toContain("sk-test");
   });
 
   it("surfaces API validation errors without printing secret values", async () => {

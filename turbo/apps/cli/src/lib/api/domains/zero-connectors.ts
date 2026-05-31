@@ -1,5 +1,8 @@
 import { initClient } from "@ts-rest/core";
-import { type ConnectorType } from "@vm0/connectors/connectors";
+import {
+  type ConnectorAuthMethodId,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
 import {
   zeroConnectorManualGrantContract,
   zeroConnectorsByTypeContract,
@@ -78,6 +81,7 @@ export async function getZeroConnector(
 
 export async function connectZeroConnectorManualGrant(
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   values: Record<string, string>,
 ): Promise<ConnectorResponse> {
   const config = await getClientConfig();
@@ -85,7 +89,7 @@ export async function connectZeroConnectorManualGrant(
 
   const result = await client.connect({
     params: { type },
-    body: { authMethod: "api-token", values },
+    body: { authMethod, values },
   });
 
   if (result.status === 200) {
