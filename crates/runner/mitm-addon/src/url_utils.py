@@ -340,7 +340,9 @@ def build_rewrite_url(
     path from the firewall match, and query strings from trusted auth data
     and the original request. ``orig_query`` is the raw query string of the
     incoming request (no leading ``?``). Query key precedence is
-    ``resolved_query`` > resolved base query > original request query.
+    ``resolved_query`` > resolved base query > original request query. Dot
+    segments in ``rel_path`` are rejected as an invariant; firewall matching
+    should already have blocked them before auth is applied.
     """
     if has_unsafe_dot_segment(rel_path):
         raise ValueError("Unsafe rewrite path: dot segments are not allowed")
