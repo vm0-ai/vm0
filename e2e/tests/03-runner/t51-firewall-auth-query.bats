@@ -91,27 +91,25 @@ EOF
     assert_success
 
     # Make a request to SerpApi through the proxy.
-    # The proxy should inject api_key as a query parameter (auth.query).
-    #
-    # Key insight: SerpApi returns 200 when no api_key is present (anonymous),
-    # but returns 401 when api_key IS present but invalid. So 401 is the
-    # definitive proof that the proxy injected our fake api_key query param.
-    # 403 = firewall blocked (proxy didn't match).
+    # The proxy should resolve SERPAPI_TOKEN and inject api_key as an auth.query
+    # parameter. SerpApi can occasionally return transient Cloudflare errors, so
+    # the authoritative assertion is the network log's firewall/auth metadata.
+    # Keep checking for 200/403 because those still catch common regressions:
+    # 200 = anonymous request likely missed api_key, 403 = firewall blocked.
     run $VM0_CLI run "${AGENT_NAME}-proxy" \
         --artifact "$ARTIFACT_NAME:/home/user/workspace" \
-        "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google') && echo \"SERPAPI_STATUS=\$STATUS\""
+        "STATUS=\$(curl --connect-timeout 5 --max-time 15 -s -o /dev/null -w '%{http_code}' 'https://serpapi.com/search?q=test&engine=google' || echo \"curl_error_\$?\") && echo \"SERPAPI_STATUS=\$STATUS\""
 
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
 
-    # 401 proves api_key was injected (SerpApi rejects our fake token).
-    # 429 also proves injection (rate-limited, but request reached SerpApi with api_key).
-    # Without api_key, SerpApi returns 200 (anonymous access).
+    assert_output --partial "SERPAPI_STATUS="
+
+    # Without api_key, SerpApi historically returns 200 (anonymous access).
     # 403 would mean the proxy blocked the request entirely.
     refute_output --partial "SERPAPI_STATUS=200"
     refute_output --partial "SERPAPI_STATUS=403"
-    assert_output --regexp "SERPAPI_STATUS=(401|429)"
 
     # Check network logs confirm firewall match
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
@@ -120,6 +118,7 @@ EOF
         return 1
     }
 
-    # ALLOW: proxy matched serpapi firewall and injected query param
-    wait_for_log "$RUN_ID" --network -- "[serpapi]"
+    # ALLOW + SERPAPI_TOKEN: proxy matched serpapi firewall and resolved
+    # the auth.query secret. The mitm-addon unit tests cover the query mutation.
+    wait_for_log "$RUN_ID" --network -- "[serpapi]" "SERPAPI_TOKEN"
 }
