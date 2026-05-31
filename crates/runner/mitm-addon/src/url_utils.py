@@ -12,6 +12,13 @@ from mitmproxy import http
 
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_dot_segment
+from url_syntax import (
+    ASCII_CONTROL_MAX,
+    ASCII_DELETE,
+    has_raw_whitespace,
+    has_unsafe_url_codepoint,
+    strip_optional_terminal_slash,
+)
 
 # Well-known IANA ports for HTTP and HTTPS.  When the connection uses the
 # default port for its scheme we omit ``:port`` from the reconstructed URL.
@@ -19,15 +26,10 @@ _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
 _IPV6_VERSION = 6
 _MAX_PORT = 65535
-_ASCII_CONTROL_MAX = 0x20
-_ASCII_DELETE = 0x7F
-_UNICODE_SURROGATE_MIN = 0xD800
-_UNICODE_SURROGATE_MAX = 0xDFFF
 _PERCENT_ESCAPE_LENGTH = 3
 _FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
-_RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_REWRITE_SCHEMES = frozenset(("http", "https"))
@@ -97,8 +99,8 @@ class AuthorityValidationError(Exception):
 def _has_invalid_hostname_chars(host: str) -> bool:
     return any(
         char.isspace()
-        or ord(char) < _ASCII_CONTROL_MAX
-        or ord(char) == _ASCII_DELETE
+        or ord(char) < ASCII_CONTROL_MAX
+        or ord(char) == ASCII_DELETE
         or char in _FORBIDDEN_HOST_CHARS
         for char in host
     )
@@ -159,7 +161,7 @@ def _parse_authority_port(raw_port: str) -> int:
 
 def _parse_host_authority(authority: str) -> tuple[str, int | None]:
     if not authority or any(
-        char.isspace() or ord(char) < _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
+        char.isspace() or ord(char) < ASCII_CONTROL_MAX or ord(char) == ASCII_DELETE
         for char in authority
     ):
         raise ValueError("invalid authority")
@@ -386,23 +388,6 @@ def _encode_query_pairs(query: dict[str, str] | None) -> list[_QueryPair]:
     return _split_query_pairs(urllib.parse.urlencode(query))
 
 
-def _strip_optional_terminal_slash(path: str) -> str:
-    return path[:-1] if path.endswith("/") else path
-
-
-def _has_raw_whitespace(value: str) -> bool:
-    return any(char in _RAW_WHITESPACE_CHARS for char in value)
-
-
-def _has_unsafe_url_codepoint(value: str) -> bool:
-    return any(
-        ord(char) < _ASCII_CONTROL_MAX
-        or ord(char) == _ASCII_DELETE
-        or _UNICODE_SURROGATE_MIN <= ord(char) <= _UNICODE_SURROGATE_MAX
-        for char in value
-    ) or value.startswith(" ")
-
-
 def _merge_rewrite_query(
     base_query: str,
     orig_query: str,
@@ -452,9 +437,9 @@ def _percent_decode_host(host: str) -> str:
 def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
     if "\\" in resolved_base:
         raise ValueError("Invalid auth.base URL: must not contain backslash")
-    if _has_raw_whitespace(resolved_base):
+    if has_raw_whitespace(resolved_base):
         raise ValueError("Invalid auth.base URL: must not contain whitespace")
-    if _has_unsafe_url_codepoint(resolved_base):
+    if has_unsafe_url_codepoint(resolved_base):
         raise ValueError(
             "Invalid auth.base URL: must not contain control characters or invalid Unicode"
         )
@@ -517,7 +502,7 @@ def build_rewrite_url(
 
     # Append rel_path to the base path portion
     base_path = (
-        _strip_optional_terminal_slash(base_parsed.path) + rel_path
+        strip_optional_terminal_slash(base_parsed.path) + rel_path
         if rel_path != "/"
         else base_parsed.path
     )

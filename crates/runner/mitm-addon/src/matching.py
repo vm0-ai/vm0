@@ -12,6 +12,14 @@ from urllib.parse import unquote_to_bytes, urlsplit
 
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_dot_segment
+from url_syntax import (
+    ASCII_CONTROL_MAX,
+    ASCII_DELETE,
+    has_raw_whitespace,
+    has_unsafe_runtime_url_syntax,
+    has_unsafe_url_codepoint,
+    strip_optional_terminal_slash,
+)
 
 _SEGMENT_ERROR_HINT = 'use "{name}", "prefix{name}", "{name}suffix", or "prefix{name}suffix"'
 
@@ -25,10 +33,6 @@ _MULTI_PARAM_BRACE_COUNT = 2
 _RULE_TOKEN_COUNT = 2
 _MIN_HOST_SEGMENTS = 2
 _ASCII_MAX = 0x7F
-_ASCII_CONTROL_MAX = 0x20
-_ASCII_DELETE = 0x7F
-_UNICODE_SURROGATE_MIN = 0xD800
-_UNICODE_SURROGATE_MAX = 0xDFFF
 _PERCENT_ESCAPE_LENGTH = 3
 _IPV6_VERSION = 6
 _IDNA_DOT_TRANSLATION = str.maketrans(
@@ -41,7 +45,6 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
 _PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61")
-_RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _VALID_RULE_METHODS = frozenset(
     (
@@ -65,19 +68,6 @@ _AUTH_REFERENCE_PREFIX_PATTERN = re.compile(
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
 
 
-def _has_unsafe_url_codepoint(value: str) -> bool:
-    return any(
-        ord(char) < _ASCII_CONTROL_MAX
-        or ord(char) == _ASCII_DELETE
-        or _UNICODE_SURROGATE_MIN <= ord(char) <= _UNICODE_SURROGATE_MAX
-        for char in value
-    )
-
-
-def _has_unsafe_runtime_url_syntax(value: str) -> bool:
-    return _has_unsafe_url_codepoint(value) or any(char in _RAW_WHITESPACE_CHARS for char in value)
-
-
 def _has_base_url_params(base: str) -> bool:
     return "{" in base and "}" in base
 
@@ -90,8 +80,8 @@ def _has_invalid_authority_host_chars(host: str, *, allow_host_params: bool = Fa
     )
     return any(
         char.isspace()
-        or ord(char) < _ASCII_CONTROL_MAX
-        or ord(char) == _ASCII_DELETE
+        or ord(char) < ASCII_CONTROL_MAX
+        or ord(char) == ASCII_DELETE
         or char in forbidden_chars
         for char in host
     )
@@ -316,7 +306,7 @@ def _split_base_match_url(
     callers can apply base-path prefix semantics without accidentally comparing
     query strings.
     """
-    if not allow_unsafe_runtime_url_syntax and _has_unsafe_runtime_url_syntax(value):
+    if not allow_unsafe_runtime_url_syntax and has_unsafe_runtime_url_syntax(value):
         return None
 
     try:
@@ -645,10 +635,6 @@ def _has_non_empty_segment(path_segs: list[str], start: int) -> bool:
     return any(path_segs[index] != "" for index in range(start, len(path_segs)))
 
 
-def _strip_optional_terminal_slash(base: str) -> str:
-    return base[:-1] if base.endswith("/") else base
-
-
 def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     """Match a request URL against a (possibly parameterized) base URL.
 
@@ -665,7 +651,7 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     # case-sensitive.
     if not _has_base_url_params(base):
         base_parts = _split_base_match_url(
-            _strip_optional_terminal_slash(base),
+            strip_optional_terminal_slash(base),
             allow_query_fragment=False,
         )
         if base_parts is None:
@@ -686,7 +672,7 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
 
     # Parameterized base URL: parse into scheme, host pattern, path pattern
     base_parts = _split_base_match_url(
-        _strip_optional_terminal_slash(base),
+        strip_optional_terminal_slash(base),
         allow_query_fragment=False,
         allow_host_params=True,
     )
@@ -933,8 +919,8 @@ def _auth_base_for_static_url_validation(auth_base: str) -> _AuthBaseStaticValid
 def _dynamic_auth_base_suffix_is_valid(suffix: str) -> bool:
     return (
         _AUTH_TEMPLATE_START not in suffix
-        and not _has_unsafe_url_codepoint(suffix)
-        and not any(char in _RAW_WHITESPACE_CHARS for char in suffix)
+        and not has_unsafe_url_codepoint(suffix)
+        and not has_raw_whitespace(suffix)
         and "#" not in suffix
         and (suffix == "" or suffix.startswith(("/", "?")))
     )
@@ -951,7 +937,7 @@ def _static_auth_base_is_valid(auth_base: str) -> bool:
         return True
     if _AUTH_TEMPLATE_START in validation_url:
         return False
-    if any(char in _RAW_WHITESPACE_CHARS for char in validation_url):
+    if has_raw_whitespace(validation_url):
         return False
     if "://" not in validation_url:
         return False
@@ -1220,7 +1206,7 @@ def _match_compiled_host(
 
 
 def _compile_base(raw_base: str) -> _CompiledBase | None:
-    base = _strip_optional_terminal_slash(raw_base)
+    base = strip_optional_terminal_slash(raw_base)
     if not base:
         return None
 
@@ -1231,8 +1217,8 @@ def _compile_base(raw_base: str) -> _CompiledBase | None:
         return None
     raw_syntax_malformed = (
         "\\" in base
-        or any(char in _RAW_WHITESPACE_CHARS for char in base)
-        or _has_unsafe_url_codepoint(base)
+        or has_raw_whitespace(base)
+        or has_unsafe_url_codepoint(base)
         or parsed.scheme.lower() not in _VALID_BASE_SCHEMES
     )
 
@@ -1332,8 +1318,8 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
         or "?" in path
         or "#" in path
         or "\\" in path
-        or _has_unsafe_url_codepoint(path)
-        or any(char in _RAW_WHITESPACE_CHARS for char in path)
+        or has_unsafe_url_codepoint(path)
+        or has_raw_whitespace(path)
     ):
         return None
     pattern = compile_path_pattern(path)

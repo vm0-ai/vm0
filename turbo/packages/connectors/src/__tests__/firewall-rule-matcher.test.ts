@@ -3,6 +3,7 @@ import {
   matchFirewallHost,
   matchFirewallPath,
   matchFirewallPathPrefix,
+  matchFirewallBaseUrl,
   findMatchingPermissions,
 } from "../firewall-rule-matcher";
 import type { FirewallConfig } from "../firewall-types";
@@ -289,6 +290,74 @@ describe("matchFirewallPathPrefix", () => {
   it("allows star greedy path params to consume zero segments", () => {
     expect(matchFirewallPathPrefix("/api", "/api/{rest*}")).toBe("/");
     expect(matchFirewallPathPrefix("/api/users/123", "/api/{rest*}")).toBe("/");
+  });
+});
+
+describe("matchFirewallBaseUrl", () => {
+  it("matches normalized static authorities and strips query fragments", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?where=Name#ignored",
+        "https://api.xero.com/api.xro/2.0",
+      ),
+    ).toEqual({
+      displayBase: "https://api.xero.com/api.xro/2.0",
+      relativePath: "/Accounts",
+      score: "https://api.xero.com/api.xro/2.0".length,
+    });
+  });
+
+  it("matches parameterized path base URLs", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://raw.githubusercontent.com/owner/repo/main/README.md",
+        "https://raw.githubusercontent.com/{owner}/{repo}",
+      ),
+    ).toEqual({
+      displayBase: "https://raw.githubusercontent.com/{owner}/{repo}",
+      relativePath: "/main/README.md",
+      score: "https://raw.githubusercontent.com/{owner}/{repo}".length,
+    });
+  });
+
+  it("matches parameterized host base URLs", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://ETH.G.ALCHEMY.COM/v2/demo",
+        "https://{network}.g.alchemy.com",
+      ),
+    ).toEqual({
+      displayBase: "https://{network}.g.alchemy.com",
+      relativePath: "/v2/demo",
+      score: "https://{network}.g.alchemy.com".length,
+    });
+  });
+
+  it("keeps static base path boundaries strict", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://slack.com/apix/chat.postMessage",
+        "https://slack.com/api",
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["raw whitespace", "https://api.github.com/foo bar"],
+    ["authority backslash", "https://api.github.com\\repos/owner/repo"],
+    ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
+    ["invalid authority percent escape", "https://api%zz.github.com/repos"],
+    ["percent-encoded authority dot", "https://api%2egithub.com/repos"],
+    ["malformed IPv6 authority", "https://[::1/repos"],
+    ["non-default port", "https://api.github.com:8443/repos"],
+  ])("rejects runtime URLs with %s", (_label, url) => {
+    expect(matchFirewallBaseUrl(url, "https://api.github.com")).toBeNull();
+  });
+
+  it("rejects malformed base URLs without string-prefix fallback", () => {
+    expect(
+      matchFirewallBaseUrl("https://api.github.com/repos", "https://[::1"),
+    ).toBeNull();
   });
 });
 

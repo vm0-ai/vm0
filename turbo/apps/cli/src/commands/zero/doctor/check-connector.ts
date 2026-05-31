@@ -9,19 +9,16 @@ import {
   getConnectorTypeForSecretName,
 } from "@vm0/connectors/connector-utils";
 import {
+  type FirewallBaseUrlMatch,
   findMatchingPermissions,
-  matchFirewallHost,
-  matchFirewallPathPrefix,
+  matchFirewallBaseUrl,
 } from "@vm0/connectors/firewall-rule-matcher";
 import { extractSecretNamesFromApis } from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import type {
-  FirewallConfig,
-  NetworkPolicies,
-} from "@vm0/connectors/firewall-types";
+import type { NetworkPolicies } from "@vm0/connectors/firewall-types";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import { getApiUrl } from "../../../lib/api/config";
 import {
@@ -57,264 +54,6 @@ interface UrlLookupResult {
   relativePath: string;
 }
 
-interface BaseUrlMatch {
-  displayBase: string;
-  relativePath: string;
-  score: number;
-}
-
-const ASCII_CONTROL_MAX = 0x20;
-const ASCII_DELETE = 0x7f;
-const UNICODE_HIGH_SURROGATE_MIN = 0xd800;
-const UNICODE_HIGH_SURROGATE_MAX = 0xdbff;
-const UNICODE_LOW_SURROGATE_MIN = 0xdc00;
-const UNICODE_LOW_SURROGATE_MAX = 0xdfff;
-const PERCENT_ESCAPE_LENGTH = 3;
-const HEX_DIGITS = new Set("0123456789abcdefABCDEF".split(""));
-const FORBIDDEN_RUNTIME_HOST_CHARS = new Set("#%,/<>?@\\^|{}".split(""));
-const FORBIDDEN_BASE_PATTERN_HOST_CHARS = new Set("#%,/<>?@\\^|".split(""));
-const PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = new Set([
-  "{",
-  "}",
-  ".",
-  "\u3002",
-  "\uff0e",
-  "\uff61",
-  ":",
-]);
-
-function hasRawWhitespace(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    const char = value[i]!;
-    if (
-      char === " " ||
-      char === "\t" ||
-      char === "\n" ||
-      char === "\r" ||
-      char === "\f" ||
-      char === "\v"
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hasUnsafeUrlCodepoint(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    const codeUnit = value.charCodeAt(i);
-    if (codeUnit < ASCII_CONTROL_MAX || codeUnit === ASCII_DELETE) {
-      return true;
-    }
-    if (
-      UNICODE_HIGH_SURROGATE_MIN <= codeUnit &&
-      codeUnit <= UNICODE_HIGH_SURROGATE_MAX
-    ) {
-      const nextCodeUnit = value.charCodeAt(i + 1);
-      if (
-        !(
-          UNICODE_LOW_SURROGATE_MIN <= nextCodeUnit &&
-          nextCodeUnit <= UNICODE_LOW_SURROGATE_MAX
-        )
-      ) {
-        return true;
-      }
-      i += 1;
-      continue;
-    }
-    if (
-      UNICODE_LOW_SURROGATE_MIN <= codeUnit &&
-      codeUnit <= UNICODE_LOW_SURROGATE_MAX
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hasUnsafeRuntimeUrlSyntax(value: string): boolean {
-  return hasUnsafeUrlCodepoint(value) || hasRawWhitespace(value);
-}
-
-function hasPercentEncodedAuthoritySyntax(value: string): boolean {
-  let index = value.indexOf("%");
-  while (index !== -1) {
-    let runEnd = index;
-    while (runEnd < value.length && value[runEnd] === "%") {
-      const firstHexDigit = value[runEnd + 1];
-      const secondHexDigit = value[runEnd + 2];
-      if (
-        !firstHexDigit ||
-        !secondHexDigit ||
-        !HEX_DIGITS.has(firstHexDigit) ||
-        !HEX_DIGITS.has(secondHexDigit)
-      ) {
-        return true;
-      }
-      runEnd += PERCENT_ESCAPE_LENGTH;
-    }
-
-    let decodedRun: string;
-    try {
-      decodedRun = decodeURIComponent(value.slice(index, runEnd));
-    } catch {
-      return true;
-    }
-    for (const char of decodedRun) {
-      if (PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS.has(char)) {
-        return true;
-      }
-    }
-    index = value.indexOf("%", runEnd);
-  }
-  return false;
-}
-
-function stripUrlQueryAndFragment(url: string): string {
-  const queryIndex = url.indexOf("?");
-  const fragmentIndex = url.indexOf("#");
-  let end = url.length;
-  if (queryIndex !== -1) end = Math.min(end, queryIndex);
-  if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
-  return url.slice(0, end);
-}
-
-function rawAuthorityFromUrl(url: string): string | null {
-  const urlWithoutQuery = stripUrlQueryAndFragment(url);
-  const schemeEnd = urlWithoutQuery.indexOf("://");
-  if (schemeEnd === -1) return null;
-  const authorityStart = schemeEnd + 3;
-  const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
-  const authority =
-    pathStart === -1
-      ? urlWithoutQuery.slice(authorityStart)
-      : urlWithoutQuery.slice(authorityStart, pathStart);
-  return authority === "" ? null : authority;
-}
-
-function hasMalformedRuntimeAuthoritySyntax(url: string): boolean {
-  const authority = rawAuthorityFromUrl(url);
-  if (authority === null) return false;
-  return (
-    authority.includes("\\") || hasPercentEncodedAuthoritySyntax(authority)
-  );
-}
-
-function stripTrailingSlash(value: string): string {
-  return value.endsWith("/") ? value.slice(0, -1) : value;
-}
-
-function normalizeBasePath(pathname: string): string {
-  return pathname.length > 1 ? stripTrailingSlash(pathname) : "/";
-}
-
-function rawPathFromUrl(url: string): string {
-  const urlWithoutQuery = stripUrlQueryAndFragment(url);
-  const schemeEnd = urlWithoutQuery.indexOf("://");
-  const authorityStart = schemeEnd === -1 ? 0 : schemeEnd + 3;
-  const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
-  return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
-}
-
-function normalizeUrlHostname(
-  hostname: string,
-  options: { allowHostParams?: boolean } = {},
-): string | null {
-  let normalized = hostname.toLowerCase();
-  if (normalized.endsWith(".")) {
-    normalized = normalized.slice(0, -1);
-    if (normalized === "" || normalized.endsWith(".")) {
-      return null;
-    }
-  }
-  if (
-    normalized.split(".").some((label) => {
-      return label === "";
-    })
-  ) {
-    return null;
-  }
-  const forbiddenChars =
-    options.allowHostParams === true
-      ? FORBIDDEN_BASE_PATTERN_HOST_CHARS
-      : FORBIDDEN_RUNTIME_HOST_CHARS;
-  if (
-    !normalized.startsWith("[") &&
-    [...normalized].some((char) => {
-      return forbiddenChars.has(char);
-    })
-  ) {
-    return null;
-  }
-  return normalized;
-}
-
-function normalizedUrlAuthority(
-  parsed: URL,
-  options: { allowHostParams?: boolean } = {},
-): string | null {
-  if (parsed.username !== "" || parsed.password !== "") {
-    return null;
-  }
-
-  const hostname = normalizeUrlHostname(parsed.hostname, options);
-  if (hostname === null || hostname === "") {
-    return null;
-  }
-
-  return parsed.port === "" ? hostname : `${hostname}:${parsed.port}`;
-}
-
-function matchStaticBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
-  const parsedUrl = new URL(url);
-  const parsedBase = new URL(rawBase);
-  if (parsedUrl.protocol.toLowerCase() !== parsedBase.protocol.toLowerCase()) {
-    return null;
-  }
-
-  const urlAuthority = normalizedUrlAuthority(parsedUrl);
-  const baseAuthority = normalizedUrlAuthority(parsedBase, {
-    allowHostParams: rawBase.includes("{") || rawBase.includes("}"),
-  });
-  if (urlAuthority === null || baseAuthority === null) return null;
-  if (rawBase.includes("{") || rawBase.includes("}")) {
-    if (matchFirewallHost(urlAuthority, baseAuthority) === null) return null;
-  } else if (urlAuthority !== baseAuthority) {
-    return null;
-  }
-
-  const basePath = normalizeBasePath(rawPathFromUrl(rawBase));
-  const relativePath = matchFirewallPathPrefix(rawPathFromUrl(url), basePath);
-  if (relativePath === null) return null;
-
-  const displayBase = stripTrailingSlash(rawBase);
-  return {
-    displayBase,
-    relativePath,
-    score: displayBase.length,
-  };
-}
-
-function matchBaseUrl(url: string, rawBase: string): BaseUrlMatch | null {
-  try {
-    return matchStaticBaseUrl(url, rawBase);
-  } catch {
-    const normalized = stripTrailingSlash(stripUrlQueryAndFragment(url));
-    const base = stripTrailingSlash(rawBase);
-    if (normalized === base) {
-      return { displayBase: base, relativePath: "/", score: base.length };
-    }
-    if (normalized.startsWith(`${base}/`)) {
-      return {
-        displayBase: base,
-        relativePath: normalized.slice(base.length),
-        score: base.length,
-      };
-    }
-    return null;
-  }
-}
-
 function isConnectorType(type: string): type is ConnectorType {
   return type in CONNECTOR_TYPES;
 }
@@ -335,30 +74,22 @@ async function connectorTypeIsAvailable(type: string): Promise<boolean> {
  * starts with any registered base URL (scheme + host + optional path prefix).
  */
 function resolveConnectorFromUrl(url: string): UrlLookupResult | null {
-  if (
-    hasUnsafeRuntimeUrlSyntax(url) ||
-    hasMalformedRuntimeAuthoritySyntax(url)
-  ) {
-    return null;
-  }
-
   const allTypes = CONNECTOR_TYPE_KEYS;
 
   let bestMatch: {
     connectorType: string;
-    match: BaseUrlMatch;
-    config: FirewallConfig;
+    match: FirewallBaseUrlMatch;
   } | null = null;
 
   for (const type of allTypes) {
     if (!isFirewallConnectorType(type)) continue;
     const config = getConnectorFirewall(type);
     for (const api of config.apis) {
-      const match = matchBaseUrl(url, api.base);
+      const match = matchFirewallBaseUrl(url, api.base);
       if (match !== null) {
         // Pick the longest (most specific) base URL match
         if (!bestMatch || match.score > bestMatch.match.score) {
-          bestMatch = { connectorType: type, match, config };
+          bestMatch = { connectorType: type, match };
         }
       }
     }
