@@ -217,6 +217,10 @@ function matchingRulePath(rule: string, upperMethod: string): string | null {
   return rule.slice(spaceIdx + 1);
 }
 
+function isValidPermissionName(permissionName: string): boolean {
+  return permissionName !== "" && permissionName !== "all";
+}
+
 function recordPermissionMatch(
   state: ApiMatchState,
   permission: string,
@@ -477,8 +481,12 @@ export function findMatchingPermissions(
     if (apiBase !== null && stripTrailingSlash(api.base) !== apiBase) continue;
     if (!api.permissions) continue;
     const state: ApiMatchState = { bestSpecificity: null, matched: [] };
+    const seenPermissionNames = new Set<string>();
 
     for (const perm of api.permissions) {
+      if (!isValidPermissionName(perm.name)) continue;
+      if (seenPermissionNames.has(perm.name)) continue;
+      seenPermissionNames.add(perm.name);
       for (const rule of perm.rules) {
         const rest = matchingRulePath(rule, upperMethod);
         if (rest === null) continue;

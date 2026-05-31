@@ -414,6 +414,36 @@ describe("findMatchingPermissions", () => {
     ).toEqual([]);
   });
 
+  it("ignores permission names that fail firewall validation", () => {
+    const malformedPermissionConfig: FirewallConfig = {
+      name: "malformed-permission",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "", rules: ["GET /empty"] },
+            { name: "all", rules: ["GET /all"] },
+            { name: "read", rules: ["GET /items/{id}"] },
+            { name: "read", rules: ["DELETE /items/{id}"] },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/empty", malformedPermissionConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/all", malformedPermissionConfig),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedPermissionConfig),
+    ).toEqual(["read"]);
+    expect(
+      findMatchingPermissions("DELETE", "/items/1", malformedPermissionConfig),
+    ).toEqual([]);
+  });
+
   it("matches ANY method rule", () => {
     const anyConfig: FirewallConfig = {
       name: "any-test",
