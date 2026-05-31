@@ -124,9 +124,11 @@ export async function refreshGoogleToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<GoogleRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -47,7 +47,12 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshSpotifyToken(clientId, clientSecret, args.refreshToken);
+      return refreshSpotifyToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

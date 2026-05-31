@@ -50,7 +50,12 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshDeelToken(clientId, clientSecret, args.refreshToken);
+      return refreshDeelToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

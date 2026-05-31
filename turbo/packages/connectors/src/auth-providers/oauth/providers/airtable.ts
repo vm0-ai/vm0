@@ -156,11 +156,13 @@ export async function refreshAirtableToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<AirtableRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

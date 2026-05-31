@@ -59,6 +59,7 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

@@ -59,6 +59,7 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

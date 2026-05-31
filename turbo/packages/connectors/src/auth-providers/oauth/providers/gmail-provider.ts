@@ -44,7 +44,13 @@ export const gmailProvider: AuthCodeConnectorAuthProvider<"gmail"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
       const refreshToken = args.refreshToken;
-      return refreshGoogleToken("gmail", clientId, clientSecret, refreshToken);
+      return refreshGoogleToken(
+        "gmail",
+        clientId,
+        clientSecret,
+        refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

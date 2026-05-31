@@ -95,6 +95,7 @@ export async function refreshXToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<XRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("x");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
@@ -102,6 +103,7 @@ export async function refreshXToken(
   );
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

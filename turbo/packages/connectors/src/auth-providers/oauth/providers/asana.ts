@@ -159,9 +159,11 @@ export async function refreshAsanaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<AsanaRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("asana");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

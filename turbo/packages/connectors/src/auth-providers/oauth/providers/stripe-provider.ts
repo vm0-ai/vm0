@@ -40,7 +40,12 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshStripeToken(clientId, clientSecret, args.refreshToken);
+      return refreshStripeToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

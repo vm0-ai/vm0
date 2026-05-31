@@ -188,8 +188,10 @@ export async function pollBase44DeviceAuth(args: {
 export async function refreshBase44Token(args: {
   readonly clientId: string;
   readonly refreshToken: string;
+  readonly signal?: AbortSignal;
 }): Promise<OAuthRefreshResult> {
   const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
+    signal: args.signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

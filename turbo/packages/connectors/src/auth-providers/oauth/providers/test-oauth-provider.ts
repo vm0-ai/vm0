@@ -53,6 +53,7 @@ export const testOauthProvider: AuthCodeConnectorAuthProvider<"test-oauth"> = {
         clientId,
         clientSecret,
         refreshToken,
+        args.signal,
       );
       return {
         accessToken: result.accessToken,

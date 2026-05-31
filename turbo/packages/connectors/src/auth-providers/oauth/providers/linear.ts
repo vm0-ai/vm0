@@ -119,9 +119,11 @@ export async function refreshLinearToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<LinearRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("linear");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

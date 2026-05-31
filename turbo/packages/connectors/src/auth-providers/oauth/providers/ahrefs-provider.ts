@@ -47,7 +47,12 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshAhrefsToken(clientId, clientSecret, args.refreshToken);
+      return refreshAhrefsToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

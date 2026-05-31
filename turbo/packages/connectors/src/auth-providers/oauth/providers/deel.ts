@@ -95,6 +95,7 @@ export async function refreshDeelToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<DeelRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("deel");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
@@ -102,6 +103,7 @@ export async function refreshDeelToken(
   );
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

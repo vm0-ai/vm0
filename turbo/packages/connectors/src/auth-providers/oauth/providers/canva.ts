@@ -95,6 +95,7 @@ export async function refreshCanvaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<CanvaRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("canva");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
@@ -102,6 +103,7 @@ export async function refreshCanvaToken(
   );
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

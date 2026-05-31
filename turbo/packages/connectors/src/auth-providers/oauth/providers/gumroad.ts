@@ -103,9 +103,11 @@ export async function refreshGumroadToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<GumroadRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("gumroad");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

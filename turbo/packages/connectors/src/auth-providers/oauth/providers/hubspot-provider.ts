@@ -47,7 +47,12 @@ export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshHubSpotToken(clientId, clientSecret, args.refreshToken);
+      return refreshHubSpotToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

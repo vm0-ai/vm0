@@ -113,9 +113,11 @@ export async function refreshPosthogToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<PosthogRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("posthog");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

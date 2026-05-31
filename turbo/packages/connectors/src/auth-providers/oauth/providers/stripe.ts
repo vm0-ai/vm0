@@ -116,9 +116,11 @@ export async function refreshStripeToken(
   _clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<StripeRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("stripe");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

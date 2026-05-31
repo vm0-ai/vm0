@@ -47,7 +47,12 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshGumroadToken(clientId, clientSecret, args.refreshToken);
+      return refreshGumroadToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

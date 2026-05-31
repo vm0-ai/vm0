@@ -31,6 +31,7 @@ export const codexOauthProvider: ModelProviderAuthProvider = {
         args.clientId ?? CHATGPT_OAUTH_CLIENT_ID,
         args.clientSecret ?? "",
         args.refreshToken,
+        args.signal,
       );
     },
   },

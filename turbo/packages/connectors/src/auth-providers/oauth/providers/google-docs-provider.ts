@@ -59,6 +59,7 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

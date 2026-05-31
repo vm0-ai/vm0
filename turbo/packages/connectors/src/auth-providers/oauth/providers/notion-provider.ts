@@ -43,7 +43,12 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshNotionToken(clientId, clientSecret, args.refreshToken);
+      return refreshNotionToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

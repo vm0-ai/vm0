@@ -59,6 +59,7 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

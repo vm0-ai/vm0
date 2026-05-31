@@ -120,6 +120,7 @@ export async function refreshZoomToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<ZoomRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("zoom");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
@@ -127,6 +128,7 @@ export async function refreshZoomToken(
   );
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

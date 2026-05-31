@@ -118,9 +118,11 @@ export async function refreshDropboxToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<DropboxRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("dropbox");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

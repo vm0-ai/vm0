@@ -115,9 +115,11 @@ export async function refreshAhrefsToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<AhrefsRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("ahrefs");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

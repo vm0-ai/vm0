@@ -48,7 +48,12 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshXToken(clientId, clientSecret, args.refreshToken);
+      return refreshXToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

@@ -57,6 +57,7 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
           clientId,
           clientSecret,
           args.refreshToken,
+          args.signal,
         );
       },
     },

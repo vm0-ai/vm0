@@ -50,7 +50,12 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshCanvaToken(clientId, clientSecret, args.refreshToken);
+      return refreshCanvaToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

@@ -43,7 +43,12 @@ export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshXeroToken(clientId, clientSecret, args.refreshToken);
+      return refreshXeroToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

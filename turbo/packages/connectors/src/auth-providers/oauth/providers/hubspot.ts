@@ -111,9 +111,11 @@ export async function refreshHubSpotToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<HubSpotRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("hubspot");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

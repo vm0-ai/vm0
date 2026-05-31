@@ -110,6 +110,7 @@ interface ModelProviderOAuthRefreshArgs {
   readonly clientId?: string;
   readonly clientSecret?: string;
   readonly refreshToken: string;
+  readonly signal?: AbortSignal;
 }
 
 interface ModelProviderRefreshTokenAccessProvider {

@@ -47,7 +47,12 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshPosthogToken(clientId, clientSecret, args.refreshToken);
+      return refreshPosthogToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

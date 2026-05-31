@@ -160,6 +160,7 @@ export async function refreshDocuSignToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<DocuSignRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
@@ -167,6 +168,7 @@ export async function refreshDocuSignToken(
   );
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

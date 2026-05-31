@@ -408,8 +408,10 @@ export async function pollSlockDeviceAuth(args: {
 
 export async function refreshSlockToken(args: {
   readonly refreshToken: string;
+  readonly signal?: AbortSignal;
 }): Promise<OAuthRefreshResult> {
   const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/refresh`, {
+    signal: args.signal,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -43,7 +43,12 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshCloseToken(clientId, clientSecret, args.refreshToken);
+      return refreshCloseToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

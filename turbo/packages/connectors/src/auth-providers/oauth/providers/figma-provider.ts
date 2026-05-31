@@ -43,7 +43,12 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshFigmaToken(clientId, clientSecret, args.refreshToken);
+      return refreshFigmaToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

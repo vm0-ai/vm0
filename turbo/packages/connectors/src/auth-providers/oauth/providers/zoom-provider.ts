@@ -43,7 +43,12 @@ export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshZoomToken(clientId, clientSecret, args.refreshToken);
+      return refreshZoomToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

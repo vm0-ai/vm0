@@ -47,7 +47,12 @@ export const mondayProvider: AuthCodeConnectorAuthProvider<"monday"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshMondayToken(clientId, clientSecret, args.refreshToken);
+      return refreshMondayToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

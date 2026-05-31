@@ -59,6 +59,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

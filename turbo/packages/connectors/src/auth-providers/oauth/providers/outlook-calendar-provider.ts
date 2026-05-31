@@ -59,6 +59,7 @@ export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-cal
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

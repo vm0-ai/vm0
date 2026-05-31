@@ -117,9 +117,11 @@ export async function refreshXeroToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<XeroRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("xero");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

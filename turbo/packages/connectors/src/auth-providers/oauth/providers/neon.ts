@@ -116,9 +116,11 @@ export async function refreshNeonToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<NeonRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("neon");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

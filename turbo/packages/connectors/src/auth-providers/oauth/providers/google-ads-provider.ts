@@ -58,6 +58,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
         clientId,
         clientSecret,
         refreshToken,
+        args.signal,
       );
     },
   },

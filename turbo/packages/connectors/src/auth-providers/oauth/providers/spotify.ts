@@ -117,6 +117,7 @@ export async function refreshSpotifyToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<SpotifyRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("spotify");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
@@ -124,6 +125,7 @@ export async function refreshSpotifyToken(
   );
 
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -59,6 +59,7 @@ export const googleDriveProvider: AuthCodeConnectorAuthProvider<"google-drive"> 
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

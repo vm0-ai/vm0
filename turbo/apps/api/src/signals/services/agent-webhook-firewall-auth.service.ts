@@ -43,7 +43,7 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { optionalEnv } from "../../lib/env";
+import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -68,6 +68,7 @@ type SecretType = AccessSecretSource;
 const NORMAL_BILLABLE_FIREWALL_LEASE_SECONDS = 30;
 const LOW_BILLABLE_FIREWALL_LEASE_SECONDS = 5;
 const LOW_BILLABLE_FIREWALL_CREDIT_THRESHOLD = 1000;
+const REFRESH_TIMEOUT_ERROR_CODE = "oauth_refresh_timeout";
 
 interface FirewallAuthBody {
   readonly encryptedSecrets: string;
@@ -445,6 +446,9 @@ function currentProviderEnv(): ProviderEnv {
 function refreshFailureReasonFromError(
   error: unknown,
 ): FirewallAuthFailureReason | undefined {
+  if (isFetchAbortError(error)) {
+    return "upstream_provider";
+  }
   if (isChatgptRefreshError(error)) {
     return isReconnectRequiredRefreshErrorCode(error.code)
       ? "reconnect_required"
@@ -470,6 +474,9 @@ function refreshFailureReasonFromError(
 }
 
 function refreshErrorCodeFromError(error: unknown): string | null {
+  if (isFetchAbortError(error)) {
+    return REFRESH_TIMEOUT_ERROR_CODE;
+  }
   if (isChatgptRefreshError(error)) {
     return error.code;
   }
@@ -486,6 +493,17 @@ function isFetchNetworkError(error: unknown): boolean {
   return (
     error instanceof TypeError && error.message.toLowerCase().includes("fetch")
   );
+}
+
+function isFetchAbortError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "TimeoutError")
+  );
+}
+
+function firewallAuthRefreshTimeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(env("FIREWALL_AUTH_REFRESH_TIMEOUT_MS"));
 }
 
 function isReconnectRequiredRefreshErrorCode(
@@ -1328,6 +1346,7 @@ async function refreshAccessTokenForSource(
       return markRefreshTokenMissing({ ...args, db: tx }, prepared.context);
     }
 
+    const refreshSignal = firewallAuthRefreshTimeoutSignal();
     const refreshPromise =
       prepared.sourceType === "connector"
         ? refreshConnectorAuthProviderAccessToken({
@@ -1335,11 +1354,13 @@ async function refreshAccessTokenForSource(
             authMethod: prepared.authMethod,
             clientArgs: prepared.clientArgs,
             refreshToken: lockedState.refreshToken,
+            signal: refreshSignal,
           })
         : refreshModelProviderOAuthToken({
             providerKey: prepared.providerKey,
             currentEnv: prepared.currentEnv,
             refreshToken: lockedState.refreshToken,
+            signal: refreshSignal,
           });
     const refreshResult = await settle(refreshPromise);
 

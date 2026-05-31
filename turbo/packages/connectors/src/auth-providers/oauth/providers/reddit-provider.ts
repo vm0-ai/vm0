@@ -47,7 +47,12 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshRedditToken(clientId, clientSecret, args.refreshToken);
+      return refreshRedditToken(
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

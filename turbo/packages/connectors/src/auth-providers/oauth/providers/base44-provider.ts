@@ -38,6 +38,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       return await refreshBase44Token({
         clientId,
         refreshToken: args.refreshToken,
+        signal: args.signal,
       });
     },
   },

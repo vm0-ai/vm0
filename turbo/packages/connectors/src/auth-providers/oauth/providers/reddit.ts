@@ -160,9 +160,11 @@ export async function refreshRedditToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<RedditRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,

@@ -115,9 +115,11 @@ export async function refreshMercuryToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal?: AbortSignal,
 ): Promise<MercuryRefreshResult> {
   const authCodeGrant = getAuthCodeGrantConfig("mercury");
   const response = await fetch(authCodeGrant.tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
