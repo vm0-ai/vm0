@@ -107,8 +107,8 @@ export function GoogleOAuthNotice() {
           To continue, select{" "}
           <strong className="text-foreground">Advanced</strong> then{" "}
           <strong className="text-foreground">Go to vm0.ai (unsafe)</strong>. We
-          only request the minimum permissions needed, and your credentials are
-          encrypted at rest.
+          only request the minimum permissions needed, and your connection
+          tokens are encrypted at rest.
         </p>
       </div>
     </div>

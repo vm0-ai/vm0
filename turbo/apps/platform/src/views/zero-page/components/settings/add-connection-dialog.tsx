@@ -33,10 +33,10 @@ import {
   openConnectorOAuthDeviceAuthVerificationPage$,
   clearConnectorOAuthDeviceAuth$,
   runConnectorConnectSuccess$,
-  submitManualCredentials$,
-  setTokenFormValue$,
-  clearTokenForm$,
-  tokenFormValuesFor$,
+  submitManualGrant$,
+  setManualGrantFormValue$,
+  clearManualGrantForm$,
+  manualGrantFormValuesFor$,
   selectedConnectorType$,
   isStandaloneMode,
   type ConnectorOAuthDeviceAuthState,
@@ -70,10 +70,10 @@ type PostConnectOptions = {
   readonly showPermissionDialog?: boolean;
 };
 
-type SubmitManualCredentialsFn = (
+type SubmitManualGrantFn = (
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
-  inputSecrets: Record<string, string>,
+  inputValues: Record<string, string>,
   options: PostConnectOptions,
   signal: AbortSignal,
 ) => Promise<void>;
@@ -98,8 +98,8 @@ type ConnectMethodContentProps = ConnectModalContentProps & {
   method: ConnectorAuthMethodConfig;
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
-  submitManualCredentials: SubmitManualCredentialsFn;
-  credentialSubmitting: boolean;
+  submitManualGrant: SubmitManualGrantFn;
+  manualGrantSubmitting: boolean;
   signal: AbortSignal;
 };
 
@@ -131,10 +131,10 @@ function connectorOAuthDeviceAuthFlowIsActive(
 }
 
 // ---------------------------------------------------------------------------
-// Manual credentials form (shown inside connect modal)
+// Manual grant form (shown inside connect modal)
 // ---------------------------------------------------------------------------
 
-function ManualCredentialForm({
+function ManualGrantForm({
   type,
   authMethod,
   method,
@@ -150,17 +150,17 @@ function ManualCredentialForm({
   grant: ConnectorManualGrantConfig;
   onSuccess: () => void | Promise<void>;
   showPermissionDialogOnConnect: boolean;
-  submit: SubmitManualCredentialsFn;
+  submit: SubmitManualGrantFn;
   submitting: boolean;
 }) {
-  const setFormValue = useSet(setTokenFormValue$);
-  const clearForm = useSet(clearTokenForm$);
+  const setFormValue = useSet(setManualGrantFormValue$);
+  const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
-  const secretValues = useGet(tokenFormValuesFor$(type));
+  const fieldValues = useGet(manualGrantFormValuesFor$(type));
 
-  const secretEntries = Object.entries(grant.fields);
-  const allFilled = secretEntries.every(([name, cfg]) => {
-    return !cfg.required || hasTokenInputValue(secretValues[name]);
+  const fieldEntries = Object.entries(grant.fields);
+  const allFilled = fieldEntries.every(([name, cfg]) => {
+    return !cfg.required || hasTokenInputValue(fieldValues[name]);
   });
 
   const handleSubmit = onDomEventFn(async () => {
@@ -170,7 +170,7 @@ function ManualCredentialForm({
     await submit(
       type,
       authMethod,
-      secretValues,
+      fieldValues,
       {
         showPermissionDialog: showPermissionDialogOnConnect,
       },
@@ -183,16 +183,16 @@ function ManualCredentialForm({
   return (
     <div className="flex flex-col gap-3">
       {method.helpText && <ConnectorHelpText text={method.helpText} />}
-      {secretEntries.map(([name, secretConfig]) => {
+      {fieldEntries.map(([name, fieldConfig]) => {
         return (
           <div key={name} className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-foreground">
-              {secretConfig.label}
+              {fieldConfig.label}
             </label>
             <Input
               type="password"
-              placeholder={secretConfig.placeholder}
-              value={secretValues[name] ?? ""}
+              placeholder={fieldConfig.placeholder}
+              value={fieldValues[name] ?? ""}
               onChange={(e) => {
                 return setFormValue(type, name, e.target.value);
               }}
@@ -446,22 +446,20 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
 }
 
-function ManualCredentialConnectMethodContent(
-  props: ConnectMethodContentProps,
-) {
+function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
   if (props.method.grant.kind !== "manual") {
     return null;
   }
   return (
-    <ManualCredentialForm
+    <ManualGrantForm
       type={props.item.type}
       authMethod={props.authMethod}
       method={props.method}
       grant={props.method.grant}
       onSuccess={props.onSuccess}
       showPermissionDialogOnConnect={props.showPermissionDialogOnConnect}
-      submit={props.submitManualCredentials}
-      submitting={props.credentialSubmitting}
+      submit={props.submitManualGrant}
+      submitting={props.manualGrantSubmitting}
     />
   );
 }
@@ -484,7 +482,7 @@ function getConnectMethodContentComponent(
       return null;
     }
     case "manual": {
-      return ManualCredentialConnectMethodContent;
+      return ManualGrantConnectMethodContent;
     }
     case "managed": {
       return null;
@@ -586,15 +584,15 @@ function StandardConnectMethodsContent({
   showPermissionDialogOnConnect,
   connectOAuthAuthCodeAndSettle,
   connectOAuthDeviceAuthAndSettle,
-  submitManualCredentials,
-  credentialSubmitting,
+  submitManualGrant,
+  manualGrantSubmitting,
   signal,
   entries,
 }: ConnectModalContentProps & {
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   connectOAuthDeviceAuthAndSettle: ConnectOAuthDeviceAuthAndSettleFn;
-  submitManualCredentials: SubmitManualCredentialsFn;
-  credentialSubmitting: boolean;
+  submitManualGrant: SubmitManualGrantFn;
+  manualGrantSubmitting: boolean;
   signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
@@ -619,8 +617,8 @@ function StandardConnectMethodsContent({
           showPermissionDialogOnConnect,
           connectOAuthAuthCodeAndSettle,
           connectOAuthDeviceAuthAndSettle,
-          submitManualCredentials,
-          credentialSubmitting,
+          submitManualGrant,
+          manualGrantSubmitting,
           signal,
         }}
       />
@@ -639,17 +637,17 @@ function ConnectModalContent({
   const [, connectOAuthDeviceAuthAndSettle] = useLoadableSet(
     connectConnectorOAuthDeviceAuthAndSettle$,
   );
-  const [manualCredentialLoadable, submitManualCredentialsCommand] =
-    useLoadableSet(submitManualCredentials$);
-  const submitManualCredentials: SubmitManualCredentialsFn = async (
+  const [manualGrantLoadable, submitManualGrantCommand] =
+    useLoadableSet(submitManualGrant$);
+  const submitManualGrant: SubmitManualGrantFn = async (
     type,
     authMethod,
-    inputSecrets,
+    inputValues,
     options,
     signal,
   ) => {
-    await submitManualCredentialsCommand(
-      { type, authMethod, inputSecrets, options },
+    await submitManualGrantCommand(
+      { type, authMethod, inputValues, options },
       signal,
     );
   };
@@ -657,7 +655,7 @@ function ConnectModalContent({
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const settling = settleLoadable.state === "loading";
-  const credentialSubmitting = manualCredentialLoadable.state === "loading";
+  const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const isPolling = pollingType === item.type;
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
@@ -683,8 +681,8 @@ function ConnectModalContent({
       showPermissionDialogOnConnect={showPermissionDialogOnConnect}
       connectOAuthAuthCodeAndSettle={connectOAuthAuthCodeAndSettle}
       connectOAuthDeviceAuthAndSettle={connectOAuthDeviceAuthAndSettle}
-      submitManualCredentials={submitManualCredentials}
-      credentialSubmitting={credentialSubmitting}
+      submitManualGrant={submitManualGrant}
+      manualGrantSubmitting={manualGrantSubmitting}
       signal={pageSignal}
       entries={entries}
     />

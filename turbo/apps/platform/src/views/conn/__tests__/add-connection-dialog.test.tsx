@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -82,7 +82,7 @@ function mockConnectorOauthStart() {
   );
 }
 
-function apiTokenConnectorResponse(type: ConnectorType) {
+function manualGrantConnectorResponse(type: ConnectorType) {
   return {
     id: crypto.randomUUID(),
     type,
@@ -312,7 +312,7 @@ describe("connect modal - content by auth method", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows API token form for api-token connectors (CONN-C-019)", async () => {
+  it("shows manual grant form for api-token connectors (CONN-C-019)", async () => {
     await openConnectModal("axiom");
 
     await waitFor(() => {
@@ -367,7 +367,7 @@ describe("connect modal - content by auth method", () => {
     expect(within(dialog).queryByText("Connecting...")).not.toBeInTheDocument();
   });
 
-  it("shows OAuth and API token content when both auth methods are available", async () => {
+  it("shows OAuth and manual grant content when both auth methods are available", async () => {
     await openConnectModal("deel", {
       featureSwitches: { [FeatureSwitchKey.DeelConnector]: true },
     });
@@ -455,14 +455,16 @@ describe("connect modal - interactions", () => {
     });
   });
 
-  it("save button submits API token connector values (CONN-I-023)", async () => {
+  it("save button submits manual grant connector values (CONN-I-023)", async () => {
     const user = userEvent.setup();
+    let submittedAuthMethod: string | undefined;
     let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
         submittedValues = body.values;
-        return respond(200, apiTokenConnectorResponse("axiom"));
+        return respond(200, manualGrantConnectorResponse("axiom"));
       }),
     );
 
@@ -479,20 +481,23 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
+      expect(submittedAuthMethod).toBe("api-token");
       expect(submittedValues).toStrictEqual({
         AXIOM_TOKEN: "test-token-value",
       });
     });
   });
 
-  it("submits all manual credential fields in one connector request", async () => {
+  it("submits all manual grant fields in one connector request", async () => {
     const user = userEvent.setup();
+    let submittedAuthMethod: string | undefined;
     let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
         submittedValues = body.values;
-        return respond(200, apiTokenConnectorResponse("zendesk"));
+        return respond(200, manualGrantConnectorResponse("zendesk"));
       }),
     );
 
@@ -519,6 +524,7 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
+      expect(submittedAuthMethod).toBe("api-token");
       expect(submittedValues).toStrictEqual({
         ZENDESK_API_TOKEN: "zendesk-token",
         ZENDESK_EMAIL: "support@example.com",
@@ -529,12 +535,14 @@ describe("connect modal - interactions", () => {
 
   it("keeps manual Stripe API key save available", async () => {
     const user = userEvent.setup();
+    let submittedAuthMethod: string | undefined;
     let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
         submittedValues = body.values;
-        return respond(200, apiTokenConnectorResponse("stripe"));
+        return respond(200, manualGrantConnectorResponse("stripe"));
       }),
     );
 
@@ -548,6 +556,7 @@ describe("connect modal - interactions", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
+      expect(submittedAuthMethod).toBe("api-token");
       expect(submittedValues).toStrictEqual({
         STRIPE_TOKEN: "sk_test_key",
       });

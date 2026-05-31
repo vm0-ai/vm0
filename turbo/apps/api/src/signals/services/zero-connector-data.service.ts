@@ -82,7 +82,7 @@ interface ExternalUserInfo {
   readonly email: string | null;
 }
 
-interface PreparedApiTokenField {
+interface PreparedManualGrantField {
   readonly name: string;
   readonly value: string;
 }
@@ -93,27 +93,27 @@ interface ConnectorTokenSecretMetadata {
   readonly isRefreshable: boolean;
 }
 
-interface PreparedApiTokenConnect {
-  readonly secretValues: readonly PreparedApiTokenField[];
-  readonly variableValues: readonly PreparedApiTokenField[];
+interface PreparedManualGrantConnect {
+  readonly secretValues: readonly PreparedManualGrantField[];
+  readonly variableValues: readonly PreparedManualGrantField[];
   readonly configuredSecretNames: readonly string[];
   readonly configuredVariableNames: readonly string[];
 }
 
-type PreparedApiTokenConnectResult =
-  | { readonly ok: true; readonly prepared: PreparedApiTokenConnect }
+type PreparedManualGrantConnectResult =
+  | { readonly ok: true; readonly prepared: PreparedManualGrantConnect }
   | { readonly ok: false; readonly message: string };
 
-type ConnectApiTokenConnectorResult =
+type ConnectManualGrantConnectorResult =
   | { readonly status: "connected"; readonly connector: ConnectorResponse }
   | { readonly status: "invalid"; readonly message: string };
 
-interface EncryptedApiTokenSecret {
+interface EncryptedManualGrantSecret {
   readonly name: string;
   readonly encryptedValue: string;
 }
 
-interface OmittedApiTokenFieldNames {
+interface OmittedManualGrantFieldNames {
   readonly omittedSecretNames: readonly string[];
   readonly omittedVariableNames: readonly string[];
 }
@@ -164,22 +164,19 @@ function storedConnectorTypeIsVisible(
   );
 }
 
-function apiTokenManualGrantFields(
+function manualGrantFieldsForAuthMethod(
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
 ): Record<string, ConnectorManualGrantFieldConfig> | null {
-  const method = getConnectorAuthMethod(type, "api-token");
+  const method = getConnectorAuthMethod(type, authMethod);
   return method?.grant.kind === "manual" ? method.grant.fields : null;
 }
 
-export function connectorSupportsApiTokenAuth(type: ConnectorType): boolean {
-  return apiTokenManualGrantFields(type) !== null;
-}
-
-function sanitizeApiTokenValue(value: string): string {
+function sanitizeManualGrantValue(value: string): string {
   return value.replace(/\s+/gu, "");
 }
 
-function formatApiTokenFieldList(names: readonly string[]): string {
+function formatManualGrantFieldList(names: readonly string[]): string {
   return [...names].sort().join(", ");
 }
 
@@ -210,15 +207,16 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
   throwCapturedAbort(postCommitAbort);
 }
 
-function prepareApiTokenConnect(
+function prepareManualGrantConnect(
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   values: Readonly<Record<string, string>>,
-): PreparedApiTokenConnectResult {
-  const fields = apiTokenManualGrantFields(type);
+): PreparedManualGrantConnectResult {
+  const fields = manualGrantFieldsForAuthMethod(type, authMethod);
   if (!fields) {
     return {
       ok: false,
-      message: `${type} connector does not support API-token auth`,
+      message: `${type} ${authMethod} auth method does not use a manual grant`,
     };
   }
 
@@ -229,7 +227,7 @@ function prepareApiTokenConnect(
   if (unknownFieldNames.length > 0) {
     return {
       ok: false,
-      message: `Unknown API-token field(s): ${formatApiTokenFieldList(
+      message: `Unknown manual grant field(s): ${formatManualGrantFieldList(
         unknownFieldNames,
       )}`,
     };
@@ -237,11 +235,11 @@ function prepareApiTokenConnect(
 
   const sanitizedValues = new Map<string, string>();
   for (const [name, value] of Object.entries(values)) {
-    sanitizedValues.set(name, sanitizeApiTokenValue(value));
+    sanitizedValues.set(name, sanitizeManualGrantValue(value));
   }
 
-  const secretValues: PreparedApiTokenField[] = [];
-  const variableValues: PreparedApiTokenField[] = [];
+  const secretValues: PreparedManualGrantField[] = [];
+  const variableValues: PreparedManualGrantField[] = [];
   const configuredSecretNames: string[] = [];
   const configuredVariableNames: string[] = [];
   const missingRequiredNames: string[] = [];
@@ -269,7 +267,7 @@ function prepareApiTokenConnect(
   if (missingRequiredNames.length > 0) {
     return {
       ok: false,
-      message: `Missing required API-token field(s): ${formatApiTokenFieldList(
+      message: `Missing required manual grant field(s): ${formatManualGrantFieldList(
         missingRequiredNames,
       )}`,
     };
@@ -286,12 +284,12 @@ function prepareApiTokenConnect(
   };
 }
 
-async function encryptApiTokenSecrets(args: {
-  readonly secretValues: readonly PreparedApiTokenField[];
+async function encryptManualGrantSecrets(args: {
+  readonly secretValues: readonly PreparedManualGrantField[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<readonly EncryptedApiTokenSecret[]> {
-  const encryptedSecrets: EncryptedApiTokenSecret[] = [];
+}): Promise<readonly EncryptedManualGrantSecret[]> {
+  const encryptedSecrets: EncryptedManualGrantSecret[] = [];
   for (const field of args.secretValues) {
     encryptedSecrets.push({
       name: field.name,
@@ -305,9 +303,9 @@ async function encryptApiTokenSecrets(args: {
   return encryptedSecrets;
 }
 
-function omittedApiTokenFieldNames(
-  prepared: PreparedApiTokenConnect,
-): OmittedApiTokenFieldNames {
+function omittedManualGrantFieldNames(
+  prepared: PreparedManualGrantConnect,
+): OmittedManualGrantFieldNames {
   const submittedSecretNames = new Set(
     prepared.secretValues.map((field) => {
       return field.name;
@@ -711,7 +709,7 @@ export const deleteZeroConnectorLocalState$ = command(
   },
 );
 
-async function upsertApiTokenConnectorSecret(
+async function upsertManualGrantConnectorSecret(
   db: Db,
   args: {
     readonly orgId: string;
@@ -740,7 +738,7 @@ async function upsertApiTokenConnectorSecret(
     });
 }
 
-async function upsertApiTokenConnectorVariable(
+async function upsertManualGrantConnectorVariable(
   db: Db,
   args: {
     readonly orgId: string;
@@ -774,12 +772,13 @@ async function upsertApiTokenConnectorVariable(
     });
 }
 
-async function upsertApiTokenConnectorRow(
+async function upsertManualGrantConnectorRow(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
   },
 ): Promise<StoredConnectorRow> {
   const [row] = await db
@@ -788,7 +787,7 @@ async function upsertApiTokenConnectorRow(
       orgId: args.orgId,
       userId: args.userId,
       type: args.type,
-      authMethod: "api-token",
+      authMethod: args.authMethod,
       externalId: null,
       externalUsername: null,
       externalEmail: null,
@@ -799,7 +798,7 @@ async function upsertApiTokenConnectorRow(
     .onConflictDoUpdate({
       target: [connectors.orgId, connectors.userId, connectors.type],
       set: {
-        authMethod: "api-token",
+        authMethod: args.authMethod,
         externalId: null,
         externalUsername: null,
         externalEmail: null,
@@ -822,7 +821,7 @@ async function upsertApiTokenConnectorRow(
     });
 
   if (!row) {
-    throw new Error("Failed to upsert API-token connector");
+    throw new Error("Failed to upsert manual grant connector");
   }
 
   return row;
@@ -926,7 +925,7 @@ async function deleteConnectorScopedVariableNames(
   args.signal.throwIfAborted();
 }
 
-async function cleanupExistingStoredConnectorForApiTokenConnect(
+async function cleanupExistingStoredConnectorForManualGrantConnect(
   db: Db,
   args: {
     readonly orgId: string;
@@ -982,18 +981,23 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
   return pendingTokenRevoke;
 }
 
-export const connectApiTokenConnector$ = command(
+export const connectManualGrantConnector$ = command(
   async (
     { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
       readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
       readonly values: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
-  ): Promise<ConnectApiTokenConnectorResult> => {
-    const preparedResult = prepareApiTokenConnect(args.type, args.values);
+  ): Promise<ConnectManualGrantConnectorResult> => {
+    const preparedResult = prepareManualGrantConnect(
+      args.type,
+      args.authMethod,
+      args.values,
+    );
     if (!preparedResult.ok) {
       return { status: "invalid", message: preparedResult.message };
     }
@@ -1003,14 +1007,14 @@ export const connectApiTokenConnector$ = command(
     );
     signal.throwIfAborted();
 
-    const encryptedSecrets = await encryptApiTokenSecrets({
+    const encryptedSecrets = await encryptManualGrantSecrets({
       secretValues: preparedResult.prepared.secretValues,
       featureSwitchContext,
       signal,
     });
     signal.throwIfAborted();
     const { omittedSecretNames, omittedVariableNames } =
-      omittedApiTokenFieldNames(preparedResult.prepared);
+      omittedManualGrantFieldNames(preparedResult.prepared);
 
     const writeDb = set(writeDb$);
     let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
@@ -1026,7 +1030,7 @@ export const connectApiTokenConnector$ = command(
       signal.throwIfAborted();
 
       pendingTokenRevoke =
-        await cleanupExistingStoredConnectorForApiTokenConnect(tx, {
+        await cleanupExistingStoredConnectorForManualGrantConnect(tx, {
           orgId: args.orgId,
           userId: args.userId,
           type: args.type,
@@ -1048,7 +1052,7 @@ export const connectApiTokenConnector$ = command(
       });
 
       for (const field of encryptedSecrets) {
-        await upsertApiTokenConnectorSecret(tx, {
+        await upsertManualGrantConnectorSecret(tx, {
           orgId: args.orgId,
           userId: args.userId,
           name: field.name,
@@ -1058,7 +1062,7 @@ export const connectApiTokenConnector$ = command(
       }
 
       for (const field of preparedResult.prepared.variableValues) {
-        await upsertApiTokenConnectorVariable(tx, {
+        await upsertManualGrantConnectorVariable(tx, {
           orgId: args.orgId,
           userId: args.userId,
           name: field.name,
@@ -1067,10 +1071,11 @@ export const connectApiTokenConnector$ = command(
         signal.throwIfAborted();
       }
 
-      connectorRow = await upsertApiTokenConnectorRow(tx, {
+      connectorRow = await upsertManualGrantConnectorRow(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
+        authMethod: args.authMethod,
       });
       signal.throwIfAborted();
 
@@ -1092,7 +1097,7 @@ export const connectApiTokenConnector$ = command(
     }
 
     if (!connectorRow) {
-      throw new Error("Expected API-token connector upsert to return a row");
+      throw new Error("Expected manual grant connector upsert to return a row");
     }
 
     await finalizeConnectorStateChangeAfterCommit({

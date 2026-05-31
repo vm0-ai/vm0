@@ -4,7 +4,7 @@ import { command, computed } from "ccstate";
 import type { AppRoute } from "@ts-rest/core";
 import {
   zeroConnectorAuthorizeContract,
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,
@@ -14,6 +14,7 @@ import {
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { and, eq } from "drizzle-orm";
@@ -32,8 +33,7 @@ import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
-  connectApiTokenConnector$,
-  connectorSupportsApiTokenAuth,
+  connectManualGrantConnector$,
   deleteZeroConnectorLocalState$,
   zeroConnectorByType,
   zeroConnectorList,
@@ -265,21 +265,30 @@ const searchConnectorsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { connectors: [...connectors] } };
 });
 
-const connectApiTokenConnectorInner$ = command(
+const connectManualGrantConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorApiTokenContract.connect));
+    const params = get(pathParamsOf(zeroConnectorManualGrantContract.connect));
     const bodyResult = await get(
-      bodyResultOf(zeroConnectorApiTokenContract.connect),
+      bodyResultOf(zeroConnectorManualGrantContract.connect),
     );
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
 
-    if (!connectorSupportsApiTokenAuth(params.type)) {
+    const method = getConnectorAuthMethod(
+      params.type,
+      bodyResult.data.authMethod,
+    );
+    if (!method) {
       return badRequestMessage(
-        `${params.type} connector does not support API-token auth`,
+        `${params.type} connector does not have ${bodyResult.data.authMethod} auth method`,
+      );
+    }
+    if (method.grant.kind !== "manual") {
+      return badRequestMessage(
+        `${params.type} ${bodyResult.data.authMethod} auth method does not use a manual grant`,
       );
     }
 
@@ -287,16 +296,22 @@ const connectApiTokenConnectorInner$ = command(
       userConnectorAvailability(auth.orgId, auth.userId),
     );
     signal.throwIfAborted();
-    if (!availability.isAuthMethodAvailable(params.type, "api-token")) {
+    if (
+      !availability.isAuthMethodAvailable(
+        params.type,
+        bodyResult.data.authMethod,
+      )
+    ) {
       return connectorUnavailable(params.type);
     }
 
     const result = await set(
-      connectApiTokenConnector$,
+      connectManualGrantConnector$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
         type: params.type,
+        authMethod: bodyResult.data.authMethod,
         values: bodyResult.data.values,
       },
       signal,
@@ -614,8 +629,8 @@ const getConnectorSessionByIdInner$ = command(
 
 export const zeroConnectorsRoutes: readonly RouteEntry[] = [
   {
-    route: zeroConnectorApiTokenContract.connect,
-    handler: authRoute(connectorWriteAuth, connectApiTokenConnectorInner$),
+    route: zeroConnectorManualGrantContract.connect,
+    handler: authRoute(connectorWriteAuth, connectManualGrantConnectorInner$),
   },
   {
     route: zeroConnectorsSearchContract.search,

@@ -751,17 +751,17 @@ describe("API backend rewrite proxy behavior", () => {
     );
   });
 
-  it("matches the zero connector API-token rewrite path exactly", () => {
+  it("matches the zero connector manual grant rewrite path exactly", () => {
     expect(
-      matchesApiBackendRewritePath("/api/zero/connectors/github/api-token"),
+      matchesApiBackendRewritePath("/api/zero/connectors/github/manual-grant"),
     ).toBe(true);
     expect(
       matchesApiBackendRewritePath(
-        "/api/zero/connectors/github/api-token/extra",
+        "/api/zero/connectors/github/manual-grant/extra",
       ),
     ).toBe(false);
     expect(
-      matchesApiBackendRewritePath("/api/zero/connector/github/api-token"),
+      matchesApiBackendRewritePath("/api/zero/connector/github/manual-grant"),
     ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/api"),

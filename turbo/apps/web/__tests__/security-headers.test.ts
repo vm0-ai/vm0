@@ -1670,12 +1670,13 @@ const ZERO_CONNECTORS_BY_TYPE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/github/extra",
   "/api/zero/connectors/search",
 ] as const;
-const ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/api-token";
-const ZERO_CONNECTORS_API_TOKEN_PATH = "/api/zero/connectors/github/api-token";
-const ZERO_CONNECTORS_API_TOKEN_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/api-token/extra",
-  "/api/zero/connectors/api-token",
+const ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_PATH =
+  "/api/zero/connectors/github/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/manual-grant/extra",
+  "/api/zero/connectors/manual-grant",
   "/api/zero/connectors/github/api",
 ] as const;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
@@ -2471,9 +2472,9 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/connectors/:type",
         },
         {
-          source: ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+          source: ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
           destination:
-            "https://api.example.test/api/zero/connectors/:type/api-token",
+            "https://api.example.test/api/zero/connectors/:type/manual-grant",
         },
         {
           source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
@@ -4236,28 +4237,28 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the zero connector API-token rewrite", async () => {
+  it("should match only the zero connector manual grant rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE;
+      return entry.source === ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+      source: ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
       destination:
-        "https://api.example.test/api/zero/connectors/:type/api-token",
+        "https://api.example.test/api/zero/connectors/:type/manual-grant",
     });
 
-    const matcher = getPathMatch(ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE, {
+    const matcher = getPathMatch(ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(ZERO_CONNECTORS_API_TOKEN_PATH)).toStrictEqual({
+    expect(matcher(ZERO_CONNECTORS_MANUAL_GRANT_PATH)).toStrictEqual({
       type: "github",
     });
-    for (const pathname of ZERO_CONNECTORS_API_TOKEN_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_CONNECTORS_MANUAL_GRANT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

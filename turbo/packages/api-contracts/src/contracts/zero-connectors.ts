@@ -128,13 +128,16 @@ export const zeroConnectorOauthStartContract = c.router({
   },
 });
 
-export const zeroConnectorApiTokenContract = c.router({
+const connectorAuthMethodSchema = z.enum(["oauth", "api-token", "api"]);
+
+export const zeroConnectorManualGrantContract = c.router({
   connect: {
     method: "POST",
-    path: "/api/zero/connectors/:type/api-token",
+    path: "/api/zero/connectors/:type/manual-grant",
     headers: authHeadersSchema,
     pathParams: z.object({ type: connectorTypeSchema }),
     body: z.object({
+      authMethod: connectorAuthMethodSchema,
       values: z.record(z.string(), z.string()),
     }),
     responses: {
@@ -145,7 +148,7 @@ export const zeroConnectorApiTokenContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Connect a connector with API-token credentials",
+    summary: "Connect a connector with a manual grant",
   },
 });
 
@@ -186,17 +189,15 @@ export const zeroConnectorOauthDeviceAuthSessionContract = c.router({
   },
 });
 
-const connectorSearchAuthMethodSchema = z.enum(["oauth", "api-token", "api"]);
-
 export type ConnectorSearchAuthMethod = z.infer<
-  typeof connectorSearchAuthMethodSchema
+  typeof connectorAuthMethodSchema
 >;
 
 const connectorSearchItemSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string(),
-  authMethods: z.array(connectorSearchAuthMethodSchema),
+  authMethods: z.array(connectorAuthMethodSchema),
 });
 
 const connectorSearchResponseSchema = z.object({
@@ -277,8 +278,8 @@ export type ZeroConnectorScopeDiffContract =
   typeof zeroConnectorScopeDiffContract;
 export type ZeroConnectorAuthorizeContract =
   typeof zeroConnectorAuthorizeContract;
-export type ZeroConnectorApiTokenContract =
-  typeof zeroConnectorApiTokenContract;
+export type ZeroConnectorManualGrantContract =
+  typeof zeroConnectorManualGrantContract;
 export type ZeroConnectorOauthDeviceAuthSessionContract =
   typeof zeroConnectorOauthDeviceAuthSessionContract;
 export type ZeroConnectorsSearchContract = typeof zeroConnectorsSearchContract;

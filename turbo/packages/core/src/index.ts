@@ -316,7 +316,7 @@ export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorsSearchContract,
   zeroConnectorSessionsContract,
   zeroConnectorSessionByIdContract,

@@ -55,7 +55,7 @@ describe("zero connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/api-token",
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
           return HttpResponse.json(connectorResponse(String(params.type)));
@@ -76,6 +76,7 @@ describe("zero connector connect command", () => {
     ]);
 
     expect(receivedBody).toStrictEqual({
+      authMethod: "api-token",
       values: {
         ZENDESK_API_TOKEN: "secret-token",
         ZENDESK_SUBDOMAIN: "example",
@@ -91,7 +92,7 @@ describe("zero connector connect command", () => {
   it("prints JSON output when requested", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/api-token",
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
         ({ params }) => {
           return HttpResponse.json(connectorResponse(String(params.type)));
         },
@@ -130,7 +131,7 @@ describe("zero connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/api-token",
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("openai"));
@@ -157,12 +158,13 @@ describe("zero connector connect command", () => {
   it("surfaces API validation errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/api-token",
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
         () => {
           return HttpResponse.json(
             {
               error: {
-                message: "Missing required API-token field(s): ZENDESK_EMAIL",
+                message:
+                  "Missing required manual grant field(s): ZENDESK_EMAIL",
                 code: "BAD_REQUEST",
               },
             },
@@ -183,14 +185,14 @@ describe("zero connector connect command", () => {
     ).rejects.toThrow("process.exit called");
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
-    expect(errorOutput).toContain("Missing required API-token field");
+    expect(errorOutput).toContain("Missing required manual grant field");
     expect(errorOutput).not.toContain("secret-token");
   });
 
   it("surfaces unavailable connector errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/api-token",
+        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
         () => {
           return HttpResponse.json(
             {

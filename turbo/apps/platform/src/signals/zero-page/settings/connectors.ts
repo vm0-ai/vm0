@@ -22,7 +22,7 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
@@ -152,7 +152,7 @@ function buildConnectorTypeStatus(params: {
       includeManagedForTypes: [],
     },
   );
-  const hasManualCredentialGrant = availableAuthMethods.some((authMethod) => {
+  const hasManualGrant = availableAuthMethods.some((authMethod) => {
     return (
       getConnectorAuthMethod(params.type, authMethod)?.grant.kind === "manual"
     );
@@ -173,7 +173,7 @@ function buildConnectorTypeStatus(params: {
   return {
     type: params.type,
     label:
-      showExperimentalLabel && !hasManualCredentialGrant
+      showExperimentalLabel && !hasManualGrant
         ? `[Experimental] ${config.label}`
         : config.label,
     helpText: config.helpText,
@@ -511,41 +511,43 @@ export const setScopeReviewType$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Token form state (used by add-connection dialog)
+// Manual grant form state (used by connector connection dialogs)
 // ---------------------------------------------------------------------------
 
-const tokenFormValues$ = state<Record<string, Record<string, string>>>({});
-export const tokenFormSubmitting$ = computed((get) => {
-  return get(internalTokenFormSubmitting$);
+const manualGrantFormValues$ = state<Record<string, Record<string, string>>>(
+  {},
+);
+export const manualGrantFormSubmitting$ = computed((get) => {
+  return get(internalManualGrantFormSubmitting$);
 });
-const internalTokenFormSubmitting$ = state<string | null>(null);
+const internalManualGrantFormSubmitting$ = state<string | null>(null);
 
-export const setTokenFormValue$ = command(
+export const setManualGrantFormValue$ = command(
   ({ get, set }, type: string, name: string, value: string) => {
-    const current = get(tokenFormValues$);
-    set(tokenFormValues$, {
+    const current = get(manualGrantFormValues$);
+    set(manualGrantFormValues$, {
       ...current,
       [type]: { ...current[type], [name]: value },
     });
   },
 );
 
-export const clearTokenForm$ = command(({ get, set }, type: string) => {
-  const current = get(tokenFormValues$);
+export const clearManualGrantForm$ = command(({ get, set }, type: string) => {
+  const current = get(manualGrantFormValues$);
   const updated = { ...current };
   delete updated[type];
-  set(tokenFormValues$, updated);
+  set(manualGrantFormValues$, updated);
 });
 
-export const tokenFormValuesFor$ = (type: string) => {
+export const manualGrantFormValuesFor$ = (type: string) => {
   return computed((get) => {
-    return get(tokenFormValues$)[type] ?? {};
+    return get(manualGrantFormValues$)[type] ?? {};
   });
 };
 
-export const setTokenFormSubmitting$ = command(
+export const setManualGrantFormSubmitting$ = command(
   ({ set }, value: string | null) => {
-    set(internalTokenFormSubmitting$, value);
+    set(internalManualGrantFormSubmitting$, value);
   },
 );
 
@@ -591,20 +593,20 @@ const finishConnectorConnection$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Submit manual connector credentials command
+// Submit manual connector grant command
 // ---------------------------------------------------------------------------
 
-type SubmitManualCredentialsParams = {
+type SubmitManualGrantParams = {
   readonly type: ConnectorType;
   readonly authMethod: ConnectorAuthMethodId;
-  readonly inputSecrets: Record<string, string>;
+  readonly inputValues: Record<string, string>;
   readonly options: PostConnectOptions;
 };
 
-export const submitManualCredentials$ = command(
+export const submitManualGrant$ = command(
   async (
     { get, set },
-    { type, authMethod, inputSecrets, options }: SubmitManualCredentialsParams,
+    { type, authMethod, inputValues, options }: SubmitManualGrantParams,
     signal: AbortSignal,
   ) => {
     const flow = createConnectorConnectFlowState(type);
@@ -612,14 +614,14 @@ export const submitManualCredentials$ = command(
     return await withCleanup(
       (async () => {
         const createClient = get(zeroClient$);
-        if (authMethod !== "api-token") {
-          throw new Error(`${type} ${authMethod} does not use API-token auth`);
-        }
-        const connectorClient = createClient(zeroConnectorApiTokenContract);
+        const connectorClient = createClient(zeroConnectorManualGrantContract);
         await accept(
           connectorClient.connect({
             params: { type },
-            body: { values: sanitizeTokenInputRecord(inputSecrets) },
+            body: {
+              authMethod,
+              values: sanitizeTokenInputRecord(inputValues),
+            },
             fetchOptions: { signal },
           }),
           [200],

@@ -6,7 +6,7 @@ import {
   connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { connectZeroConnectorApiToken } from "../../../lib/api";
+import { connectZeroConnectorManualGrant } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 interface ConnectOptions {
@@ -62,7 +62,7 @@ function parseConnectorType(type: string): ConnectorType {
 
 export const connectCommand = new Command()
   .name("connect")
-  .description("Connect a connector with API-token credentials")
+  .description("Connect a connector with manual grant values")
   .argument("<type>", "Connector type (e.g., zendesk)")
   .option(
     "--value <name=value>",
@@ -74,7 +74,7 @@ export const connectCommand = new Command()
   .action(
     withErrorHandler(async (type: string, options: ConnectOptions) => {
       const connectorType = parseConnectorType(type);
-      const connector = await connectZeroConnectorApiToken(
+      const connector = await connectZeroConnectorManualGrant(
         connectorType,
         parseConnectorValues(options.value),
       );

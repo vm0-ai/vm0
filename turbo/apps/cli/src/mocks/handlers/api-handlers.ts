@@ -23,7 +23,7 @@ function defaultAvailableConnectors() {
     });
 }
 
-function connectorApiTokenResponse(type: string) {
+function connectorManualGrantResponse(type: string) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
     type,
@@ -104,21 +104,27 @@ export const apiHandlers = [
     );
   }),
   http.post(
-    "http://localhost:3000/api/zero/connectors/:type/api-token",
+    "http://localhost:3000/api/zero/connectors/:type/manual-grant",
     ({ params }) => {
-      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+      return HttpResponse.json(
+        connectorManualGrantResponse(String(params.type)),
+      );
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/zero/connectors/:type/api-token",
+    "https://app.vm0.ai/api/zero/connectors/:type/manual-grant",
     ({ params }) => {
-      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+      return HttpResponse.json(
+        connectorManualGrantResponse(String(params.type)),
+      );
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/zero/connectors/:type/api-token",
+    "https://www.vm0.ai/api/zero/connectors/:type/manual-grant",
     ({ params }) => {
-      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+      return HttpResponse.json(
+        connectorManualGrantResponse(String(params.type)),
+      );
     },
   ),
 

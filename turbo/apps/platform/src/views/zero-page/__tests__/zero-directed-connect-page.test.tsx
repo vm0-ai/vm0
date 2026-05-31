@@ -23,7 +23,7 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -59,7 +59,7 @@ function mockConnectors(
   );
 }
 
-function apiTokenConnectorResponse(type: ConnectorType) {
+function manualGrantConnectorResponse(type: ConnectorType) {
   return {
     id: crypto.randomUUID(),
     type,
@@ -215,7 +215,7 @@ describe("directed connect page", () => {
     });
   });
 
-  it("reconnect button opens api-token dialog for an already-connected api-token connector", async () => {
+  it("reconnect button opens manual grant dialog for an already-connected api-token connector", async () => {
     mockConnectors([{ type: "axiom" }]);
 
     detachedSetupPage({ context, path: "/connectors/axiom/connect" });
@@ -234,7 +234,7 @@ describe("directed connect page", () => {
     expect(reconnectBtn).toBeDefined();
     click(reconnectBtn!);
 
-    // api-token connectors route the reconnect click through the token dialog
+    // api-token connectors route the reconnect click through the manual grant dialog
     // rather than an OAuth popup.
     await waitFor(() => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
@@ -278,7 +278,7 @@ describe("directed connect page", () => {
     });
   });
 
-  it("opens api-token dialog for a connector without oauth", async () => {
+  it("opens manual grant dialog for a connector without oauth", async () => {
     // Find a connector type that only has api-token auth
     const apiTokenOnlyType = CONNECTOR_TYPE_KEYS.find((type) => {
       const methods = CONNECTOR_TYPES[type].authMethods;
@@ -313,14 +313,16 @@ describe("directed connect page", () => {
     });
   });
 
-  it("opens manual credential dialog by manual grant shape", async () => {
+  it("opens manual grant dialog by manual grant shape", async () => {
     const user = userEvent.setup();
+    let submittedAuthMethod: string | undefined;
     let submittedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
         submittedValues = body.values;
-        return respond(200, apiTokenConnectorResponse("zendesk"));
+        return respond(200, manualGrantConnectorResponse("zendesk"));
       }),
     );
 
@@ -358,6 +360,7 @@ describe("directed connect page", () => {
     click(screen.getByText("Save"));
 
     await waitFor(() => {
+      expect(submittedAuthMethod).toBe("api-token");
       expect(submittedValues).toStrictEqual({
         ZENDESK_API_TOKEN: "zendesk-token",
         ZENDESK_EMAIL: "support@example.com",
@@ -379,13 +382,13 @@ describe("directed connect page", () => {
     expect(logoLink.closest("a")).toHaveAttribute("href", "/connectors");
   });
 
-  it("shows error toast when api token submission fails (CONN-D-045)", async () => {
+  it("shows error toast when manual grant submission fails (CONN-D-045)", async () => {
     const user = userEvent.setup();
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ respond }) => {
         return respond(401, {
-          error: { message: "Invalid API token", code: "UNAUTHORIZED" },
+          error: { message: "Invalid manual grant", code: "UNAUTHORIZED" },
         });
       }),
     );
@@ -418,7 +421,7 @@ describe("directed connect page", () => {
     click(saveBtn1!);
 
     await waitFor(() => {
-      expect(screen.getByText("Invalid API token")).toBeInTheDocument();
+      expect(screen.getByText("Invalid manual grant")).toBeInTheDocument();
     });
   });
 
@@ -499,14 +502,16 @@ describe("directed connect page", () => {
     expect(startCalled).toBeFalsy();
   });
 
-  it("save button submits the api token to the server (CONN-I-049)", async () => {
+  it("save button submits manual grant values to the server (CONN-I-049)", async () => {
     const user = userEvent.setup();
+    let capturedAuthMethod: string | undefined;
     let capturedValues: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        capturedAuthMethod = body.authMethod;
         capturedValues = body.values;
-        return respond(200, apiTokenConnectorResponse("axiom"));
+        return respond(200, manualGrantConnectorResponse("axiom"));
       }),
     );
 
@@ -541,20 +546,21 @@ describe("directed connect page", () => {
     click(saveBtn2!);
 
     await waitFor(() => {
+      expect(capturedAuthMethod).toBe("api-token");
       expect(capturedValues).toStrictEqual({
         AXIOM_TOKEN: "test-token-value",
       });
     });
   });
 
-  it("auto-authorizes agent after API token connect when agentId is present", async () => {
+  it("auto-authorizes agent after manual grant connect when agentId is present", async () => {
     const user = userEvent.setup();
     mockUserConnectors();
 
     let authorizeCalled = false;
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ respond }) => {
-        return respond(200, apiTokenConnectorResponse("axiom"));
+      mockApi(zeroConnectorManualGrantContract.connect, ({ respond }) => {
+        return respond(200, manualGrantConnectorResponse("axiom"));
       }),
       mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;
@@ -712,13 +718,13 @@ describe("directed connect page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not call authorize after API token connect when agentId is absent", async () => {
+  it("does not call authorize after manual grant connect when agentId is absent", async () => {
     const user = userEvent.setup();
 
     let authorizeCalled = false;
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ respond }) => {
-        return respond(200, apiTokenConnectorResponse("axiom"));
+      mockApi(zeroConnectorManualGrantContract.connect, ({ respond }) => {
+        return respond(200, manualGrantConnectorResponse("axiom"));
       }),
       mockApi(zeroUserConnectorsContract.update, ({ respond }) => {
         authorizeCalled = true;

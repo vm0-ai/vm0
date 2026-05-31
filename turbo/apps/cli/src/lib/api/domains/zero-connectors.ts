@@ -1,7 +1,7 @@
 import { initClient } from "@ts-rest/core";
 import { type ConnectorType } from "@vm0/connectors/connectors";
 import {
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorsByTypeContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
@@ -76,16 +76,16 @@ export async function getZeroConnector(
   handleError(result, `Failed to get connector "${type}"`);
 }
 
-export async function connectZeroConnectorApiToken(
+export async function connectZeroConnectorManualGrant(
   type: ConnectorType,
   values: Record<string, string>,
 ): Promise<ConnectorResponse> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorApiTokenContract, config);
+  const client = initClient(zeroConnectorManualGrantContract, config);
 
   const result = await client.connect({
     params: { type },
-    body: { values },
+    body: { authMethod: "api-token", values },
   });
 
   if (result.status === 200) {

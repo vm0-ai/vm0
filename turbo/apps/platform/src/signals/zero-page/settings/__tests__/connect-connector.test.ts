@@ -11,7 +11,7 @@ import {
   permissionDialogType$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
-  submitManualCredentials$,
+  submitManualGrant$,
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type {
@@ -19,7 +19,7 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
@@ -769,14 +769,16 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
   });
 });
 
-describe("submitManualCredentials$", () => {
-  it("strips whitespace from connector API token values before upload", async () => {
+describe("submitManualGrant$", () => {
+  it("strips whitespace from connector manual grant values before upload", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
+    let submittedAuthMethod: string | undefined;
     let submitted: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
         submitted = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
@@ -794,11 +796,11 @@ describe("submitManualCredentials$", () => {
     );
 
     await context.store.set(
-      submitManualCredentials$,
+      submitManualGrant$,
       {
         type: "strapi",
         authMethod: "api-token",
-        inputSecrets: {
+        inputValues: {
           STRAPI_TOKEN: " strapi\n token ",
           STRAPI_BASE_URL: " https://strapi.example.com\n",
         },
@@ -807,21 +809,22 @@ describe("submitManualCredentials$", () => {
       context.signal,
     );
 
+    expect(submittedAuthMethod).toBe("api-token");
     expect(submitted).toMatchObject({
       STRAPI_TOKEN: "strapitoken",
       STRAPI_BASE_URL: "https://strapi.example.com",
     });
   });
 
-  it("sets permissionDialogType$ after successful API token submission", async () => {
+  it("sets permissionDialogType$ after successful manual grant submission", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
-      submitManualCredentials$,
+      submitManualGrant$,
       {
         type: "axiom",
         authMethod: "api-token",
-        inputSecrets: { AXIOM_TOKEN: "xaat_test123" },
+        inputValues: { AXIOM_TOKEN: "xaat_test123" },
         options: { showPermissionDialog: true },
       },
       context.signal,
