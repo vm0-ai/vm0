@@ -1833,6 +1833,7 @@ class TestCompiledFirewallMatching:
         ("base", "url"),
         [
             ("https://{a}.{b}", "https://api.example/repos/org/repo"),
+            ("https://api-{sub}.example-{env}", "https://api-us.example-prod/repos/org/repo"),
             ("https://{sub}.{sub}.example.com", "https://a.b.example.com/repos/org/repo"),
             ("https://{org}.example.com/{org}", "https://acme.example.com/acme/repos/org/repo"),
             ("https://api.{sub+}.example.com", "https://api.us.example.com/repos/org/repo"),

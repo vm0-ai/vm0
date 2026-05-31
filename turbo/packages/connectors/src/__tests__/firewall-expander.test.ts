@@ -805,6 +805,9 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://{a}.{b}", "fw");
     }).toThrow("must have at least one static segment");
+    expect(() => {
+      return validateBaseUrl("https://api-{sub}.example-{env}", "fw");
+    }).toThrow("must have at least one static segment");
   });
 
   it("should reject empty param name in host", () => {
