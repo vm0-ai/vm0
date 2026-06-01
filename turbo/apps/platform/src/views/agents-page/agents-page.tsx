@@ -495,16 +495,38 @@ function CreatorAvatar({ creator }: { creator: AgentCreator }) {
     return (
       <img
         src={creator.imageUrl}
-        alt={creator.name}
-        className="h-4 w-4 shrink-0 rounded-full object-cover"
+        alt=""
+        aria-hidden="true"
+        className="h-full w-full rounded-full object-cover"
       />
     );
   }
 
   return (
-    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-medium text-muted-foreground">
+    <span className="flex h-full w-full items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
       {creator.name.charAt(0).toUpperCase()}
     </span>
+  );
+}
+
+function CreatorBadge({ creator }: { creator: AgentCreator }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            aria-label={`Created by ${creator.name}`}
+            className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border border-background bg-background shadow-sm"
+          >
+            <CreatorAvatar creator={creator} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="end">
+          <p className="text-xs">Created by {creator.name}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -517,8 +539,15 @@ function AgentCard({ agent, creator }: AgentProps) {
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
     : "";
   return (
-    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
-      <CardContent className="px-5 py-4 flex items-start gap-3">
+    <Card className="zero-card relative cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
+      {!isPrivate && <CreatorBadge creator={creator} />}
+      <CardContent
+        className={
+          isPrivate
+            ? "px-5 py-4 flex items-center gap-3"
+            : "pl-5 pr-12 py-4 flex items-center gap-3"
+        }
+      >
         <AgentAvatarImg
           name={agent.id}
           alt={displayName}
@@ -541,11 +570,6 @@ function AgentCard({ agent, creator }: AgentProps) {
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
-          <div className="mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <CreatorAvatar creator={creator} />
-            <span className="shrink-0">Creator</span>
-            <span className="truncate text-foreground/80">{creator.name}</span>
-          </div>
         </div>
       </CardContent>
     </Card>

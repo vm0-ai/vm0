@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
 
@@ -45,8 +46,22 @@ const AGENTS = [
   },
 ] satisfies TeamComposeItem[];
 
+async function expectVisibleTooltip(text: string): Promise<void> {
+  const matches = await screen.findAllByText(text);
+  const visibleMatch = matches.find((element) => {
+    try {
+      expect(element).toBeVisible();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  expect(visibleMatch).toBeDefined();
+}
+
 describe("agents page", () => {
-  it("shows each agent creator from org members", async () => {
+  it("shows public agent creator on avatar hover", async () => {
+    const user = userEvent.setup();
     setMockTeam(AGENTS);
     setMockOrgMembers({
       members: [
@@ -78,10 +93,23 @@ describe("agents page", () => {
     });
 
     expect(
-      within(agentCard("Research Agent")).getByText("Alice Admin"),
-    ).toBeInTheDocument();
+      screen.queryByText("Created by Alice Admin"),
+    ).not.toBeInTheDocument();
     expect(
-      within(agentCard("Private Ops")).getByText("Bob Builder"),
-    ).toBeInTheDocument();
+      screen.queryByText("Created by Bob Builder"),
+    ).not.toBeInTheDocument();
+
+    const researchCreator = within(agentCard("Research Agent")).getByRole(
+      "img",
+      { name: "Created by Alice Admin" },
+    );
+    expect(
+      within(agentCard("Private Ops")).queryByRole("img", {
+        name: "Created by Bob Builder",
+      }),
+    ).not.toBeInTheDocument();
+
+    await user.hover(researchCreator);
+    await expectVisibleTooltip("Created by Alice Admin");
   });
 });
