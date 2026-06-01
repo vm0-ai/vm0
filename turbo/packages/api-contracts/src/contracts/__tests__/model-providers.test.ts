@@ -393,13 +393,13 @@ describe("model image input support", () => {
 });
 
 describe("minimax-api-key provider", () => {
-  it("keeps M2 models available while adding official M3 support", () => {
+  it("uses M3 by default while keeping M2 models available", () => {
     expect(getModels("minimax-api-key")).toEqual([
       "MiniMax-M3",
       "MiniMax-M2.7",
       "MiniMax-M2.1",
     ]);
-    expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M2.7");
+    expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
   });
 });
 

@@ -5966,13 +5966,13 @@
         "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
         "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
         "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.7 remains available and remains the default MiniMax BYOK model for compatibility.",
+        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.7 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
         "releaseDate": "June 1, 2026",
         "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
         "background": [
           "MiniMax M3 is the new official MiniMax text model for coding and agentic workloads. MiniMax describes it as combining frontier coding capability, a 1M-token context window, and native multimodal understanding.",
           "On VM0, M3 is added to the existing MiniMax API-key provider instead of creating a new integration. It uses the same `api.minimax.io/anthropic` routing surface and the same `MINIMAX_API_KEY` secret as M2.",
-          "The existing M2 entries stay available. M2.7 remains the MiniMax provider default, while M3 is opt-in for agents that need the newer model."
+          "The existing M2 entries stay available, while M3 is the MiniMax provider default for new selections."
         ],
         "architecture": "M3 uses MiniMax Sparse Attention for ultra-long context. The official API supports up to 1M tokens with a 512K guaranteed minimum, automatic prompt cache support, and native multimodal understanding.",
         "specs": [
@@ -6046,7 +6046,7 @@
         "comparisons": [
           {
             "vs": "MiniMax M2.7",
-            "body": "M3 is the newer, stronger coding and multimodal model at ×0.2. M2.7 remains cheaper at ×0.1 and remains the direct MiniMax provider default for compatibility."
+            "body": "M3 is the newer, stronger coding and multimodal model at ×0.2, and it is the direct MiniMax provider default. M2.7 remains cheaper at ×0.1 for lower-cost compatibility."
           },
           {
             "vs": "Kimi K2.6",
@@ -6061,7 +6061,7 @@
         "faqs": [
           {
             "q": "Is MiniMax M2.7 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.7 and M2.1 in the direct MiniMax provider. M2.7 remains the default MiniMax BYOK model."
+            "a": "Yes. VM0 keeps MiniMax M2.7 and M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
           },
           {
             "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
@@ -6075,7 +6075,7 @@
         "alternatives": [
           {
             "slug": "minimax-m2-7",
-            "reason": "Cheaper MiniMax default for text-only work"
+            "reason": "Cheaper MiniMax option for text-only work"
           },
           {
             "slug": "kimi-k2-6",
@@ -6087,7 +6087,7 @@
           }
         ],
         "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider keeps M2.7 as its default model so existing users do not silently change behavior."
+        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.7 and M2.1 selectable."
       },
       "minimax-m2-7": {
         "name": "MiniMax M2.7",
@@ -6101,7 +6101,7 @@
         "familyPosition": "Budget-Modell der MiniMax-Familie.",
         "background": [
           "MiniMax M2.7 is from MiniMax, an AI lab with a multilingual and multimodal product line. The text reasoning side is what's exposed on VM0; MiniMax's image and voice products are separate offerings on the lab's platform.",
-          "On VM0, M2.7 is the default model on the MiniMax API-key provider. The Built-in lineup carries it at ×0.1. One of the lowest multipliers in the catalogue. Making it the default cheap-but-credible reasoner for multilingual workloads.",
+          "On VM0, M2.7 remains selectable on the MiniMax API-key provider. The Built-in lineup carries it at ×0.1, one of the lowest multipliers in the catalogue, making it a cheap-but-credible reasoner for multilingual workloads.",
           "VM0's MiniMax provider sets a 50-minute API timeout and disables non-essential traffic, so long thinking steps complete reliably without dropping connections."
         ],
         "architecture": "",
@@ -6211,7 +6211,7 @@
             "reason": "Bessere Anthropic-Integration für einfache Aufgaben."
           }
         ],
-        "routingNotes": "Routed through MiniMax's Anthropic-compatible endpoint at `api.minimax.io`. Default model on the MiniMax provider; also available on VM0 Managed.",
+        "routingNotes": "Routed through MiniMax's Anthropic-compatible endpoint at `api.minimax.io`. Available on the MiniMax provider and VM0 Managed.",
         "vm0Notes": "VM0 sets a 50-minute API timeout for the MiniMax provider and disables non-essential traffic, so long thinking steps survive without dropping. The ×0.1 multiplier is the lowest non-Flash multiplier in the lineup, which is why M2.7 pairs naturally with high-volume multilingual workloads."
       },
       "deepseek-v4-flash": {

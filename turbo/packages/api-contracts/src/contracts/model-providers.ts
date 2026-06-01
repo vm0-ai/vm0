@@ -480,7 +480,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     } satisfies ModelProviderEnvBindings,
     models: ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.1"] as string[],
-    defaultModel: "MiniMax-M2.7",
+    defaultModel: "MiniMax-M3",
   },
   "deepseek-api-key": {
     framework: "claude-code" as const,
