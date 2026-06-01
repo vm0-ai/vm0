@@ -526,6 +526,27 @@ class TestReportConnectorUsage:
             for entry in entries
         )
 
+    def test_tweet_counts_unparseable_ignores_request_hints_and_logs_error(
+        self, tmp_path, real_flow
+    ):
+        """Count endpoint request hints do not represent returned post count."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="max_results=50",
+            body=b"not json",
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert any(
+            entry["level"] == "error" and "count endpoint" in entry["message"] for entry in entries
+        )
+
     def test_handles_gzip_body(self, tmp_path, real_flow):
         """gzip-encoded response body decompresses before parsing."""
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()

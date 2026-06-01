@@ -496,13 +496,16 @@ def _compute_billable_counts(
             # Soft errors (no data field) and empty searches correctly yield 0.
             primary = max(data, result)
     else:
-        # Body couldn't be parsed — fall back to request-side hints.
-        # With no hints at all we leave primary at 0 and let the caller
-        # log this loss of visibility; blind-guessing a quantity risks
-        # over-charging by a large factor on small real responses.
-        ids = req_meta.get("request_ids_count") or 0
-        max_r = req_meta.get("max_results") or 0
-        primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
+        if req_meta.get("is_count_endpoint"):
+            primary = 0
+        else:
+            # Body couldn't be parsed — fall back to request-side hints.
+            # With no hints at all we leave primary at 0 and let the caller
+            # log this loss of visibility; blind-guessing a quantity risks
+            # over-charging by a large factor on small real responses.
+            ids = req_meta.get("request_ids_count") or 0
+            max_r = req_meta.get("max_results") or 0
+            primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
 
     counts: dict[str, int] = {}
     if primary > 0:
@@ -608,17 +611,19 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         flow.request.method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
     )
 
-    # Loud-but-zero billing path: GET with an unparseable response body
-    # AND no URL-side count hints.  We deliberately emit nothing rather
-    # than blind-guess a quantity — the error log carries enough context
-    # for ops to audit and, if needed, back-charge manually.  Use
-    # ``is None`` so a legitimate ``?max_results=0`` (no-op query) is
-    # distinguished from the absent-field case.
+    # Loud-but-zero billing path: GET with an unparseable response body and
+    # no reliable count source.  We deliberately emit nothing rather than
+    # blind-guess a quantity — the error log carries enough context for ops
+    # to audit and, if needed, back-charge manually.  Use ``is None`` so a
+    # legitimate ``?max_results=0`` (no-op query) is distinguished from the
+    # absent-field case.
+    missing_count_visibility = bool(req_meta.get("is_count_endpoint")) or (
+        req_meta.get("request_ids_count") is None and req_meta.get("max_results") is None
+    )
     if (
         flow.request.method == "GET"
         and not resp_meta.get("body_parsed")
-        and req_meta.get("request_ids_count") is None
-        and req_meta.get("max_results") is None
+        and missing_count_visibility
     ):
         log_extra: dict[str, object] = {
             "body_truncated": bool(resp_meta.get("body_truncated")),
@@ -629,7 +634,11 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         log_proxy_entry(
             proxy_log_path,
             "error",
-            "X response unparseable and request carries no count hints — skipping billing",
+            (
+                "X count endpoint response unparseable — skipping billing"
+                if req_meta.get("is_count_endpoint")
+                else "X response unparseable and request carries no count hints — skipping billing"
+            ),
             **log_context,
             **log_extra,
         )
