@@ -1180,7 +1180,7 @@ function connectorSecretNameFromRef(valueRef: string): string | undefined {
     : undefined;
 }
 
-function staticAccessSecretName(
+function staticConnectorOwnedAccessSecretName(
   envBindings: ConnectorEnvBindings,
   platformSecretNames: ReadonlySet<string>,
 ): string | undefined {
@@ -1216,7 +1216,7 @@ function connectorTokenSecretMetadataForAuthMethod(args: {
     }
 
     case "static": {
-      const accessSecretName = staticAccessSecretName(
+      const accessSecretName = staticConnectorOwnedAccessSecretName(
         accessMetadata.envBindings,
         new Set(accessMetadata.platformSecrets),
       );

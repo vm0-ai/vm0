@@ -1015,7 +1015,7 @@ async function findDecryptedSecret(args: {
   return secret ? decryptSecretForTests(secret.encryptedValue) : undefined;
 }
 
-function staticAccessSecretName(
+function staticConnectorOwnedAccessSecretName(
   envBindings: Readonly<Record<string, string>>,
   platformSecretNames: ReadonlySet<string>,
 ): string | undefined {
@@ -1051,7 +1051,7 @@ function accessTokenSecretNameForAuthCodeMethod(
       return accessMetadata.accessToken;
     }
     case "static": {
-      const secretName = staticAccessSecretName(
+      const secretName = staticConnectorOwnedAccessSecretName(
         accessMetadata.envBindings,
         new Set(accessMetadata.platformSecrets),
       );
