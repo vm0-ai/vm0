@@ -872,6 +872,49 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("returns 404 when clientThreadId belongs to a different agent", async () => {
+    const owner = await track(seedFixture());
+    const clientThreadId = randomUUID();
+
+    await send({
+      agentId: owner.agentId,
+      prompt: "owner agent thread",
+      clientThreadId,
+      clientMessageId: randomUUID(),
+    });
+    await clearAllDetached();
+
+    const otherAgent = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .update(agentComposes)
+      .set({ orgId: owner.orgId, userId: owner.userId })
+      .where(eq(agentComposes.id, otherAgent.agentId));
+    await writeDb
+      .update(zeroAgents)
+      .set({ orgId: owner.orgId, owner: owner.userId })
+      .where(eq(zeroAgents.id, otherAgent.agentId));
+    mocks.clerk.session(owner.userId, owner.orgId);
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: otherAgent.agentId,
+          prompt: "colliding agent thread",
+          clientThreadId,
+          clientMessageId: randomUUID(),
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "NOT_FOUND",
+      message: "Chat thread not found",
+    });
+  });
+
   it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
     const fixture = await track(seedFixture());
     await store
