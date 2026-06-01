@@ -34,6 +34,12 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("kimi-k2.6")).toBe("kimi-k2.6");
     });
 
+    it("should resolve MiniMax M3 to minimax-api-key", () => {
+      expect(getVm0ConcreteProviderType("MiniMax-M3")).toBe("minimax-api-key");
+      expect(getVm0Vendor("MiniMax-M3")).toBe("minimax");
+      expect(getVm0ApiModel("MiniMax-M3")).toBe("MiniMax-M3");
+    });
+
     it("should resolve DeepSeek V4 models to deepseek-api-key", () => {
       expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe(
         "deepseek-api-key",
@@ -74,6 +80,7 @@ describe("VM0 managed model provider", () => {
         "claude-haiku-4-5",
         "kimi-k2.6",
         "kimi-k2.5",
+        "MiniMax-M3",
         "MiniMax-M2.7",
         "deepseek-v4-pro",
         "deepseek-v4-flash",

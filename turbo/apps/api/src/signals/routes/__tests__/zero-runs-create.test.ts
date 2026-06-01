@@ -932,6 +932,80 @@ describe("POST /api/zero/runs", () => {
     expect(decrypted?.MINIMAX_API_KEY).toBeDefined();
   });
 
+  it("routes VM0 managed MiniMax M3 through the official MiniMax endpoint", async () => {
+    const fx = await fixture();
+    await setOrgCredits(fx.orgId, 100);
+    await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
+    const db = store.set(writeDb$);
+    const existingVendorKeys = await db
+      .select({ model: vm0ApiKeys.model })
+      .from(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.vendor, "minimax"));
+    const hasExistingExactKey = existingVendorKeys.some((row) => {
+      return row.model === "MiniMax-M3";
+    });
+    await seedVm0ApiKey({
+      vendor: "minimax",
+      model: "MiniMax-M3",
+      apiKey: "sk-vm0-minimax-m3",
+    });
+    await db.insert(modelProviders).values({
+      orgId: fx.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      type: "vm0",
+      isDefault: true,
+      selectedModel: "MiniMax-M3",
+    });
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "vm0 minimax m3 provider", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
+        "minimax-api-key",
+        "MINIMAX_API_KEY",
+      ),
+      ANTHROPIC_MODEL: "MiniMax-M3",
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
+    });
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    if (!hasExistingExactKey) {
+      expect(decrypted?.MINIMAX_API_KEY).toBe("sk-vm0-minimax-m3");
+    }
+    expect(decrypted?.MINIMAX_API_KEY).toBeDefined();
+
+    const [zeroRun] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, response.body.runId));
+    expect(zeroRun).toStrictEqual({
+      modelProvider: "vm0",
+      selectedModel: "MiniMax-M3",
+    });
+  });
+
   it("injects multi-auth Codex OAuth model provider secrets and refresh metadata", async () => {
     const fx = await fixture();
     await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
