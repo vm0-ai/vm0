@@ -135,9 +135,8 @@ pub async fn execute_cli(
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
-    // The runner mounts the workspace drive after guest-agent startup. Re-open
-    // the canonical path for the child so it does not inherit guest-agent's
-    // pre-mount cwd.
+    // Set the child cwd explicitly at spawn time so the CLI observes the
+    // current canonical workspace mount instead of relying on inherited cwd.
     if !set_cli_current_dir_if_available(&mut cmd, paths::CANONICAL_WORKING_DIR) {
         log_warn!(
             LOG_TAG,
