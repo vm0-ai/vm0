@@ -10,7 +10,10 @@ import {
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
 } from "@vm0/connectors/connector-utils";
-import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+import {
+  testOauthApiProvider,
+  testOauthProvider,
+} from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -218,7 +221,17 @@ type CapturedOAuthExchange = {
   readonly oauthContext: string | undefined;
 };
 
-function useDynamicTestOAuthExchange(): {
+type DynamicTestOAuthExchangeOptions = {
+  readonly authMethod: "oauth" | "api";
+  readonly provider: typeof testOauthProvider;
+};
+
+function useDynamicTestOAuthExchange(
+  args: DynamicTestOAuthExchangeOptions = {
+    authMethod: "oauth",
+    provider: testOauthProvider,
+  },
+): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
 } {
@@ -226,21 +239,22 @@ function useDynamicTestOAuthExchange(): {
 
   return {
     exchanges,
-    restore: configureDynamicTestOAuthExchange(exchanges),
+    restore: configureDynamicTestOAuthExchange(exchanges, args),
   };
 }
 
 function configureDynamicTestOAuthExchange(
   exchanges: CapturedOAuthExchange[],
+  args: DynamicTestOAuthExchangeOptions,
 ): () => void {
-  const method = getConnectorAuthMethod("test-oauth", "oauth");
+  const method = getConnectorAuthMethod("test-oauth", args.authMethod);
   if (method?.grant.kind !== "auth-code") {
-    throw new Error("test-oauth OAuth config is missing");
+    throw new Error(`test-oauth ${args.authMethod} config is missing`);
   }
 
   const mutableMethod = method as { client: ConnectorAuthClientConfig };
   const originalClient = mutableMethod.client;
-  const provider = testOauthProvider;
+  const provider = args.provider;
   const originalExchangeCode = provider.grant.exchangeCode;
 
   mutableMethod.client = dynamicPublicClient;
@@ -2205,6 +2219,60 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(decryptSecretForTests(secret!.encryptedValue)).toBe(
       "dynamic-access-token",
     );
+  });
+
+  it("stores tokens under the selected non-default auth method", async () => {
+    const dynamicOAuth = useDynamicTestOAuthExchange({
+      authMethod: "api",
+      provider: testOauthApiProvider,
+    });
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "api",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    const connector = await findConnector({
+      orgId,
+      userId,
+      type: "test-oauth",
+    });
+    expect(connector).toMatchObject({
+      type: "test-oauth",
+      authMethod: "api",
+      externalId: "dynamic-user-id",
+      externalUsername: "dynamic-user",
+      externalEmail: "dynamic@example.com",
+      needsReconnect: false,
+    });
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_ACCESS_TOKEN",
+      }),
+    ).resolves.toBe("dynamic-access-token");
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("uses VM0_WEB_URL for token exchange and success redirects", async () => {
