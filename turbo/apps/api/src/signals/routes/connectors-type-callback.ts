@@ -17,14 +17,11 @@ import {
   exchangeConnectorAuthCode,
   type OAuthTokenResult,
 } from "@vm0/connectors/auth-providers";
-import { connectorSessions } from "@vm0/db/schema/connector-session";
-import { eq } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { nowDate } from "../../lib/time";
 import { optionalEnv } from "../../lib/env";
 import {
   claimConnectorOAuthState,
@@ -66,7 +63,6 @@ type CompleteOAuthCallbackInput = AuthCodeCallbackMethodRef & {
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
   readonly identity: CallbackIdentity;
-  readonly sessionId: string | undefined;
   readonly origin: string;
   readonly type: string;
 };
@@ -82,7 +78,6 @@ type ResolvedCallbackState =
   | ({
       readonly ok: true;
       readonly identity: CallbackIdentity;
-      readonly sessionId: string | undefined;
       readonly codeVerifier: string | undefined;
       readonly oauthContext: string | undefined;
       readonly redirectUri: string;
@@ -264,43 +259,6 @@ async function rejectInvalidStoredOAuthStateForCallback(args: {
   return invalidStateRedirectResponse(args.origin, args.type);
 }
 
-async function completeConnectorSession(
-  db: Db,
-  sessionId: string | undefined,
-  signal: AbortSignal,
-): Promise<void> {
-  if (!sessionId) {
-    return;
-  }
-  await db
-    .update(connectorSessions)
-    .set({
-      status: "complete",
-      completedAt: nowDate(),
-    })
-    .where(eq(connectorSessions.id, sessionId));
-  signal.throwIfAborted();
-}
-
-async function markConnectorSessionError(
-  db: Db,
-  sessionId: string | undefined,
-  errorMessage: string,
-  signal: AbortSignal,
-): Promise<void> {
-  if (!sessionId) {
-    return;
-  }
-  await db
-    .update(connectorSessions)
-    .set({
-      status: "error",
-      errorMessage,
-    })
-    .where(eq(connectorSessions.id, sessionId));
-  signal.throwIfAborted();
-}
-
 function invalidStoredAuthMethodResponse(
   origin: string,
   type: string,
@@ -363,62 +321,6 @@ function validateStoredAuthCodeMethod<
   };
 }
 
-async function resolveTrustedCallbackAuthMethod<
-  Type extends AuthCodeGrantConnectorType,
->(args: {
-  readonly db: Db;
-  readonly connectorType: Type;
-  readonly storedState: StoredOAuthState;
-  readonly origin: string;
-  readonly type: string;
-  readonly signal: AbortSignal;
-}): Promise<
-  | ({ readonly ok: true } & AuthCodeCallbackMethodRef<Type>)
-  | { readonly ok: false; readonly response: Response }
-> {
-  const storedAuthMethod = validateStoredAuthCodeMethod({
-    connectorType: args.connectorType,
-    authMethod: args.storedState.authMethod,
-    origin: args.origin,
-    type: args.type,
-  });
-  if (!storedAuthMethod.ok) {
-    return storedAuthMethod;
-  }
-
-  if (!args.storedState.sessionId) {
-    return storedAuthMethod;
-  }
-
-  const [session] = await args.db
-    .select({
-      type: connectorSessions.type,
-      userId: connectorSessions.userId,
-      authMethod: connectorSessions.authMethod,
-    })
-    .from(connectorSessions)
-    .where(eq(connectorSessions.id, args.storedState.sessionId))
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  if (!session) {
-    return storedAuthMethod;
-  }
-
-  if (
-    session.type !== args.connectorType ||
-    session.userId !== args.storedState.userId ||
-    session.authMethod !== args.storedState.authMethod
-  ) {
-    return {
-      ok: false,
-      response: invalidStateRedirectResponse(args.origin, args.type),
-    };
-  }
-
-  return storedAuthMethod;
-}
-
 async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
   readonly connectorType: AuthCodeGrantConnectorType;
@@ -467,10 +369,6 @@ function successRedirectResponse(args: {
   return response;
 }
 
-function errorMessageFromUnknown(error: unknown): string {
-  return error instanceof Error ? error.message : "OAuth failed";
-}
-
 const completeOAuthCallback$ = command(
   async (
     { set },
@@ -509,9 +407,8 @@ const completeOAuthCallback$ = command(
     );
     signal.throwIfAborted();
 
-    const db = set(writeDb$);
     await linkGithubIntegrationAfterConnectorConnect({
-      db,
+      db: set(writeDb$),
       connectorType: args.connectorType,
       identity: args.identity,
       token,
@@ -519,7 +416,6 @@ const completeOAuthCallback$ = command(
     });
     signal.throwIfAborted();
 
-    await completeConnectorSession(db, args.sessionId, signal);
     return successRedirectResponse({
       origin: args.origin,
       type: args.type,
@@ -528,41 +424,34 @@ const completeOAuthCallback$ = command(
   },
 );
 
-const resolveCallbackState$ = command(
-  async (
-    { set },
-    args: ResolveCallbackStateInput,
-    signal: AbortSignal,
-  ): Promise<ResolvedCallbackState> => {
-    const db = set(writeDb$);
-    const authMethodResult = await resolveTrustedCallbackAuthMethod({
-      db,
-      connectorType: args.connectorType,
-      storedState: args.storedState,
-      origin: args.origin,
-      type: args.type,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (!authMethodResult.ok) {
-      return authMethodResult;
-    }
+function resolveCallbackState(
+  args: ResolveCallbackStateInput,
+  signal: AbortSignal,
+): ResolvedCallbackState {
+  const authMethodResult = validateStoredAuthCodeMethod({
+    connectorType: args.connectorType,
+    authMethod: args.storedState.authMethod,
+    origin: args.origin,
+    type: args.type,
+  });
+  signal.throwIfAborted();
+  if (!authMethodResult.ok) {
+    return authMethodResult;
+  }
 
-    return {
-      ok: true,
-      identity: {
-        userId: args.storedState.userId,
-        orgId: args.storedState.orgId,
-      },
-      sessionId: args.storedState.sessionId ?? undefined,
-      connectorType: authMethodResult.connectorType,
-      authMethod: authMethodResult.authMethod,
-      codeVerifier: args.storedState.codeVerifier ?? undefined,
-      oauthContext: args.storedState.oauthContext ?? undefined,
-      redirectUri: args.storedState.redirectUri,
-    };
-  },
-);
+  return {
+    ok: true,
+    identity: {
+      userId: args.storedState.userId,
+      orgId: args.storedState.orgId,
+    },
+    connectorType: authMethodResult.connectorType,
+    authMethod: authMethodResult.authMethod,
+    codeVerifier: args.storedState.codeVerifier ?? undefined,
+    oauthContext: args.storedState.oauthContext ?? undefined,
+    redirectUri: args.storedState.redirectUri,
+  };
+}
 
 const callbackConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -639,8 +528,7 @@ const callbackConnectorInner$ = command(
       return claimedState.response;
     }
 
-    const resolvedState = await set(
-      resolveCallbackState$,
+    const resolvedState = resolveCallbackState(
       {
         origin,
         type,
@@ -649,7 +537,6 @@ const callbackConnectorInner$ = command(
       },
       signal,
     );
-    signal.throwIfAborted();
     if (!resolvedState.ok) {
       return resolvedState.response;
     }
@@ -666,7 +553,6 @@ const callbackConnectorInner$ = command(
           codeVerifier: resolvedState.codeVerifier,
           oauthContext: resolvedState.oauthContext,
           identity: resolvedState.identity,
-          sessionId: resolvedState.sessionId,
           origin,
           type,
         },
@@ -679,12 +565,6 @@ const callbackConnectorInner$ = command(
       return callbackResult.value;
     }
 
-    await markConnectorSessionError(
-      writeDb,
-      resolvedState.sessionId,
-      errorMessageFromUnknown(callbackResult.error),
-      signal,
-    );
     return redirectWithError(
       origin,
       type,

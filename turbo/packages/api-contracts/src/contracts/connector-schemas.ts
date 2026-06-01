@@ -43,50 +43,6 @@ export const scopeDiffResponseSchema = z.object({
 
 export type ScopeDiffResponse = z.infer<typeof scopeDiffResponseSchema>;
 
-/**
- * Connector session status enum
- */
-export const connectorSessionStatusSchema = z.enum([
-  "pending",
-  "complete",
-  "expired",
-  "error",
-]);
-
-export type ConnectorSessionStatus = z.infer<
-  typeof connectorSessionStatusSchema
->;
-
-/**
- * Connector session response schema
- */
-export const connectorSessionResponseSchema = z.object({
-  id: z.uuid(),
-  code: z.string(),
-  type: connectorTypeSchema,
-  status: connectorSessionStatusSchema,
-  verificationUrl: z.string(),
-  expiresIn: z.number(),
-  interval: z.number(),
-  errorMessage: z.string().nullable().optional(),
-});
-
-export type ConnectorSessionResponse = z.infer<
-  typeof connectorSessionResponseSchema
->;
-
-/**
- * Connector session status response (for polling)
- */
-export const connectorSessionStatusResponseSchema = z.object({
-  status: connectorSessionStatusSchema,
-  errorMessage: z.string().nullable().optional(),
-});
-
-export type ConnectorSessionStatusResponse = z.infer<
-  typeof connectorSessionStatusResponseSchema
->;
-
 export const connectorOauthStartResponseSchema = z.object({
   authorizationUrl: z.string(),
 });

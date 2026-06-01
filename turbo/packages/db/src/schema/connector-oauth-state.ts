@@ -18,7 +18,6 @@ export const connectorOauthStates = pgTable(
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     redirectUri: text("redirect_uri").notNull(),
-    sessionId: uuid("session_id"),
     codeVerifier: text("code_verifier"),
     oauthContext: text("oauth_context"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

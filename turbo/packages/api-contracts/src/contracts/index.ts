@@ -287,10 +287,6 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
-  connectorsTypeAuthorizeContract,
-  type ConnectorsTypeAuthorizeContract,
-} from "./connectors-type-authorize";
-export {
   connectorsTypeCallbackContract,
   type ConnectorsTypeCallbackContract,
 } from "./connectors-type-callback";
@@ -720,18 +716,12 @@ export {
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
-  connectorSessionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,
-  connectorSessionResponseSchema,
-  connectorSessionStatusResponseSchema,
   scopeDiffResponseSchema,
   type ScopeDiffResponse,
-  type ConnectorSessionStatus,
   type ConnectorResponse,
   type ConnectorListResponse,
-  type ConnectorSessionResponse,
-  type ConnectorSessionStatusResponse,
 } from "./connector-schemas";
 
 export {
@@ -898,8 +888,6 @@ export {
   zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
-  zeroConnectorSessionsContract,
-  zeroConnectorSessionByIdContract,
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
@@ -907,8 +895,6 @@ export {
   type ZeroConnectorManualGrantContract,
   type ZeroConnectorOauthDeviceAuthSessionContract,
   type ZeroConnectorsSearchContract,
-  type ZeroConnectorSessionsContract,
-  type ZeroConnectorSessionByIdContract,
 } from "./zero-connectors";
 export {
   codexDeviceAuthScopeSchema,

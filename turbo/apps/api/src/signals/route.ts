@@ -17,7 +17,6 @@ import { cliAuthRoutes } from "./routes/cli-auth";
 import { cliAuthTestRoutes } from "./routes/cli-auth-test";
 import type { SignalRouteHandler } from "./context/route";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
-import { connectorsTypeAuthorizeRoutes } from "./routes/connectors-type-authorize";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
@@ -226,7 +225,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentRunsReadRoutes,
   ...agentRunTelemetryRoutes,
   ...agentSessionsRoutes,
-  ...connectorsTypeAuthorizeRoutes,
   ...connectorsTypeCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
