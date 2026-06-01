@@ -743,17 +743,16 @@ function connectorMethodOwnedSecretNames(
     connectorAccessEnvBindings(method.access),
   )) {
     if (valueRef.startsWith("$secrets.")) {
-      names.add(valueRef.slice("$secrets.".length));
+      const secretName = valueRef.slice("$secrets.".length);
+      if (!platformSecretNames.has(secretName)) {
+        names.add(secretName);
+      }
     }
   }
 
   if (method.access.kind === "refresh-token") {
     names.add(method.access.accessToken);
     names.add(method.access.refreshToken);
-  }
-
-  for (const secretName of platformSecretNames) {
-    names.delete(secretName);
   }
 
   return [...names];
