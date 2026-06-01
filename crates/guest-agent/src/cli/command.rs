@@ -4,8 +4,8 @@
 //! Codex config override construction. Runtime process spawning stays in
 //! `execute_cli`.
 
-use crate::env;
 use crate::error::AgentError;
+use crate::{env, paths};
 use guest_common::log_info;
 
 use super::LOG_TAG;
@@ -167,7 +167,7 @@ fn build_codex_args(
         "danger-full-access".to_string(),
         "--skip-git-repo-check".to_string(),
         "-C".to_string(),
-        env::CANONICAL_WORKING_DIR.to_string(),
+        paths::CANONICAL_WORKING_DIR.to_string(),
     ];
 
     args.push("-c".to_string());
@@ -354,7 +354,7 @@ mod tests {
         assert_eq!(args[s_idx + 1], "danger-full-access");
         assert!(args.contains(&"--skip-git-repo-check".to_string()));
         let c_idx = args.iter().position(|a| a == "-C").unwrap();
-        assert_eq!(args[c_idx + 1], env::CANONICAL_WORKING_DIR);
+        assert_eq!(args[c_idx + 1], paths::CANONICAL_WORKING_DIR);
         assert!(codex_args_have_config(&args, "features.memories=true"));
         assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "hello");

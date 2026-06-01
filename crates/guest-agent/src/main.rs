@@ -64,7 +64,11 @@ async fn run() -> i32 {
     let control_handle = control::ControlHandle::spawn(shutdown.clone());
     let start = Instant::now();
 
-    log_info!(LOG_TAG, "Working directory: {}", env::CANONICAL_WORKING_DIR);
+    log_info!(
+        LOG_TAG,
+        "Working directory: {}",
+        paths::CANONICAL_WORKING_DIR
+    );
 
     let t = Instant::now();
     let heartbeat_handle = tokio::spawn({
@@ -136,7 +140,7 @@ async fn execute(
 
     // Working directory setup
     let wd_start = Instant::now();
-    if let Err(e) = setup_working_dir(env::CANONICAL_WORKING_DIR) {
+    if let Err(e) = setup_working_dir(paths::CANONICAL_WORKING_DIR) {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
         write_guest_error_file(&msg);

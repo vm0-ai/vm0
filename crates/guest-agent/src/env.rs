@@ -92,7 +92,6 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 // ---------------------------------------------------------------------------
 
 static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
-pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
 static OPENAI_API_KEY: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_API_KEY"));
 static OPENAI_MODEL: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_MODEL"));
 static CHATGPT_ACCOUNT_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("CHATGPT_ACCOUNT_ID"));
