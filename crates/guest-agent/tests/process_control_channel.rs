@@ -185,7 +185,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
          {}; \
          status=$?; \
          if [ \"$cleanup_workspace\" = 1 ]; then \
-           rm -rf /home/user/workspace; \
+           rmdir /home/user/workspace 2>/dev/null || true; \
          fi; \
          if [ \"$cleanup_home_user\" = 1 ]; then \
            rmdir /home/user 2>/dev/null || true; \

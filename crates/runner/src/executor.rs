@@ -2129,6 +2129,9 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_SANDBOX_REUSE_RESULT",
     "VM0_PROMPT",
     "VM0_APPEND_SYSTEM_PROMPT",
+    // Retired runner-owned key. Keep scrubbing user-provided values so the
+    // removed working-dir parameter does not leak into guest CLI processes.
+    "VM0_WORKING_DIR",
     "VM0_API_START_TIME",
     "CLI_AGENT_TYPE",
     "VM0_ARTIFACTS",
@@ -2746,6 +2749,7 @@ mod tests {
             ("CUSTOM_ENV".into(), "kept".into()),
             ("VM0_PROMPT".into(), "user prompt".into()),
             ("VM0_API_TOKEN".into(), "stolen".into()),
+            ("VM0_WORKING_DIR".into(), "/legacy".into()),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
             (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
             (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
@@ -2769,6 +2773,7 @@ mod tests {
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
         assert!(!env.contains_key(RUNNER_CONCURRENCY_FACTOR_ENV));
         assert!(!env.contains_key(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV));
