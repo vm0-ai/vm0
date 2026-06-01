@@ -261,6 +261,11 @@ describe("zero user permission grants", () => {
     const otherOrgUser = await createFixture();
     const sameOrgUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: owner.orgId, userId: sameOrgUserId });
+    const publicAgentId = await seedAgent({
+      orgId: owner.orgId,
+      userId: owner.userId,
+      visibility: "public",
+    });
     const privateAgentId = await seedAgent({
       orgId: owner.orgId,
       userId: owner.userId,
@@ -289,6 +294,21 @@ describe("zero user permission grants", () => {
     expect(ownerResponse.body.agentId).toBe(privateAgentId);
 
     mocks.clerk.session(sameOrgUserId, owner.orgId, "org:member");
+    const sameOrgPublicResponse = await accept(
+      client.upsert({
+        body: {
+          agentId: publicAgentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "allow",
+          ttlSeconds: 300,
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(sameOrgPublicResponse.body.agentId).toBe(publicAgentId);
+
     const sameOrgResponse = await accept(
       client.upsert({
         body: {
