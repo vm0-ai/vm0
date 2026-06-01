@@ -21,7 +21,7 @@
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",
     "knip:production": "knip --production --strict",
-    "e2b:cli:build": "dotenv -e apps/web/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
+    "e2b:cli:build": "dotenv -e apps/api/.env.local -- npx tsx scripts/e2b/vm0-cli/build.ts",
     "dev:status": "bash scripts/dev-server-check.sh",
     "runner": "bash ../scripts/dev-runner.sh deploy",
     "runner:local": "bash ../scripts/dev-runner.sh deploy-local",
