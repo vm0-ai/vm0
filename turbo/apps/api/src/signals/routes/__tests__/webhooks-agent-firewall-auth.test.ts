@@ -3947,6 +3947,94 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBe("rotated-recovered-chatgpt-refresh-token");
   });
 
+  it("rejects skipped model-provider tokens that become reconnect-required during another refresh", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-racing-chatgpt-token",
+      refreshToken: "racing-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 3_600_000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    let notionRefreshCallCount = 0;
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", async () => {
+        notionRefreshCallCount += 1;
+        const db = store.set(writeDb$);
+        await db
+          .update(modelProviders)
+          .set({
+            needsReconnect: true,
+            lastRefreshErrorCode: "refresh_token_expired",
+            updatedAt: sql`clock_timestamp()`,
+          })
+          .where(
+            and(
+              eq(modelProviders.orgId, fixture.orgId),
+              eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+              eq(modelProviders.type, "codex-oauth-token"),
+            ),
+          );
+        return HttpResponse.json({
+          access_token: "fresh-racing-notion-token",
+          refresh_token: "rotated-racing-notion-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+            CHATGPT_ACCESS_TOKEN: "stale-snapshot-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: [
+              `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+              secretTemplate("CHATGPT_ACCESS_TOKEN"),
+            ].join(" "),
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [502],
+    );
+
+    expect(notionRefreshCallCount).toBe(1);
+    expect(response.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: ["codex-oauth-token"],
+      failureReason: "reconnect_required",
+    });
+    await expect(codexProviderState(fixture)).resolves.toMatchObject({
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
+    });
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "NOTION_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-racing-notion-token");
+  });
+
   it("preserves standard OAuth reconnect error codes on model-provider refresh failure", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
