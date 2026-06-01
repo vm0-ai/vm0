@@ -105,6 +105,10 @@ class TestResponseHandler:
                 "https://[invalid.example.com/path",
             ),
             (
+                "https://user:pass@[invalid.example.com/path?access_token=secret#fragment",
+                "https://[invalid.example.com/path",
+            ),
+            (
                 "https://user:pass@target.example.com:9443/path?access_token=secret#fragment",
                 "https://target.example.com:9443/path",
             ),
