@@ -2449,6 +2449,50 @@ describe("POST /api/webhooks/stripe", () => {
       );
     });
 
+    it("skips lower subscription invoices when a higher subscription is current", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const teamSubId = stripeId("sub");
+      const proSubId = stripeId("sub");
+      const invId = stripeId("inv");
+      const currentPeriodEnd = new Date("2026-04-26T07:24:12Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        tier: "team",
+        currentPeriodEnd,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: proSubId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
+          parent: { subscription_details: { subscription: proSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.credits).toBe(creditsBefore);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.lastProcessedInvoiceId).toBeNull();
+      expect(billing.currentPeriodEnd).toStrictEqual(currentPeriodEnd);
+      await expect(
+        selectStripeCreditExpiresRecords(fixture),
+      ).resolves.toStrictEqual([]);
+    });
+
     it("adds renewal credits to an existing balance", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),

@@ -466,6 +466,22 @@ async function shouldSkipCheckoutSubscriptionUpdate(
   return false;
 }
 
+function invoiceWouldReplaceWithSameOrLowerTier(args: {
+  readonly currentSubscriptionId: string | null;
+  readonly subscriptionId: string;
+  readonly currentTier: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): boolean {
+  return (
+    args.currentSubscriptionId !== null &&
+    args.currentSubscriptionId !== args.subscriptionId &&
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: args.currentTier,
+      targetTier: args.targetTier,
+    })
+  );
+}
+
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
@@ -549,6 +565,8 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
     .select({
       orgId: orgMetadata.orgId,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
     })
     .from(orgMetadata)
     .where(eq(orgMetadata.stripeCustomerId, customerId))
@@ -582,6 +600,29 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
   }
 
   const tier = tierFromPriceId(priceId);
+  if (
+    invoiceWouldReplaceWithSameOrLowerTier({
+      currentSubscriptionId: org.stripeSubscriptionId,
+      subscriptionId,
+      currentTier: org.tier,
+      targetTier: tier,
+    })
+  ) {
+    L.warn("invoice.paid rejected tier replacement", {
+      customerId,
+      invoiceId: invoice.id,
+      subscriptionId,
+      currentSubscriptionId: org.stripeSubscriptionId,
+      currentTier: org.tier,
+      targetTier: tier,
+      reason: checkoutTierConflictMessage({
+        currentTier: org.tier,
+        targetTier: tier,
+      }),
+    });
+    return;
+  }
+
   const credits = monthlyCreditsForTier(tier);
   if (credits <= 0) {
     L.warn("no credits to grant for tier", {
