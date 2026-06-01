@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import flow_metadata_keys as metadata_keys
 import logging_utils
 import matching
@@ -268,6 +270,93 @@ class TestLoadRegistry:
         assert result2 is cached
         assert result1["10.200.0.1"]["runId"] == "run-abc-123"
         assert spy.call_count == 1
+        assert log.warn.call_count == 1
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
+    def test_non_object_registry_after_success_returns_cached_registry(self, registry_file):
+        cached = registry.load_registry(str(registry_file))
+        registry_file.write_text(json.dumps(["broken"]))
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry.json, "load", wraps=registry.json.load) as spy,
+        ):
+            result1 = registry.load_registry(str(registry_file))
+            result2 = registry.load_registry(str(registry_file))
+
+        assert result1 is cached
+        assert result2 is cached
+        assert spy.call_count == 1
+        assert log.warn.call_count == 1
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
+    def test_new_bad_registry_key_rewarns_without_success_between_failures(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text("{ broken")
+
+        log = MagicMock()
+        with patch.object(registry.ctx, "log", log, create=True):
+            registry.load_registry(str(path))
+            assert log.warn.call_count == 1
+
+            path.write_text("{ broken again, different size")
+            registry.load_registry(str(path))
+
+        assert log.warn.call_count == 2
+        assert all("Failed to parse" in call.args[0] for call in log.warn.call_args_list)
+
+    def test_compile_registry_failure_propagates(self, registry_file):
+        registry.load_registry(str(registry_file))
+        registry_file.write_text(json.dumps({"vms": {"10.200.0.99": {"runId": "new-run"}}}))
+
+        with (
+            patch.object(registry.ctx, "log", MagicMock(), create=True),
+            patch.object(
+                registry,
+                "_compile_registry",
+                side_effect=RuntimeError("compile failed"),
+            ),
+            pytest.raises(RuntimeError, match="compile failed"),
+        ):
+            registry.load_registry(str(registry_file))
+
+    def test_auth_cache_eviction_failure_propagates(self, registry_file):
+        registry.load_registry(str(registry_file))
+        registry_file.write_text(json.dumps({"vms": {"10.200.0.99": {"runId": "new-run"}}}))
+
+        with (
+            patch.object(registry.ctx, "log", MagicMock(), create=True),
+            patch.object(
+                registry,
+                "evict_stale_cache_keys",
+                side_effect=RuntimeError("evict failed"),
+            ),
+            pytest.raises(RuntimeError, match="evict failed"),
+        ):
+            registry.load_registry(str(registry_file))
+
+    def test_read_failure_after_stat_does_not_poison_file_key(self, registry_file):
+        cached = registry.load_registry(str(registry_file))
+        new_registry = {"vms": {"10.200.0.99": {"runId": "new-run"}}, "updatedAt": 0}
+        registry_file.write_text(json.dumps(new_registry))
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(
+                registry.json,
+                "load",
+                side_effect=[OSError("read failed"), new_registry],
+            ) as spy,
+        ):
+            failed = registry.load_registry(str(registry_file))
+            recovered = registry.load_registry(str(registry_file))
+
+        assert failed is cached
+        assert recovered is not cached
+        assert recovered == {"10.200.0.99": {"runId": "new-run"}}
+        assert spy.call_count == 2
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
 

@@ -17,20 +17,35 @@ VmContext = tuple[
 _RegistryCacheKey = tuple[str, int, int, int, int]
 
 
+class RegistryFormatError(ValueError):
+    """Registry JSON decoded successfully but does not have the expected shape."""
+
+
+@dataclass(frozen=True)
+class RegistrySnapshot:
+    vms: dict
+    compiled_firewalls: dict[str, matching.CompiledFirewallSet]
+    compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
+    loaded_key: _RegistryCacheKey | None
+
+
+def _empty_snapshot() -> RegistrySnapshot:
+    return RegistrySnapshot({}, {}, {}, None)
+
+
 @dataclass
 class _RegistryCacheState:
     registry_path: str | None = None
-    registry: dict = field(default_factory=dict)
-    compiled_firewalls: dict[str, matching.CompiledFirewallSet] = field(default_factory=dict)
-    compiled_network_policies: dict[str, matching.CompiledNetworkPolicies] = field(
-        default_factory=dict
-    )
-    cache_key: _RegistryCacheKey | None = None
-    # One-shot guard for stat-path failures: no cache key is available in that
-    # branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
-    # Parse-path failures use the cache key itself — recording the bad file state
-    # as already processed prevents re-parsing the same bytes on every request.
-    load_error_logged: bool = False
+    snapshot: RegistrySnapshot = field(default_factory=_empty_snapshot)
+    # Known-bad decoded registry input. Unlike the snapshot loaded key, this
+    # means the current snapshot belongs to an older file state and this key
+    # should short-circuit until the file changes again.
+    failed_key: _RegistryCacheKey | None = None
+    # Stat failures do not provide a key, so use a one-shot guard. Open/read
+    # errors have a key but are retried on every call; track their last warning
+    # key only to avoid request-path log spam without poisoning the file state.
+    stat_error_logged: bool = False
+    read_error_key: _RegistryCacheKey | None = None
 
 
 _registry_state = _RegistryCacheState()
@@ -71,25 +86,32 @@ def _compile_registry(
     return compiled_firewall_registry, compiled_policy_registry
 
 
-def _normalize_registry_vms(raw_registry: object) -> tuple[dict, int]:
-    if not isinstance(raw_registry, dict):
-        raise TypeError("proxy registry vms must be an object")
-
+def _normalize_registry_vms(raw_registry: dict) -> tuple[dict, int]:
     new_registry = {client_ip: vm for client_ip, vm in raw_registry.items() if isinstance(vm, dict)}
     return new_registry, len(raw_registry) - len(new_registry)
+
+
+def _read_registry_vms(path: Path) -> dict:
+    with path.open() as f:
+        raw_registry = json.load(f)
+    if not isinstance(raw_registry, dict):
+        raise RegistryFormatError("proxy registry must be an object")
+    raw_vms = raw_registry.get("vms", {})
+    if not isinstance(raw_vms, dict):
+        raise RegistryFormatError("proxy registry vms must be an object")
+    return raw_vms
 
 
 def load_registry(registry_path: str) -> dict:
     """Load the proxy registry, reusing cached data when possible.
 
-    Cache state is scoped to one active registry path. The registry is reloaded
-    only when file stat metadata changes for that path. If stat fails, the
-    current path's registry cache is returned. If processing a changed file
-    fails, the current cache is preserved and returned, and that file state is
-    recorded as processed so repeated reads short-circuit on the same stat key.
-    Failures are warning-logged at most once until a successful reload clears
-    the error state. A successful reload also evicts firewall-auth cache entries
-    for run IDs no longer present in the registry.
+    Cache state is scoped to one active registry path. A successful load
+    publishes raw and compiled registry state together in a snapshot keyed by
+    file identity metadata. Malformed registry input is recorded separately as
+    a failed key so repeated reads of the same bad bytes do not reparse or
+    re-warn. File read errors preserve the last snapshot but keep retrying that
+    key, and internal compile/eviction errors are allowed to propagate instead
+    of being treated as stale-cache parse failures.
     """
     path = Path(registry_path)
     path_key = _path_key(path)
@@ -98,44 +120,51 @@ def load_registry(registry_path: str) -> dict:
     try:
         st = path.stat()
     except OSError as e:
-        if not state.load_error_logged:
-            state.load_error_logged = True
+        if not state.stat_error_logged:
+            state.stat_error_logged = True
             ctx.log.warn(f"Failed to stat proxy registry: {e}")
-        return state.registry
+        return state.snapshot.vms
 
     key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
-    if key == state.cache_key:
-        return state.registry
+    if key in (state.snapshot.loaded_key, state.failed_key):
+        return state.snapshot.vms
 
     try:
-        with path.open() as f:
-            raw_registry = json.load(f).get("vms", {})
-        new_registry, malformed_vm_count = _normalize_registry_vms(raw_registry)
-        if malformed_vm_count:
-            ctx.log.warn(f"Skipped {malformed_vm_count} malformed proxy registry VM entries")
-        new_compiled_registry, new_compiled_policy_registry = _compile_registry(new_registry)
-
-        # Evict cache entries for runs no longer in the registry.
-        active_run_ids = {
-            run_id
-            for vm in new_registry.values()
-            if isinstance(run_id := vm.get("runId"), str) and run_id
-        }
-        evict_stale_cache_keys(active_run_ids)
-
-        state.registry = new_registry
-        state.compiled_firewalls = new_compiled_registry
-        state.compiled_network_policies = new_compiled_policy_registry
-        state.load_error_logged = False
-    except Exception as e:
-        if not state.load_error_logged:
-            state.load_error_logged = True
+        raw_registry = _read_registry_vms(path)
+    except OSError as e:
+        if key != state.read_error_key:
+            state.read_error_key = key
             ctx.log.warn(f"Failed to parse proxy registry: {e}")
+        return state.snapshot.vms
+    except (json.JSONDecodeError, UnicodeDecodeError, RegistryFormatError) as e:
+        state.failed_key = key
+        state.read_error_key = None
+        ctx.log.warn(f"Failed to parse proxy registry: {e}")
+        return state.snapshot.vms
 
-    # Record this file state as already processed — success or parse failure —
-    # so subsequent requests on the same bytes short-circuit at the key check.
-    state.cache_key = key
-    return state.registry
+    new_registry, malformed_vm_count = _normalize_registry_vms(raw_registry)
+    if malformed_vm_count:
+        ctx.log.warn(f"Skipped {malformed_vm_count} malformed proxy registry VM entries")
+    new_compiled_registry, new_compiled_policy_registry = _compile_registry(new_registry)
+
+    # Evict cache entries for runs no longer in the registry.
+    active_run_ids = {
+        run_id
+        for vm in new_registry.values()
+        if isinstance(run_id := vm.get("runId"), str) and run_id
+    }
+    evict_stale_cache_keys(active_run_ids)
+
+    state.snapshot = RegistrySnapshot(
+        new_registry,
+        new_compiled_registry,
+        new_compiled_policy_registry,
+        key,
+    )
+    state.failed_key = None
+    state.stat_error_logged = False
+    state.read_error_key = None
+    return state.snapshot.vms
 
 
 def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
@@ -151,9 +180,9 @@ def get_vm_context(
     vm_info = load_registry(registry_path).get(client_ip)
     if vm_info is None:
         return None
-    compiled_network_policies = _registry_state.compiled_network_policies.get(client_ip)
-    if compiled_network_policies is None:
-        compiled_network_policies = matching.compile_network_policies(
-            vm_info.get("networkPolicies")
-        )
-    return vm_info, _registry_state.compiled_firewalls.get(client_ip), compiled_network_policies
+    state = _state_for_path(_path_key(Path(registry_path)))
+    return (
+        vm_info,
+        state.snapshot.compiled_firewalls.get(client_ip),
+        state.snapshot.compiled_network_policies[client_ip],
+    )
