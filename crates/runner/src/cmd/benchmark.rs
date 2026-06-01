@@ -13,7 +13,6 @@ use crate::config;
 use crate::deps::MITMPROXY_VERSION;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor;
-use crate::ids::RunId;
 use crate::lock;
 use crate::paths::{HomePaths, RootfsPaths, RunnerPaths};
 use crate::prefetch;
@@ -315,19 +314,7 @@ async fn run_in_sandbox(
     }
 
     let t_mount = Instant::now();
-    let run_id = match sandbox.id().parse::<RunId>() {
-        Ok(run_id) => run_id,
-        Err(e) => {
-            timing.workspace_mount_ms = Some(t_mount.elapsed().as_millis());
-            return (
-                Err(RunnerError::Internal(format!(
-                    "parse benchmark sandbox id as run id: {e}"
-                ))),
-                timing,
-            );
-        }
-    };
-    let mount_result = ensure_workspace_drive_mounted(sandbox, run_id).await;
+    let mount_result = ensure_workspace_drive_mounted(sandbox, sandbox.id()).await;
     timing.workspace_mount_ms = Some(t_mount.elapsed().as_millis());
     if let Err(e) = mount_result {
         return (Err(e), timing);

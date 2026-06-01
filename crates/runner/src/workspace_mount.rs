@@ -4,7 +4,6 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::{EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, Sandbox};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::ids::RunId;
 
 const WORKSPACE_MOUNT_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKSPACE_DEVICE: &str = "/dev/vdb";
@@ -37,7 +36,7 @@ const WORKSPACE_DEVICE_MOUNT_GUARD: &str = r#"workspace_device_mounted_elsewhere
 
 pub(crate) async fn ensure_workspace_drive_mounted(
     sandbox: &dyn Sandbox,
-    run_id: RunId,
+    diagnostic_id: impl std::fmt::Display,
 ) -> RunnerResult<()> {
     let cmd = workspace_mount_command();
     let result = sandbox
@@ -58,7 +57,7 @@ pub(crate) async fn ensure_workspace_drive_mounted(
     let stderr = String::from_utf8_lossy(&result.stderr);
     let stdout = String::from_utf8_lossy(&result.stdout);
     Err(RunnerError::Internal(format!(
-        "mount workspace drive failed for {run_id} with exit code {}: stderr={} stdout={}",
+        "mount workspace drive failed for {diagnostic_id} with exit code {}: stderr={} stdout={}",
         result.exit_code,
         stderr.trim(),
         stdout.trim()

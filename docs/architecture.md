@@ -202,7 +202,7 @@ sandbox:
 - Sparse ext4 image: `/var/lib/vm0-runner/workspaces/{sandbox_id}/workspace.ext4`
 - Exposed to the guest as `/dev/vdb`
 - Mounted by the runner at `/home/user/workspace`
-- Sized from the runner profile `disk_mb`
+- Sized from the runner profile `workspace_disk_mb`
 
 #### Network Architecture
 
