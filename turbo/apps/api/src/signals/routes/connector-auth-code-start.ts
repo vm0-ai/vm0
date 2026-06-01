@@ -4,6 +4,7 @@ import {
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClient,
   type ConnectorEnvReader,
+  type ConnectorAuthMethodRefByGrantKind,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeGrantConnectorType,
@@ -31,11 +32,7 @@ type PrepareResolvedConnectorAuthCodeStartResult =
     };
 
 type ResolveConnectorAuthCodeStartMethodResult =
-  | {
-      readonly ok: true;
-      readonly type: AuthCodeGrantConnectorType;
-      readonly authMethod: ConnectorAuthCodeGrantAuthMethodId;
-    }
+  | ({ readonly ok: true } & ConnectorAuthMethodRefByGrantKind<"auth-code">)
   | {
       readonly ok: false;
       readonly reason: "missing_auth_method" | "wrong_grant_kind";
@@ -58,18 +55,16 @@ export function resolveConnectorAuthCodeStartMethod(
     return { ok: false, reason: "wrong_grant_kind" };
   }
 
-  return {
-    ok: true,
-    type: authMethodRef.type,
-    authMethod: authMethodRef.authMethod,
-  };
+  return { ok: true, ...authMethodRef };
 }
 
 // Prepare only synchronous auth-code start data after callers have validated
 // the selected auth method for this auth-code flow.
-export function prepareResolvedConnectorAuthCodeStart(args: {
-  readonly type: AuthCodeGrantConnectorType;
-  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId;
+export function prepareResolvedConnectorAuthCodeStart<
+  Type extends AuthCodeGrantConnectorType,
+>(args: {
+  readonly type: Type;
+  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
 }): PrepareResolvedConnectorAuthCodeStartResult {
@@ -92,9 +87,11 @@ export function prepareResolvedConnectorAuthCodeStart(args: {
   };
 }
 
-export async function buildResolvedConnectorAuthCodeAuthUrl(args: {
-  readonly type: AuthCodeGrantConnectorType;
-  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId;
+export async function buildResolvedConnectorAuthCodeAuthUrl<
+  Type extends AuthCodeGrantConnectorType,
+>(args: {
+  readonly type: Type;
+  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>;
   readonly authClient: ConnectorAuthClient;
   readonly redirectUri: string;
   readonly state: string;

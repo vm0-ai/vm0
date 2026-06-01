@@ -4,66 +4,84 @@ import {
   exchangeTestOAuthCode,
   fetchTestOAuthUserInfo,
   refreshTestOAuthToken,
+  TEST_OAUTH_API_ACCESS_SECRET_NAME,
+  TEST_OAUTH_API_REFRESH_SECRET_NAME,
   TEST_OAUTH_ACCESS_SECRET_NAME,
   TEST_OAUTH_REFRESH_SECRET_NAME,
 } from "./test-oauth";
-export const testOauthProvider: AuthCodeConnectorAuthProvider<"test-oauth"> = {
-  grant: {
-    kind: "auth-code",
-    buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildTestOAuthAuthorizationUrl(
-        args.authCodeGrant,
-        clientId,
-        args.redirectUri,
-        args.state,
-      );
+
+function createTestOauthProvider(args: {
+  readonly accessSecretName: string;
+  readonly refreshSecretName: string;
+}): AuthCodeConnectorAuthProvider<"test-oauth"> {
+  return {
+    grant: {
+      kind: "auth-code",
+      buildAuthUrl: (authUrlArgs) => {
+        const { clientId } = authUrlArgs;
+        return buildTestOAuthAuthorizationUrl(
+          authUrlArgs.authCodeGrant,
+          clientId,
+          authUrlArgs.redirectUri,
+          authUrlArgs.state,
+        );
+      },
+      exchangeCode: async (exchangeArgs) => {
+        const { clientId, clientSecret } = exchangeArgs;
+        const code = exchangeArgs.code;
+        const redirectUri = exchangeArgs.redirectUri;
+        const token = await exchangeTestOAuthCode(
+          exchangeArgs.authCodeGrant,
+          clientId,
+          clientSecret,
+          code,
+          redirectUri,
+        );
+        const user = await fetchTestOAuthUserInfo(token.accessToken);
+        return {
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken,
+          expiresIn: token.expiresIn,
+          scopes: token.scopes,
+          userInfo: user,
+        };
+      },
     },
-    exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
-      const code = args.code;
-      const redirectUri = args.redirectUri;
-      const token = await exchangeTestOAuthCode(
-        args.authCodeGrant,
-        clientId,
-        clientSecret,
-        code,
-        redirectUri,
-      );
-      const user = await fetchTestOAuthUserInfo(token.accessToken);
-      return {
-        accessToken: token.accessToken,
-        refreshToken: token.refreshToken,
-        expiresIn: token.expiresIn,
-        scopes: token.scopes,
-        userInfo: user,
-      };
+    access: {
+      kind: "refresh-token",
+      getAccessSecretName: () => {
+        return args.accessSecretName;
+      },
+      getRefreshSecretName: () => {
+        return args.refreshSecretName;
+      },
+      refreshToken: async (refreshArgs) => {
+        const { clientId, clientSecret } = refreshArgs;
+        const refreshToken = refreshArgs.refreshToken;
+        const result = await refreshTestOAuthToken(
+          refreshArgs.tokenUrl,
+          clientId,
+          clientSecret,
+          refreshToken,
+          refreshArgs.signal,
+        );
+        return {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+        };
+      },
     },
-  },
-  access: {
-    kind: "refresh-token",
-    getAccessSecretName: () => {
-      return TEST_OAUTH_ACCESS_SECRET_NAME;
-    },
-    getRefreshSecretName: () => {
-      return TEST_OAUTH_REFRESH_SECRET_NAME;
-    },
-    refreshToken: async (args) => {
-      const { clientId, clientSecret } = args;
-      const refreshToken = args.refreshToken;
-      const result = await refreshTestOAuthToken(
-        args.tokenUrl,
-        clientId,
-        clientSecret,
-        refreshToken,
-        args.signal,
-      );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-      };
-    },
-  },
-  revoke: { kind: "none" },
-};
+    revoke: { kind: "none" },
+  };
+}
+
+export const testOauthProvider = createTestOauthProvider({
+  accessSecretName: TEST_OAUTH_ACCESS_SECRET_NAME,
+  refreshSecretName: TEST_OAUTH_REFRESH_SECRET_NAME,
+});
+
+export const testOauthApiProvider = createTestOauthProvider({
+  accessSecretName: TEST_OAUTH_API_ACCESS_SECRET_NAME,
+  refreshSecretName: TEST_OAUTH_API_REFRESH_SECRET_NAME,
+});

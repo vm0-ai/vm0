@@ -846,35 +846,41 @@ export type ConnectorAuthMethodClientConfig<
 export type ConnectorAuthMethodIdsByGrantKind<
   Type extends ConnectorType,
   Kind extends ConnectorGrantKind,
-> = {
-  [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-    readonly grant: { readonly kind: Kind };
-  }
-    ? Method
-    : never;
-}[ConnectorAuthMethodIds<Type>];
+> = Type extends ConnectorType
+  ? {
+      [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+        readonly grant: { readonly kind: Kind };
+      }
+        ? Method
+        : never;
+    }[ConnectorAuthMethodIds<Type>]
+  : never;
 
 export type ConnectorAuthMethodIdsByAccessKind<
   Type extends ConnectorType,
   Kind extends ConnectorAccessKind,
-> = {
-  [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-    readonly access: { readonly kind: Kind };
-  }
-    ? Method
-    : never;
-}[ConnectorAuthMethodIds<Type>];
+> = Type extends ConnectorType
+  ? {
+      [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+        readonly access: { readonly kind: Kind };
+      }
+        ? Method
+        : never;
+    }[ConnectorAuthMethodIds<Type>]
+  : never;
 
 export type ConnectorAuthMethodIdsByRevokeKind<
   Type extends ConnectorType,
   Kind extends ConnectorRevokeKind,
-> = {
-  [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-    readonly revoke: { readonly kind: Kind };
-  }
-    ? Method
-    : never;
-}[ConnectorAuthMethodIds<Type>];
+> = Type extends ConnectorType
+  ? {
+      [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+        readonly revoke: { readonly kind: Kind };
+      }
+        ? Method
+        : never;
+    }[ConnectorAuthMethodIds<Type>]
+  : never;
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {

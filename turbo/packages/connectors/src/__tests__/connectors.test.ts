@@ -16,6 +16,7 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
   type ConnectorDeviceAuthGrantConfig,
@@ -247,6 +248,7 @@ type ConnectorConfigAuthMethodIds<Config extends ConnectorConfig> = Extract<
 
 describe("connector auth method lifecycle helpers", () => {
   it("checks required scopes from the selected auth method grant", () => {
+    expectTypeOf<"api">().toMatchTypeOf<ConnectorAuthCodeGrantAuthMethodId>();
     expect(
       getConnectorAuthMethodIdsForGrantKind("github", "auth-code"),
     ).toStrictEqual(["oauth"]);
@@ -285,6 +287,12 @@ describe("connector auth method lifecycle helpers", () => {
     expect(
       getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "auth-code"),
     ).toStrictEqual([]);
+    expect(
+      getConnectorAuthMethodIdsForGrantKind("test-oauth", "auth-code"),
+    ).toStrictEqual(["oauth", "api"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("test-oauth", "refresh-token"),
+    ).toStrictEqual(["oauth", "api"]);
 
     expect(
       connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
@@ -584,6 +592,53 @@ describe("connector provider capability checks", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("github", "oauth")?.kind,
     ).not.toBe("refresh-token");
+  });
+
+  it("supports multiple provider-backed auth-code methods for one connector", async () => {
+    expect(hasConnectorAuthCodeGrantProvider("test-oauth", "oauth")).toBe(true);
+    expect(hasConnectorAuthCodeGrantProvider("test-oauth", "api")).toBe(true);
+    expect(hasConnectorAuthCodeGrantProvider("test-oauth", "missing")).toBe(
+      false,
+    );
+    expect(hasConnectorDeviceAuthGrantProvider("test-oauth", "api")).toBe(
+      false,
+    );
+    expect(hasConnectorRefreshTokenAccessProvider("test-oauth", "oauth")).toBe(
+      true,
+    );
+    expect(hasConnectorRefreshTokenAccessProvider("test-oauth", "api")).toBe(
+      true,
+    );
+    expect(
+      hasConnectorRefreshTokenAccessProvider("test-oauth", "missing"),
+    ).toBe(false);
+
+    const authClient = resolveConnectorAuthClientForMethod(
+      "test-oauth",
+      "api",
+      () => {
+        return undefined;
+      },
+    );
+    expect(authClient).toBeDefined();
+    if (!authClient) {
+      throw new Error("Expected test-oauth API auth client");
+    }
+
+    const authResult = await buildConnectorAuthCodeAuthorizationUrl({
+      type: "test-oauth",
+      authMethod: "api",
+      authClient,
+      redirectUri: "https://app.test/callback",
+      state: "state-123",
+    });
+    const authorizationUrl =
+      typeof authResult === "string" ? authResult : authResult.url;
+    const url = new URL(authorizationUrl);
+
+    expect(url.pathname).toBe("/api/test/oauth-provider/authorize");
+    expect(url.searchParams.get("client_id")).toBe("test-oauth-client");
+    expect(url.searchParams.get("scope")).toBe("read");
   });
 
   it("rejects refresh when the selected auth method is not refreshable", async () => {

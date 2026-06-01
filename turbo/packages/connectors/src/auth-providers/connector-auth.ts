@@ -5,14 +5,15 @@ import {
   type ConnectorType,
   type ConnectorAuthProviderType,
   type ConnectorDeviceAuthGrantAuthMethodId,
+  type ConnectorAuthMethodIdsByGrantKind,
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
+  type ConnectorAuthMethodIdsByRevokeKind,
   type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   connectorAuthMethodSupportsTokenRevoke,
-  getConfiguredConnectorAuthMethods,
   getConnectorAuthMethod,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
@@ -92,7 +93,10 @@ import { spotifyProvider } from "./oauth/providers/spotify-provider";
 import { xProvider } from "./oauth/providers/x-provider";
 import { xeroProvider } from "./oauth/providers/xero-provider";
 import { zoomProvider } from "./oauth/providers/zoom-provider";
-import { testOauthProvider } from "./oauth/providers/test-oauth-provider";
+import {
+  testOauthApiProvider,
+  testOauthProvider,
+} from "./oauth/providers/test-oauth-provider";
 import { testOauthDeviceProvider } from "./oauth/providers/test-oauth-device-provider";
 
 export type {
@@ -114,37 +118,46 @@ export type ConnectorAuthProviderAccessTokenRevokeResult =
   | { readonly status: "revoked" }
   | { readonly status: "unsupported" };
 
-type ConnectorAuthCodeGrantProviderEntries<
-  Type extends AuthCodeGrantConnectorType,
-> = {
-  readonly [Method in ConnectorAuthCodeGrantAuthMethodId<Type>]: AuthCodeConnectorAuthProvider<Type>;
+type ConnectorAuthCodeGrantProviderEntries<Type extends ConnectorType> = {
+  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
+    Type,
+    "auth-code"
+  >]: ConnectorAuthMethodProviderEntry<Type> & {
+    readonly grant: ConnectorAuthCodeGrantProvider<
+      Type & AuthCodeGrantConnectorType
+    >;
+  };
 };
 
-type AuthCodeConnectorAuthProviderMap = {
-  readonly [Type in AuthCodeGrantConnectorType]: ConnectorAuthCodeGrantProviderEntries<Type>;
+type ConnectorDeviceAuthGrantProviderEntries<Type extends ConnectorType> = {
+  readonly [Method in ConnectorAuthMethodIdsByGrantKind<
+    Type,
+    "device-auth"
+  >]: ConnectorAuthMethodProviderEntry<Type> & {
+    readonly grant: ConnectorDeviceAuthGrantProvider<
+      Type & DeviceAuthGrantConnectorType
+    >;
+  };
 };
 
-type ConnectorDeviceAuthGrantProviderEntries<
-  Type extends DeviceAuthGrantConnectorType,
-> = {
-  readonly [Method in ConnectorDeviceAuthGrantAuthMethodId<Type>]: DeviceAuthConnectorAuthProvider<Type>;
-};
-
-type DeviceAuthConnectorAuthProviderMap = {
-  readonly [Type in DeviceAuthGrantConnectorType]: ConnectorDeviceAuthGrantProviderEntries<Type>;
-};
-
-type ConnectorRefreshTokenAccessProviderEntries<
-  Type extends RefreshTokenAccessConnectorType,
-> = {
+type ConnectorRefreshTokenAccessProviderEntries<Type extends ConnectorType> = {
   readonly [Method in ConnectorAuthMethodIdsByAccessKind<
     Type,
     "refresh-token"
-  >]: RefreshTokenAccessProvider<Type>;
+  >]: ConnectorAuthMethodProviderEntry<Type> & {
+    readonly access: RefreshTokenAccessProvider<
+      Type & RefreshTokenAccessConnectorType
+    >;
+  };
 };
 
-type ConnectorRefreshTokenAccessProviderMap = {
-  readonly [Type in RefreshTokenAccessConnectorType]: ConnectorRefreshTokenAccessProviderEntries<Type>;
+type ConnectorTokenRevokeProviderEntries<Type extends ConnectorType> = {
+  readonly [Method in ConnectorAuthMethodIdsByRevokeKind<
+    Type,
+    "token-revoke"
+  >]: ConnectorAuthMethodProviderEntry<Type> & {
+    readonly revoke: ConnectorTokenRevokeProvider;
+  };
 };
 
 export interface ConnectorAuthProviderClientArgs {
@@ -152,13 +165,137 @@ export interface ConnectorAuthProviderClientArgs {
   readonly clientSecret?: string;
 }
 
+type ConnectorProviderBackedType =
+  | ConnectorAuthProviderType
+  | RefreshTokenAccessConnectorType
+  | TokenRevokeConnectorType;
+
+type ConnectorAuthCodeGrantProvider<Type extends AuthCodeGrantConnectorType> =
+  AuthCodeConnectorAuthProvider<Type>["grant"];
+
+type ConnectorDeviceAuthGrantProvider<
+  Type extends DeviceAuthGrantConnectorType,
+> = DeviceAuthConnectorAuthProvider<Type>["grant"];
+
+type ConnectorAuthMethodGrantProvider<Type extends ConnectorType> =
+  | ConnectorAuthCodeGrantProvider<Type & AuthCodeGrantConnectorType>
+  | ConnectorDeviceAuthGrantProvider<Type & DeviceAuthGrantConnectorType>;
+
+interface ConnectorTokenRevokeProvider {
+  readonly kind: "token-revoke";
+  revokeToken(args: {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    readonly accessToken: string;
+  }): Promise<void>;
+}
+
+interface ConnectorAuthMethodProviderEntry<Type extends ConnectorType> {
+  readonly grant?: ConnectorAuthMethodGrantProvider<Type>;
+  readonly access?: RefreshTokenAccessProvider<
+    Type & RefreshTokenAccessConnectorType
+  >;
+  readonly revoke?: ConnectorTokenRevokeProvider;
+}
+
+interface ConnectorAuthMethodProviderCapabilities {
+  readonly grant?: { readonly kind: "auth-code" | "device-auth" };
+  readonly access?: { readonly kind: "refresh-token" };
+  readonly revoke?: { readonly kind: "token-revoke" };
+}
+
+type ConnectorProviderBackedAuthMethodEntries<
+  Type extends ConnectorProviderBackedType,
+> = ConnectorAuthCodeGrantProviderEntries<Type> &
+  ConnectorDeviceAuthGrantProviderEntries<Type> &
+  ConnectorRefreshTokenAccessProviderEntries<Type> &
+  ConnectorTokenRevokeProviderEntries<Type>;
+
+type ConnectorAuthMethodProviderRegistry = {
+  readonly [Type in ConnectorProviderBackedType]: ConnectorProviderBackedAuthMethodEntries<Type>;
+};
+
+function authCodeProviderEntry<Type extends AuthCodeGrantConnectorType>(
+  provider: AuthCodeConnectorAuthProvider<Type>,
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly grant: ConnectorAuthCodeGrantProvider<Type>;
+} {
+  return { grant: provider.grant };
+}
+
+function authCodeRefreshProviderEntry<
+  Type extends AuthCodeGrantConnectorType & RefreshTokenAccessConnectorType,
+>(
+  provider: AuthCodeConnectorAuthProvider<Type> & {
+    readonly access: RefreshTokenAccessProvider<Type>;
+  },
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly grant: ConnectorAuthCodeGrantProvider<Type>;
+  readonly access: RefreshTokenAccessProvider<Type>;
+} {
+  return { grant: provider.grant, access: provider.access };
+}
+
+function authCodeTokenRevokeProviderEntry<
+  Type extends AuthCodeGrantConnectorType & TokenRevokeConnectorType,
+>(
+  provider: AuthCodeConnectorAuthProvider<Type>,
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly grant: ConnectorAuthCodeGrantProvider<Type>;
+  readonly revoke: ConnectorTokenRevokeProvider;
+} {
+  return { grant: provider.grant, revoke: provider.revoke };
+}
+
+function authCodeRefreshTokenRevokeProviderEntry<
+  Type extends AuthCodeGrantConnectorType &
+    RefreshTokenAccessConnectorType &
+    TokenRevokeConnectorType,
+>(
+  provider: AuthCodeConnectorAuthProvider<Type> & {
+    readonly access: RefreshTokenAccessProvider<Type>;
+  },
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly grant: ConnectorAuthCodeGrantProvider<Type>;
+  readonly access: RefreshTokenAccessProvider<Type>;
+  readonly revoke: ConnectorTokenRevokeProvider;
+} {
+  return {
+    grant: provider.grant,
+    access: provider.access,
+    revoke: provider.revoke,
+  };
+}
+
+function deviceAuthProviderEntry<Type extends DeviceAuthGrantConnectorType>(
+  provider: DeviceAuthConnectorAuthProvider<Type>,
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly grant: ConnectorDeviceAuthGrantProvider<Type>;
+} {
+  return { grant: provider.grant };
+}
+
+function deviceAuthRefreshProviderEntry<
+  Type extends DeviceAuthGrantConnectorType & RefreshTokenAccessConnectorType,
+>(
+  provider: DeviceAuthConnectorAuthProvider<Type> & {
+    readonly access: RefreshTokenAccessProvider<Type>;
+  },
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly grant: ConnectorDeviceAuthGrantProvider<Type>;
+  readonly access: RefreshTokenAccessProvider<Type>;
+} {
+  return { grant: provider.grant, access: provider.access };
+}
+
 function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
 >(type: T, authMethod: string): RefreshTokenAccessProvider<T> | undefined {
-  const providers = CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[type] as Readonly<
-    Record<string, RefreshTokenAccessProvider<T>>
-  >;
-  return providers[authMethod];
+  const provider = connectorAuthMethodProviderEntryFor(type, authMethod);
+  if (provider?.access?.kind === "refresh-token") {
+    return provider.access;
+  }
+  return undefined;
 }
 
 function connectorAuthCodeGrantProviderFor<
@@ -166,10 +303,8 @@ function connectorAuthCodeGrantProviderFor<
 >(
   type: T,
   authMethod: ConnectorAuthCodeGrantAuthMethodId<T>,
-): AuthCodeConnectorAuthProvider<T> {
-  const providers: ConnectorAuthCodeGrantProviderEntries<T> =
-    AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[type];
-  return providers[authMethod];
+): ConnectorAuthCodeGrantProvider<T> {
+  return CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][authMethod].grant;
 }
 
 function connectorDeviceAuthGrantProviderFor<
@@ -177,10 +312,8 @@ function connectorDeviceAuthGrantProviderFor<
 >(
   type: T,
   authMethod: ConnectorDeviceAuthGrantAuthMethodId<T>,
-): DeviceAuthConnectorAuthProvider<T> {
-  const providers: ConnectorDeviceAuthGrantProviderEntries<T> =
-    DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[type];
-  return providers[authMethod];
+): ConnectorDeviceAuthGrantProvider<T> {
+  return CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][authMethod].grant;
 }
 
 function connectorAuthProviderClientArgs(
@@ -210,157 +343,163 @@ async function revokeTokenRevokeConnectorAccessToken(args: {
   readonly readEnv: ConnectorEnvReader;
   readonly loadAccessToken: () => string | Promise<string>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
-  switch (args.type) {
-    case "github": {
-      const authClient = resolveConnectorAuthClientForMethod(
-        "github",
-        args.authMethod,
-        args.readEnv,
-      );
-      if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
-        return { status: "unsupported" };
-      }
-      await githubProvider.revoke.revokeToken({
-        clientId: authClient.clientId,
-        clientSecret: authClient.clientSecret,
-        accessToken: await args.loadAccessToken(),
-      });
-      return { status: "revoked" };
-    }
-    case "linear": {
-      const authClient = resolveConnectorAuthClientForMethod(
-        "linear",
-        args.authMethod,
-        args.readEnv,
-      );
-      if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
-        return { status: "unsupported" };
-      }
-      await linearProvider.revoke.revokeToken({
-        clientId: authClient.clientId,
-        clientSecret: authClient.clientSecret,
-        accessToken: await args.loadAccessToken(),
-      });
-      return { status: "revoked" };
-    }
-    case "slack": {
-      const authClient = resolveConnectorAuthClientForMethod(
-        "slack",
-        args.authMethod,
-        args.readEnv,
-      );
-      if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
-        return { status: "unsupported" };
-      }
-      await slackProvider.revoke.revokeToken({
-        clientId: authClient.clientId,
-        clientSecret: authClient.clientSecret,
-        accessToken: await args.loadAccessToken(),
-      });
-      return { status: "revoked" };
-    }
+  const revoke = connectorTokenRevokeProviderFor(args.type, args.authMethod);
+  if (!revoke) {
+    return { status: "unsupported" };
   }
-  const exhaustive: never = args.type;
-  return exhaustive;
+
+  const authClient = resolveConnectorAuthClientForMethod(
+    args.type,
+    args.authMethod,
+    args.readEnv,
+  );
+  if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
+    return { status: "unsupported" };
+  }
+
+  await revoke.revokeToken({
+    clientId: authClient.clientId,
+    clientSecret: authClient.clientSecret,
+    accessToken: await args.loadAccessToken(),
+  });
+  return { status: "revoked" };
 }
 
-const AUTH_CODE_CONNECTOR_AUTH_PROVIDERS: AuthCodeConnectorAuthProviderMap = {
-  ahrefs: { oauth: ahrefsProvider },
-  airtable: { oauth: airtableProvider },
-  asana: { oauth: asanaProvider },
-  canva: { oauth: canvaProvider },
-  close: { oauth: closeProvider },
-  deel: { oauth: deelProvider },
-  docusign: { oauth: docusignProvider },
-  dropbox: { oauth: dropboxProvider },
-  figma: { oauth: figmaProvider },
-  "garmin-connect": { oauth: garminConnectProvider },
-  gumroad: { oauth: gumroadProvider },
-  github: { oauth: githubProvider },
-  gmail: { oauth: gmailProvider },
-  hubspot: { oauth: hubspotProvider },
-  "google-ads": { oauth: googleAdsProvider },
-  "google-calendar": { oauth: googleCalendarProvider },
-  "google-docs": { oauth: googleDocsProvider },
-  "google-drive": { oauth: googleDriveProvider },
-  "google-meet": { oauth: googleMeetProvider },
-  "google-sheets": { oauth: googleSheetsProvider },
-  linear: { oauth: linearProvider },
-  mailchimp: { oauth: mailchimpProvider },
-  mercury: { oauth: mercuryProvider },
-  monday: { oauth: mondayProvider },
-  neon: { oauth: neonProvider },
-  notion: { oauth: notionProvider },
-  "outlook-calendar": { oauth: outlookCalendarProvider },
-  "outlook-mail": { oauth: outlookMailProvider },
-  reddit: { oauth: redditProvider },
-  "intervals-icu": { oauth: intervalsIcuProvider },
-  sentry: { oauth: sentryProvider },
-  slack: { oauth: slackProvider },
-  strava: { oauth: stravaProvider },
-  stripe: { oauth: stripeProvider },
-  todoist: { oauth: todoistProvider },
-  vercel: { oauth: vercelProvider },
-  webflow: { oauth: webflowProvider },
-  supabase: { oauth: supabaseProvider },
-  "meta-ads": { oauth: metaAdsProvider },
-  posthog: { oauth: posthogProvider },
-  spotify: { oauth: spotifyProvider },
-  x: { oauth: xProvider },
-  xero: { oauth: xeroProvider },
-  zoom: { oauth: zoomProvider },
-  "test-oauth": { oauth: testOauthProvider },
-};
+function connectorTokenRevokeProviderFor<T extends TokenRevokeConnectorType>(
+  type: T,
+  authMethod: string,
+): ConnectorTokenRevokeProvider | undefined {
+  const provider = connectorAuthMethodProviderEntryFor(type, authMethod);
+  if (provider?.revoke?.kind === "token-revoke") {
+    return provider.revoke;
+  }
+  return undefined;
+}
 
-const DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS: DeviceAuthConnectorAuthProviderMap =
-  {
-    base44: { oauth: base44Provider },
-    slock: { oauth: slockProvider },
-    "test-oauth-device": { oauth: testOauthDeviceProvider },
-  };
+const CONNECTOR_AUTH_METHOD_PROVIDERS = {
+  ahrefs: { oauth: authCodeRefreshProviderEntry(ahrefsProvider) },
+  airtable: { oauth: authCodeRefreshProviderEntry(airtableProvider) },
+  asana: { oauth: authCodeRefreshProviderEntry(asanaProvider) },
+  base44: { oauth: deviceAuthRefreshProviderEntry(base44Provider) },
+  canva: { oauth: authCodeRefreshProviderEntry(canvaProvider) },
+  close: { oauth: authCodeRefreshProviderEntry(closeProvider) },
+  deel: { oauth: authCodeRefreshProviderEntry(deelProvider) },
+  docusign: { oauth: authCodeRefreshProviderEntry(docusignProvider) },
+  dropbox: { oauth: authCodeRefreshProviderEntry(dropboxProvider) },
+  figma: { oauth: authCodeRefreshProviderEntry(figmaProvider) },
+  "garmin-connect": {
+    oauth: authCodeRefreshProviderEntry(garminConnectProvider),
+  },
+  github: { oauth: authCodeTokenRevokeProviderEntry(githubProvider) },
+  gmail: { oauth: authCodeRefreshProviderEntry(gmailProvider) },
+  "google-ads": { oauth: authCodeRefreshProviderEntry(googleAdsProvider) },
+  "google-calendar": {
+    oauth: authCodeRefreshProviderEntry(googleCalendarProvider),
+  },
+  "google-docs": {
+    oauth: authCodeRefreshProviderEntry(googleDocsProvider),
+  },
+  "google-drive": {
+    oauth: authCodeRefreshProviderEntry(googleDriveProvider),
+  },
+  "google-meet": {
+    oauth: authCodeRefreshProviderEntry(googleMeetProvider),
+  },
+  "google-sheets": {
+    oauth: authCodeRefreshProviderEntry(googleSheetsProvider),
+  },
+  gumroad: { oauth: authCodeRefreshProviderEntry(gumroadProvider) },
+  hubspot: { oauth: authCodeRefreshProviderEntry(hubspotProvider) },
+  "intervals-icu": {
+    oauth: authCodeProviderEntry(intervalsIcuProvider),
+  },
+  linear: { oauth: authCodeRefreshTokenRevokeProviderEntry(linearProvider) },
+  mailchimp: { oauth: authCodeProviderEntry(mailchimpProvider) },
+  mercury: { oauth: authCodeRefreshProviderEntry(mercuryProvider) },
+  monday: { oauth: authCodeRefreshProviderEntry(mondayProvider) },
+  neon: { oauth: authCodeRefreshProviderEntry(neonProvider) },
+  notion: { oauth: authCodeRefreshProviderEntry(notionProvider) },
+  "outlook-calendar": {
+    oauth: authCodeRefreshProviderEntry(outlookCalendarProvider),
+  },
+  "outlook-mail": {
+    oauth: authCodeRefreshProviderEntry(outlookMailProvider),
+  },
+  posthog: { oauth: authCodeRefreshProviderEntry(posthogProvider) },
+  reddit: { oauth: authCodeRefreshProviderEntry(redditProvider) },
+  sentry: { oauth: authCodeRefreshProviderEntry(sentryProvider) },
+  slack: { oauth: authCodeTokenRevokeProviderEntry(slackProvider) },
+  slock: { oauth: deviceAuthRefreshProviderEntry(slockProvider) },
+  spotify: { oauth: authCodeRefreshProviderEntry(spotifyProvider) },
+  strava: { oauth: authCodeRefreshProviderEntry(stravaProvider) },
+  stripe: { oauth: authCodeRefreshProviderEntry(stripeProvider) },
+  supabase: { oauth: authCodeRefreshProviderEntry(supabaseProvider) },
+  "test-oauth": {
+    oauth: authCodeRefreshProviderEntry(testOauthProvider),
+    api: authCodeRefreshProviderEntry(testOauthApiProvider),
+  },
+  "test-oauth-device": {
+    oauth: deviceAuthProviderEntry(testOauthDeviceProvider),
+  },
+  todoist: { oauth: authCodeProviderEntry(todoistProvider) },
+  vercel: { oauth: authCodeProviderEntry(vercelProvider) },
+  webflow: { oauth: authCodeProviderEntry(webflowProvider) },
+  "meta-ads": { oauth: authCodeProviderEntry(metaAdsProvider) },
+  x: { oauth: authCodeRefreshProviderEntry(xProvider) },
+  xero: { oauth: authCodeRefreshProviderEntry(xeroProvider) },
+  zoom: { oauth: authCodeRefreshProviderEntry(zoomProvider) },
+} satisfies ConnectorAuthMethodProviderRegistry;
 
-const CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS: ConnectorRefreshTokenAccessProviderMap =
-  {
-    ahrefs: { oauth: ahrefsProvider.access },
-    airtable: { oauth: airtableProvider.access },
-    asana: { oauth: asanaProvider.access },
-    base44: { oauth: base44Provider.access },
-    canva: { oauth: canvaProvider.access },
-    close: { oauth: closeProvider.access },
-    deel: { oauth: deelProvider.access },
-    docusign: { oauth: docusignProvider.access },
-    dropbox: { oauth: dropboxProvider.access },
-    figma: { oauth: figmaProvider.access },
-    "garmin-connect": { oauth: garminConnectProvider.access },
-    gmail: { oauth: gmailProvider.access },
-    "google-ads": { oauth: googleAdsProvider.access },
-    "google-calendar": { oauth: googleCalendarProvider.access },
-    "google-docs": { oauth: googleDocsProvider.access },
-    "google-drive": { oauth: googleDriveProvider.access },
-    "google-meet": { oauth: googleMeetProvider.access },
-    "google-sheets": { oauth: googleSheetsProvider.access },
-    gumroad: { oauth: gumroadProvider.access },
-    hubspot: { oauth: hubspotProvider.access },
-    linear: { oauth: linearProvider.access },
-    mercury: { oauth: mercuryProvider.access },
-    monday: { oauth: mondayProvider.access },
-    neon: { oauth: neonProvider.access },
-    notion: { oauth: notionProvider.access },
-    "outlook-calendar": { oauth: outlookCalendarProvider.access },
-    "outlook-mail": { oauth: outlookMailProvider.access },
-    posthog: { oauth: posthogProvider.access },
-    reddit: { oauth: redditProvider.access },
-    sentry: { oauth: sentryProvider.access },
-    slock: { oauth: slockProvider.access },
-    spotify: { oauth: spotifyProvider.access },
-    strava: { oauth: stravaProvider.access },
-    stripe: { oauth: stripeProvider.access },
-    supabase: { oauth: supabaseProvider.access },
-    "test-oauth": { oauth: testOauthProvider.access },
-    x: { oauth: xProvider.access },
-    xero: { oauth: xeroProvider.access },
-    zoom: { oauth: zoomProvider.access },
-  };
+const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY: ConnectorAuthMethodProviderRegistry =
+  CONNECTOR_AUTH_METHOD_PROVIDERS;
+
+function isConnectorProviderBackedType(
+  type: ConnectorType,
+): type is ConnectorProviderBackedType {
+  return Object.hasOwn(CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY, type);
+}
+
+function connectorAuthMethodProviderEntryFor<
+  Type extends ConnectorProviderBackedType,
+>(
+  type: Type,
+  authMethod: string,
+): ConnectorAuthMethodProviderEntry<Type> | undefined {
+  const providers: Readonly<
+    Record<string, ConnectorAuthMethodProviderEntry<Type>>
+  > = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type];
+  return providers[authMethod];
+}
+
+function connectorAuthMethodProviderCapabilities(
+  type: string,
+  authMethod: string,
+): ConnectorAuthMethodProviderCapabilities | undefined {
+  const connectorType = connectorTypeSchema.safeParse(type);
+  if (
+    !connectorType.success ||
+    !isConnectorProviderBackedType(connectorType.data)
+  ) {
+    return undefined;
+  }
+  return connectorAuthMethodProviderEntryFor(connectorType.data, authMethod);
+}
+
+function connectorAuthMethodProviderCapabilityEntries(
+  type: string,
+): readonly ConnectorAuthMethodProviderCapabilities[] {
+  const connectorType = connectorTypeSchema.safeParse(type);
+  if (
+    !connectorType.success ||
+    !isConnectorProviderBackedType(connectorType.data)
+  ) {
+    return [];
+  }
+  const providers: Readonly<
+    Record<string, ConnectorAuthMethodProviderCapabilities>
+  > = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[connectorType.data];
+  return Object.values(providers);
+}
 
 export function hasConnectorAuthProvider(
   type: string,
@@ -389,7 +528,11 @@ export function hasConnectorAuthCodeGrantProvider(
   authMethod?: string,
 ): boolean {
   if (authMethod === undefined) {
-    return Object.hasOwn(AUTH_CODE_CONNECTOR_AUTH_PROVIDERS, type);
+    return connectorAuthMethodProviderCapabilityEntries(type).some(
+      (provider) => {
+        return provider.grant?.kind === "auth-code";
+      },
+    );
   }
   return hasConnectorAuthCodeGrantProviderForMethod(type, authMethod);
 }
@@ -398,16 +541,9 @@ function hasConnectorAuthCodeGrantProviderForMethod(
   type: string,
   authMethod: string,
 ): boolean {
-  const connectorType = connectorTypeSchema.safeParse(type);
-  if (!connectorType.success) {
-    return false;
-  }
-  if (!hasConnectorAuthCodeGrantProvider(connectorType.data)) {
-    return false;
-  }
-  return Object.hasOwn(
-    AUTH_CODE_CONNECTOR_AUTH_PROVIDERS[connectorType.data],
-    authMethod,
+  return (
+    connectorAuthMethodProviderCapabilities(type, authMethod)?.grant?.kind ===
+    "auth-code"
   );
 }
 
@@ -429,7 +565,11 @@ export function hasConnectorDeviceAuthGrantProvider(
   authMethod?: string,
 ): boolean {
   if (authMethod === undefined) {
-    return Object.hasOwn(DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS, type);
+    return connectorAuthMethodProviderCapabilityEntries(type).some(
+      (provider) => {
+        return provider.grant?.kind === "device-auth";
+      },
+    );
   }
   return hasConnectorDeviceAuthGrantProviderForMethod(type, authMethod);
 }
@@ -438,16 +578,9 @@ function hasConnectorDeviceAuthGrantProviderForMethod(
   type: string,
   authMethod: string,
 ): boolean {
-  const connectorType = connectorTypeSchema.safeParse(type);
-  if (!connectorType.success) {
-    return false;
-  }
-  if (!hasConnectorDeviceAuthGrantProvider(connectorType.data)) {
-    return false;
-  }
-  return Object.hasOwn(
-    DEVICE_AUTH_CONNECTOR_AUTH_PROVIDERS[connectorType.data],
-    authMethod,
+  return (
+    connectorAuthMethodProviderCapabilities(type, authMethod)?.grant?.kind ===
+    "device-auth"
   );
 }
 
@@ -455,37 +588,34 @@ export function hasConnectorRefreshTokenAccessProvider(
   type: string,
   authMethod?: string,
 ): type is RefreshTokenAccessConnectorType {
-  if (!Object.hasOwn(CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS, type)) {
-    return false;
-  }
   if (authMethod === undefined) {
-    return true;
+    return connectorAuthMethodProviderCapabilityEntries(type).some(
+      (provider) => {
+        return provider.access?.kind === "refresh-token";
+      },
+    );
   }
-  const providers = CONNECTOR_REFRESH_TOKEN_ACCESS_PROVIDERS[
-    type as RefreshTokenAccessConnectorType
-  ] as Readonly<Record<string, unknown>>;
-  return Object.hasOwn(providers, authMethod);
+  return (
+    connectorAuthMethodProviderCapabilities(type, authMethod)?.access?.kind ===
+    "refresh-token"
+  );
 }
 
 export function hasConnectorTokenRevokeProvider(
   type: string,
   authMethod?: string,
 ): type is TokenRevokeConnectorType {
-  const connectorType = connectorTypeSchema.safeParse(type);
-  if (!connectorType.success) {
-    return false;
-  }
   if (authMethod === undefined) {
-    return getConfiguredConnectorAuthMethods(connectorType.data).some(
-      (configuredAuthMethod) => {
-        return hasConnectorTokenRevokeProvider(
-          connectorType.data,
-          configuredAuthMethod,
-        );
+    return connectorAuthMethodProviderCapabilityEntries(type).some(
+      (provider) => {
+        return provider.revoke?.kind === "token-revoke";
       },
     );
   }
-  return connectorAuthMethodSupportsTokenRevoke(connectorType.data, authMethod);
+  return (
+    connectorAuthMethodProviderCapabilities(type, authMethod)?.revoke?.kind ===
+    "token-revoke"
+  );
 }
 
 export async function buildConnectorAuthCodeAuthorizationUrl<
@@ -505,7 +635,7 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
     args.type,
     args.authMethod,
   );
-  return await provider.grant.buildAuthUrl({
+  return await provider.buildAuthUrl({
     ...connectorAuthProviderClientArgs(args.authClient),
     authCodeGrant,
     redirectUri: args.redirectUri,
@@ -533,7 +663,7 @@ export async function exchangeConnectorAuthCode<
     args.type,
     args.authMethod,
   );
-  return await provider.grant.exchangeCode({
+  return await provider.exchangeCode({
     ...connectorAuthProviderClientArgs(args.authClient),
     authCodeGrant,
     code: args.code,
@@ -559,7 +689,7 @@ export async function startConnectorDeviceAuthorization<
     args.type,
     args.authMethod,
   );
-  return await provider.grant.startDeviceAuth({
+  return await provider.startDeviceAuth({
     ...connectorAuthProviderClientArgs(args.authClient),
     deviceAuthGrant,
     scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
@@ -582,7 +712,7 @@ export async function pollConnectorDeviceAuthorization<
     args.type,
     args.authMethod,
   );
-  return await provider.grant.pollDeviceAuth({
+  return await provider.pollDeviceAuth({
     ...connectorAuthProviderClientArgs(args.authClient),
     deviceAuthGrant,
     deviceCode: args.deviceCode,
