@@ -414,6 +414,7 @@ export const upsertUserPermissionGrant$ = command(
           ...params,
           ttlSeconds: USER_PERMISSION_GRANT_TTL_SECONDS,
         },
+        fetchOptions: { signal },
       }),
       [200],
     );
