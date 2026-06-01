@@ -2686,6 +2686,7 @@ interface PermissionActionButtonState {
   submitDone: boolean;
   alreadyApplied: boolean;
   canManagePermissions: boolean;
+  selfServiceGrant: boolean;
   existingRequestStatus: "pending" | "approved" | "rejected" | null;
 }
 
@@ -2753,9 +2754,13 @@ function permissionActionButtonLabel(
     return "Request sent";
   }
   if (state.saving) {
-    return state.canManagePermissions ? "Saving..." : "Requesting...";
+    return state.canManagePermissions || state.selfServiceGrant
+      ? "Saving..."
+      : "Requesting...";
   }
-  return state.canManagePermissions ? "Confirm" : "Request approval";
+  return state.canManagePermissions || state.selfServiceGrant
+    ? "Confirm"
+    : "Request approval";
 }
 
 function permissionActionButtonDisabled(
@@ -2848,6 +2853,7 @@ function createPermissionActionButtonState(params: {
   saving: boolean;
   alreadyApplied: boolean;
   canManagePermissions: boolean;
+  selfServiceGrant: boolean;
   existingRequestStatus: "pending" | "approved" | "rejected" | null;
   saveDone: boolean;
   submitDone: boolean;
@@ -2861,6 +2867,7 @@ function createPermissionActionButtonState(params: {
     submitDone: params.submitDone,
     alreadyApplied: params.alreadyApplied,
     canManagePermissions: params.canManagePermissions,
+    selfServiceGrant: params.selfServiceGrant,
     existingRequestStatus: params.existingRequestStatus,
   };
 }
@@ -3116,6 +3123,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     submitDone,
     alreadyApplied,
     canManagePermissions,
+    selfServiceGrant: userPermissionGrantsEnabled,
     existingRequestStatus: existingRequest?.status ?? null,
   });
 

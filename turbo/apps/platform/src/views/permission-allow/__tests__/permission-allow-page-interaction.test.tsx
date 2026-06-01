@@ -265,7 +265,7 @@ describe("permission allow page - self-service user grants", () => {
     expect(policyCalled).toBeFalsy();
   });
 
-  it("writes a current-user grant for members without creating an approval request", async () => {
+  it("writes a current-user grant for members without showing approval request UI", async () => {
     let grantBody: unknown;
     let requestCreated = false;
     let requestsListed = false;
@@ -300,13 +300,15 @@ describe("permission allow page - self-service user grants", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Request approval")).toBeInTheDocument();
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
     });
 
+    expect(screen.queryByText("Request approval")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reasons for request")).not.toBeInTheDocument();
     expect(screen.queryByText(/temporary/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/permanent/i)).not.toBeInTheDocument();
 
-    click(screen.getByText("Request approval"));
+    click(screen.getByText("Confirm"));
 
     await waitFor(() => {
       expect(grantBody).toBeDefined();

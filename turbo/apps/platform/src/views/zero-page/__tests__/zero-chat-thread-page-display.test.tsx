@@ -527,7 +527,7 @@ describe("zero chat thread page display - permission action card", () => {
       return screen.getByTestId("permission-action-card");
     });
     expect(hasSubscription("permissionAccessRequestsChanged")).toBeFalsy();
-    click(await within(card).findByText("Request approval"));
+    click(await within(card).findByText("Confirm"));
 
     await waitFor(() => {
       expect(grantBody).toMatchObject({

@@ -580,6 +580,7 @@ function DoctorAdminConfirmCard({
   agentDisplayName,
   agentAvatarUrl,
   userName,
+  message,
   ref,
   permission,
   action,
@@ -589,6 +590,7 @@ function DoctorAdminConfirmCard({
   agentDisplayName: string;
   agentAvatarUrl: string | null;
   userName: string;
+  message?: string;
   ref: string;
   permission: { name: string; description?: string };
   action: "allow" | "deny";
@@ -602,7 +604,8 @@ function DoctorAdminConfirmCard({
 
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {`Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
+            {message ??
+              `Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
           </p>
 
           <AgentPill
@@ -804,17 +807,16 @@ function DoctorModeView({
     }
 
     return (
-      <DoctorMemberRequestCard
+      <DoctorAdminConfirmCard
         agentDisplayName={agentDisplayName}
         agentAvatarUrl={agent.avatarUrl}
         userName={userName}
+        message={`Hey ${userName}, you're updating your permissions for ${agentDisplayName}.`}
         ref={ref}
         permission={permission}
         action={action}
-        reason={reason}
-        submitting={grantSaving}
-        onSubmit={handleGrantSave}
-        onReasonChange={setReasonValue}
+        saving={grantSaving}
+        onSave={handleGrantSave}
       />
     );
   }
