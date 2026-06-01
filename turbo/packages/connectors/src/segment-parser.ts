@@ -13,7 +13,8 @@
  *   - `{name}suffix`            parameter + literal suffix.
  *   - `prefix{name}`            literal prefix + parameter.
  *   - `prefix{name}suffix`      literal prefix + parameter + literal suffix.
- *   - Parameter names may carry a trailing `+` or `*` for greedy matching;
+ *   - Parameter names are opaque non-empty segment text and may carry a
+ *     trailing `+` or `*` for greedy matching;
  *     greedy is only valid in positions the caller allows (leftmost host
  *     segment, or last rule-path segment). Greedy names must NOT appear in
  *     mixed segments — that combination is reserved.
@@ -23,7 +24,6 @@
  *   - `{a}{b}`                  adjacent parameters in one segment.
  *   - `{a}.{b}`                 literal-separated parameters in one segment.
  *   - `{name` / `name}`         unbalanced brace.
- *   - `{<malformed>}`           invalid parameter name characters.
  *
  * Match-time semantics for mixed segments (carried by `param` result):
  *   - The runtime segment must startsWith(prefix) AND endsWith(suffix)

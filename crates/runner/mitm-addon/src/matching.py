@@ -464,7 +464,9 @@ def parse_segment(seg: str) -> dict:
 
     Grammar mirrors turbo/packages/connectors/src/segment-parser.ts —
     keep both implementations in lockstep. Any change to accepted or
-    rejected forms must land in both languages at once.
+    rejected forms must land in both languages at once. Parameter names are
+    opaque non-empty segment text; callers validate the surrounding URL/rule
+    syntax before parsing.
 
     Returns one of:
       {"kind": "literal", "value": seg}
