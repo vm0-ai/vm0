@@ -518,67 +518,10 @@ def match_host(host: str, pattern: str) -> dict | None:
     - {name+} matches one or more leading host segments. Must be first.
     - {name*} matches zero or more leading host segments. Must be first.
     """
-    # Preserve original host case for param value capture; compare via
-    # lowered copies.
-    host_segs_orig = host.split(".")
-    host_segs_lower = [s.lower() for s in host_segs_orig]
-    pattern_segs_orig = pattern.split(".")
-
-    params: dict[str, str] = {}
-
-    # Match right-to-left: reverse both, then match like a path.
-    host_segs_orig = list(reversed(host_segs_orig))
-    host_segs_lower = list(reversed(host_segs_lower))
-    pattern_segs_orig = list(reversed(pattern_segs_orig))
-
-    hi = 0
-    last_pattern_index = len(pattern_segs_orig) - 1
-    for pattern_index, seg_orig in enumerate(pattern_segs_orig):
-        parsed = parse_segment(seg_orig)
-        # Invalid patterns are rejected at config load time; a runtime
-        # error here means the config is already broken, so bail.
-        if parsed["kind"] == "error":
-            return None
-        if parsed["kind"] == "literal":
-            if hi >= len(host_segs_lower) or host_segs_lower[hi] != parsed["value"].lower():
-                return None
-            hi += 1
-            continue
-        name = parsed["name"]
-        greedy = parsed["greedy"]
-        prefix = parsed["prefix"]
-        suffix = parsed["suffix"]
-        if greedy == "+":
-            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
-                return None
-            if hi >= len(host_segs_orig):
-                return None
-            remaining = list(reversed(host_segs_orig[hi:]))
-            params[name] = ".".join(remaining)
-            return params
-        if greedy == "*":
-            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
-                return None
-            remaining = list(reversed(host_segs_orig[hi:]))
-            params[name] = ".".join(remaining)
-            return params
-        if hi >= len(host_segs_orig):
-            return None
-        if prefix == "" and suffix == "":
-            # Preserve legacy behavior: host param captures are lowercased.
-            params[name] = host_segs_lower[hi]
-        else:
-            # Mixed segment: match against lowered runtime + lowered
-            # prefix/suffix to maintain the case-insensitive host contract.
-            captured = _match_segment_literal(host_segs_lower[hi], prefix.lower(), suffix.lower())
-            if captured is None:
-                return None
-            params[name] = captured
-        hi += 1
-
-    if hi != len(host_segs_orig):
+    pattern_segs = _compile_segments(tuple(reversed(pattern.split("."))))
+    if pattern_segs is None:
         return None
-    return params
+    return _match_compiled_host(host, pattern_segs)
 
 
 def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[dict, int] | None:
@@ -591,50 +534,10 @@ def match_path_prefix(path_segs: list[str], pattern_segs: list[str]) -> tuple[di
 
     Returns (params, consumed_count) on match, None on no match.
     """
-    params: dict[str, str] = {}
-    pi = 0
-
-    last_pattern_index = len(pattern_segs) - 1
-    for pattern_index, seg in enumerate(pattern_segs):
-        parsed = parse_segment(seg)
-        if parsed["kind"] == "error":
-            return None
-        if parsed["kind"] == "literal":
-            if pi >= len(path_segs) or path_segs[pi] != parsed["value"]:
-                return None
-            pi += 1
-            continue
-        name = parsed["name"]
-        greedy = parsed["greedy"]
-        prefix = parsed["prefix"]
-        suffix = parsed["suffix"]
-        if greedy == "+":
-            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
-                return None
-            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
-                return None
-            params[name] = "/".join(path_segs[pi:])
-            return params, len(path_segs)
-        if greedy == "*":
-            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
-                return None
-            params[name] = "/".join(path_segs[pi:])
-            return params, len(path_segs)
-        if pi >= len(path_segs):
-            return None
-        runtime = path_segs[pi]
-        if prefix == "" and suffix == "":
-            if runtime == "":
-                return None
-            params[name] = runtime
-        else:
-            captured = _match_segment_literal(runtime, prefix, suffix)
-            if captured is None:
-                return None
-            params[name] = captured
-        pi += 1
-
-    return params, pi
+    compiled_pattern = _compile_segments(pattern_segs)
+    if compiled_pattern is None:
+        return None
+    return _match_compiled_path_prefix(path_segs, compiled_pattern)
 
 
 def _split_path_segments(path: str) -> list[str]:
@@ -662,69 +565,10 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     if url_parts is None:
         return None
 
-    # Fast path: no parameters - compare scheme/authority independently so
-    # host casing cannot bypass static firewall bases, while paths remain
-    # case-sensitive.
-    if not _has_base_url_params(base):
-        base_parts = _split_base_match_url(
-            strip_optional_terminal_slash(base),
-            allow_query_fragment=False,
-        )
-        if base_parts is None:
-            return None
-        if url_parts.scheme.lower() != base_parts.scheme.lower():
-            return None
-        if url_parts.authority.lower() != base_parts.authority.lower():
-            return None
-
-        base_path = base_parts.path
-        if base_path and not url_parts.path.startswith(base_path):
-            return None
-        rest = url_parts.path[len(base_path) :] if base_path else url_parts.path
-        if rest and rest[0] != "/":
-            return None
-        rel_path = rest or "/"
-        return rel_path, {}
-
-    # Parameterized base URL: parse into scheme, host pattern, path pattern
-    base_parts = _split_base_match_url(
-        strip_optional_terminal_slash(base),
-        allow_query_fragment=False,
-        allow_host_params=True,
-    )
-    if base_parts is None:
+    compiled_base = _compile_base(base)
+    if compiled_base is None or _compiled_base_is_invalid_for_match_base_url(compiled_base):
         return None
-
-    # Request must start with same scheme
-    if url_parts.scheme.lower() != base_parts.scheme.lower():
-        return None
-
-    # Match authority directly after _split_base_match_url canonicalization.
-    # Non-standard ports (e.g., :8443) are still part of the authority and must
-    # not match base patterns without the same explicit port, otherwise auth
-    # headers could leak to a different listener.
-    host_params = match_host(url_parts.authority, base_parts.authority)
-    if host_params is None:
-        return None
-
-    # Match base path prefix
-    base_path = base_parts.path
-    clean_url_path = url_parts.path
-    if base_path and base_path != "/":
-        base_path_segs = _split_path_segments(base_path)
-        url_path_segs = _split_path_segments(clean_url_path)
-        path_result = match_path_prefix(url_path_segs, base_path_segs)
-        if path_result is None:
-            return None
-        path_params, consumed = path_result
-        remaining_segs = url_path_segs[consumed:]
-        rel_path = "/" + "/".join(remaining_segs) if remaining_segs else "/"
-        all_params = {**host_params, **path_params}
-    else:
-        rel_path = clean_url_path or "/"
-        all_params = host_params
-
-    return rel_path, all_params
+    return _match_compiled_base_url_parts(url_parts, compiled_base)
 
 
 def match_path(path: str, pattern: str) -> dict | None:
@@ -738,57 +582,10 @@ def match_path(path: str, pattern: str) -> dict | None:
     - {name*} matches the rest of the path (zero or more segments). Must be last.
     """
     path_segs = _split_path_segments(path)
-    pattern_segs = _split_path_segments(pattern)
-
-    params: dict[str, str] = {}
-    pi = 0
-
-    # Note: greedy params ({name+}, {name*}) must be the last segment.
-    # This invariant is enforced at compose time by validateRule() in firewall-expander.ts.
-    last_pattern_index = len(pattern_segs) - 1
-    for pattern_index, seg in enumerate(pattern_segs):
-        parsed = parse_segment(seg)
-        if parsed["kind"] == "error":
-            return None
-        if parsed["kind"] == "literal":
-            if pi >= len(path_segs) or path_segs[pi] != parsed["value"]:
-                return None
-            pi += 1
-            continue
-        name = parsed["name"]
-        greedy = parsed["greedy"]
-        prefix = parsed["prefix"]
-        suffix = parsed["suffix"]
-        if greedy == "+":
-            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
-                return None
-            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
-                return None
-            params[name] = "/".join(path_segs[pi:])
-            return params
-        if greedy == "*":
-            if _is_invalid_greedy_param(pattern_index, last_pattern_index, prefix, suffix):
-                return None
-            params[name] = "/".join(path_segs[pi:])
-            return params
-        if pi >= len(path_segs):
-            return None
-        runtime = path_segs[pi]
-        if prefix == "" and suffix == "":
-            if runtime == "":
-                return None
-            params[name] = runtime
-        else:
-            captured = _match_segment_literal(runtime, prefix, suffix)
-            if captured is None:
-                return None
-            params[name] = captured
-        pi += 1
-
-    # All pattern segments consumed; path must also be fully consumed
-    if pi != len(path_segs):
+    pattern_segs = _compile_segments(tuple(_split_path_segments(pattern)))
+    if pattern_segs is None:
         return None
-    return params
+    return _match_compiled_path_segments(path_segs, pattern_segs)
 
 
 def _compile_segments(segments: list[str] | tuple[str, ...]) -> tuple[ParsedSegment, ...] | None:
@@ -901,6 +698,17 @@ def _compiled_base_params_are_valid(base: _CompiledBase) -> bool:
         param_names.add(segment.name)
 
     return True
+
+
+def _compiled_base_is_invalid_for_match_base_url(base: _CompiledBase) -> bool:
+    return (
+        base.has_query_or_fragment
+        or has_unsafe_runtime_url_syntax(base.raw)
+        or base.param_parse_malformed
+        or base.parts.host_malformed
+        or base.parts.has_userinfo
+        or base.parts.port_malformed
+    )
 
 
 def _is_string_record(value: object) -> bool:
