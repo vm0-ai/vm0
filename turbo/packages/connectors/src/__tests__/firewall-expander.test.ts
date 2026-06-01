@@ -280,6 +280,12 @@ describe("resolveFirewallSelections", () => {
       return collectAndValidatePermissions(config("https://example.com\\hook"));
     }).toThrow("must not contain backslash");
     expect(() => {
+      return collectAndValidatePermissions(config("https://0177.0.0.1/hook"));
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(config("https://127。0。0。1/hook"));
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
       return collectAndValidatePermissions(
         config("https://example.com/\x00hook"),
       );
@@ -747,6 +753,15 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("https://[::ffff:127.0.0.1]/v1/{org}", "fw");
     }).toThrow("host must have at least two segments");
+  });
+
+  it("should reject parameterized base URL with IPv4-shaped host", () => {
+    expect(() => {
+      return validateBaseUrl("https://127.{octet}.0.1", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{a}.0.0.1", "fw");
+    }).toThrow("not a valid URL authority");
   });
 
   it("should accept parameterized base URL with explicit empty path segments", () => {

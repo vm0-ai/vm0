@@ -3226,6 +3226,8 @@ class TestCompiledFirewallMatching:
             ("https://user:pass@{sub}.github.com", "https://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com:bad", "https://api.github.com/repos/org/repo"),
             ("https://{sub}.github.com:99999", "https://api.github.com/repos/org/repo"),
+            ("https://127.{octet}.0.1", "https://127.0.0.1/repos/org/repo"),
+            ("https://{a}.0.0.1", "https://127.0.0.1/repos/org/repo"),
             ("https://\u212a.example", "https://k.example/repos/org/repo"),
         ],
     )
