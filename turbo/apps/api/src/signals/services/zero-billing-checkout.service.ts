@@ -11,6 +11,7 @@ import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
+  readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly trialDays?: 7;
   readonly successUrl: string;
@@ -118,12 +119,22 @@ export function activeCustomCreditPriceId(): string | undefined {
   return env("ZERO_PRICE")?.customCredits?.[0];
 }
 
-function checkoutSessionMetadata(
-  orgId: string,
-  adAttribution: Readonly<Record<string, string | undefined>> | undefined,
-): Record<string, string> {
-  const metadata: Record<string, string> = { orgId };
-  for (const [key, value] of Object.entries(adAttribution ?? {})) {
+function checkoutSessionMetadata(args: {
+  readonly orgId: string;
+  readonly tier: SubscriptionCheckoutTier;
+  readonly priceId: string;
+  readonly trialDays?: 7;
+  readonly adAttribution:
+    | Readonly<Record<string, string | undefined>>
+    | undefined;
+}): Record<string, string> {
+  const metadata: Record<string, string> = {
+    orgId: args.orgId,
+    tier: args.tier,
+    priceId: args.priceId,
+    flow: args.trialDays === undefined ? "standard" : "trial",
+  };
+  for (const [key, value] of Object.entries(args.adAttribution ?? {})) {
     if (value) {
       metadata[key] = value;
     }
@@ -203,7 +214,13 @@ export const createCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
-    const metadata = checkoutSessionMetadata(args.orgId, args.adAttribution);
+    const metadata = checkoutSessionMetadata({
+      orgId: args.orgId,
+      tier: args.tier,
+      priceId: args.priceId,
+      trialDays: args.trialDays,
+      adAttribution: args.adAttribution,
+    });
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,

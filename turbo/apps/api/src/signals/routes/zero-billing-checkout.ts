@@ -100,6 +100,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     createCheckoutSession$,
     {
       orgId: auth.orgId,
+      tier,
       priceId,
       trialDays,
       successUrl,

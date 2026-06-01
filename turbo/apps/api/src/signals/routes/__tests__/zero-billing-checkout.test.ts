@@ -265,8 +265,20 @@ describe("POST /api/zero/billing/checkout", () => {
       allow_promotion_codes: true,
       success_url: `${APP_ORIGIN}/billing?billing=success`,
       cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
-      metadata: { orgId: fixture.orgId },
-      subscription_data: { metadata: { orgId: fixture.orgId } },
+      metadata: {
+        orgId: fixture.orgId,
+        tier: "pro",
+        priceId: TEST_PRICE_PRO,
+        flow: "standard",
+      },
+      subscription_data: {
+        metadata: {
+          orgId: fixture.orgId,
+          tier: "pro",
+          priceId: TEST_PRICE_PRO,
+          flow: "standard",
+        },
+      },
     });
   });
 
@@ -378,6 +390,9 @@ describe("POST /api/zero/billing/checkout", () => {
     });
     const expectedMetadata = {
       orgId: fixture.orgId,
+      tier: "pro",
+      priceId: TEST_PRICE_PRO,
+      flow: "standard",
       vm0_source: "presentation",
       utm_source: "google",
       utm_medium: "cpc",
@@ -431,9 +446,19 @@ describe("POST /api/zero/billing/checkout", () => {
       allow_promotion_codes: true,
       success_url: `${APP_ORIGIN}/onboarding?billing=pro`,
       cancel_url: `${APP_ORIGIN}/onboarding?billing=canceled`,
-      metadata: { orgId: fixture.orgId },
+      metadata: {
+        orgId: fixture.orgId,
+        tier: "pro",
+        priceId: TEST_PRICE_PRO,
+        flow: "trial",
+      },
       subscription_data: {
-        metadata: { orgId: fixture.orgId },
+        metadata: {
+          orgId: fixture.orgId,
+          tier: "pro",
+          priceId: TEST_PRICE_PRO,
+          flow: "trial",
+        },
         trial_period_days: 7,
       },
     });
