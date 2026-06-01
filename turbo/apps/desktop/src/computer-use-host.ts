@@ -10,6 +10,10 @@ import type {
   ComputerUsePermissionState,
   ComputerUseRuntimeAuditEvent,
 } from "./computer-use-types";
+import {
+  COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
+  COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
+} from "./computer-use-startup-gate";
 
 const ONLINE_POLL_MS = 2_000;
 const AUTH_ME_PATH = "/api/auth/me";
@@ -274,14 +278,12 @@ export class ComputerUseHostRuntime {
       if (await this.hasAuthenticatedSession()) {
         this.setState({
           status: "needs_organization",
-          lastError:
-            "Zero Desktop is signed in but no workspace is active. Select a workspace and retry.",
+          lastError: COMPUTER_USE_NEEDS_ORGANIZATION_MESSAGE,
         });
       } else {
         this.setState({
           status: "unauthenticated",
-          lastError:
-            "Desktop host could not authenticate with the API session. Sign in and retry.",
+          lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
         });
       }
       return null;
@@ -337,8 +339,7 @@ export class ComputerUseHostRuntime {
       this.setState({
         status: "unauthenticated",
         hostId: null,
-        lastError:
-          "Desktop host could not authenticate with the API session. Sign in and retry.",
+        lastError: COMPUTER_USE_UNAUTHENTICATED_MESSAGE,
       });
       return false;
     }

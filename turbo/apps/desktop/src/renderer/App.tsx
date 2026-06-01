@@ -20,6 +20,7 @@ import {
 import { useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { DesktopAuthState } from "../desktop-bridge";
+import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
 import type { DesktopComputerUseState } from "../computer-use-types";
 import {
   computerUseData$,
@@ -88,14 +89,16 @@ function BridgeSubscription() {
 }
 
 function AutoStartRuntime({
+  authState,
   state,
 }: {
+  readonly authState: DesktopAuthState | null;
   readonly state: DesktopComputerUseState;
 }) {
   const maybeAutoStart = useSet(maybeAutoStartComputerUse$);
   useEffect(() => {
-    void maybeAutoStart(state);
-  }, [maybeAutoStart, state]);
+    void maybeAutoStart(state, authState);
+  }, [authState, maybeAutoStart, state]);
   return null;
 }
 
@@ -411,7 +414,15 @@ function PermissionsPanel({
   );
 }
 
-function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
+function RuntimePanel({
+  authLoading,
+  authState,
+  state,
+}: {
+  readonly authLoading: boolean;
+  readonly authState: DesktopAuthState | null;
+  readonly state: DesktopComputerUseState;
+}) {
   const [startLoadable, start] = useLoadableSet(startComputerUse$);
   const [refreshLoadable, refresh] = useLoadableSet(refreshComputerUse$);
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
@@ -420,11 +431,18 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
   );
   const missingPermissions =
     !state.permissions.accessibility || !state.permissions.screenRecording;
+  const signedOut =
+    !authLoading && (!authState || authState.status === "signed_out");
+  const needsOrganization =
+    !authLoading &&
+    authState?.status === "signed_in" &&
+    authState.organization === null;
   const startDisabled =
+    authLoading ||
+    !hasReadyDesktopAuth(authState) ||
     missingPermissions ||
     state.host.status === "connecting" ||
     state.host.status === "online" ||
-    state.host.status === "needs_organization" ||
     startLoadable.state === "loading";
 
   return (
@@ -475,18 +493,19 @@ function RuntimePanel({ state }: { readonly state: DesktopComputerUseState }) {
         >
           Refresh
         </IconButton>
-        {state.host.status === "unauthenticated" && hasDesktopAuthBridge() && (
-          <IconButton
-            icon={<IconExternalLink size={15} />}
-            onClick={() => {
-              void signIn();
-            }}
-            disabled={signInLoadable.state === "loading"}
-          >
-            Sign in
-          </IconButton>
-        )}
-        {state.host.status === "needs_organization" &&
+        {(signedOut || state.host.status === "unauthenticated") &&
+          hasDesktopAuthBridge() && (
+            <IconButton
+              icon={<IconExternalLink size={15} />}
+              onClick={() => {
+                void signIn();
+              }}
+              disabled={signInLoadable.state === "loading"}
+            >
+              Sign in
+            </IconButton>
+          )}
+        {(needsOrganization || state.host.status === "needs_organization") &&
           hasDesktopAuthBridge() && (
             <IconButton
               icon={<IconBuilding size={15} />}
@@ -844,19 +863,27 @@ function UnsupportedPanel({ platform }: { readonly platform: string }) {
 }
 
 function ComputerUseContent({
+  authLoading,
+  authState,
   state,
 }: {
+  readonly authLoading: boolean;
+  readonly authState: DesktopAuthState | null;
   readonly state: DesktopComputerUseState;
 }) {
   return (
     <>
-      <AutoStartRuntime state={state} />
+      <AutoStartRuntime authState={authState} state={state} />
       {!state.supported ? (
         <UnsupportedPanel platform={state.platform} />
       ) : (
         <>
           <PermissionsPanel state={state} />
-          <RuntimePanel state={state} />
+          <RuntimePanel
+            authLoading={authLoading}
+            authState={authState}
+            state={state}
+          />
           <CommandLogPanel state={state} />
         </>
       )}
@@ -866,6 +893,9 @@ function ComputerUseContent({
 
 function ComputerUsePage() {
   const loadable = useLastLoadable(computerUseData$);
+  const authLoadable = useLastLoadable(desktopAuthData$);
+  const authState = authLoadable.state === "hasData" ? authLoadable.data : null;
+  const authLoading = authLoadable.state === "loading";
 
   if (!hasDesktopComputerUseBridge()) {
     return (
@@ -876,7 +906,13 @@ function ComputerUsePage() {
   }
 
   if (loadable.state === "hasData") {
-    return <ComputerUseContent state={loadable.data} />;
+    return (
+      <ComputerUseContent
+        authLoading={authLoading}
+        authState={authState}
+        state={loadable.data}
+      />
+    );
   }
 
   if (loadable.state === "hasError") {

@@ -25,8 +25,13 @@ import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   IDLE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
+  type ComputerUseHostRuntimeState,
   type DesktopComputerUseState,
 } from "./computer-use-types";
+import {
+  resolveComputerUseStartupGate,
+  type ComputerUseStartupGate,
+} from "./computer-use-startup-gate";
 import {
   getComputerUsePermissionState,
   refreshComputerUsePermissionState,
@@ -87,6 +92,7 @@ let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
+let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
@@ -195,12 +201,33 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
     platform: process.platform,
     supported: process.platform === "darwin",
     permissions: getComputerUsePermissionState(),
-    host: computerUseRuntime?.getState() ?? IDLE_COMPUTER_USE_HOST_STATE,
+    host:
+      computerUseRuntime?.getState() ??
+      computerUseBlockedHostState ??
+      IDLE_COMPUTER_USE_HOST_STATE,
   };
 }
 
 async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
+  const permissions = await refreshComputerUsePermissionState();
+  let startupGate: ComputerUseStartupGate = { status: "missing_permissions" };
+  if (hasRequiredComputerUsePermissions(permissions)) {
+    const authState = await getAuthSession().getAuthState();
+    startupGate = resolveComputerUseStartupGate({ authState, permissions });
+  }
+  if (startupGate.status !== "ready") {
+    if (computerUseRuntime) {
+      await computerUseRuntime.stop();
+      computerUseRuntime = null;
+    }
+    computerUseBlockedHostState =
+      startupGate.status === "blocked" ? startupGate.host : null;
+    notifyDesktopComputerUseChanged();
+    return getComputerUseBridgeState();
+  }
+
   const desktopSession = session.fromPartition(config.sessionPartition);
+  computerUseBlockedHostState = null;
   if (!computerUseRuntime) {
     computerUseRuntime = new ComputerUseHostRuntime({
       platformUrl: config.platformUrl,
@@ -241,7 +268,10 @@ async function requestComputerUseScreenRecording(): Promise<DesktopComputerUseSt
 }
 
 async function refreshComputerUsePermissions(): Promise<DesktopComputerUseState> {
-  await refreshComputerUsePermissionState();
+  const permissions = await refreshComputerUsePermissionState();
+  if (!hasRequiredComputerUsePermissions(permissions)) {
+    computerUseBlockedHostState = null;
+  }
   notifyDesktopComputerUseChanged();
   return getComputerUseBridgeState();
 }
@@ -590,8 +620,10 @@ function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
 }
 
 async function maybeStartComputerUseAfterAuth(): Promise<void> {
-  computerUseRuntime?.stop();
+  const runtime = computerUseRuntime;
   computerUseRuntime = null;
+  computerUseBlockedHostState = null;
+  await runtime?.stop();
   notifyDesktopAuthChanged();
   notifyDesktopComputerUseChanged();
   const permissions = await refreshComputerUsePermissionState();
