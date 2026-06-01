@@ -119,9 +119,9 @@ def _expected_usage(
         "tokens.output": resolved_output_tokens,
     }
     if provider_case.uses_openai_responses and resolved_cached_tokens is not None:
-        cache_read_tokens = min(resolved_cached_tokens, resolved_input_tokens)
-        expected["tokens.input"] = resolved_input_tokens - cache_read_tokens
-        expected["tokens.cache_read"] = cache_read_tokens
+        assert resolved_cached_tokens <= resolved_input_tokens
+        expected["tokens.input"] = resolved_input_tokens - resolved_cached_tokens
+        expected["tokens.cache_read"] = resolved_cached_tokens
     return expected
 
 
