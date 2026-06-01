@@ -82,13 +82,14 @@ def _normalize_registry_vms(raw_registry: object) -> tuple[dict, int]:
 def load_registry(registry_path: str) -> dict:
     """Load the proxy registry, reusing cached data when possible.
 
-    The registry is reloaded only when file stat metadata changes. If stat
-    fails, the current registry cache is returned. If processing a changed file
+    Cache state is scoped to one active registry path. The registry is reloaded
+    only when file stat metadata changes for that path. If stat fails, the
+    current path's registry cache is returned. If processing a changed file
     fails, the current cache is preserved and returned, and that file state is
     recorded as processed so repeated reads short-circuit on the same stat key.
     Failures are warning-logged at most once until a successful reload clears
-    the error state. A successful reload also evicts firewall-auth cache
-    entries for run IDs no longer present in the registry.
+    the error state. A successful reload also evicts firewall-auth cache entries
+    for run IDs no longer present in the registry.
     """
     path = Path(registry_path)
     path_key = _path_key(path)
