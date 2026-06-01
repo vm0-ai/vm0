@@ -60,7 +60,6 @@ import {
   getAllFeatureStates,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
@@ -136,6 +135,7 @@ const AUTO_MEMORY_ARTIFACT_NAME = "memory";
 const AUTO_MEMORY_MOUNT_PATH =
   "/home/user/.claude/projects/-home-user-workspace/memory";
 const CODEX_AUTO_MEMORY_MOUNT_PATH = "/home/user/.codex/memories";
+const CANONICAL_WORKING_DIR = "/home/user/workspace";
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -585,10 +585,6 @@ async function resolveRequestedRunFramework(
   );
 }
 
-function frameworkWorkingDir(_framework: SupportedFramework): string {
-  return "/home/user/workspace";
-}
-
 function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
@@ -617,25 +613,21 @@ function withAutoMemoryArtifact(
   return [...artifacts, autoMemoryArtifact(framework)];
 }
 
-function resolveComposeArtifactMountPath(
-  artifact: ComposeArtifact,
-  framework: SupportedFramework,
-): string {
-  if (!artifact.mount_path || artifact.mount_path === MOUNT_PATH_TEMPLATE) {
-    return frameworkWorkingDir(framework);
+function resolveComposeArtifactMountPath(artifact: ComposeArtifact): string {
+  if (!artifact.mount_path) {
+    return CANONICAL_WORKING_DIR;
   }
   return artifact.mount_path;
 }
 
 function composeArtifacts(
   content: AgentComposeContent,
-  framework: SupportedFramework,
 ): readonly ContextArtifact[] {
   return (content.artifacts ?? []).map((artifact) => {
     return {
       name: artifact.name,
       version: artifact.version,
-      mountPath: resolveComposeArtifactMountPath(artifact, framework),
+      mountPath: resolveComposeArtifactMountPath(artifact),
     };
   });
 }
@@ -649,7 +641,7 @@ function artifactsForRun(args: {
     args.resolved.sessionId || args.resolved.resumedFromCheckpointId
       ? args.resolved.artifacts
       : [
-          ...composeArtifacts(args.resolved.content, args.framework),
+          ...composeArtifacts(args.resolved.content),
           ...args.resolved.artifacts,
         ];
   return withAutoMemoryArtifact(
@@ -2874,7 +2866,6 @@ async function buildStoredExecutionContext(args: {
 
   return {
     context: {
-      workingDir: frameworkWorkingDir(args.framework),
       storageManifest: args.storageManifest,
       environment: {
         ...expandEnvironment({

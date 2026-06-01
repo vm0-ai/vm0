@@ -28,7 +28,6 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 pub(crate) struct JobRequest {
     pub(crate) job_id: RunId,
     pub(crate) prompt: String,
-    pub(crate) working_dir: String,
     pub(crate) cli_agent_type: String,
     #[serde(default)]
     pub(crate) vars: Option<HashMap<String, String>>,
@@ -678,7 +677,6 @@ impl JobProvider for LocalProvider {
             vars: req.vars,
             checkpoint_id: None,
             sandbox_token: String::new(),
-            working_dir: req.working_dir,
             storage_manifest: None,
             environment: req.environment,
             resume_session: req
@@ -846,7 +844,6 @@ mod tests {
         let req = JobRequest {
             job_id,
             prompt: prompt.into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             vars: None,
             environment: None,

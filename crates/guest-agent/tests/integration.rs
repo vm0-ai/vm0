@@ -25,7 +25,6 @@ static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
         std::env::set_var("VM0_API_URL", server.base_url());
         std::env::set_var("VM0_API_TOKEN", "test-token-abc123");
         std::env::set_var("VM0_RUN_ID", "test-run-001");
-        std::env::set_var("VM0_WORKING_DIR", "/tmp/test-workdir");
         std::env::set_var("VM0_PROMPT", "test prompt");
         std::env::set_var("VERCEL_PROTECTION_BYPASS", "test-bypass-value");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");

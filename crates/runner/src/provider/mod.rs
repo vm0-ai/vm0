@@ -254,7 +254,6 @@ mod tests {
             vars: None,
             checkpoint_id: None,
             sandbox_token: "sandbox-token".into(),
-            working_dir: "/workspace".into(),
             storage_manifest: None,
             environment: None,
             resume_session: None,

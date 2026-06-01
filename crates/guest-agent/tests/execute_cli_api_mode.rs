@@ -53,7 +53,6 @@ unsafe fn setup_api_env(mock_path: &Path, workdir: &Path, api_url: &str) -> Resu
             .unwrap_or_else(|| "execute-cli-api-mode-test".to_string());
         std::env::set_var("VM0_RUN_ID", run_id);
         std::env::set_var("VM0_PROMPT", "@exit-after-result");
-        std::env::set_var("VM0_WORKING_DIR", workdir);
         std::env::set_var("VM0_API_URL", api_url);
         std::env::set_var("VM0_API_TOKEN", "test-token");
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");

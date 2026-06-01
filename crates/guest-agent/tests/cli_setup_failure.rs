@@ -17,7 +17,6 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
 
     unsafe {
         std::env::set_var("VM0_RUN_ID", format!("{run_prefix}/child"));
-        std::env::set_var("VM0_WORKING_DIR", tmp.path());
         std::env::set_var("VM0_PROMPT", "@exit-after-result");
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");

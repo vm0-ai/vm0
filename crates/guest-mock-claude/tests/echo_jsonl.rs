@@ -5,17 +5,12 @@ fn mock_claude() -> Command {
     Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"))
 }
 
-fn expected_history_path(
-    home: &std::path::Path,
-    session_id: &str,
-) -> Result<std::path::PathBuf, std::io::Error> {
-    let cwd = std::env::current_dir()?.to_string_lossy().into_owned();
-    let project_name = cwd.trim_start_matches('/').replace('/', "-");
-    Ok(home
-        .join(".claude")
+fn expected_history_path(home: &std::path::Path, session_id: &str) -> std::path::PathBuf {
+    let project_name = "home-user-workspace";
+    home.join(".claude")
         .join("projects")
         .join(format!("-{project_name}"))
-        .join(format!("{session_id}.jsonl")))
+        .join(format!("{session_id}.jsonl"))
 }
 
 #[test]
@@ -45,7 +40,7 @@ fn echo_jsonl_outputs_valid_payload_unchanged() -> Result<(), Box<dyn std::error
     );
     assert!(output.stderr.is_empty());
 
-    let history = fs::read_to_string(expected_history_path(home.path(), "preview-1")?)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), "preview-1"))?;
     assert_eq!(history, format!("{payload}\n"));
     Ok(())
 }

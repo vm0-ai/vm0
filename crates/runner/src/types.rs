@@ -50,7 +50,6 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub checkpoint_id: Option<Uuid>,
     pub sandbox_token: String,
-    pub working_dir: String,
     #[serde(default)]
     pub storage_manifest: Option<StorageManifest>,
     #[serde(default)]
@@ -400,14 +399,12 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok-123",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.prompt, "hello");
         assert_eq!(ctx.sandbox_token, "tok-123");
-        assert_eq!(ctx.working_dir, "/home/user");
         assert_eq!(ctx.cli_agent_type, "claude_code");
         assert!(ctx.append_system_prompt.is_none());
         assert!(ctx.vars.is_none());
@@ -423,7 +420,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "analyze code",
             "sandboxToken": "tok-456",
-            "workingDir": "/workspace",
             "cliAgentType": "claude_code",
             "appendSystemPrompt": "be concise",
             "agentComposeVersionId": "sha256-abc",
@@ -650,7 +646,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "billableFirewalls": []
         });
@@ -664,7 +659,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "resumeSession": {
                 "sessionId": "sess-abc-123",

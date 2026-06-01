@@ -56,7 +56,6 @@ export {
   type ComposesMetadataContract,
   type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
-  MOUNT_PATH_TEMPLATE,
   agentNameSchema,
   volumeConfigSchema,
   artifactConfigSchema,

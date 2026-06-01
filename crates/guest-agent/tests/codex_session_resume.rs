@@ -54,7 +54,6 @@ fn setup_env_once() {
             std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
             std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
             std::env::set_var("VM0_PROMPT", "test prompt");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/codex-resume-workdir");
             // `home_dir` is loaded eagerly via `expect`. The marker
             // payload embeds it, so set a stable dummy.
             std::env::set_var("HOME", "/tmp/codex-resume-home");

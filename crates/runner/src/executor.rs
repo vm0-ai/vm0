@@ -1866,14 +1866,15 @@ async fn restore_session(
     }
 }
 
+const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
+
 /// Write a Claude Code session history file at `~/.claude/projects/-{project}/{id}.jsonl`.
 async fn restore_claude_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let project_name = context
-        .working_dir
+    let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
@@ -1991,7 +1992,6 @@ fn build_env_json_with_host_env(
     {
         env.insert("VM0_APPEND_SYSTEM_PROMPT".into(), asp.clone());
     }
-    env.insert("VM0_WORKING_DIR".into(), context.working_dir.clone());
     env.insert(
         "VM0_API_START_TIME".into(),
         context
@@ -2129,7 +2129,6 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_SANDBOX_REUSE_RESULT",
     "VM0_PROMPT",
     "VM0_APPEND_SYSTEM_PROMPT",
-    "VM0_WORKING_DIR",
     "VM0_API_START_TIME",
     "CLI_AGENT_TYPE",
     "VM0_ARTIFACTS",
@@ -2421,7 +2420,6 @@ mod tests {
             vars: None,
             checkpoint_id: None,
             sandbox_token: "tok".into(),
-            working_dir: "/workspace".into(),
             storage_manifest: None,
             environment: None,
             resume_session: None,
@@ -2607,7 +2605,7 @@ mod tests {
         assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
-        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
         // Guest-agent needs these to post /complete with full metadata when
         // checkpoint lands before VM teardown.
         assert!(
@@ -2820,7 +2818,7 @@ mod tests {
             "Use terse answers."
         );
         assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
-        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
     }
 
     #[test]
@@ -3161,7 +3159,6 @@ mod tests {
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
-            "workingDir": "/workspace",
             "cliAgentType": "claude-code",
             "billableFirewalls": [],
             "firewalls": [{
@@ -3204,7 +3201,6 @@ mod tests {
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
-            "workingDir": "/workspace",
             "cliAgentType": "claude-code",
             "billableFirewalls": []
         });

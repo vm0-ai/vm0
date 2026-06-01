@@ -158,28 +158,22 @@ const volumeConfigSchema = z.object({
 });
 
 /**
- * Template literal that resolves to the compose's framework-derived
- * working_dir during mount-path expansion.
- */
-export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
-
-/**
- * Mount path must be an absolute path (starts with "/") OR the literal
- * template "${{ working_dir }}" which resolves to the framework's working_dir.
+ * Mount path must be an absolute path (starts with "/"). When omitted,
+ * artifacts default to the canonical workspace root at resolution time.
  */
 const mountPathSchema = z
   .string()
   .min(1, "mount_path cannot be empty")
   .refine((val) => {
-    return val === MOUNT_PATH_TEMPLATE || val.startsWith("/");
-  }, `mount_path must be an absolute path or "${MOUNT_PATH_TEMPLATE}"`);
+    return val.startsWith("/");
+  }, "mount_path must be an absolute path");
 
 /**
  * Artifact entry in compose.
  * - name: required storage name
  * - version: optional, defaults to "latest" at resolution time
- * - mount_path: optional, defaults to working_dir at resolution time.
- *   May be the literal template "${{ working_dir }}".
+ * - mount_path: optional, defaults to the canonical workspace root at
+ *   resolution time.
  */
 const artifactConfigSchema = z.object({
   name: z.string().min(1, "Artifact name is required"),

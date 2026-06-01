@@ -4,7 +4,6 @@ import {
   agentComposeContentSchema,
   artifactConfigSchema,
   artifactsArraySchema,
-  MOUNT_PATH_TEMPLATE,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
 } from "../composes";
@@ -102,12 +101,12 @@ describe("artifactConfigSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("accepts the ${{ working_dir }} template", () => {
+  it("rejects the legacy working_dir template", () => {
     const r = artifactConfigSchema.safeParse({
       name: "a",
-      mount_path: MOUNT_PATH_TEMPLATE,
+      mount_path: "${{ working_dir }}",
     });
-    expect(r.success).toBe(true);
+    expect(r.success).toBe(false);
   });
 
   it("accepts entries with no version and no mount_path", () => {
@@ -179,7 +178,7 @@ describe("agentComposeContentSchema.artifacts", () => {
       ...baseCompose,
       artifacts: [
         { name: "a", mount_path: "/custom/path" },
-        { name: "b", mount_path: MOUNT_PATH_TEMPLATE },
+        { name: "b", mount_path: "/another/path" },
         { name: "c" },
       ],
     });

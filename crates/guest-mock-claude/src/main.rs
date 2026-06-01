@@ -39,6 +39,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ECHO_MARKER: &str = "@ECHO@";
+const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
 
 /// Parsed command-line arguments.
 struct ParsedArgs {
@@ -152,11 +153,8 @@ fn write_echo_session_history(events: &[(String, Value)]) {
     let Some(session_id) = echo_session_id(events) else {
         return;
     };
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
 
-    if let Some(path) = create_session_history(session_id, &cwd)
+    if let Some(path) = create_session_history(session_id)
         && let Ok(mut file) = std::fs::File::create(&path)
     {
         for (line, _) in events {
@@ -268,8 +266,10 @@ fn generate_session_id() -> String {
 /// Build the session history file path and create the directory.
 ///
 /// Claude Code stores session history at: `{home}/.claude/projects/-{path}/{session_id}.jsonl`
-fn build_session_history_path(session_id: &str, cwd: &str, home: &str) -> Option<String> {
-    let project_name = cwd.trim_start_matches('/').replace('/', "-");
+fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
+    let project_name = CANONICAL_WORKING_DIR
+        .trim_start_matches('/')
+        .replace('/', "-");
     let session_dir = format!("{home}/.claude/projects/-{project_name}");
 
     if std::fs::create_dir_all(&session_dir).is_err() {
@@ -280,9 +280,9 @@ fn build_session_history_path(session_id: &str, cwd: &str, home: &str) -> Option
 }
 
 /// Create session history using `$HOME` from the environment.
-fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
+fn create_session_history(session_id: &str) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    build_session_history_path(session_id, cwd, &home)
+    build_session_history_path(session_id, &home)
 }
 
 /// Emit the init + result JSONL pair shared by post-result mock test
@@ -291,9 +291,7 @@ fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
 /// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
 fn emit_post_result_pair() {
     let session_id = generate_session_id();
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
     let init_event = json!({
         "type": "system",
@@ -318,7 +316,7 @@ fn emit_post_result_pair() {
     });
     println!("{result_event}");
 
-    if let Some(path) = create_session_history(&session_id, &cwd)
+    if let Some(path) = create_session_history(&session_id)
         && let Ok(mut file) = std::fs::File::create(&path)
     {
         let _ = writeln!(file, "{init_event}");
@@ -330,9 +328,7 @@ fn emit_post_result_pair() {
 
 fn emit_stuck_tool_events() {
     let session_id = generate_session_id();
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
     // Init event
     println!(
@@ -440,11 +436,9 @@ fn run_text_mode(prompt: &str) -> ExitCode {
 
 /// Execute prompt in stream-json mode: output JSONL events, capture output.
 fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
-    let session_history_file = create_session_history(session_id, &cwd);
+    let session_history_file = create_session_history(session_id);
     let mut events: Vec<Value> = Vec::with_capacity(5);
 
     // 1. System init event
@@ -758,10 +752,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let result = build_session_history_path("test-session-123", "/workspaces/my-project", home);
+        let result = build_session_history_path("test-session-123", home);
 
         let expected =
-            format!("{home}/.claude/projects/-workspaces-my-project/test-session-123.jsonl");
+            format!("{home}/.claude/projects/-home-user-workspace/test-session-123.jsonl");
         assert_eq!(result, Some(expected));
     }
 
@@ -770,32 +764,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let _ = build_session_history_path("test-session", "/some/path", home);
+        let _ = build_session_history_path("test-session", home);
 
-        let expected_dir = dir.path().join(".claude/projects/-some-path");
+        let expected_dir = dir.path().join(".claude/projects/-home-user-workspace");
         assert!(expected_dir.exists());
-    }
-
-    #[test]
-    fn session_history_root_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
-
-        let result = build_session_history_path("root-session", "/", home);
-
-        let expected = format!("{home}/.claude/projects/-/root-session.jsonl");
-        assert_eq!(result, Some(expected));
-    }
-
-    #[test]
-    fn session_history_deep_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
-
-        let result = build_session_history_path("deep-session", "/a/b/c/d/e/f", home);
-
-        let expected = format!("{home}/.claude/projects/-a-b-c-d-e-f/deep-session.jsonl");
-        assert_eq!(result, Some(expected));
     }
 
     #[test]

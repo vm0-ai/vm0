@@ -164,7 +164,6 @@ pub unsafe fn setup_env(
             .unwrap_or_else(|| "post-result-reap-test".to_string());
         std::env::set_var("VM0_RUN_ID", run_id);
         std::env::set_var("VM0_PROMPT", prompt);
-        std::env::set_var("VM0_WORKING_DIR", workdir);
         // Empty API token → has_api() false → no network calls.
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");

@@ -147,7 +147,6 @@ export const secretConnectorMetadataMapSchema = z.record(
  * Secrets are encrypted with AES-256-GCM before storage
  */
 export const storedExecutionContextSchema = z.object({
-  workingDir: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),
@@ -205,8 +204,6 @@ export const executionContextSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   checkpointId: z.uuid().nullable(),
   sandboxToken: z.string(),
-  // New fields for E2B parity:
-  workingDir: z.string(),
   storageManifest: storageManifestSchema.nullable(),
   environment: z.record(z.string(), z.string()).nullable(),
   resumeSession: resumeSessionSchema.nullable(),

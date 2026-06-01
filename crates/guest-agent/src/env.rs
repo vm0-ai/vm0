@@ -66,7 +66,6 @@ static VERCEL_BYPASS: LazyLock<String> = LazyLock::new(|| env_or_empty("VERCEL_P
 static RESUME_SESSION_ID: LazyLock<String> =
     LazyLock::new(|| env_or_empty("VM0_RESUME_SESSION_ID"));
 static API_START_TIME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_START_TIME"));
-static WORKING_DIR: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_WORKING_DIR"));
 static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECRET_VALUES"));
 static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
 static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_TOOLS"));
@@ -93,6 +92,7 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 // ---------------------------------------------------------------------------
 
 static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
+pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
 static OPENAI_API_KEY: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_API_KEY"));
 static OPENAI_MODEL: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_MODEL"));
 static CHATGPT_ACCOUNT_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("CHATGPT_ACCOUNT_ID"));
@@ -270,9 +270,9 @@ pub fn resume_session_id() -> &'static str {
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
 }
-/// Guest working directory from `VM0_WORKING_DIR`; empty string means unset.
+/// Canonical guest working directory.
 pub fn working_dir() -> &'static str {
-    &WORKING_DIR
+    CANONICAL_WORKING_DIR
 }
 /// Encoded secret values from `VM0_SECRET_VALUES`; empty string means no secrets.
 pub fn secret_values() -> &'static str {
