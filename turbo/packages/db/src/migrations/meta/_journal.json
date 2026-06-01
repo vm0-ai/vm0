@@ -2906,6 +2906,13 @@
       "when": 1780224193715,
       "tag": "0414_luxuriant_young_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 415,
+      "version": "7",
+      "when": 1780295991153,
+      "tag": "0415_luxuriant_magus",
+      "breakpoints": true
     }
   ]
 }

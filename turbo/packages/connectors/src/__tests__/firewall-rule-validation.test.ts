@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import { connectorTypeSchema } from "../connectors";
 import { isFirewallConnectorType, getConnectorFirewall } from "../firewalls";
 import { collectAndValidatePermissions } from "../firewall-expander";
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallConfig,
+} from "../firewall-types";
 
 /**
  * Validate that every builtin connector firewall passes the same full
@@ -26,4 +30,28 @@ describe("builtin firewall validation", () => {
       }).not.toThrow();
     });
   }
+});
+
+describe("reserved firewall permission names", () => {
+  it("rejects the unknown permission grant sentinel as a real permission", () => {
+    const firewall: FirewallConfig = {
+      name: "custom",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: UNKNOWN_PERMISSION_GRANT,
+              rules: ["GET /items"],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(firewall);
+    }).toThrow(`permission named "${UNKNOWN_PERMISSION_GRANT}"`);
+  });
 });

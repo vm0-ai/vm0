@@ -21,6 +21,12 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
   });
 
+  it("should return false for user permission grants by default", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.UserPermissionGrants, {})).toBe(
+      false,
+    );
+  });
+
   it("should return false for disabled switch with non-matching userId", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {

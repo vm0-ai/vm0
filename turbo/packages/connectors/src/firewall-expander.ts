@@ -1,6 +1,7 @@
 import {
   type FirewallConfig,
   type ExpandedFirewallConfig,
+  UNKNOWN_PERMISSION_GRANT,
   validateAuthBaseUrl,
   validateBaseUrl,
 } from "./firewall-types";
@@ -144,9 +145,9 @@ export function collectAndValidatePermissions(
           `Firewall "${serviceConfig.name}" has a permission with empty name`,
         );
       }
-      if (perm.name === "all") {
+      if (perm.name === "all" || perm.name === UNKNOWN_PERMISSION_GRANT) {
         throw new Error(
-          `Firewall "${serviceConfig.name}" has a permission named "all", which is a reserved keyword`,
+          `Firewall "${serviceConfig.name}" has a permission named "${perm.name}", which is a reserved keyword`,
         );
       }
       if (seen.has(perm.name)) {

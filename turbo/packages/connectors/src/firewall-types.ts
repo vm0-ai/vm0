@@ -52,6 +52,12 @@ export const firewallSchema = z.object({
 export const firewallsSchema = z.array(firewallSchema);
 
 /**
+ * Reserved permission name used by user grant storage to represent the
+ * unknown-endpoint policy row for a connector firewall.
+ */
+export const UNKNOWN_PERMISSION_GRANT = "__unknown__";
+
+/**
  * Zod schema for validating firewall config (GitHub-hosted YAML).
  */
 export const firewallConfigSchema = z.object({
