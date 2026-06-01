@@ -492,6 +492,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   },
   "test-oauth-device": {
     oauth: deviceAuthProviderEntry(testOauthDeviceProvider),
+    api: deviceAuthProviderEntry(testOauthDeviceProvider),
   },
   todoist: { oauth: authCodeProviderEntry(todoistProvider) },
   vercel: { oauth: authCodeProviderEntry(vercelProvider) },

@@ -53,7 +53,13 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       ),
       index(
         "idx_connector_oauth_device_authorization_sessions_owner_status",
-      ).on(table.orgId, table.userId, table.connectorType, table.status),
+      ).on(
+        table.orgId,
+        table.userId,
+        table.connectorType,
+        table.authMethod,
+        table.status,
+      ),
       index("idx_connector_oauth_device_authorization_sessions_expiration").on(
         table.status,
         table.expiresAt,

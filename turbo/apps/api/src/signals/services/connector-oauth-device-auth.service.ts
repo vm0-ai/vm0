@@ -105,6 +105,11 @@ type PollClaimedSessionArgs = DeviceAuthMethodRef & {
 
 type ResolvedDeviceAuthMethod = DeviceAuthMethodRef;
 
+type DeviceAuthSessionOwner = DeviceAuthMethodRef & {
+  readonly orgId: string;
+  readonly userId: string;
+};
+
 const connectorOauthDeviceAuthDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
@@ -267,24 +272,22 @@ function resolveRequiredAuthClient<Type extends DeviceAuthGrantConnectorType>(
   return authClient;
 }
 
-async function lockDeviceAuthSessionOwner(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly type: DeviceAuthGrantConnectorType;
-}): Promise<void> {
+async function lockDeviceAuthSessionOwner(
+  args: DeviceAuthSessionOwner & {
+    readonly writeDb: Db;
+  },
+): Promise<void> {
   await args.writeDb.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('oauth_device_authorization:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext('oauth_device_authorization:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type} || ':' || ${args.authMethod}))`,
   );
 }
 
-async function markActiveSessionsSuperseded(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly type: DeviceAuthGrantConnectorType;
-  readonly now: Date;
-}): Promise<void> {
+async function markActiveSessionsSuperseded(
+  args: DeviceAuthSessionOwner & {
+    readonly writeDb: Db;
+    readonly now: Date;
+  },
+): Promise<void> {
   await args.writeDb
     .update(connectorOauthDeviceAuthorizationSessions)
     .set({
@@ -299,6 +302,10 @@ async function markActiveSessionsSuperseded(args: {
         eq(connectorOauthDeviceAuthorizationSessions.orgId, args.orgId),
         eq(connectorOauthDeviceAuthorizationSessions.userId, args.userId),
         eq(connectorOauthDeviceAuthorizationSessions.connectorType, args.type),
+        eq(
+          connectorOauthDeviceAuthorizationSessions.authMethod,
+          args.authMethod,
+        ),
         inArray(connectorOauthDeviceAuthorizationSessions.status, [
           ...ACTIVE_DEVICE_AUTHORIZATION_SESSION_STATUSES,
         ]),
@@ -588,6 +595,7 @@ async function completeClaimedSession(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly type: DeviceAuthGrantConnectorType;
+  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly result: OAuthDeviceAuthCompleteResult;
@@ -602,6 +610,7 @@ async function completeClaimedSession(args: {
       orgId: args.orgId,
       userId: args.userId,
       type: args.type,
+      authMethod: args.authMethod,
     });
     if (
       !(await claimStillCurrent({
@@ -698,6 +707,7 @@ async function runClaimedSession(
     orgId: args.orgId,
     userId: args.userId,
     type: args.type,
+    authMethod: args.authMethod,
     session: args.session,
     claimStartedAt: args.claimStartedAt,
     result: pollResult,
@@ -799,12 +809,14 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         orgId: args.orgId,
         userId: args.userId,
         type: resolvedMethod.type,
+        authMethod: resolvedMethod.authMethod,
       });
       await markActiveSessionsSuperseded({
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
         type: resolvedMethod.type,
+        authMethod: resolvedMethod.authMethod,
         now,
       });
       return await tx

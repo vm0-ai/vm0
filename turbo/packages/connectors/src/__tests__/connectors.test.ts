@@ -282,7 +282,7 @@ describe("connector auth method lifecycle helpers", () => {
 
     expect(
       getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "device-auth"),
-    ).toStrictEqual(["oauth"]);
+    ).toStrictEqual(["oauth", "api"]);
     expect(
       getConnectorAuthMethodIdsForGrantKind("test-oauth-device", "auth-code"),
     ).toStrictEqual([]);
@@ -2280,6 +2280,21 @@ describe("connector OAuth lifecycle grant helpers", () => {
       },
     });
     expect(
+      getConnectorAuthMethodDeviceAuthGrantConfig("test-oauth-device", "api"),
+    ).toMatchObject({
+      kind: "device-auth",
+      deviceAuthUrl: "/api/test/oauth-provider/device/code",
+      tokenUrl: "/api/test/oauth-provider/token",
+      scopes: ["read"],
+    });
+    expect(getConnectorAuthMethod("test-oauth-device", "api")).toMatchObject({
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: "test-oauth-device-api-client",
+      },
+    });
+    expect(
       getConnectorAuthMethodDeviceAuthGrantConfig("base44", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
@@ -2398,6 +2413,19 @@ describe("connector OAuth device authorization config", () => {
         clientRegistration: "static",
         clientType: "public",
         clientId: "test-oauth-device-client",
+      },
+    });
+    expect(getConnectorAuthMethod("test-oauth-device", "api")).toMatchObject({
+      grant: {
+        kind: "device-auth",
+        deviceAuthUrl: "/api/test/oauth-provider/device/code",
+        tokenUrl: "/api/test/oauth-provider/token",
+        scopes: ["read"],
+      },
+      client: {
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: "test-oauth-device-api-client",
       },
     });
   });

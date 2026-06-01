@@ -117,6 +117,27 @@ function createMockAuthWindow() {
   return { closed: true, close: vi.fn(), location: { href: "" } };
 }
 
+async function findTestOAuthDeviceConnectButton(): Promise<HTMLElement> {
+  const heading = await screen.findByRole("heading", {
+    name: "OAuth Device Authorization",
+  });
+  const section = heading.parentElement;
+  if (!section) {
+    throw new Error("OAuth Device Authorization section not found");
+  }
+
+  const button = queryAllByRoleFast("button", section).find((element) => {
+    return (
+      element.textContent?.trim() === "Connect Test OAuth Device (internal)"
+    );
+  });
+  if (!button) {
+    throw new Error("Test OAuth device connect button not found");
+  }
+
+  return button;
+}
+
 describe("directed connect page", () => {
   it("renders connect card for an oauth connector", async () => {
     detachedSetupPage({ context, path: "/connectors/gmail/connect" });
@@ -602,9 +623,9 @@ describe("directed connect page", () => {
         screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("Connect Test OAuth Device (internal)"),
-    ).toBeInTheDocument();
+    const testOAuthDeviceConnectButton =
+      await findTestOAuthDeviceConnectButton();
+    expect(testOAuthDeviceConnectButton).toBeInTheDocument();
     expect(openSpy).not.toHaveBeenCalled();
     expect(startCalled).toBeFalsy();
   });
@@ -757,9 +778,7 @@ describe("directed connect page", () => {
     });
     click(screen.getByText("Connect"));
 
-    await userEvent.click(
-      await screen.findByText("Connect Test OAuth Device (internal)"),
-    );
+    await userEvent.click(await findTestOAuthDeviceConnectButton());
     await userEvent.click(await screen.findByText("Open verification page"));
 
     await waitFor(() => {
