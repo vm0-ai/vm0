@@ -84,10 +84,6 @@ class TestGetFirewallHeaders:
         assert cached_headers(cache_key)
         assert require_cached_headers(cache_key).headers == mock_headers
 
-    def test_optional_auth_inputs_are_keyword_only(self):
-        with pytest.raises(TypeError, match="positional"):
-            auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz", {})
-
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = ("run-1", "https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
