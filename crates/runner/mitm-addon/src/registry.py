@@ -17,20 +17,20 @@ VmContext = tuple[
 _RegistryCacheKey = tuple[str, int, int, int, int]
 
 
-class RegistryFormatError(ValueError):
+class _RegistryFormatError(ValueError):
     """Registry JSON decoded successfully but does not have the expected shape."""
 
 
 @dataclass(frozen=True)
-class RegistrySnapshot:
+class _RegistrySnapshot:
     vms: dict
     compiled_firewalls: dict[str, matching.CompiledFirewallSet]
     compiled_network_policies: dict[str, matching.CompiledNetworkPolicies]
     loaded_key: _RegistryCacheKey | None
 
 
-def _empty_snapshot() -> RegistrySnapshot:
-    return RegistrySnapshot({}, {}, {}, None)
+def _empty_snapshot() -> _RegistrySnapshot:
+    return _RegistrySnapshot({}, {}, {}, None)
 
 
 @dataclass
@@ -38,7 +38,7 @@ class _RegistryCacheState:
     registry_path: str | None = None
     # Successful registry state is stored in one snapshot so raw VM entries and
     # compiled matcher sidecars are published together.
-    snapshot: RegistrySnapshot = field(default_factory=_empty_snapshot)
+    snapshot: _RegistrySnapshot = field(default_factory=_empty_snapshot)
     # Known-bad decoded registry input. Unlike the snapshot loaded key, this
     # means the current snapshot belongs to an older file state and this key
     # should short-circuit until the file changes again.
@@ -49,8 +49,8 @@ class _RegistryCacheState:
     stat_error_logged: bool = False
     read_error_key: _RegistryCacheKey | None = None
 
-    def reset(self) -> None:
-        self.registry_path = None
+    def reset(self, registry_path: str | None = None) -> None:
+        self.registry_path = registry_path
         self.snapshot = _empty_snapshot()
         self.failed_key = None
         self.stat_error_logged = False
@@ -70,9 +70,8 @@ def _path_key(path: Path) -> str:
 
 
 def _state_for_path(path_key: str) -> _RegistryCacheState:
-    global _registry_state
     if _registry_state.registry_path != path_key:
-        _registry_state = _RegistryCacheState(registry_path=path_key)
+        _registry_state.reset(path_key)
     return _registry_state
 
 
@@ -103,14 +102,14 @@ def _read_registry_vms(path: Path) -> dict:
     with path.open() as f:
         raw_registry = json.load(f)
     if not isinstance(raw_registry, dict):
-        raise RegistryFormatError("proxy registry must be an object")
+        raise _RegistryFormatError("proxy registry must be an object")
     raw_vms = raw_registry.get("vms", {})
     if not isinstance(raw_vms, dict):
-        raise RegistryFormatError("proxy registry vms must be an object")
+        raise _RegistryFormatError("proxy registry vms must be an object")
     return raw_vms
 
 
-def _load_registry_snapshot(registry_path: str) -> RegistrySnapshot:
+def _load_registry_snapshot(registry_path: str) -> _RegistrySnapshot:
     """Load the proxy registry snapshot, reusing cached data when possible.
 
     Cache state is scoped to one active registry path. A successful load
@@ -145,7 +144,7 @@ def _load_registry_snapshot(registry_path: str) -> RegistrySnapshot:
             state.read_error_key = key
             ctx.log.warn(f"Failed to read proxy registry: {e}")
         return state.snapshot
-    except (json.JSONDecodeError, UnicodeDecodeError, RegistryFormatError) as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, _RegistryFormatError) as e:
         state.failed_key = key
         state.read_error_key = None
         ctx.log.warn(f"Failed to parse proxy registry: {e}")
@@ -164,7 +163,7 @@ def _load_registry_snapshot(registry_path: str) -> RegistrySnapshot:
     }
     evict_stale_cache_keys(active_run_ids)
 
-    state.snapshot = RegistrySnapshot(
+    state.snapshot = _RegistrySnapshot(
         new_registry,
         new_compiled_registry,
         new_compiled_policy_registry,
