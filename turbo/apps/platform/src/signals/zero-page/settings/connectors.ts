@@ -1282,6 +1282,14 @@ function assertConnectorUsesDeviceAuthMethod(
   }
 }
 
+function connectorMatchesAuthMethod(
+  connector: ConnectorResponse,
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): boolean {
+  return connector.type === type && connector.authMethod === authMethod;
+}
+
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
@@ -1367,7 +1375,7 @@ export const connectConnectorOAuthAuthCode$ = command(
             );
             const polled = (result.body as ConnectorListResponse).connectors;
             const current = polled.find((c) => {
-              return c.type === type;
+              return connectorMatchesAuthMethod(c, type, authMethod);
             });
 
             if (initialUpdatedAt === undefined) {
@@ -1452,7 +1460,7 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Mark as optimistically connected before clearing polling so the UI
         // transitions directly from "Connecting…" to "Connected" without flash.
         const isConnected = connectors.some((c) => {
-          return c.type === type;
+          return connectorMatchesAuthMethod(c, type, authMethod);
         });
         if (isConnected) {
           set(finishConnectorConnection$, type, {
