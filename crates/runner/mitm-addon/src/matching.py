@@ -751,10 +751,7 @@ def _dynamic_auth_base_suffix_is_valid(suffix: str) -> bool:
         return False
     if not suffix.startswith("/"):
         return True
-    try:
-        suffix_path = urlsplit(suffix).path
-    except ValueError:
-        return False
+    suffix_path = suffix.partition("?")[0]
     return not has_unsafe_path(suffix_path)
 
 
