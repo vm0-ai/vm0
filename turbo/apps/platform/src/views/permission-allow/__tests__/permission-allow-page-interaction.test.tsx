@@ -23,9 +23,15 @@ import {
   permissionAccessRequestsResolveContract,
   permissionAccessRequestsCreateContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import {
+  createMockUserPermissionGrantResponse,
+  setMockUserPermissionGrants,
+} from "../../../mocks/handlers/api-user-permission-grants.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -206,6 +212,143 @@ describe("permission allow page - admin doctor mode", () => {
     await waitFor(() => {
       expect(screen.getByText("Permissions denied")).toBeInTheDocument();
     });
+  });
+});
+
+describe("permission allow page - self-service user grants", () => {
+  it("writes a current-user grant for admins when the feature is enabled", async () => {
+    let grantBody: unknown;
+    let policyCalled = false;
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
+        policyCalled = true;
+        return respond(200, defaultAgentResponse());
+      }),
+    );
+    mockAgent();
+    mockPermissionRequests();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toBeDefined();
+    });
+
+    expect(grantBody).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "deny",
+      ttlSeconds: 86_400,
+    });
+    expect(policyCalled).toBeFalsy();
+  });
+
+  it("writes a current-user grant for members without creating an approval request", async () => {
+    let grantBody: unknown;
+    let requestCreated = false;
+    let requestsListed = false;
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+      mockApi(permissionAccessRequestsCreateContract.create, ({ respond }) => {
+        requestCreated = true;
+        return respond(201, pendingRequest());
+      }),
+      mockApi(permissionAccessRequestsListContract.list, ({ respond }) => {
+        requestsListed = true;
+        return respond(200, []);
+      }),
+    );
+    setupMemberContext();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Request approval")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/temporary/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/permanent/i)).not.toBeInTheDocument();
+
+    click(screen.getByText("Request approval"));
+
+    await waitFor(() => {
+      expect(grantBody).toBeDefined();
+    });
+
+    expect(grantBody).toMatchObject({
+      agentId: AGENT_ID,
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "allow",
+      ttlSeconds: 86_400,
+    });
+    expect(requestCreated).toBeFalsy();
+    expect(requestsListed).toBeFalsy();
+  });
+
+  it("uses current-user grants for already-applied state when the feature is enabled", async () => {
+    setupMemberContext({
+      permissionPolicies: {
+        slack: { policies: { "channels:read": "allow" } },
+      },
+    });
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: AGENT_ID,
+        connectorRef: "slack",
+        permission: "channels:read",
+        action: "deny",
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions denied")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Request approval")).not.toBeInTheDocument();
   });
 });
 

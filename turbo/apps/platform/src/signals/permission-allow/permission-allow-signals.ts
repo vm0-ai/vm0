@@ -5,6 +5,11 @@ import {
   permissionAccessRequestsResolveContract,
   zeroAgentPermissionPoliciesContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  type UserPermissionGrantAction,
+  type UserPermissionGrantResponse,
+  zeroUserPermissionGrantsContract,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
   FirewallPolicies,
   FirewallPolicyValue,
@@ -19,9 +24,13 @@ import { pathParams$, searchParams$, replaceSearchParams$ } from "../route.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, reloadAgentById$ } from "../agent.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const PERMISSION_ACCESS_REQUESTS_CHANGED_TOPIC =
   "permissionAccessRequestsChanged";
+
+const USER_PERMISSION_GRANT_TTL_SECONDS = 86_400;
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -110,6 +119,7 @@ export function extractPermissions(ref: string): Permission[] {
 // ---------------------------------------------------------------------------
 
 const internalRequestsReload$ = state(0);
+const internalUserPermissionGrantsReload$ = state(0);
 
 type PermissionRequestAction = "allow" | "deny";
 
@@ -158,6 +168,9 @@ export const permissionRequestById$ = computed(async (get) => {
 /** Find existing request for same agent+ref+permission (doctor mode, member redirect) */
 export const permissionExistingRequest$ = computed(async (get) => {
   get(internalRequestsReload$);
+  if (get(userPermissionGrantsEnabled$)) {
+    return null;
+  }
   const agentId = get(permissionAllowAgentId$);
   const ref = get(permissionAllowRef$);
   const permission = get(permissionAllowPermission$);
@@ -217,6 +230,88 @@ function createPermissionExistingRequestByActionFactory(): (
 
 export const permissionExistingRequestByAction =
   createPermissionExistingRequestByActionFactory();
+
+// ---------------------------------------------------------------------------
+// Current-user permission grants
+// ---------------------------------------------------------------------------
+
+export const userPermissionGrantsEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.UserPermissionGrants] ?? false;
+});
+
+function findMatchingUserPermissionGrant(
+  grants: readonly UserPermissionGrantResponse[],
+  connectorRef: string,
+  permission: string,
+  action: UserPermissionGrantAction,
+): UserPermissionGrantResponse | null {
+  return (
+    grants.find((grant) => {
+      return (
+        grant.connectorRef === connectorRef &&
+        grant.permission === permission &&
+        grant.action === action
+      );
+    }) ?? null
+  );
+}
+
+export { findMatchingUserPermissionGrant };
+
+async function listUserPermissionGrants(
+  get: <T>(atom: Computed<T>) => T,
+  agentId: string,
+): Promise<readonly UserPermissionGrantResponse[]> {
+  const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+  const result = await accept(client.list({ query: { agentId } }), [200]);
+  return result.body;
+}
+
+export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
+  get(internalUserPermissionGrantsReload$);
+  if (!get(userPermissionGrantsEnabled$)) {
+    return [];
+  }
+  const agentId = get(permissionAllowAgentId$);
+  const requestId = get(permissionAllowRequestId$);
+  if (!agentId || requestId) {
+    return [];
+  }
+  return await listUserPermissionGrants(get, agentId);
+});
+
+interface UserPermissionGrantsByAgentParams {
+  agentId: string;
+  enabled: boolean;
+}
+
+function createUserPermissionGrantsByAgentFactory(): (
+  params: UserPermissionGrantsByAgentParams,
+) => Computed<Promise<readonly UserPermissionGrantResponse[]>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<readonly UserPermissionGrantResponse[]>>
+  >();
+  return (params) => {
+    const key = JSON.stringify(params);
+    const existing = cache.get(key);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      get(internalUserPermissionGrantsReload$);
+      if (!params.enabled) {
+        return [];
+      }
+      return await listUserPermissionGrants(get, params.agentId);
+    });
+    cache.set(key, atom$);
+    return atom$;
+  };
+}
+
+export const userPermissionGrantsByAgent =
+  createUserPermissionGrantsByAgentFactory();
 
 // ---------------------------------------------------------------------------
 // URL: update request ID in URL
@@ -298,6 +393,34 @@ const createAccessRequest$ = command(
       return prev + 1;
     });
     return result.body.id;
+  },
+);
+
+export const upsertUserPermissionGrant$ = command(
+  async (
+    { get, set },
+    params: {
+      agentId: string;
+      connectorRef: string;
+      permission: string;
+      action: UserPermissionGrantAction;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
+    await accept(
+      client.upsert({
+        body: {
+          ...params,
+          ttlSeconds: USER_PERMISSION_GRANT_TTL_SECONDS,
+        },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalUserPermissionGrantsReload$, (prev) => {
+      return prev + 1;
+    });
   },
 );
 
