@@ -35,6 +35,13 @@ function buildApiBackendDestination(path) {
   return `${apiBackendUrl.replace(/\/$/u, "")}${path}`;
 }
 
+// PostHog reverse-proxy host. Routing PostHog through `/ingest` on the
+// marketing origin avoids ad blockers (uBlock, etc.) that drop direct
+// requests to `*.posthog.com`. The "i" subdomain is the ingestion endpoint;
+// the "us" prefix selects US Cloud.
+const POSTHOG_INGEST_HOST = "https://us.i.posthog.com";
+const POSTHOG_ASSETS_HOST = "https://us-assets.i.posthog.com";
+
 const nextConfig = {
   async redirects() {
     return MODEL_SLUG_REDIRECTS.flatMap(([from, to]) => [
@@ -52,13 +59,25 @@ const nextConfig = {
   },
   async rewrites() {
     return {
-      beforeFiles: API_BACKEND_REWRITES.flatMap(([source, destinationPath]) => {
-        const destination = buildApiBackendDestination(destinationPath);
-        if (!destination) {
-          return [];
-        }
-        return [{ source, destination }];
-      }),
+      beforeFiles: [
+        ...API_BACKEND_REWRITES.flatMap(([source, destinationPath]) => {
+          const destination = buildApiBackendDestination(destinationPath);
+          if (!destination) {
+            return [];
+          }
+          return [{ source, destination }];
+        }),
+        // PostHog SDK assets (array config, decide flags, etc.)
+        {
+          source: "/ingest/static/:path*",
+          destination: `${POSTHOG_ASSETS_HOST}/static/:path*`,
+        },
+        // PostHog event ingestion (capture, identify, etc.)
+        {
+          source: "/ingest/:path*",
+          destination: `${POSTHOG_INGEST_HOST}/:path*`,
+        },
+      ],
     };
   },
   async headers() {
@@ -114,6 +133,10 @@ const nextConfig = {
 
     // Analytics (Plausible)
     NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: process.env.PLAUSIBLE_SCRIPT_URL,
+
+    // Analytics (PostHog) — shared with apps/platform via parent-domain cookie
+    NEXT_PUBLIC_POSTHOG_KEY: process.env.POSTHOG_KEY,
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.POSTHOG_HOST,
   },
 
   typescript: {

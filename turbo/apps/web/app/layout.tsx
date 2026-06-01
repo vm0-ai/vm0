@@ -17,6 +17,7 @@ import { getAllowedRedirectOrigins, getAppUrl } from "../src/lib/zero/url";
 import { SafeGoogleOneTap } from "./components/SafeGoogleOneTap";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AttributionCapture } from "./components/AttributionCapture";
+import { PostHogProvider } from "./components/PostHogProvider";
 import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
@@ -313,6 +314,7 @@ export default async function RootLayout({
           />
           <ThemeProvider>
             <AttributionCapture />
+            <PostHogProvider />
             {children}
           </ThemeProvider>
           <Script

@@ -38,6 +38,8 @@ function initEnv() {
       NEXT_PUBLIC_APP_URL: z.url(),
       NEXT_PUBLIC_PAID_ONBOARDING_URL: z.url().optional(),
       NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: z.url().optional(),
+      NEXT_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
+      NEXT_PUBLIC_POSTHOG_HOST: z.url().optional(),
     },
     runtimeEnv: {
       NODE_ENV: process.env.NODE_ENV,
@@ -84,6 +86,10 @@ function initEnv() {
       NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL:
         process.env.NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL ??
         process.env.PLAUSIBLE_SCRIPT_URL,
+      NEXT_PUBLIC_POSTHOG_KEY:
+        process.env.NEXT_PUBLIC_POSTHOG_KEY ?? process.env.POSTHOG_KEY,
+      NEXT_PUBLIC_POSTHOG_HOST:
+        process.env.NEXT_PUBLIC_POSTHOG_HOST ?? process.env.POSTHOG_HOST,
     },
     emptyStringAsUndefined: true,
   });
