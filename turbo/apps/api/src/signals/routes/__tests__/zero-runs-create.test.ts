@@ -6,9 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
-import type {
-  FirewallPolicyValue,
-  RawPermissionPolicies,
+import {
+  type FirewallPolicyValue,
+  type RawPermissionPolicies,
+  UNKNOWN_PERMISSION_GRANT,
 } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
@@ -33,12 +34,16 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import {
+  userPermissionGrants,
+  type UserPermissionGrantAction,
+} from "@vm0/db/schema/user-permission-grant";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -48,9 +53,10 @@ import {
   verifyZeroToken,
 } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { now } from "../../external/time";
+import { now, nowDate } from "../../external/time";
 import { mockNow } from "../../../lib/time";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
+import { createZeroIntegrationRun$ } from "../../services/zero-runs-create.service";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   createFixtureTracker,
@@ -74,6 +80,16 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+const SLACK_CONNECTOR = "slack";
+const SLACK_READ_PERMISSION = "channels:read";
+const SLACK_WRITE_PERMISSION = "chat:write";
+
+interface QueuedNetworkPolicy {
+  readonly allow: readonly string[];
+  readonly deny: readonly string[];
+  readonly ask: readonly string[];
+  readonly unknownPolicy: string;
+}
 
 function modelProviderSecretPlaceholder(
   type: ModelProviderType,
@@ -250,6 +266,132 @@ async function fixture(): Promise<UsageInsightFixture> {
   );
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   return created;
+}
+
+async function enableUserPermissionGrants(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: {
+        switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+async function seedSlackConnector(args: {
+  readonly fixture: UsageInsightFixture;
+  readonly agentId: string;
+  readonly userId?: string;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  const userId = args.userId ?? args.fixture.userId;
+  await db.insert(userConnectors).values({
+    orgId: args.fixture.orgId,
+    userId,
+    agentId: args.agentId,
+    connectorType: SLACK_CONNECTOR,
+  });
+  await db.insert(connectors).values({
+    orgId: args.fixture.orgId,
+    userId,
+    type: SLACK_CONNECTOR,
+    authMethod: "oauth",
+  });
+  await db.insert(secrets).values({
+    orgId: args.fixture.orgId,
+    userId,
+    name: "SLACK_ACCESS_TOKEN",
+    encryptedValue: encryptSecretForTests("xoxb-test-token"),
+    type: "connector",
+  });
+}
+
+async function insertUserPermissionGrant(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly permission: string;
+  readonly action: UserPermissionGrantAction;
+  readonly expiresAt?: Date | null;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userPermissionGrants).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    agentId: args.agentId,
+    connectorRef: SLACK_CONNECTOR,
+    permission: args.permission,
+    action: args.action,
+    expiresAt: args.expiresAt ?? null,
+  });
+}
+
+async function updateUserPermissionGrantAction(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly permission: string;
+  readonly action: UserPermissionGrantAction;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .update(userPermissionGrants)
+    .set({ action: args.action })
+    .where(
+      and(
+        eq(userPermissionGrants.orgId, args.orgId),
+        eq(userPermissionGrants.userId, args.userId),
+        eq(userPermissionGrants.agentId, args.agentId),
+        eq(userPermissionGrants.connectorRef, SLACK_CONNECTOR),
+        eq(userPermissionGrants.permission, args.permission),
+      ),
+    );
+}
+
+async function networkPolicyForRun(
+  runId: string,
+  connectorRef: string,
+): Promise<QueuedNetworkPolicy> {
+  const db = store.set(writeDb$);
+  const [job] = await db
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId));
+  const executionContext = job?.executionContext as
+    | {
+        readonly networkPolicies?: Record<string, QueuedNetworkPolicy>;
+      }
+    | undefined;
+  const policy = executionContext?.networkPolicies?.[connectorRef];
+  if (!policy) {
+    throw new Error(`Expected network policy for ${connectorRef}`);
+  }
+  return policy;
+}
+
+async function createZeroRunNetworkPolicy(
+  agentId: string,
+  connectorRef: string = SLACK_CONNECTOR,
+): Promise<QueuedNetworkPolicy> {
+  const response = await accept(
+    zeroRunsClient().create({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { prompt: "resolve runtime permissions", agentId },
+    }),
+    [201],
+  );
+  return await networkPolicyForRun(response.body.runId, connectorRef);
 }
 
 async function seedRunnableZeroAgent(
@@ -2479,6 +2621,220 @@ describe("POST /api/zero/runs", () => {
     expect(xPolicy.allow).toContain("tweet.read");
     expect(xPolicy.deny).toContain("tweet.write");
     expect(xPolicy.unknownPolicy).toBe("allow");
+  });
+
+  it("uses legacy agent permission policies when user grants are disabled", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      permissionPolicies: {
+        [SLACK_CONNECTOR]: {
+          [SLACK_WRITE_PERMISSION]: "allow",
+        },
+      },
+    });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "deny",
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("uses connector defaults when user grants are enabled with no grants", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_READ_PERMISSION);
+    expect(policy.allow).toContain("users:read");
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.unknownPolicy).toBe("allow");
+  });
+
+  it("applies current-user grants when user grants are enabled", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2999-01-01T00:00:00.000Z"),
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("bakes the active grant result into the queued run context", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+    });
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "snapshot runtime permissions",
+          agentId: agent.agentId,
+        },
+      }),
+      [201],
+    );
+
+    await updateUserPermissionGrantAction({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "deny",
+    });
+    const policy = await networkPolicyForRun(
+      response.body.runId,
+      SLACK_CONNECTOR,
+    );
+
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("ignores grants for other users on the same agent", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: `other-${fx.userId}`,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.allow).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("ignores expired grants for newly created runs", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2000-01-01T00:00:00.000Z"),
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.allow).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("applies unknown-policy grants without changing named defaults", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "deny",
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.unknownPolicy).toBe("deny");
+    expect(policy.allow).toContain(SLACK_READ_PERMISSION);
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("ignores legacy agent permission policies when user grants are enabled", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      permissionPolicies: {
+        [SLACK_CONNECTOR]: {
+          [SLACK_WRITE_PERMISSION]: "allow",
+        },
+      },
+    });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.allow).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("resolves user grants for zero integration runs", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await enableUserPermissionGrants(fx.orgId, fx.userId);
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+    });
+
+    const result = await store.set(
+      createZeroIntegrationRun$,
+      {
+        userId: fx.userId,
+        orgId: fx.orgId,
+        agentId: agent.agentId,
+        prompt: "integration runtime permissions",
+        triggerSource: "slack",
+        apiStartTime: now(),
+      },
+      context.signal,
+    );
+
+    expect(result.status).toBe(201);
+    if (result.status !== 201) {
+      throw new Error("Expected zero integration run to be created");
+    }
+    const policy = await networkPolicyForRun(
+      result.body.runId,
+      SLACK_CONNECTOR,
+    );
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
   });
 
   it("uses the Codex skills mount path for codex zero agents", async () => {
