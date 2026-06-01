@@ -122,6 +122,34 @@ mod tests {
     }
 
     #[test]
+    fn mount_command_checks_elsewhere_mount_after_idempotent_path_and_before_mount() {
+        let cmd = workspace_mount_command();
+        let idempotent_check = cmd
+            .find("if mountpoint -q -- \"$workspace_dir\"")
+            .expect("canonical mountpoint check");
+        let elsewhere_check = cmd
+            .find("if workspace_device_mounted_elsewhere")
+            .expect("elsewhere device mount check");
+        let mkdir = cmd.find("mkdir -p -- \"$workspace_dir\"").expect("mkdir");
+        let mount = cmd
+            .find("mount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"")
+            .expect("mount");
+
+        assert!(
+            idempotent_check < elsewhere_check,
+            "canonical idempotent mount check must run before elsewhere guard"
+        );
+        assert!(
+            elsewhere_check < mkdir,
+            "elsewhere guard must run before creating the workspace directory"
+        );
+        assert!(
+            elsewhere_check < mount,
+            "elsewhere guard must run before attempting a new mount"
+        );
+    }
+
+    #[test]
     fn mount_command_does_not_unmount_or_sync() {
         let cmd = workspace_mount_command();
 

@@ -1177,6 +1177,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_workspace_image_cleanup_preserves_nonempty_attempt_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let workspace_image = attempt.workspace_image_path.clone();
+        let attempt_dir = workspace_image
+            .parent()
+            .expect("workspace image parent")
+            .to_path_buf();
+        let cow_file = attempt_dir.join("cow.img");
+
+        tokio::fs::create_dir_all(&attempt_dir)
+            .await
+            .expect("create attempt dir");
+        tokio::fs::write(&workspace_image, b"workspace")
+            .await
+            .expect("write workspace image");
+        tokio::fs::write(&cow_file, b"cow")
+            .await
+            .expect("write cow");
+        attempt.track_workspace_image_for_test();
+
+        assert!(attempt.cleanup_workspace_image("failed to cleanup workspace image in test"));
+
+        assert!(
+            !tokio::fs::try_exists(&workspace_image).await.unwrap(),
+            "workspace image should be removed"
+        );
+        assert!(
+            tokio::fs::try_exists(&attempt_dir).await.unwrap(),
+            "attempt dir must remain while COW artifacts still exist"
+        );
+        assert_eq!(
+            tokio::fs::read(&cow_file).await.unwrap(),
+            b"cow",
+            "cleanup must not remove unrelated attempt files"
+        );
+    }
+
+    #[tokio::test]
     async fn snapshot_setup_error_cleanup_removes_workspace_image_inline() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
