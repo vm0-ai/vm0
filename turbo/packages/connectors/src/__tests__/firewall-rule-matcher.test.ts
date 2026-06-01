@@ -480,6 +480,38 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it.each([
+    [
+      "base trailing host dot",
+      "https://internal.example.com/v1/users",
+      "https://{sub}.example.com.",
+    ],
+    [
+      "runtime trailing host dot",
+      "https://internal.example.com./v1/users",
+      "https://{sub}.example.com",
+    ],
+    [
+      "base leading-zero non-default port",
+      "https://internal.example.com:8443/v1/users",
+      "https://{sub}.example.com.:08443",
+    ],
+    [
+      "runtime trailing host dot with non-default port",
+      "https://internal.example.com.:8443/v1/users",
+      "https://{sub}.example.com:8443",
+    ],
+  ])(
+    "matches parameterized host base URLs with normalized authority: %s",
+    (_label, url, base) => {
+      expect(matchFirewallBaseUrl(url, base)).toEqual({
+        displayBase: base,
+        relativePath: "/v1/users",
+        score: expect.any(Number),
+      });
+    },
+  );
+
   it("scores static host bases above wildcard host bases with the same path scope", () => {
     const staticMatch = matchFirewallBaseUrl(
       "https://api.g.alchemy.com/v2/demo",
