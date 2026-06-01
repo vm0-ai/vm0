@@ -395,6 +395,9 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = vm_info.get("sandboxToken", "")
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = vm_info.get("cliAgentType") or "claude-code"
 
+        if _is_browser_request(flow):
+            flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
+
         try:
             trusted_authority = get_trusted_authority(flow)
         except AuthorityValidationError as e:
@@ -413,8 +416,6 @@ async def request(flow: http.HTTPFlow) -> None:
         )
 
         hostname = trusted_authority.host.lower()
-        if _is_browser_request(flow):
-            flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
 
         # --- Step 1: Auto-allow VM0 API requests ---
         # The agent MUST be able to communicate with the platform (heartbeat,

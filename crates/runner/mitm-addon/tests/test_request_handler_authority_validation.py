@@ -8,6 +8,11 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.request_handler_helpers import _write_github_firewall_registry
 
+_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
+)
+
 
 @pytest.mark.parametrize(
     ("request_port", "expected_original_url"),
@@ -98,6 +103,41 @@ async def test_authority_validation_deny_response_logs_network_target(
     assert "#frag" not in entry["url"]
     assert entry["status"] == 403
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+
+
+async def test_browser_user_agent_marker_survives_authority_validation_block(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="attacker.example.com",
+        path="/repos",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.BROWSER_USER_AGENT] is True
+    auth_fetch.assert_not_called()
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    entry = json.loads((tmp_path / "net.jsonl").read_text().strip())
+    assert entry["action"] == "DENY"
+    assert entry["browser_user_agent"] is True
 
 
 async def test_matching_sni_and_host_allows_firewall_auth(
