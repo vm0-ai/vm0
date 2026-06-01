@@ -1307,7 +1307,7 @@ async fn build_template_locally(
         .arg(&debootstrap_lock_path)
         .arg("--hash")
         .arg(input.template_hash)
-        .arg("--disk-mb")
+        .arg("--rootfs-disk-mb")
         .arg(&rootfs_disk_mb_str);
     let status = run_rootfs_script(cmd, "build-template.sh").await?;
 
