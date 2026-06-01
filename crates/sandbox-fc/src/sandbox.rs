@@ -3464,6 +3464,30 @@ mod tests {
     }
 
     #[test]
+    fn fresh_boot_config_includes_workspace_drive_without_rate_limiters() {
+        let config = build_fresh_boot_firecracker_config(
+            &test_resources(),
+            "/kernel".to_string(),
+            "/dev/nbd0".to_string(),
+            Some("/workspaces/test/workspace.ext4".to_string()),
+            "/run/vsock.sock".to_string(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(config["drives"][0]["drive_id"], "rootfs");
+        assert_eq!(config["drives"][1]["drive_id"], "workspace");
+        assert_eq!(
+            config["drives"][1]["path_on_host"],
+            "/workspaces/test/workspace.ext4"
+        );
+        assert_eq!(config["drives"][1]["is_root_device"], false);
+        assert_eq!(config["drives"][1]["is_read_only"], false);
+        assert!(config["drives"][0].get("rate_limiter").is_none());
+        assert!(config["drives"][1].get("rate_limiter").is_none());
+    }
+
+    #[test]
     fn fresh_boot_config_includes_workspace_drive_and_splits_block_limiters() {
         let rate_limits = test_rate_limits();
         let config = build_fresh_boot_firecracker_config(
@@ -6308,6 +6332,41 @@ mod tests {
         assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
         assert_eq!(reqs[1].method, "PATCH");
         assert_eq!(reqs[1].path, "/drives/rootfs");
+        assert!(reqs.iter().all(|request| request.path != "/vm"));
+    }
+
+    #[tokio::test]
+    async fn snapshot_restore_workspace_limiter_patch_failure_does_not_resume() {
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
+        let client = ApiClient::new(&sock);
+        let rate_limits = test_rate_limits();
+
+        let err = load_snapshot_and_apply_rate_limits(
+            &client,
+            "/snap/state",
+            "/snap/memory",
+            Some(&rate_limits),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("snapshot workspace drive rate limiter patch failed"));
+        let reqs = reqs.lock().await;
+        assert_eq!(
+            reqs.len(),
+            3,
+            "network patch and resume must not be attempted"
+        );
+        assert_eq!(reqs[0].path, "/snapshot/load");
+        assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
+        assert_eq!(reqs[1].path, "/drives/rootfs");
+        assert_eq!(reqs[2].path, "/drives/workspace");
+        assert!(
+            reqs.iter()
+                .all(|request| request.path != "/network-interfaces/eth0")
+        );
         assert!(reqs.iter().all(|request| request.path != "/vm"));
     }
 

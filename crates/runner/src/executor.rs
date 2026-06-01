@@ -4990,6 +4990,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_job_workspace_mount_failure_destroys_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "mount -t ext4".to_string(),
+            exit_code: 64,
+            stdout: Vec::new(),
+            stderr: b"mount denied".to_vec(),
+        });
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_none(),
+            "fresh mount failure should be destroyed inline"
+        );
+        assert!(
+            outcome.network_log_session.is_none(),
+            "network log session should be closed before returning"
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "agent must not start after workspace mount failure"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
+    }
+
+    #[tokio::test]
     async fn execute_inner_appends_stream_overflow_marker() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -5773,8 +5822,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // Build a MockSandbox that fails on the first exec (fix_guest_clock)
+        // First exec mounts the workspace drive, second exec fixes the clock.
         let sandbox = MockSandbox::new("reuse-clock-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -5802,8 +5852,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
+        // Workspace mount and clock fix succeed, then reseed_guest_entropy fails.
         let sandbox = MockSandbox::new("reuse-reseed-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
@@ -5819,6 +5870,42 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on reseed failure"
         );
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_workspace_mount_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-mount-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            64,
+            Vec::new(),
+            b"mount denied".to_vec(),
+        )));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on workspace mount failure"
+        );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned so finalization can close it"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     /// Verify that session restore failure during reuse still returns the sandbox.
