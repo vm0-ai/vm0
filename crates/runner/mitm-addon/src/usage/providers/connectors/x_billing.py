@@ -407,9 +407,10 @@ def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | N
 
     Current behaviour: for ``POST /2/tweets`` classified as
     ``content.create_with_url``, drop to ``content.create`` when the
-    tweet body is plain text with no URL, no quote reference and no
-    media attachment.  All parse failures or ambiguity → stay on the
-    more expensive bucket, matching the "never under-charge" rule.
+    tweet body is plain text with no URL and no rendered link signal
+    such as a quote reference, media attachment, card, or DM deep link.
+    All parse failures or ambiguity → stay on the more expensive bucket,
+    matching the "never under-charge" rule.
     """
     for rule in _BODY_REFINEMENT_RULES:
         if bucket != rule.source_bucket or method != rule.method or path != rule.path:
