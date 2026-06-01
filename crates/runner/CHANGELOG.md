@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.105.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.12...runner-rs-v0.105.13) (2026-06-01)
+
+
+### Bug Fixes
+
+* skip firewall auth mutation for browser requests ([#15593](https://github.com/vm0-ai/vm0/issues/15593)) ([529f593](https://github.com/vm0-ai/vm0/commit/529f5934d40adb5ebb2b591504f2237dd8320594))
+
+
+### Performance Improvements
+
+* skip no-op json observation clears ([#15584](https://github.com/vm0-ai/vm0/issues/15584)) ([79578d2](https://github.com/vm0-ai/vm0/commit/79578d25d32391b0c92f62abf23365666e024d08))
+
 ## [0.105.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.11...runner-rs-v0.105.12) (2026-05-31)
 
 

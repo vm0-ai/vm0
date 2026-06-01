@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.90.7](https://github.com/vm0-ai/vm0/compare/api-v1.90.6...api-v1.90.7) (2026-06-01)
+
+
+### Bug Fixes
+
+* reject zero run permission policy overrides ([#15608](https://github.com/vm0-ai/vm0/issues/15608)) ([ac92dda](https://github.com/vm0-ai/vm0/commit/ac92dda1c295d2b71d4e84d3536dbd5843718d5c))
+
+
+### Refactoring
+
+* centralize connector lifecycle provider registry ([#15596](https://github.com/vm0-ai/vm0/issues/15596)) ([d8767a4](https://github.com/vm0-ai/vm0/commit/d8767a4a92bda3bd220377639950d16f37300ade))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.6
+    * @vm0/connectors bumped to 1.39.5
+    * @vm0/core bumped to 8.304.8
+    * @vm0/db bumped to 1.23.11
+
 ## [1.90.6](https://github.com/vm0-ai/vm0/compare/api-v1.90.5...api-v1.90.6) (2026-06-01)
 
 
