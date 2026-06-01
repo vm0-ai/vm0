@@ -7,7 +7,6 @@ CREATE TABLE "user_permission_grants" (
 	"permission" varchar(128) NOT NULL,
 	"action" varchar(8) NOT NULL,
 	"expires_at" timestamp,
-	"resolved_by" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "chk_user_permission_grants_action" CHECK ("user_permission_grants"."action" IN ('allow', 'deny'))

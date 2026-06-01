@@ -55,7 +55,6 @@ describe("userPermissionGrants schema", () => {
     expect(userPermissionGrants.permission.name).toBe("permission");
     expect(userPermissionGrants.action.name).toBe("action");
     expect(userPermissionGrants.expiresAt.name).toBe("expires_at");
-    expect(userPermissionGrants.resolvedBy.name).toBe("resolved_by");
     expect(userPermissionGrants.createdAt.name).toBe("created_at");
     expect(userPermissionGrants.updatedAt.name).toBe("updated_at");
   });

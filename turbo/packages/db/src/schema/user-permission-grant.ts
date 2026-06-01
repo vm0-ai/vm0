@@ -40,7 +40,6 @@ export const userPermissionGrants = pgTable(
       .$type<UserPermissionGrantAction>()
       .notNull(),
     expiresAt: timestamp("expires_at"),
-    resolvedBy: text("resolved_by"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
