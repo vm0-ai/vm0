@@ -104,8 +104,8 @@ pub struct DeviceRateLimits {
 /// block device.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkspaceDriveConfig {
-    /// Logical size for newly initialized workspace images.
-    pub size_bytes: u64,
+    /// Logical size in MiB for newly initialized workspace images.
+    pub size_mb: u32,
 }
 
 /// Per-sandbox creation configuration passed to [`crate::SandboxFactory::create`].

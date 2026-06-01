@@ -1424,7 +1424,7 @@ mod tests {
             output_dir,
             vcpu_count: 2,
             memory_mb: 1024,
-            workspace_image_size_bytes: 16 * 1024 * 1024,
+            workspace_disk_mb: 16,
         }
     }
 
@@ -1530,7 +1530,7 @@ mod tests {
                 output_dir: output_dir.clone(),
                 vcpu_count: 1,
                 memory_mb: 128,
-                workspace_image_size_bytes: 16 * 1024 * 1024,
+                workspace_disk_mb: 16,
             })
             .await
             .expect("create snapshot");

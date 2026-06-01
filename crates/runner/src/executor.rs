@@ -78,7 +78,6 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths, guest};
-use crate::profile;
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{
@@ -545,7 +544,7 @@ async fn execute_new_sandbox(
         },
         device_rate_limits: params.device_rate_limits.clone(),
         workspace_drive: Some(sandbox::WorkspaceDriveConfig {
-            size_bytes: profile::workspace_disk_mb_to_bytes(params.workspace_disk_mb),
+            size_mb: params.workspace_disk_mb,
         }),
     };
 
@@ -5146,9 +5145,7 @@ mod tests {
         assert_eq!(configs[0].device_rate_limits, Some(limits));
         assert_eq!(
             configs[0].workspace_drive,
-            Some(sandbox::WorkspaceDriveConfig {
-                size_bytes: 512 * 1024 * 1024,
-            })
+            Some(sandbox::WorkspaceDriveConfig { size_mb: 512 })
         );
     }
 

@@ -714,7 +714,7 @@ async fn build_snapshot(
         output_dir: snapshot_dir.to_path_buf(),
         vcpu_count: def.vcpu,
         memory_mb: def.memory_mb,
-        workspace_image_size_bytes: profile::workspace_disk_mb_to_bytes(def.workspace_disk_mb),
+        workspace_disk_mb: def.workspace_disk_mb,
     };
 
     let pending = provider.create_uncommitted_snapshot(create_config).await?;
@@ -1706,7 +1706,7 @@ mod tests {
     use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
     use std::sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     };
 
     #[derive(clap::Parser)]
@@ -2008,7 +2008,7 @@ printf called >> "$script_dir/verify-rootfs-called"
         create_uncommitted_called: Arc<AtomicBool>,
         create_snapshot_called: Arc<AtomicBool>,
         committed: Arc<AtomicBool>,
-        workspace_image_size_bytes: Arc<AtomicU64>,
+        workspace_disk_mb: Arc<AtomicU32>,
     }
 
     #[async_trait::async_trait]
@@ -2018,8 +2018,8 @@ printf called >> "$script_dir/verify-rootfs-called"
             config: sandbox::SnapshotCreateConfig,
         ) -> Result<Box<dyn sandbox::PendingSnapshotPublish>, sandbox::SnapshotError> {
             self.create_uncommitted_called.store(true, Ordering::SeqCst);
-            self.workspace_image_size_bytes
-                .store(config.workspace_image_size_bytes, Ordering::SeqCst);
+            self.workspace_disk_mb
+                .store(config.workspace_disk_mb, Ordering::SeqCst);
             Ok(Box::new(RecordingPendingSnapshotPublish {
                 output_dir: config.output_dir,
                 committed: Arc::clone(&self.committed),
@@ -2416,12 +2416,12 @@ exit 1
         let create_uncommitted_called = Arc::new(AtomicBool::new(false));
         let create_snapshot_called = Arc::new(AtomicBool::new(false));
         let committed = Arc::new(AtomicBool::new(false));
-        let workspace_image_size_bytes = Arc::new(AtomicU64::new(0));
+        let workspace_disk_mb = Arc::new(AtomicU32::new(0));
         let provider = RecordingSnapshotProvider {
             create_uncommitted_called: Arc::clone(&create_uncommitted_called),
             create_snapshot_called: Arc::clone(&create_snapshot_called),
             committed: Arc::clone(&committed),
-            workspace_image_size_bytes: Arc::clone(&workspace_image_size_bytes),
+            workspace_disk_mb: Arc::clone(&workspace_disk_mb),
         };
         let def = profile::ProfileDef {
             vcpu: 1,
@@ -2445,9 +2445,9 @@ exit 1
         assert!(create_uncommitted_called.load(Ordering::SeqCst));
         assert!(committed.load(Ordering::SeqCst));
         assert_eq!(
-            workspace_image_size_bytes.load(Ordering::SeqCst),
-            16 * 1024 * 1024,
-            "snapshot workspace image size must use workspace_disk_mb, not rootfs_disk_mb"
+            workspace_disk_mb.load(Ordering::SeqCst),
+            16,
+            "snapshot workspace disk size must use workspace_disk_mb, not rootfs_disk_mb"
         );
         assert!(
             !create_snapshot_called.load(Ordering::SeqCst),

@@ -435,7 +435,7 @@ pub(crate) async fn prepare_workspace_drive_image(
             phase: SandboxInitializationPhase::SandboxAllocation,
             message: format!("create workspace image {}: {e}", path.display()),
         })?;
-    file.set_len(config.size_bytes)
+    file.set_len(workspace_drive_size_bytes(config.size_mb))
         .await
         .map_err(|e| SandboxError::Initialization {
             phase: SandboxInitializationPhase::SandboxAllocation,
@@ -458,6 +458,10 @@ pub(crate) async fn prepare_workspace_drive_image(
         message: format!("format workspace image: {e}"),
     })?;
     Ok(())
+}
+
+fn workspace_drive_size_bytes(size_mb: u32) -> u64 {
+    u64::from(size_mb) * 1024 * 1024
 }
 
 fn clean_stale_sock_dir(id: &str, sock_dir: &Path) -> sandbox::Result<()> {
@@ -556,6 +560,11 @@ mod tests {
     use crate::network::{NetnsLease, NetnsPool};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn workspace_drive_size_bytes_converts_mib_to_bytes() {
+        assert_eq!(workspace_drive_size_bytes(16), 16 * 1024 * 1024);
+    }
 
     #[tokio::test]
     async fn shutdown_cleans_owned_netns_pool_with_extra_arc_refs() {
