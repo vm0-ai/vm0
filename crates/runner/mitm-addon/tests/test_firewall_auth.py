@@ -23,6 +23,8 @@ from tests.auth_state_helpers import (
 )
 from tests.firewall_helpers import cancel_pending_task
 
+_MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
+
 
 def _upstream_headers(*pairs: tuple[str, str]) -> Message:
     headers = Message()
@@ -33,6 +35,34 @@ def _upstream_headers(*pairs: tuple[str, str]) -> Message:
 
 def _http_error(url: str, status: int, reason: str, body: bytes) -> urllib.error.HTTPError:
     return urllib.error.HTTPError(url, status, reason, Message(), io.BytesIO(body))
+
+
+def _auth_success(
+    *,
+    headers: dict[str, str],
+    expires_at: object = None,
+    resolved_secrets: list[str] | None = None,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+    base: str | None = None,
+    query: dict[str, str] | None = None,
+) -> auth._FirewallAuthSuccess:
+    return auth._FirewallAuthSuccess(
+        headers=headers,
+        expires_at=expires_at,
+        resolved_secrets=resolved_secrets or [],
+        refreshed_connectors=refreshed_connectors or [],
+        refreshed_secrets=refreshed_secrets or [],
+        base=base,
+        query=query,
+    )
+
+
+def _json_response(body: object) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = json.dumps(body).encode()
+    return mock_resp
 
 
 def _allow(
@@ -55,7 +85,7 @@ class _UnreadableHttpErrorBody(io.BytesIO):
 class TestGetFirewallHeaders:
     async def test_cache_miss_fetches_and_caches(self, headers):
         mock_headers = {"Authorization": "Bearer fresh-token"}
-        mock_result = {"headers": mock_headers}
+        mock_result = _auth_success(headers=mock_headers)
         encrypted = "iv:tag:data"
         auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
 
@@ -131,7 +161,7 @@ class TestGetFirewallHeaders:
         )
 
         fresh_headers = {"Authorization": "Bearer fresh-token"}
-        mock_result = {"headers": fresh_headers, "expiresAt": time.time() + 3600}
+        mock_result = _auth_success(headers=fresh_headers, expires_at=time.time() + 3600)
 
         mock_fetch = AsyncMock(return_value=mock_result)
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -206,7 +236,7 @@ class TestGetFirewallHeaders:
             expires_at=expiry,
         )
         fresh_headers = {"Authorization": "Bearer fresh-token"}
-        mock_fetch = AsyncMock(return_value={"headers": fresh_headers, "expiresAt": None})
+        mock_fetch = AsyncMock(return_value=_auth_success(headers=fresh_headers, expires_at=None))
 
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
             headers = await auth.get_firewall_headers(
@@ -227,10 +257,7 @@ class TestGetFirewallHeaders:
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         expires_at = int(time.time()) + 30
         mock_fetch = AsyncMock(
-            return_value={
-                "headers": fresh_headers,
-                "expiresAt": expires_at,
-            }
+            return_value=_auth_success(headers=fresh_headers, expires_at=expires_at)
         )
 
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -258,10 +285,7 @@ class TestGetFirewallHeaders:
         )
         fresh_headers = {"Authorization": "Bearer fresh-token"}
         mock_fetch = AsyncMock(
-            return_value={
-                "headers": fresh_headers,
-                "expiresAt": time.time() + 30,
-            }
+            return_value=_auth_success(headers=fresh_headers, expires_at=time.time() + 30)
         )
 
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -279,38 +303,24 @@ class TestGetFirewallHeaders:
         mock_fetch.assert_called_once()
 
     @pytest.mark.parametrize(
-        "fetch_result",
+        "expires_at",
         [
-            pytest.param({"headers": {"Authorization": "Bearer token"}}, id="missing"),
-            pytest.param(
-                {"headers": {"Authorization": "Bearer token"}, "expiresAt": None},
-                id="none",
-            ),
-            pytest.param(
-                {"headers": {"Authorization": "Bearer token"}, "expiresAt": True},
-                id="bool",
-            ),
-            pytest.param(
-                {"headers": {"Authorization": "Bearer token"}, "expiresAt": "123"},
-                id="string",
-            ),
-            pytest.param(
-                {"headers": {"Authorization": "Bearer token"}, "expiresAt": float("inf")},
-                id="infinity",
-            ),
-            pytest.param(
-                {"headers": {"Authorization": "Bearer token"}, "expiresAt": float("nan")},
-                id="nan",
-            ),
-            pytest.param(
-                {"headers": {"Authorization": "Bearer token"}, "expiresAt": 0},
-                id="expired",
-            ),
+            pytest.param(None, id="none"),
+            pytest.param(True, id="bool"),
+            pytest.param("123", id="string"),
+            pytest.param(float("inf"), id="infinity"),
+            pytest.param(float("nan"), id="nan"),
+            pytest.param(0, id="expired"),
         ],
     )
-    async def test_billable_fetch_with_invalid_expiry_fails_closed(self, fetch_result):
+    async def test_billable_fetch_with_invalid_expiry_fails_closed(self, expires_at):
         cache_key = ("run-1", "api-1")
-        mock_fetch = AsyncMock(return_value=fetch_result)
+        mock_fetch = AsyncMock(
+            return_value=_auth_success(
+                headers={"Authorization": "Bearer token"},
+                expires_at=expires_at,
+            )
+        )
 
         with (
             patch.object(auth, "fetch_firewall_headers", mock_fetch),
@@ -350,11 +360,11 @@ class TestGetFirewallHeaders:
         cache_key = ("run-1", "api-1")
         cached_query = {"api_key": "cached-key", "empty_auth": ""}
         mock_fetch = AsyncMock(
-            return_value={
-                "headers": {},
-                "resolvedSecrets": ["QUERY_KEY"],
-                "query": cached_query,
-            }
+            return_value=_auth_success(
+                headers={},
+                resolved_secrets=["QUERY_KEY"],
+                query=cached_query,
+            )
         )
 
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -374,11 +384,11 @@ class TestGetFirewallHeaders:
         cached_base = "https://example.com/webhook/secret"
         cached_query = {"api_key": "cached-key", "empty_auth": ""}
         mock_fetch = AsyncMock(
-            return_value={
-                "headers": {},
-                "base": cached_base,
-                "query": cached_query,
-            }
+            return_value=_auth_success(
+                headers={},
+                base=cached_base,
+                query=cached_query,
+            )
         )
 
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
@@ -421,7 +431,7 @@ class TestGetFirewallHeaders:
         mark_force_refresh(cache_key)
         before = time.time()
 
-        mock_fetch = AsyncMock(return_value={"headers": {"Authorization": "Bearer new"}})
+        mock_fetch = AsyncMock(return_value=_auth_success(headers={"Authorization": "Bearer new"}))
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
             await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
@@ -461,10 +471,10 @@ class TestGetFirewallHeaders:
             first_force_refresh_values.append(force_refresh)
             fetch_entered.set()
             await allow_fetch_return.wait()
-            return {
-                "headers": {"Authorization": "Bearer maybe-stale"},
-                "expiresAt": time.time() + 3600,
-            }
+            return _auth_success(
+                headers={"Authorization": "Bearer maybe-stale"},
+                expires_at=time.time() + 3600,
+            )
 
         with patch.object(auth, "fetch_firewall_headers", side_effect=delayed_fetch):
             task = asyncio.create_task(
@@ -487,10 +497,7 @@ class TestGetFirewallHeaders:
 
         forced_headers = {"Authorization": "Bearer refreshed"}
         forced_fetch = AsyncMock(
-            return_value={
-                "headers": forced_headers,
-                "expiresAt": time.time() + 3600,
-            }
+            return_value=_auth_success(headers=forced_headers, expires_at=time.time() + 3600)
         )
         before_forced = time.time()
 
@@ -518,14 +525,14 @@ class TestGetFirewallHeaders:
             if not force_refresh:
                 first_fetch_entered.set()
                 await allow_first_fetch_return.wait()
-                return {
-                    "headers": {"Authorization": "Bearer maybe-stale"},
-                    "expiresAt": time.time() + 3600,
-                }
-            return {
-                "headers": {"Authorization": "Bearer refreshed"},
-                "expiresAt": time.time() + 3600,
-            }
+                return _auth_success(
+                    headers={"Authorization": "Bearer maybe-stale"},
+                    expires_at=time.time() + 3600,
+                )
+            return _auth_success(
+                headers={"Authorization": "Bearer refreshed"},
+                expires_at=time.time() + 3600,
+            )
 
         with patch.object(auth, "fetch_firewall_headers", side_effect=fetch_with_blocked_leader):
             leader = asyncio.create_task(
@@ -553,7 +560,7 @@ class TestGetFirewallHeaders:
 
     async def test_force_refresh_absent_passes_false(self, headers):
         """Without a marker, fetch is called with force_refresh=False (#9860)."""
-        mock_fetch = AsyncMock(return_value={"headers": {}})
+        mock_fetch = AsyncMock(return_value=_auth_success(headers={}))
         with patch.object(auth, "fetch_firewall_headers", mock_fetch):
             await auth.get_firewall_headers("run-1", "api-2", "iv:tag:data", {}, "tok-xyz")
 
@@ -827,6 +834,57 @@ class TestHandleFirewallRequest:
         assert "connectors" not in body
         mock_resp.__exit__.assert_called_once()
 
+    async def test_malformed_json_success_response_returns_502_without_auth_mutation(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.github.com",
+            path="/repos?existing=1",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://api.github.com",
+            "auth": {
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        allow = _allow(api_entry)
+        mock_resp = _json_response({"headers": []})
+
+        with (
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        assert cached_headers(("test-run", "https://api.github.com")) is None
+        body = json.loads(flow.response.content)
+        assert body["error"] == "auth_failed"
+        assert _MALFORMED_SUCCESS_PREFIX in body["message"]
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
+        mock_resp.__exit__.assert_called_once()
+
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
@@ -889,12 +947,12 @@ class TestHandleFirewallRequest:
                 auth,
                 "fetch_firewall_headers",
                 AsyncMock(
-                    return_value={
-                        "headers": {"Authorization": "Bearer token"},
-                        "base": "https://forward.example/secret",
-                        "query": {"api_key": "secret"},
-                        "expiresAt": None,
-                    }
+                    return_value=_auth_success(
+                        headers={"Authorization": "Bearer token"},
+                        base="https://forward.example/secret",
+                        query={"api_key": "secret"},
+                        expires_at=None,
+                    )
                 ),
             ),
             mitm_ctx(),
@@ -1196,7 +1254,9 @@ class TestFetchFirewallHeaders:
                 "https://api.vm0.ai",
             )
 
-        assert result == {"headers": {"Authorization": "Bearer tok"}}
+        assert result.headers == {"Authorization": "Bearer tok"}
+        assert result.base is None
+        assert result.query is None
 
         # urllib.request.Request construction is the external boundary (#9991).
         mock_req_cls.assert_called_once()
@@ -1209,6 +1269,86 @@ class TestFetchFirewallHeaders:
         assert "base" not in body
         assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"
         assert call_args[1]["headers"]["Content-Type"] == "application/json"
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param([], id="array"),
+            pytest.param(None, id="null"),
+            pytest.param("plain string", id="string"),
+            pytest.param(123, id="number"),
+            pytest.param({}, id="missing-headers"),
+            pytest.param({"headers": []}, id="headers-array"),
+            pytest.param({"headers": {"Authorization": 123}}, id="header-value-number"),
+            pytest.param({"headers": {}, "base": []}, id="base-array"),
+            pytest.param({"headers": {}, "query": []}, id="query-array"),
+            pytest.param({"headers": {}, "query": {"api_key": 123}}, id="query-value-number"),
+            pytest.param({"headers": {}, "resolvedSecrets": "TOKEN"}, id="resolved-secrets-string"),
+            pytest.param(
+                {"headers": {}, "refreshedConnectors": [123]},
+                id="refreshed-connectors-number",
+            ),
+            pytest.param(
+                {"headers": {}, "refreshedSecrets": [None]},
+                id="refreshed-secrets-null",
+            ),
+        ],
+    )
+    def test_malformed_success_response_shape_raises_value_error(self, body: object):
+        mock_resp = _json_response(body)
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        mock_resp.__exit__.assert_called_once()
+
+    def test_success_response_shape_is_parsed_to_internal_type(self):
+        expires_at = time.time() + 30
+        mock_resp = _json_response(
+            {
+                "headers": {
+                    "Authorization": "Bearer tok",
+                    "X-Custom": "custom",
+                },
+                "base": "https://example.com/webhook/secret",
+                "query": {"api_key": "resolved-key"},
+                "expiresAt": expires_at,
+                "resolvedSecrets": ["API_TOKEN"],
+                "refreshedConnectors": ["notion"],
+                "refreshedSecrets": ["NOTION_TOKEN"],
+                "futureField": {"ignored": True},
+            }
+        )
+
+        with (
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                "https://api.vm0.ai",
+            )
+
+        assert isinstance(result, auth._FirewallAuthSuccess)
+        assert result.headers == {
+            "Authorization": "Bearer tok",
+            "X-Custom": "custom",
+        }
+        assert result.base == "https://example.com/webhook/secret"
+        assert result.query == {"api_key": "resolved-key"}
+        assert result.expires_at == expires_at
+        assert result.resolved_secrets == ["API_TOKEN"]
+        assert result.refreshed_connectors == ["notion"]
+        assert result.refreshed_secrets == ["NOTION_TOKEN"]
+        assert not hasattr(result, "futureField")
 
     def test_invalid_api_url_raises_before_urlopen(self):
         with (
@@ -1274,7 +1414,7 @@ class TestFetchFirewallHeaders:
                 auth_base="${{ secrets.DISCORD_WEBHOOK_URL }}",
             )
 
-        assert result["base"] == "https://discord.com/api/webhooks/123/abc"
+        assert result.base == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
 
@@ -1303,8 +1443,8 @@ class TestFetchFirewallHeaders:
                 auth_query={"api_key": "${{ secrets.API_KEY }}"},
             )
 
-        assert result["base"] == "https://example.com/webhook/secret"
-        assert result["query"] == {"api_key": "resolved-key"}
+        assert result.base == "https://example.com/webhook/secret"
+        assert result.query == {"api_key": "resolved-key"}
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
         assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
@@ -1680,7 +1820,7 @@ class TestFetchFirewallHeaders:
         ):
             result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")
 
-        assert result == {"headers": {"Auth": "tok"}}
+        assert result.headers == {"Auth": "tok"}
         # Verify the URL was built from the ctx-provided api_url
         call_args = mock_req_cls.call_args
         assert call_args[0][0] == "https://ctx-url.vm0.ai/api/webhooks/agent/firewall/auth"

@@ -77,11 +77,24 @@ _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_requ
 class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
-    headers: dict
+    headers: dict[str, str]
     expires_at: object = None
-    resolved_secrets: list = field(default_factory=list)
+    resolved_secrets: list[str] = field(default_factory=list)
     base: str | None = None
-    query: dict | None = None
+    query: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class _FirewallAuthSuccess:
+    """Validated /firewall/auth success response consumed by the auth cache."""
+
+    headers: dict[str, str]
+    expires_at: object = None
+    resolved_secrets: list[str] = field(default_factory=list)
+    refreshed_connectors: list[str] = field(default_factory=list)
+    refreshed_secrets: list[str] = field(default_factory=list)
+    base: str | None = None
+    query: dict[str, str] | None = None
 
 
 @dataclass
@@ -285,6 +298,69 @@ def _firewall_auth_api_error_from_envelope(
     )
 
 
+_MALFORMED_FIREWALL_AUTH_SUCCESS = "Firewall auth endpoint returned malformed success response"
+
+
+def _malformed_firewall_auth_success(message: str) -> ValueError:
+    return ValueError(f"{_MALFORMED_FIREWALL_AUTH_SUCCESS}: {message}")
+
+
+def _parse_string_map(value: object, field_name: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise _malformed_firewall_auth_success(f"{field_name} must be an object")
+
+    parsed: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise _malformed_firewall_auth_success(f"{field_name} keys must be strings")
+        if not isinstance(item, str):
+            raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
+        parsed[key] = item
+    return parsed
+
+
+def _parse_optional_string_map(
+    decoded: dict[object, object], field_name: str
+) -> dict[str, str] | None:
+    value = decoded.get(field_name)
+    if value is None:
+        return None
+    return _parse_string_map(value, field_name)
+
+
+def _parse_optional_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
+    value = decoded.get(field_name)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise _malformed_firewall_auth_success(f"{field_name} must be an array")
+    if not all(isinstance(item, str) for item in value):
+        raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
+    return list(value)
+
+
+def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
+    if not isinstance(decoded, dict):
+        raise _malformed_firewall_auth_success("response must be an object")
+    decoded_map: dict[object, object] = decoded
+    if "headers" not in decoded_map:
+        raise _malformed_firewall_auth_success("headers is required")
+
+    base = decoded_map.get("base")
+    if base is not None and not isinstance(base, str):
+        raise _malformed_firewall_auth_success("base must be a string")
+
+    return _FirewallAuthSuccess(
+        headers=_parse_string_map(decoded_map["headers"], "headers"),
+        expires_at=decoded_map.get("expiresAt"),
+        resolved_secrets=_parse_optional_string_list(decoded_map, "resolvedSecrets"),
+        refreshed_connectors=_parse_optional_string_list(decoded_map, "refreshedConnectors"),
+        refreshed_secrets=_parse_optional_string_list(decoded_map, "refreshedSecrets"),
+        base=base,
+        query=_parse_optional_string_map(decoded_map, "query"),
+    )
+
+
 def _fetch_firewall_headers_sync(
     encrypted_secrets: str,
     auth_headers: dict,
@@ -297,7 +373,7 @@ def _fetch_firewall_headers_sync(
     auth_query: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> dict:
+) -> _FirewallAuthSuccess:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
 
     api_url is resolved by the async caller (fetch_firewall_headers) while
@@ -324,7 +400,8 @@ def _fetch_firewall_headers_sync(
     try:
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            return json.loads(resp.read())
+            decoded: object = json.loads(resp.read())
+            return _parse_firewall_auth_success(decoded)
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; `with e` closes on every exit
         # path to avoid FD exhaustion under sustained cache-miss load (#10475).
@@ -364,7 +441,7 @@ async def fetch_firewall_headers(
     auth_query: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> dict:
+) -> _FirewallAuthSuccess:
     """Resolve auth headers via server-side decryption.
 
     encrypted_secrets is the encrypted runtime secret namespace. After API-side
@@ -510,21 +587,19 @@ async def get_firewall_headers(
             firewall_billable,
             force_refresh=force_refresh,
         )
-        if firewall_billable and not _has_valid_expiry(result.get("expiresAt")):
+        if firewall_billable and not _has_valid_expiry(result.expires_at):
             raise InvalidBillableAuthExpiryError(
                 "Billable firewall auth response did not include a valid cache expiry"
             )
-        headers = result["headers"]
-        resolved_secrets = result.get("resolvedSecrets", [])
         cache_entry = _FirewallHeaderCacheEntry(
-            headers=headers,
-            expires_at=result.get("expiresAt"),
-            resolved_secrets=resolved_secrets,
+            headers=result.headers,
+            expires_at=result.expires_at,
+            resolved_secrets=result.resolved_secrets,
         )
-        if result.get("base"):
-            cache_entry.base = result["base"]
-        if result.get("query"):
-            cache_entry.query = result["query"]
+        if result.base is not None:
+            cache_entry.base = result.base
+        if result.query is not None:
+            cache_entry.query = result.query
 
         # A 401 can request a forced refresh while this non-forced fetch is
         # in flight. Return the current result to this request, but do not let
@@ -534,16 +609,16 @@ async def get_firewall_headers(
             state.cache = cache_entry
 
         ret: dict = {
-            "headers": headers,
-            "resolved_secrets": resolved_secrets,
-            "refreshed_connectors": result.get("refreshedConnectors", []),
-            "refreshed_secrets": result.get("refreshedSecrets", []),
+            "headers": result.headers,
+            "resolved_secrets": result.resolved_secrets,
+            "refreshed_connectors": result.refreshed_connectors,
+            "refreshed_secrets": result.refreshed_secrets,
             "cache_hit": False,
         }
-        if result.get("base"):
-            ret["base"] = result["base"]
-        if result.get("query"):
-            ret["query"] = result["query"]
+        if result.base is not None:
+            ret["base"] = result.base
+        if result.query is not None:
+            ret["query"] = result.query
         return ret
 
 

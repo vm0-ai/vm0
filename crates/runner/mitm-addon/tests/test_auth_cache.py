@@ -16,6 +16,10 @@ from tests.auth_state_helpers import (
 )
 
 
+def _auth_success(headers: dict[str, str], expires_at: object) -> auth._FirewallAuthSuccess:
+    return auth._FirewallAuthSuccess(headers=headers, expires_at=expires_at)
+
+
 class TestFirewallHeaderCache:
     """Tests for get_firewall_headers caching and concurrency protection."""
 
@@ -26,10 +30,10 @@ class TestFirewallHeaderCache:
         def counting_fetch(*args, **kwargs):
             nonlocal fetch_count
             fetch_count += 1
-            return {
-                "headers": {"Authorization": "Bearer token"},
-                "expiresAt": time.time() + 3600,
-            }
+            return _auth_success(
+                {"Authorization": "Bearer token"},
+                time.time() + 3600,
+            )
 
         with (
             patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
@@ -57,10 +61,10 @@ class TestFirewallHeaderCache:
         def counting_fetch(*args, **kwargs):
             nonlocal fetch_count
             fetch_count += 1
-            return {
-                "headers": {"Authorization": f"Bearer token-{fetch_count}"},
-                "expiresAt": time.time() + 3600,
-            }
+            return _auth_success(
+                {"Authorization": f"Bearer token-{fetch_count}"},
+                time.time() + 3600,
+            )
 
         with (
             patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
@@ -99,10 +103,10 @@ class TestFirewallHeaderCache:
         )
 
         def fresh_fetch(*args, **kwargs):
-            return {
-                "headers": {"Authorization": "Bearer fresh"},
-                "expiresAt": time.time() + 3600,
-            }
+            return _auth_success(
+                {"Authorization": "Bearer fresh"},
+                time.time() + 3600,
+            )
 
         with (
             patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
