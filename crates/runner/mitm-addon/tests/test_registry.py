@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -359,6 +360,37 @@ class TestLoadRegistry:
         assert spy.call_count == 2
         assert log.warn.call_count == 1
         assert "Failed to read" in log.warn.call_args_list[0].args[0]
+
+    def test_read_failure_clears_previous_failed_key(self, tmp_path):
+        path = tmp_path / "registry.json"
+        path.write_text("{}")
+        first_key = SimpleNamespace(st_dev=1, st_ino=1, st_mtime_ns=100, st_size=10)
+        second_key = SimpleNamespace(st_dev=1, st_ino=1, st_mtime_ns=200, st_size=20)
+        valid_registry = {"vms": {"10.0.0.1": {"runId": "r1"}}}
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry.Path, "stat", side_effect=[first_key, second_key, first_key]),
+            patch.object(
+                registry.json,
+                "load",
+                side_effect=[
+                    json.JSONDecodeError("broken", "", 0),
+                    OSError("read failed"),
+                    valid_registry,
+                ],
+            ) as spy,
+        ):
+            assert registry.load_registry(str(path)) == {}
+            assert registry.load_registry(str(path)) == {}
+            recovered = registry.load_registry(str(path))
+
+        assert recovered == {"10.0.0.1": {"runId": "r1"}}
+        assert spy.call_count == 3
+        assert log.warn.call_count == 2
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+        assert "Failed to read" in log.warn.call_args_list[1].args[0]
 
     def test_recovery_after_parse_failure_rewarns_on_next_failure(self, tmp_path):
         """Successful load clears the flag so a later failure re-warns once."""

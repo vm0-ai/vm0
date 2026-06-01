@@ -132,6 +132,7 @@ def load_registry(registry_path: str) -> dict:
     try:
         raw_registry = _read_registry_vms(path)
     except OSError as e:
+        state.failed_key = None
         if key != state.read_error_key:
             state.read_error_key = key
             ctx.log.warn(f"Failed to read proxy registry: {e}")
