@@ -199,7 +199,7 @@ sandbox:
 - Enables instant boot without rootfs copy
 
 **Per-VM Workspace Drive**:
-- Sparse ext4 image: `/var/lib/vm0-runner/workspaces/{sandbox_id}/workspace.ext4`
+- Sparse ext4 image: `{base_dir}/workspaces/{sandbox_id}/workspace.ext4`
 - Exposed to the guest as `/dev/vdb`
 - Mounted by the runner at `/home/user/workspace`
 - Sized from the runner profile `workspace_disk_mb`

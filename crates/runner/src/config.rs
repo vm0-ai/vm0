@@ -35,7 +35,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
@@ -100,7 +100,7 @@ pub struct FirecrackerConfig {
 ///
 /// See the module-level docs for the two-hash identity scheme
 /// (`rootfs_hash` covers the local rootfs, `snapshot_hash` is local-only).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProfileConfig {
     /// Content-addressed rootfs hash (shared across snapshot variants on this host).
     pub rootfs_hash: String,
@@ -116,43 +116,6 @@ pub struct ProfileConfig {
     /// Workspace disk in MiB. Used to size the writable workspace drive.
     /// Must be non-zero and ≤ 1 TiB.
     pub workspace_disk_mb: u32,
-}
-
-#[derive(Deserialize)]
-struct ProfileConfigWire {
-    rootfs_hash: String,
-    snapshot_hash: String,
-    vcpu: u32,
-    memory_mb: u32,
-    rootfs_disk_mb: Option<u32>,
-    workspace_disk_mb: Option<u32>,
-    disk_mb: Option<u32>,
-}
-
-impl<'de> Deserialize<'de> for ProfileConfig {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let wire = ProfileConfigWire::deserialize(deserializer)?;
-        let rootfs_disk_mb = wire
-            .rootfs_disk_mb
-            .or(wire.disk_mb)
-            .ok_or_else(|| serde::de::Error::missing_field("rootfs_disk_mb"))?;
-        let workspace_disk_mb = wire
-            .workspace_disk_mb
-            .or(wire.disk_mb)
-            .ok_or_else(|| serde::de::Error::missing_field("workspace_disk_mb"))?;
-
-        Ok(Self {
-            rootfs_hash: wire.rootfs_hash,
-            snapshot_hash: wire.snapshot_hash,
-            vcpu: wire.vcpu,
-            memory_mb: wire.memory_mb,
-            rootfs_disk_mb,
-            workspace_disk_mb,
-        })
-    }
 }
 
 /// Sandbox-level knobs for concurrency and the idle-VM pool.

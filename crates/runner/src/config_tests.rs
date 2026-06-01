@@ -199,7 +199,7 @@ server:
 }
 
 #[tokio::test]
-async fn load_maps_legacy_disk_mb_to_rootfs_and_workspace_disk_mb() {
+async fn load_rejects_legacy_disk_mb_without_split_disk_fields() {
     let fixture = ConfigFixture::new().await;
     let yaml = fixture.yaml(&format!(
         r#"
@@ -215,10 +215,11 @@ profiles:
         snap_hash = TEST_SNAPSHOT_HASH,
     ));
 
-    let config = fixture.load_config(&yaml, true).await.unwrap();
-    let default = &config.profiles["vm0/default"];
-    assert_eq!(default.rootfs_disk_mb, 12288);
-    assert_eq!(default.workspace_disk_mb, 12288);
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string().contains("rootfs_disk_mb") || err.to_string().contains("workspace_disk_mb"),
+        "unexpected error: {err}"
+    );
 }
 
 #[tokio::test]
