@@ -40,7 +40,6 @@ agents:
       OPENAI_MODEL: "gpt-5.4-mini"
     volumes:
       - codex-files:/home/user/.codex
-    working_dir: /home/user/workspace
 volumes:
   codex-files:
     name: $VOLUME_NAME

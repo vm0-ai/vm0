@@ -237,7 +237,6 @@ agents:
   ${AGENT_NAME}-refresh:
     description: "test-oauth mid-run refresh"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
@@ -319,7 +318,6 @@ agents:
   ${AGENT_NAME}-stale:
     description: "test-oauth stale access token (DB drift)"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF

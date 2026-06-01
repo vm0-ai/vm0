@@ -704,19 +704,6 @@ mod tests {
         HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO).unwrap()
     }
 
-    #[test]
-    fn setup_working_dir_creates_and_enters_directory() {
-        let _test_state_guard = lock_test_state();
-        let original_dir = std::env::current_dir().unwrap();
-        let tmp = tempfile::tempdir().unwrap();
-        let target = tmp.path().join("nested/workspace");
-
-        setup_working_dir(&target).unwrap();
-
-        assert_eq!(std::env::current_dir().unwrap(), target);
-        std::env::set_current_dir(original_dir).unwrap();
-    }
-
     struct SystemLogOverrideGuard;
 
     impl SystemLogOverrideGuard {

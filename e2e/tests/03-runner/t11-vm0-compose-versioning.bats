@@ -31,7 +31,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for version display"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Running vm0 compose..."
@@ -53,7 +52,6 @@ agents:
   $AGENT_NAME:
     description: "Initial description"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# First compose..."
@@ -70,7 +68,6 @@ agents:
   $AGENT_NAME:
     description: "Updated description"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Second compose with different content..."
@@ -106,7 +103,6 @@ agents:
   $AGENT_NAME:
     description: "Version 1"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Building version 1..."
@@ -123,7 +119,6 @@ agents:
   $AGENT_NAME:
     description: "Version 2"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Building version 2..."
@@ -157,7 +152,6 @@ agents:
   $AGENT_NAME:
     description: "Latest version test"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Building agent..."
@@ -189,7 +183,6 @@ agents:
   $AGENT_NAME:
     description: "Backward compatibility test"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Building agent..."

@@ -44,7 +44,6 @@ agents:
   ${AGENT_MASK}:
     description: "E2E test agent for secret masking"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       MY_SECRET: "\${{ secrets.MY_SECRET }}"
     volumes:
@@ -65,7 +64,6 @@ agents:
   ${AGENT_MULTI}:
     description: "E2E test agent for multiple secrets"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       API_KEY: "\${{ secrets.API_KEY }}"
       CLI_SECRET: "\${{ secrets.CLI_SECRET }}"

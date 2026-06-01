@@ -109,7 +109,6 @@ agents:
   ${AGENT_NAME}-multi:
     description: "Multi-firewall placeholder test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
@@ -144,7 +143,6 @@ agents:
   ${AGENT_NAME}-auto:
     description: "Auto-firewall connector test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF
@@ -191,7 +189,6 @@ agents:
   ${AGENT_NAME}-webhook:
     description: "Webhook URL placeholder test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       DISCORD_WEBHOOK_URL: \${{ secrets.DISCORD_WEBHOOK_URL }}
 EOF
