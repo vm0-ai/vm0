@@ -33,45 +33,33 @@ impl<'a> PrerequisiteMode<'a> {
         }
     }
 
-    fn capabilities(self) -> &'static [HostCapability] {
+    fn command_groups(self) -> &'static [&'static [&'static str]] {
         match self {
-            Self::FactoryFresh => FACTORY_FRESH_CAPABILITIES,
-            Self::FactorySnapshotRestore { .. } => FACTORY_SNAPSHOT_RESTORE_CAPABILITIES,
-            Self::SnapshotCreate => SNAPSHOT_CREATE_CAPABILITIES,
+            Self::FactoryFresh => FACTORY_FRESH_COMMAND_GROUPS,
+            Self::FactorySnapshotRestore { .. } => FACTORY_SNAPSHOT_RESTORE_COMMAND_GROUPS,
+            Self::SnapshotCreate => SNAPSHOT_CREATE_COMMAND_GROUPS,
         }
     }
 }
 
-/// Host capability groups used to derive concrete command requirements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum HostCapability {
-    NetworkSetup,
-    SnapshotPrivateMountCreate,
-    SnapshotPrivateMountRestore,
-    SparseCopy,
-    WorkspaceImageCreate,
-}
-
-const FACTORY_FRESH_CAPABILITIES: &[HostCapability] = &[
-    HostCapability::NetworkSetup,
-    HostCapability::WorkspaceImageCreate,
+const FACTORY_FRESH_COMMAND_GROUPS: &[&[&str]] =
+    &[NETWORK_COMMANDS, WORKSPACE_IMAGE_CREATE_COMMANDS];
+const FACTORY_SNAPSHOT_RESTORE_COMMAND_GROUPS: &[&[&str]] = &[
+    NETWORK_COMMANDS,
+    COW_POOL_SNAPSHOT_RESTORE_COMMANDS,
+    WORKSPACE_IMAGE_CREATE_COMMANDS,
+    SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS,
 ];
-const FACTORY_SNAPSHOT_RESTORE_CAPABILITIES: &[HostCapability] = &[
-    HostCapability::NetworkSetup,
-    HostCapability::SparseCopy,
-    HostCapability::WorkspaceImageCreate,
-    HostCapability::SnapshotPrivateMountRestore,
-];
-const SNAPSHOT_CREATE_CAPABILITIES: &[HostCapability] = &[
-    HostCapability::NetworkSetup,
-    HostCapability::WorkspaceImageCreate,
-    HostCapability::SnapshotPrivateMountCreate,
+const SNAPSHOT_CREATE_COMMAND_GROUPS: &[&[&str]] = &[
+    NETWORK_COMMANDS,
+    WORKSPACE_IMAGE_CREATE_COMMANDS,
+    SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
 ];
 
 const NETWORK_COMMANDS: &[&str] = &["ip", "iptables", "iptables-save", "sysctl"];
 const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount"];
 const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
-const SPARSE_COPY_COMMANDS: &[&str] = &["cp"];
+const COW_POOL_SNAPSHOT_RESTORE_COMMANDS: &[&str] = &["cp"];
 const WORKSPACE_IMAGE_CREATE_COMMANDS: &[&str] = &["mkfs.ext4"];
 
 /// Verify that all required system prerequisites are present.
@@ -150,29 +138,19 @@ fn check_required_commands(commands: &[&str], errors: &mut Vec<String>) {
 }
 
 fn required_commands(mode: PrerequisiteMode<'_>) -> Vec<&'static str> {
-    required_commands_for_capabilities(mode.capabilities())
+    required_commands_for_groups(mode.command_groups())
 }
 
-fn required_commands_for_capabilities(capabilities: &[HostCapability]) -> Vec<&'static str> {
+fn required_commands_for_groups<'a>(command_groups: &[&'a [&'a str]]) -> Vec<&'a str> {
     let mut commands = Vec::new();
-    for capability in capabilities {
-        for &cmd in commands_for_capability(*capability) {
+    for group in command_groups {
+        for &cmd in *group {
             if !commands.contains(&cmd) {
                 commands.push(cmd);
             }
         }
     }
     commands
-}
-
-fn commands_for_capability(capability: HostCapability) -> &'static [&'static str] {
-    match capability {
-        HostCapability::NetworkSetup => NETWORK_COMMANDS,
-        HostCapability::SnapshotPrivateMountCreate => SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
-        HostCapability::SnapshotPrivateMountRestore => SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS,
-        HostCapability::SparseCopy => SPARSE_COPY_COMMANDS,
-        HostCapability::WorkspaceImageCreate => WORKSPACE_IMAGE_CREATE_COMMANDS,
-    }
 }
 
 /// Create `/run/vm0` with mode 1777 (world-writable + sticky bit) if needed.
@@ -204,15 +182,8 @@ mod tests {
     }
 
     #[test]
-    fn factory_fresh_capabilities_include_network_and_workspace_image_create() {
+    fn factory_fresh_commands_include_network_and_workspace_image_create() {
         let mode = PrerequisiteMode::FactoryFresh;
-        assert_eq!(
-            mode.capabilities(),
-            &[
-                HostCapability::NetworkSetup,
-                HostCapability::WorkspaceImageCreate,
-            ]
-        );
         assert_eq!(
             required_commands(mode),
             vec!["ip", "iptables", "iptables-save", "sysctl", "mkfs.ext4"]
@@ -220,21 +191,12 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_restore_capabilities_include_cp_mkfs_and_private_mount_restore() {
+    fn snapshot_restore_commands_include_cp_mkfs_and_private_mount_restore() {
         let snapshot = snapshot_config();
         let mode = PrerequisiteMode::FactorySnapshotRestore {
             snapshot: &snapshot,
         };
 
-        assert_eq!(
-            mode.capabilities(),
-            &[
-                HostCapability::NetworkSetup,
-                HostCapability::SparseCopy,
-                HostCapability::WorkspaceImageCreate,
-                HostCapability::SnapshotPrivateMountRestore,
-            ]
-        );
         assert_eq!(
             required_commands(mode),
             vec![
@@ -253,18 +215,10 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_create_capabilities_include_private_mount_create_without_sparse_copy() {
+    fn snapshot_create_commands_include_private_mount_create_without_sparse_copy() {
         let mode = PrerequisiteMode::SnapshotCreate;
         let commands = required_commands(mode);
 
-        assert_eq!(
-            mode.capabilities(),
-            &[
-                HostCapability::NetworkSetup,
-                HostCapability::WorkspaceImageCreate,
-                HostCapability::SnapshotPrivateMountCreate,
-            ]
-        );
         assert_eq!(
             commands,
             vec![
@@ -317,7 +271,7 @@ mod tests {
     #[test]
     fn network_prerequisites_use_network_command_set() {
         assert_eq!(
-            required_commands_for_capabilities(&[HostCapability::NetworkSetup]),
+            required_commands_for_groups(&[NETWORK_COMMANDS]),
             vec!["ip", "iptables", "iptables-save", "sysctl"]
         );
     }
