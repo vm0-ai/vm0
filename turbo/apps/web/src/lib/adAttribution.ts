@@ -110,7 +110,7 @@ function truncate(value: string, maxLength: number): string {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
 }
 
-export function sourceType(
+function sourceType(
   params: URLSearchParams,
   referrerHostname: string | undefined,
 ): SourceType {
@@ -153,7 +153,7 @@ export function sourceType(
 
 // Pure builder: derive the attribution param set from the landing URL + page
 // context. No DOM / storage access, so it is unit-testable in isolation.
-export function acquisitionAttributionParams(
+function acquisitionAttributionParams(
   landingSearch: string,
   context: LandingAttributionContext = {},
 ): URLSearchParams {
@@ -199,7 +199,7 @@ export function currentLandingAttributionContext(): LandingAttributionContext {
 
 // Cookie I/O is isolated behind this interface so the write path is testable
 // without a DOM (apps/web tests run in the node environment).
-export interface CookieJar {
+interface CookieJar {
   get(): string;
   set(value: string): void;
 }
@@ -215,7 +215,7 @@ function documentCookieJar(): CookieJar {
   };
 }
 
-export function readAttributionCookie(cookieString: string): string | null {
+function readAttributionCookie(cookieString: string): string | null {
   for (const part of cookieString.split(";")) {
     const trimmed = part.trim();
     if (!trimmed) {

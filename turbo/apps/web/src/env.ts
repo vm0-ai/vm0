@@ -129,6 +129,9 @@ export function env() {
   return _env;
 }
 
+/**
+ * @internal Test-only cache reset for env-sensitive web integration tests.
+ */
 export function reloadEnv() {
   _env = initEnv();
 }

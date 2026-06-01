@@ -6,8 +6,8 @@ export interface PresentationItem {
   readonly previewImage: string;
 }
 
-export const PRESENTATION_ATTRIBUTION_PARAM = "vm0_source";
-export const PRESENTATION_ATTRIBUTION_VALUE = "presentation";
+const PRESENTATION_ATTRIBUTION_PARAM = "vm0_source";
+const PRESENTATION_ATTRIBUTION_VALUE = "presentation";
 
 const AD_ATTRIBUTION_PARAMS = [
   "gclid",

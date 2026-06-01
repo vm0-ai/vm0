@@ -11,8 +11,7 @@
         "i18n.ts",
         "navigation.ts",
         "**/__tests__/**/*.{test,spec}.{ts,tsx}",
-        "**/*.{test,spec}.{ts,tsx}",
-        "src/__tests__/webhook-simulators/index.ts"
+        "**/*.{test,spec}.{ts,tsx}"
       ],
       "project": [
         "**/*.{ts,tsx}!",
