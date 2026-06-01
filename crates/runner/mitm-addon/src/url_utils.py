@@ -11,7 +11,7 @@ from typing import Literal
 from mitmproxy import http
 
 from host_normalization import normalize_idna_hostname
-from path_security import has_unsafe_dot_segment
+from path_security import has_unsafe_path
 from url_syntax import (
     ASCII_CONTROL_MAX,
     ASCII_DELETE,
@@ -453,6 +453,8 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         raise ValueError("Invalid auth.base URL: userinfo is not allowed")
     if parsed.fragment:
         raise ValueError("Invalid auth.base URL: must not contain fragment")
+    if has_unsafe_path(parsed.path):
+        raise ValueError("Invalid auth.base URL: unsafe path syntax is not allowed")
 
     host = parsed.hostname
     if not host:
@@ -491,12 +493,12 @@ def build_rewrite_url(
     path from the firewall match, and query strings from trusted auth data
     and the original request. ``orig_query`` is the raw query string of the
     incoming request (no leading ``?``). Query key precedence is
-    ``resolved_query`` > resolved base query > original request query. Dot
-    segments in ``rel_path`` are rejected as an invariant; firewall matching
-    should already have blocked them before auth is applied.
+    ``resolved_query`` > resolved base query > original request query. Unsafe
+    path syntax in ``rel_path`` is rejected as an invariant; firewall matching
+    should already have blocked it before auth is applied.
     """
-    if has_unsafe_dot_segment(rel_path):
-        raise ValueError("Unsafe rewrite path: dot segments are not allowed")
+    if has_unsafe_path(rel_path):
+        raise ValueError("Unsafe rewrite path: unsafe path syntax is not allowed")
 
     base_parsed, base_authority = _validated_rewrite_base(resolved_base)
 

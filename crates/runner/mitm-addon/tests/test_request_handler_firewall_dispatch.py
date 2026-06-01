@@ -600,7 +600,15 @@ async def test_browser_firewall_match_does_not_bypass_denied_unknown_policy(
     assert body["reason"] == "unknown_endpoint"
 
 
-@pytest.mark.parametrize("path", ["/repos/%2e%2e/admin", "/repos\\admin"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repos/%2e%2e/admin",
+        "/repos\\admin",
+        "/repos/%5cadmin",
+        "/repos/%5C..%5Cadmin",
+    ],
+)
 async def test_firewall_unsafe_path_blocks_before_auth_injection(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, path
 ):
