@@ -49,6 +49,10 @@ interface SeedRunArgs {
   readonly lastEventSequence?: number | null;
 }
 
+interface SeedRunsArgs extends SeedRunArgs {
+  readonly count: number;
+}
+
 interface SeedScheduleArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -353,6 +357,98 @@ export const seedRun$ = command(
     });
     signal.throwIfAborted();
     return { runId: run.id };
+  },
+);
+
+export const seedRuns$ = command(
+  async (
+    { set },
+    args: SeedRunsArgs,
+    signal: AbortSignal,
+  ): Promise<{ runIds: string[] }> => {
+    if (args.count <= 0) {
+      return { runIds: [] };
+    }
+
+    const db = set(writeDb$);
+    const versionId = randomUUID();
+    await db.insert(agentComposeVersions).values({
+      id: versionId,
+      composeId: args.composeId,
+      content: {
+        version: "1.0",
+        agents: { "test-agent": { framework: "claude-code" } },
+      },
+      createdBy: args.userId,
+    });
+    signal.throwIfAborted();
+    await db
+      .update(agentComposes)
+      .set({ headVersionId: versionId })
+      .where(eq(agentComposes.id, args.composeId));
+    signal.throwIfAborted();
+
+    const sessionRows = Array.from({ length: args.count }, () => {
+      return {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentComposeId: args.composeId,
+      };
+    });
+    const sessions = await db
+      .insert(agentSessions)
+      .values(sessionRows)
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+    if (sessions.length !== args.count) {
+      throw new Error("seedRuns$: session inserts returned missing rows");
+    }
+
+    const runs = await db
+      .insert(agentRuns)
+      .values(
+        sessions.map((session) => {
+          return {
+            userId: args.userId,
+            orgId: args.orgId,
+            agentComposeVersionId: versionId,
+            prompt: args.prompt ?? "test prompt",
+            status: args.status ?? "pending",
+            sessionId: session.id,
+            createdAt: args.createdAt,
+            startedAt: args.startedAt,
+            completedAt: args.completedAt,
+            continuedFromSessionId: args.continuedFromSessionId,
+            sandboxReuseResult: args.sandboxReuseResult ?? null,
+            result: args.result ?? null,
+            error: args.error ?? null,
+            lastEventSequence: args.lastEventSequence ?? null,
+          };
+        }),
+      )
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+    if (runs.length !== args.count) {
+      throw new Error("seedRuns$: run inserts returned missing rows");
+    }
+
+    await db.insert(zeroRuns).values(
+      runs.map((run) => {
+        return {
+          id: run.id,
+          triggerSource: args.triggerSource ?? "cli",
+          scheduleId: args.scheduleId ?? null,
+          chatThreadId: args.chatThreadId ?? null,
+        };
+      }),
+    );
+    signal.throwIfAborted();
+
+    return {
+      runIds: runs.map((run) => {
+        return run.id;
+      }),
+    };
   },
 );
 

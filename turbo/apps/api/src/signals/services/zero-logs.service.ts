@@ -1,4 +1,4 @@
-import { computed, type Computed } from "ccstate";
+import { computed, type Computed, type Getter } from "ccstate";
 import {
   triggerSourceSchema,
   type LogDetail,
@@ -40,10 +40,13 @@ import { escapeAplString } from "../../lib/axiom-apl";
 import { now } from "../../lib/time";
 
 type ServiceDb = Pick<Db, "select" | "selectDistinct">;
+type ComputedGetter = Getter;
 
 const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const AXIOM_RUN_ID_FILTER_CHUNK_SIZE = 500;
+const AXIOM_SEARCH_QUERY_CONCURRENCY = 4;
 
 interface AgentComposeContent {
   agents: Record<string, { framework: string }>;
@@ -543,7 +546,7 @@ async function getUserRunIds(
   });
 }
 
-function buildRunIdFilter(runIds: string[]): string {
+function buildRunIdFilter(runIds: readonly string[]): string {
   return runIds.length === 1
     ? `| where runId == "${escapeAplString(runIds[0]!)}"`
     : `| where runId in (${runIds
@@ -551,6 +554,173 @@ function buildRunIdFilter(runIds: string[]): string {
           return `"${escapeAplString(id)}"`;
         })
         .join(", ")})`;
+}
+
+function chunkRunIds(runIds: readonly string[]): string[][] {
+  const chunks: string[][] = [];
+  for (
+    let index = 0;
+    index < runIds.length;
+    index += AXIOM_RUN_ID_FILTER_CHUNK_SIZE
+  ) {
+    chunks.push(runIds.slice(index, index + AXIOM_RUN_ID_FILTER_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function buildSearchApl(params: {
+  readonly dataset: string;
+  readonly sinceISO: string;
+  readonly runIds: readonly string[];
+  readonly keyword: string;
+  readonly limit: number;
+}): string {
+  const runIdFilter = buildRunIdFilter(params.runIds);
+  return `['${params.dataset}']
+| where _time > datetime("${params.sinceISO}")
+${runIdFilter}
+| search "*${escapeAplString(params.keyword)}*"
+| order by _time desc
+| limit ${params.limit}`;
+}
+
+function compareAxiomSearchEventsDesc(
+  left: AxiomAgentEvent,
+  right: AxiomAgentEvent,
+): number {
+  const timeDiff = Date.parse(right._time) - Date.parse(left._time);
+  if (timeDiff !== 0) {
+    return timeDiff;
+  }
+
+  const runDiff = left.runId.localeCompare(right.runId);
+  if (runDiff !== 0) {
+    return runDiff;
+  }
+
+  return left.sequenceNumber - right.sequenceNumber;
+}
+
+async function queryMatchingEvents(
+  get: ComputedGetter,
+  params: {
+    readonly dataset: string;
+    readonly sinceISO: string;
+    readonly targetRunIds: readonly string[];
+    readonly keyword: string;
+    readonly limit: number;
+  },
+): Promise<AxiomAgentEvent[]> {
+  const matchedEvents: AxiomAgentEvent[] = [];
+  const runIdChunks = chunkRunIds(params.targetRunIds);
+  for (
+    let index = 0;
+    index < runIdChunks.length;
+    index += AXIOM_SEARCH_QUERY_CONCURRENCY
+  ) {
+    const batch = runIdChunks.slice(
+      index,
+      index + AXIOM_SEARCH_QUERY_CONCURRENCY,
+    );
+    const batchEvents = await Promise.all(
+      batch.map(async (runIdChunk) => {
+        const searchApl = buildSearchApl({
+          dataset: params.dataset,
+          sinceISO: params.sinceISO,
+          runIds: runIdChunk,
+          keyword: params.keyword,
+          limit: params.limit + 1,
+        });
+        return (
+          await get(queryAxiom(searchApl))
+        ).slice() as unknown as AxiomAgentEvent[];
+      }),
+    );
+
+    for (const events of batchEvents) {
+      matchedEvents.push(...events);
+    }
+  }
+
+  return matchedEvents.sort(compareAxiomSearchEventsDesc);
+}
+
+async function getSearchContextMap(
+  get: ComputedGetter,
+  params: {
+    readonly dataset: string;
+    readonly matches: readonly AxiomAgentEvent[];
+    readonly before: number;
+    readonly after: number;
+  },
+): Promise<Map<string, AxiomAgentEvent>> {
+  const contextMap = new Map<string, AxiomAgentEvent>();
+  if (params.before === 0 && params.after === 0) {
+    return contextMap;
+  }
+
+  const contextConditions = params.matches.map((match) => {
+    const seqMin = Math.max(0, match.sequenceNumber - params.before);
+    const seqMax = match.sequenceNumber + params.after;
+    return `(runId == "${escapeAplString(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
+  });
+
+  const contextApl = `['${params.dataset}']
+| where ${contextConditions.join("\n  or ")}
+| order by runId asc, sequenceNumber asc`;
+
+  const contextEvents = (
+    await get(queryAxiom(contextApl))
+  ).slice() as unknown as AxiomAgentEvent[];
+
+  for (const event of contextEvents) {
+    contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
+  }
+
+  return contextMap;
+}
+
+function buildSearchResults(params: {
+  readonly matches: readonly AxiomAgentEvent[];
+  readonly before: number;
+  readonly after: number;
+  readonly contextMap: Map<string, AxiomAgentEvent>;
+  readonly agentNames: Map<string, string>;
+}): LogsSearchResponse["results"] {
+  return params.matches.map((match) => {
+    const contextBefore: RunEvent[] = [];
+    const contextAfter: RunEvent[] = [];
+
+    for (
+      let i = match.sequenceNumber - params.before;
+      i < match.sequenceNumber;
+      i++
+    ) {
+      const event = params.contextMap.get(`${match.runId}:${i}`);
+      if (event) {
+        contextBefore.push(toRunEvent(event));
+      }
+    }
+
+    for (
+      let i = match.sequenceNumber + 1;
+      i <= match.sequenceNumber + params.after;
+      i++
+    ) {
+      const event = params.contextMap.get(`${match.runId}:${i}`);
+      if (event) {
+        contextAfter.push(toRunEvent(event));
+      }
+    }
+
+    return {
+      runId: match.runId,
+      agentName: params.agentNames.get(match.runId) || "unknown",
+      matchedEvent: toRunEvent(match),
+      contextBefore,
+      contextAfter,
+    };
+  });
 }
 
 async function getAgentNames(
@@ -638,20 +808,13 @@ export function zeroLogSearch(
       }
     }
 
-    const runIdFilter = buildRunIdFilter(targetRunIds);
-
-    // Search events in Axiom
-    const searchApl = `['${dataset}']
-| where _time > datetime("${sinceISO}")
-${runIdFilter}
-| search "*${escapeAplString(keyword)}*"
-| order by _time desc
-| limit ${limit + 1}`;
-
-    const matchedEvents = (
-      await get(queryAxiom(searchApl))
-    ).slice() as unknown as AxiomAgentEvent[];
-
+    const matchedEvents = await queryMatchingEvents(get, {
+      dataset,
+      sinceISO,
+      targetRunIds,
+      keyword,
+      limit,
+    });
     if (matchedEvents.length === 0) {
       return { results: [], hasMore: false };
     }
@@ -659,29 +822,12 @@ ${runIdFilter}
     const hasMore = matchedEvents.length > limit;
     const matches = hasMore ? matchedEvents.slice(0, limit) : matchedEvents;
 
-    // Fetch context events
-    const contextMap = new Map<string, AxiomAgentEvent>();
-    if (before > 0 || after > 0) {
-      const contextConditions = matches.map((match) => {
-        const seqMin = Math.max(0, match.sequenceNumber - before);
-        const seqMax = match.sequenceNumber + after;
-        return `(runId == "${escapeAplString(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
-      });
-
-      const contextApl = `['${dataset}']
-| where ${contextConditions.join("\n  or ")}
-| order by runId asc, sequenceNumber asc`;
-
-      const contextEvents = (
-        await get(queryAxiom(contextApl))
-      ).slice() as unknown as AxiomAgentEvent[];
-
-      for (const event of contextEvents) {
-        contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
-      }
-    }
-
-    // Resolve agent labels for the existing response field.
+    const contextMap = await getSearchContextMap(get, {
+      dataset,
+      matches,
+      before,
+      after,
+    });
     const matchedRunIds = [
       ...new Set(
         matches.map((e) => {
@@ -696,42 +842,13 @@ ${runIdFilter}
       params.orgId,
     );
 
-    // Assemble results
-    const results = matches.map((match) => {
-      const contextBefore: RunEvent[] = [];
-      const contextAfter: RunEvent[] = [];
-
-      for (
-        let i = match.sequenceNumber - before;
-        i < match.sequenceNumber;
-        i++
-      ) {
-        const event = contextMap.get(`${match.runId}:${i}`);
-        if (event) {
-          contextBefore.push(toRunEvent(event));
-        }
-      }
-
-      for (
-        let i = match.sequenceNumber + 1;
-        i <= match.sequenceNumber + after;
-        i++
-      ) {
-        const event = contextMap.get(`${match.runId}:${i}`);
-        if (event) {
-          contextAfter.push(toRunEvent(event));
-        }
-      }
-
-      return {
-        runId: match.runId,
-        agentName: agentNames.get(match.runId) || "unknown",
-        matchedEvent: toRunEvent(match),
-        contextBefore,
-        contextAfter,
-      };
+    const results = buildSearchResults({
+      matches,
+      before,
+      after,
+      contextMap,
+      agentNames,
     });
-
     return { results, hasMore };
   });
 }
