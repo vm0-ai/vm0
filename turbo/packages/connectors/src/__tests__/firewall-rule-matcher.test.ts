@@ -385,6 +385,30 @@ describe("matchFirewallBaseUrl", () => {
       "https://{sub}.xn--fsqu00a.xn--0zwm56d",
       "/api",
     ],
+    [
+      "Unicode sharp-s runtime with punycode base",
+      "https://faß.de/repos",
+      "https://xn--fa-hia.de",
+      "/repos",
+    ],
+    [
+      "parameterized Unicode sharp-s runtime with punycode base",
+      "https://api.faß.de/api",
+      "https://{sub}.xn--fa-hia.de",
+      "/api",
+    ],
+    [
+      "mathematical sigma runtime with punycode base",
+      "https://𝛓.example/repos",
+      "https://xn--4xa.example",
+      "/repos",
+    ],
+    [
+      "parameterized mathematical sigma runtime with punycode base",
+      "https://api.𝛓.example/api",
+      "https://{sub}.xn--4xa.example",
+      "/api",
+    ],
   ])(
     "matches IDNA-equivalent authorities for %s",
     (_label, url, base, relativePath) => {
@@ -399,6 +423,47 @@ describe("matchFirewallBaseUrl", () => {
   it.each([
     ["Unicode-to-ASCII alias", "https://faß.de/repos", "https://fass.de"],
     ["ASCII-to-Unicode alias", "https://fass.de/repos", "https://faß.de"],
+    [
+      "Kelvin sign runtime alias",
+      "https://K.example/repos",
+      "https://k.example",
+    ],
+    ["Kelvin sign base alias", "https://k.example/repos", "https://K.example"],
+    [
+      "fullwidth Latin runtime alias",
+      "https://Ａ.example/repos",
+      "https://a.example",
+    ],
+    [
+      "fullwidth Latin base alias",
+      "https://a.example/repos",
+      "https://Ａ.example",
+    ],
+    [
+      "percent-encoded Kelvin sign runtime alias",
+      "https://%E2%84%AA.example/repos",
+      "https://k.example",
+    ],
+    [
+      "percent-encoded fullwidth Latin runtime alias",
+      "https://%EF%BC%A1.example/repos",
+      "https://a.example",
+    ],
+    [
+      "parameterized Kelvin sign runtime alias",
+      "https://api.K.example/api",
+      "https://{sub}.k.example",
+    ],
+    [
+      "parameterized fullwidth Latin runtime alias",
+      "https://api.Ａ.example/api",
+      "https://{sub}.a.example",
+    ],
+    [
+      "parameterized percent-encoded Kelvin sign runtime alias",
+      "https://api.%E2%84%AA.example/api",
+      "https://{sub}.k.example",
+    ],
   ])("rejects unsafe IDNA compatibility alias for %s", (_label, url, base) => {
     expect(matchFirewallBaseUrl(url, base)).toBeNull();
   });

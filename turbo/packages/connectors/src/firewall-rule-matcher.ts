@@ -342,6 +342,23 @@ function rawAuthorityFromUrl(url: string): string | null {
   return authority === "" ? null : authority;
 }
 
+function hasNonAscii(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) > 0x7f) return true;
+  }
+  return false;
+}
+
+function runtimeAuthorityOriginForHostValidation(url: string): string | null {
+  const authority = rawAuthorityFromUrl(url);
+  if (authority === null) return null;
+  if (!authority.includes("%") && !hasNonAscii(authority)) return null;
+
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd === -1) return null;
+  return `${url.slice(0, schemeEnd)}://${authority}`;
+}
+
 function hasPercentEncodedAuthoritySyntax(value: string): boolean {
   let index = value.indexOf("%");
   while (index !== -1) {
@@ -563,7 +580,12 @@ export function matchFirewallBaseUrl(
     return null;
   }
 
+  const runtimeAuthorityOrigin = runtimeAuthorityOriginForHostValidation(url);
+
   try {
+    if (runtimeAuthorityOrigin !== null) {
+      validateBaseUrl(runtimeAuthorityOrigin, "runtime");
+    }
     validateBaseUrl(rawBase, "firewall");
     return matchStaticFirewallBaseUrl(url, rawBase);
   } catch {
