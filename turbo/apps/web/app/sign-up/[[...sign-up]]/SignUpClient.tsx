@@ -6,7 +6,10 @@ import { useTheme } from "../../components/ThemeProvider";
 import { AuthLayout } from "../../components/auth/AuthLayout";
 import { getClerkAppearance } from "../../components/auth/clerk-appearance";
 import { buildSignupRedirectUrl } from "../../../src/lib/adAttribution";
-import { getAppUrl } from "../../../src/lib/zero/url";
+import {
+  getAllowedRedirectOrigins,
+  getAppUrl,
+} from "../../../src/lib/zero/url";
 
 export function SignUpClient() {
   const { theme } = useTheme();
@@ -14,6 +17,7 @@ export function SignUpClient() {
   const redirectUrl = buildSignupRedirectUrl(
     getAppUrl(),
     searchParams.toString(),
+    getAllowedRedirectOrigins(),
   );
 
   return (

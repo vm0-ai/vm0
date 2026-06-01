@@ -241,8 +241,14 @@ export function buildSignupHref(landingSearch: string): string {
 export function buildSignupRedirectUrl(
   appUrl: string,
   signUpSearch: string,
+  allowedRedirectOrigins: readonly string[] = [appUrl],
 ): string {
   const params = new URLSearchParams(signUpSearch);
+  const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
+  if (redirectUrl) {
+    return redirectUrl;
+  }
+
   if (!hasAdTraffic(params)) {
     return appUrl;
   }
@@ -250,6 +256,46 @@ export function buildSignupRedirectUrl(
   const url = new URL("/onboarding", appUrl);
   appendHomepageAttributionParams(url.searchParams, signUpSearch);
   return url.toString();
+}
+
+function readAllowedRedirectUrl(
+  params: URLSearchParams,
+  allowedRedirectOrigins: readonly string[],
+): string | null {
+  const rawRedirectUrl = params.get("redirect_url");
+  if (!rawRedirectUrl) {
+    return null;
+  }
+
+  try {
+    const redirectUrl = new URL(rawRedirectUrl);
+    return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
+      ? redirectUrl.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedRedirectOrigin(
+  redirectUrl: URL,
+  allowedRedirectOrigins: readonly string[],
+): boolean {
+  return allowedRedirectOrigins.some((allowedOrigin) => {
+    if (allowedOrigin.startsWith("https://*.")) {
+      const suffix = allowedOrigin.slice("https://*.".length);
+      return (
+        redirectUrl.protocol === "https:" &&
+        redirectUrl.hostname.endsWith(`.${suffix}`)
+      );
+    }
+
+    try {
+      return new URL(allowedOrigin).origin === redirectUrl.origin;
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Cookie I/O is isolated behind this interface so the write path is testable
