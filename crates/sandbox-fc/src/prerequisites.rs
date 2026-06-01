@@ -48,6 +48,7 @@ enum HostCapability {
     NetworkSetup,
     SnapshotPrivateMountCreate,
     SnapshotPrivateMountRestore,
+    SparseCopy,
     WorkspaceImageCreate,
 }
 
@@ -57,6 +58,7 @@ const FACTORY_FRESH_CAPABILITIES: &[HostCapability] = &[
 ];
 const FACTORY_SNAPSHOT_RESTORE_CAPABILITIES: &[HostCapability] = &[
     HostCapability::NetworkSetup,
+    HostCapability::SparseCopy,
     HostCapability::WorkspaceImageCreate,
     HostCapability::SnapshotPrivateMountRestore,
 ];
@@ -69,6 +71,7 @@ const SNAPSHOT_CREATE_CAPABILITIES: &[HostCapability] = &[
 const NETWORK_COMMANDS: &[&str] = &["ip", "iptables", "iptables-save", "sysctl"];
 const SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS: &[&str] = &["unshare", "bash", "mount"];
 const SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS: &[&str] = &["unshare", "bash", "mount", "umount"];
+const SPARSE_COPY_COMMANDS: &[&str] = &["cp"];
 const WORKSPACE_IMAGE_CREATE_COMMANDS: &[&str] = &["mkfs.ext4"];
 
 /// Verify that all required system prerequisites are present.
@@ -167,6 +170,7 @@ fn commands_for_capability(capability: HostCapability) -> &'static [&'static str
         HostCapability::NetworkSetup => NETWORK_COMMANDS,
         HostCapability::SnapshotPrivateMountCreate => SNAPSHOT_PRIVATE_MOUNT_CREATE_COMMANDS,
         HostCapability::SnapshotPrivateMountRestore => SNAPSHOT_PRIVATE_MOUNT_RESTORE_COMMANDS,
+        HostCapability::SparseCopy => SPARSE_COPY_COMMANDS,
         HostCapability::WorkspaceImageCreate => WORKSPACE_IMAGE_CREATE_COMMANDS,
     }
 }
@@ -216,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_restore_capabilities_include_workspace_image_and_private_mount_restore() {
+    fn snapshot_restore_capabilities_include_cp_mkfs_and_private_mount_restore() {
         let snapshot = snapshot_config();
         let mode = PrerequisiteMode::FactorySnapshotRestore {
             snapshot: &snapshot,
@@ -226,6 +230,7 @@ mod tests {
             mode.capabilities(),
             &[
                 HostCapability::NetworkSetup,
+                HostCapability::SparseCopy,
                 HostCapability::WorkspaceImageCreate,
                 HostCapability::SnapshotPrivateMountRestore,
             ]
@@ -237,6 +242,7 @@ mod tests {
                 "iptables",
                 "iptables-save",
                 "sysctl",
+                "cp",
                 "mkfs.ext4",
                 "unshare",
                 "bash",
