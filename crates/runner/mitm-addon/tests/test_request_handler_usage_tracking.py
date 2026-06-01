@@ -75,6 +75,12 @@ async def _release_forward_probe(probe: _ForwardProbe, request_task: asyncio.Tas
         await asyncio.gather(request_task, return_exceptions=True)
 
 
+async def _await_request_task(request_task: asyncio.Task[None]) -> None:
+    result = (await asyncio.gather(request_task, return_exceptions=True))[0]
+    if isinstance(result, BaseException):
+        raise result
+
+
 @pytest.fixture
 def usage_pending_path(tmp_path: Path) -> Iterator[Path]:
     pending_path = tmp_path / "usage-pending"
@@ -423,7 +429,7 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             )
 
             probe.release.set()
-            await request_task
+            await _await_request_task(request_task)
         finally:
             if not request_task.done():
                 await _release_forward_probe(probe, request_task)
@@ -526,7 +532,7 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
             )
 
             probe.release.set()
-            await request_task
+            await _await_request_task(request_task)
         finally:
             if not request_task.done():
                 await _release_forward_probe(probe, request_task)
