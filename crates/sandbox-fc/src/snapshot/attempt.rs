@@ -422,9 +422,7 @@ impl SnapshotAttempt {
             paths,
             sock_paths: Some(sock_paths),
             output,
-            cleanup_resources: SnapshotCleanupResources::without_cow_for_test(
-                workspace_image_path,
-            ),
+            cleanup_resources: SnapshotCleanupResources::without_cow_for_test(workspace_image_path),
             stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
             #[cfg(test)]
             cleanup_complete_tx: None,
@@ -530,16 +528,16 @@ impl SnapshotAttempt {
             )));
         }
 
-        let workspace_image_path = match self.cleanup_resources.workspace_image.mark_create_started()
-        {
-            Ok(path) => path,
-            Err(err) => {
-                self.cleanup_resources
-                    .destroy_cow_after_setup_error("prepare workspace image state")
-                    .await;
-                return Err(err);
-            }
-        };
+        let workspace_image_path =
+            match self.cleanup_resources.workspace_image.mark_create_started() {
+                Ok(path) => path,
+                Err(err) => {
+                    self.cleanup_resources
+                        .destroy_cow_after_setup_error("prepare workspace image state")
+                        .await;
+                    return Err(err);
+                }
+            };
         if let Err(e) = crate::factory::prepare_workspace_drive_image(
             &workspace_image_path,
             &sandbox::WorkspaceDriveConfig {
@@ -1205,6 +1203,52 @@ mod tests {
         assert!(
             !tokio::fs::try_exists(&workspace_image).await.unwrap(),
             "setup error cleanup should remove temporary workspace image inline"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_cleanup_finalizer_removes_attempt_dir_after_workspace_and_publish_cleanup() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        let paths = SandboxPaths::new(output.work_dir());
+        let sock_paths = SockPaths::new(dir.path().join("sock"));
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "shared-attempt").await;
+        let attempt_dir = kept_cow
+            .cow_file
+            .parent()
+            .expect("attempt dir")
+            .to_path_buf();
+        let workspace_image = attempt_dir.join("workspace.ext4");
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        tokio::fs::write(&workspace_image, b"workspace")
+            .await
+            .expect("write workspace image");
+        let mut attempt = SnapshotAttempt::new_without_cow_for_test(
+            paths,
+            sock_paths,
+            output,
+            workspace_image.clone(),
+        );
+        attempt.track_workspace_image_for_test(workspace_image);
+        attempt.track_publish_attempt_for_test(SnapshotPublishAttempt::new_with_kept_cow_for_test(
+            kept_cow,
+        ));
+        attempt.notify_cleanup_complete_for_test(tx);
+
+        drop(attempt);
+        let report = wait_for_snapshot_cleanup(rx).await;
+
+        assert!(report.workspace_image_cleaned);
+        assert!(report.publish_cleaned);
+        assert_eq!(
+            report.cleanup_events,
+            vec!["workspace_image", "publish"],
+            "workspace image must be removed before COW publish cleanup removes the attempt dir"
+        );
+        assert!(
+            !tokio::fs::try_exists(&attempt_dir).await.unwrap(),
+            "attempt dir should be removed after workspace image and kept COW cleanup"
         );
     }
 

@@ -25,6 +25,15 @@ const WORKSPACE_SYMLINK_PATH_GUARD: &str = r#"refuse_workspace_symlink_path() {
     fi
   done
 }"#;
+const WORKSPACE_DEVICE_MOUNT_GUARD: &str = r#"workspace_device_mounted_elsewhere() {
+  [ -n "$workspace_dev" ] || return 1
+  while IFS=' ' read -r _ _ mount_dev _ _ _; do
+    if [ "$mount_dev" = "$workspace_dev" ]; then
+      return 0
+    fi
+  done < /proc/self/mountinfo
+  return 1
+}"#;
 
 pub(crate) async fn ensure_workspace_drive_mounted(
     sandbox: &dyn Sandbox,
@@ -64,7 +73,7 @@ fn workspace_mount_command() -> String {
     let workspace_dir = shell_quote(CANONICAL_WORKING_DIR);
     let workspace_device = shell_quote(WORKSPACE_DEVICE);
     format!(
-        "set -eu\nworkspace_dir={workspace_dir}\nworkspace_device={workspace_device}\n{WORKSPACE_SYMLINK_PATH_GUARD}\nensure_workspace_owner() {{\n  chown -h user:user -- \"$workspace_dir\"\n}}\nrefuse_workspace_symlink_path\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  workspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace drive over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nrefuse_workspace_symlink_path\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
+        "set -eu\nworkspace_dir={workspace_dir}\nworkspace_device={workspace_device}\n{WORKSPACE_SYMLINK_PATH_GUARD}\n{WORKSPACE_DEVICE_MOUNT_GUARD}\nensure_workspace_owner() {{\n  chown -h user:user -- \"$workspace_dir\"\n}}\nrefuse_workspace_symlink_path\nworkspace_dev=\"$(mountpoint -x -- \"$workspace_device\" 2>/dev/null || true)\"\nif mountpoint -q -- \"$workspace_dir\"; then\n  target_dev=\"$(mountpoint -d -- \"$workspace_dir\" 2>/dev/null || true)\"\n  if [ -n \"$workspace_dev\" ] && [ \"$target_dev\" = \"$workspace_dev\" ]; then\n    ensure_workspace_owner\n    exit 0\n  fi\n  echo \"refusing to mount workspace drive over existing mountpoint: $workspace_dir\" >&2\n  exit 64\nfi\nif workspace_device_mounted_elsewhere; then\n  echo \"refusing to mount workspace drive because $workspace_device is already mounted outside $workspace_dir\" >&2\n  exit 64\nfi\nmkdir -p -- \"$workspace_dir\"\nrefuse_workspace_symlink_path\nmount -t ext4 -- \"$workspace_device\" \"$workspace_dir\"\nensure_workspace_owner"
     )
 }
 
@@ -103,6 +112,8 @@ mod tests {
         assert!(cmd.contains("refusing to mount workspace drive over existing mountpoint"));
         assert!(cmd.contains("refuse_workspace_symlink_path()"));
         assert!(cmd.contains("refusing to use symlink workspace path component"));
+        assert!(cmd.contains("workspace_device_mounted_elsewhere()"));
+        assert!(cmd.contains("already mounted outside"));
         assert_eq!(
             cmd.matches("refuse_workspace_symlink_path").count(),
             3,
