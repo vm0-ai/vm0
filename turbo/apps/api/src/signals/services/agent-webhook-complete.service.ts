@@ -9,6 +9,7 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
+import { captureServerEvent } from "../../lib/posthog";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
@@ -329,6 +330,16 @@ async function handleSuccessfulCompletion(
     status: "completed",
   });
   signal.throwIfAborted();
+
+  // Activation signal: a run reached a successful terminal state and a result
+  // was returned to the user. Fire-and-forget; never blocks the webhook.
+  // TODO(product): enrich with duration_ms / connectors_used / result_type
+  // once we agree what counts as a "useful" result.
+  await captureServerEvent(run.userId, "task_completed_successfully", {
+    run_id: input.body.runId,
+    org_id: run.orgId,
+    status: "completed",
+  });
 
   L.debug("Run completed successfully", { runId: input.body.runId });
   return successResponse(input.body.runId, run.orgId, "completed");
