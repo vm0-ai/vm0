@@ -7,12 +7,11 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError};
 
+use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::client::send_exec;
 use super::protocol::{ExecRequest, ExecResponse};
 use super::resolver::resolve_control_socket;
 use crate::paths::RuntimePaths;
-
-const CONTROL_SOCKET_OVERHEAD_MS: u64 = 5000;
 
 /// Firecracker-backed sandbox control.
 ///
