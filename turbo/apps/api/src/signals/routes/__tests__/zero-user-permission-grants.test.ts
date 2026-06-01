@@ -366,6 +366,23 @@ describe("zero user permission grants", () => {
     );
     expect(unknownConnector.body.error.code).toBe("VALIDATION_ERROR");
 
+    const unknownPermissionForUnknownConnector = await accept(
+      client.upsert({
+        body: {
+          agentId,
+          connectorRef: "not-a-real-connector",
+          permission: UNKNOWN_PERMISSION_GRANT,
+          action: "allow",
+          ttlSeconds: 300,
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+    expect(unknownPermissionForUnknownConnector.body.error.code).toBe(
+      "VALIDATION_ERROR",
+    );
+
     const unknownPermission = await accept(
       client.upsert({
         body: {
@@ -443,6 +460,7 @@ describe("zero user permission grants", () => {
     await enableUserPermissionGrants(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const db = store.set(writeDb$);
+    const checkedAt = new Date("2026-01-01T00:00:00.000Z");
 
     await db.insert(userPermissionGrants).values([
       {
@@ -452,7 +470,16 @@ describe("zero user permission grants", () => {
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
         action: "allow",
-        expiresAt: new Date("2020-01-01T00:00:00.000Z"),
+        expiresAt: new Date("2025-12-31T23:59:59.000Z"),
+      },
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: "channels:history",
+        action: "allow",
+        expiresAt: checkedAt,
       },
       {
         orgId: fixture.orgId,
@@ -488,11 +515,15 @@ describe("zero user permission grants", () => {
       }),
     ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION]);
 
-    const active = await loadActiveUserPermissionGrants(db, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      agentId,
-    });
+    const active = await loadActiveUserPermissionGrants(
+      db,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+      },
+      checkedAt,
+    );
     expect(
       active.map((grant) => {
         return grant.permission;
