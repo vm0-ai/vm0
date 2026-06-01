@@ -37,6 +37,17 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _opener = urllib.request.build_opener(_NoRedirect)
 
 
+def _payload_log_summary(payload: dict) -> dict:
+    summary: dict = {}
+    run_id = payload.get("runId")
+    if isinstance(run_id, str):
+        summary["payload_run_id"] = run_id
+    events = payload.get("events")
+    if isinstance(events, list):
+        summary["payload_event_count"] = len(events)
+    return summary
+
+
 def _log_webhook_entry(
     proxy_log_path: str,
     level: str,
@@ -44,10 +55,14 @@ def _log_webhook_entry(
     url: str,
     log_type: str,
     payload: dict,
+    payload_bytes: int | None = None,
     attempt: int | None = None,
     error: str | None = None,
 ) -> None:
-    extra: dict = {"type": log_type, "url": url, "payload": payload}
+    extra: dict = {"type": log_type, "url": url}
+    extra.update(_payload_log_summary(payload))
+    if payload_bytes is not None:
+        extra["payload_bytes"] = payload_bytes
     if attempt is not None:
         extra["attempt"] = attempt
     if error is not None:
@@ -55,9 +70,8 @@ def _log_webhook_entry(
     log_proxy_entry(proxy_log_path, level, message, **extra)
 
 
-def _post_webhook(url: str, sandbox_token: str, payload: dict) -> None:
-    """POST JSON payload to a platform webhook.  Raises on failure."""
-    data = json.dumps(payload).encode()
+def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
+    """POST JSON data to a platform webhook.  Raises on failure."""
     req = make_api_request(url, data, sandbox_token)
     try:
         with _opener.open(req, timeout=10):
@@ -101,9 +115,25 @@ def _do_post_webhook_attempts(
     log_type: str,
     max_retries: int,
 ) -> None:
+    try:
+        data = json.dumps(payload).encode()
+    except Exception as exc:
+        _log_webhook_entry(
+            proxy_log_path,
+            "error",
+            f"Webhook POST to {url} failed with non-retryable error: {exc}",
+            url,
+            log_type,
+            payload,
+            attempt=1,
+            error=str(exc),
+        )
+        raise
+
+    payload_bytes = len(data)
     for attempt in range(max_retries + 1):
         try:
-            _post_webhook(url, sandbox_token, payload)
+            _post_webhook(url, sandbox_token, data)
             _log_webhook_entry(
                 proxy_log_path,
                 "info",
@@ -111,6 +141,7 @@ def _do_post_webhook_attempts(
                 url,
                 log_type,
                 payload,
+                payload_bytes=payload_bytes,
                 attempt=attempt + 1,
             )
             return
@@ -123,6 +154,7 @@ def _do_post_webhook_attempts(
                     url,
                     log_type,
                     payload,
+                    payload_bytes=payload_bytes,
                     attempt=attempt + 1,
                     error=str(exc),
                 )
@@ -135,6 +167,7 @@ def _do_post_webhook_attempts(
                     url,
                     log_type,
                     payload,
+                    payload_bytes=payload_bytes,
                     attempt=attempt + 1,
                     error=str(exc),
                 )
@@ -152,6 +185,7 @@ def _do_post_webhook_attempts(
                 url,
                 log_type,
                 payload,
+                payload_bytes=payload_bytes,
                 attempt=attempt + 1,
                 error=str(exc),
             )

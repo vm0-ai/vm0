@@ -12,6 +12,24 @@ import auth
 import usage
 
 
+def _assert_body_free_webhook_entry(
+    entry: dict,
+    *,
+    run_id: str,
+    event_count: int,
+    payload_bytes: int | None = None,
+) -> None:
+    assert "payload" not in entry
+    assert "events" not in entry
+    assert "idempotencyKey" not in json.dumps(entry)
+    assert entry["payload_run_id"] == run_id
+    assert entry["payload_event_count"] == event_count
+    if payload_bytes is not None:
+        assert entry["payload_bytes"] == payload_bytes
+    else:
+        assert "payload_bytes" not in entry
+
+
 class TestUsageWebhookDelivery:
     """Webhook delivery behavior observed through the HTTP boundary."""
 
@@ -35,7 +53,7 @@ class TestUsageWebhookDelivery:
             usage.webhook._post_webhook(
                 usage_webhook_server.url("/webhook"),
                 "tok",
-                {"runId": "run-1"},
+                json.dumps({"runId": "run-1"}).encode(),
             )
 
         assert exc.value.code == 302
@@ -49,7 +67,7 @@ class TestUsageWebhookDelivery:
             usage.webhook._post_webhook(
                 "file:///etc/passwd",
                 "tok",
-                {"runId": "run-1"},
+                json.dumps({"runId": "run-1"}).encode(),
             )
 
         mock_open.assert_not_called()
@@ -87,6 +105,23 @@ class TestUsageWebhookDelivery:
             }
         ]
         uuid.UUID(body["events"][0]["idempotencyKey"])
+        payload_bytes = len(json.dumps(body).encode())
+        log_entries = [
+            json.loads(line)
+            for line in Path(flow.metadata["vm_proxy_log_path"]).read_text().splitlines()
+        ]
+        webhook_entries = [entry for entry in log_entries if entry["type"] == "usage_event"]
+        assert len(webhook_entries) == 2
+        assert {entry["level"] for entry in webhook_entries} == {"info"}
+        assert any("enqueued" in entry["message"] for entry in webhook_entries)
+        assert any("succeeded" in entry["message"] for entry in webhook_entries)
+        for entry in webhook_entries:
+            _assert_body_free_webhook_entry(
+                entry,
+                run_id="run-1",
+                event_count=1,
+                payload_bytes=None if "enqueued" in entry["message"] else payload_bytes,
+            )
 
     def test_closes_http_error_response(self, usage_webhook_server):
         """HTTPError sockets must be closed to avoid leaking."""
@@ -99,7 +134,7 @@ class TestUsageWebhookDelivery:
             usage.webhook._post_webhook(
                 usage_webhook_server.url("/error"),
                 "tok",
-                {"runId": "run-1"},
+                json.dumps({"runId": "run-1"}).encode(),
             )
 
         close_mock.assert_called_once()
@@ -135,16 +170,20 @@ class TestUsageWebhookDelivery:
         assert webhook.request_count == 2
         mock_sleep.assert_called_once_with(0.5)
 
-    def test_retry_with_payload_collision_logs_nested_payload(self, tmp_path, usage_webhook_server):
+    def test_retry_with_payload_collision_logs_body_free_summary(
+        self, tmp_path, usage_webhook_server
+    ):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(500)
         usage_webhook_server.queue_response(204)
+        payload = {"url": "payload-url", "type": "payload-type", "runId": "run-1", "events": []}
+        payload_bytes = len(json.dumps(payload).encode())
 
         with patch.object(usage.webhook.time, "sleep") as mock_sleep:
             usage.webhook._do_post_webhook_attempts(
                 usage_webhook_server.url("/x"),
                 "tok",
-                {"url": "payload-url", "type": "payload-type", "runId": "run-1", "events": []},
+                payload,
                 str(proxy_log),
                 "usage",
                 max_retries=1,
@@ -156,8 +195,14 @@ class TestUsageWebhookDelivery:
         assert [entry["level"] for entry in entries] == ["warn", "info"]
         assert [entry["attempt"] for entry in entries] == [1, 2]
         assert all(entry["url"] == usage_webhook_server.url("/x") for entry in entries)
-        assert all(entry["payload"]["url"] == "payload-url" for entry in entries)
-        assert all(entry["payload"]["type"] == "payload-type" for entry in entries)
+        assert all(entry["type"] == "usage" for entry in entries)
+        for entry in entries:
+            _assert_body_free_webhook_entry(
+                entry,
+                run_id="run-1",
+                event_count=0,
+                payload_bytes=payload_bytes,
+            )
 
     def test_gives_up_after_retry_budget(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
@@ -180,16 +225,18 @@ class TestUsageWebhookDelivery:
         assert proxy_log.exists()
         assert "2 attempts" in proxy_log.read_text()
 
-    def test_give_up_with_payload_collision_logs_nested_payload(
+    def test_give_up_with_payload_collision_logs_body_free_summary(
         self, tmp_path, usage_webhook_server
     ):
         proxy_log = tmp_path / "proxy.jsonl"
         usage_webhook_server.queue_response(500)
+        payload = {"error": "payload-error", "attempt": 99, "runId": "run-1", "events": []}
+        payload_bytes = len(json.dumps(payload).encode())
 
         usage.webhook._do_post_webhook_attempts(
             usage_webhook_server.url("/x"),
             "tok",
-            {"error": "payload-error", "attempt": 99, "runId": "run-1", "events": []},
+            payload,
             str(proxy_log),
             "usage",
             max_retries=0,
@@ -199,8 +246,12 @@ class TestUsageWebhookDelivery:
         assert entry["level"] == "error"
         assert entry["attempt"] == 1
         assert "HTTP Error 500" in entry["error"]
-        assert entry["payload"]["error"] == "payload-error"
-        assert entry["payload"]["attempt"] == 99
+        _assert_body_free_webhook_entry(
+            entry,
+            run_id="run-1",
+            event_count=0,
+            payload_bytes=payload_bytes,
+        )
 
     def test_sync_executor_worker_error_preserves_other_pending_reports(
         self, tmp_path, sync_usage_executor
@@ -257,13 +308,15 @@ class TestUsageWebhookDelivery:
         assert "giving up" not in log_text
         assert "non-retryable" in log_text
 
-    def test_programming_error_with_payload_collision_preserves_original_error(self, tmp_path):
+    def test_programming_error_with_payload_collision_logs_body_free_summary(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
+        payload = {"url": "payload-url", "runId": "run-1", "events": []}
+        payload_bytes = len(json.dumps(payload).encode())
         with pytest.raises(ValueError, match="absolute http"):
             usage.webhook._do_post_webhook_attempts(
                 "not-a-url",
                 "tok",
-                {"url": "payload-url", "runId": "run-1", "events": []},
+                payload,
                 str(proxy_log),
                 "usage",
                 max_retries=1,
@@ -271,8 +324,36 @@ class TestUsageWebhookDelivery:
 
         entry = json.loads(proxy_log.read_text())
         assert entry["url"] == "not-a-url"
-        assert entry["payload"]["url"] == "payload-url"
+        _assert_body_free_webhook_entry(
+            entry,
+            run_id="run-1",
+            event_count=0,
+            payload_bytes=payload_bytes,
+        )
         assert "non-retryable" in entry["message"]
+
+    def test_payload_serialization_error_logs_body_free_summary(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        with pytest.raises(TypeError, match="not JSON serializable"):
+            usage.webhook._do_post_webhook_attempts(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": [object()]},
+                str(proxy_log),
+                "usage",
+                max_retries=1,
+            )
+
+        entry = json.loads(proxy_log.read_text())
+        assert entry["level"] == "error"
+        assert entry["attempt"] == 1
+        assert "non-retryable" in entry["message"]
+        _assert_body_free_webhook_entry(
+            entry,
+            run_id="run-1",
+            event_count=1,
+        )
 
     def test_falls_back_to_sync_after_shutdown(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
