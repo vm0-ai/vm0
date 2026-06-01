@@ -642,6 +642,38 @@ describe("matchFirewallBaseUrl", () => {
     });
   });
 
+  it.each([
+    [
+      "https base includes default port",
+      "https://internal.example.com/v1/users",
+      "https://{sub}.example.com:443",
+    ],
+    [
+      "https runtime includes default port",
+      "https://internal.example.com:443/v1/users",
+      "https://{sub}.example.com",
+    ],
+    [
+      "http base includes default port",
+      "http://internal.example.com/v1/users",
+      "http://{sub}.example.com:80",
+    ],
+    [
+      "http runtime includes default port",
+      "http://internal.example.com:80/v1/users",
+      "http://{sub}.example.com",
+    ],
+  ])(
+    "treats explicit default ports as equivalent for parameterized host bases: %s",
+    (_label, url, base) => {
+      expect(matchFirewallBaseUrl(url, base)).toEqual({
+        displayBase: base,
+        relativePath: "/v1/users",
+        score: expect.any(Number),
+      });
+    },
+  );
+
   it("matches IPv6 base URLs with normalized default ports", () => {
     expect(
       matchFirewallBaseUrl(
