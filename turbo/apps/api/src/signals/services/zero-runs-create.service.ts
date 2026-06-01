@@ -485,8 +485,7 @@ function createRunBody(args: {
     captureNetworkBodies: args.body.captureNetworkBodies,
     tools: args.body.tools,
     settings: args.body.settings,
-    permissionPolicies:
-      args.body.permissionPolicies ?? args.permissionPolicies ?? undefined,
+    permissionPolicies: args.permissionPolicies ?? undefined,
     triggerSource,
     appendSystemPrompt: [baseAppendSystemPrompt, args.appendSystemPrompt]
       .filter((part): part is string => {

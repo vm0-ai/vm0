@@ -405,6 +405,29 @@ describe("POST /api/zero/runs", () => {
     expect(response.body.error.message).toBe("agentId is required");
   });
 
+  it("rejects caller-provided permission policies", async () => {
+    await fixture();
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "hello",
+          agentId: randomUUID(),
+          permissionPolicies: {
+            x: {
+              policies: { "tweet.write": "allow" },
+            },
+          },
+        } as never,
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("permissionPolicies");
+  });
+
   it("rejects ambiguous Claude tool list entries", async () => {
     await fixture();
     const cases: {
