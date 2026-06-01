@@ -354,17 +354,22 @@ def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
     if base is not None and not isinstance(base, str):
         raise _malformed_firewall_auth_success("base must be a string")
 
+    headers = _parse_string_map(decoded_map["headers"], "headers")
+    resolved_secrets = _parse_optional_string_list(decoded_map, "resolvedSecrets")
+    refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
+    refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
+    query = _parse_optional_string_map(decoded_map, "query")
     payload = _FirewallAuthPayload(
-        headers=_parse_string_map(decoded_map["headers"], "headers"),
-        resolved_secrets=_parse_optional_string_list(decoded_map, "resolvedSecrets"),
+        headers=headers,
+        resolved_secrets=resolved_secrets,
         base=base,
-        query=_parse_optional_string_map(decoded_map, "query"),
+        query=query,
     )
     return _FirewallAuthSuccess(
         payload=payload,
         expires_at=decoded_map.get("expiresAt"),
-        refreshed_connectors=_parse_optional_string_list(decoded_map, "refreshedConnectors"),
-        refreshed_secrets=_parse_optional_string_list(decoded_map, "refreshedSecrets"),
+        refreshed_connectors=refreshed_connectors,
+        refreshed_secrets=refreshed_secrets,
     )
 
 
