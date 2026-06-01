@@ -4362,6 +4362,86 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     ).resolves.toBe("fresh-racing-notion-token");
   });
 
+  it("returns missing configuration when a skipped model-provider row disappears during another refresh", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    await seedCodexModelProvider(fixture, {
+      accessToken: "current-deleted-chatgpt-token",
+      refreshToken: "deleted-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 3_600_000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+
+    let notionRefreshCallCount = 0;
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", async () => {
+        notionRefreshCallCount += 1;
+        const db = store.set(writeDb$);
+        await db
+          .delete(modelProviders)
+          .where(
+            and(
+              eq(modelProviders.orgId, fixture.orgId),
+              eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+              eq(modelProviders.type, "codex-oauth-token"),
+            ),
+          );
+        return HttpResponse.json({
+          access_token: "fresh-deleted-notion-token",
+          refresh_token: "rotated-deleted-notion-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+            CHATGPT_ACCESS_TOKEN: "stale-snapshot-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: [
+              `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+              secretTemplate("CHATGPT_ACCESS_TOKEN"),
+            ].join(" "),
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: ORG_SENTINEL_USER_ID,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(notionRefreshCallCount).toBe(1);
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "NOTION_ACCESS_TOKEN",
+        type: "connector",
+      }),
+    ).resolves.toBe("fresh-deleted-notion-token");
+  });
+
   it("preserves standard OAuth reconnect error codes on model-provider refresh failure", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
