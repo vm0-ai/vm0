@@ -736,9 +736,6 @@ function connectorMethodOwnedSecretNames(
     }
   }
 
-  const platformSecretNames: ReadonlySet<string> = new Set(
-    connectorAccessPlatformSecrets(method.access),
-  );
   for (const valueRef of Object.values(
     connectorAccessEnvBindings(method.access),
   )) {
@@ -752,6 +749,9 @@ function connectorMethodOwnedSecretNames(
     names.add(method.access.refreshToken);
   }
 
+  const platformSecretNames: ReadonlySet<string> = new Set(
+    connectorAccessPlatformSecrets(method.access),
+  );
   for (const secretName of platformSecretNames) {
     names.delete(secretName);
   }
