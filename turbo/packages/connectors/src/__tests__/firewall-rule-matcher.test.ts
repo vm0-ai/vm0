@@ -675,6 +675,26 @@ describe("matchFirewallBaseUrl", () => {
     ).toBeNull();
   });
 
+  it("matches parameterized host base URLs with explicit non-default ports only on the same port", () => {
+    expect(
+      matchFirewallBaseUrl(
+        "https://internal.example.com:8443/v1/users",
+        "https://{sub}.example.com:8443",
+      ),
+    ).toEqual({
+      displayBase: "https://{sub}.example.com:8443",
+      relativePath: "/v1/users",
+      score: expect.any(Number),
+    });
+
+    expect(
+      matchFirewallBaseUrl(
+        "https://internal.example.com/v1/users",
+        "https://{sub}.example.com:8443",
+      ),
+    ).toBeNull();
+  });
+
   it("keeps static base path boundaries strict", () => {
     expect(
       matchFirewallBaseUrl(
