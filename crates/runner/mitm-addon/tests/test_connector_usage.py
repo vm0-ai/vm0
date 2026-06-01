@@ -11,7 +11,6 @@ import body_utils
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
-from usage.providers.connectors import x as usage_x_connector
 
 
 class TestXStreamPathRouting:
