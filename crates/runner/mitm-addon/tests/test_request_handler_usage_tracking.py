@@ -1,7 +1,6 @@
 """Billable usage tracking lifecycle tests for the request hook."""
 
 import asyncio
-import contextlib
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -55,7 +54,6 @@ async def _wait_for_forward_start(probe: _ForwardProbe, request_task: asyncio.Ta
             return_when=asyncio.FIRST_COMPLETED,
         )
         if started_task in done:
-            await started_task
             return
 
         try:
@@ -68,16 +66,13 @@ async def _wait_for_forward_start(probe: _ForwardProbe, request_task: asyncio.Ta
     finally:
         if not started_task.done():
             started_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await started_task
+            await asyncio.gather(started_task, return_exceptions=True)
 
 
 async def _release_forward_probe(probe: _ForwardProbe, request_task: asyncio.Task[None]) -> None:
     probe.release.set()
-    if request_task.done():
-        return
-    with contextlib.suppress(asyncio.CancelledError, Exception):
-        await request_task
+    if not request_task.done():
+        await asyncio.gather(request_task, return_exceptions=True)
 
 
 @pytest.fixture
@@ -430,7 +425,8 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
             probe.release.set()
             await request_task
         finally:
-            await _release_forward_probe(probe, request_task)
+            if not request_task.done():
+                await _release_forward_probe(probe, request_task)
 
         assert flow.response is not None
         assert flow.metadata["auth_url_rewrite"] is True
@@ -532,7 +528,8 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
             probe.release.set()
             await request_task
         finally:
-            await _release_forward_probe(probe, request_task)
+            if not request_task.done():
+                await _release_forward_probe(probe, request_task)
 
     assert flow.response is not None
     assert flow.response.status_code == 502
