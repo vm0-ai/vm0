@@ -37,7 +37,12 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
-import { badRequestMessage, notFound, providerDeleted } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  notFound,
+  providerDeleted,
+} from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
@@ -176,6 +181,7 @@ type NormalSendFailure =
   | ReturnType<typeof notFound>
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof forbidden>
+  | ReturnType<typeof conflict>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatMessageResponse {
@@ -190,7 +196,7 @@ interface CreatedChatMessageResponse {
 
 type ClientSendResolution =
   | CreatedChatMessageResponse
-  | ReturnType<typeof badRequestMessage>;
+  | ReturnType<typeof conflict>;
 
 type CreateChatThreadResult =
   | {
@@ -209,6 +215,35 @@ type AppendMessageResult =
       readonly message: string;
     };
 
+type ClientMessageIdResolution =
+  | {
+      readonly kind: "available";
+    }
+  | {
+      readonly kind: "queued";
+      readonly createdAt: Date;
+      readonly inserted: boolean;
+    }
+  | {
+      readonly kind: "associated";
+      readonly runId: string;
+      readonly status: string;
+      readonly createdAt: Date;
+    }
+  | {
+      readonly kind: "conflict";
+    };
+
+interface ExistingClientMessageIdRow {
+  readonly chatThreadId: string;
+  readonly threadUserId: string;
+  readonly role: string;
+  readonly runId: string | null;
+  readonly messageCreatedAt: Date;
+  readonly runStatus: string | null;
+  readonly runCreatedAt: Date | null;
+}
+
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
 // Existing web chat threads carry a small recent-run window in the system
 // prompt. Session compatibility is handled separately by forceNewSession.
@@ -221,6 +256,105 @@ function forbidden(message: string) {
   return {
     status: 403 as const,
     body: { error: { message, code: "FORBIDDEN" as const } },
+  };
+}
+
+function duplicateClientMessageIdResponse() {
+  return conflict("clientMessageId is already in use");
+}
+
+function resolveExistingClientMessageIdRow(
+  row: ExistingClientMessageIdRow | undefined,
+  params: {
+    readonly threadId: string;
+    readonly userId: string;
+  },
+): ClientMessageIdResolution {
+  if (!row) {
+    return { kind: "available" };
+  }
+  if (
+    row.chatThreadId !== params.threadId ||
+    row.threadUserId !== params.userId ||
+    row.role !== "user"
+  ) {
+    return { kind: "conflict" };
+  }
+  if (row.runId === null) {
+    return {
+      kind: "queued",
+      createdAt: row.messageCreatedAt,
+      inserted: false,
+    };
+  }
+  if (!row.runCreatedAt || !row.runStatus) {
+    return { kind: "conflict" };
+  }
+  return {
+    kind: "associated",
+    runId: row.runId,
+    status: row.runStatus,
+    createdAt: row.runCreatedAt,
+  };
+}
+
+async function resolveClientMessageId(
+  db: Db,
+  params: {
+    readonly clientMessageId: string;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+): Promise<ClientMessageIdResolution> {
+  const [message] = await db
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      threadUserId: chatThreads.userId,
+      role: chatMessages.role,
+      runId: chatMessages.runId,
+      messageCreatedAt: chatMessages.createdAt,
+      runStatus: agentRuns.status,
+      runCreatedAt: agentRuns.createdAt,
+    })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .where(eq(chatMessages.id, params.clientMessageId))
+    .limit(1);
+  return resolveExistingClientMessageIdRow(message, params);
+}
+
+function clientMessageIdResolutionResponse(
+  resolution: ClientMessageIdResolution,
+  threadId: string,
+):
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+  | undefined {
+  if (resolution.kind === "available") {
+    return undefined;
+  }
+  if (resolution.kind === "conflict") {
+    return duplicateClientMessageIdResponse();
+  }
+  if (resolution.kind === "associated") {
+    return {
+      status: 201,
+      body: {
+        runId: resolution.runId,
+        threadId,
+        status: resolution.status,
+        createdAt: resolution.createdAt.toISOString(),
+      },
+    };
+  }
+  return {
+    status: 201,
+    body: {
+      runId: null,
+      threadId,
+      createdAt: resolution.createdAt.toISOString(),
+    },
   };
 }
 
@@ -727,44 +861,12 @@ async function resolveClientMessageSend(params: {
   if (!params.clientMessageId) {
     return undefined;
   }
-
-  const [message] = await params.db
-    .select({
-      chatThreadId: chatMessages.chatThreadId,
-      role: chatMessages.role,
-      runId: chatMessages.runId,
-      messageCreatedAt: chatMessages.createdAt,
-      threadUserId: chatThreads.userId,
-      runStatus: agentRuns.status,
-      runCreatedAt: agentRuns.createdAt,
-    })
-    .from(chatMessages)
-    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
-    .where(eq(chatMessages.id, params.clientMessageId))
-    .limit(1);
-  if (!message) {
-    return undefined;
-  }
-
-  if (
-    message.chatThreadId !== params.threadId ||
-    message.threadUserId !== params.userId ||
-    message.role !== "user"
-  ) {
-    return badRequestMessage("Client message id is already in use");
-  }
-
-  const createdAt = message.runCreatedAt ?? message.messageCreatedAt;
-  return {
-    status: 201,
-    body: {
-      runId: message.runId,
-      threadId: params.threadId,
-      ...(message.runStatus ? { status: message.runStatus } : {}),
-      createdAt: createdAt.toISOString(),
-    },
-  };
+  const resolution = await resolveClientMessageId(params.db, {
+    clientMessageId: params.clientMessageId,
+    threadId: params.threadId,
+    userId: params.userId,
+  });
+  return clientMessageIdResolutionResponse(resolution, params.threadId);
 }
 
 async function resolveClientThreadRetryRun(
@@ -1231,7 +1333,7 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
-}): Promise<{ readonly createdAt: Date }> {
+}): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
@@ -1261,29 +1363,31 @@ function appendUnassociatedUserMessage(params: {
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
       await touchChatThreadLastMessageAt(tx, params.threadId);
-      return inserted;
+      return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
       throw new Error("Failed to insert unassociated user message");
     }
     const [existing] = await tx
-      .select({ createdAt: chatMessages.createdAt })
+      .select({
+        chatThreadId: chatMessages.chatThreadId,
+        threadUserId: chatThreads.userId,
+        role: chatMessages.role,
+        runId: chatMessages.runId,
+        messageCreatedAt: chatMessages.createdAt,
+        runStatus: agentRuns.status,
+        runCreatedAt: agentRuns.createdAt,
+      })
       .from(chatMessages)
       .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-      .where(
-        and(
-          eq(chatMessages.id, explicitId),
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatThreads.userId, params.userId),
-          eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
-        ),
-      )
+      .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .where(eq(chatMessages.id, explicitId))
       .limit(1);
-    if (!existing) {
-      throw new Error("Failed to resolve unassociated user message");
-    }
-    return existing;
+    const resolution = resolveExistingClientMessageIdRow(existing, {
+      threadId: params.threadId,
+      userId: params.userId,
+    });
+    return resolution.kind === "available" ? { kind: "conflict" } : resolution;
   });
 }
 
@@ -1725,7 +1829,10 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
-}): Promise<CreatedChatMessageResponse> {
+}): Promise<
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+> {
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -1734,18 +1841,20 @@ async function queueUnassociatedNormalMessage(params: {
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
   });
-  await publishChatMessageCreated(
-    params.userId,
+  if (message.kind === "queued" && message.inserted) {
+    await publishChatMessageCreated(
+      params.userId,
+      params.prepared.thread.threadId,
+    );
+  }
+  const response = clientMessageIdResolutionResponse(
+    message,
     params.prepared.thread.threadId,
   );
-  return {
-    status: 201,
-    body: {
-      runId: null,
-      threadId: params.prepared.thread.threadId,
-      createdAt: message.createdAt.toISOString(),
-    },
-  };
+  if (!response) {
+    return duplicateClientMessageIdResponse();
+  }
+  return response;
 }
 
 function scheduleChatTitleGeneration(params: {

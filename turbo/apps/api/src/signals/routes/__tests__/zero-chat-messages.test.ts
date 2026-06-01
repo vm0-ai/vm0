@@ -1054,6 +1054,146 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("returns the existing queued user message for duplicate clientMessageId retries", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({ agentId: fixture.agentId, prompt: "first" });
+    await clearAllDetached();
+
+    const clientMessageId = randomUUID();
+    const queued = await send({
+      agentId: fixture.agentId,
+      prompt: "queued once",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+    const retry = await send({
+      agentId: fixture.agentId,
+      prompt: "queued once",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+
+    expect(queued.body.runId).toBeNull();
+    expect(retry.body).toStrictEqual(queued.body);
+    const messages = await store
+      .set(writeDb$)
+      .select({
+        id: chatMessages.id,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, clientMessageId));
+    expect(messages).toStrictEqual([
+      {
+        id: clientMessageId,
+        content: "queued once",
+        runId: null,
+      },
+    ]);
+  });
+
+  it("returns the existing associated run for duplicate clientMessageId retries", async () => {
+    const fixture = await track(seedFixture());
+    const clientMessageId = randomUUID();
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first with client id",
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    const activeRetry = await send({
+      agentId: fixture.agentId,
+      prompt: "first with client id",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+    expect(activeRetry.body).toStrictEqual(first.body);
+
+    await setRunStatus(first.body.runId!, "completed");
+    const completedRetry = await send({
+      agentId: fixture.agentId,
+      prompt: "first with client id",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+    expect(completedRetry.body).toStrictEqual({
+      ...first.body,
+      status: "completed",
+    });
+
+    const writeDb = store.set(writeDb$);
+    const messages = await writeDb
+      .select({
+        id: chatMessages.id,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, clientMessageId));
+    expect(messages).toStrictEqual([
+      {
+        id: clientMessageId,
+        content: "first with client id",
+        runId: first.body.runId,
+      },
+    ]);
+
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId));
+    expect(runs).toStrictEqual([{ id: first.body.runId }]);
+  });
+
+  it("rejects clientMessageId reuse from another user without leaking ownership", async () => {
+    const ownerFixture = await track(seedFixture());
+    const clientMessageId = randomUUID();
+    await send({
+      agentId: ownerFixture.agentId,
+      prompt: "owned message",
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    const otherFixture = await track(seedFixture());
+    const active = await send({
+      agentId: otherFixture.agentId,
+      prompt: "other active run",
+    });
+    await clearAllDetached();
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: otherFixture.agentId,
+          prompt: "cross-user retry",
+          threadId: active.body.threadId,
+          clientMessageId,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "CONFLICT",
+      message: "clientMessageId is already in use",
+    });
+    const messages = await store
+      .set(writeDb$)
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, active.body.threadId),
+          eq(chatMessages.content, "cross-user retry"),
+        ),
+      );
+    expect(messages).toStrictEqual([]);
+  });
+
   it("creates a follow-up run on an existing thread and continues the last session", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
