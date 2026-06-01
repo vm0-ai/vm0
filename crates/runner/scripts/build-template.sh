@@ -232,16 +232,16 @@ trap cleanup EXIT
 trap 'echo "error: command failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 # ---------------------------------------------------------------------------
-# Bootstrap Ubuntu 24.04 rootfs
+# Bootstrap Ubuntu 26.04 rootfs
 # ---------------------------------------------------------------------------
 
 debootstrap_cache_locked() {
   # Cache the base package tarball so repeated builds (e.g. after changing
   # a pinned version) skip the ~200 MB download from the Ubuntu mirror.
-  local cache_tar="${DEBOOTSTRAP_DIR}/noble-$(dpkg --print-architecture).tar"
+  local cache_tar="${DEBOOTSTRAP_DIR}/resolute-$(dpkg --print-architecture).tar"
   if [[ -f "$cache_tar" ]]; then
     echo "using cached debootstrap tarball: $cache_tar"
-    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" resolute "$ROOTFS_DIR" "$MIRROR"
     sudo touch "$cache_tar"
   else
     # --make-tarball downloads packages into a tarball without extracting.
@@ -251,19 +251,19 @@ debootstrap_cache_locked() {
     # partial tarball under the stable cache name that another runner may reuse.
     CACHE_TMP_TAR="${cache_tar}.tmp.$$"
     rm -f "$CACHE_TMP_TAR"
-    sudo debootstrap --make-tarball="$CACHE_TMP_TAR" noble "$ROOTFS_DIR" "$MIRROR" || true
+    sudo debootstrap --make-tarball="$CACHE_TMP_TAR" resolute "$ROOTFS_DIR" "$MIRROR" || true
     if [[ ! -s "$CACHE_TMP_TAR" ]]; then
       echo "error: debootstrap --make-tarball failed to create $CACHE_TMP_TAR" >&2
       exit 1
     fi
-    sudo debootstrap --unpack-tarball="$(realpath "$CACHE_TMP_TAR")" noble "$ROOTFS_DIR" "$MIRROR"
+    sudo debootstrap --unpack-tarball="$(realpath "$CACHE_TMP_TAR")" resolute "$ROOTFS_DIR" "$MIRROR"
     mv -f "$CACHE_TMP_TAR" "$cache_tar"
     CACHE_TMP_TAR=""
   fi
 }
 
 debootstrap_build() {
-  echo "bootstrapping Ubuntu 24.04 rootfs..."
+  echo "bootstrapping Ubuntu 26.04 rootfs..."
   ROOTFS_DIR="$(mktemp -d)"
 
   # Only the shared tarball cache needs fleet-wide serialization. Release the
@@ -345,7 +345,7 @@ install_packages() {
     php php-cli php-common php-curl php-mbstring php-xml php-zip \
     default-jdk maven gradle \
     gcc g++ clang make cmake \
-    postgresql-16 postgresql-contrib \
+    postgresql-18 postgresql-contrib \
     redis-server \
     gh
 
@@ -358,18 +358,18 @@ install_packages() {
   rm -rf /var/lib/apt/lists/* /var/cache/apt/*
   '
 
-  # Chromium from Debian Bookworm (Ubuntu 24.04 snap stub does not work).
+  # Chromium from Debian Trixie (Ubuntu 26.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
   sudo chroot "$ROOTFS_DIR" bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
-    curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc \
-      | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
-    echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" \
-      > /etc/apt/sources.list.d/debian-bookworm.list
+    curl -fsSL https://ftp-master.debian.org/keys/archive-key-13.asc \
+      | gpg --dearmor -o /usr/share/keyrings/debian-trixie.gpg
+    echo "deb [signed-by=/usr/share/keyrings/debian-trixie.gpg] http://deb.debian.org/debian trixie main" \
+      > /etc/apt/sources.list.d/debian-trixie.list
     apt-get update
-    apt-get install -y -t bookworm chromium
-    rm -f /etc/apt/sources.list.d/debian-bookworm.list \
-         /usr/share/keyrings/debian-bookworm.gpg
+    apt-get install -y -t trixie chromium
+    rm -f /etc/apt/sources.list.d/debian-trixie.list \
+         /usr/share/keyrings/debian-trixie.gpg
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
   '
 
@@ -391,7 +391,7 @@ install_packages() {
 install_runtimes() {
   echo "installing language runtimes and CLIs..."
 
-  # User account (Ubuntu 24.04 ships 'ubuntu' at UID 1000; remove it first)
+  # User account (Ubuntu 26.04 ships 'ubuntu' at UID 1000; remove it first)
   sudo chroot "$ROOTFS_DIR" bash -c '
     userdel -r ubuntu 2>/dev/null || true
     useradd -m -u 1000 -s /bin/bash user
