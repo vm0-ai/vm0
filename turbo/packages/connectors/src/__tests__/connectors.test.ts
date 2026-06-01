@@ -612,6 +612,11 @@ describe("connector provider capability checks", () => {
     expect(
       hasConnectorRefreshTokenAccessProvider("test-oauth", "missing"),
     ).toBe(false);
+    expect(
+      getConnectorAuthMethodEnvBindings("test-oauth", "api"),
+    ).toStrictEqual({
+      TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+    });
 
     const authClient = resolveConnectorAuthClientForMethod(
       "test-oauth",

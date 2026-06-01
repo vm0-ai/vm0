@@ -49,7 +49,7 @@ export const testOauth = {
           accessToken: "TEST_OAUTH_API_ACCESS_TOKEN",
           refreshToken: "TEST_OAUTH_API_REFRESH_TOKEN",
           envBindings: {
-            TEST_OAUTH_API_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+            TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
           },
         },
       },
