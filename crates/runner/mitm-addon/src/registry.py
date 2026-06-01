@@ -49,7 +49,6 @@ class _RegistryCacheState:
     stat_error_logged: bool = False
     read_error_key: _RegistryCacheKey | None = None
 
-
     def reset(self) -> None:
         self.registry_path = None
         self.snapshot = _empty_snapshot()
@@ -111,8 +110,8 @@ def _read_registry_vms(path: Path) -> dict:
     return raw_vms
 
 
-def load_registry(registry_path: str) -> dict:
-    """Load the proxy registry, reusing cached data when possible.
+def _load_registry_snapshot(registry_path: str) -> RegistrySnapshot:
+    """Load the proxy registry snapshot, reusing cached data when possible.
 
     Cache state is scoped to one active registry path. A successful load
     publishes raw and compiled registry state together in a snapshot keyed by
@@ -132,11 +131,11 @@ def load_registry(registry_path: str) -> dict:
         if not state.stat_error_logged:
             state.stat_error_logged = True
             ctx.log.warn(f"Failed to stat proxy registry: {e}")
-        return state.snapshot.vms
+        return state.snapshot
 
     key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
     if key in (state.snapshot.loaded_key, state.failed_key):
-        return state.snapshot.vms
+        return state.snapshot
 
     try:
         raw_registry = _read_registry_vms(path)
@@ -145,12 +144,12 @@ def load_registry(registry_path: str) -> dict:
         if key != state.read_error_key:
             state.read_error_key = key
             ctx.log.warn(f"Failed to read proxy registry: {e}")
-        return state.snapshot.vms
+        return state.snapshot
     except (json.JSONDecodeError, UnicodeDecodeError, RegistryFormatError) as e:
         state.failed_key = key
         state.read_error_key = None
         ctx.log.warn(f"Failed to parse proxy registry: {e}")
-        return state.snapshot.vms
+        return state.snapshot
 
     new_registry, malformed_vm_count = _normalize_registry_vms(raw_registry)
     if malformed_vm_count:
@@ -174,7 +173,12 @@ def load_registry(registry_path: str) -> dict:
     state.failed_key = None
     state.stat_error_logged = False
     state.read_error_key = None
-    return state.snapshot.vms
+    return state.snapshot
+
+
+def load_registry(registry_path: str) -> dict:
+    """Load the proxy registry, reusing cached data when possible."""
+    return _load_registry_snapshot(registry_path).vms
 
 
 def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
@@ -187,12 +191,12 @@ def get_vm_context(
     registry_path: str,
 ) -> VmContext | None:
     """Look up raw VM info with compiled firewall and policy matcher sidecars."""
-    vm_info = load_registry(registry_path).get(client_ip)
+    snapshot = _load_registry_snapshot(registry_path)
+    vm_info = snapshot.vms.get(client_ip)
     if vm_info is None:
         return None
-    state = _state_for_path(_path_key(Path(registry_path)))
     return (
         vm_info,
-        state.snapshot.compiled_firewalls.get(client_ip),
-        state.snapshot.compiled_network_policies[client_ip],
+        snapshot.compiled_firewalls.get(client_ip),
+        snapshot.compiled_network_policies[client_ip],
     )
