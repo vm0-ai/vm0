@@ -1,6 +1,7 @@
 """Tests for registry loading, caching, and network logging."""
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,11 +21,25 @@ from tests.auth_state_helpers import (
 )
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
+_FIXED_MTIME_NS = 1_700_000_000_000_000_000
+
 
 def _reset_cache():
     """Reset the module-level registry cache between tests."""
     registry.reset_cache_for_tests()
     clear_auth_state()
+
+
+def _write_simple_registry(path, *, run_id="run-one"):
+    data = {
+        "vms": {"10.200.0.1": {"runId": run_id}},
+        "updatedAt": 0,
+    }
+    path.write_text(json.dumps(data, sort_keys=True))
+
+
+def _pin_mtime(path):
+    os.utime(path, ns=(_FIXED_MTIME_NS, _FIXED_MTIME_NS))
 
 
 def _write_firewall_registry(path, *, rule="/items"):
@@ -94,6 +109,54 @@ class TestLoadRegistry:
         result2 = registry.load_registry(str(registry_file))
         assert "10.200.0.99" in result2
         assert "10.200.0.1" not in result2
+
+    def test_cache_is_scoped_to_registry_path(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        path_b = tmp_path / "registry-b.json"
+        _write_simple_registry(path_a, run_id="run-one")
+        _write_simple_registry(path_b, run_id="run-two")
+        _pin_mtime(path_a)
+        _pin_mtime(path_b)
+        assert path_a.stat().st_size == path_b.stat().st_size
+
+        first = registry.load_registry(str(path_a))
+        second = registry.load_registry(str(path_b))
+
+        assert first["10.200.0.1"]["runId"] == "run-one"
+        assert second["10.200.0.1"]["runId"] == "run-two"
+        assert second is not first
+
+    def test_missing_different_path_does_not_return_previous_cache(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        missing_b = tmp_path / "registry-b.json"
+        _write_simple_registry(path_a)
+        registry.load_registry(str(path_a))
+
+        log = MagicMock()
+        with patch.object(registry.ctx, "log", log, create=True):
+            result = registry.load_registry(str(missing_b))
+
+        assert result == {}
+        assert log.warn.call_count == 1
+        assert "registry-b.json" in log.warn.call_args_list[0].args[0]
+
+    def test_atomic_replacement_reloads_same_size_same_mtime_registry(self, tmp_path):
+        path = tmp_path / "registry.json"
+        replacement = tmp_path / "registry.json.tmp"
+        _write_simple_registry(path, run_id="run-one")
+        _pin_mtime(path)
+        first = registry.load_registry(str(path))
+
+        _write_simple_registry(replacement, run_id="run-two")
+        assert replacement.stat().st_size == path.stat().st_size
+        _pin_mtime(replacement)
+        replacement.replace(path)
+
+        second = registry.load_registry(str(path))
+
+        assert first["10.200.0.1"]["runId"] == "run-one"
+        assert second["10.200.0.1"]["runId"] == "run-two"
+        assert second is not first
 
     def test_non_dict_vm_entries_are_filtered_without_blocking_valid_vms(self, tmp_path):
         path = tmp_path / "registry.json"
@@ -509,6 +572,44 @@ class TestGetVmContext:
         _, second_compiled, second_compiled_policies = second_context
         assert second_compiled is None
         assert second_compiled_policies is not first_compiled_policies
+
+    def test_compiled_context_is_scoped_to_registry_path(self, tmp_path):
+        path_a = tmp_path / "registry-a.json"
+        path_b = tmp_path / "registry-b.json"
+        _write_firewall_registry(path_a, rule="/items")
+        _write_firewall_registry(path_b, rule="/other")
+        _pin_mtime(path_a)
+        _pin_mtime(path_b)
+        assert path_a.stat().st_size == path_b.stat().st_size
+
+        first_context = registry.get_vm_context("10.200.0.1", str(path_a))
+        second_context = registry.get_vm_context("10.200.0.1", str(path_b))
+
+        assert first_context is not None
+        assert second_context is not None
+        first_vm_info, first_compiled, _ = first_context
+        second_vm_info, second_compiled, second_compiled_policies = second_context
+        assert first_vm_info is not second_vm_info
+        assert second_compiled is not None
+        assert second_compiled is not first_compiled
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/items",
+                "GET",
+                second_compiled,
+                second_compiled_policies,
+            ),
+            matching.FirewallBlock,
+        )
+        assert isinstance(
+            matching.match_compiled_firewall_request(
+                "https://api.example.com/other",
+                "GET",
+                second_compiled,
+                second_compiled_policies,
+            ),
+            matching.FirewallAllow,
+        )
 
     def test_parse_failure_preserves_compiled_context(self, tmp_path):
         path = tmp_path / "registry.json"

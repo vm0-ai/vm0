@@ -1,6 +1,7 @@
 """Proxy registry loading and VM lookup cache."""
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mitmproxy import ctx
@@ -13,30 +14,43 @@ VmContext = tuple[
     matching.CompiledFirewallSet | None,
     matching.CompiledNetworkPolicies,
 ]
+_RegistryCacheKey = tuple[str, int, int, int, int]
 
-# Cache for proxy registry (invalidated by file stat change).
-_registry_cache: dict = {}
-_registry_compiled_cache: dict[str, matching.CompiledFirewallSet] = {}
-_registry_compiled_policy_cache: dict[str, matching.CompiledNetworkPolicies] = {}
-_registry_cache_key: tuple[int, int] = (0, 0)
-# One-shot guard for stat-path failures: no cache key is available in that
-# branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
-# Parse-path failures use the cache key itself — recording the bad file's
-# (mtime_ns, size) as already-processed prevents re-parsing the same bytes
-# on every request and re-warning about them.
-_registry_load_error_logged = False
+
+@dataclass
+class _RegistryCacheState:
+    registry_path: str | None = None
+    registry: dict = field(default_factory=dict)
+    compiled_firewalls: dict[str, matching.CompiledFirewallSet] = field(default_factory=dict)
+    compiled_network_policies: dict[str, matching.CompiledNetworkPolicies] = field(
+        default_factory=dict
+    )
+    cache_key: _RegistryCacheKey | None = None
+    # One-shot guard for stat-path failures: no cache key is available in that
+    # branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
+    # Parse-path failures use the cache key itself — recording the bad file state
+    # as already processed prevents re-parsing the same bytes on every request.
+    load_error_logged: bool = False
+
+
+_registry_state = _RegistryCacheState()
 
 
 def reset_cache_for_tests() -> None:
     """Reset module cache state between tests."""
-    global _registry_cache, _registry_compiled_cache, _registry_compiled_policy_cache
-    global _registry_cache_key
-    global _registry_load_error_logged
-    _registry_cache = {}
-    _registry_compiled_cache = {}
-    _registry_compiled_policy_cache = {}
-    _registry_cache_key = (0, 0)
-    _registry_load_error_logged = False
+    global _registry_state
+    _registry_state = _RegistryCacheState()
+
+
+def _path_key(path: Path) -> str:
+    return str(path.absolute())
+
+
+def _state_for_path(path_key: str) -> _RegistryCacheState:
+    global _registry_state
+    if _registry_state.registry_path != path_key:
+        _registry_state = _RegistryCacheState(registry_path=path_key)
+    return _registry_state
 
 
 def _compile_registry(
@@ -76,22 +90,21 @@ def load_registry(registry_path: str) -> dict:
     the error state. A successful reload also evicts firewall-auth cache
     entries for run IDs no longer present in the registry.
     """
-    global _registry_cache, _registry_compiled_cache, _registry_compiled_policy_cache
-    global _registry_cache_key
-    global _registry_load_error_logged
-
     path = Path(registry_path)
+    path_key = _path_key(path)
+    state = _state_for_path(path_key)
+
     try:
         st = path.stat()
     except OSError as e:
-        if not _registry_load_error_logged:
-            _registry_load_error_logged = True
+        if not state.load_error_logged:
+            state.load_error_logged = True
             ctx.log.warn(f"Failed to stat proxy registry: {e}")
-        return _registry_cache
+        return state.registry
 
-    key = (st.st_mtime_ns, st.st_size)
-    if key == _registry_cache_key:
-        return _registry_cache
+    key = (path_key, st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+    if key == state.cache_key:
+        return state.registry
 
     try:
         with path.open() as f:
@@ -109,19 +122,19 @@ def load_registry(registry_path: str) -> dict:
         }
         evict_stale_cache_keys(active_run_ids)
 
-        _registry_cache = new_registry
-        _registry_compiled_cache = new_compiled_registry
-        _registry_compiled_policy_cache = new_compiled_policy_registry
-        _registry_load_error_logged = False
+        state.registry = new_registry
+        state.compiled_firewalls = new_compiled_registry
+        state.compiled_network_policies = new_compiled_policy_registry
+        state.load_error_logged = False
     except Exception as e:
-        if not _registry_load_error_logged:
-            _registry_load_error_logged = True
+        if not state.load_error_logged:
+            state.load_error_logged = True
             ctx.log.warn(f"Failed to parse proxy registry: {e}")
 
     # Record this file state as already processed — success or parse failure —
     # so subsequent requests on the same bytes short-circuit at the key check.
-    _registry_cache_key = key
-    return _registry_cache
+    state.cache_key = key
+    return state.registry
 
 
 def get_vm_info(client_ip: str, registry_path: str) -> dict | None:
@@ -137,9 +150,9 @@ def get_vm_context(
     vm_info = load_registry(registry_path).get(client_ip)
     if vm_info is None:
         return None
-    compiled_network_policies = _registry_compiled_policy_cache.get(client_ip)
+    compiled_network_policies = _registry_state.compiled_network_policies.get(client_ip)
     if compiled_network_policies is None:
         compiled_network_policies = matching.compile_network_policies(
             vm_info.get("networkPolicies")
         )
-    return vm_info, _registry_compiled_cache.get(client_ip), compiled_network_policies
+    return vm_info, _registry_state.compiled_firewalls.get(client_ip), compiled_network_policies
