@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { command, type Getter, type Setter } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import type { Block, KnownBlock } from "@slack/web-api";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -88,8 +88,6 @@ const L = logger("ZeroSlackWebhooks");
 const AGENT_PICKER_MAX_OPTIONS = 100;
 const MODEL_PICKER_MAX_OPTIONS = 100;
 
-type ComputedGetter = Getter;
-type ComputedSetter = Setter;
 type SlackInstallation = typeof slackOrgInstallations.$inferSelect;
 type SlackConnection = typeof slackOrgConnections.$inferSelect;
 type SlackCallbackPayload = z.infer<typeof slackOrgCallbackPayloadSchema>;
@@ -226,8 +224,6 @@ interface RunAgentParams {
 type SlackChannelType = "channel" | "dm" | "group_dm";
 
 interface SlackAgentMessageArgs {
-  readonly get: ComputedGetter;
-  readonly set: ComputedSetter;
   readonly db: Db;
   readonly workspaceId: string;
   readonly channelId: string;
@@ -265,8 +261,6 @@ interface ResolvedSlackAgentMessage {
 }
 
 interface CommandModelResponseArgs {
-  readonly get: ComputedGetter;
-  readonly set: ComputedSetter;
   readonly payload: SlackCommandPayload;
   readonly installation: SlackInstallation;
   readonly connection: SlackConnection;
@@ -438,39 +432,40 @@ async function resolveConnectionContext(
   return { connection, installation, orgId: installation.orgId };
 }
 
-async function slackPersistentSecretContext(args: {
-  readonly get: ComputedGetter;
+function slackPersistentSecretContext(args: {
   readonly orgId: string | null;
   readonly userId: string | undefined;
-}): Promise<FeatureSwitchContext> {
-  if (!args.orgId) {
-    return {};
-  }
-  if (!args.userId) {
-    return { orgId: args.orgId };
-  }
-  return {
-    orgId: args.orgId,
-    userId: args.userId,
-    overrides: await args.get(
-      userFeatureSwitchOverrides(args.orgId, args.userId),
-    ),
-  };
+}): Computed<Promise<FeatureSwitchContext>> {
+  return computed(async (get): Promise<FeatureSwitchContext> => {
+    if (!args.orgId) {
+      return {};
+    }
+    if (!args.userId) {
+      return { orgId: args.orgId };
+    }
+    return {
+      orgId: args.orgId,
+      userId: args.userId,
+      overrides: await get(userFeatureSwitchOverrides(args.orgId, args.userId)),
+    };
+  });
 }
 
-async function decryptSlackBotToken(args: {
-  readonly get: ComputedGetter;
+function decryptSlackBotToken(args: {
   readonly installation: SlackInstallation;
   readonly userId?: string;
-}): Promise<string> {
-  return await decryptPersistentSecretValue(
-    args.installation.encryptedBotToken,
-    await slackPersistentSecretContext({
-      get: args.get,
-      orgId: args.installation.orgId,
-      userId: args.userId,
-    }),
-  );
+}): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    return await decryptPersistentSecretValue(
+      args.installation.encryptedBotToken,
+      await get(
+        slackPersistentSecretContext({
+          orgId: args.installation.orgId,
+          userId: args.userId,
+        }),
+      ),
+    );
+  });
 }
 
 async function resolveDefaultComposeId(
@@ -581,302 +576,320 @@ async function disconnect(db: Db, connectionId: string): Promise<void> {
     .where(eq(slackOrgConnections.id, connectionId));
 }
 
-async function cleanupWorkspaceInstallation(
-  set: ComputedSetter,
-  db: Db,
-  workspaceId: string,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const installation = await installationForWorkspace(db, workspaceId);
-  signal.throwIfAborted();
-  if (!installation) {
-    return false;
-  }
-  await db
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
-  signal.throwIfAborted();
-  await db
-    .delete(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
-  signal.throwIfAborted();
-  if (installation.orgId) {
-    await set(
-      publishSlackAdminSignal$,
-      { orgId: installation.orgId, topic: "slack:changed" },
+const cleanupWorkspaceInstallation$ = command(
+  async (
+    { set },
+    db: Db,
+    workspaceId: string,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const installation = await installationForWorkspace(db, workspaceId);
+    signal.throwIfAborted();
+    if (!installation) {
+      return false;
+    }
+    await db
+      .delete(slackOrgConnections)
+      .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+    signal.throwIfAborted();
+    await db
+      .delete(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
+    signal.throwIfAborted();
+    if (installation.orgId) {
+      await set(
+        publishSlackAdminSignal$,
+        { orgId: installation.orgId, topic: "slack:changed" },
+        signal,
+      );
+    }
+    return true;
+  },
+);
+
+const slackModelPickerState$ = command(
+  async (
+    { get, set },
+    orgId: string,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly enabled: boolean;
+    readonly options: readonly {
+      readonly model: SupportedRunModel;
+      readonly label: string;
+      readonly isDefault: boolean;
+    }[];
+    readonly currentSelectedModel: string | null;
+  }> => {
+    const visibleModels = new Set(getVm0VisibleModels());
+    const [policies, preference] = await Promise.all([
+      set(listOrgModelPolicies$, { orgId, userId }, signal),
+      get(userModelPreference({ orgId, userId })),
+    ]);
+    signal.throwIfAborted();
+    return {
+      enabled: true,
+      options: policies.policies.flatMap((policy) => {
+        if (
+          !isSupportedRunModel(policy.model) ||
+          !visibleModels.has(policy.model) ||
+          policy.routeStatus !== "valid"
+        ) {
+          return [];
+        }
+        return {
+          model: policy.model,
+          label: policy.modelLabel,
+          isDefault: policy.isDefault,
+        };
+      }),
+      currentSelectedModel: preference.selectedModel,
+    };
+  },
+);
+
+const isModelCommandAvailable$ = command(
+  async (
+    { set },
+    installation: SlackInstallation | undefined,
+    connection: SlackConnection | undefined,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (!installation?.orgId || !connection) {
+      return false;
+    }
+    const picker = await set(
+      slackModelPickerState$,
+      installation.orgId,
+      connection.vm0UserId,
       signal,
     );
-  }
-  return true;
-}
+    return picker.enabled && picker.options.length > 0;
+  },
+);
 
-async function slackModelPickerState(
-  get: ComputedGetter,
-  set: ComputedSetter,
-  orgId: string,
-  userId: string,
-  signal: AbortSignal,
-): Promise<{
-  readonly enabled: boolean;
-  readonly options: readonly {
-    readonly model: SupportedRunModel;
-    readonly label: string;
-    readonly isDefault: boolean;
-  }[];
-  readonly currentSelectedModel: string | null;
-}> {
-  const visibleModels = new Set(getVm0VisibleModels());
-  const [policies, preference] = await Promise.all([
-    set(listOrgModelPolicies$, { orgId, userId }, signal),
-    get(userModelPreference({ orgId, userId })),
-  ]);
-  return {
-    enabled: true,
-    options: policies.policies.flatMap((policy) => {
-      if (
-        !isSupportedRunModel(policy.model) ||
-        !visibleModels.has(policy.model) ||
-        policy.routeStatus !== "valid"
-      ) {
-        return [];
+const refreshOrgAppHome$ = command(
+  async (
+    { get },
+    db: Db,
+    installation: SlackInstallation,
+    slackUserId: string,
+  ): Promise<void> => {
+    const workspaceId = installation.slackWorkspaceId;
+    const connection = await connectionForSlackUser(
+      db,
+      workspaceId,
+      slackUserId,
+    );
+    const botToken = await get(
+      decryptSlackBotToken({
+        installation,
+        userId: connection?.vm0UserId,
+      }),
+    );
+    const client = createSlackClient(botToken);
+    if (!connection) {
+      await publishAppHome(
+        client,
+        slackUserId,
+        buildAppHomeView({
+          isLinked: false,
+          loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, ""),
+        }),
+      );
+      return;
+    }
+
+    let agentName: string | undefined;
+    let isOverrideActive = false;
+    let canSwitch = false;
+    if (installation.orgId) {
+      const orgId = installation.orgId;
+      const [effectiveComposeId, overrideComposeId, defaultComposeId] =
+        await Promise.all([
+          resolveEffectiveComposeId(db, connection.vm0UserId, orgId),
+          getUserAgentPreference(db, connection.vm0UserId, orgId),
+          resolveDefaultComposeId(db, orgId),
+        ]);
+      if (effectiveComposeId) {
+        const agent = await getWorkspaceAgent(db, effectiveComposeId);
+        agentName = agent?.displayName ?? agent?.name;
       }
-      return {
-        model: policy.model,
-        label: policy.modelLabel,
-        isDefault: policy.isDefault,
-      };
-    }),
-    currentSelectedModel: preference.selectedModel,
-  };
-}
+      isOverrideActive = Boolean(
+        overrideComposeId && overrideComposeId !== defaultComposeId,
+      );
+      canSwitch = Boolean(defaultComposeId);
+    }
 
-async function isModelCommandAvailable(
-  get: ComputedGetter,
-  set: ComputedSetter,
-  installation: SlackInstallation | undefined,
-  connection: SlackConnection | undefined,
-  signal: AbortSignal,
-): Promise<boolean> {
-  if (!installation?.orgId || !connection) {
-    return false;
-  }
-  const picker = await slackModelPickerState(
-    get,
-    set,
-    installation.orgId,
-    connection.vm0UserId,
-    signal,
-  );
-  return picker.enabled && picker.options.length > 0;
-}
+    const [metadata] = await db
+      .select({ email: userCache.email })
+      .from(userCache)
+      .where(eq(userCache.userId, connection.vm0UserId))
+      .limit(1);
 
-async function refreshOrgAppHome(
-  get: ComputedGetter,
-  db: Db,
-  installation: SlackInstallation,
-  slackUserId: string,
-): Promise<void> {
-  const workspaceId = installation.slackWorkspaceId;
-  const connection = await connectionForSlackUser(db, workspaceId, slackUserId);
-  const botToken = await decryptSlackBotToken({
-    get,
-    installation,
-    userId: connection?.vm0UserId,
-  });
-  const client = createSlackClient(botToken);
-  if (!connection) {
     await publishAppHome(
       client,
       slackUserId,
       buildAppHomeView({
-        isLinked: false,
-        loginUrl: buildOrgConnectUrl(workspaceId, slackUserId, ""),
+        isLinked: true,
+        vm0UserId: connection.vm0UserId,
+        userEmail: metadata?.email ?? undefined,
+        agentName,
+        isOverrideActive,
+        canSwitch,
       }),
     );
-    return;
-  }
+  },
+);
 
-  let agentName: string | undefined;
-  let isOverrideActive = false;
-  let canSwitch = false;
-  if (installation.orgId) {
-    const orgId = installation.orgId;
-    const [effectiveComposeId, overrideComposeId, defaultComposeId] =
-      await Promise.all([
-        resolveEffectiveComposeId(db, connection.vm0UserId, orgId),
-        getUserAgentPreference(db, connection.vm0UserId, orgId),
-        resolveDefaultComposeId(db, orgId),
-      ]);
-    if (effectiveComposeId) {
-      const agent = await getWorkspaceAgent(db, effectiveComposeId);
-      agentName = agent?.displayName ?? agent?.name;
+const commandSwitchResponse$ = command(
+  async (
+    { get },
+    db: Db,
+    payload: SlackCommandPayload,
+    installation: SlackInstallation,
+    connection: SlackConnection,
+  ): Promise<Response> => {
+    if (!installation.orgId) {
+      return ephemeral(
+        buildErrorMessage(
+          "This workspace is not bound to an org. Please contact your admin.",
+        ),
+      );
     }
-    isOverrideActive = Boolean(
-      overrideComposeId && overrideComposeId !== defaultComposeId,
+    if (!payload.trigger_id) {
+      return ephemeral(
+        buildErrorMessage(
+          "Couldn't open the agent picker \u2014 please try again.",
+        ),
+      );
+    }
+    const { composes } = await get(zeroComposeList(installation.orgId));
+    const defaultComposeId = await resolveDefaultComposeId(
+      db,
+      installation.orgId,
     );
-    canSwitch = Boolean(defaultComposeId);
-  }
+    const options = composes
+      .filter((compose) => {
+        return compose.id !== defaultComposeId;
+      })
+      .slice(0, AGENT_PICKER_MAX_OPTIONS)
+      .map((compose) => {
+        return {
+          composeId: compose.id,
+          name: compose.name,
+          displayName: compose.displayName,
+        };
+      });
+    const orgDefaultName = defaultComposeId
+      ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
+        (await getWorkspaceAgent(db, defaultComposeId))?.name ??
+        null)
+      : null;
+    const currentOverride = await getUserAgentPreference(
+      db,
+      connection.vm0UserId,
+      installation.orgId,
+    );
+    const client = createSlackClient(
+      await get(
+        decryptSlackBotToken({
+          installation,
+          userId: connection.vm0UserId,
+        }),
+      ),
+    );
+    const result = await settle(
+      openView(
+        client,
+        payload.trigger_id,
+        buildAgentPickerModal({
+          options,
+          currentSelectedId: currentOverride,
+          orgDefaultName,
+          privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
+        }),
+      ),
+    );
+    if (!result.ok) {
+      L.warn("Failed to open agent picker modal", { error: result.error });
+      return ephemeral(
+        buildErrorMessage(
+          "Couldn't open the agent picker \u2014 please try again.",
+        ),
+      );
+    }
+    return emptyResponse();
+  },
+);
 
-  const [metadata] = await db
-    .select({ email: userCache.email })
-    .from(userCache)
-    .where(eq(userCache.userId, connection.vm0UserId))
-    .limit(1);
-
-  await publishAppHome(
-    client,
-    slackUserId,
-    buildAppHomeView({
-      isLinked: true,
-      vm0UserId: connection.vm0UserId,
-      userEmail: metadata?.email ?? undefined,
-      agentName,
-      isOverrideActive,
-      canSwitch,
-    }),
-  );
-}
-
-async function commandSwitchResponse(
-  get: ComputedGetter,
-  db: Db,
-  payload: SlackCommandPayload,
-  installation: SlackInstallation,
-  connection: SlackConnection,
-): Promise<Response> {
-  if (!installation.orgId) {
-    return ephemeral(
-      buildErrorMessage(
-        "This workspace is not bound to an org. Please contact your admin.",
+const commandModelResponse$ = command(
+  async ({ get, set }, args: CommandModelResponseArgs): Promise<Response> => {
+    if (!args.installation.orgId) {
+      return ephemeral(
+        buildErrorMessage(
+          "This workspace is not bound to an org. Please contact your admin.",
+        ),
+      );
+    }
+    if (!args.payload.trigger_id) {
+      return ephemeral(
+        buildErrorMessage(
+          "Couldn't open the model picker \u2014 please try again.",
+        ),
+      );
+    }
+    const picker = await set(
+      slackModelPickerState$,
+      args.installation.orgId,
+      args.connection.vm0UserId,
+      args.signal,
+    );
+    if (!picker.enabled) {
+      return ephemeral(
+        buildErrorMessage(
+          "Model switching is not available for this workspace.",
+        ),
+      );
+    }
+    if (picker.options.length === 0) {
+      return ephemeral(
+        buildErrorMessage("No models are configured for this workspace."),
+      );
+    }
+    const client = createSlackClient(
+      await get(
+        decryptSlackBotToken({
+          installation: args.installation,
+          userId: args.connection.vm0UserId,
+        }),
       ),
     );
-  }
-  if (!payload.trigger_id) {
-    return ephemeral(
-      buildErrorMessage(
-        "Couldn't open the agent picker \u2014 please try again.",
+    const result = await settle(
+      openView(
+        client,
+        args.payload.trigger_id,
+        buildModelPickerModal({
+          options: picker.options.slice(0, MODEL_PICKER_MAX_OPTIONS),
+          currentSelectedModel: picker.currentSelectedModel,
+          privateMetadata: JSON.stringify({
+            channelId: args.payload.channel_id,
+          }),
+        }),
       ),
     );
-  }
-  const { composes } = await get(zeroComposeList(installation.orgId));
-  const defaultComposeId = await resolveDefaultComposeId(
-    db,
-    installation.orgId,
-  );
-  const options = composes
-    .filter((compose) => {
-      return compose.id !== defaultComposeId;
-    })
-    .slice(0, AGENT_PICKER_MAX_OPTIONS)
-    .map((compose) => {
-      return {
-        composeId: compose.id,
-        name: compose.name,
-        displayName: compose.displayName,
-      };
-    });
-  const orgDefaultName = defaultComposeId
-    ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
-      (await getWorkspaceAgent(db, defaultComposeId))?.name ??
-      null)
-    : null;
-  const currentOverride = await getUserAgentPreference(
-    db,
-    connection.vm0UserId,
-    installation.orgId,
-  );
-  const client = createSlackClient(
-    await decryptSlackBotToken({
-      get,
-      installation,
-      userId: connection.vm0UserId,
-    }),
-  );
-  const result = await settle(
-    openView(
-      client,
-      payload.trigger_id,
-      buildAgentPickerModal({
-        options,
-        currentSelectedId: currentOverride,
-        orgDefaultName,
-        privateMetadata: JSON.stringify({ channelId: payload.channel_id }),
-      }),
-    ),
-  );
-  if (!result.ok) {
-    L.warn("Failed to open agent picker modal", { error: result.error });
-    return ephemeral(
-      buildErrorMessage(
-        "Couldn't open the agent picker \u2014 please try again.",
-      ),
-    );
-  }
-  return emptyResponse();
-}
-
-async function commandModelResponse(
-  args: CommandModelResponseArgs,
-): Promise<Response> {
-  if (!args.installation.orgId) {
-    return ephemeral(
-      buildErrorMessage(
-        "This workspace is not bound to an org. Please contact your admin.",
-      ),
-    );
-  }
-  if (!args.payload.trigger_id) {
-    return ephemeral(
-      buildErrorMessage(
-        "Couldn't open the model picker \u2014 please try again.",
-      ),
-    );
-  }
-  const picker = await slackModelPickerState(
-    args.get,
-    args.set,
-    args.installation.orgId,
-    args.connection.vm0UserId,
-    args.signal,
-  );
-  if (!picker.enabled) {
-    return ephemeral(
-      buildErrorMessage("Model switching is not available for this workspace."),
-    );
-  }
-  if (picker.options.length === 0) {
-    return ephemeral(
-      buildErrorMessage("No models are configured for this workspace."),
-    );
-  }
-  const client = createSlackClient(
-    await decryptSlackBotToken({
-      get: args.get,
-      installation: args.installation,
-      userId: args.connection.vm0UserId,
-    }),
-  );
-  const result = await settle(
-    openView(
-      client,
-      args.payload.trigger_id,
-      buildModelPickerModal({
-        options: picker.options.slice(0, MODEL_PICKER_MAX_OPTIONS),
-        currentSelectedModel: picker.currentSelectedModel,
-        privateMetadata: JSON.stringify({ channelId: args.payload.channel_id }),
-      }),
-    ),
-  );
-  if (!result.ok) {
-    L.warn("Failed to open model picker modal", { error: result.error });
-    return ephemeral(
-      buildErrorMessage(
-        "Couldn't open the model picker \u2014 please try again.",
-      ),
-    );
-  }
-  return emptyResponse();
-}
+    if (!result.ok) {
+      L.warn("Failed to open model picker modal", { error: result.error });
+      return ephemeral(
+        buildErrorMessage(
+          "Couldn't open the model picker \u2014 please try again.",
+        ),
+      );
+    }
+    return emptyResponse();
+  },
+);
 
 export const handleZeroSlackCommands$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
@@ -899,13 +912,7 @@ export const handleZeroSlackCommands$ = command(
     signal.throwIfAborted();
     const canSwitchAgents = Boolean(installation?.orgId);
     const canModel = () => {
-      return isModelCommandAvailable(
-        get,
-        set,
-        installation,
-        connection,
-        signal,
-      );
+      return set(isModelCommandAvailable$, installation, connection, signal);
     };
 
     if (subCommand === "help" || subCommand === "") {
@@ -955,7 +962,7 @@ export const handleZeroSlackCommands$ = command(
       signal.throwIfAborted();
       waitUntil(
         tapError(
-          refreshOrgAppHome(get, db, installation, payload.user_id),
+          set(refreshOrgAppHome$, db, installation, payload.user_id),
           (error) => {
             L.warn("Failed to refresh App Home after disconnect", { error });
           },
@@ -981,13 +988,11 @@ export const handleZeroSlackCommands$ = command(
     }
 
     if (subCommand === "switch") {
-      return commandSwitchResponse(get, db, payload, installation, connection);
+      return set(commandSwitchResponse$, db, payload, installation, connection);
     }
 
     if (subCommand === "model") {
-      return commandModelResponse({
-        get,
-        set,
+      return set(commandModelResponse$, {
         payload,
         installation,
         connection,
@@ -1034,66 +1039,68 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-async function runAgentForSlackOrg(
-  set: ComputedSetter,
-  params: RunAgentParams,
-  signal: AbortSignal,
-): Promise<RunAgentResult> {
-  const result = await set(
-    createZeroRun$,
-    {
-      auth: {
-        tokenType: "session",
-        userId: params.userId,
-        orgId: params.orgId,
-        orgRole: "member",
-      },
-      body: {
-        prompt: params.prompt,
-        agentId: params.agentId,
-        sessionId: params.sessionId,
-        ...(params.modelProviderType
-          ? { modelProvider: params.modelProviderType }
-          : {}),
-      },
-      apiStartTime: params.apiStartTime,
-      triggerSource: "slack",
-      appendSystemPrompt: buildSlackPrompt(params),
-      userInfoExtras: params.userInfoExtras,
-      modelProviderId: params.modelProviderId,
-      modelProviderCredentialScope: params.modelProviderCredentialScope,
-      selectedModelOverride: params.selectedModelOverride,
-      callbacks: [
-        {
-          url: `${env("VM0_API_URL")}/api/internal/callbacks/slack/org`,
-          secret: generateCallbackSecret(),
-          payload: params.callbackContext,
-        },
-      ],
-    },
-    signal,
-  );
-  if (result.status === 201) {
-    return {
-      status: result.body.status === "queued" ? "queued" : "accepted",
-      runId: result.body.runId,
-    };
-  }
-
-  return {
-    status: "failed",
-    response: await set(
-      formatIntegrationRunError$,
+const runAgentForSlackOrg$ = command(
+  async (
+    { set },
+    params: RunAgentParams,
+    signal: AbortSignal,
+  ): Promise<RunAgentResult> => {
+    const result = await set(
+      createZeroRun$,
       {
-        orgId: params.orgId,
-        userId: params.userId,
-        code: result.body.error.code,
-        message: result.body.error.message,
+        auth: {
+          tokenType: "session",
+          userId: params.userId,
+          orgId: params.orgId,
+          orgRole: "member",
+        },
+        body: {
+          prompt: params.prompt,
+          agentId: params.agentId,
+          sessionId: params.sessionId,
+          ...(params.modelProviderType
+            ? { modelProvider: params.modelProviderType }
+            : {}),
+        },
+        apiStartTime: params.apiStartTime,
+        triggerSource: "slack",
+        appendSystemPrompt: buildSlackPrompt(params),
+        userInfoExtras: params.userInfoExtras,
+        modelProviderId: params.modelProviderId,
+        modelProviderCredentialScope: params.modelProviderCredentialScope,
+        selectedModelOverride: params.selectedModelOverride,
+        callbacks: [
+          {
+            url: `${env("VM0_API_URL")}/api/internal/callbacks/slack/org`,
+            secret: generateCallbackSecret(),
+            payload: params.callbackContext,
+          },
+        ],
       },
       signal,
-    ),
-  };
-}
+    );
+    if (result.status === 201) {
+      return {
+        status: result.body.status === "queued" ? "queued" : "accepted",
+        runId: result.body.runId,
+      };
+    }
+
+    return {
+      status: "failed",
+      response: await set(
+        formatIntegrationRunError$,
+        {
+          orgId: params.orgId,
+          userId: params.userId,
+          code: result.body.error.code,
+          message: result.body.error.message,
+        },
+        signal,
+      ),
+    };
+  },
+);
 
 async function resolveCompatibleThreadSession(args: {
   readonly db: Db;
@@ -1150,43 +1157,47 @@ async function resolveCompatibleThreadSession(args: {
   return session.agentSessionId;
 }
 
-async function postPreDispatchErrorReply(args: {
-  readonly get: ComputedGetter;
-  readonly db: Db;
-  readonly client: ReturnType<typeof createSlackClient>;
-  readonly channelId: string;
-  readonly threadTs: string;
-  readonly errorText: string;
-  readonly orgId: string;
-  readonly vm0UserId: string;
-  readonly composeId: string;
-  readonly agentLabel: string;
-}): Promise<void> {
-  const overrides = await args.get(
-    userFeatureSwitchOverrides(args.orgId, args.vm0UserId),
-  );
-  const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
-    userId: args.vm0UserId,
-    orgId: args.orgId,
-    overrides,
-  })
-    ? `${env("APP_URL")}/activities`
-    : undefined;
-  const orgDefaultComposeId = await resolveDefaultComposeId(
-    args.db,
-    args.orgId,
-  );
-  const triggeredBy =
-    args.composeId !== orgDefaultComposeId
-      ? `Sent via ${args.agentLabel}`
+const postPreDispatchErrorReply$ = command(
+  async (
+    { get },
+    args: {
+      readonly db: Db;
+      readonly client: ReturnType<typeof createSlackClient>;
+      readonly channelId: string;
+      readonly threadTs: string;
+      readonly errorText: string;
+      readonly orgId: string;
+      readonly vm0UserId: string;
+      readonly composeId: string;
+      readonly agentLabel: string;
+    },
+  ): Promise<void> => {
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.vm0UserId),
+    );
+    const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+      userId: args.vm0UserId,
+      orgId: args.orgId,
+      overrides,
+    })
+      ? `${env("APP_URL")}/activities`
       : undefined;
-  await args.client.chat.postMessage({
-    channel: args.channelId,
-    thread_ts: args.threadTs,
-    text: args.errorText,
-    blocks: buildAgentResponseMessage(args.errorText, logsUrl, triggeredBy),
-  });
-}
+    const orgDefaultComposeId = await resolveDefaultComposeId(
+      args.db,
+      args.orgId,
+    );
+    const triggeredBy =
+      args.composeId !== orgDefaultComposeId
+        ? `Sent via ${args.agentLabel}`
+        : undefined;
+    await args.client.chat.postMessage({
+      channel: args.channelId,
+      thread_ts: args.threadTs,
+      text: args.errorText,
+      blocks: buildAgentResponseMessage(args.errorText, logsUrl, triggeredBy),
+    });
+  },
+);
 
 async function postSlackUserNotice(args: {
   readonly client: ReturnType<typeof createSlackClient>;
@@ -1215,249 +1226,258 @@ async function postSlackUserNotice(args: {
   });
 }
 
-async function resolveSlackAgentMessage(
-  args: SlackAgentMessageArgs,
-): Promise<ResolvedSlackAgentMessage | null> {
-  const installation = await installationForWorkspace(
-    args.db,
-    args.workspaceId,
-  );
-  const orgId = installation?.orgId;
-  if (!installation || !orgId) {
-    return null;
-  }
-  const boundInstallation = { ...installation, orgId };
-  const threadTs = args.threadTs ?? args.messageTs;
-  const connection = await connectionForSlackUser(
-    args.db,
-    args.workspaceId,
-    args.slackUserId,
-  );
-  const botToken = await decryptSlackBotToken({
-    get: args.get,
-    installation,
-    userId: connection?.vm0UserId,
-  });
-  const client = createSlackClient(botToken);
-
-  if (!connection) {
-    const connectUrl = buildOrgConnectUrl(
+const resolveSlackAgentMessage$ = command(
+  async (
+    { get },
+    args: SlackAgentMessageArgs,
+  ): Promise<ResolvedSlackAgentMessage | null> => {
+    const installation = await installationForWorkspace(
+      args.db,
+      args.workspaceId,
+    );
+    const orgId = installation?.orgId;
+    if (!installation || !orgId) {
+      return null;
+    }
+    const boundInstallation = { ...installation, orgId };
+    const threadTs = args.threadTs ?? args.messageTs;
+    const connection = await connectionForSlackUser(
+      args.db,
       args.workspaceId,
       args.slackUserId,
-      args.channelId,
-      args.channelType === "dm" ? threadTs : undefined,
     );
-    await postSlackUserNotice({
-      client,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      slackUserId: args.slackUserId,
-      threadTs,
-      text: "Please connect your account first",
-      blocks: buildLoginPromptMessage(connectUrl),
-    });
-    return null;
-  }
+    const botToken = await get(
+      decryptSlackBotToken({
+        installation,
+        userId: connection?.vm0UserId,
+      }),
+    );
+    const client = createSlackClient(botToken);
 
-  const composeId = await resolveEffectiveComposeId(
-    args.db,
-    connection.vm0UserId,
-    boundInstallation.orgId,
-  );
-  if (!composeId) {
-    await postSlackUserNotice({
-      client,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      slackUserId: args.slackUserId,
-      threadTs,
-      ephemeralThreadTs: args.threadTs ? threadTs : undefined,
-      text: "No agent is configured for this org. Please ask your org admin to set a default agent.",
-    });
-    return null;
-  }
-
-  const agent = await getWorkspaceAgent(
-    args.db,
-    composeId,
-    boundInstallation.orgId,
-  );
-  if (!agent) {
-    await postSlackUserNotice({
-      client,
-      channelId: args.channelId,
-      channelType: args.channelType,
-      slackUserId: args.slackUserId,
-      threadTs,
-      ephemeralThreadTs: args.threadTs ? threadTs : undefined,
-      text: "The configured agent could not be found. Please contact your org admin.",
-    });
-    return null;
-  }
-
-  return {
-    installation: boundInstallation,
-    connection,
-    client,
-    threadTs,
-    composeId,
-    agent,
-  };
-}
-
-async function buildRunAgentParams(
-  args: SlackAgentMessageArgs,
-  resolved: ResolvedSlackAgentMessage,
-): Promise<RunAgentParams> {
-  const { prompt, userInfoExtras } = await enrichMessageContent({
-    messageContent: args.messageText,
-    files: args.files,
-    client: resolved.client,
-    userId: args.slackUserId,
-  });
-  const modelRoute = await args.set(
-    resolveIntegrationModelRouteForUser$,
-    {
-      orgId: resolved.installation.orgId,
-      userId: resolved.connection.vm0UserId,
-    },
-    args.signal,
-  );
-  const existingSessionId = await resolveCompatibleThreadSession({
-    db: args.db,
-    channelId: args.channelId,
-    threadTs: resolved.threadTs,
-    connectionId: resolved.connection.id,
-    userId: resolved.connection.vm0UserId,
-    agentComposeId: resolved.composeId,
-    modelRoute,
-  });
-  const { executionContext } = await fetchConversationContexts(
-    resolved.client,
-    args.channelId,
-    args.threadTs,
-    args.messageTs,
-  );
-  const callbackContext: SlackCallbackPayload = {
-    workspaceId: args.workspaceId,
-    channelId: args.channelId,
-    threadTs: resolved.threadTs,
-    messageTs: args.messageTs,
-    connectionId: resolved.connection.id,
-    agentId: resolved.composeId,
-    existingSessionId,
-  };
-
-  return {
-    agentId: resolved.composeId,
-    agentName: resolved.agent.name,
-    orgId: resolved.installation.orgId,
-    sessionId: existingSessionId,
-    prompt,
-    threadContext: executionContext,
-    userInfoExtras,
-    userId: resolved.connection.vm0UserId,
-    botUserId: resolved.installation.botUserId,
-    channelId: args.channelId,
-    channelType: args.channelType,
-    threadTs: resolved.threadTs,
-    callbackContext,
-    apiStartTime: args.apiStartTime,
-    modelProviderId: modelRoute?.modelProviderId ?? undefined,
-    modelProviderCredentialScope:
-      modelRoute?.modelProviderCredentialScope ?? undefined,
-    modelProviderType: modelRoute?.modelProviderType ?? undefined,
-    selectedModelOverride: modelRoute?.selectedModel ?? undefined,
-  };
-}
-
-async function handleSlackRunResult(args: {
-  readonly message: SlackAgentMessageArgs;
-  readonly resolved: ResolvedSlackAgentMessage;
-  readonly result: RunAgentResult;
-}): Promise<void> {
-  const { message, resolved, result } = args;
-  if (result.status === "queued") {
-    const queueUrl = `${env("APP_URL")}/?queue=1`;
-    await resolved.client.chat.postEphemeral({
-      channel: message.channelId,
-      user: message.slackUserId,
-      ...(message.channelType === "dm" || message.threadTs
-        ? { thread_ts: resolved.threadTs }
-        : {}),
-      text: `\u26a0 Run queued -- concurrency limit reached. Will start automatically when a slot is available. <${queueUrl}|View queue>`,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: ":warning: *Run queued*\n\nConcurrency limit reached. Will start automatically when a slot is available.",
-          },
-        },
-        {
-          type: "context",
-          elements: [{ type: "mrkdwn", text: `<${queueUrl}|View queue>` }],
-        },
-      ],
-    });
-  } else if (result.status === "failed") {
-    if (!result.runId) {
-      await postPreDispatchErrorReply({
-        get: message.get,
-        db: message.db,
-        client: resolved.client,
-        channelId: message.channelId,
-        threadTs: resolved.threadTs,
-        errorText:
-          result.response ?? "Sorry, an error occurred. Please try again.",
-        orgId: resolved.installation.orgId,
-        vm0UserId: resolved.connection.vm0UserId,
-        composeId: resolved.composeId,
-        agentLabel: resolved.agent.displayName ?? resolved.agent.name,
+    if (!connection) {
+      const connectUrl = buildOrgConnectUrl(
+        args.workspaceId,
+        args.slackUserId,
+        args.channelId,
+        args.channelType === "dm" ? threadTs : undefined,
+      );
+      await postSlackUserNotice({
+        client,
+        channelId: args.channelId,
+        channelType: args.channelType,
+        slackUserId: args.slackUserId,
+        threadTs,
+        text: "Please connect your account first",
+        blocks: buildLoginPromptMessage(connectUrl),
       });
+      return null;
     }
-    await tapError(
-      setThreadStatus(
-        resolved.client,
-        message.channelId,
-        resolved.threadTs,
-        "",
-      ),
-      (error) => {
-        L.warn("Failed to clear thread status", { error });
-      },
+
+    const composeId = await resolveEffectiveComposeId(
+      args.db,
+      connection.vm0UserId,
+      boundInstallation.orgId,
     );
-  }
-}
+    if (!composeId) {
+      await postSlackUserNotice({
+        client,
+        channelId: args.channelId,
+        channelType: args.channelType,
+        slackUserId: args.slackUserId,
+        threadTs,
+        ephemeralThreadTs: args.threadTs ? threadTs : undefined,
+        text: "No agent is configured for this org. Please ask your org admin to set a default agent.",
+      });
+      return null;
+    }
 
-async function handleSlackAgentMessage(
-  args: SlackAgentMessageArgs,
-): Promise<void> {
-  const resolved = await resolveSlackAgentMessage(args);
-  if (!resolved) {
-    return;
-  }
+    const agent = await getWorkspaceAgent(
+      args.db,
+      composeId,
+      boundInstallation.orgId,
+    );
+    if (!agent) {
+      await postSlackUserNotice({
+        client,
+        channelId: args.channelId,
+        channelType: args.channelType,
+        slackUserId: args.slackUserId,
+        threadTs,
+        ephemeralThreadTs: args.threadTs ? threadTs : undefined,
+        text: "The configured agent could not be found. Please contact your org admin.",
+      });
+      return null;
+    }
 
-  await setThreadStatus(
-    resolved.client,
-    args.channelId,
-    resolved.threadTs,
-    "is thinking...",
-  );
-  const runParams = await buildRunAgentParams(args, resolved);
-  const result = await runAgentForSlackOrg(args.set, runParams, args.signal);
-  await handleSlackRunResult({ message: args, resolved, result });
-}
+    return {
+      installation: boundInstallation,
+      connection,
+      client,
+      threadTs,
+      composeId,
+      agent,
+    };
+  },
+);
+
+const buildRunAgentParams$ = command(
+  async (
+    { set },
+    args: SlackAgentMessageArgs,
+    resolved: ResolvedSlackAgentMessage,
+  ): Promise<RunAgentParams> => {
+    const { prompt, userInfoExtras } = await enrichMessageContent({
+      messageContent: args.messageText,
+      files: args.files,
+      client: resolved.client,
+      userId: args.slackUserId,
+    });
+    const modelRoute = await set(
+      resolveIntegrationModelRouteForUser$,
+      {
+        orgId: resolved.installation.orgId,
+        userId: resolved.connection.vm0UserId,
+      },
+      args.signal,
+    );
+    const existingSessionId = await resolveCompatibleThreadSession({
+      db: args.db,
+      channelId: args.channelId,
+      threadTs: resolved.threadTs,
+      connectionId: resolved.connection.id,
+      userId: resolved.connection.vm0UserId,
+      agentComposeId: resolved.composeId,
+      modelRoute,
+    });
+    const { executionContext } = await fetchConversationContexts(
+      resolved.client,
+      args.channelId,
+      args.threadTs,
+      args.messageTs,
+    );
+    const callbackContext: SlackCallbackPayload = {
+      workspaceId: args.workspaceId,
+      channelId: args.channelId,
+      threadTs: resolved.threadTs,
+      messageTs: args.messageTs,
+      connectionId: resolved.connection.id,
+      agentId: resolved.composeId,
+      existingSessionId,
+    };
+
+    return {
+      agentId: resolved.composeId,
+      agentName: resolved.agent.name,
+      orgId: resolved.installation.orgId,
+      sessionId: existingSessionId,
+      prompt,
+      threadContext: executionContext,
+      userInfoExtras,
+      userId: resolved.connection.vm0UserId,
+      botUserId: resolved.installation.botUserId,
+      channelId: args.channelId,
+      channelType: args.channelType,
+      threadTs: resolved.threadTs,
+      callbackContext,
+      apiStartTime: args.apiStartTime,
+      modelProviderId: modelRoute?.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        modelRoute?.modelProviderCredentialScope ?? undefined,
+      modelProviderType: modelRoute?.modelProviderType ?? undefined,
+      selectedModelOverride: modelRoute?.selectedModel ?? undefined,
+    };
+  },
+);
+
+const handleSlackRunResult$ = command(
+  async (
+    { set },
+    args: {
+      readonly message: SlackAgentMessageArgs;
+      readonly resolved: ResolvedSlackAgentMessage;
+      readonly result: RunAgentResult;
+    },
+  ): Promise<void> => {
+    const { message, resolved, result } = args;
+    if (result.status === "queued") {
+      const queueUrl = `${env("APP_URL")}/?queue=1`;
+      await resolved.client.chat.postEphemeral({
+        channel: message.channelId,
+        user: message.slackUserId,
+        ...(message.channelType === "dm" || message.threadTs
+          ? { thread_ts: resolved.threadTs }
+          : {}),
+        text: `\u26a0 Run queued -- concurrency limit reached. Will start automatically when a slot is available. <${queueUrl}|View queue>`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: ":warning: *Run queued*\n\nConcurrency limit reached. Will start automatically when a slot is available.",
+            },
+          },
+          {
+            type: "context",
+            elements: [{ type: "mrkdwn", text: `<${queueUrl}|View queue>` }],
+          },
+        ],
+      });
+    } else if (result.status === "failed") {
+      if (!result.runId) {
+        await set(postPreDispatchErrorReply$, {
+          db: message.db,
+          client: resolved.client,
+          channelId: message.channelId,
+          threadTs: resolved.threadTs,
+          errorText:
+            result.response ?? "Sorry, an error occurred. Please try again.",
+          orgId: resolved.installation.orgId,
+          vm0UserId: resolved.connection.vm0UserId,
+          composeId: resolved.composeId,
+          agentLabel: resolved.agent.displayName ?? resolved.agent.name,
+        });
+      }
+      await tapError(
+        setThreadStatus(
+          resolved.client,
+          message.channelId,
+          resolved.threadTs,
+          "",
+        ),
+        (error) => {
+          L.warn("Failed to clear thread status", { error });
+        },
+      );
+    }
+  },
+);
+
+const handleSlackAgentMessage$ = command(
+  async ({ set }, args: SlackAgentMessageArgs): Promise<void> => {
+    const resolved = await set(resolveSlackAgentMessage$, args);
+    if (!resolved) {
+      return;
+    }
+
+    await setThreadStatus(
+      resolved.client,
+      args.channelId,
+      resolved.threadTs,
+      "is thinking...",
+    );
+    const runParams = await set(buildRunAgentParams$, args, resolved);
+    const result = await set(runAgentForSlackOrg$, runParams, args.signal);
+    await set(handleSlackRunResult$, { message: args, resolved, result });
+  },
+);
 
 export const dispatchZeroSlackProbe$ = command(
   async (
-    { get, set },
+    { set },
     input: ZeroSlackDispatchProbeInput,
     signal: AbortSignal,
   ): Promise<void> => {
-    await handleSlackAgentMessage({
-      get,
-      set,
+    await set(handleSlackAgentMessage$, {
       db: set(writeDb$),
       workspaceId: input.workspaceId,
       channelId: input.channelId,
@@ -1471,206 +1491,213 @@ export const dispatchZeroSlackProbe$ = command(
   },
 );
 
-async function handleAppHomeOpened(
-  get: ComputedGetter,
-  db: Db,
-  workspaceId: string,
-  slackUserId: string,
-): Promise<void> {
-  const installation = await installationForWorkspace(db, workspaceId);
-  if (!installation) {
-    return;
-  }
-  await refreshOrgAppHome(get, db, installation, slackUserId);
-}
+const handleAppHomeOpened$ = command(
+  async (
+    { set },
+    db: Db,
+    workspaceId: string,
+    slackUserId: string,
+  ): Promise<void> => {
+    const installation = await installationForWorkspace(db, workspaceId);
+    if (!installation) {
+      return;
+    }
+    await set(refreshOrgAppHome$, db, installation, slackUserId);
+  },
+);
 
-async function handleMessagesTabOpened(
-  get: ComputedGetter,
-  db: Db,
-  workspaceId: string,
-  slackUserId: string,
-  channelId: string,
-): Promise<void> {
-  const installation = await installationForWorkspace(db, workspaceId);
-  if (!installation) {
-    return;
-  }
-  const [connection] = await db
-    .select({
-      id: slackOrgConnections.id,
-      vm0UserId: slackOrgConnections.vm0UserId,
-    })
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackUserId, slackUserId),
-        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
-      ),
-    )
-    .limit(1);
-  if (!connection) {
-    return;
-  }
-  const updated = await db
-    .update(slackOrgConnections)
-    .set({ dmWelcomeSent: true })
-    .where(
-      and(
-        eq(slackOrgConnections.id, connection.id),
-        eq(slackOrgConnections.dmWelcomeSent, false),
-      ),
-    );
-  if (updated.rowCount === 0) {
-    return;
-  }
-  let agentName: string | undefined;
-  if (installation.orgId) {
-    const composeId = await resolveDefaultComposeId(db, installation.orgId);
-    const agent = composeId
-      ? await getWorkspaceAgent(db, composeId)
-      : undefined;
-    agentName = agent?.displayName ?? agent?.name;
-  }
-  await postMessage(
-    createSlackClient(
-      await decryptSlackBotToken({
-        get,
-        installation,
-        userId: connection.vm0UserId,
-      }),
-    ),
-    channelId,
-    "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
-    { blocks: buildWelcomeMessage(agentName) },
-  );
-}
-
-function handleEventCallback(args: {
-  readonly get: ComputedGetter;
-  readonly set: ComputedSetter;
-  readonly db: Db;
-  readonly payload: SlackEventCallback;
-  readonly apiStartTime: number;
-  readonly signal: AbortSignal;
-}): void {
-  const event = args.payload.event;
-  if (event.type === "app_mention") {
-    waitUntil(
-      tapError(
-        handleSlackAgentMessage({
-          ...args,
-          workspaceId: args.payload.team_id,
-          channelId: event.channel,
-          channelType:
-            event.channel_type === "im"
-              ? "dm"
-              : event.channel_type === "mpim"
-                ? "group_dm"
-                : "channel",
-          slackUserId: event.user,
-          messageText: event.text,
-          messageTs: event.ts,
-          threadTs: event.thread_ts,
-          files: event.files,
-        }),
-        (error) => {
-          L.error("Error handling org app_mention", { error });
-        },
-      ),
-    );
-  }
-
-  if (
-    event.type === "message" &&
-    event.channel_type === "im" &&
-    (!event.subtype || event.subtype === "file_share") &&
-    !event.bot_id
-  ) {
-    waitUntil(
-      tapError(
-        handleSlackAgentMessage({
-          ...args,
-          workspaceId: args.payload.team_id,
-          channelId: event.channel,
-          channelType: "dm",
-          slackUserId: event.user,
-          messageText: event.text,
-          messageTs: event.ts,
-          threadTs: event.thread_ts,
-          files: event.files,
-        }),
-        (error) => {
-          L.error("Error handling org direct_message", { error });
-        },
-      ),
-    );
-  }
-
-  if (event.type === "app_home_opened" && event.tab === "home") {
-    waitUntil(
-      tapError(
-        handleAppHomeOpened(
-          args.get,
-          args.db,
-          args.payload.team_id,
-          event.user,
+const handleMessagesTabOpened$ = command(
+  async (
+    { get },
+    db: Db,
+    workspaceId: string,
+    slackUserId: string,
+    channelId: string,
+  ): Promise<void> => {
+    const installation = await installationForWorkspace(db, workspaceId);
+    if (!installation) {
+      return;
+    }
+    const [connection] = await db
+      .select({
+        id: slackOrgConnections.id,
+        vm0UserId: slackOrgConnections.vm0UserId,
+      })
+      .from(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.slackUserId, slackUserId),
+          eq(slackOrgConnections.slackWorkspaceId, workspaceId),
         ),
-        (error) => {
-          L.error("Error handling org app_home_opened", { error });
-        },
-      ),
-    );
-  }
-
-  if (event.type === "app_home_opened" && event.tab === "messages") {
-    waitUntil(
-      tapError(
-        handleMessagesTabOpened(
-          args.get,
-          args.db,
-          args.payload.team_id,
-          event.user,
-          event.channel,
+      )
+      .limit(1);
+    if (!connection) {
+      return;
+    }
+    const updated = await db
+      .update(slackOrgConnections)
+      .set({ dmWelcomeSent: true })
+      .where(
+        and(
+          eq(slackOrgConnections.id, connection.id),
+          eq(slackOrgConnections.dmWelcomeSent, false),
         ),
-        (error) => {
-          L.error("Error handling org messages_tab_opened", { error });
-        },
-      ),
-    );
-  }
-
-  if (event.type === "app_uninstalled") {
-    waitUntil(
-      tapError(
-        cleanupWorkspaceInstallation(
-          args.set,
-          args.db,
-          args.payload.team_id,
-          args.signal,
+      );
+    if (updated.rowCount === 0) {
+      return;
+    }
+    let agentName: string | undefined;
+    if (installation.orgId) {
+      const composeId = await resolveDefaultComposeId(db, installation.orgId);
+      const agent = composeId
+        ? await getWorkspaceAgent(db, composeId)
+        : undefined;
+      agentName = agent?.displayName ?? agent?.name;
+    }
+    await postMessage(
+      createSlackClient(
+        await get(
+          decryptSlackBotToken({
+            installation,
+            userId: connection.vm0UserId,
+          }),
         ),
-        (error) => {
-          L.error("Error handling app_uninstalled", { error });
-        },
       ),
+      channelId,
+      "Hi! I'm Zero. I can connect you to AI agents to help with your tasks.",
+      { blocks: buildWelcomeMessage(agentName) },
     );
-  }
+  },
+);
 
-  if (event.type === "tokens_revoked" && event.tokens.bot?.length) {
-    waitUntil(
-      tapError(
-        cleanupWorkspaceInstallation(
-          args.set,
-          args.db,
-          args.payload.team_id,
-          args.signal,
+const handleEventCallback$ = command(
+  (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly payload: SlackEventCallback;
+      readonly apiStartTime: number;
+      readonly signal: AbortSignal;
+    },
+  ): void => {
+    const event = args.payload.event;
+    if (event.type === "app_mention") {
+      waitUntil(
+        tapError(
+          set(handleSlackAgentMessage$, {
+            db: args.db,
+            apiStartTime: args.apiStartTime,
+            signal: args.signal,
+            workspaceId: args.payload.team_id,
+            channelId: event.channel,
+            channelType:
+              event.channel_type === "im"
+                ? "dm"
+                : event.channel_type === "mpim"
+                  ? "group_dm"
+                  : "channel",
+            slackUserId: event.user,
+            messageText: event.text,
+            messageTs: event.ts,
+            threadTs: event.thread_ts,
+            files: event.files,
+          }),
+          (error) => {
+            L.error("Error handling org app_mention", { error });
+          },
         ),
-        (error) => {
-          L.error("Error handling tokens_revoked", { error });
-        },
-      ),
-    );
-  }
-}
+      );
+    }
+
+    if (
+      event.type === "message" &&
+      event.channel_type === "im" &&
+      (!event.subtype || event.subtype === "file_share") &&
+      !event.bot_id
+    ) {
+      waitUntil(
+        tapError(
+          set(handleSlackAgentMessage$, {
+            db: args.db,
+            apiStartTime: args.apiStartTime,
+            signal: args.signal,
+            workspaceId: args.payload.team_id,
+            channelId: event.channel,
+            channelType: "dm",
+            slackUserId: event.user,
+            messageText: event.text,
+            messageTs: event.ts,
+            threadTs: event.thread_ts,
+            files: event.files,
+          }),
+          (error) => {
+            L.error("Error handling org direct_message", { error });
+          },
+        ),
+      );
+    }
+
+    if (event.type === "app_home_opened" && event.tab === "home") {
+      waitUntil(
+        tapError(
+          set(handleAppHomeOpened$, args.db, args.payload.team_id, event.user),
+          (error) => {
+            L.error("Error handling org app_home_opened", { error });
+          },
+        ),
+      );
+    }
+
+    if (event.type === "app_home_opened" && event.tab === "messages") {
+      waitUntil(
+        tapError(
+          set(
+            handleMessagesTabOpened$,
+            args.db,
+            args.payload.team_id,
+            event.user,
+            event.channel,
+          ),
+          (error) => {
+            L.error("Error handling org messages_tab_opened", { error });
+          },
+        ),
+      );
+    }
+
+    if (event.type === "app_uninstalled") {
+      waitUntil(
+        tapError(
+          set(
+            cleanupWorkspaceInstallation$,
+            args.db,
+            args.payload.team_id,
+            args.signal,
+          ),
+          (error) => {
+            L.error("Error handling app_uninstalled", { error });
+          },
+        ),
+      );
+    }
+
+    if (event.type === "tokens_revoked" && event.tokens.bot?.length) {
+      waitUntil(
+        tapError(
+          set(
+            cleanupWorkspaceInstallation$,
+            args.db,
+            args.payload.team_id,
+            args.signal,
+          ),
+          (error) => {
+            L.error("Error handling tokens_revoked", { error });
+          },
+        ),
+      );
+    }
+  },
+);
 
 export const handleZeroSlackEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
@@ -1696,9 +1723,7 @@ export const handleZeroSlackEvents$ = command(
       if (request.header("x-slack-retry-num")) {
         return textResponse("OK");
       }
-      handleEventCallback({
-        get,
-        set,
+      set(handleEventCallback$, {
         db: set(writeDb$),
         payload,
         apiStartTime,
@@ -1754,233 +1779,237 @@ async function resolveOrgDefaultName(db: Db, orgId: string): Promise<string> {
   return agent?.displayName ?? agent?.name ?? "the org default agent";
 }
 
-async function handleAgentPickerSubmit(
-  get: ComputedGetter,
-  db: Db,
-  payload: SlackInteractivePayload,
-): Promise<Response> {
-  const selected =
-    payload.view?.state.values[AGENT_PICKER_BLOCK_ID]?.[AGENT_PICKER_ACTION_ID]
-      ?.selected_option?.value;
-  if (!selected) {
-    return jsonResponse({
-      response_action: "errors",
-      errors: { [AGENT_PICKER_BLOCK_ID]: "Please choose an agent." },
-    });
-  }
-  const ctx = await resolveConnectionContext(
-    db,
-    payload.user.id,
-    payload.team.id,
-  );
-  if (!ctx) {
-    return emptyResponse();
-  }
-  const botToken = await decryptSlackBotToken({
-    get,
-    installation: ctx.installation,
-    userId: ctx.connection.vm0UserId,
-  });
-  const channelId = parseViewChannelId(payload.view?.private_metadata);
-  if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
-    const defaultName = await resolveOrgDefaultName(db, ctx.orgId);
+const handleAgentPickerSubmit$ = command(
+  async (
+    { get, set },
+    db: Db,
+    payload: SlackInteractivePayload,
+  ): Promise<Response> => {
+    const selected =
+      payload.view?.state.values[AGENT_PICKER_BLOCK_ID]?.[
+        AGENT_PICKER_ACTION_ID
+      ]?.selected_option?.value;
+    if (!selected) {
+      return jsonResponse({
+        response_action: "errors",
+        errors: { [AGENT_PICKER_BLOCK_ID]: "Please choose an agent." },
+      });
+    }
+    const ctx = await resolveConnectionContext(
+      db,
+      payload.user.id,
+      payload.team.id,
+    );
+    if (!ctx) {
+      return emptyResponse();
+    }
+    const botToken = await get(
+      decryptSlackBotToken({
+        installation: ctx.installation,
+        userId: ctx.connection.vm0UserId,
+      }),
+    );
+    const channelId = parseViewChannelId(payload.view?.private_metadata);
+    if (selected === AGENT_PICKER_ORG_DEFAULT_VALUE) {
+      const defaultName = await resolveOrgDefaultName(db, ctx.orgId);
+      await setUserAgentPreference({
+        db,
+        vm0UserId: ctx.connection.vm0UserId,
+        orgId: ctx.orgId,
+        composeId: null,
+      });
+      if (channelId) {
+        await postEphemeralMessage({
+          botToken,
+          channel: channelId,
+          slackUserId: payload.user.id,
+          text: `Switched to *${defaultName}*.`,
+        });
+      }
+      waitUntil(set(refreshOrgAppHome$, db, ctx.installation, payload.user.id));
+      return emptyResponse();
+    }
+
+    const agent = await getWorkspaceAgent(db, selected, ctx.orgId);
+    if (!agent || agent.id !== selected) {
+      return jsonResponse({
+        response_action: "errors",
+        errors: {
+          [AGENT_PICKER_BLOCK_ID]: "You don't have access to that agent.",
+        },
+      });
+    }
     await setUserAgentPreference({
       db,
       vm0UserId: ctx.connection.vm0UserId,
       orgId: ctx.orgId,
-      composeId: null,
+      composeId: agent.id,
     });
     if (channelId) {
       await postEphemeralMessage({
         botToken,
         channel: channelId,
         slackUserId: payload.user.id,
-        text: `Switched to *${defaultName}*.`,
+        text: `Switched to *${agent.displayName ?? agent.name}*.`,
       });
     }
-    waitUntil(refreshOrgAppHome(get, db, ctx.installation, payload.user.id));
+    waitUntil(set(refreshOrgAppHome$, db, ctx.installation, payload.user.id));
     return emptyResponse();
-  }
+  },
+);
 
-  const agent = await getWorkspaceAgent(db, selected, ctx.orgId);
-  if (!agent || agent.id !== selected) {
-    return jsonResponse({
-      response_action: "errors",
-      errors: {
-        [AGENT_PICKER_BLOCK_ID]: "You don't have access to that agent.",
-      },
+const handleModelPickerSubmit$ = command(
+  async (
+    { get, set },
+    db: Db,
+    payload: SlackInteractivePayload,
+    signal: AbortSignal,
+  ): Promise<Response> => {
+    const selected =
+      payload.view?.state.values[MODEL_PICKER_BLOCK_ID]?.[
+        MODEL_PICKER_ACTION_ID
+      ]?.selected_option?.value;
+    if (!selected) {
+      return jsonResponse({
+        response_action: "errors",
+        errors: { [MODEL_PICKER_BLOCK_ID]: "Please choose a model." },
+      });
+    }
+    const ctx = await resolveConnectionContext(
+      db,
+      payload.user.id,
+      payload.team.id,
+    );
+    signal.throwIfAborted();
+    if (!ctx) {
+      return emptyResponse();
+    }
+    const picker = await set(
+      slackModelPickerState$,
+      ctx.orgId,
+      ctx.connection.vm0UserId,
+      signal,
+    );
+    const option = picker.options.find((candidate) => {
+      return candidate.model === selected;
     });
-  }
-  await setUserAgentPreference({
-    db,
-    vm0UserId: ctx.connection.vm0UserId,
-    orgId: ctx.orgId,
-    composeId: agent.id,
-  });
-  if (channelId) {
-    await postEphemeralMessage({
-      botToken,
-      channel: channelId,
-      slackUserId: payload.user.id,
-      text: `Switched to *${agent.displayName ?? agent.name}*.`,
-    });
-  }
-  waitUntil(refreshOrgAppHome(get, db, ctx.installation, payload.user.id));
-  return emptyResponse();
-}
-
-async function handleModelPickerSubmit(
-  get: ComputedGetter,
-  set: ComputedSetter,
-  db: Db,
-  payload: SlackInteractivePayload,
-  signal: AbortSignal,
-): Promise<Response> {
-  const selected =
-    payload.view?.state.values[MODEL_PICKER_BLOCK_ID]?.[MODEL_PICKER_ACTION_ID]
-      ?.selected_option?.value;
-  if (!selected) {
-    return jsonResponse({
-      response_action: "errors",
-      errors: { [MODEL_PICKER_BLOCK_ID]: "Please choose a model." },
-    });
-  }
-  const ctx = await resolveConnectionContext(
-    db,
-    payload.user.id,
-    payload.team.id,
-  );
-  if (!ctx) {
-    return emptyResponse();
-  }
-  const picker = await slackModelPickerState(
-    get,
-    set,
-    ctx.orgId,
-    ctx.connection.vm0UserId,
-    signal,
-  );
-  const option = picker.options.find((candidate) => {
-    return candidate.model === selected;
-  });
-  if (!option) {
-    return jsonResponse({
-      response_action: "errors",
-      errors: {
-        [MODEL_PICKER_BLOCK_ID]: "You don't have access to that model.",
-      },
-    });
-  }
-  await set(
-    updateUserModelPreference$,
-    {
-      orgId: ctx.orgId,
-      userId: ctx.connection.vm0UserId,
-      preference: { selectedModel: option.model },
-    },
-    signal,
-  );
-  const channelId = parseViewChannelId(payload.view?.private_metadata);
-  if (channelId) {
-    await postEphemeralMessage({
-      botToken: await decryptSlackBotToken({
-        get,
-        installation: ctx.installation,
+    if (!option) {
+      return jsonResponse({
+        response_action: "errors",
+        errors: {
+          [MODEL_PICKER_BLOCK_ID]: "You don't have access to that model.",
+        },
+      });
+    }
+    await set(
+      updateUserModelPreference$,
+      {
+        orgId: ctx.orgId,
         userId: ctx.connection.vm0UserId,
-      }),
-      channel: channelId,
-      slackUserId: payload.user.id,
-      text: `Switched to *${option.label}*.`,
-    });
-  }
-  return emptyResponse();
-}
+        preference: { selectedModel: option.model },
+      },
+      signal,
+    );
+    const channelId = parseViewChannelId(payload.view?.private_metadata);
+    if (channelId) {
+      await postEphemeralMessage({
+        botToken: await get(
+          decryptSlackBotToken({
+            installation: ctx.installation,
+            userId: ctx.connection.vm0UserId,
+          }),
+        ),
+        channel: channelId,
+        slackUserId: payload.user.id,
+        text: `Switched to *${option.label}*.`,
+      });
+    }
+    return emptyResponse();
+  },
+);
 
-async function handleHomeSwitchAgent(
-  get: ComputedGetter,
-  db: Db,
-  payload: SlackInteractivePayload,
-): Promise<void> {
-  if (!payload.trigger_id) {
-    return;
-  }
-  const triggerId = payload.trigger_id;
-  const ctx = await resolveConnectionContext(
-    db,
-    payload.user.id,
-    payload.team.id,
-  );
-  if (!ctx) {
-    return;
-  }
-  const { composes } = await get(zeroComposeList(ctx.orgId));
-  const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
-  const options = composes
-    .filter((compose) => {
-      return compose.id !== defaultComposeId;
-    })
-    .slice(0, AGENT_PICKER_MAX_OPTIONS)
-    .map((compose) => {
-      return {
-        composeId: compose.id,
-        name: compose.name,
-        displayName: compose.displayName,
-      };
-    });
-  const orgDefaultName = defaultComposeId
-    ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
-      (await getWorkspaceAgent(db, defaultComposeId))?.name ??
-      null)
-    : null;
-  const currentOverride = await getUserAgentPreference(
-    db,
-    ctx.connection.vm0UserId,
-    ctx.orgId,
-  );
-  const result = await settle(
-    openView(
-      createSlackClient(
-        await decryptSlackBotToken({
-          get,
-          installation: ctx.installation,
-          userId: ctx.connection.vm0UserId,
+const handleHomeSwitchAgent$ = command(
+  async ({ get }, db: Db, payload: SlackInteractivePayload): Promise<void> => {
+    if (!payload.trigger_id) {
+      return;
+    }
+    const triggerId = payload.trigger_id;
+    const ctx = await resolveConnectionContext(
+      db,
+      payload.user.id,
+      payload.team.id,
+    );
+    if (!ctx) {
+      return;
+    }
+    const { composes } = await get(zeroComposeList(ctx.orgId));
+    const defaultComposeId = await resolveDefaultComposeId(db, ctx.orgId);
+    const options = composes
+      .filter((compose) => {
+        return compose.id !== defaultComposeId;
+      })
+      .slice(0, AGENT_PICKER_MAX_OPTIONS)
+      .map((compose) => {
+        return {
+          composeId: compose.id,
+          name: compose.name,
+          displayName: compose.displayName,
+        };
+      });
+    const orgDefaultName = defaultComposeId
+      ? ((await getWorkspaceAgent(db, defaultComposeId))?.displayName ??
+        (await getWorkspaceAgent(db, defaultComposeId))?.name ??
+        null)
+      : null;
+    const currentOverride = await getUserAgentPreference(
+      db,
+      ctx.connection.vm0UserId,
+      ctx.orgId,
+    );
+    const result = await settle(
+      openView(
+        createSlackClient(
+          await get(
+            decryptSlackBotToken({
+              installation: ctx.installation,
+              userId: ctx.connection.vm0UserId,
+            }),
+          ),
+        ),
+        triggerId,
+        buildAgentPickerModal({
+          options,
+          currentSelectedId: currentOverride,
+          orgDefaultName,
         }),
       ),
-      triggerId,
-      buildAgentPickerModal({
-        options,
-        currentSelectedId: currentOverride,
-        orgDefaultName,
-      }),
-    ),
-  );
-  if (!result.ok) {
-    L.warn("Failed to open switch modal from App Home", {
-      error: result.error,
-    });
-  }
-}
+    );
+    if (!result.ok) {
+      L.warn("Failed to open switch modal from App Home", {
+        error: result.error,
+      });
+    }
+  },
+);
 
-async function handleHomeDisconnect(
-  get: ComputedGetter,
-  db: Db,
-  payload: SlackInteractivePayload,
-): Promise<void> {
-  const connection = await connectionForSlackUser(
-    db,
-    payload.team.id,
-    payload.user.id,
-  );
-  if (!connection) {
-    return;
-  }
-  await disconnect(db, connection.id);
-  const installation = await installationForWorkspace(db, payload.team.id);
-  if (!installation) {
-    return;
-  }
-  await refreshOrgAppHome(get, db, installation, payload.user.id);
-}
+const handleHomeDisconnect$ = command(
+  async ({ set }, db: Db, payload: SlackInteractivePayload): Promise<void> => {
+    const connection = await connectionForSlackUser(
+      db,
+      payload.team.id,
+      payload.user.id,
+    );
+    if (!connection) {
+      return;
+    }
+    await disconnect(db, connection.id);
+    const installation = await installationForWorkspace(db, payload.team.id);
+    if (!installation) {
+      return;
+    }
+    await set(refreshOrgAppHome$, db, installation, payload.user.id);
+  },
+);
 
 export const handleZeroSlackInteractive$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
@@ -2007,13 +2036,13 @@ export const handleZeroSlackInteractive$ = command(
       payload.type === "view_submission" &&
       payload.view?.callback_id === AGENT_PICKER_CALLBACK_ID
     ) {
-      return handleAgentPickerSubmit(get, db, payload);
+      return set(handleAgentPickerSubmit$, db, payload);
     }
     if (
       payload.type === "view_submission" &&
       payload.view?.callback_id === MODEL_PICKER_CALLBACK_ID
     ) {
-      return handleModelPickerSubmit(get, set, db, payload, signal);
+      return set(handleModelPickerSubmit$, db, payload, signal);
     }
     if (payload.type === "block_actions") {
       const action = payload.actions?.[0];
@@ -2021,9 +2050,9 @@ export const handleZeroSlackInteractive$ = command(
         return emptyResponse();
       }
       if (action.action_id === "home_disconnect") {
-        await handleHomeDisconnect(get, db, payload);
+        await set(handleHomeDisconnect$, db, payload);
       } else if (action.action_id === "home_switch_agent") {
-        await handleHomeSwitchAgent(get, db, payload);
+        await set(handleHomeSwitchAgent$, db, payload);
       }
     }
     return emptyResponse();
