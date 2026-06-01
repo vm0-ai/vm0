@@ -139,6 +139,19 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("matches only the legacy file rewrite path", () => {
+    expect(matchesApiBackendRewritePath("/f/user_alice/file-id/doc.pdf")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/f/user_alice/file-id")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/f/user_alice/file-id/doc.pdf/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/f/user_alice/file-id/doc.pdf"),
+    ).toBe(false);
+  });
+
   it("matches only one segment for agent checkpoint rewrites", () => {
     expect(
       matchesApiBackendRewritePath("/api/agent/checkpoints/checkpoint_123"),

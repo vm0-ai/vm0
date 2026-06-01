@@ -1,6 +1,8 @@
 const UUID_PATH_SEGMENT_PATTERN =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
+const LEGACY_FILE_REWRITE_SOURCE = "/f/:userId/:id/:filename";
+const LEGACY_FILE_PATH_RE = /^\/f\/[^/]+\/[^/]+\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/me/model-providers/:type";
 const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
@@ -349,6 +351,7 @@ const ZERO_DEFAULT_AGENT_REWRITE_SOURCE = "/api/zero/default-agent";
 const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
 
 export const API_BACKEND_REWRITES = [
+  [LEGACY_FILE_REWRITE_SOURCE, "/f/:userId/:id/:filename", LEGACY_FILE_PATH_RE],
   [
     AGENT_CHECKPOINT_REWRITE_SOURCE,
     "/api/agent/checkpoints/:id",

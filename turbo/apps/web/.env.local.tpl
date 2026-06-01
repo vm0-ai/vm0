@@ -12,16 +12,6 @@ VM0_API_URL=https://api.vm7.ai:8443
 # Local dev defaults to http://localhost:3001 when this is unset.
 VM0_API_BACKEND_URL=
 
-# Required: Legacy file URL resolver storage
-R2_ACCOUNT_ID=op://Development/cloudflare/R2_ACCOUNT_ID
-R2_ACCESS_KEY_ID=op://Development/cloudflare/R2_ACCESS_KEY_ID
-R2_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_SECRET_ACCESS_KEY
-R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET_NAME
-R2_USER_ARTIFACTS_BUCKET_NAME=user-artifact-dev
-R2_USER_ARTIFACTS_ACCESS_KEY_ID=op://Development/cloudflare/R2_USER_ARTIFACTS_ACCESS_KEY_ID
-R2_USER_ARTIFACTS_SECRET_ACCESS_KEY=op://Development/cloudflare/R2_USER_ARTIFACTS_SECRET_ACCESS_KEY
-PUBLIC_ARTIFACTS_BASE_URL=https://cdn.vm7.io
-
 # Optional: Monday.com app association endpoint
 MONDAY_OAUTH_CLIENT_ID=op://Development/monday/MONDAY_OAUTH_CLIENT_ID
 MONDAY_OAUTH_APP_ID=op://Development/monday/MONDAY_OAUTH_APP_ID

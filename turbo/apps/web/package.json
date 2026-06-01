@@ -13,8 +13,6 @@
     "check-types": "next typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1057.0",
-    "@aws-sdk/s3-request-presigner": "^3.1057.0",
     "@clerk/nextjs": "^7.2.7",
     "@opentelemetry/api": "^1.9.0",
     "@radix-ui/react-popover": "^1.1.15",

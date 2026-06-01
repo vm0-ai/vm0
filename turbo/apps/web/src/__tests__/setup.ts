@@ -27,17 +27,6 @@ const resetEnv = vi.hoisted(() => {
       "pk_test_mock_instance.clerk.accounts.dev$",
     );
     vi.stubEnv("CLERK_SECRET_KEY", "sk_test_mock_secret_key_for_testing");
-    vi.stubEnv("R2_ACCOUNT_ID", "test-account-id");
-    vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
-    vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
-    vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
-    vi.stubEnv("R2_USER_ARTIFACTS_BUCKET_NAME", "test-artifacts-bucket");
-    vi.stubEnv("R2_USER_ARTIFACTS_ACCESS_KEY_ID", "test-artifacts-access-key");
-    vi.stubEnv(
-      "R2_USER_ARTIFACTS_SECRET_ACCESS_KEY",
-      "test-artifacts-secret-key",
-    );
-    vi.stubEnv("PUBLIC_ARTIFACTS_BASE_URL", "https://cdn.vm7.io");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL
@@ -81,26 +70,6 @@ vi.mock("@clerk/nextjs/server", () => {
     clerkClient: vi.fn(),
     clerkMiddleware: vi.fn(),
     createRouteMatcher: vi.fn(),
-  };
-});
-
-// Mock AWS S3
-vi.mock("@aws-sdk/client-s3", () => {
-  return {
-    S3Client: vi.fn().mockImplementation(function () {
-      return { send: vi.fn() };
-    }),
-    ListObjectsV2Command: vi.fn(),
-    GetObjectCommand: vi.fn(),
-    PutObjectCommand: vi.fn(),
-    DeleteObjectsCommand: vi.fn(),
-    HeadObjectCommand: vi.fn(),
-  };
-});
-
-vi.mock("@aws-sdk/s3-request-presigner", () => {
-  return {
-    getSignedUrl: vi.fn(),
   };
 });
 

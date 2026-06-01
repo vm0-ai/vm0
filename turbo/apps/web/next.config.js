@@ -155,8 +155,6 @@ const nextConfig = {
     optimizePackageImports: [
       "next-intl",
       "@tabler/icons-react",
-      "@aws-sdk/client-s3",
-      "@aws-sdk/s3-request-presigner",
       "@radix-ui/react-dialog",
       "@radix-ui/react-popover",
       "@radix-ui/react-select",

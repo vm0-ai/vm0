@@ -46,6 +46,7 @@ import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-e
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
+import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
@@ -202,6 +203,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
+  ...legacyFileRoutes,
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
