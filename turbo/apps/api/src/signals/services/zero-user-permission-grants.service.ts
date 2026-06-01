@@ -217,7 +217,7 @@ async function visibleAgentOrNotFound(
     : notFound(`Agent not found: ${scope.agentId}`);
 }
 
-async function lockVisibleAgentForUpdate(
+async function lockVisibleAgentForGrantInsert(
   db: Pick<Db, "select">,
   scope: UserPermissionGrantScope,
 ): Promise<{ readonly id: string } | null> {
@@ -231,7 +231,9 @@ async function lockVisibleAgentForUpdate(
         visibleZeroAgentCondition(scope.userId),
       ),
     )
-    .for("update")
+    // A key-share lock is enough to make concurrent deletes wait while the
+    // grant row is inserted, without serializing unrelated grant upserts.
+    .for("key share")
     .limit(1);
   return agent ?? null;
 }
@@ -243,10 +245,9 @@ function expiresAtFromTtl(now: Date, ttlSeconds: number): Date {
 async function upsertVisibleGrantRow(
   db: Db,
   args: UpsertUserPermissionGrantArgs,
-  timestamp: Date,
 ): Promise<UserPermissionGrantRow | NotFoundResponse> {
   return await db.transaction(async (tx) => {
-    const visibleAgent = await lockVisibleAgentForUpdate(tx, {
+    const visibleAgent = await lockVisibleAgentForGrantInsert(tx, {
       orgId: args.orgId,
       userId: args.userId,
       agentId: args.grant.agentId,
@@ -255,6 +256,7 @@ async function upsertVisibleGrantRow(
       return notFound(`Agent not found: ${args.grant.agentId}`);
     }
 
+    const timestamp = nowDate();
     const expiresAt = expiresAtFromTtl(timestamp, args.grant.ttlSeconds);
     const [row] = await tx
       .insert(userPermissionGrants)
@@ -330,7 +332,7 @@ export const upsertUserPermissionGrant$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const row = await upsertVisibleGrantRow(writeDb, args, nowDate());
+    const row = await upsertVisibleGrantRow(writeDb, args);
     signal.throwIfAborted();
 
     if ("status" in row) {
