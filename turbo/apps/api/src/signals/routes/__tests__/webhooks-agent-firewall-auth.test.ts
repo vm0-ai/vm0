@@ -3450,6 +3450,62 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  it("does not fall back to an org model-provider row for user-owned access", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      accessToken: "org-current-chatgpt-token",
+      refreshToken: "org-current-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+    let refreshCallCount = 0;
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        refreshCallCount += 1;
+        return HttpResponse.json({
+          access_token: "unexpected-chatgpt-token",
+          refresh_token: "unexpected-chatgpt-refresh",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CHATGPT_ACCESS_TOKEN: "stale-user-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: fixture.userId,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+          firewallBillable: true,
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+    expect(refreshCallCount).toBe(0);
+  });
+
   it("returns missing configuration when a model-provider OAuth row is absent", async () => {
     const fixture = await track(seedFixture());
     let refreshCallCount = 0;
