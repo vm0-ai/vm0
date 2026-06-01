@@ -998,6 +998,26 @@ describe("matchFirewallBaseUrl", () => {
       "https://api.github.com",
     ],
     [
+      "non-canonical IPv4 octal component",
+      "https://0177.0.0.1/repos",
+      "https://127.0.0.1",
+    ],
+    [
+      "non-canonical IPv4 hex component",
+      "https://0x7f.0.0.1/repos",
+      "https://127.0.0.1",
+    ],
+    [
+      "non-canonical IPv4 single number",
+      "https://2130706433/repos",
+      "https://127.0.0.1",
+    ],
+    [
+      "non-canonical IPv4 short form",
+      "https://127.1/repos",
+      "https://127.0.0.1",
+    ],
+    [
       "multiple trailing host dots",
       "https://api.github.com../repos",
       "https://api.github.com",
@@ -1024,6 +1044,10 @@ describe("matchFirewallBaseUrl", () => {
     ["percent-encoded braces", "https://%7Benv%7D.github.com"],
     ["percent-encoded dot", "https://api%2egithub.com"],
     ["percent-encoded comma", "https://api%2Cgithub.com"],
+    ["non-canonical IPv4 octal component", "https://0177.0.0.1"],
+    ["non-canonical IPv4 hex component", "https://0x7f.0.0.1"],
+    ["non-canonical IPv4 single number", "https://2130706433"],
+    ["non-canonical IPv4 short form", "https://127.1"],
   ])("rejects base URLs with %s", (_label, base) => {
     expect(
       matchFirewallBaseUrl("https://api.github.com/repos", base),

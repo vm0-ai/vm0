@@ -186,6 +186,7 @@ const AUTH_REFERENCE_PREFIX_PATTERN = new RegExp(
 );
 const AUTH_TEMPLATE_START = "${{";
 const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
+const IPV4_MAX_OCTET = 255;
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -854,6 +855,45 @@ function isAscii(value: string): boolean {
   return true;
 }
 
+function isIpv4NumberComponent(value: string): boolean {
+  if (value === "") return false;
+  if (value.toLowerCase().startsWith("0x")) {
+    return (
+      value.length > 2 &&
+      [...value.slice(2)].every((char) => {
+        return isHexDigit(char);
+      })
+    );
+  }
+  return [...value].every((char) => {
+    return char >= "0" && char <= "9";
+  });
+}
+
+function isIpv4LiteralLike(value: string): boolean {
+  const parts = value.split(".");
+  return (
+    parts.length >= 1 && parts.length <= 4 && parts.every(isIpv4NumberComponent)
+  );
+}
+
+function isCanonicalIpv4Address(value: string): boolean {
+  const parts = value.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (
+      part === "" ||
+      ![...part].every((char) => {
+        return char >= "0" && char <= "9";
+      })
+    ) {
+      return false;
+    }
+    if (part.length > 1 && part.startsWith("0")) return false;
+    return Number(part) <= IPV4_MAX_OCTET;
+  });
+}
+
 function codePointInRanges(
   codePoint: number,
   ranges: readonly (readonly [number, number])[],
@@ -1120,6 +1160,14 @@ function validateHostHasNoEmptyLabels(
   return normalizedHost;
 }
 
+function normalizeHostForIpv4LiteralSyntax(host: string): string {
+  let normalized = host.replace(HOST_DOT_EQUIVALENT_PATTERN, ".").toLowerCase();
+  if (normalized.endsWith(".")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
 function splitAuthorityHostSegments(host: string): string[] {
   if (host.startsWith("[") && host.endsWith("]")) {
     return [host];
@@ -1199,6 +1247,24 @@ function validateHostHasNoUnsafeIdnaMappings(
     .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
     .split(".")) {
     validateLabelHasNoUnsafeIdnaMappings(label, base, serviceName);
+  }
+}
+
+function validateHostHasCanonicalIpv4Syntax(
+  authorityOrHost: string,
+  base: string,
+  serviceName: string,
+): void {
+  const host = rawHostFromAuthority(authorityOrHost);
+  if (host.startsWith("[") && host.endsWith("]")) return;
+  const normalizedHost = normalizeHostForIpv4LiteralSyntax(host);
+  if (
+    isIpv4LiteralLike(normalizedHost) &&
+    !isCanonicalIpv4Address(normalizedHost)
+  ) {
+    throw new Error(
+      errMsg(base, serviceName, "host must use canonical IPv4 address syntax"),
+    );
   }
 }
 
@@ -1411,6 +1477,11 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   validateNoUserinfo(host, base, serviceName);
   validateHostPercentEncoding(host, base, serviceName);
   const authority = splitParameterizedAuthority(host, base, serviceName);
+  validateHostHasCanonicalIpv4Syntax(
+    authority.normalizedHost,
+    base,
+    serviceName,
+  );
   validateHostHasNoUnsafeIdnaMappings(
     authority.normalizedHost,
     base,
@@ -1498,6 +1569,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
     }
     validateNoUserinfo(authority, base, serviceName);
     validateHostPercentEncoding(authority, base, serviceName);
+    validateHostHasCanonicalIpv4Syntax(authority, base, serviceName);
     validateHostHasNoUnsafeIdnaMappings(authority, base, serviceName);
   }
   validateStaticHostLabels(url.hostname, base, serviceName);
@@ -1646,6 +1718,7 @@ export function validateAuthBaseUrl(
       );
     }
     validateHostPercentEncoding(authority, validationUrl, serviceName);
+    validateHostHasCanonicalIpv4Syntax(authority, validationUrl, serviceName);
     validateHostHasNoUnsafeIdnaMappings(authority, validationUrl, serviceName);
   }
   validateStaticHostLabels(url.hostname, validationUrl, serviceName);

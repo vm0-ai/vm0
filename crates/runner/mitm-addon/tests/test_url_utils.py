@@ -114,6 +114,10 @@ class TestBuildRewriteUrl:
             ("https://example%3a443.com/hook", "invalid host"),
             ("https://%7bparam%7d.example/hook", "unsafe percent encoding"),
             ("https://example%zz.com/hook", "invalid percent encoding"),
+            ("https://0177.0.0.1/hook", "invalid host"),
+            ("https://0x7f.0.0.1/hook", "invalid host"),
+            ("https://2130706433/hook", "invalid host"),
+            ("https://127.1/hook", "invalid host"),
         ],
     )
     def test_invalid_resolved_base_rejected(self, base, message):

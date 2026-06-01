@@ -519,6 +519,10 @@ class TestMatchBaseUrl:
             "https://api.github.com:99999",
             "https://api%2egithub.com",
             "https://api.github.com%3A443",
+            "https://0177.0.0.1",
+            "https://0x7f.0.0.1",
+            "https://2130706433",
+            "https://127.1",
         ],
     )
     def test_static_base_malformed_authority_returns_none(self, base):
@@ -537,6 +541,10 @@ class TestMatchBaseUrl:
             "https://api%2Fgithub.com/repos",
             "https://api%5Cgithub.com/repos",
             "https://api%40github.com/repos",
+            "https://0177.0.0.1/repos",
+            "https://0x7f.0.0.1/repos",
+            "https://2130706433/repos",
+            "https://127.1/repos",
         ],
     )
     def test_static_base_malformed_request_authority_returns_none(self, url):

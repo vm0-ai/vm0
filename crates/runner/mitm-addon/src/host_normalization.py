@@ -3,6 +3,10 @@
 from unicodedata import bidirectional, category, normalize
 
 _ASCII_MAX = 0x7F
+_IPV4_MAX_OCTET = 255
+_IPV4_HEX_PREFIX_LENGTH = 2
+_IPV4_MIN_PARTS = 1
+_IPV4_PART_COUNT = 4
 _DNS_LABEL_MAX_LENGTH = 63
 _IDNA_DOT_TRANSLATION = str.maketrans(
     {
@@ -99,6 +103,37 @@ _UNSAFE_UTS46_IGNORABLE_RANGES = (
 
 def _is_ascii(value: str) -> bool:
     return all(ord(char) <= _ASCII_MAX for char in value)
+
+
+def _is_ipv4_number_component(value: str) -> bool:
+    if not value:
+        return False
+    if value.lower().startswith("0x"):
+        return len(value) > _IPV4_HEX_PREFIX_LENGTH and all(
+            char in "0123456789abcdefABCDEF" for char in value[_IPV4_HEX_PREFIX_LENGTH:]
+        )
+    return value.isdigit()
+
+
+def _is_ipv4_literal_like(value: str) -> bool:
+    parts = value.split(".")
+    return _IPV4_MIN_PARTS <= len(parts) <= _IPV4_PART_COUNT and all(
+        _is_ipv4_number_component(part) for part in parts
+    )
+
+
+def _is_canonical_ipv4_address(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != _IPV4_PART_COUNT:
+        return False
+    for part in parts:
+        if not part.isdigit():
+            return False
+        if len(part) > 1 and part.startswith("0"):
+            return False
+        if int(part) > _IPV4_MAX_OCTET:
+            return False
+    return True
 
 
 def _has_unicode_control_chars(value: str) -> bool:
@@ -339,5 +374,9 @@ def normalize_idna_hostname(host: str) -> str:
     normalized = _normalize_hostname_dots(host)
     if not normalized:
         raise ValueError("empty hostname")
+    if _is_ipv4_literal_like(normalized):
+        if not _is_canonical_ipv4_address(normalized):
+            raise UnicodeError("non-canonical IPv4 address")
+        return normalized
 
     return ".".join(_normalize_label(label) for label in normalized.split("."))

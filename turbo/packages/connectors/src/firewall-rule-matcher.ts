@@ -349,10 +349,35 @@ function hasNonAscii(value: string): boolean {
   return false;
 }
 
+function rawHostFromAuthority(authority: string): string {
+  const withoutUserinfo = authority.slice(authority.lastIndexOf("@") + 1);
+  if (withoutUserinfo.startsWith("[")) {
+    const closeBracket = withoutUserinfo.indexOf("]");
+    return closeBracket === -1
+      ? withoutUserinfo
+      : withoutUserinfo.slice(0, closeBracket + 1);
+  }
+  const portSeparator = withoutUserinfo.lastIndexOf(":");
+  return portSeparator === -1
+    ? withoutUserinfo
+    : withoutUserinfo.slice(0, portSeparator);
+}
+
+function rawAuthorityHostStartsWithDigit(authority: string): boolean {
+  const firstChar = rawHostFromAuthority(authority)[0];
+  return firstChar !== undefined && firstChar >= "0" && firstChar <= "9";
+}
+
 function runtimeAuthorityOriginForHostValidation(url: string): string | null {
   const authority = rawAuthorityFromUrl(url);
   if (authority === null) return null;
-  if (!authority.includes("%") && !hasNonAscii(authority)) return null;
+  if (
+    !authority.includes("%") &&
+    !hasNonAscii(authority) &&
+    !rawAuthorityHostStartsWithDigit(authority)
+  ) {
+    return null;
+  }
 
   const schemeEnd = url.indexOf("://");
   if (schemeEnd === -1) return null;

@@ -972,6 +972,24 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must not contain unsafe IDNA compatibility mappings");
   });
 
+  it("should reject non-canonical IPv4 address syntax in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://0177.0.0.1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://0x7f.0.0.1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://2130706433", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127.1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127.0.0.1.", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject host characters that normalize to forbidden syntax", () => {
     expect(() => {
       return validateBaseUrl("https://\u4f8b\uff0c\u5b50.example", "fw");
