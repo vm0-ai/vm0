@@ -134,7 +134,7 @@ def load_registry(registry_path: str) -> dict:
     except OSError as e:
         if key != state.read_error_key:
             state.read_error_key = key
-            ctx.log.warn(f"Failed to parse proxy registry: {e}")
+            ctx.log.warn(f"Failed to read proxy registry: {e}")
         return state.snapshot.vms
     except (json.JSONDecodeError, UnicodeDecodeError, RegistryFormatError) as e:
         state.failed_key = key

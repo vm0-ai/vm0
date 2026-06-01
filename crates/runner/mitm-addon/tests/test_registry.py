@@ -358,7 +358,7 @@ class TestLoadRegistry:
         assert recovered == {"10.200.0.99": {"runId": "new-run"}}
         assert spy.call_count == 2
         assert log.warn.call_count == 1
-        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+        assert "Failed to read" in log.warn.call_args_list[0].args[0]
 
     def test_recovery_after_parse_failure_rewarns_on_next_failure(self, tmp_path):
         """Successful load clears the flag so a later failure re-warns once."""
