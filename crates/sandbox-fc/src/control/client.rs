@@ -13,6 +13,9 @@ use super::protocol::{ExecRequest, ExecResponse, read_frame, write_frame};
 /// The returned [`ExecResponse::Success`] still contains base64-encoded stdout
 /// and stderr. Use `FirecrackerControl::exec_remote` when the caller wants
 /// decoded byte buffers.
+///
+/// Returns [`io::ErrorKind::InvalidInput`] when `timeout` cannot be represented
+/// as a Tokio deadline.
 pub async fn send_exec(
     sock_path: &Path,
     request: &ExecRequest,
