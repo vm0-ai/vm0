@@ -72,8 +72,8 @@ _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 #   flushRequestId, then sends SIGUSR1 to this addon process.
 # - This addon flushes buffered usage and writes `usage-pending` with the
 #   matching flushRequestId so the runner can observe a fresh snapshot.
-# - Rust waits until the acknowledged snapshot has zero flows, buffered events,
-#   and reports before stopping the proxy.
+# - Rust performs a bounded wait for the acknowledged snapshot to have zero
+#   flows, buffered events, and reports before stopping the proxy.
 #
 # Keep this in sync with usage/counters.py and the Rust wait path in
 # crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
