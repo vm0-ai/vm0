@@ -785,6 +785,93 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("returns the original run when a new chat send is retried with the same client ids", async () => {
+    const fixture = await track(seedFixture());
+    const clientThreadId = randomUUID();
+    const clientMessageId = randomUUID();
+
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "retry client thread",
+      clientThreadId,
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    const retry = await send({
+      agentId: fixture.agentId,
+      prompt: "retry client thread",
+      clientThreadId,
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    expect(retry.body).toStrictEqual(first.body);
+
+    const writeDb = store.set(writeDb$);
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(zeroRuns.chatThreadId, clientThreadId));
+    expect(runs).toStrictEqual([{ id: first.body.runId }]);
+
+    const messages = await writeDb
+      .select({
+        id: chatMessages.id,
+        runId: chatMessages.runId,
+        role: chatMessages.role,
+        content: chatMessages.content,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, clientThreadId),
+          eq(chatMessages.role, "user"),
+        ),
+      );
+    expect(messages).toStrictEqual([
+      {
+        id: clientMessageId,
+        runId: first.body.runId,
+        role: "user",
+        content: "retry client thread",
+      },
+    ]);
+  });
+
+  it("returns 404 when clientThreadId belongs to another user", async () => {
+    const owner = await track(seedFixture());
+    const clientThreadId = randomUUID();
+
+    await send({
+      agentId: owner.agentId,
+      prompt: "owner thread",
+      clientThreadId,
+      clientMessageId: randomUUID(),
+    });
+    await clearAllDetached();
+
+    const caller = await track(seedFixture());
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: caller.agentId,
+          prompt: "colliding thread",
+          clientThreadId,
+          clientMessageId: randomUUID(),
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "NOT_FOUND",
+      message: "Chat thread not found",
+    });
+  });
+
   it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
     const fixture = await track(seedFixture());
     await store

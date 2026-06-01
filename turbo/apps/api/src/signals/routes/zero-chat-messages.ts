@@ -116,6 +116,7 @@ interface ResolvedThread {
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly isNewThread: boolean;
+  readonly isClientThreadRetry: boolean;
 }
 
 interface WebChatPriorRunMessage {
@@ -186,6 +187,17 @@ interface CreatedChatMessageResponse {
     readonly createdAt: string;
   };
 }
+
+type ClientSendResolution =
+  | CreatedChatMessageResponse
+  | ReturnType<typeof badRequestMessage>;
+
+type CreateChatThreadResult =
+  | {
+      readonly id: string;
+      readonly clientThreadAlreadyExisted: boolean;
+    }
+  | ReturnType<typeof notFound>;
 
 type AppendMessageResult =
   | {
@@ -706,6 +718,85 @@ async function activeRunExistsForThread(
   return run !== undefined;
 }
 
+async function resolveClientMessageSend(params: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string | undefined;
+}): Promise<ClientSendResolution | undefined> {
+  if (!params.clientMessageId) {
+    return undefined;
+  }
+
+  const [message] = await params.db
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      role: chatMessages.role,
+      runId: chatMessages.runId,
+      messageCreatedAt: chatMessages.createdAt,
+      threadUserId: chatThreads.userId,
+      runStatus: agentRuns.status,
+      runCreatedAt: agentRuns.createdAt,
+    })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .where(eq(chatMessages.id, params.clientMessageId))
+    .limit(1);
+  if (!message) {
+    return undefined;
+  }
+
+  if (
+    message.chatThreadId !== params.threadId ||
+    message.threadUserId !== params.userId ||
+    message.role !== "user"
+  ) {
+    return badRequestMessage("Client message id is already in use");
+  }
+
+  const createdAt = message.runCreatedAt ?? message.messageCreatedAt;
+  return {
+    status: 201,
+    body: {
+      runId: message.runId,
+      threadId: params.threadId,
+      ...(message.runStatus ? { status: message.runStatus } : {}),
+      createdAt: createdAt.toISOString(),
+    },
+  };
+}
+
+async function resolveClientThreadRetryRun(
+  db: Db,
+  threadId: string,
+): Promise<CreatedChatMessageResponse | undefined> {
+  const [run] = await db
+    .select({
+      runId: agentRuns.id,
+      status: agentRuns.status,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, threadId))
+    .orderBy(asc(agentRuns.createdAt))
+    .limit(1);
+  if (!run) {
+    return undefined;
+  }
+
+  return {
+    status: 201,
+    body: {
+      runId: run.runId,
+      threadId,
+      status: run.status,
+      createdAt: run.createdAt.toISOString(),
+    },
+  };
+}
+
 async function getStoredThreadModelPin(
   db: Db,
   threadId: string,
@@ -972,11 +1063,46 @@ async function createChatThread(
     readonly clientThreadId: string | undefined;
     readonly pin: ThreadModelPin;
   },
-): Promise<{ readonly id: string }> {
+): Promise<CreateChatThreadResult> {
+  if (args.clientThreadId) {
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        id: args.clientThreadId,
+        userId: args.userId,
+        agentComposeId: args.agentId,
+        title: null,
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: args.pin.selectedModel,
+      })
+      .onConflictDoNothing({ target: chatThreads.id })
+      .returning({ id: chatThreads.id });
+    if (thread) {
+      return { id: thread.id, clientThreadAlreadyExisted: false };
+    }
+
+    const [existingThread] = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.clientThreadId),
+          eq(chatThreads.userId, args.userId),
+          eq(chatThreads.agentComposeId, args.agentId),
+        ),
+      )
+      .limit(1);
+    if (!existingThread) {
+      return notFound("Chat thread not found");
+    }
+    return { id: existingThread.id, clientThreadAlreadyExisted: true };
+  }
+
   const [thread] = await db
     .insert(chatThreads)
     .values({
-      ...(args.clientThreadId ? { id: args.clientThreadId } : {}),
       userId: args.userId,
       agentComposeId: args.agentId,
       title: null,
@@ -989,7 +1115,7 @@ async function createChatThread(
   if (!thread) {
     throw new Error("Failed to create chat thread");
   }
-  return thread;
+  return { id: thread.id, clientThreadAlreadyExisted: false };
 }
 
 async function resolveThread(params: {
@@ -1008,11 +1134,15 @@ async function resolveThread(params: {
       clientThreadId: params.clientThreadId,
       pin: params.initialPin,
     });
+    if ("status" in thread) {
+      return thread;
+    }
     return {
       threadId: thread.id,
       sessionId: undefined,
       incompleteContext: "",
-      isNewThread: true,
+      isNewThread: !thread.clientThreadAlreadyExisted,
+      isClientThreadRetry: thread.clientThreadAlreadyExisted,
     };
   }
 
@@ -1045,6 +1175,7 @@ async function resolveThread(params: {
           groupIncompleteRoundsByRunId(incompleteRows),
         ),
     isNewThread: false,
+    isClientThreadRetry: false,
   };
 }
 
@@ -1936,6 +2067,29 @@ const sendNormalMessage$ = command(
     signal.throwIfAborted();
     if ("status" in prepared) {
       return prepared;
+    }
+
+    const clientMessageResolution = await resolveClientMessageSend({
+      db: prepared.db,
+      userId: args.userId,
+      threadId: prepared.thread.threadId,
+      clientMessageId: args.body.clientMessageId,
+    });
+    signal.throwIfAborted();
+    if (clientMessageResolution) {
+      return clientMessageResolution;
+    }
+
+    if (prepared.thread.isClientThreadRetry) {
+      const existingRun = await resolveClientThreadRetryRun(
+        prepared.db,
+        prepared.thread.threadId,
+      );
+      signal.throwIfAborted();
+      if (existingRun) {
+        return existingRun;
+      }
+      return badRequestMessage("Client thread id is already in use");
     }
 
     if (await activeRunExistsForThread(prepared.db, prepared.thread.threadId)) {
