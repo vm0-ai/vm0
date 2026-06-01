@@ -64,6 +64,7 @@ import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodIdsByGrantKind,
 } from "@vm0/connectors/connectors";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -160,6 +161,7 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { user$ } from "../../signals/auth.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
   extractPermissions,
@@ -2685,6 +2687,84 @@ interface PermissionActionButtonState {
   existingRequestStatus: "pending" | "approved" | "rejected" | null;
 }
 
+interface PermissionActionAgent {
+  ownerId: string;
+  permissionPolicies: FirewallPolicies | null;
+}
+
+interface PermissionActionPermission {
+  name: string;
+}
+
+interface LoadableLike<T> {
+  state: string;
+  data?: T;
+}
+
+interface PermissionActionExistingRequest {
+  status: "pending" | "approved" | "rejected";
+}
+
+function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
+  return loadable.state === "hasData" ? loadable.data : undefined;
+}
+
+function loadableBoolean(loadable: LoadableLike<boolean>): boolean {
+  return loadableData(loadable) ?? false;
+}
+
+function isLoadableLoading(loadable: { state: string }): boolean {
+  return loadable.state === "loading";
+}
+
+function shouldCheckExistingPermissionRequest({
+  userReady,
+  adminReady,
+  canManagePermissions,
+}: {
+  userReady: boolean;
+  adminReady: boolean;
+  canManagePermissions: boolean;
+}): boolean {
+  return userReady && adminReady && !canManagePermissions;
+}
+
+function permissionActionLoading(
+  loadables: readonly { state: string }[],
+): boolean {
+  return loadables.some(isLoadableLoading);
+}
+
+function permissionActionVerb(action: "allow" | "deny"): string {
+  return action === "allow" ? "Allow" : "Deny";
+}
+
+function isPermissionActionFinished({
+  saveDone,
+  submitDone,
+}: {
+  saveDone: boolean;
+  submitDone: boolean;
+}): boolean {
+  return saveDone || submitDone;
+}
+
+function isPermissionActionAlreadyApplied({
+  agent,
+  connectorRef,
+  permission,
+  action,
+}: {
+  agent: PermissionActionAgent | null;
+  connectorRef: string;
+  permission: string;
+  action: "allow" | "deny";
+}): boolean {
+  return (
+    agent?.permissionPolicies?.[connectorRef]?.policies?.[permission] === action
+  );
+}
+
 function permissionActionButtonLabel(
   state: PermissionActionButtonState,
   action: "allow" | "deny",
@@ -2731,6 +2811,69 @@ function permissionActionButtonDisabled(
   );
 }
 
+function canManageAgentPermissions(
+  agent: PermissionActionAgent | null,
+  user: { id?: string } | undefined,
+  isAdmin: boolean,
+): boolean {
+  return isAdmin || Boolean(agent && user && user.id === agent.ownerId);
+}
+
+interface PermissionActionGuardState {
+  agent: PermissionActionAgent | null;
+  focusedPermission: PermissionActionPermission | undefined;
+  existingRequest: unknown;
+  loading: boolean;
+  saving: boolean;
+  alreadyApplied: boolean;
+  finished: boolean;
+}
+
+function shouldIgnorePermissionAction(
+  state: PermissionActionGuardState,
+): boolean {
+  return (
+    !state.agent ||
+    !state.focusedPermission ||
+    Boolean(state.existingRequest) ||
+    state.loading ||
+    state.saving ||
+    state.alreadyApplied ||
+    state.finished
+  );
+}
+
+function runPermissionAction(args: {
+  agent: PermissionActionAgent | null;
+  focusedPermission: PermissionActionPermission | undefined;
+  existingRequest: unknown;
+  loading: boolean;
+  saving: boolean;
+  alreadyApplied: boolean;
+  finished: boolean;
+  canManagePermissions: boolean;
+  onSave: (
+    agent: PermissionActionAgent,
+    permission: PermissionActionPermission,
+  ) => void;
+  onSubmit: (permission: PermissionActionPermission) => void;
+}) {
+  if (shouldIgnorePermissionAction(args)) {
+    return;
+  }
+
+  if (!args.agent || !args.focusedPermission) {
+    return;
+  }
+
+  if (args.canManagePermissions) {
+    args.onSave(args.agent, args.focusedPermission);
+    return;
+  }
+
+  args.onSubmit(args.focusedPermission);
+}
+
 function PermissionActionButton({
   state,
   action,
@@ -2753,47 +2896,106 @@ function PermissionActionButton({
   );
 }
 
+function PermissionActionCardLayout({
+  connectorRef,
+  connectorLabel,
+  actionLabel,
+  permissionLabel,
+  buttonState,
+  action,
+  onClick,
+}: {
+  connectorRef: PermissionActionBlock["connectorRef"];
+  connectorLabel: string;
+  actionLabel: string;
+  permissionLabel: string;
+  buttonState: PermissionActionButtonState;
+  action: "allow" | "deny";
+  onClick: () => void;
+}) {
+  return (
+    <div
+      data-testid="permission-action-card"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+          <ConnectorIcon type={connectorRef} size={22} />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {connectorLabel} permissions
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {actionLabel} {permissionLabel}
+          </div>
+        </div>
+      </div>
+      <PermissionActionButton
+        state={buttonState}
+        action={action}
+        onClick={onClick}
+      />
+    </div>
+  );
+}
+
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
   const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const userLoadable = useLastLoadable(user$);
   const adminLoadable = useLoadable(isOrgAdmin$);
   const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
   const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
   const subscribeRequests = useSet(subscribePermissionAccessRequestsChanged$);
-  const canManagePermissions =
-    adminLoadable.state === "hasData" && adminLoadable.data;
+  const agent = loadableData<PermissionActionAgent>(agentLoadable) ?? null;
+  const currentUser = loadableData<{ id?: string }>(userLoadable);
+  const isAdmin = loadableBoolean(adminLoadable);
+  const canManagePermissions = canManageAgentPermissions(
+    agent,
+    currentUser,
+    isAdmin,
+  );
   const existingRequestLoadable = useLoadable(
     permissionExistingRequestByAction({
       agentId: block.agentId,
       connectorRef: block.connectorRef,
       permission: block.permission,
       action: block.action,
-      enabled: adminLoadable.state === "hasData" && !canManagePermissions,
+      enabled: shouldCheckExistingPermissionRequest({
+        userReady: userLoadable.state === "hasData",
+        adminReady: adminLoadable.state === "hasData",
+        canManagePermissions,
+      }),
     }),
   );
   const focusedPermission = extractPermissions(block.connectorRef).find((p) => {
     return p.name === block.permission;
   });
-  const actionLabel = block.action === "allow" ? "Allow" : "Deny";
-  const loading =
-    agentLoadable.state === "loading" ||
-    adminLoadable.state === "loading" ||
-    existingRequestLoadable.state === "loading";
+  const actionLabel = permissionActionVerb(block.action);
+  const loading = permissionActionLoading([
+    agentLoadable,
+    userLoadable,
+    adminLoadable,
+    existingRequestLoadable,
+  ]);
   const saving =
     saveLoadable.state === "loading" || submitLoadable.state === "loading";
-  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
   const existingRequest =
-    existingRequestLoadable.state === "hasData"
-      ? existingRequestLoadable.data
-      : null;
-  const storedPolicy =
-    agent?.permissionPolicies?.[block.connectorRef]?.policies?.[
-      block.permission
-    ];
-  const alreadyApplied = Boolean(agent) && storedPolicy === block.action;
-  const finished =
-    saveLoadable.state === "hasData" || submitLoadable.state === "hasData";
+    loadableData<PermissionActionExistingRequest | null>(
+      existingRequestLoadable,
+    ) ?? null;
+  const alreadyApplied = isPermissionActionAlreadyApplied({
+    agent,
+    connectorRef: block.connectorRef,
+    permission: block.permission,
+    action: block.action,
+  });
+  const finished = isPermissionActionFinished({
+    saveDone: saveLoadable.state === "hasData",
+    submitDone: submitLoadable.state === "hasData",
+  });
   const buttonState: PermissionActionButtonState = {
     hasAgent: Boolean(agent),
     hasPermission: Boolean(focusedPermission),
@@ -2807,81 +3009,65 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   };
 
   const handlePermissionAction = () => {
-    if (
-      !agent ||
-      !focusedPermission ||
-      existingRequest ||
-      loading ||
-      saving ||
-      alreadyApplied ||
-      finished
-    ) {
-      return;
-    }
-
-    if (canManagePermissions) {
-      detach(
-        savePolicy(
-          {
-            agentId: block.agentId,
-            ref: block.connectorRef,
-            permissionName: focusedPermission.name,
-            action: block.action,
-            agentFirewallPolicies: agent.permissionPolicies,
-          },
-          pageSignal,
-        ),
-        Reason.DomCallback,
-      );
-      return;
-    }
-
-    detach(
-      subscribeRequests(pageSignal),
-      Reason.Daemon,
-      "permission access request realtime subscription",
-    );
-    detach(
-      submitRequest(
-        {
-          agentId: block.agentId,
-          connectorRef: block.connectorRef,
-          permission: focusedPermission.name,
-          action: block.action,
-          method: block.method ?? undefined,
-          path: block.path ?? undefined,
-          reason: block.reason ?? undefined,
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
+    runPermissionAction({
+      agent,
+      focusedPermission,
+      existingRequest,
+      loading,
+      saving,
+      alreadyApplied,
+      finished,
+      canManagePermissions,
+      onSave: (agent, permission) => {
+        detach(
+          savePolicy(
+            {
+              agentId: block.agentId,
+              ref: block.connectorRef,
+              permissionName: permission.name,
+              action: block.action,
+              agentFirewallPolicies: agent.permissionPolicies,
+            },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      },
+      onSubmit: (permission) => {
+        detach(
+          subscribeRequests(pageSignal),
+          Reason.Daemon,
+          "permission access request realtime subscription",
+        );
+        detach(
+          submitRequest(
+            {
+              agentId: block.agentId,
+              connectorRef: block.connectorRef,
+              permission: permission.name,
+              action: block.action,
+              method: block.method ?? undefined,
+              path: block.path ?? undefined,
+              reason: block.reason ?? undefined,
+            },
+            pageSignal,
+          ),
+          Reason.DomCallback,
+        );
+      },
+    });
   };
 
   return (
-    <div
-      data-testid="permission-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon type={block.connectorRef} size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">
-            {config.label} permissions
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">
-            {actionLabel} {focusedPermission?.name ?? block.permission}
-          </div>
-        </div>
-      </div>
-      <PermissionActionButton
-        state={buttonState}
-        action={block.action}
-        onClick={handlePermissionAction}
-      />
-    </div>
+    <PermissionActionCardLayout
+      connectorRef={block.connectorRef}
+      connectorLabel={config.label}
+      actionLabel={actionLabel}
+      permissionLabel={focusedPermission?.name ?? block.permission}
+      buttonState={buttonState}
+      action={block.action}
+      onClick={handlePermissionAction}
+    />
   );
 }
 

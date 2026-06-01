@@ -12,10 +12,7 @@ import {
   IconLoader2,
   IconX,
 } from "@tabler/icons-react";
-import {
-  isFirewallConnectorType,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
+import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import { user$ } from "../../signals/auth.ts";
@@ -445,7 +442,7 @@ function RequestStatusView({
     requesterUserId: string;
   };
   canManagePermissions: boolean;
-  agent: { avatarUrl: string | null };
+  agent: { avatarUrl: string | null; ownerId: string };
   userName: string;
   agentDisplayName: string;
 }) {
@@ -554,7 +551,11 @@ function RequestModeView() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = isAdmin;
+  const canManagePermissions = canManageAgentPermissions(
+    agent,
+    currentUser,
+    isAdmin,
+  );
 
   return (
     <RequestStatusView
@@ -606,12 +607,11 @@ function DoctorModeView({
   const submitting = submitLoadable.state === "loading";
   const agentDisplayName = agent.displayName ?? agentId;
 
-  // Check effective policy
-  const resolved = resolveFirewallPolicies(agent.permissionPolicies, [ref]);
-  const effectivePolicy = resolved?.[ref]?.policies[permission.name] ?? "allow";
+  const storedPolicy =
+    agent.permissionPolicies?.[ref]?.policies?.[permission.name];
 
   // Policy already matches — show result
-  if (effectivePolicy === action) {
+  if (storedPolicy === action) {
     return action === "allow" ? (
       <PermissionsUpdatedCard />
     ) : (
@@ -813,6 +813,14 @@ function findPermission(
   );
 }
 
+function canManageAgentPermissions(
+  agent: { ownerId: string },
+  user: { id?: string } | undefined,
+  isAdmin: boolean,
+): boolean {
+  return isAdmin || user?.id === agent.ownerId;
+}
+
 // ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
@@ -869,7 +877,11 @@ export function PermissionAllowPage() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = isAdmin;
+  const canManagePermissions = canManageAgentPermissions(
+    agent,
+    currentUser,
+    isAdmin,
+  );
   const userName = resolveUserName(currentUser);
   const focusedPermission = findPermission(ref, permission);
 

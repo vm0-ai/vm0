@@ -1,7 +1,7 @@
 /**
  * Interaction tests for permission-allow-page.tsx.
  *
- * Covers admin Confirm button, admin request approve/reject,
+ * Covers owner Confirm button, owner request approve/reject,
  * and member request submission. These test the new centered
  * approval card UI.
  */
@@ -99,10 +99,10 @@ function pendingRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Admin doctor mode: Confirm button
+// Owner doctor mode: Confirm button
 // ---------------------------------------------------------------------------
 
-describe("permission allow page - admin doctor mode", () => {
+describe("permission allow page - owner doctor mode", () => {
   it("fw-d-018: Confirm button saves the policy", async () => {
     let savedBody: unknown;
     server.use(
@@ -210,10 +210,10 @@ describe("permission allow page - admin doctor mode", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Admin request mode: Approve / Disapprove
+// Owner request mode: Approve / Disapprove
 // ---------------------------------------------------------------------------
 
-describe("permission allow page - admin request mode", () => {
+describe("permission allow page - owner request mode", () => {
   it("fw-d-021: Approve change button approves pending request", async () => {
     let requestStatus: PermissionAccessRequestResponse["status"] = "pending";
     server.use(

@@ -35,7 +35,7 @@ function mockAgentWithPolicy(
       unknownPolicy?: "allow" | "deny" | "ask";
     }
   > | null,
-  ownerId = "test-owner-id",
+  ownerId = "test-user-123",
 ) {
   server.use(
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -155,10 +155,10 @@ describe("permission allow page", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Doctor mode: admin confirm
+  // Doctor mode: owner/admin confirm
   // ---------------------------------------------------------------------------
 
-  it("shows admin confirm card when policy does not match", async () => {
+  it("shows owner confirm card when policy does not match", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
       slack: { policies: { "channels:read": "deny" } },
@@ -220,10 +220,10 @@ describe("permission allow page", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Request mode: admin approval
+  // Request mode: owner/admin approval
   // ---------------------------------------------------------------------------
 
-  it("shows admin approval card for pending request", async () => {
+  it("shows owner approval card for pending request", async () => {
     mockPermissionRequests([makePendingRequest()]);
 
     detachedSetupPage({
@@ -284,7 +284,7 @@ describe("permission allow page", () => {
   // Request mode: rejected
   // ---------------------------------------------------------------------------
 
-  it("shows denied card for admin on rejected request", async () => {
+  it("shows denied card for owner on rejected request", async () => {
     mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
     detachedSetupPage({
@@ -334,10 +334,10 @@ describe("permission allow page", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Admin approval card: reason is read-only (not an input)
+  // Owner approval card: reason is read-only (not an input)
   // ---------------------------------------------------------------------------
 
-  it("shows reason as read-only text in admin approval card", async () => {
+  it("shows reason as read-only text in owner approval card", async () => {
     mockPermissionRequests([makePendingRequest()]);
 
     detachedSetupPage({
@@ -357,10 +357,45 @@ describe("permission allow page", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Doctor mode: deny action shows deny icon for admin
+  it("shows confirm card for org admin who does not own the agent", async () => {
+    mockPermissionRequests();
+    mockAgentWithPolicy(
+      { slack: { policies: { "channels:read": "deny" } } },
+      "other-owner",
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Request approval")).not.toBeInTheDocument();
+  });
+
+  it("does not treat default allow as already updated for non-owner admins", async () => {
+    mockPermissionRequests();
+    mockAgentWithPolicy(null, "other-owner");
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Confirm")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
+  });
+
+  // Doctor mode: deny action shows deny icon for owner
   // ---------------------------------------------------------------------------
 
-  it("shows deny icon in admin confirm card for deny action", async () => {
+  it("shows deny icon in owner confirm card for deny action", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
       slack: { policies: { "channels:read": "allow" } },
@@ -405,10 +440,10 @@ describe("permission allow page", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Request mode: deny request shows deny icon in admin approval card
+  // Request mode: deny request shows deny icon in owner approval card
   // ---------------------------------------------------------------------------
 
-  it("shows deny icon in admin approval card for deny request", async () => {
+  it("shows deny icon in owner approval card for deny request", async () => {
     mockPermissionRequests([makePendingRequest({ action: "deny" })]);
 
     detachedSetupPage({

@@ -2,7 +2,7 @@
  * Display and conditional tests for permission-allow-page.tsx.
  *
  * Covers agent ID resolution, permission reference types, loading/error states,
- * and admin/member confirmation card rendering. Admin/member view branching and
+ * and owner/member confirmation card rendering. Owner/member view branching and
  * HTTP method/path display are already covered in permission-allow-page.test.tsx.
  */
 import { describe, expect, it } from "vitest";
@@ -82,7 +82,7 @@ function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
   );
 }
 
-// NOTE: Tests that render the admin confirmation card (showing agent name,
+// NOTE: Tests that render the owner confirmation card (showing agent name,
 // connector label, etc.) must use an action that does NOT match the effective
 // policy. For github (no defaults → "allow"), use `action=deny`.
 // For gmail (default-denied via gmailDefaultAllowed), use `action=allow`.
