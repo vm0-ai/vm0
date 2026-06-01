@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { command, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   isExpiredScreenshotPointer,
@@ -236,8 +236,6 @@ function commandPayload(
   return payload;
 }
 
-type ComputedGetter = <T>(source: Computed<T>) => T;
-
 const SCREENSHOT_DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 
 function parseScreenshotDataUrl(
@@ -279,8 +277,7 @@ function numberField(result: ComputerUseCommandResult, key: string): number {
  * across S3 network I/O. Returns the result unchanged when there is no inline
  * screenshot (older clients, non-screenshot commands, or already a pointer).
  */
-async function offloadScreenshotForResult(
-  get: ComputedGetter,
+function offloadScreenshotForResult(
   db: Db,
   params: {
     readonly hostToken: string;
@@ -288,49 +285,51 @@ async function offloadScreenshotForResult(
     readonly result: ComputerUseCommandResult;
   },
   signal: AbortSignal,
-): Promise<ComputerUseCommandResult> {
-  const screenshot = params.result.screenshot;
-  if (typeof screenshot !== "string") {
-    return params.result;
-  }
-  const parsed = parseScreenshotDataUrl(screenshot);
-  if (!parsed) {
-    return params.result;
-  }
+): Computed<Promise<ComputerUseCommandResult>> {
+  return computed(async (get): Promise<ComputerUseCommandResult> => {
+    const screenshot = params.result.screenshot;
+    if (typeof screenshot !== "string") {
+      return params.result;
+    }
+    const parsed = parseScreenshotDataUrl(screenshot);
+    if (!parsed) {
+      return params.result;
+    }
 
-  const [identity] = await db
-    .select({
-      orgId: computerUseHosts.orgId,
-      userId: computerUseHosts.userId,
-    })
-    .from(computerUseHosts)
-    .where(
-      and(
-        eq(computerUseHosts.tokenHash, hashSecret(params.hostToken)),
-        isNull(computerUseHosts.revokedAt),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!identity) {
-    return params.result;
-  }
+    const [identity] = await db
+      .select({
+        orgId: computerUseHosts.orgId,
+        userId: computerUseHosts.userId,
+      })
+      .from(computerUseHosts)
+      .where(
+        and(
+          eq(computerUseHosts.tokenHash, hashSecret(params.hostToken)),
+          isNull(computerUseHosts.revokedAt),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!identity) {
+      return params.result;
+    }
 
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const key = `computer-use/${identity.orgId}/${identity.userId}/${params.commandId}/screenshot.${extensionForScreenshotMime(parsed.mimeType)}`;
-  await get(putS3Object(bucket, key, parsed.buffer, parsed.mimeType));
-  signal.throwIfAborted();
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const key = `computer-use/${identity.orgId}/${identity.userId}/${params.commandId}/screenshot.${extensionForScreenshotMime(parsed.mimeType)}`;
+    await get(putS3Object(bucket, key, parsed.buffer, parsed.mimeType));
+    signal.throwIfAborted();
 
-  const pointer: StoredScreenshotPointer = {
-    type: "s3",
-    bucket,
-    key,
-    mimeType: parsed.mimeType,
-    sizeBytes: parsed.buffer.length,
-    width: numberField(params.result, "screenshotWidth"),
-    height: numberField(params.result, "screenshotHeight"),
-  };
-  return { ...params.result, screenshot: pointer };
+    const pointer: StoredScreenshotPointer = {
+      type: "s3",
+      bucket,
+      key,
+      mimeType: parsed.mimeType,
+      sizeBytes: parsed.buffer.length,
+      width: numberField(params.result, "screenshotWidth"),
+      height: numberField(params.result, "screenshotHeight"),
+    };
+    return { ...params.result, screenshot: pointer };
+  });
 }
 
 /**
@@ -1262,15 +1261,16 @@ export const completeComputerUseHostCommand$ = command(
     const now = nowDate();
     const storedResult =
       params.status === "succeeded"
-        ? await offloadScreenshotForResult(
-            get,
-            db,
-            {
-              hostToken: params.hostToken,
-              commandId: params.commandId,
-              result: params.result,
-            },
-            signal,
+        ? await get(
+            offloadScreenshotForResult(
+              db,
+              {
+                hostToken: params.hostToken,
+                commandId: params.commandId,
+                result: params.result,
+              },
+              signal,
+            ),
           )
         : null;
     const result = await db.transaction(async (tx) => {
