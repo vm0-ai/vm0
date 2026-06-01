@@ -2,8 +2,8 @@
 // Do not edit by hand.
 // Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 
-// These values are fake marker bytes used for firewall substitution.
-// They are not real secrets.
+// String constants shared by TypeScript and Rust contracts.
+// Model-provider placeholder values in this file are fake marker bytes, not real secrets.
 
 pub mod codex_oauth_token {
     pub mod placeholders {
@@ -32,5 +32,11 @@ pub mod model_provider_env {
         pub const CLAUDE_CODE_OAUTH_TOKEN: &str = "sk-ant-oat01-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA";
 
         pub const OPENAI_API_KEY: &str = "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca";
+    }
+}
+
+pub mod runners {
+    pub mod paths {
+        pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
     }
 }

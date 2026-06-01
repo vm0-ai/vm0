@@ -37,9 +37,10 @@ use std::io::Write;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ECHO_MARKER: &str = "@ECHO@";
-const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
 
 /// Parsed command-line arguments.
 struct ParsedArgs {

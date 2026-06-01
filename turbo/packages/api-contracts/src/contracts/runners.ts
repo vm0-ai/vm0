@@ -11,6 +11,13 @@ const c = initContract();
 export const MIN_EPOCH_MS_TIMESTAMP = 1_000_000_000_000;
 const apiStartTimeSchema = z.number().int().min(MIN_EPOCH_MS_TIMESTAMP);
 
+export const CANONICAL_WORKING_DIR = "/home/user/workspace";
+const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
+  /^\//,
+  "",
+).replace(/\//g, "-");
+export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `/home/user/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
+
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,
   nowMs: number,

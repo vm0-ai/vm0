@@ -1,5 +1,7 @@
 import { command, type Getter } from "ccstate";
 import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   type SecretConnectorMetadata,
   type StorageManifest,
@@ -132,10 +134,7 @@ import { recordSandboxOperation } from "../external/sandbox-op-log";
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = "memory";
-const AUTO_MEMORY_MOUNT_PATH =
-  "/home/user/.claude/projects/-home-user-workspace/memory";
 const CODEX_AUTO_MEMORY_MOUNT_PATH = "/home/user/.codex/memories";
-const CANONICAL_WORKING_DIR = "/home/user/workspace";
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -595,7 +594,7 @@ function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
     mountPath:
       framework === "codex"
         ? CODEX_AUTO_MEMORY_MOUNT_PATH
-        : AUTO_MEMORY_MOUNT_PATH,
+        : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   };
 }
 

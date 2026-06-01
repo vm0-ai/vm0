@@ -8,9 +8,8 @@
 //! - temp-file paths are scoped to the current run ID
 
 use crate::env;
+pub use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::LazyLock;
-
-pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
 
 // ---------------------------------------------------------------------------
 // Session

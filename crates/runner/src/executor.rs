@@ -34,7 +34,8 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use api_contracts::generated::model_providers::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 use crate::ids::RunId;
 
@@ -1865,8 +1866,6 @@ async fn restore_session(
         }
     }
 }
-
-const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";
 
 /// Write a Claude Code session history file at `~/.claude/projects/-{project}/{id}.jsonl`.
 async fn restore_claude_session(

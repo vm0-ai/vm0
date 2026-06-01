@@ -644,6 +644,8 @@ export {
   secretConnectorMetadataSchema,
   secretConnectorMetadataMapSchema,
   storageEntrySchema,
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   artifactEntrySchema,
   storageManifestSchema,
