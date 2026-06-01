@@ -1267,6 +1267,16 @@ describe("expandHostWildcardsInBaseUrl", () => {
     );
   });
 
+  it("preserves explicit ports when converting host wildcards", () => {
+    const expanded = expandHostWildcardsInBaseUrl(
+      "https://*.example.com:8443/v1/",
+    );
+    expect(expanded).toBe("https://{hostWildcard1}.example.com:8443/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).not.toThrow();
+  });
+
   it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
     expect(
       expandHostWildcardsInBaseUrl("https://api-*.example.com/files/*/"),
