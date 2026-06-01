@@ -323,6 +323,53 @@ class TestAddCaptureFields:
         assert entry["request_body_truncated"] is True
         assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
 
+    def test_request_gzip_zip_bomb_capped_without_full_content_decode(self, real_flow, monkeypatch):
+        original = b"x" * (STREAM_BUFFER_LIMIT + 4096)
+        compressed = gzip.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=compressed,
+            request_content_type="text/plain",
+            request_encoding="gzip",
+            response_body=b"ok",
+        )
+
+        def fail_full_decode(*_args, **_kwargs):
+            raise AssertionError("request capture must not access flow.request.content")
+
+        monkeypatch.setattr(flow.request, "get_content", fail_full_decode)
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["request_body_truncated"] is True
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+        assert set(entry["request_body"]) == {"x"}
+
+    def test_request_gzip_exact_limit_not_truncated(self, real_flow):
+        original = b"x" * STREAM_BUFFER_LIMIT
+        compressed = gzip.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=compressed,
+            request_content_type="text/plain",
+            request_encoding="gzip",
+            response_body=b"ok",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "request_body_truncated" not in entry
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+
     def test_truncates_large_response_body(self, real_flow):
         body = b"y" * (STREAM_BUFFER_LIMIT + 1000)
         flow = real_flow(
@@ -418,6 +465,22 @@ class TestAddCaptureFields:
         assert entry["request_body_encoding"] == "binary"  # marked as binary
         assert "request_headers" in entry  # headers still captured
         assert "response_body" in entry  # response unaffected
+
+    def test_request_unsupported_encoding_marks_body_binary(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            request_encoding="x-custom",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=b"opaque",
+            response_body=b"ok",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
 
     def test_binary_request_body_marks_encoding(self, real_flow, headers):
         flow = real_flow(

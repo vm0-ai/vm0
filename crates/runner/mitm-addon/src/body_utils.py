@@ -14,7 +14,7 @@ import base64
 import contextlib
 import zlib
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
@@ -46,6 +46,12 @@ LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
 _BROTLI_DECOMPRESS_MIN_INPUT_CHUNK_SIZE = 16
 _BROTLI_DECOMPRESS_MAX_INPUT_CHUNK_SIZE = 1024
 _BROTLI_DECOMPRESS_TARGET_INPUT_CHUNKS = 64
+
+
+class _BoundedDecodeResult(NamedTuple):
+    body: bytes
+    failed: bool
+    error: Exception | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -159,28 +165,49 @@ def decompress_body(
     frame that decodes to an empty body returns ``b""`` — callers that
     short-circuit via ``if not body`` rely on that (see #10287).
     """
+    result = _decode_body_bounded(data, headers, max_output=max_output)
+    if result.failed and result.error is not None:
+        with contextlib.suppress(AttributeError):
+            # ctx.log unavailable outside mitmproxy runtime
+            ctx.log.debug(
+                "Decompression failed "
+                f"({headers.get('content-encoding', '').strip().lower()}): {result.error}"
+            )
+    return result.body
+
+
+def _decode_body_bounded(
+    data: bytes,
+    headers: http.Headers,
+    *,
+    max_output: int,
+    fail_on_unsupported_encoding: bool = False,
+) -> _BoundedDecodeResult:
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
-        return data
+        return _BoundedDecodeResult(data, False)
     try:
         if encoding in ("gzip", "deflate"):
             # wbits: gzip=16+MAX_WBITS, deflate=MAX_WBITS
             wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
             obj = zlib.decompressobj(wbits)
-            return obj.decompress(data, max_length=max_output)
+            return _BoundedDecodeResult(
+                obj.decompress(data, max_length=max_output),
+                False,
+            )
         if encoding == "br":
-            return _decompress_brotli_bounded(data, max_output)
+            return _BoundedDecodeResult(_decompress_brotli_bounded(data, max_output), False)
         if encoding == "zstd":
             # stream_reader.read(n) reads *up to* n bytes: the full frame if
             # smaller than n, exactly n if larger — so total memory is bounded
             # by n plus ZSTD_DStream{In,Out}Size (~128 KB library buffers).
             with zstandard.ZstdDecompressor().stream_reader(data) as reader:
-                return reader.read(max_output)
+                return _BoundedDecodeResult(reader.read(max_output), False)
     except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
-        with contextlib.suppress(AttributeError):
-            # ctx.log unavailable outside mitmproxy runtime
-            ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
-    return data
+        return _BoundedDecodeResult(data, True, exc)
+    if fail_on_unsupported_encoding:
+        return _BoundedDecodeResult(b"", True)
+    return _BoundedDecodeResult(data, False)
 
 
 def _decompress_brotli_bounded_with_finished(data: bytes, max_output: int) -> tuple[bytes, bool]:
@@ -433,15 +460,16 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     # Request body
     if flow.request.raw_content:
         req_ct = flow.request.headers.get("content-type", "")
-        try:
-            body = flow.request.content
-        except (zlib.error, ValueError):
-            # ZlibError (decompression failure) or ValueError from mitmproxy
-            # when Content-Encoding doesn't match the body bytes.
+        request_body = _decode_body_bounded(
+            flow.request.raw_content,
+            flow.request.headers,
+            max_output=STREAM_BUFFER_LIMIT + 1,
+            fail_on_unsupported_encoding=True,
+        )
+        if request_body.failed:
             log_entry["request_body_encoding"] = "binary"
         else:
-            if body is not None:
-                _set_body_fields(log_entry, "request", body, req_ct)
+            _set_body_fields(log_entry, "request", request_body.body, req_ct)
 
     # Response headers
     if flow.response:
