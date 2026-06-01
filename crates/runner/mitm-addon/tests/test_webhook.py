@@ -54,6 +54,7 @@ class TestUsageWebhookDelivery:
 
         assert webhook.request_count == 1
         request = webhook.requests[0]
+        assert request.method == "POST"
         assert request.path == "/api/webhooks/agent/usage-event"
         assert request.header("content-type") == "application/json"
         assert request.header("authorization") == "Bearer tok"
@@ -184,6 +185,7 @@ class TestUsageWebhookDelivery:
         [entry] = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         assert entry["level"] == "error"
         assert entry["attempt"] == 1
+        assert "HTTP Error 500" in entry["error"]
         assert entry["payload"]["error"] == "payload-error"
         assert entry["payload"]["attempt"] == 99
 

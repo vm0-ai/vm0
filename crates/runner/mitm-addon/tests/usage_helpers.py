@@ -37,7 +37,7 @@ class CapturedWebhookRequest:
 
 class UsageWebhookServer:
     def __init__(self) -> None:
-        self._condition = threading.Condition()
+        self._lock = threading.Lock()
         self._requests: list[CapturedWebhookRequest] = []
         self._responses: deque[WebhookResponse] = deque()
         self._server: ThreadingHTTPServer | None = None
@@ -51,12 +51,12 @@ class UsageWebhookServer:
 
     @property
     def requests(self) -> tuple[CapturedWebhookRequest, ...]:
-        with self._condition:
+        with self._lock:
             return tuple(self._requests)
 
     @property
     def request_count(self) -> int:
-        with self._condition:
+        with self._lock:
             return len(self._requests)
 
     def url(self, path: str = "/api/webhooks/agent/usage-event") -> str:
@@ -71,7 +71,7 @@ class UsageWebhookServer:
         headers: Sequence[tuple[str, str]] = (),
         body: bytes = b"",
     ) -> None:
-        with self._condition:
+        with self._lock:
             self._responses.append(
                 WebhookResponse(status=status, headers=tuple(headers), body=body)
             )
@@ -86,16 +86,6 @@ class UsageWebhookServer:
             for event in body.get("events", [])
             if isinstance(event, dict)
         ]
-
-    def wait_for_request_count(self, count: int, *, timeout: float = 2.0) -> None:
-        with self._condition:
-            received = self._condition.wait_for(
-                lambda: len(self._requests) >= count,
-                timeout=timeout,
-            )
-            assert received, (
-                f"expected at least {count} webhook requests, got {len(self._requests)}"
-            )
 
     @contextlib.contextmanager
     def run(self) -> Iterator[UsageWebhookServer]:
@@ -125,15 +115,14 @@ class UsageWebhookServer:
             self._thread = None
 
     def _next_response(self) -> WebhookResponse:
-        with self._condition:
+        with self._lock:
             if self._responses:
                 return self._responses.popleft()
         return WebhookResponse()
 
     def _record_request(self, request: CapturedWebhookRequest) -> None:
-        with self._condition:
+        with self._lock:
             self._requests.append(request)
-            self._condition.notify_all()
 
     def _handle_request(self, handler: BaseHTTPRequestHandler) -> None:
         content_length = int(handler.headers.get("content-length", "0"))
