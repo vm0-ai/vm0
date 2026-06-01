@@ -76,6 +76,7 @@ pub(in super::super) async fn seed_idle_pool_with_overrides(
                 memory_mb,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         })
         .await
         .expect("create sandbox");

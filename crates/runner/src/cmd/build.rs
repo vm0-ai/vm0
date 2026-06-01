@@ -713,6 +713,7 @@ async fn build_snapshot(
         output_dir: snapshot_dir.to_path_buf(),
         vcpu_count: def.vcpu,
         memory_mb: def.memory_mb,
+        workspace_image_size_bytes: u64::from(def.disk_mb) * 1024 * 1024,
     };
 
     let pending = provider.create_uncommitted_snapshot(create_config).await?;

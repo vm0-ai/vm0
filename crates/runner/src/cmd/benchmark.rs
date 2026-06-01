@@ -153,6 +153,9 @@ pub async fn run_benchmark(
             memory_mb: profile_config.memory_mb,
         },
         device_rate_limits: None,
+        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+            size_bytes: u64::from(profile_config.disk_mb) * 1024 * 1024,
+        }),
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();

@@ -5,6 +5,7 @@ mod invariant;
 mod leak_cleaner;
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
@@ -13,6 +14,7 @@ use sandbox::{
 };
 use tracing::{info, warn};
 
+use crate::command;
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
@@ -260,6 +262,14 @@ impl SandboxFactory for FirecrackerFactory {
 
                 // Recompute cow_file path after rename (the slot path no longer exists).
                 let cow_file = target_workspace.join("cow.img");
+                let sandbox_paths = crate::paths::SandboxPaths::new(target_workspace.clone());
+                if let Some(workspace_drive) = config.workspace_drive.as_ref() {
+                    prepare_workspace_drive_image(
+                        &sandbox_paths.workspace_image(),
+                        workspace_drive,
+                    )
+                    .await?;
+                }
 
                 // Clean stale sock dir and create vsock directory.
                 let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
@@ -404,6 +414,50 @@ fn convert_device_rate_limits(
 
 fn clean_stale_workspace_dir(id: &str, target_workspace: &Path) -> sandbox::Result<()> {
     clean_stale_create_dir(id, "target workspace", target_workspace)
+}
+
+pub(crate) async fn prepare_workspace_drive_image(
+    path: &Path,
+    config: &sandbox::WorkspaceDriveConfig,
+) -> sandbox::Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!("create workspace image dir: {e}"),
+            })?;
+    }
+
+    let file = tokio::fs::File::create(path)
+        .await
+        .map_err(|e| SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!("create workspace image {}: {e}", path.display()),
+        })?;
+    file.set_len(config.size_bytes)
+        .await
+        .map_err(|e| SandboxError::Initialization {
+            phase: SandboxInitializationPhase::SandboxAllocation,
+            message: format!("set workspace image size {}: {e}", path.display()),
+        })?;
+    drop(file);
+
+    let path_str = path.to_str().ok_or_else(|| SandboxError::Initialization {
+        phase: SandboxInitializationPhase::SandboxAllocation,
+        message: format!("workspace image path is not UTF-8: {}", path.display()),
+    })?;
+    command::exec_with_timeout(
+        "mkfs.ext4",
+        &["-F", "-q", path_str],
+        Duration::from_secs(60),
+    )
+    .await
+    .map_err(|e| SandboxError::Initialization {
+        phase: SandboxInitializationPhase::SandboxAllocation,
+        message: format!("format workspace image: {e}"),
+    })?;
+    Ok(())
 }
 
 fn clean_stale_sock_dir(id: &str, sock_dir: &Path) -> sandbox::Result<()> {
@@ -703,6 +757,7 @@ mod tests {
                 memory_mb: 512,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         };
 
         let err = match factory.create(config).await {
@@ -736,6 +791,7 @@ mod tests {
                 memory_mb: 512,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         };
         let err = match factory.create(config).await {
             Ok(_) => panic!("create should fail after shutdown"),

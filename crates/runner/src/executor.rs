@@ -84,6 +84,7 @@ use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
     ResumeSession, SandboxReuseResult,
 };
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -100,6 +101,7 @@ pub struct ExecutorConfig {
 pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
+    pub disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
@@ -541,6 +543,9 @@ async fn execute_new_sandbox(
             memory_mb: params.memory_mb,
         },
         device_rate_limits: params.device_rate_limits.clone(),
+        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+            size_bytes: u64::from(params.disk_mb) * 1024 * 1024,
+        }),
     };
 
     // Create and start sandbox
@@ -569,6 +574,23 @@ async fn execute_new_sandbox(
         return Err(e.into());
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(e);
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     Ok(execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -625,6 +647,25 @@ async fn execute_reused_sandbox(
 
     let source_ip = source_ip.to_string();
     let network_log_session = register_proxy(config, context, &source_ip).await;
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        return ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(e.to_string())),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: Some(network_log_session),
+            guest_session_id: None,
+        };
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -4440,6 +4481,7 @@ mod tests {
         JobParams {
             vcpu: 2,
             memory_mb: 2048,
+            disk_mb: 16_384,
             restore_guest_state: false,
             device_rate_limits: None,
         }
@@ -4643,6 +4685,7 @@ mod tests {
                     memory_mb: 2048,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .unwrap()
@@ -4709,6 +4752,7 @@ mod tests {
                         memory_mb: 2048,
                     },
                     device_rate_limits: None,
+                    workspace_drive: None,
                 })
                 .await
                 .unwrap(),
@@ -5035,6 +5079,7 @@ mod tests {
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let limits = test_device_rate_limits();
         let params = JobParams {
+            disk_mb: 512,
             device_rate_limits: Some(limits.clone()),
             ..default_params()
         };
@@ -5049,6 +5094,12 @@ mod tests {
         let configs = overrides.create_configs();
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].device_rate_limits, Some(limits));
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_bytes: 512 * 1024 * 1024,
+            })
+        );
     }
 
     #[tokio::test]
