@@ -14,6 +14,7 @@ import mitm_addon
 import response_streaming
 import usage
 from tests.flow_helpers import header_map, response_stream
+from tests.pending_helpers import assert_pending
 
 
 def _openai_model_websocket_flow(
@@ -488,6 +489,75 @@ class TestModelProviderStreamUsage:
             "tokens.output": 20,
             "tokens.cache_read": 10,
         }
+
+    def test_model_websocket_response_keeps_usage_flow_tracked_until_end(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
+    ):
+        """The HTTP 101 response hook must not complete the WebSocket usage lifecycle."""
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+        usage.increment_in_flight_flows()
+
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.metadata["_usage_flow_tracked"] = True
+        usage.write_pending_snapshot(flush_request_id="before-response")
+        assert_pending(
+            pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="before-response",
+        )
+
+        with usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            assert flow.metadata["_usage_flow_tracked"] is True
+            usage.write_pending_snapshot(flush_request_id="after-response")
+            assert_pending(
+                pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="after-response",
+            )
+
+            _feed_websocket_server_message(
+                flow,
+                json.dumps(
+                    {
+                        "type": "response.completed",
+                        "response": {
+                            "id": "resp_ws_1",
+                            "model": "gpt-5.5",
+                            "usage": {
+                                "input_tokens": 50,
+                                "output_tokens": 20,
+                                "input_tokens_details": {"cached_tokens": 10},
+                            },
+                        },
+                    }
+                ).encode(),
+            )
+            mitm_addon.websocket_end(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {
+            "tokens.input": 40,
+            "tokens.output": 20,
+            "tokens.cache_read": 10,
+        }
+        assert "_usage_flow_tracked" not in flow.metadata
+        usage.write_pending_snapshot(flush_request_id="after-websocket-end")
+        assert_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="after-websocket-end",
+        )
 
     def test_full_pipeline_model_websocket_zero_frame_preserves_billed_usage_and_id(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api

@@ -517,8 +517,9 @@ def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> Non
 
     This closes the shutdown drain gap before standard upstream dispatch and
     before auth.base URL rewrites, where the addon itself forwards upstream.
-    The response/error decorator pops the metadata flag so decrement runs
-    exactly once.
+    Normal HTTP flows release from response/error.  Model-provider WebSocket
+    upgrades release from websocket_end/error because the 101 response does not
+    complete the billable usage lifecycle.
     """
     if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
@@ -574,12 +575,17 @@ def _response_size(flow: http.HTTPFlow) -> int:
     return int(flow.response.headers.get("content-length", 0))
 
 
-def _track_usage_flow(fn):
-    """Decorator ensuring decrement_in_flight_flows runs after response/error handlers.
+def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
+    response_streaming.release_response_stream_state(flow)
+    if release_tracking:
+        _release_tracked_usage_flow(flow)
 
-    Pairs with ``increment_in_flight_flows()`` in ``request()``.  Uses ``pop`` so
-    that even if both ``response()`` and ``error()`` fire for the same
-    flow, the decrement only happens once.
+
+def _track_usage_flow(fn):
+    """Decorator ensuring tracked usage flows release after terminal hooks.
+
+    Pairs with ``increment_in_flight_flows()`` in ``request()``. Uses ``pop`` so
+    duplicate terminal hooks decrement at most once.
     """
 
     @functools.wraps(fn)
@@ -587,8 +593,23 @@ def _track_usage_flow(fn):
         try:
             return fn(flow, *args, **kwargs)
         finally:
-            response_streaming.release_response_stream_state(flow)
-            _release_tracked_usage_flow(flow)
+            _release_usage_hook_state(flow, release_tracking=True)
+
+    return wrapper
+
+
+def _track_response_usage_flow(fn):
+    """Decorator for response() where a 101 WebSocket upgrade is not terminal."""
+
+    @functools.wraps(fn)
+    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
+        release_tracking = True
+        try:
+            result = fn(flow, *args, **kwargs)
+            release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+            return result
+        finally:
+            _release_usage_hook_state(flow, release_tracking=release_tracking)
 
     return wrapper
 
@@ -601,7 +622,7 @@ def websocket_end(flow: http.HTTPFlow) -> None:
         _report_model_provider_usage_once(flow, run_id)
 
 
-@_track_usage_flow
+@_track_response_usage_flow
 def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.

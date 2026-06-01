@@ -25,6 +25,10 @@ def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
     return flow.metadata.get(metadata_keys.CLI_AGENT_TYPE) == "codex"
 
 
+def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
+    return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
+
+
 def _make_response_chunk_parser(
     feed: _ResponseChunkParser,
     headers: http.Headers,
@@ -194,7 +198,7 @@ def finalize_model_sse_usage(flow: http.HTTPFlow) -> None:
 
 
 def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> None:
-    if not flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False):
+    if not is_model_websocket_usage_enabled(flow):
         return
     body = content.encode() if isinstance(content, str) else content
     usage_result = usage.extract_openai_responses_usage_from_event_json(body)
