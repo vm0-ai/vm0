@@ -834,8 +834,8 @@ class TestReportConnectorUsage:
         assert p["category"] == "content.create"
         assert p["quantity"] == 1
 
-    def test_tweet_create_quote_or_media_stays_on_with_url_bucket(self, tmp_path, real_flow):
-        """Quote tweets and attached media both render as link previews;
+    def test_tweet_create_rendered_link_signals_stay_on_with_url_bucket(self, tmp_path, real_flow):
+        """Quote tweets, attached media, cards, and DM deep links render links;
         we stay on the expensive bucket even when the text has no URL."""
         for req_body in [
             # quote tweet
@@ -844,6 +844,13 @@ class TestReportConnectorUsage:
             json.dumps({"text": "pic", "media": {"media_ids": ["42"]}}).encode(),
             # attached card
             json.dumps({"text": "card", "card_uri": "card://123"}).encode(),
+            # direct-message deep link
+            json.dumps(
+                {
+                    "text": "DM me for details",
+                    "direct_message_deep_link": "https://x.com/messages/compose?recipient_id=123",
+                }
+            ).encode(),
         ]:
             flow = self._make_x_flow(
                 real_flow,
@@ -858,6 +865,29 @@ class TestReportConnectorUsage:
             flow.request.content = req_body
             p = self._call_and_get_single_billing(flow)
             assert p["category"] == "content.create_with_url"
+            assert p["quantity"] == 1
+
+    @pytest.mark.parametrize("direct_message_deep_link", ["", "   ", None, 123, {"url": "x"}])
+    def test_tweet_create_invalid_direct_message_deep_link_downgrades_to_content_create(
+        self, tmp_path, real_flow, direct_message_deep_link
+    ):
+        """Invalid DM deep-link values do not block the plain-text downgrade."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = json.dumps(
+            {"text": "DM me for details", "direct_message_deep_link": direct_message_deep_link}
+        ).encode()
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
+        assert p["quantity"] == 1
 
     def test_tweet_create_unparseable_body_stays_conservative(self, tmp_path, real_flow):
         """A malformed request body keeps billing on the max bucket so

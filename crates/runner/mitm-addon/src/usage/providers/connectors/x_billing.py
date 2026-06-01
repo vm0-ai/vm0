@@ -351,6 +351,22 @@ def _tweet_text_likely_contains_url(text: str) -> bool:
     )
 
 
+def _tweet_create_body_has_rendered_link_signal(obj: dict[str, object]) -> bool:
+    # Quote tweets embed a link to the quoted post; X likely bills these
+    # as "with URL" on the rendered tweet.  Stay conservative.
+    if obj.get("quote_tweet_id") is not None:
+        return True
+    # Attached media renders as a t.co preview URL in the published tweet.
+    media = obj.get("media")
+    if isinstance(media, dict) and media.get("media_ids"):
+        return True
+    # A `card_uri` attaches a link preview card to the tweet.
+    if obj.get("card_uri"):
+        return True
+    direct_message_deep_link = obj.get("direct_message_deep_link")
+    return isinstance(direct_message_deep_link, str) and bool(direct_message_deep_link.strip())
+
+
 def _tweet_create_body_is_plain_text_without_url(body: bytes | None) -> bool:
     if not body:
         return False
@@ -360,19 +376,7 @@ def _tweet_create_body_is_plain_text_without_url(body: bytes | None) -> bool:
         return False
     if not isinstance(obj, dict):
         return False
-    # Quote tweets embed a link to the quoted post; X likely bills
-    # these as "with URL" on the rendered tweet.  Stay conservative.
-    if obj.get("quote_tweet_id") is not None:
-        return False
-    # Attached media renders as a t.co preview URL in the published
-    # tweet.  Stay conservative.
-    media = obj.get("media")
-    if isinstance(media, dict) and media.get("media_ids"):
-        return False
-    # A `card_uri` attaches a link preview card to the tweet — the
-    # published post always renders a URL.  Treat as with-URL even
-    # when the text itself is plain.
-    if obj.get("card_uri"):
+    if _tweet_create_body_has_rendered_link_signal(obj):
         return False
     text = obj.get("text")
     return isinstance(text, str) and not _tweet_text_likely_contains_url(text)
