@@ -36,6 +36,8 @@ def _empty_snapshot() -> RegistrySnapshot:
 @dataclass
 class _RegistryCacheState:
     registry_path: str | None = None
+    # Successful registry state is stored in one snapshot so raw VM entries and
+    # compiled matcher sidecars are published together.
     snapshot: RegistrySnapshot = field(default_factory=_empty_snapshot)
     # Known-bad decoded registry input. Unlike the snapshot loaded key, this
     # means the current snapshot belongs to an older file state and this key
@@ -48,13 +50,20 @@ class _RegistryCacheState:
     read_error_key: _RegistryCacheKey | None = None
 
 
+    def reset(self) -> None:
+        self.registry_path = None
+        self.snapshot = _empty_snapshot()
+        self.failed_key = None
+        self.stat_error_logged = False
+        self.read_error_key = None
+
+
 _registry_state = _RegistryCacheState()
 
 
 def reset_cache_for_tests() -> None:
     """Reset module cache state between tests."""
-    global _registry_state
-    _registry_state = _RegistryCacheState()
+    _registry_state.reset()
 
 
 def _path_key(path: Path) -> str:
