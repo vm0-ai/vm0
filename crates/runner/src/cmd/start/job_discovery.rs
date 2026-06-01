@@ -76,11 +76,25 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         }
         tokens.insert(run_id, job_cancel.clone());
     }
-    // Close a TOCTOU race against hard shutdown: the signal handler sends
-    // Stopping before locking cancel_tokens. Re-read mode after inserting so a
-    // newly claimed job sees the stop and self-cancels.
-    if matches!(*ctx.mode_rx.borrow(), RunnerMode::Stopping) {
-        job_cancel.cancel();
+    // This is the last reversible point before provider-side ownership.
+    // Soft drain must stop new claims, while hard stop still claims and
+    // cancels so provider state is completed deterministically.
+    let mode = *ctx.mode_rx.borrow();
+    match mode {
+        RunnerMode::Running => {}
+        RunnerMode::Draining => {
+            ctx.cancel_tokens.lock().await.remove(&run_id);
+            drop(job_lease);
+            return;
+        }
+        RunnerMode::Stopping => {
+            job_cancel.cancel();
+        }
+        RunnerMode::Stopped => {
+            ctx.cancel_tokens.lock().await.remove(&run_id);
+            drop(job_lease);
+            return;
+        }
     }
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().

@@ -877,6 +877,44 @@ async fn drain_then_hard_shutdown_upgrades() {
     .await;
 }
 
+/// TOCTOU regression: soft drain can arrive after the main loop has selected
+/// a discovered candidate but before claim. The candidate is still unowned at
+/// that point, so Draining must roll back local admission and skip claim.
+#[tokio::test]
+async fn claim_after_draining_sent_skips_unclaimed_job() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    assert!(env.parking_gate.soft_drain());
+    env.mode_tx.send_if_modified(|v| {
+        *v = RunnerMode::Draining;
+        false
+    });
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "draining should skip the discovered unclaimed job and exit",
+    )
+    .await;
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    let completions = env.handle.completions.lock().unwrap();
+    assert!(
+        !completions
+            .iter()
+            .any(|completion| completion.run_id == run_id),
+        "draining should not claim or complete a newly discovered job"
+    );
+}
+
 /// TOCTOU regression: a SIGTERM that iterates `cancel_tokens` *before*
 /// the main loop inserts a newly-claimed job's token would leave that
 /// job running uncancelled. The fix is a post-insert `mode_rx.borrow()`
