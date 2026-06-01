@@ -3,6 +3,12 @@
 import urllib.parse
 
 
+def _sanitize_netloc_for_network_log(netloc: str) -> str:
+    if "@" not in netloc:
+        return netloc
+    return netloc.rsplit("@", 1)[1]
+
+
 def sanitize_url_for_network_log(value: str) -> str:
     """Return a URL string safe for persistent logs.
 
@@ -16,7 +22,8 @@ def sanitize_url_for_network_log(value: str) -> str:
         if not cut_points:
             return value
         return value[: min(cut_points)]
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    netloc = _sanitize_netloc_for_network_log(parts.netloc)
+    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def sanitize_link_header_for_network_log(value: str) -> str | None:
@@ -27,6 +34,7 @@ def sanitize_link_header_for_network_log(value: str) -> str | None:
     """
     output: list[str] = []
     index = 0
+    saw_uri_reference = False
     while index < len(value):
         char = value[index]
         if char == ">":
@@ -44,7 +52,8 @@ def sanitize_link_header_for_network_log(value: str) -> str | None:
         if "<" in raw_url:
             return None
 
+        saw_uri_reference = True
         output.append(f"<{sanitize_url_for_network_log(raw_url)}>")
         index = close_index + 1
 
-    return "".join(output)
+    return "".join(output) if saw_uri_reference or not value else None

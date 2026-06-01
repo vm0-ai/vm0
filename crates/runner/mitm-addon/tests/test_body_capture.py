@@ -221,7 +221,7 @@ class TestSanitizeHeadersForCapture:
 
     def test_url_bearing_headers_strip_query_and_fragment(self, headers):
         headers = headers(
-            ("Location", "https://client.example/callback?code=secret#fragment"),
+            ("Location", "https://user:pass@client.example/callback?code=secret#fragment"),
             ("Referer", "https://app.example/page?token=secret#fragment"),
             ("content-location", "/objects/123?signature=secret#fragment"),
             ("referrer", "/previous?pii=secret#fragment"),
@@ -245,6 +245,11 @@ class TestSanitizeHeadersForCapture:
 
     def test_malformed_link_header_redacts(self, headers):
         headers = headers(("Link", '<https://api.example/items?cursor=secret; rel="next"'))
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Link"] == "***"
+
+    def test_link_header_without_uri_reference_redacts(self, headers):
+        headers = headers(("Link", 'https://api.example/items?cursor=secret; rel="next"'))
         result = _sanitize_headers_for_capture(headers)
         assert result["Link"] == "***"
 
