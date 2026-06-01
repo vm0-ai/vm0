@@ -189,18 +189,16 @@ impl CowLayer {
             let remaining_in_block = self.block_size - block_offset;
             let to_write = remaining_in_block.min(data.len() - pos);
 
-            if !self.write_buffer.contains_key(&block_idx) {
+            let block_data = if let Some(block) = self.write_buffer.get_mut(&block_idx) {
+                block
+            } else {
                 let full_block = if block_offset == 0 && to_write == self.block_size {
                     vec![0u8; self.block_size]
                 } else {
                     self.read_full_block(block_idx)?
                 };
-                self.write_buffer.insert(block_idx, full_block);
-            }
-            let block_data = self
-                .write_buffer
-                .get_mut(&block_idx)
-                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("missing buffer entry")))?;
+                self.write_buffer.entry(block_idx).or_insert(full_block)
+            };
 
             let dest_slice = block_data
                 .get_mut(block_offset..block_offset + to_write)
@@ -567,6 +565,20 @@ mod tests {
         assert!(buf[..100].iter().all(|&b| b == 0xAA));
         assert!(buf[100..110].iter().all(|&b| b == 0xFF));
         assert!(buf[110..].iter().all(|&b| b == 0xAA));
+    }
+
+    #[test]
+    fn second_full_block_write_overwrites_buffered_block() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        cow.write(0, &vec![0xBB; 4096]).unwrap();
+        cow.write(0, &vec![0xCC; 4096]).unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xCC));
     }
 
     #[test]
