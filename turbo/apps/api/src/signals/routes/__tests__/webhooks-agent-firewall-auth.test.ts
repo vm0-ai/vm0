@@ -549,12 +549,14 @@ async function seedCodexModelProvider(
     readonly tokenExpiresAt: Date;
     readonly needsReconnect: boolean;
     readonly lastRefreshErrorCode: string | null;
+    readonly sourceUserId?: string;
   },
 ): Promise<void> {
   const db = store.set(writeDb$);
+  const sourceUserId = args.sourceUserId ?? ORG_SENTINEL_USER_ID;
   await db.insert(modelProviders).values({
     orgId: fixture.orgId,
-    userId: ORG_SENTINEL_USER_ID,
+    userId: sourceUserId,
     type: "codex-oauth-token",
     authMethod: "auth_json",
     tokenExpiresAt: args.tokenExpiresAt,
@@ -563,14 +565,14 @@ async function seedCodexModelProvider(
   });
   await seedSecret({
     orgId: fixture.orgId,
-    userId: ORG_SENTINEL_USER_ID,
+    userId: sourceUserId,
     name: "CHATGPT_ACCESS_TOKEN",
     value: args.accessToken,
     type: "model-provider",
   });
   await seedSecret({
     orgId: fixture.orgId,
-    userId: ORG_SENTINEL_USER_ID,
+    userId: sourceUserId,
     name: "CHATGPT_REFRESH_TOKEN",
     value: args.refreshToken,
     type: "model-provider",
@@ -612,7 +614,10 @@ function notionConnectorState(fixture: FirewallFixture): Promise<{
   return connectorState(fixture, "notion");
 }
 
-async function codexProviderState(fixture: FirewallFixture): Promise<{
+async function codexProviderState(
+  fixture: FirewallFixture,
+  sourceUserId = ORG_SENTINEL_USER_ID,
+): Promise<{
   readonly needsReconnect: boolean;
   readonly lastRefreshErrorCode: string | null;
   readonly tokenExpiresAt: Date | null;
@@ -628,7 +633,7 @@ async function codexProviderState(fixture: FirewallFixture): Promise<{
     .where(
       and(
         eq(modelProviders.orgId, fixture.orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.userId, sourceUserId),
         eq(modelProviders.type, "codex-oauth-token"),
       ),
     )
@@ -3268,6 +3273,84 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       }),
     ).resolves.toBe("fresh-chatgpt-token");
     await expect(codexProviderState(fixture)).resolves.toMatchObject({
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
+    });
+  });
+
+  it("refreshes user-owned codex model-provider OAuth tokens", async () => {
+    const fixture = await track(seedFixture());
+    await seedCodexModelProvider(fixture, {
+      sourceUserId: fixture.userId,
+      accessToken: "stale-user-chatgpt-token",
+      refreshToken: "user-chatgpt-refresh-token",
+      tokenExpiresAt: new Date(now() - 60_000),
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
+    });
+    server.use(
+      http.post("https://auth.openai.com/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "fresh-user-chatgpt-token",
+          refresh_token: "rotated-user-chatgpt-refresh",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const response = await accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            CHATGPT_ACCESS_TOKEN: "stale-user-chatgpt-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+          },
+          secretConnectorMetadataMap: {
+            CHATGPT_ACCESS_TOKEN: {
+              sourceType: "model-provider",
+              sourceUserId: fixture.userId,
+              metadataKey: "codex-oauth-token",
+            },
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.headers.Authorization).toBe(
+      "Bearer fresh-user-chatgpt-token",
+    );
+    expect(response.body.refreshedConnectors).toStrictEqual([
+      "codex-oauth-token",
+    ]);
+    expect(response.body.refreshedSecrets).toStrictEqual([
+      "CHATGPT_ACCESS_TOKEN",
+    ]);
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "CHATGPT_ACCESS_TOKEN",
+        type: "model-provider",
+      }),
+    ).resolves.toBe("fresh-user-chatgpt-token");
+    await expect(
+      readSecret({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "CHATGPT_REFRESH_TOKEN",
+        type: "model-provider",
+      }),
+    ).resolves.toBe("rotated-user-chatgpt-refresh");
+    await expect(
+      codexProviderState(fixture, fixture.userId),
+    ).resolves.toMatchObject({
       needsReconnect: false,
       lastRefreshErrorCode: null,
     });
