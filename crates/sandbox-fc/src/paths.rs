@@ -106,7 +106,7 @@ impl FactoryPaths {
     }
 }
 
-/// Per-sandbox workspace paths (persistent data: config, COW).
+/// Per-sandbox workspace paths (persistent data: config, COW, workspace image).
 pub struct SandboxPaths {
     workspace: PathBuf,
 }
