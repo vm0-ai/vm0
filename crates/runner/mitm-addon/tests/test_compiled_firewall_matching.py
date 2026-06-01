@@ -874,6 +874,16 @@ class TestCompiledFirewallMatching:
                 {"owner": "org", "repo": "repo"},
             ),
             (
+                "https://xn--fa-hia.de",
+                "https://fa%C3%9F.de/repos/org/repo",
+                {"owner": "org", "repo": "repo"},
+            ),
+            (
+                "https://{sub}.xn--fa-hia.de",
+                "https://api.fa%C3%9F.de/repos/org/repo",
+                {"sub": "api", "owner": "org", "repo": "repo"},
+            ),
+            (
                 "https://faß.de",
                 "https://xn--fa-hia.de/repos/org/repo",
                 {"owner": "org", "repo": "repo"},
@@ -966,7 +976,9 @@ class TestCompiledFirewallMatching:
         [
             ("https://fass.de", "https://faß.de/repos/org/repo"),
             ("https://a.example", "https://\uff21.example/repos/org/repo"),
+            ("https://a.example", "https://%EF%BC%A1.example/repos/org/repo"),
             ("https://k.example", "https://\u212a.example/repos/org/repo"),
+            ("https://k.example", "https://%E2%84%AA.example/repos/org/repo"),
             ("https://ß.de", "https://\u1e9e.de/repos/org/repo"),
             ("https://\u03c2.example", "https://\u03f2.example/repos/org/repo"),
             ("https://a\u03c2.example", "https://a\u03a3.example/repos/org/repo"),

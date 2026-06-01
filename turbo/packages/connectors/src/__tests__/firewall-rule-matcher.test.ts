@@ -392,8 +392,20 @@ describe("matchFirewallBaseUrl", () => {
       "/repos",
     ],
     [
+      "percent-encoded Unicode sharp-s runtime with punycode base",
+      "https://fa%C3%9F.de/repos",
+      "https://xn--fa-hia.de",
+      "/repos",
+    ],
+    [
       "parameterized Unicode sharp-s runtime with punycode base",
       "https://api.faß.de/api",
+      "https://{sub}.xn--fa-hia.de",
+      "/api",
+    ],
+    [
+      "parameterized percent-encoded Unicode sharp-s runtime with punycode base",
+      "https://api.fa%C3%9F.de/api",
       "https://{sub}.xn--fa-hia.de",
       "/api",
     ],
