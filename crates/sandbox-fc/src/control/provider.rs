@@ -40,9 +40,9 @@ impl SandboxControl for FirecrackerControl {
             sudo,
         };
 
-        // Add 5 seconds buffer for connection overhead beyond the command timeout.
-        let connect_timeout = timeout + Duration::from_secs(5);
-        let response = send_exec(&sock_path, &request, connect_timeout)
+        // Add 5 seconds for control socket overhead beyond the command timeout.
+        let control_timeout = timeout + Duration::from_secs(5);
+        let response = send_exec(&sock_path, &request, control_timeout)
             .await
             .map_err(|e| {
                 SandboxControlError::Connection(format!("failed to connect to sandbox: {e}"))
