@@ -115,6 +115,7 @@ import { greenhouse } from "./connectors/greenhouse";
 import { groq } from "./connectors/groq";
 import { helicone } from "./connectors/helicone";
 import { heygen } from "./connectors/heygen";
+import { hitem3d } from "./connectors/hitem3d";
 import { htmlcsstoimage } from "./connectors/htmlcsstoimage";
 import { honcho } from "./connectors/honcho";
 import { huggingFace } from "./connectors/hugging-face";
@@ -691,6 +692,7 @@ const CONNECTOR_TYPES_DEF = {
   ...groq,
   ...helicone,
   ...heygen,
+  ...hitem3d,
   ...htmlcsstoimage,
   ...honcho,
   ...huggingFace,
