@@ -179,6 +179,23 @@ async function waitForConnectorStateLockWaiter(args: {
   );
 }
 
+async function holdConnectorStateLock(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorType: string;
+  readonly release: Promise<void>;
+  readonly onAcquired: () => void;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('connector_state:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.connectorType}))`,
+    );
+    args.onAcquired();
+    await args.release;
+  });
+}
+
 async function waitForModelProviderStateLockWaiter(args: {
   readonly orgId: string;
   readonly userId: string;
@@ -2155,6 +2172,83 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         code: "CONNECTOR_NOT_CONFIGURED",
       },
     });
+  });
+
+  it("returns missing configuration when a connector row disappears before locked refresh", async () => {
+    const fixture = await track(seedFixture());
+    await seedExpiredNotionConnector(fixture);
+    let refreshCallCount = 0;
+    server.use(
+      http.post("https://api.notion.com/v1/oauth/token", () => {
+        refreshCallCount += 1;
+        return HttpResponse.json({
+          access_token: "unexpected-notion-token",
+          refresh_token: "unexpected-notion-refresh-token",
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    const lockAcquired = deferred();
+    const releaseLock = deferred();
+    const lockPromise = holdConnectorStateLock({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorType: "notion",
+      release: releaseLock.promise,
+      onAcquired: lockAcquired.resolve,
+    });
+    await lockAcquired.promise;
+
+    const responsePromise = accept(
+      firewallClient().resolve({
+        body: {
+          encryptedSecrets: encryptedSecrets({
+            NOTION_TOKEN: "stale-notion-token",
+          }),
+          authHeaders: {
+            Authorization: `Bearer ${secretTemplate("NOTION_TOKEN")}`,
+          },
+          secretConnectorMap: {
+            NOTION_TOKEN: "notion",
+          },
+        },
+        headers: authHeaders(fixture),
+      }),
+      [424],
+    );
+    const response = await waitForConnectorStateLockWaiter({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorType: "notion",
+    })
+      .then(async () => {
+        const db = store.set(writeDb$);
+        await db
+          .delete(connectors)
+          .where(
+            and(
+              eq(connectors.orgId, fixture.orgId),
+              eq(connectors.userId, fixture.userId),
+              eq(connectors.type, "notion"),
+            ),
+          );
+        releaseLock.resolve();
+
+        return responsePromise;
+      })
+      .finally(async () => {
+        releaseLock.resolve();
+        await Promise.allSettled([lockPromise, responsePromise]);
+      });
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Connector not configured",
+        code: "CONNECTOR_NOT_CONFIGURED",
+      },
+    });
+    expect(refreshCallCount).toBe(0);
   });
 
   it("returns a refresh failure when selected connector refresh tokens are missing", async () => {
