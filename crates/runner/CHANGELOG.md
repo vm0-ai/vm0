@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.105.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.13...runner-rs-v0.105.14) (2026-06-01)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate platform api urls ([#15630](https://github.com/vm0-ai/vm0/issues/15630)) ([5161d39](https://github.com/vm0-ai/vm0/commit/5161d399a919e2071149e6d05b7314716367c1e5))
+
+
+### Refactoring
+
+* deduplicate mitm matcher segments ([#15622](https://github.com/vm0-ai/vm0/issues/15622)) ([5d78a1b](https://github.com/vm0-ai/vm0/commit/5d78a1b941f704ebced670640ceeb3943a51ffc6))
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+* retire legacy firewall matcher ([#15291](https://github.com/vm0-ai/vm0/issues/15291)) ([a288950](https://github.com/vm0-ai/vm0/commit/a2889506f42f55331238d928a64e0c85b69e9ff0))
+
 ## [0.105.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.12...runner-rs-v0.105.13) (2026-06-01)
 
 

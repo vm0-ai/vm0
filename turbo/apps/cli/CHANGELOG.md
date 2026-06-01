@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.177.13](https://github.com/vm0-ai/vm0/compare/cli-v9.177.12...cli-v9.177.13) (2026-06-01)
+
+
+### Refactoring
+
+* retire legacy firewall matcher ([#15291](https://github.com/vm0-ai/vm0/issues/15291)) ([a288950](https://github.com/vm0-ai/vm0/commit/a2889506f42f55331238d928a64e0c85b69e9ff0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/connectors bumped to 1.39.6
+    * @vm0/core bumped to 8.304.9
+
 ## [9.177.12](https://github.com/vm0-ai/vm0/compare/cli-v9.177.11...cli-v9.177.12) (2026-06-01)
 
 

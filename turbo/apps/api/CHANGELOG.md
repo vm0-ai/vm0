@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.90.8](https://github.com/vm0-ai/vm0/compare/api-v1.90.7...api-v1.90.8) (2026-06-01)
+
+
+### Bug Fixes
+
+* **api:** bound axiom log search run filters ([#15618](https://github.com/vm0-ai/vm0/issues/15618)) ([bb77816](https://github.com/vm0-ai/vm0/commit/bb778169bef76b9136fef0e9118b56aa427bc556))
+* **api:** handle duplicate client thread ids ([#15619](https://github.com/vm0-ai/vm0/issues/15619)) ([b7e16cb](https://github.com/vm0-ai/vm0/commit/b7e16cb57dedc7340528a3bb176a04ceb62357ea))
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/connectors bumped to 1.39.6
+    * @vm0/core bumped to 8.304.9
+    * @vm0/db bumped to 1.23.12
+
 ## [1.90.7](https://github.com/vm0-ai/vm0/compare/api-v1.90.6...api-v1.90.7) (2026-06-01)
 
 

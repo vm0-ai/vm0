@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.304.9](https://github.com/vm0-ai/vm0/compare/core-v8.304.8...core-v8.304.9) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/connectors bumped to 1.39.6
+
 ## [8.304.8](https://github.com/vm0-ai/vm0/compare/core-v8.304.7...core-v8.304.8) (2026-06-01)
 
 

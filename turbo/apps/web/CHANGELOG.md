@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.405.4](https://github.com/vm0-ai/vm0/compare/web-v12.405.3...web-v12.405.4) (2026-06-01)
+
+
+### Refactoring
+
+* **web:** remove init services singleton ([#15613](https://github.com/vm0-ai/vm0/issues/15613)) ([6fa1764](https://github.com/vm0-ai/vm0/commit/6fa176412c1f471ca7618680e574938e2115a31b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/core bumped to 8.304.9
+    * @vm0/db bumped to 1.23.12
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.6
+
 ## [12.405.3](https://github.com/vm0-ai/vm0/compare/web-v12.405.2...web-v12.405.3) (2026-06-01)
 
 

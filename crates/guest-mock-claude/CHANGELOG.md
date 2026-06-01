@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.0...guest-mock-claude-v0.18.1) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.7...guest-mock-claude-v0.18.0) (2026-05-29)
 
 
