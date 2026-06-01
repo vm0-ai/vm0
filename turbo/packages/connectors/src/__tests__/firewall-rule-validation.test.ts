@@ -7,6 +7,24 @@ import {
   type FirewallConfig,
 } from "../firewall-types";
 
+function firewallWithPermissionName(name: string): FirewallConfig {
+  return {
+    name: "custom",
+    apis: [
+      {
+        base: "https://api.example.com",
+        auth: { headers: {} },
+        permissions: [
+          {
+            name,
+            rules: ["GET /items"],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 /**
  * Validate that every builtin connector firewall passes the same full
  * validation pipeline as custom (user-supplied) firewalls: base URLs,
@@ -33,25 +51,14 @@ describe("builtin firewall validation", () => {
 });
 
 describe("reserved firewall permission names", () => {
-  it("rejects the unknown permission grant sentinel as a real permission", () => {
-    const firewall: FirewallConfig = {
-      name: "custom",
-      apis: [
-        {
-          base: "https://api.example.com",
-          auth: { headers: {} },
-          permissions: [
-            {
-              name: UNKNOWN_PERMISSION_GRANT,
-              rules: ["GET /items"],
-            },
-          ],
-        },
-      ],
-    };
+  it.each(["all", UNKNOWN_PERMISSION_GRANT])(
+    'rejects "%s" as a real permission name',
+    (name) => {
+      const firewall = firewallWithPermissionName(name);
 
-    expect(() => {
-      return collectAndValidatePermissions(firewall);
-    }).toThrow(`permission named "${UNKNOWN_PERMISSION_GRANT}"`);
-  });
+      expect(() => {
+        return collectAndValidatePermissions(firewall);
+      }).toThrow(`permission named "${name}"`);
+    },
+  );
 });
