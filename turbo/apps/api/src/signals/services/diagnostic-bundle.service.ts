@@ -754,6 +754,7 @@ function mapNetworkLogs(
       latency_ms: event.latency_ms,
       request_size: event.request_size,
       response_size: event.response_size,
+      browser_user_agent: event.browser_user_agent,
       dns_event: event.dns_event,
       dns_query_type: event.dns_query_type,
       dns_result: event.dns_result,

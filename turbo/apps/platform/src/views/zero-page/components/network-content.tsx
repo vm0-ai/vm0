@@ -351,6 +351,12 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     entry.response_size,
     formatSize(entry.response_size),
   );
+  addField(
+    out,
+    "Browser User-Agent",
+    entry.browser_user_agent,
+    entry.browser_user_agent ? "Yes" : "No",
+  );
   addField(out, "DNS Event", entry.dns_event, formatValue(entry.dns_event));
   addField(
     out,
@@ -515,8 +521,17 @@ function NetworkLogRow({
         >
           {formatLatency(entry.latency_ms)}
         </TableCell>
-        <TableCell className="text-xs text-cyan-600 dark:text-cyan-400 truncate max-w-[120px]">
-          {entry.firewall_name ?? ""}
+        <TableCell className="max-w-[120px]">
+          <div className="flex flex-wrap items-center gap-1 text-xs">
+            {entry.firewall_name ? (
+              <span className="truncate text-cyan-600 dark:text-cyan-400">
+                {entry.firewall_name}
+              </span>
+            ) : null}
+            {entry.browser_user_agent ? (
+              <span className="font-mono text-muted-foreground">browser</span>
+            ) : null}
+          </div>
         </TableCell>
       </TableRow>
       {expanded && <NetworkLogRowDetail entry={entry} />}

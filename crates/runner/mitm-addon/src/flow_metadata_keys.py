@@ -11,6 +11,7 @@ ORIGINAL_URL: Final = "original_url"
 NETWORK_LOG_TARGET: Final = "network_log_target"
 CAPTURE_BODY: Final = "capture_body"
 CLI_AGENT_TYPE: Final = "cli_agent_type"
+BROWSER_USER_AGENT: Final = "browser_user_agent"
 
 # Timing metadata
 HTTP_REQUEST_START_MONOTONIC: Final = "http_request_start_monotonic"

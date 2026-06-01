@@ -275,7 +275,7 @@ def _http_network_log_entry(
     response_size: int,
 ) -> dict:
     url, host, port = _network_log_target(flow, original_url)
-    return {
+    entry = {
         "type": "http",
         "action": action,
         "host": host,
@@ -287,6 +287,9 @@ def _http_network_log_entry(
         "request_size": request_size,
         "response_size": response_size,
     }
+    if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+        entry["browser_user_agent"] = True
+    return entry
 
 
 def _block_authority_validation_error(flow: http.HTTPFlow, error: AuthorityValidationError) -> None:
@@ -410,6 +413,8 @@ async def request(flow: http.HTTPFlow) -> None:
         )
 
         hostname = trusted_authority.host.lower()
+        if _is_browser_request(flow):
+            flow.metadata[metadata_keys.BROWSER_USER_AGENT] = True
 
         # --- Step 1: Auto-allow VM0 API requests ---
         # The agent MUST be able to communicate with the platform (heartbeat,
@@ -480,7 +485,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 )
                 return
             if isinstance(result, matching.FirewallAllow):
-                if _is_browser_request(flow):
+                if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
                     _record_browser_firewall_passthrough(flow, result)
                     return
 

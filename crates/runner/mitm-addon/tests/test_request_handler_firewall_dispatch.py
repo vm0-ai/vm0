@@ -435,10 +435,16 @@ async def test_browser_firewall_match_skips_auth_injection(
     assert flow.metadata["firewall_rule_match"] == ""
     assert flow.metadata["firewall_params"] == {}
     assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata["browser_user_agent"] is True
     assert "firewall_api_id" not in flow.metadata
     assert "auth_resolved_secrets" not in flow.metadata
     assert "auth_url_rewrite" not in flow.metadata
     assert "_usage_flow_tracked" not in flow.metadata
+
+    flow.response = mitm_addon.http.Response.make(200)
+    mitm_addon.response(flow)
+    network_log_entry = json.loads((tmp_path / "net.jsonl").read_text().splitlines()[0])
+    assert network_log_entry["browser_user_agent"] is True
 
 
 async def test_non_browser_firewall_match_still_injects_auth(
@@ -538,6 +544,7 @@ async def test_browser_firewall_match_does_not_bypass_denied_unknown_policy(
     assert flow.metadata["firewall_action"] == "DENY"
     assert flow.metadata["firewall_base"] == "https://api.stripe.com"
     assert flow.metadata["firewall_name"] == "stripe"
+    assert flow.metadata["browser_user_agent"] is True
     body = json.loads(flow.response.content)
     assert body["error"] == "permission_denied"
     assert body["reason"] == "unknown_endpoint"
