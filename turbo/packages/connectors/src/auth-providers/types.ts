@@ -1,5 +1,8 @@
 import type {
   AuthCodeGrantConnectorType,
+  ConnectorAuthCodeGrantAuthMethodId,
+  ConnectorAuthMethodIdsByAccessKind,
+  ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorAuthProviderType,
   ConnectorType,
   DeviceAuthGrantConnectorType,
@@ -25,25 +28,31 @@ interface NoneGrantProvider {
   readonly kind: "none";
 }
 
-export interface AuthCodeGrantProvider<T extends AuthCodeGrantConnectorType> {
+export interface AuthCodeGrantProvider<
+  T extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
+    ConnectorAuthCodeGrantAuthMethodId<T>,
+> {
   readonly kind: "auth-code";
   buildAuthUrl(
-    args: ConnectorAuthCodeAuthorizeArgs<T>,
+    args: ConnectorAuthCodeAuthorizeArgs<T, Method>,
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
-    args: ConnectorAuthCodeExchangeArgs<T>,
+    args: ConnectorAuthCodeExchangeArgs<T, Method>,
   ): Promise<OAuthTokenResult>;
 }
 
 export interface DeviceAuthGrantProvider<
   T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
+    ConnectorDeviceAuthGrantAuthMethodId<T>,
 > {
   readonly kind: "device-auth";
   startDeviceAuth(
-    args: ConnectorDeviceAuthorizationStartArgs<T>,
+    args: ConnectorDeviceAuthorizationStartArgs<T, Method>,
   ): Promise<OAuthDeviceAuthStartResult>;
   pollDeviceAuth(
-    args: ConnectorDeviceAuthorizationPollArgs<T>,
+    args: ConnectorDeviceAuthorizationPollArgs<T, Method>,
   ): Promise<OAuthDeviceAuthPollResult>;
 }
 
@@ -54,12 +63,14 @@ export interface NoneAccessProvider {
 
 export interface RefreshTokenAccessProvider<
   T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
+    ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
 > {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
   getRefreshSecretName(): string;
   refreshToken(
-    args: ConnectorAuthProviderRefreshArgs<T>,
+    args: ConnectorAuthProviderRefreshArgs<T, Method>,
   ): Promise<OAuthRefreshResult>;
 }
 
@@ -90,16 +101,20 @@ export interface AuthProvider<TGrant, TAccess, TRevoke> {
 
 export type AuthCodeConnectorAuthProvider<
   T extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
+    ConnectorAuthCodeGrantAuthMethodId<T>,
 > = AuthProvider<
-  AuthCodeGrantProvider<T>,
+  AuthCodeGrantProvider<T, Method>,
   ConnectorAuthProviderAccess<T>,
   ConnectorAuthProviderRevoke<T>
 >;
 
 export type DeviceAuthConnectorAuthProvider<
   T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
+    ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = AuthProvider<
-  DeviceAuthGrantProvider<T>,
+  DeviceAuthGrantProvider<T, Method>,
   ConnectorAuthProviderAccess<T>,
   ConnectorAuthProviderRevoke<T>
 >;
