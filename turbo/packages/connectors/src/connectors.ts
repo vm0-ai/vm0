@@ -362,6 +362,10 @@ export type ConnectorPlatformSecretName =
 
 interface ConnectorEnvBindingAccessConfigBase {
   readonly envBindings: ConnectorEnvBindings;
+  /**
+   * `$secrets.NAME` backing sources read from platform env instead of connector
+   * DB storage. Runtime aliases must still be declared in `envBindings`.
+   */
   readonly platformSecrets?: readonly ConnectorPlatformSecretName[];
 }
 
