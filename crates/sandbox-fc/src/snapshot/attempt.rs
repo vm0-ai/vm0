@@ -1180,7 +1180,8 @@ mod tests {
     async fn snapshot_workspace_image_cleanup_preserves_nonempty_attempt_dir() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
-        let workspace_image = attempt.workspace_image_path.clone();
+        let workspace_image =
+            snapshot_attempt_workspace_image_file(attempt.paths().workspace(), "default-test");
         let attempt_dir = workspace_image
             .parent()
             .expect("workspace image parent")
@@ -1196,7 +1197,7 @@ mod tests {
         tokio::fs::write(&cow_file, b"cow")
             .await
             .expect("write cow");
-        attempt.track_workspace_image_for_test();
+        attempt.track_workspace_image_for_test(workspace_image.clone());
 
         assert!(attempt.cleanup_workspace_image("failed to cleanup workspace image in test"));
 
