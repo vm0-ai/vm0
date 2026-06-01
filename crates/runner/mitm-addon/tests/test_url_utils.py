@@ -152,6 +152,14 @@ class TestBuildRewriteUrl:
         )
         assert url == "https://example.com/hook?token=a@b"
 
+    def test_base_query_allows_encoded_backslash(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?next=%5csecret",
+            "/",
+            "",
+        )
+        assert url == "https://example.com/hook?next=%5csecret"
+
     def test_rel_path_with_both_queries_merged(self):
         url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=abc",

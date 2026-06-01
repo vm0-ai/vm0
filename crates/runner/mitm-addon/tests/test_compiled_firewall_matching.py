@@ -1181,6 +1181,31 @@ class TestCompiledFirewallMatching:
         assert compiled.reason == "unsafe_path"
         assert compiled.permissions == ()
 
+    def test_compiled_allows_encoded_backslash_in_query(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        compiled = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123?next=%5csecret",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(compiled, matching.FirewallAllow)
+        assert compiled.permission == "read"
+
     def test_compiled_blocks_unsafe_path_consumed_by_parameterized_base(self):
         fws = wrap_firewalls(
             [

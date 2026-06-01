@@ -745,6 +745,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         assert mock_forward.call_count == 0
         assert flow.response is not None
         assert flow.response.status_code == 502
+        assert "super-secret-token" not in flow.response.text
         assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
         for log_call in mock_log.call_args_list:
             assert "super-secret-token" not in json.dumps(log_call.args)
