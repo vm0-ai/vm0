@@ -1705,6 +1705,19 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
             `${type}/${authMethod}: platform secret ${secretName} must be exposed through envBindings`,
           ).toBe(true);
         }
+        if (accessMetadata.kind === "refresh-token") {
+          const platformSecretNames: ReadonlySet<string> = new Set(
+            accessMetadata.platformSecrets,
+          );
+          expect(
+            platformSecretNames.has(accessMetadata.accessToken),
+            `${type}/${authMethod}: access token storage must stay connector-owned`,
+          ).toBe(false);
+          expect(
+            platformSecretNames.has(accessMetadata.refreshToken),
+            `${type}/${authMethod}: refresh token storage must stay connector-owned`,
+          ).toBe(false);
+        }
       }
     }
   });

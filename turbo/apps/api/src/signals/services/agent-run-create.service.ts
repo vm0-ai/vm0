@@ -347,9 +347,6 @@ interface CreateAgentRunArgs {
 
 interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
-  // Platform-owned connector secrets are kept separate so they preserve the old
-  // final-merge precedence and never enter connector refresh ownership maps.
-  readonly platformSecrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly connectorTypes: readonly ConnectorType[];
@@ -1568,7 +1565,6 @@ interface StoredConnectorRequirements {
 
 interface ResolvedStoredConnectorState {
   readonly secrets: Record<string, string>;
-  readonly platformSecrets: Record<string, string>;
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
   readonly environment: Record<string, string>;
@@ -1577,7 +1573,6 @@ interface ResolvedStoredConnectorState {
 function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
   return {
     secrets: undefined,
-    platformSecrets: undefined,
     vars: undefined,
     secretConnectorMap: undefined,
     connectorTypes: [],
@@ -1737,8 +1732,8 @@ async function loadStoredConnectorVariables(
   );
 }
 
-function resolvePlatformSecretBinding(args: {
-  readonly platformSecrets: Record<string, string>;
+function handlePlatformSecretBinding(args: {
+  readonly secrets: Record<string, string>;
   readonly envName: string;
   readonly secretName: string;
   readonly platformSecretNames: ReadonlySet<string>;
@@ -1749,7 +1744,7 @@ function resolvePlatformSecretBinding(args: {
 
   const secretValue = optionalEnv(args.secretName);
   if (secretValue) {
-    args.platformSecrets[args.envName] = secretValue;
+    args.secrets[args.envName] = secretValue;
   }
   return true;
 }
@@ -1760,7 +1755,6 @@ function resolveStoredConnectorState(
   connectorVariables: Record<string, string>,
 ): ResolvedStoredConnectorState {
   const secrets: Record<string, string> = {};
-  const platformSecrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
   const environment: Record<string, string> = {};
@@ -1777,8 +1771,8 @@ function resolveStoredConnectorState(
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
         if (
-          resolvePlatformSecretBinding({
-            platformSecrets,
+          handlePlatformSecretBinding({
+            secrets,
             envName,
             secretName,
             platformSecretNames,
@@ -1838,7 +1832,6 @@ function resolveStoredConnectorState(
 
   return {
     secrets,
-    platformSecrets,
     vars,
     secretConnectorMap,
     environment,
@@ -1900,7 +1893,6 @@ async function loadStoredConnectorContext(
 
     return {
       secrets: compactRecord(resolved.secrets),
-      platformSecrets: compactRecord(resolved.platformSecrets),
       vars: compactRecord(resolved.vars),
       secretConnectorMap: compactRecord(resolved.secretConnectorMap),
       connectorTypes: allowedConnectorRows.map((row) => {
@@ -3031,7 +3023,6 @@ function buildStoredExecutionSecrets(args: {
       args.modelProvider?.secrets,
       args.bodySecrets,
       args.customConnectorContext.secrets,
-      args.connectorContext.platformSecrets,
     ],
   });
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
@@ -3044,7 +3035,6 @@ function buildStoredExecutionSecrets(args: {
       args.modelProvider?.secrets,
       args.bodySecrets,
       args.customConnectorContext.secrets,
-      args.connectorContext.platformSecrets,
     ),
     secretConnectorMap:
       mergeRecords(
