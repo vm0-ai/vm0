@@ -35,7 +35,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
@@ -100,7 +100,7 @@ pub struct FirecrackerConfig {
 ///
 /// See the module-level docs for the two-hash identity scheme
 /// (`rootfs_hash` covers the local rootfs, `snapshot_hash` is local-only).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ProfileConfig {
     /// Content-addressed rootfs hash (shared across snapshot variants on this host).
     pub rootfs_hash: String,
@@ -110,9 +110,49 @@ pub struct ProfileConfig {
     pub vcpu: u32,
     /// Guest RAM in MiB. Must be non-zero and ≤ 1 TiB.
     pub memory_mb: u32,
-    /// Guest disk in MiB, used to size the rootfs image and workspace drive.
+    /// Rootfs disk in MiB. Used to size the bootable rootfs image.
     /// Must be non-zero and ≤ 1 TiB.
-    pub disk_mb: u32,
+    pub rootfs_disk_mb: u32,
+    /// Workspace disk in MiB. Used to size the writable workspace drive.
+    /// Must be non-zero and ≤ 1 TiB.
+    pub workspace_disk_mb: u32,
+}
+
+#[derive(Deserialize)]
+struct ProfileConfigWire {
+    rootfs_hash: String,
+    snapshot_hash: String,
+    vcpu: u32,
+    memory_mb: u32,
+    rootfs_disk_mb: Option<u32>,
+    workspace_disk_mb: Option<u32>,
+    disk_mb: Option<u32>,
+}
+
+impl<'de> Deserialize<'de> for ProfileConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ProfileConfigWire::deserialize(deserializer)?;
+        let rootfs_disk_mb = wire
+            .rootfs_disk_mb
+            .or(wire.disk_mb)
+            .ok_or_else(|| serde::de::Error::missing_field("rootfs_disk_mb"))?;
+        let workspace_disk_mb = wire
+            .workspace_disk_mb
+            .or(wire.disk_mb)
+            .ok_or_else(|| serde::de::Error::missing_field("workspace_disk_mb"))?;
+
+        Ok(Self {
+            rootfs_hash: wire.rootfs_hash,
+            snapshot_hash: wire.snapshot_hash,
+            vcpu: wire.vcpu,
+            memory_mb: wire.memory_mb,
+            rootfs_disk_mb,
+            workspace_disk_mb,
+        })
+    }
 }
 
 /// Sandbox-level knobs for concurrency and the idle-VM pool.
@@ -285,9 +325,13 @@ async fn validate(
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
 
     for (name, profile) in &config.profiles {
-        if profile.vcpu == 0 || profile.memory_mb == 0 || profile.disk_mb == 0 {
+        if profile.vcpu == 0
+            || profile.memory_mb == 0
+            || profile.rootfs_disk_mb == 0
+            || profile.workspace_disk_mb == 0
+        {
             return Err(RunnerError::Config(format!(
-                "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
+                "profile {name}: vcpu, memory_mb, rootfs_disk_mb, and workspace_disk_mb must be non-zero"
             )));
         }
         if profile.vcpu > MAX_VCPU {
@@ -302,10 +346,16 @@ async fn validate(
                 profile.memory_mb
             )));
         }
-        if profile.disk_mb > MAX_DISK_MB {
+        if profile.rootfs_disk_mb > MAX_DISK_MB {
             return Err(RunnerError::Config(format!(
-                "profile {name}: disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
-                profile.disk_mb
+                "profile {name}: rootfs_disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
+                profile.rootfs_disk_mb
+            )));
+        }
+        if profile.workspace_disk_mb > MAX_DISK_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: workspace_disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
+                profile.workspace_disk_mb
             )));
         }
         if validate_image_artifacts {

@@ -52,7 +52,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     };
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
-    let job_disk_mb = profile_config.disk_mb;
+    let job_workspace_disk_mb = profile_config.workspace_disk_mb;
     // Look up factory for this profile.
     let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
@@ -136,7 +136,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         profile_name,
         vcpu: job_vcpu,
         memory_mb: job_memory,
-        disk_mb: job_disk_mb,
+        workspace_disk_mb: job_workspace_disk_mb,
         budget_lease: active_lease,
         restore_guest_state: *restore_guest_state,
         device_rate_limits,

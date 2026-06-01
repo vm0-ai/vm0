@@ -101,7 +101,7 @@ pub struct ExecutorConfig {
 pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
-    pub disk_mb: u32,
+    pub workspace_disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
@@ -544,7 +544,7 @@ async fn execute_new_sandbox(
         },
         device_rate_limits: params.device_rate_limits.clone(),
         workspace_drive: Some(sandbox::WorkspaceDriveConfig {
-            size_bytes: u64::from(params.disk_mb) * 1024 * 1024,
+            size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         }),
     };
 
@@ -4481,7 +4481,7 @@ mod tests {
         JobParams {
             vcpu: 2,
             memory_mb: 2048,
-            disk_mb: 16_384,
+            workspace_disk_mb: 16_384,
             restore_guest_state: false,
             device_rate_limits: None,
         }
@@ -5128,7 +5128,7 @@ mod tests {
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let limits = test_device_rate_limits();
         let params = JobParams {
-            disk_mb: 512,
+            workspace_disk_mb: 512,
             device_rate_limits: Some(limits.clone()),
             ..default_params()
         };
