@@ -167,7 +167,7 @@ fn build_codex_args(
         "danger-full-access".to_string(),
         "--skip-git-repo-check".to_string(),
         "-C".to_string(),
-        env::working_dir().to_string(),
+        env::CANONICAL_WORKING_DIR.to_string(),
     ];
 
     args.push("-c".to_string());

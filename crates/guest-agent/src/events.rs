@@ -362,10 +362,9 @@ fn extract_claude_session_id(event: &Value) -> Option<(String, String)> {
     }
 
     let home = env::home_dir();
-    let working_dir = env::working_dir();
-    let project_name = working_dir
+    let project_name = env::CANONICAL_WORKING_DIR
         .strip_prefix('/')
-        .unwrap_or(working_dir)
+        .unwrap_or(env::CANONICAL_WORKING_DIR)
         .replace('/', "-");
     let history_path = format!("{home}/.claude/projects/-{project_name}/{session_id}.jsonl");
     Some((session_id.to_string(), history_path))

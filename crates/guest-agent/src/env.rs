@@ -270,10 +270,6 @@ pub fn resume_session_id() -> &'static str {
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
 }
-/// Canonical guest working directory.
-pub fn working_dir() -> &'static str {
-    CANONICAL_WORKING_DIR
-}
 /// Encoded secret values from `VM0_SECRET_VALUES`; empty string means no secrets.
 pub fn secret_values() -> &'static str {
     &SECRET_VALUES
