@@ -6,7 +6,7 @@ import {
 } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
-import { command, type Getter, type Setter } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   getCanonicalModelDisplayName,
   getVm0VisibleModels,
@@ -138,9 +138,6 @@ interface RunAgentResult {
 }
 
 type ModelRoutePin = IntegrationModelRoutePin;
-
-type ComputedGetter = Getter;
-type ComputedSetter = Setter;
 
 const AGENTPHONE_EMAIL_HANDLE_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/u;
 const AGENTPHONE_PHONE_HANDLE_PATTERN = /^\+[1-9]\d{7,14}$/u;
@@ -1674,340 +1671,392 @@ function formatAgentPhoneModelOptionsMessage(
   ].join("\n");
 }
 
-async function handleModelCommand(args: {
-  readonly get: ComputedGetter;
-  readonly set: ComputedSetter;
-  readonly event: AgentPhoneMessageEvent;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const visibleModels = new Set(getVm0VisibleModels());
-  const [policies, preference] = await Promise.all([
-    args.set(
-      listOrgModelPolicies$,
-      { orgId: args.orgId, userId: args.userId },
-      args.signal,
-    ),
-    args.get(userModelPreference({ orgId: args.orgId, userId: args.userId })),
-  ]);
-  args.signal.throwIfAborted();
-
-  const options = policies.policies.flatMap((policy) => {
-    if (
-      !isSupportedRunModel(policy.model) ||
-      !visibleModels.has(policy.model) ||
-      policy.routeStatus !== "valid"
-    ) {
-      return [];
-    }
-    return {
-      model: policy.model,
-      label: policy.modelLabel,
-      isDefault: policy.isDefault,
-    };
-  });
-
-  if (options.length === 0) {
-    await sendAgentPhoneSlashCommandText(
-      args.event,
-      "Error: No models are configured for this workspace.",
-      args.signal,
-    );
-    return;
-  }
-
-  const input = commandArgument(args.event.body);
-  if (!input) {
-    await sendAgentPhoneSlashCommandText(
-      args.event,
-      formatAgentPhoneModelOptionsMessage(options, preference.selectedModel),
-      args.signal,
-    );
-    return;
-  }
-
-  const option = findModelOption(options, input);
-  if (!option) {
-    await sendAgentPhoneSlashCommandText(
-      args.event,
-      [
-        `Error: Unknown model "${input}".`,
-        "",
-        formatAgentPhoneModelOptionsMessage(options, preference.selectedModel),
-      ].join("\n"),
-      args.signal,
-    );
-    return;
-  }
-
-  await args.set(
-    updateUserModelPreference$,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      preference: { selectedModel: option.model },
+const handleModelCommand$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly event: AgentPhoneMessageEvent;
+      readonly orgId: string;
+      readonly userId: string;
     },
-    args.signal,
-  );
-  args.signal.throwIfAborted();
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const visibleModels = new Set(getVm0VisibleModels());
+    const [policies, preference] = await Promise.all([
+      set(
+        listOrgModelPolicies$,
+        { orgId: args.orgId, userId: args.userId },
+        signal,
+      ),
+      get(userModelPreference({ orgId: args.orgId, userId: args.userId })),
+    ]);
+    signal.throwIfAborted();
 
-  await sendAgentPhoneSlashCommandText(
-    args.event,
-    `Switched to ${option.label}.`,
-    args.signal,
-  );
-}
+    const options = policies.policies.flatMap((policy) => {
+      if (
+        !isSupportedRunModel(policy.model) ||
+        !visibleModels.has(policy.model) ||
+        policy.routeStatus !== "valid"
+      ) {
+        return [];
+      }
+      return {
+        model: policy.model,
+        label: policy.modelLabel,
+        isDefault: policy.isDefault,
+      };
+    });
 
-async function dispatchAgentPhoneCommand(args: {
-  readonly get: ComputedGetter;
-  readonly set: ComputedSetter;
-  readonly db: Db;
-  readonly command: string | undefined;
-  readonly event: AgentPhoneMessageEvent;
-  readonly userLink: AgentPhoneUserLink | null;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  switch (args.command) {
-    case "connect": {
-      await handleConnectCommand(args);
-      return true;
-    }
-    case "disconnect": {
-      await handleDisconnectCommand(args);
-      return true;
-    }
-    case "new_session": {
-      await handleNewSessionCommand(args);
-      return true;
-    }
-    case "help": {
+    if (options.length === 0) {
       await sendAgentPhoneSlashCommandText(
         args.event,
-        formatHelpMessage(),
-        args.signal,
+        "Error: No models are configured for this workspace.",
+        signal,
       );
-      return true;
+      return;
     }
-    case "model": {
-      if (!args.userLink) {
-        await sendConnectPrompt(
+
+    const input = commandArgument(args.event.body);
+    if (!input) {
+      await sendAgentPhoneSlashCommandText(
+        args.event,
+        formatAgentPhoneModelOptionsMessage(options, preference.selectedModel),
+        signal,
+      );
+      return;
+    }
+
+    const option = findModelOption(options, input);
+    if (!option) {
+      await sendAgentPhoneSlashCommandText(
+        args.event,
+        [
+          `Error: Unknown model "${input}".`,
+          "",
+          formatAgentPhoneModelOptionsMessage(
+            options,
+            preference.selectedModel,
+          ),
+        ].join("\n"),
+        signal,
+      );
+      return;
+    }
+
+    await set(
+      updateUserModelPreference$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        preference: { selectedModel: option.model },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    await sendAgentPhoneSlashCommandText(
+      args.event,
+      `Switched to ${option.label}.`,
+      signal,
+    );
+  },
+);
+
+const dispatchAgentPhoneCommand$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly command: string | undefined;
+      readonly event: AgentPhoneMessageEvent;
+      readonly userLink: AgentPhoneUserLink | null;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    switch (args.command) {
+      case "connect": {
+        await handleConnectCommand({
+          event: args.event,
+          userLink: args.userLink,
+          signal,
+        });
+        return true;
+      }
+      case "disconnect": {
+        await handleDisconnectCommand({
+          db: args.db,
+          event: args.event,
+          userLink: args.userLink,
+          signal,
+        });
+        return true;
+      }
+      case "new_session": {
+        await handleNewSessionCommand({
+          db: args.db,
+          event: args.event,
+          userLink: args.userLink,
+          signal,
+        });
+        return true;
+      }
+      case "help": {
+        await sendAgentPhoneSlashCommandText(
           args.event,
-          { slashCommand: true },
-          args.signal,
+          formatHelpMessage(),
+          signal,
         );
         return true;
       }
-      await handleModelCommand({
-        get: args.get,
-        set: args.set,
-        event: args.event,
-        orgId: args.userLink.orgId,
-        userId: args.userLink.vm0UserId,
-        signal: args.signal,
-      });
-      return true;
+      case "model": {
+        if (!args.userLink) {
+          await sendConnectPrompt(args.event, { slashCommand: true }, signal);
+          return true;
+        }
+        await set(
+          handleModelCommand$,
+          {
+            event: args.event,
+            orgId: args.userLink.orgId,
+            userId: args.userLink.vm0UserId,
+          },
+          signal,
+        );
+        return true;
+      }
+      default: {
+        return false;
+      }
     }
-    default: {
+  },
+);
+
+const handleAgentPhoneCommandIfPresent$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly event: AgentPhoneMessageEvent;
+      readonly userLink: AgentPhoneUserLink | null;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const commandText = parseAgentPhoneCommand(args.event.body);
+    if (commandText === undefined) {
       return false;
     }
-  }
-}
 
-async function handleAgentPhoneCommandIfPresent(args: {
-  readonly get: ComputedGetter;
-  readonly set: ComputedSetter;
-  readonly db: Db;
-  readonly event: AgentPhoneMessageEvent;
-  readonly userLink: AgentPhoneUserLink | null;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const commandText = parseAgentPhoneCommand(args.event.body);
-  if (commandText === undefined) {
-    return false;
-  }
+    if (
+      await blockUnauthorizedGroupAccountCommand({
+        db: args.db,
+        event: args.event,
+        commandText,
+        userLink: args.userLink,
+        signal,
+      })
+    ) {
+      return true;
+    }
 
-  if (await blockUnauthorizedGroupAccountCommand({ ...args, commandText })) {
-    return true;
-  }
-
-  return dispatchAgentPhoneCommand({
-    get: args.get,
-    set: args.set,
-    db: args.db,
-    command: commandText,
-    event: args.event,
-    userLink: args.userLink,
-    signal: args.signal,
-  });
-}
-
-async function runAgentForAgentPhone(
-  set: ComputedSetter,
-  args: {
-    readonly auth: {
-      readonly tokenType: "session";
-      readonly userId: string;
-      readonly orgId: string;
-      readonly orgRole: "member";
-    };
-    readonly agent: WorkspaceAgent;
-    readonly sessionId: string | undefined;
-    readonly prompt: string;
-    readonly threadContext: string;
-    readonly userInfoExtras: { readonly agentphoneHandle: string };
-    readonly event: AgentPhoneMessageEvent;
-    readonly callbackContext: AgentPhoneCallbackContext;
-    readonly apiStartTime: number;
-    readonly modelRoute: ModelRoutePin | undefined;
-  },
-  signal: AbortSignal,
-): Promise<RunAgentResult> {
-  const result = await set(
-    createZeroRun$,
-    {
-      auth: args.auth,
-      body: {
-        prompt: args.prompt,
-        agentId: args.agent.agentId,
-        sessionId: args.sessionId,
-        ...(args.modelRoute?.modelProviderType
-          ? { modelProvider: args.modelRoute.modelProviderType }
-          : {}),
-      },
-      apiStartTime: args.apiStartTime,
-      triggerSource: "agentphone",
-      appendSystemPrompt: buildAgentPhonePrompt(
-        {
-          sharedNumber: optionalEnv("AGENTPHONE_PHONE_NUMBER") ?? "",
-          phoneHandle: args.event.fromNumber,
-          conversationId: args.event.conversationId,
-          channel: args.event.channel,
-          isGroup: isAgentPhoneGroupEvent(args.event),
-          messageId: args.event.messageId,
-          agentphoneAgentId: args.event.agentphoneAgentId,
-        },
-        args.threadContext,
-      ),
-      userInfoExtras: args.userInfoExtras,
-      modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
-      modelProviderCredentialScope:
-        args.modelRoute?.modelProviderCredentialScope,
-      selectedModelOverride: args.modelRoute?.selectedModel,
-      callbacks: [
-        {
-          url: `${env("VM0_API_URL")}/api/internal/callbacks/agentphone`,
-          secret: randomBytes(32).toString("hex"),
-          payload: args.callbackContext,
-        },
-      ],
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  if (result.status === 201) {
-    return {
-      status: result.body.status === "queued" ? "queued" : "accepted",
-      runId: result.body.runId,
-    };
-  }
-
-  return {
-    status: "failed",
-    response: await set(
-      formatIntegrationRunError$,
+    return set(
+      dispatchAgentPhoneCommand$,
       {
-        orgId: args.auth.orgId,
-        userId: args.auth.userId,
-        code: result.body.error.code,
-        message: result.body.error.message,
+        db: args.db,
+        command: commandText,
+        event: args.event,
+        userLink: args.userLink,
       },
       signal,
-    ),
-  };
-}
+    );
+  },
+);
 
-async function resolveAgentPhoneRunFailureAuditLogsUrl(args: {
-  readonly get: ComputedGetter;
+const runAgentForAgentPhone$ = command(
+  async (
+    { set },
+    args: {
+      readonly auth: {
+        readonly tokenType: "session";
+        readonly userId: string;
+        readonly orgId: string;
+        readonly orgRole: "member";
+      };
+      readonly agent: WorkspaceAgent;
+      readonly sessionId: string | undefined;
+      readonly prompt: string;
+      readonly threadContext: string;
+      readonly userInfoExtras: { readonly agentphoneHandle: string };
+      readonly event: AgentPhoneMessageEvent;
+      readonly callbackContext: AgentPhoneCallbackContext;
+      readonly apiStartTime: number;
+      readonly modelRoute: ModelRoutePin | undefined;
+    },
+    signal: AbortSignal,
+  ): Promise<RunAgentResult> => {
+    const result = await set(
+      createZeroRun$,
+      {
+        auth: args.auth,
+        body: {
+          prompt: args.prompt,
+          agentId: args.agent.agentId,
+          sessionId: args.sessionId,
+          ...(args.modelRoute?.modelProviderType
+            ? { modelProvider: args.modelRoute.modelProviderType }
+            : {}),
+        },
+        apiStartTime: args.apiStartTime,
+        triggerSource: "agentphone",
+        appendSystemPrompt: buildAgentPhonePrompt(
+          {
+            sharedNumber: optionalEnv("AGENTPHONE_PHONE_NUMBER") ?? "",
+            phoneHandle: args.event.fromNumber,
+            conversationId: args.event.conversationId,
+            channel: args.event.channel,
+            isGroup: isAgentPhoneGroupEvent(args.event),
+            messageId: args.event.messageId,
+            agentphoneAgentId: args.event.agentphoneAgentId,
+          },
+          args.threadContext,
+        ),
+        userInfoExtras: args.userInfoExtras,
+        modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          args.modelRoute?.modelProviderCredentialScope,
+        selectedModelOverride: args.modelRoute?.selectedModel,
+        callbacks: [
+          {
+            url: `${env("VM0_API_URL")}/api/internal/callbacks/agentphone`,
+            secret: randomBytes(32).toString("hex"),
+            payload: args.callbackContext,
+          },
+        ],
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === 201) {
+      return {
+        status: result.body.status === "queued" ? "queued" : "accepted",
+        runId: result.body.runId,
+      };
+    }
+
+    return {
+      status: "failed",
+      response: await set(
+        formatIntegrationRunError$,
+        {
+          orgId: args.auth.orgId,
+          userId: args.auth.userId,
+          code: result.body.error.code,
+          message: result.body.error.message,
+        },
+        signal,
+      ),
+    };
+  },
+);
+
+function resolveAgentPhoneRunFailureAuditLogsUrl(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly runId: string | undefined;
-}): Promise<string | undefined> {
-  if (!args.runId) {
-    return undefined;
-  }
-  const overrides = await args.get(
-    userFeatureSwitchOverrides(args.orgId, args.userId),
-  );
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
-    userId: args.userId,
-    orgId: args.orgId,
-    overrides,
+}): Computed<Promise<string | undefined>> {
+  return computed(async (get): Promise<string | undefined> => {
+    if (!args.runId) {
+      return undefined;
+    }
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+      userId: args.userId,
+      orgId: args.orgId,
+      overrides,
+    });
+    if (!enabled) {
+      return undefined;
+    }
+    return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
   });
-  if (!enabled) {
-    return undefined;
-  }
-  return `${env("APP_URL")}/activities/${encodeURIComponent(args.runId)}`;
 }
 
 export function formatAgentPhoneAuditLink(logsUrl: string): string {
   return `Audit: ${logsUrl}`;
 }
 
-async function sendAgentPhoneFailedRunResult(args: {
-  readonly get: ComputedGetter;
-  readonly event: AgentPhoneMessageEvent;
-  readonly userLink: AgentPhoneUserLink;
-  readonly result: RunAgentResult;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const logsUrl = await resolveAgentPhoneRunFailureAuditLogsUrl({
-    get: args.get,
-    orgId: args.userLink.orgId,
-    userId: args.userLink.vm0UserId,
-    runId: args.result.runId,
-  });
-  args.signal.throwIfAborted();
-  await sendAgentPhoneText(
-    args.event,
-    [
-      args.result.response ??
-        "An unexpected error occurred. Please try again later.",
-      logsUrl ? formatAgentPhoneAuditLink(logsUrl) : null,
-    ]
-      .filter((part): part is string => {
-        return Boolean(part);
-      })
-      .join("\n\n"),
-    args.signal,
-  );
-}
-
-async function handleAgentPhoneRunResult(args: {
-  readonly get: ComputedGetter;
-  readonly event: AgentPhoneMessageEvent;
-  readonly userLink: AgentPhoneUserLink;
-  readonly result: RunAgentResult;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  if (args.result.status === "queued") {
+const sendAgentPhoneFailedRunResult$ = command(
+  async (
+    { get },
+    args: {
+      readonly event: AgentPhoneMessageEvent;
+      readonly userLink: AgentPhoneUserLink;
+      readonly result: RunAgentResult;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const logsUrl = await get(
+      resolveAgentPhoneRunFailureAuditLogsUrl({
+        orgId: args.userLink.orgId,
+        userId: args.userLink.vm0UserId,
+        runId: args.result.runId,
+      }),
+    );
+    signal.throwIfAborted();
     await sendAgentPhoneText(
       args.event,
-      "Run queued because the concurrency limit was reached. It will start automatically when a slot is available.",
-      args.signal,
+      [
+        args.result.response ??
+          "An unexpected error occurred. Please try again later.",
+        logsUrl ? formatAgentPhoneAuditLink(logsUrl) : null,
+      ]
+        .filter((part): part is string => {
+          return Boolean(part);
+        })
+        .join("\n\n"),
+      signal,
     );
-    return;
-  }
+  },
+);
 
-  if (args.result.status === "failed") {
-    await sendAgentPhoneFailedRunResult(args);
-  }
-}
+const handleAgentPhoneRunResult$ = command(
+  async (
+    { set },
+    args: {
+      readonly event: AgentPhoneMessageEvent;
+      readonly userLink: AgentPhoneUserLink;
+      readonly result: RunAgentResult;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (args.result.status === "queued") {
+      await sendAgentPhoneText(
+        args.event,
+        "Run queued because the concurrency limit was reached. It will start automatically when a slot is available.",
+        signal,
+      );
+      return;
+    }
+
+    if (args.result.status === "failed") {
+      await set(
+        sendAgentPhoneFailedRunResult$,
+        {
+          event: args.event,
+          userLink: args.userLink,
+          result: args.result,
+        },
+        signal,
+      );
+    }
+  },
+);
 
 export const handleAgentPhoneMessage$ = command(
   async (
-    { get, set },
+    { set },
     params: {
       readonly event: AgentPhoneMessageEvent;
       readonly userLink: AgentPhoneUserLink | null;
@@ -2021,14 +2070,15 @@ export const handleAgentPhoneMessage$ = command(
     }
 
     if (
-      await handleAgentPhoneCommandIfPresent({
-        get,
-        set,
-        db,
-        event: params.event,
-        userLink: params.userLink,
+      await set(
+        handleAgentPhoneCommandIfPresent$,
+        {
+          db,
+          event: params.event,
+          userLink: params.userLink,
+        },
         signal,
-      })
+      )
     ) {
       return;
     }
@@ -2099,8 +2149,8 @@ export const handleAgentPhoneMessage$ = command(
       isGroup,
     });
 
-    const result = await runAgentForAgentPhone(
-      set,
+    const result = await set(
+      runAgentForAgentPhone$,
       {
         auth: {
           tokenType: "session",
@@ -2134,13 +2184,15 @@ export const handleAgentPhoneMessage$ = command(
       signal,
     );
 
-    await handleAgentPhoneRunResult({
-      get,
-      event: params.event,
-      userLink: params.userLink,
-      result,
+    await set(
+      handleAgentPhoneRunResult$,
+      {
+        event: params.event,
+        userLink: params.userLink,
+        result,
+      },
       signal,
-    });
+    );
   },
 );
 
