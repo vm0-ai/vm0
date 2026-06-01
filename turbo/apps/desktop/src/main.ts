@@ -108,17 +108,45 @@ async function runAuthWindow(request: {
   await pending;
 }
 
-const authSession = new DesktopAuthSession({
-  apiBaseUrl: desktopApiBaseUrl,
-  cookieUrls: [config.webUrl, config.platformUrl],
-  cookieSource: session.fromPartition(config.sessionPartition),
-  tokenUrl: desktopAuthTokenUrl,
-  consumeUrl: (code) => buildDesktopAuthConsumeUrl(config.webUrl, code),
-  selectOrgUrl: desktopAuthSelectOrgUrl,
-  runAuthWindow,
-  onChange: notifyDesktopAuthChanged,
-  onAuthCompleted: maybeStartComputerUseAfterAuth,
-});
+let authSession: DesktopAuthSession | null = null;
+let pendingDesktopAuthCode: string | null = null;
+
+function getAuthSession(): DesktopAuthSession {
+  if (authSession) {
+    return authSession;
+  }
+
+  if (!app.isReady()) {
+    throw new Error("Desktop auth session is unavailable before app is ready");
+  }
+
+  authSession = new DesktopAuthSession({
+    apiBaseUrl: desktopApiBaseUrl,
+    cookieUrls: [config.webUrl, config.platformUrl],
+    cookieSource: session.fromPartition(config.sessionPartition),
+    tokenUrl: desktopAuthTokenUrl,
+    consumeUrl: (code) => buildDesktopAuthConsumeUrl(config.webUrl, code),
+    selectOrgUrl: desktopAuthSelectOrgUrl,
+    runAuthWindow,
+    onChange: notifyDesktopAuthChanged,
+    onAuthCompleted: maybeStartComputerUseAfterAuth,
+  });
+
+  if (pendingDesktopAuthCode) {
+    authSession.queuePendingCode(pendingDesktopAuthCode);
+    pendingDesktopAuthCode = null;
+  }
+
+  return authSession;
+}
+
+function queuePendingDesktopAuthCode(code: string): void {
+  if (authSession) {
+    authSession.queuePendingCode(code);
+    return;
+  }
+  pendingDesktopAuthCode = code;
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -181,7 +209,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       sessionFetch: createDesktopComputerUseSessionFetch({
         platformUrl: config.platformUrl,
         session: desktopSession,
-        getAuthToken: (options) => authSession.getToken(options),
+        getAuthToken: (options) => getAuthSession().getToken(options),
       }),
       hostFetch: (input, init) => {
         return fetch(input, init);
@@ -258,12 +286,12 @@ async function stopComputerUseRuntimeForQuit(): Promise<void> {
 function installDesktopAuth(): void {
   installDesktopAuthIpc(
     {
-      getState: () => authSession.getAuthState(),
+      getState: () => getAuthSession().getAuthState(),
       openSignIn: () => {
         openExternal(desktopAuthStartUrl);
       },
-      openOrgSelection: () => authSession.selectOrganization(),
-      completeSignIn: (token) => authSession.completeSignIn(token),
+      openOrgSelection: () => getAuthSession().selectOrganization(),
+      completeSignIn: (token) => getAuthSession().completeSignIn(token),
     },
     {
       rendererUrl: localRendererUrl,
@@ -338,8 +366,8 @@ function openDesktopAuthCallback(rawUrl: string): boolean {
 
   desktopAuthStartGate.suppressRetry();
 
-  if (!app.isReady()) {
-    authSession.queuePendingCode(callback.code);
+  if (!authSession) {
+    queuePendingDesktopAuthCode(callback.code);
     return true;
   }
 
@@ -587,8 +615,8 @@ function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
   }
 
   desktopAuthStartGate.suppressRetry();
-  if (!app.isReady()) {
-    authSession.queuePendingCode(callback.code);
+  if (!authSession) {
+    queuePendingDesktopAuthCode(callback.code);
     return true;
   }
 
@@ -606,7 +634,7 @@ function queueDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
   }
 
   desktopAuthStartGate.suppressRetry();
-  authSession.queuePendingCode(callback.code);
+  queuePendingDesktopAuthCode(callback.code);
   return true;
 }
 
@@ -675,13 +703,16 @@ if (!hasSingleInstanceLock) {
     installDesktopRendererProtocol();
     installComputerUse();
     refreshComputerUsePermissionsForState();
+    const desktopAuthSession = getAuthSession();
     installDesktopAuth();
     queueDesktopAuthCallbackArgv(process.argv);
 
-    const pendingCode = authSession.takePendingCode();
+    const pendingCode = desktopAuthSession.takePendingCode();
     await createMainWindow();
     if (pendingCode) {
-      void authSession.consumeCode(pendingCode).catch(logDesktopAuthError);
+      void desktopAuthSession
+        .consumeCode(pendingCode)
+        .catch(logDesktopAuthError);
     }
 
     app.on("activate", () => {
