@@ -1,7 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import {
   isExpiredScreenshotPointer,
   isStoredScreenshotPointer,
@@ -27,6 +37,7 @@ import { writeDb$, type Db } from "../external/db";
 import { downloadS3Buffer, putS3Object } from "../external/s3";
 
 const COMPUTER_USE_HOST_CLOSED_AFTER_MS = 90 * 1000;
+const COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS = 120 * 1000;
 const L = logger("ZeroComputerUse");
 
 const COMPUTER_USE_READ_COMMANDS = [
@@ -453,6 +464,29 @@ function commandErrorFromRow(
   };
 }
 
+function runningCommandHasTimedOut(
+  row: ComputerUseCommandRow,
+  now: Date,
+): boolean {
+  if (!row.claimedAt) {
+    return false;
+  }
+  const timeoutMs =
+    row.timeoutMs ?? COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS;
+  return now.getTime() - row.claimedAt.getTime() > timeoutMs;
+}
+
+function timeoutErrorForCommand(
+  row: ComputerUseCommandRow,
+): ComputerUseCommandError {
+  const timeoutMs =
+    row.timeoutMs ?? COMPUTER_USE_RUNNING_COMMAND_DEFAULT_TIMEOUT_MS;
+  return {
+    code: "timeout",
+    message: `Computer-use command timed out after ${timeoutMs}ms`,
+  };
+}
+
 function serializeHost(row: ComputerUseHostRow, now: Date) {
   return {
     id: row.id,
@@ -519,6 +553,65 @@ async function insertComputerUseCommandAuditEvent(
     error: errorForAudit(params.error),
     createdAt: params.createdAt,
   });
+}
+
+async function failStaleRunningComputerUseCommands(
+  tx: ComputerUseTx,
+  params: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly hostId?: string;
+    readonly now: Date;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const filters: SQL[] = [
+    eq(computerUseCommands.orgId, params.orgId),
+    eq(computerUseCommands.userId, params.userId),
+    eq(computerUseCommands.status, "running"),
+  ];
+  if (params.hostId) {
+    filters.push(eq(computerUseCommands.hostId, params.hostId));
+  }
+
+  const runningCommands = await tx
+    .select()
+    .from(computerUseCommands)
+    .where(and(...filters))
+    .for("update", { skipLocked: true });
+  signal.throwIfAborted();
+
+  for (const commandRow of runningCommands) {
+    if (!runningCommandHasTimedOut(commandRow, params.now)) {
+      continue;
+    }
+
+    const error = timeoutErrorForCommand(commandRow);
+    const [updated] = await tx
+      .update(computerUseCommands)
+      .set({
+        status: "failed",
+        result: { error },
+        error: error.code,
+        completedAt: params.now,
+        updatedAt: params.now,
+      })
+      .where(eq(computerUseCommands.id, commandRow.id))
+      .returning();
+    signal.throwIfAborted();
+
+    if (!updated) {
+      throw new Error("Failed to mark timed-out computer-use command");
+    }
+
+    await insertComputerUseCommandAuditEvent(tx, {
+      command: updated,
+      event: "completed",
+      error,
+      createdAt: params.now,
+    });
+    signal.throwIfAborted();
+  }
 }
 
 function resolveComputerUseCommandTargets(params: {
@@ -956,24 +1049,33 @@ export const getComputerUseCommand$ = command(
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const [row] = await db
-      .select({
-        command: computerUseCommands,
-        hostName: computerUseHosts.displayName,
-      })
-      .from(computerUseCommands)
-      .leftJoin(
-        computerUseHosts,
-        eq(computerUseCommands.hostId, computerUseHosts.id),
-      )
-      .where(
-        and(
-          eq(computerUseCommands.orgId, params.orgId),
-          eq(computerUseCommands.userId, params.userId),
-          eq(computerUseCommands.id, params.commandId),
-        ),
-      )
-      .limit(1);
+    const now = nowDate();
+    const row = await db.transaction(async (tx) => {
+      await failStaleRunningComputerUseCommands(
+        tx,
+        { orgId: params.orgId, userId: params.userId, now },
+        signal,
+      );
+      const [commandRow] = await tx
+        .select({
+          command: computerUseCommands,
+          hostName: computerUseHosts.displayName,
+        })
+        .from(computerUseCommands)
+        .leftJoin(
+          computerUseHosts,
+          eq(computerUseCommands.hostId, computerUseHosts.id),
+        )
+        .where(
+          and(
+            eq(computerUseCommands.orgId, params.orgId),
+            eq(computerUseCommands.userId, params.userId),
+            eq(computerUseCommands.id, params.commandId),
+          ),
+        )
+        .limit(1);
+      return commandRow;
+    });
     signal.throwIfAborted();
     return row ? serializeCommand(row.command, row.hostName) : null;
   },
@@ -1182,6 +1284,34 @@ export const claimNextComputerUseHostCommand$ = command(
         })
         .where(eq(computerUseHosts.id, host.id));
       signal.throwIfAborted();
+
+      await failStaleRunningComputerUseCommands(
+        tx,
+        {
+          orgId: host.orgId,
+          userId: host.userId,
+          hostId: host.id,
+          now,
+        },
+        signal,
+      );
+
+      const [runningCommand] = await tx
+        .select({ id: computerUseCommands.id })
+        .from(computerUseCommands)
+        .where(
+          and(
+            eq(computerUseCommands.orgId, host.orgId),
+            eq(computerUseCommands.userId, host.userId),
+            eq(computerUseCommands.hostId, host.id),
+            eq(computerUseCommands.status, "running"),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (runningCommand) {
+        return { status: "idle" as const };
+      }
 
       const effectiveCapabilities =
         capabilities.length > 0 ? capabilities : host.supportedCapabilities;

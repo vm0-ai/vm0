@@ -16,6 +16,8 @@ import {
 } from "./computer-use-startup-gate";
 
 const ONLINE_POLL_MS = 2_000;
+const COMMAND_COMPLETION_RETRY_DELAY_MS = 2_000;
+const COMMAND_COMPLETION_MAX_ATTEMPTS = 3;
 const AUTH_ME_PATH = "/api/auth/me";
 
 export type ComputerUseHostFetch = (
@@ -63,6 +65,18 @@ type ComputerUseHostNextResponse =
   | ComputerUseHostNextIdleResponse
   | ComputerUseHostNextCommandResponse;
 
+function commandFailureFromError(
+  error: unknown,
+): ComputerUseCommandExecutionResult {
+  return {
+    status: "failed",
+    error: {
+      code: "accessibility_unavailable",
+      message: error instanceof Error ? error.message : String(error),
+    },
+  };
+}
+
 function replaceHostPrefix(hostname: string, target: string): string {
   return hostname.replace(/(^|-)(api|app|platform|www)\./, `$1${target}.`);
 }
@@ -99,7 +113,9 @@ export class ComputerUseHostRuntime {
   private readonly scheduleTimeout: typeof setTimeout;
   private readonly clearScheduledTimeout: typeof clearTimeout;
   private running = false;
-  private timer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private commandTimer: NodeJS.Timeout | null = null;
+  private commandExecutionRunning = false;
   private hostToken: string | null = null;
   private state: ComputerUseHostRuntimeState = {
     status: "idle",
@@ -129,15 +145,27 @@ export class ComputerUseHostRuntime {
       return;
     }
     this.running = true;
-    await this.tick();
+    try {
+      const nextDelay = await this.startHost();
+      if (nextDelay === null) {
+        this.running = false;
+        return;
+      }
+      this.scheduleHeartbeat(nextDelay);
+      this.scheduleCommandPoll(nextDelay);
+    } catch (error) {
+      this.setState({
+        status: "error",
+        lastError: error instanceof Error ? error.message : String(error),
+      });
+      this.running = false;
+    }
   }
 
   async stop(): Promise<void> {
     this.running = false;
-    if (this.timer) {
-      this.clearScheduledTimeout(this.timer);
-      this.timer = null;
-    }
+    this.clearHeartbeatTimer();
+    this.clearCommandTimer();
     const hostToken = this.hostToken;
     if (!hostToken) {
       return;
@@ -227,39 +255,78 @@ export class ComputerUseHostRuntime {
     });
   }
 
-  private schedule(delayMs: number): void {
+  private clearHeartbeatTimer(): void {
+    if (!this.heartbeatTimer) {
+      return;
+    }
+    this.clearScheduledTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
+  private clearCommandTimer(): void {
+    if (!this.commandTimer) {
+      return;
+    }
+    this.clearScheduledTimeout(this.commandTimer);
+    this.commandTimer = null;
+  }
+
+  private scheduleHeartbeat(delayMs: number): void {
     if (!this.running) {
       return;
     }
-    this.timer = this.scheduleTimeout(() => {
-      this.timer = null;
-      void this.tick();
+    this.heartbeatTimer = this.scheduleTimeout(() => {
+      this.heartbeatTimer = null;
+      void this.heartbeatLoop();
     }, delayMs);
   }
 
-  private async tick(): Promise<void> {
-    let nextDelay: number | null = ONLINE_POLL_MS;
+  private scheduleCommandPoll(delayMs: number): void {
+    if (!this.running || this.commandTimer) {
+      return;
+    }
+    this.commandTimer = this.scheduleTimeout(() => {
+      this.commandTimer = null;
+      void this.commandLoop();
+    }, delayMs);
+  }
+
+  private async heartbeatLoop(): Promise<void> {
     try {
-      if (!this.hostToken) {
-        nextDelay = await this.startHost();
-      } else {
-        if (await this.heartbeat()) {
-          await this.claimAndExecuteCommand();
-        } else {
-          nextDelay = null;
-        }
+      if (!this.hostToken || !(await this.heartbeat())) {
+        this.running = false;
+        this.clearCommandTimer();
+        return;
       }
+      this.scheduleHeartbeat(ONLINE_POLL_MS);
     } catch (error) {
       this.setState({
         status: "error",
         lastError: error instanceof Error ? error.message : String(error),
       });
-      nextDelay = null;
+      this.running = false;
+      this.clearCommandTimer();
+    }
+  }
+
+  private async commandLoop(): Promise<void> {
+    if (this.commandExecutionRunning) {
+      return;
+    }
+    this.commandExecutionRunning = true;
+    try {
+      await this.claimAndExecuteCommand();
+    } catch (error) {
+      if (this.running) {
+        this.setState({
+          status: "error",
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      }
     } finally {
-      if (nextDelay === null) {
-        this.running = false;
-      } else {
-        this.schedule(nextDelay);
+      this.commandExecutionRunning = false;
+      if (this.running && this.hostToken) {
+        this.scheduleCommandPoll(ONLINE_POLL_MS);
       }
     }
   }
@@ -423,18 +490,7 @@ export class ComputerUseHostRuntime {
         await this.getPermissions(),
       );
     } catch (error) {
-      const completedAtMs = Date.now();
-      this.finishLocalCommandLogEntry({
-        commandId: body.command.id,
-        status: "failed",
-        result: null,
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-        completedAt: new Date(completedAtMs).toISOString(),
-        durationMs: completedAtMs - startedAtMs,
-      });
-      throw error;
+      completed = commandFailureFromError(error);
     }
     const completedAtMs = Date.now();
     this.finishLocalCommandLogEntry({
@@ -445,24 +501,63 @@ export class ComputerUseHostRuntime {
       completedAt: new Date(completedAtMs).toISOString(),
       durationMs: completedAtMs - startedAtMs,
     });
-    const response = await this.hostFetch(
-      `/api/zero/computer-use/host/commands/${body.command.id}/complete`,
-      {
-        method: "POST",
-        body: JSON.stringify(completed),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(
-        `Computer Use command completion failed: ${response.status}`,
-      );
+    if (!this.running || !this.hostToken) {
+      return;
     }
+    await this.completeCommandWithRetry(body.command.id, completed);
     this.setState({
       status: "online",
       lastCommandAt: new Date().toISOString(),
       lastError: null,
     });
     await this.refreshAuditEvents();
+  }
+
+  private async completeCommandWithRetry(
+    commandId: string,
+    completed: ComputerUseCommandExecutionResult,
+  ): Promise<void> {
+    let lastError: Error | null = null;
+    for (
+      let attempt = 1;
+      attempt <= COMMAND_COMPLETION_MAX_ATTEMPTS;
+      attempt++
+    ) {
+      try {
+        const response = await this.hostFetch(
+          `/api/zero/computer-use/host/commands/${commandId}/complete`,
+          {
+            method: "POST",
+            body: JSON.stringify(completed),
+          },
+        );
+        if (response.ok) {
+          return;
+        }
+        lastError = new Error(
+          `Computer Use command completion failed: ${response.status}`,
+        );
+      } catch (error) {
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error(
+                `Computer Use command completion failed: ${String(error)}`,
+              );
+      }
+
+      if (attempt < COMMAND_COMPLETION_MAX_ATTEMPTS) {
+        await this.sleep(COMMAND_COMPLETION_RETRY_DELAY_MS);
+      }
+    }
+
+    throw lastError ?? new Error("Computer Use command completion failed");
+  }
+
+  private sleep(delayMs: number): Promise<void> {
+    return new Promise((resolve) => {
+      this.scheduleTimeout(resolve, delayMs);
+    });
   }
 
   private hostFetch(path: string, init: RequestInit): Promise<Response> {
