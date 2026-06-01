@@ -521,7 +521,7 @@ function NetworkLogRow({
         >
           {formatLatency(entry.latency_ms)}
         </TableCell>
-        <TableCell className="max-w-[120px]">
+        <TableCell className="w-[160px] max-w-[160px]">
           <div className="flex min-w-0 flex-wrap items-center gap-1 text-xs">
             {entry.firewall_name ? (
               <span className="min-w-0 max-w-full truncate text-cyan-600 dark:text-cyan-400">
@@ -586,7 +586,7 @@ export function NetworkContent({
             <TableHead>URL / Host</TableHead>
             <TableHead className="w-[60px]">Status</TableHead>
             <TableHead className="w-[80px]">Latency</TableHead>
-            <TableHead className="w-[100px]">Permission</TableHead>
+            <TableHead className="w-[160px]">Permission</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
