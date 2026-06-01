@@ -303,11 +303,12 @@ def usage_webhook_server() -> Iterator[UsageWebhookServer]:
 
 
 @pytest.fixture
-def usage_webhook_api(usage_webhook_server, mitm_ctx):
+def usage_webhook_api(mitm_ctx):
     @contextlib.contextmanager
     def _api() -> Iterator[UsageWebhookServer]:
-        with mitm_ctx(api_url=usage_webhook_server.api_url):
-            yield usage_webhook_server
+        server = UsageWebhookServer()
+        with server.run(), mitm_ctx(api_url=server.api_url):
+            yield server
 
     return _api
 
