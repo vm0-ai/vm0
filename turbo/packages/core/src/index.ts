@@ -220,7 +220,7 @@ export {
   triggerSourceSchema,
   connectorTypeSchema,
   CONNECTOR_TYPES,
-  getConnectorSecretNames,
+  getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,

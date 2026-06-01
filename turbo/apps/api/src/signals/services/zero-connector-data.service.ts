@@ -13,7 +13,7 @@ import {
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNames,
-  getConnectorSecretNames,
+  getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
   type ManualGrantFieldNames,
@@ -676,7 +676,7 @@ export const deleteZeroConnectorLocalState$ = command(
       await deleteConnectorScopedSecretNames(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        names: getConnectorSecretNames(args.type, existing.authMethod),
+        names: getConnectorOwnedSecretNames(args.type, existing.authMethod),
         signal,
       });
       await deleteConnectorScopedVariableNames(tx, {
@@ -968,7 +968,7 @@ async function cleanupExistingStoredConnectorForManualGrantConnect(
   await deleteConnectorScopedSecretNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: getConnectorSecretNames(args.type, existing.authMethod),
+    names: getConnectorOwnedSecretNames(args.type, existing.authMethod),
     signal: args.signal,
   });
   await deleteConnectorScopedVariableNames(db, {
@@ -1240,7 +1240,7 @@ function allowedConnectorTokenSecretNames(
   type: ConnectorAuthProviderType,
   authMethod: ConnectorAuthMethodId,
 ): Set<string> {
-  return new Set(getConnectorSecretNames(type, authMethod));
+  return new Set(getConnectorOwnedSecretNames(type, authMethod));
 }
 
 function isPrimaryConnectorTokenSecret(args: {
@@ -1478,9 +1478,9 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
   }
 
   const targetSecretNames = new Set(
-    getConnectorSecretNames(args.type, args.authMethod),
+    getConnectorOwnedSecretNames(args.type, args.authMethod),
   );
-  const obsoleteSecretNames = getConnectorSecretNames(
+  const obsoleteSecretNames = getConnectorOwnedSecretNames(
     args.type,
     args.existingAuthMethod,
   ).filter((name) => {

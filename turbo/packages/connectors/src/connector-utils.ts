@@ -700,13 +700,15 @@ export function getRuntimeAvailableConnectorTypes(
 }
 
 /**
- * Get secret names for a specific auth method
+ * Get connector-owned secret storage names for a specific auth method.
  */
-export function getConnectorSecretNames(
+export function getConnectorOwnedSecretNames(
   type: ConnectorType,
   authMethod: string,
 ): string[] {
-  return connectorMethodSecretNames(getConnectorAuthMethod(type, authMethod));
+  return connectorMethodOwnedSecretNames(
+    getConnectorAuthMethod(type, authMethod),
+  );
 }
 
 /**
@@ -719,7 +721,7 @@ export function getConnectorVariableNames(
   return connectorMethodVariableNames(getConnectorAuthMethod(type, authMethod));
 }
 
-function connectorMethodSecretNames(
+function connectorMethodOwnedSecretNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
   if (!method) {
@@ -835,7 +837,7 @@ export function getConnectorEnvNamesForSecret(
     const config = CONNECTOR_TYPES[type];
 
     const found = Object.values(config.authMethods).some((method) => {
-      return connectorMethodSecretNames(method).includes(secretName);
+      return connectorMethodOwnedSecretNames(method).includes(secretName);
     });
     if (!found) {
       continue;
@@ -954,7 +956,7 @@ export function getConnectorTypeForSecretName(
       }
     }
     for (const method of Object.values(config.authMethods)) {
-      if (connectorMethodSecretNames(method).includes(name)) {
+      if (connectorMethodOwnedSecretNames(method).includes(name)) {
         return type;
       }
     }

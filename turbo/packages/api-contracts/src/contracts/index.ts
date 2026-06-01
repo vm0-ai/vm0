@@ -708,7 +708,7 @@ export {
   type ConnectorEnvBindings,
 } from "@vm0/connectors/connectors";
 export {
-  getConnectorSecretNames,
+  getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,

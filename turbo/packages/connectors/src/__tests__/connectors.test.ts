@@ -50,7 +50,7 @@ import {
   getConnectorEnvBindingEntries,
   getConnectorManualGrantFieldNames,
   getRuntimeAvailableConnectorTypes,
-  getConnectorSecretNames,
+  getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   hasConnectorAuthCodeGrant,
   hasConnectorDeviceAuthGrant,
@@ -459,7 +459,7 @@ describe("connector auth method config", () => {
 
     for (const type of CONNECTOR_TYPE_KEYS) {
       for (const authMethod of Object.keys(CONNECTOR_TYPES[type].authMethods)) {
-        for (const name of getConnectorSecretNames(type, authMethod)) {
+        for (const name of getConnectorOwnedSecretNames(type, authMethod)) {
           secretOwners.set(name, [
             ...(secretOwners.get(name) ?? []),
             `${type}:${authMethod}`,
@@ -1723,7 +1723,7 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
   });
 
   it("excludes platform-owned sources from connector-owned secret names", () => {
-    expect(getConnectorSecretNames("google-ads", "oauth")).toStrictEqual([
+    expect(getConnectorOwnedSecretNames("google-ads", "oauth")).toStrictEqual([
       "GOOGLE_ADS_ACCESS_TOKEN",
       "GOOGLE_ADS_REFRESH_TOKEN",
     ]);
@@ -1845,7 +1845,7 @@ describe("getConnectorEnvBindingEntries", () => {
     for (const type of connectorTypeSchema.options) {
       if (!hasConnectorAuthorizationGrant(type)) continue;
 
-      const oauthSecrets = getConnectorSecretNames(type, "oauth");
+      const oauthSecrets = getConnectorOwnedSecretNames(type, "oauth");
       const prefix = oauthSecrets
         .find((s) => {
           return s.endsWith("_ACCESS_TOKEN");
