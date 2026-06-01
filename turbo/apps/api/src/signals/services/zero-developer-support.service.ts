@@ -85,17 +85,19 @@ export const submitZeroDeveloperSupport$ = command(
       return { kind: "invalid_consent_code" };
     }
 
-    const { reference } = await submitDiagnosticBundle(get, {
-      title: args.title,
-      description: args.description,
-      userId: args.userId,
-      orgId: args.orgId,
-      runId: args.runId,
-      run,
-      referencePrefix: "ds",
-      s3PathPrefix: "developer-support",
-      emailSubjectPrefix: "[Developer Support]",
-    });
+    const { reference } = await get(
+      submitDiagnosticBundle({
+        title: args.title,
+        description: args.description,
+        userId: args.userId,
+        orgId: args.orgId,
+        runId: args.runId,
+        run,
+        referencePrefix: "ds",
+        s3PathPrefix: "developer-support",
+        emailSubjectPrefix: "[Developer Support]",
+      }),
+    );
     signal.throwIfAborted();
 
     return { kind: "ok", reference };

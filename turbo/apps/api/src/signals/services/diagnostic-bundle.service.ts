@@ -9,7 +9,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import type { Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 
 import { escapeAplString } from "../../lib/axiom-apl";
 import { env } from "../../lib/env";
@@ -29,7 +29,6 @@ const log = logger("service:diagnostic-bundle");
 const DOWNLOAD_EXPIRY_SECONDS = 72 * 60 * 60;
 const AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY = 4;
 
-type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 type ServiceDb = Pick<Db, "select">;
 
 interface ZipEntry {
@@ -139,103 +138,114 @@ async function assembleZip(entries: readonly ZipEntry[]): Promise<Buffer> {
   return done;
 }
 
-export async function submitDiagnosticBundle(
-  get: ComputedGetter,
+export function submitDiagnosticBundle(
   params: DiagnosticBundleParams,
-): Promise<DiagnosticBundleResult> {
-  const { title, description, userId, orgId, runId, run } = params;
-  const reference = `${params.referencePrefix}-${randomUUID().slice(0, 8)}`;
-  const sessionId = run.continuedFromSessionId;
-  const db = getDb(get);
+): Computed<Promise<DiagnosticBundleResult>> {
+  return computed(async (get): Promise<DiagnosticBundleResult> => {
+    const { title, description, userId, orgId, runId, run } = params;
+    const reference = `${params.referencePrefix}-${randomUUID().slice(0, 8)}`;
+    const sessionId = run.continuedFromSessionId;
+    const db = get(db$);
 
-  const [connectors, agentConfig, sessionRuns] = await Promise.all([
-    collectConnectors(get, orgId, userId),
-    collectAgentConfig(db, run.agentComposeVersionId),
-    collectSessionRuns(db, runId, sessionId),
-  ]);
+    const [connectors, agentConfig, sessionRuns] = await Promise.all([
+      get(collectConnectors(orgId, userId)),
+      collectAgentConfig(db, run.agentComposeVersionId),
+      collectSessionRuns(db, runId, sessionId),
+    ]);
 
-  const sessionRunIds = sessionRuns.map((sessionRun) => {
-    return sessionRun.id;
+    const sessionRunIds = sessionRuns.map((sessionRun) => {
+      return sessionRun.id;
+    });
+    const [agentEvents, systemLogText, networkLogEntries] = await Promise.all([
+      get(collectAgentEvents(sessionRuns)),
+      get(collectSystemLog(sessionRunIds)),
+      get(collectNetworkLog(sessionRunIds)),
+    ]);
+    const promptEvents = buildPromptEvents(sessionRuns);
+    const chatHistory = sortChatHistory(promptEvents, agentEvents);
+
+    log.debug("Collected chat history for diagnostic bundle", {
+      reference,
+      runCount: sessionRunIds.length,
+      eventCount: agentEvents.length,
+      promptCount: promptEvents.length,
+    });
+
+    const activityLogs = await get(
+      collectActivityLogs(sessionRuns, agentConfig),
+    );
+    const zipEntries = buildZipEntries({
+      reference,
+      userId,
+      orgId,
+      runId,
+      sessionId,
+      title,
+      description,
+      chatHistory,
+      run,
+      safeConnectors: safeConnectorSummaries(connectors),
+      agentConfig,
+      activityLogs,
+      systemLogText,
+      networkLogEntries,
+    });
+    const { downloadUrl, expiresAt } = await get(
+      uploadDiagnosticZip({
+        zipEntries,
+        s3PathPrefix: params.s3PathPrefix,
+        orgId,
+        reference,
+      }),
+    );
+
+    const [userEmail, orgName] = await Promise.all([
+      get(resolveUserEmail(userId)),
+      get(resolveOrgName(orgId)),
+    ]);
+
+    await createPlainSupportThread({
+      userId,
+      userEmail,
+      orgId,
+      orgName,
+      runId,
+      title,
+      description,
+      reference,
+      downloadUrl,
+      expiresAt,
+      emailSubjectPrefix: params.emailSubjectPrefix,
+    });
+
+    log.debug("Diagnostic bundle submitted", { reference, runId, orgId });
+
+    return { reference };
   });
-  const [agentEvents, systemLogText, networkLogEntries] = await Promise.all([
-    collectAgentEvents(get, sessionRuns),
-    collectSystemLog(get, sessionRunIds),
-    collectNetworkLog(get, sessionRunIds),
-  ]);
-  const promptEvents = buildPromptEvents(sessionRuns);
-  const chatHistory = sortChatHistory(promptEvents, agentEvents);
-
-  log.debug("Collected chat history for diagnostic bundle", {
-    reference,
-    runCount: sessionRunIds.length,
-    eventCount: agentEvents.length,
-    promptCount: promptEvents.length,
-  });
-
-  const activityLogs = await collectActivityLogs(get, sessionRuns, agentConfig);
-  const zipEntries = buildZipEntries({
-    reference,
-    userId,
-    orgId,
-    runId,
-    sessionId,
-    title,
-    description,
-    chatHistory,
-    run,
-    safeConnectors: safeConnectorSummaries(connectors),
-    agentConfig,
-    activityLogs,
-    systemLogText,
-    networkLogEntries,
-  });
-  const { downloadUrl, expiresAt } = await uploadDiagnosticZip(get, {
-    zipEntries,
-    s3PathPrefix: params.s3PathPrefix,
-    orgId,
-    reference,
-  });
-
-  const [userEmail, orgName] = await Promise.all([
-    resolveUserEmail(get, userId),
-    resolveOrgName(get, orgId),
-  ]);
-
-  await createPlainSupportThread({
-    userId,
-    userEmail,
-    orgId,
-    orgName,
-    runId,
-    title,
-    description,
-    reference,
-    downloadUrl,
-    expiresAt,
-    emailSubjectPrefix: params.emailSubjectPrefix,
-  });
-
-  log.debug("Diagnostic bundle submitted", { reference, runId, orgId });
-
-  return { reference };
 }
 
-function getDb(get: ComputedGetter): ServiceDb {
-  return get(db$);
-}
-
-async function collectConnectors(
-  get: ComputedGetter,
+function collectConnectors(
   orgId: string,
   userId: string,
-) {
-  const response = await tapError(
-    get(zeroConnectorList({ orgId, userId })),
-    (error) => {
-      log.warn("Failed to collect connectors", { error: String(error) });
-    },
-  );
-  return response?.connectors ?? [];
+): Computed<
+  Promise<
+    readonly {
+      readonly type: unknown;
+      readonly authMethod: unknown;
+      readonly needsReconnect: unknown;
+      readonly externalUsername: unknown;
+    }[]
+  >
+> {
+  return computed(async (get) => {
+    const response = await tapError(
+      get(zeroConnectorList({ orgId, userId })),
+      (error) => {
+        log.warn("Failed to collect connectors", { error: String(error) });
+      },
+    );
+    return response?.connectors ?? [];
+  });
 }
 
 function buildPromptEvents(
@@ -270,31 +280,34 @@ function sortChatHistory(
 }
 
 function collectActivityLogs(
-  get: ComputedGetter,
   sessionRuns: readonly DiagnosticRunRecord[],
   agentConfig: Record<string, unknown>,
-): Promise<readonly unknown[]> {
-  return Promise.all(
-    sessionRuns.map(async (sessionRun) => {
-      const settled = await settle(
-        assembleActivityLog(get, sessionRun, agentConfig, {
-          waitForAgentEventWatermark: false,
-        }),
-      );
-      if (settled.ok) {
-        return settled.value;
-      }
-      log.warn("Failed to assemble activity log for run", {
-        runId: sessionRun.id,
-        error: String(settled.error),
-      });
-      return {
-        ok: false as const,
-        error: String(settled.error),
-        runId: sessionRun.id,
-      };
-    }),
-  );
+): Computed<Promise<readonly unknown[]>> {
+  return computed((get): Promise<readonly unknown[]> => {
+    return Promise.all(
+      sessionRuns.map(async (sessionRun) => {
+        const settled = await settle(
+          get(
+            assembleActivityLog(sessionRun, agentConfig, {
+              waitForAgentEventWatermark: false,
+            }),
+          ),
+        );
+        if (settled.ok) {
+          return settled.value;
+        }
+        log.warn("Failed to assemble activity log for run", {
+          runId: sessionRun.id,
+          error: String(settled.error),
+        });
+        return {
+          ok: false as const,
+          error: String(settled.error),
+          runId: sessionRun.id,
+        };
+      }),
+    );
+  });
 }
 
 function safeConnectorSummaries(
@@ -400,34 +413,33 @@ function buildZipEntries(params: ZipEntryParams): ZipEntry[] {
   return zipEntries;
 }
 
-async function uploadDiagnosticZip(
-  get: ComputedGetter,
-  params: {
-    readonly zipEntries: readonly ZipEntry[];
-    readonly s3PathPrefix: string;
-    readonly orgId: string;
-    readonly reference: string;
-  },
-): Promise<UploadResult> {
-  const zipBuffer = await assembleZip(params.zipEntries);
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const s3Key = `${params.s3PathPrefix}/${params.orgId}/${params.reference}.zip`;
-  await get(putS3Object(bucket, s3Key, zipBuffer, "application/zip"));
+function uploadDiagnosticZip(params: {
+  readonly zipEntries: readonly ZipEntry[];
+  readonly s3PathPrefix: string;
+  readonly orgId: string;
+  readonly reference: string;
+}): Computed<Promise<UploadResult>> {
+  return computed(async (get): Promise<UploadResult> => {
+    const zipBuffer = await assembleZip(params.zipEntries);
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const s3Key = `${params.s3PathPrefix}/${params.orgId}/${params.reference}.zip`;
+    await get(putS3Object(bucket, s3Key, zipBuffer, "application/zip"));
 
-  const downloadUrl = await get(
-    generatePresignedGetUrl(
-      bucket,
-      s3Key,
-      DOWNLOAD_EXPIRY_SECONDS,
-      "diagnostic-report.zip",
-      true,
-    ),
-  );
-  const expiresAt = new Date(
-    now() + DOWNLOAD_EXPIRY_SECONDS * 1000,
-  ).toISOString();
+    const downloadUrl = await get(
+      generatePresignedGetUrl(
+        bucket,
+        s3Key,
+        DOWNLOAD_EXPIRY_SECONDS,
+        "diagnostic-report.zip",
+        true,
+      ),
+    );
+    const expiresAt = new Date(
+      now() + DOWNLOAD_EXPIRY_SECONDS * 1000,
+    ).toISOString();
 
-  return { downloadUrl, expiresAt };
+    return { downloadUrl, expiresAt };
+  });
 }
 
 async function collectAgentConfig(
@@ -515,119 +527,122 @@ function collectSessionRuns(
     .limit(1);
 }
 
-async function collectSystemLog(
-  get: ComputedGetter,
+function collectSystemLog(
   sessionRunIds: readonly string[],
-): Promise<string> {
-  if (sessionRunIds.length === 0) {
-    return "";
-  }
+): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    if (sessionRunIds.length === 0) {
+      return "";
+    }
 
-  const runIdList = sessionRunIds
-    .map((id) => {
-      return `"${escapeAplString(id)}"`;
-    })
-    .join(", ");
-  const dataset = getDatasetName("sandbox-telemetry-system");
-  const apl = `['${dataset}']
+    const runIdList = sessionRunIds
+      .map((id) => {
+        return `"${escapeAplString(id)}"`;
+      })
+      .join(", ");
+    const dataset = getDatasetName("sandbox-telemetry-system");
+    const apl = `['${dataset}']
 | where runId in (${runIdList})
 | order by _time asc`;
 
-  const queried = await settle(
-    (async (): Promise<string> => {
-      const events = (await get(queryAxiom(apl))) as { log: string }[];
-      return events
-        .map((event) => {
-          return event.log;
-        })
-        .join("");
-    })(),
-  );
-  if (!queried.ok) {
-    log.warn("Failed to collect system log from Axiom", {
-      error: String(queried.error),
-    });
-    return "";
-  }
-  return queried.value;
+    const queried = await settle(
+      (async (): Promise<string> => {
+        const events = (await get(queryAxiom(apl))) as { log: string }[];
+        return events
+          .map((event) => {
+            return event.log;
+          })
+          .join("");
+      })(),
+    );
+    if (!queried.ok) {
+      log.warn("Failed to collect system log from Axiom", {
+        error: String(queried.error),
+      });
+      return "";
+    }
+    return queried.value;
+  });
 }
 
-async function collectNetworkLog(
-  get: ComputedGetter,
+function collectNetworkLog(
   sessionRunIds: readonly string[],
-): Promise<Record<string, unknown>[]> {
-  if (sessionRunIds.length === 0) {
-    return [];
-  }
+): Computed<Promise<Record<string, unknown>[]>> {
+  return computed(async (get): Promise<Record<string, unknown>[]> => {
+    if (sessionRunIds.length === 0) {
+      return [];
+    }
 
-  const runIdList = sessionRunIds
-    .map((id) => {
-      return `"${escapeAplString(id)}"`;
-    })
-    .join(", ");
-  const dataset = getDatasetName("sandbox-telemetry-network");
-  const apl = `['${dataset}']
+    const runIdList = sessionRunIds
+      .map((id) => {
+        return `"${escapeAplString(id)}"`;
+      })
+      .join(", ");
+    const dataset = getDatasetName("sandbox-telemetry-network");
+    const apl = `['${dataset}']
 | where runId in (${runIdList})
 | order by _time asc`;
 
-  const queried = await settle(
-    (async (): Promise<Record<string, unknown>[]> => {
-      return (await get(queryAxiom(apl))) as Record<string, unknown>[];
-    })(),
-  );
-  if (!queried.ok) {
-    log.warn("Failed to collect network log from Axiom", {
-      error: String(queried.error),
-    });
-    return [];
-  }
-  return queried.value;
+    const queried = await settle(
+      (async (): Promise<Record<string, unknown>[]> => {
+        return (await get(queryAxiom(apl))) as Record<string, unknown>[];
+      })(),
+    );
+    if (!queried.ok) {
+      log.warn("Failed to collect network log from Axiom", {
+        error: String(queried.error),
+      });
+      return [];
+    }
+    return queried.value;
+  });
 }
 
-async function collectAgentEvents(
-  get: ComputedGetter,
+function collectAgentEvents(
   sessionRuns: readonly RunMeta[],
-): Promise<ChatHistoryEvent[]> {
-  const sessionRunIds = sessionRuns.map((run) => {
-    return run.id;
-  });
-  if (sessionRunIds.length === 0) {
-    return [];
-  }
+): Computed<Promise<ChatHistoryEvent[]>> {
+  return computed(async (get): Promise<ChatHistoryEvent[]> => {
+    const sessionRunIds = sessionRuns.map((run) => {
+      return run.id;
+    });
+    if (sessionRunIds.length === 0) {
+      return [];
+    }
 
-  const terminalRuns = sessionRuns.filter((run) => {
-    return run.lastEventSequence !== null;
-  });
-  if (terminalRuns.length > 0) {
-    await waitForAgentEventWatermarks(terminalRuns);
-  }
+    const terminalRuns = sessionRuns.filter((run) => {
+      return run.lastEventSequence !== null;
+    });
+    if (terminalRuns.length > 0) {
+      await waitForAgentEventWatermarks(terminalRuns);
+    }
 
-  const runIdList = sessionRunIds
-    .map((id) => {
-      return `"${escapeAplString(id)}"`;
-    })
-    .join(", ");
-  const dataset = getDatasetName("agent-run-events");
-  const apl = `['${dataset}']
+    const runIdList = sessionRunIds
+      .map((id) => {
+        return `"${escapeAplString(id)}"`;
+      })
+      .join(", ");
+    const dataset = getDatasetName("agent-run-events");
+    const apl = `['${dataset}']
 | where runId in (${runIdList})
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
 
-  const queried = await settle(
-    (async (): Promise<ChatHistoryEvent[]> => {
-      const events = (await get(
-        queryAxiom(apl, { noCache: true }),
-      )) as unknown as readonly ChatHistoryEvent[];
-      return [...events];
-    })(),
-  );
-  if (!queried.ok) {
-    log.warn("Failed to collect agent events from Axiom", {
-      error: String(queried.error),
-    });
-    return [];
-  }
-  return queried.value;
+    const queried = await settle(
+      (async (): Promise<ChatHistoryEvent[]> => {
+        const events = (await get(
+          queryAxiom(apl, { noCache: true }),
+        )) as unknown as readonly ChatHistoryEvent[];
+        return [...events];
+      })(),
+    );
+    if (!queried.ok) {
+      log.warn("Failed to collect agent events from Axiom", {
+        error: String(queried.error),
+      });
+      return [];
+    }
+    return queried.value;
+  });
 }
 
 async function waitForAgentEventWatermarks(
@@ -654,46 +669,49 @@ interface AssembleActivityLogOptions {
   readonly waitForAgentEventWatermark?: boolean;
 }
 
-async function assembleActivityLog(
-  get: ComputedGetter,
+function assembleActivityLog(
   run: RunMeta,
   agent: AgentMeta,
   options: AssembleActivityLogOptions = {},
-): Promise<Record<string, unknown>> {
-  const waitForAgentEventWatermark = options.waitForAgentEventWatermark ?? true;
-  const [events, networkLogs, runContext] = await Promise.all([
-    queryAgentEvents(
-      get,
-      run.id,
-      run.lastEventSequence,
-      waitForAgentEventWatermark,
-    ),
-    queryNetworkLogs(get, run.id),
-    tapError(queryRunContext(get, run.id), (error) => {
-      log.warn("Failed to collect run context", { error: String(error) });
-    }),
-  ]);
+): Computed<Promise<Record<string, unknown>>> {
+  return computed(async (get): Promise<Record<string, unknown>> => {
+    const waitForAgentEventWatermark =
+      options.waitForAgentEventWatermark ?? true;
+    const [events, networkLogs, runContext] = await Promise.all([
+      get(
+        queryAgentEvents(
+          run.id,
+          run.lastEventSequence,
+          waitForAgentEventWatermark,
+        ),
+      ),
+      get(queryNetworkLogs(run.id)),
+      tapError(get(queryRunContext(run.id)), (error) => {
+        log.warn("Failed to collect run context", { error: String(error) });
+      }),
+    ]);
 
-  const data: Record<string, unknown> = {
-    meta: buildMeta(run, agent),
-    events: events.map((event) => {
-      return {
-        sequenceNumber: event.sequenceNumber,
-        eventType: event.eventType,
-        eventData: event.eventData,
-        createdAt: event._time,
-      };
-    }),
-  };
+    const data: Record<string, unknown> = {
+      meta: buildMeta(run, agent),
+      events: events.map((event) => {
+        return {
+          sequenceNumber: event.sequenceNumber,
+          eventType: event.eventType,
+          eventData: event.eventData,
+          createdAt: event._time,
+        };
+      }),
+    };
 
-  if (runContext) {
-    data.context = runContext;
-  }
-  if (networkLogs.length > 0) {
-    data.networkLogs = mapNetworkLogs(networkLogs);
-  }
+    if (runContext) {
+      data.context = runContext;
+    }
+    if (networkLogs.length > 0) {
+      data.networkLogs = mapNetworkLogs(networkLogs);
+    }
 
-  return data;
+    return data;
+  });
 }
 
 function buildMeta(run: RunMeta, agent: AgentMeta): Record<string, unknown> {
@@ -784,76 +802,79 @@ function mapNetworkLogs(
   });
 }
 
-async function queryAgentEvents(
-  get: ComputedGetter,
+function queryAgentEvents(
   runId: string,
   lastEventSequence: number | null,
   waitForAgentEventWatermark: boolean,
-): Promise<AxiomAgentEvent[]> {
-  if (waitForAgentEventWatermark && lastEventSequence !== null) {
-    await waitForRunEventWatermarkVisible(runId, lastEventSequence);
-  }
+): Computed<Promise<AxiomAgentEvent[]>> {
+  return computed(async (get): Promise<AxiomAgentEvent[]> => {
+    if (waitForAgentEventWatermark && lastEventSequence !== null) {
+      await waitForRunEventWatermarkVisible(runId, lastEventSequence);
+    }
 
-  const dataset = getDatasetName("agent-run-events");
-  const apl = `['${dataset}']
+    const dataset = getDatasetName("agent-run-events");
+    const apl = `['${dataset}']
 | where runId == "${escapeAplString(runId)}"
 | order by _time asc, sequenceNumber asc
 | limit 5000`;
 
-  const queried = await settle(
-    (async (): Promise<AxiomAgentEvent[]> => {
-      const events = (await get(
-        queryAxiom(apl, {
-          noCache: true,
-        }),
-      )) as unknown as readonly AxiomAgentEvent[];
-      return [...events];
-    })(),
-  );
-  if (!queried.ok) {
-    log.warn("Failed to collect agent telemetry", {
-      error: String(queried.error),
-    });
-    return [];
-  }
-  return queried.value;
+    const queried = await settle(
+      (async (): Promise<AxiomAgentEvent[]> => {
+        const events = (await get(
+          queryAxiom(apl, {
+            noCache: true,
+          }),
+        )) as unknown as readonly AxiomAgentEvent[];
+        return [...events];
+      })(),
+    );
+    if (!queried.ok) {
+      log.warn("Failed to collect agent telemetry", {
+        error: String(queried.error),
+      });
+      return [];
+    }
+    return queried.value;
+  });
 }
 
-async function queryNetworkLogs(
-  get: ComputedGetter,
+function queryNetworkLogs(
   runId: string,
-): Promise<AxiomNetworkEvent[]> {
-  const dataset = getDatasetName("sandbox-telemetry-network");
-  const apl = `['${dataset}']
+): Computed<Promise<AxiomNetworkEvent[]>> {
+  return computed(async (get): Promise<AxiomNetworkEvent[]> => {
+    const dataset = getDatasetName("sandbox-telemetry-network");
+    const apl = `['${dataset}']
 | where runId == "${escapeAplString(runId)}"
 | order by _time asc
 | limit 5000`;
 
-  const queried = await settle(
-    (async (): Promise<AxiomNetworkEvent[]> => {
-      return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
-    })(),
-  );
-  if (!queried.ok) {
-    log.warn("Failed to collect network logs", {
-      error: String(queried.error),
-    });
-    return [];
-  }
-  return queried.value;
+    const queried = await settle(
+      (async (): Promise<AxiomNetworkEvent[]> => {
+        return (await get(queryAxiom(apl))) as AxiomNetworkEvent[];
+      })(),
+    );
+    if (!queried.ok) {
+      log.warn("Failed to collect network logs", {
+        error: String(queried.error),
+      });
+      return [];
+    }
+    return queried.value;
+  });
 }
 
-async function queryRunContext(
-  get: ComputedGetter,
+function queryRunContext(
   runId: string,
-): Promise<Record<string, unknown> | null> {
-  const dataset = getDatasetName("run-context");
-  const apl = `['${dataset}']
+): Computed<Promise<Record<string, unknown> | null>> {
+  return computed(async (get): Promise<Record<string, unknown> | null> => {
+    const dataset = getDatasetName("run-context");
+    const apl = `['${dataset}']
 | where runId == "${escapeAplString(runId)}"
 | limit 1`;
 
-  const results = (await get(queryAxiom(apl))) as Record<string, unknown>[];
-  return results[0] ?? null;
+    const results = (await get(queryAxiom(apl))) as Record<string, unknown>[];
+    return results[0] ?? null;
+  });
 }
 
 interface ClerkEmailAddress {
@@ -874,41 +895,39 @@ function primaryEmail(user: ClerkEmailProfile): string | null {
   return email?.emailAddress ?? null;
 }
 
-async function resolveUserEmail(
-  get: ComputedGetter,
-  userId: string,
-): Promise<string> {
-  const result = await settle(
-    (async (): Promise<string> => {
-      const client = get(clerk$);
-      const users = await client.users.getUserList({ userId: [userId] });
-      const user = users.data.find((candidate: ClerkEmailProfile) => {
-        return candidate.id === userId;
-      });
-      return user ? (primaryEmail(user) ?? userId) : userId;
-    })(),
-  );
-  if (!result.ok) {
-    return userId;
-  }
-  return result.value;
+function resolveUserEmail(userId: string): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    const result = await settle(
+      (async (): Promise<string> => {
+        const client = get(clerk$);
+        const users = await client.users.getUserList({ userId: [userId] });
+        const user = users.data.find((candidate: ClerkEmailProfile) => {
+          return candidate.id === userId;
+        });
+        return user ? (primaryEmail(user) ?? userId) : userId;
+      })(),
+    );
+    if (!result.ok) {
+      return userId;
+    }
+    return result.value;
+  });
 }
 
-async function resolveOrgName(
-  get: ComputedGetter,
-  orgId: string,
-): Promise<string> {
-  const result = await settle(
-    (async (): Promise<string> => {
-      const client = get(clerk$);
-      const org = await client.organizations.getOrganization({
-        organizationId: orgId,
-      });
-      return org.name;
-    })(),
-  );
-  if (!result.ok) {
-    return orgId;
-  }
-  return result.value;
+function resolveOrgName(orgId: string): Computed<Promise<string>> {
+  return computed(async (get): Promise<string> => {
+    const result = await settle(
+      (async (): Promise<string> => {
+        const client = get(clerk$);
+        const org = await client.organizations.getOrganization({
+          organizationId: orgId,
+        });
+        return org.name;
+      })(),
+    );
+    if (!result.ok) {
+      return orgId;
+    }
+    return result.value;
+  });
 }

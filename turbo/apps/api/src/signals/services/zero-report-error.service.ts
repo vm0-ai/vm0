@@ -62,17 +62,19 @@ export const submitZeroReportError$ = command(
       return { kind: "run_not_failed" };
     }
 
-    const { reference } = await submitDiagnosticBundle(get, {
-      title: args.title,
-      description: args.description,
-      userId: args.userId,
-      orgId: args.orgId,
-      runId: args.runId,
-      run,
-      referencePrefix: "er",
-      s3PathPrefix: "error-reports",
-      emailSubjectPrefix: "[Error Report]",
-    });
+    const { reference } = await get(
+      submitDiagnosticBundle({
+        title: args.title,
+        description: args.description,
+        userId: args.userId,
+        orgId: args.orgId,
+        runId: args.runId,
+        run,
+        referencePrefix: "er",
+        s3PathPrefix: "error-reports",
+        emailSubjectPrefix: "[Error Report]",
+      }),
+    );
     signal.throwIfAborted();
 
     return { kind: "ok", reference };
