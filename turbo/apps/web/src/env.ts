@@ -13,23 +13,9 @@ export function isBlogEnabled(): boolean {
 function initEnv() {
   const env = createEnv({
     server: {
-      DATABASE_URL: z.string().min(1).optional(),
       NODE_ENV: z
         .enum(["development", "test", "production"])
         .default("development"),
-      // Database pool configuration
-      DB_POOL_MAX: z.coerce.number().int().positive().default(10),
-      DB_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().nonnegative().optional(),
-      DB_POOL_CONNECT_TIMEOUT_MS: z.coerce
-        .number()
-        .int()
-        .positive()
-        .default(10000),
-      // Database driver selection for runtime connections
-      // Defaults to 'pg' — node-postgres TCP pool + attachDatabasePool is the
-      // Vercel Fluid + Neon 2026 recommended path. Override to 'neon' only
-      // for environments that specifically need the WebSocket driver.
-      DB_DRIVER: z.enum(["pg", "neon"]).default("pg"),
       CLERK_SECRET_KEY: z.string().min(1),
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.url().optional(),
@@ -279,12 +265,7 @@ function initEnv() {
       NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL: z.url().optional(),
     },
     runtimeEnv: {
-      DATABASE_URL: process.env.DATABASE_URL,
       NODE_ENV: process.env.NODE_ENV,
-      DB_POOL_MAX: process.env.DB_POOL_MAX,
-      DB_POOL_IDLE_TIMEOUT_MS: process.env.DB_POOL_IDLE_TIMEOUT_MS,
-      DB_POOL_CONNECT_TIMEOUT_MS: process.env.DB_POOL_CONNECT_TIMEOUT_MS,
-      DB_DRIVER: process.env.DB_DRIVER,
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
 
       E2B_API_KEY: process.env.E2B_API_KEY,
@@ -512,9 +493,6 @@ export function env() {
 
   return _env;
 }
-
-// Export type for type inference
-export type Env = ReturnType<typeof env>;
 
 export function reloadEnv() {
   _env = initEnv();

@@ -6,8 +6,8 @@
  * reading/writing the database.
  *
  * Detects:
- * - globalThis.services.db  (direct DB access)
- * - initServices()          (sign of direct service access)
+ * - globalThis.services.db  (legacy direct DB access)
+ * - initServices()          (legacy service singleton access)
  *
  * Good:
  *   const response = await GET(request);
@@ -37,7 +37,7 @@ export default createRule({
       noDirectDb:
         "Do not use globalThis.services.db in test files. Use API helpers instead. See docs/testing/web-testing.md#avoid-db-operations",
       noInitServices:
-        "Do not call initServices() in test files. Route handlers call it internally. See docs/testing/web-testing.md#no-initservices-in-route-tests",
+        "Do not call initServices() in test files. The web app no longer exposes a services singleton.",
       noDbSchemaImport:
         "Do not import from db/schema/* in web test files. Test through route handlers, or move DB-owned tests to @vm0/db.",
       noServiceImport:

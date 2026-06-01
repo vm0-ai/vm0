@@ -105,7 +105,7 @@ export default [
     rules: {
       // Check for duplicate migration prefixes (runs once per lint process)
       "web/no-duplicate-migration-prefix": "error",
-      // Ban new globals — the globalThis.services pattern is the only sanctioned one
+      // Ban new runtime globals
       "web/no-global-assignment": "error",
     },
   },

@@ -5,7 +5,6 @@ import { server } from "../mocks/server";
 import {
   nextAfterArgForms,
   nextAfterCallbacks,
-  nextWaitUntilPromises,
   flushNextAsyncHooks,
   resetNextAfterHooks,
 } from "./next-after-hooks";
@@ -15,9 +14,8 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 // Stub environment variables before any imports.
 // Using vi.hoisted() ensures stubs run before module imports.
 //
-// All env vars are explicitly stubbed here for deterministic test behavior.
-// Note: DATABASE_URL is NOT stubbed because it differs between environments
-// (local dev vs CI) and comes from .env / .env.local.
+// All env vars used by env.ts are explicitly stubbed here for deterministic
+// test behavior.
 //
 // resetEnv() is called in vi.hoisted() for initial import-time validation AND
 // in beforeEach to re-apply defaults after Vitest's unstubEnvs auto-cleanup.
@@ -29,7 +27,6 @@ const resetEnv = vi.hoisted(() => {
       "pk_test_mock_instance.clerk.accounts.dev$",
     );
     vi.stubEnv("CLERK_SECRET_KEY", "sk_test_mock_secret_key_for_testing");
-    vi.stubEnv("DB_DRIVER", "pg");
     vi.stubEnv("R2_ACCOUNT_ID", "test-account-id");
     vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
     vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
@@ -62,9 +59,6 @@ const resetEnv = vi.hoisted(() => {
     vi.stubEnv("ABLY_API_KEY", "test-key:test-secret");
     // OpenAI (STT, TTS) — required env
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
-    // Stripe billing — `vi.mock("stripe", ...)` replaces the constructor, but
-    // init-services.ts throws before reaching it if STRIPE_SECRET_KEY is unset.
-    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake_for_testing");
     // API URL for compose job webhooks
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     // App UI URL
@@ -115,20 +109,6 @@ vi.mock("next/server", async (importOriginal) => {
         });
       }
     },
-  };
-});
-
-// Mock @vercel/functions waitUntil() to capture promises for controlled
-// execution in tests. waitUntil() receives an already-started Promise —
-// the mock stores it so flushAfter() can await completion.
-// Only waitUntil is mocked; other exports (attachDatabasePool etc.) are
-// provided as minimal no-ops since tests don't need real DB pool lifecycle.
-vi.mock("@vercel/functions", () => {
-  return {
-    waitUntil: (promise: Promise<unknown>) => {
-      nextWaitUntilPromises.push(promise);
-    },
-    attachDatabasePool: () => {},
   };
 });
 

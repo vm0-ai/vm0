@@ -21,13 +21,11 @@
     "@aws-sdk/client-s3": "^3.1057.0",
     "@aws-sdk/s3-request-presigner": "^3.1057.0",
     "@clerk/nextjs": "^7.2.7",
-    "@neondatabase/serverless": "^1.0.2",
     "@opentelemetry/api": "^1.9.0",
     "@radix-ui/react-popover": "^1.1.15",
     "@sentry/nextjs": "^10.38.0",
     "@t3-oss/env-nextjs": "^0.13.8",
     "@tabler/icons-react": "^3.36.1",
-    "@vercel/functions": "^3.4.4",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/core": "workspace:*",
     "@vm0/db": "workspace:*",
@@ -44,7 +42,6 @@
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
     "require-in-the-middle": "^8.0.1",
-    "stripe": "^20.4.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

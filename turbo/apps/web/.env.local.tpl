@@ -1,6 +1,3 @@
-# Database driver (pg for local Postgres, neon for serverless)
-DB_DRIVER=pg
-
 # Required: Authentication (Clerk)
 CLERK_SECRET_KEY=op://Development/clerk/CLERK_SECRET_KEY
 CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY

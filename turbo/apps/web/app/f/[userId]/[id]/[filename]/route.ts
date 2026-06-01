@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { initServices } from "../../../../../src/lib/init-services";
 import {
   generatePresignedUrl,
   s3ObjectExists,
@@ -48,7 +47,6 @@ export async function GET(
     params,
   }: { params: Promise<{ userId: string; id: string; filename: string }> },
 ) {
-  initServices();
   const { userId, id, filename } = await params;
   const storageUserId = storageUserIdFromFileUrlSegment(userId);
 

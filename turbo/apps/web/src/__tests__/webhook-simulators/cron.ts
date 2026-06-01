@@ -1,4 +1,3 @@
-import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
 
 /**
@@ -13,7 +12,6 @@ import { env } from "../../env";
 export async function invokeCron(
   routeHandler: (request: Request) => Promise<Response>,
 ): Promise<Response> {
-  initServices();
   const request = new Request("http://localhost/api/cron/invoke", {
     method: "GET",
     headers: { authorization: `Bearer ${env().CRON_SECRET}` },
