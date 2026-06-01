@@ -69,6 +69,14 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 2
         assert state["lines_parsed"] == 2
 
+    def test_crlf_line_ending_split_across_chunks(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+        parse(b'{"data":{"id":"1"}}\r')
+        parse(b'\n{"data":{"id":"2"}}\r\n')
+        assert state["data_count"] == 2
+        assert state["lines_parsed"] == 2
+        assert state["lines_failed"] == 0
+
     def test_malformed_line_increments_failures(self, real_flow):
         parse, state = self._stream_parser(real_flow)
         parse(b'{"data":{"id":"1"}}\n')
