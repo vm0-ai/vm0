@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { command, type Setter } from "ccstate";
+import { command } from "ccstate";
 import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
 import { emailSuppressions } from "@vm0/db/schema/email-suppression";
 import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
@@ -205,63 +205,74 @@ function triggerCallbacks(args: {
   ];
 }
 
-function runError(args: {
-  readonly set: Setter;
-  readonly result: unknown;
-  readonly context: {
-    readonly orgId: string;
-    readonly userId: string;
-  };
-  readonly signal: AbortSignal;
-}): string | Promise<string> {
-  const { result } = args;
-  if (
-    result &&
-    typeof result === "object" &&
-    "body" in result &&
-    result.body &&
-    typeof result.body === "object" &&
-    "error" in result.body &&
-    result.body.error &&
-    typeof result.body.error === "object" &&
-    "message" in result.body.error &&
-    typeof result.body.error.message === "string"
-  ) {
-    const code =
-      "code" in result.body.error && typeof result.body.error.code === "string"
-        ? result.body.error.code
-        : "INTERNAL_SERVER_ERROR";
-    return args.set(
-      formatIntegrationRunError$,
-      {
-        orgId: args.context.orgId,
-        userId: args.context.userId,
-        code,
-        message: result.body.error.message,
-      },
-      args.signal,
-    );
-  }
-  return "Failed to create the agent run.";
-}
+const runError$ = command(
+  (
+    { set },
+    args: {
+      readonly result: unknown;
+      readonly context: {
+        readonly orgId: string;
+        readonly userId: string;
+      };
+    },
+    signal: AbortSignal,
+  ): string | Promise<string> => {
+    const { result } = args;
+    if (
+      result &&
+      typeof result === "object" &&
+      "body" in result &&
+      result.body &&
+      typeof result.body === "object" &&
+      "error" in result.body &&
+      result.body.error &&
+      typeof result.body.error === "object" &&
+      "message" in result.body.error &&
+      typeof result.body.error.message === "string"
+    ) {
+      const code =
+        "code" in result.body.error &&
+        typeof result.body.error.code === "string"
+          ? result.body.error.code
+          : "INTERNAL_SERVER_ERROR";
+      return set(
+        formatIntegrationRunError$,
+        {
+          orgId: args.context.orgId,
+          userId: args.context.userId,
+          code,
+          message: result.body.error.message,
+        },
+        signal,
+      );
+    }
+    return "Failed to create the agent run.";
+  },
+);
 
-async function failedRunResult(args: {
-  readonly set: Setter;
-  readonly result: unknown;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<HandlerResult> {
-  return {
-    ok: false,
-    errorMessage: await runError({
-      set: args.set,
-      result: args.result,
-      context: { orgId: args.orgId, userId: args.userId },
-      signal: args.signal,
-    }),
-  };
-}
+const failedRunResult$ = command(
+  async (
+    { set },
+    args: {
+      readonly result: unknown;
+      readonly orgId: string;
+      readonly userId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<HandlerResult> => {
+    return {
+      ok: false,
+      errorMessage: await set(
+        runError$,
+        {
+          result: args.result,
+          context: { orgId: args.orgId, userId: args.userId },
+        },
+        signal,
+      ),
+    };
+  },
+);
 
 const sendInboundErrorReply$ = command(
   async (
@@ -481,15 +492,14 @@ const handleInboundEmailReply$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return result.status === 201
-      ? { ok: true }
-      : await failedRunResult({
-          set,
-          result,
-          orgId: runtimeOrgId,
-          userId: session.userId,
-          signal,
-        });
+    if (result.status === 201) {
+      return { ok: true };
+    }
+    return set(
+      failedRunResult$,
+      { result, orgId: runtimeOrgId, userId: session.userId },
+      signal,
+    );
   },
 );
 
@@ -619,7 +629,7 @@ const handleInboundEmailTrigger$ = command(
     signal.throwIfAborted();
     return result.status === 201
       ? { ok: true }
-      : await failedRunResult({ set, result, orgId, userId, signal });
+      : await set(failedRunResult$, { result, orgId, userId }, signal);
   },
 );
 
