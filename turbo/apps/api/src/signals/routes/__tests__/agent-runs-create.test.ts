@@ -1456,7 +1456,7 @@ describe("POST /api/agent/runs", () => {
       fixture: fx,
       overrides: { volumes: ["kb:/mnt/kb"] },
       volumes: { kb: { name: "knowledge-base", version: "latest" } },
-      artifacts: [{ name: "compose-artifact", mount_path: "/mnt/artifact" }],
+      artifacts: [{ name: "compose-artifact" }],
     });
 
     const response = await accept(
@@ -1508,7 +1508,7 @@ describe("POST /api/agent/runs", () => {
         }),
     ).toStrictEqual([
       {
-        mountPath: "/mnt/artifact",
+        mountPath: "/home/user/workspace",
         name: "compose-artifact",
         version: artifactVersion,
       },
