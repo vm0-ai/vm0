@@ -1145,6 +1145,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_cleanup_finalizer_removes_workspace_image() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let workspace_image =
+            snapshot_attempt_workspace_image_file(attempt.paths().workspace(), "default-test");
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        tokio::fs::create_dir_all(workspace_image.parent().expect("workspace image parent"))
+            .await
+            .expect("create workspace image parent");
+        tokio::fs::write(&workspace_image, b"workspace")
+            .await
+            .expect("write workspace image");
+        attempt.track_workspace_image_for_test(workspace_image.clone());
+        attempt.notify_cleanup_complete_for_test(tx);
+
+        drop(attempt);
+        let report = wait_for_snapshot_cleanup(rx).await;
+
+        assert!(report.workspace_image_cleaned);
+        assert_eq!(report.cleanup_events, vec!["workspace_image"]);
+        assert!(
+            !tokio::fs::try_exists(&workspace_image).await.unwrap(),
+            "detached cleanup should remove temporary workspace image"
+        );
+        assert!(
+            !tokio::fs::try_exists(workspace_image.parent().expect("workspace image parent"))
+                .await
+                .unwrap(),
+            "detached cleanup should remove the empty attempt dir"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_setup_error_cleanup_removes_workspace_image_inline() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let workspace_image =
+            snapshot_attempt_workspace_image_file(attempt.paths().workspace(), "default-test");
+
+        tokio::fs::create_dir_all(workspace_image.parent().expect("workspace image parent"))
+            .await
+            .expect("create workspace image parent");
+        tokio::fs::write(&workspace_image, b"workspace")
+            .await
+            .expect("write workspace image");
+        attempt.track_workspace_image_for_test(workspace_image.clone());
+
+        attempt
+            .cleanup_resources
+            .destroy_cow_after_setup_error("test setup error")
+            .await;
+
+        assert!(matches!(
+            attempt.cleanup_resources.workspace_image,
+            AttemptWorkspaceImage::Cleaned
+        ));
+        assert!(
+            !tokio::fs::try_exists(&workspace_image).await.unwrap(),
+            "setup error cleanup should remove temporary workspace image inline"
+        );
+    }
+
+    #[tokio::test]
     async fn snapshot_attempt_drop_handoff_cleans_publish_resolve_cancellation() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
