@@ -470,6 +470,47 @@ describe("GET /api/zero/connectors/:type/authorize", () => {
     });
   });
 
+  it("preserves the selected auth method from the connector session", async () => {
+    const userId = `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    await enableConnectorFeature(
+      userId,
+      orgId,
+      FeatureSwitchKey.TestOauthConnector,
+    );
+    mocks.clerk.session(userId, orgId);
+    const sessionId = await createPendingConnectorSession({
+      userId,
+      type: "test-oauth",
+      authMethod: "api",
+    });
+    const app = createApp({ signal: context.signal });
+    const response = await app.request(authorizeUrl("test-oauth", sessionId), {
+      method: "GET",
+      headers: sessionHeaders(),
+    });
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("location");
+    expect(location).not.toBeNull();
+    const state = new URL(location!).searchParams.get("state");
+    expect(state).not.toBeNull();
+
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select({
+        authMethod: connectorOauthStates.authMethod,
+        sessionId: connectorOauthStates.sessionId,
+      })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toStrictEqual({
+      authMethod: "api",
+      sessionId,
+    });
+  });
+
   it("allows dynamic public OAuth authorize without env credentials", async () => {
     restoreDynamicTestOAuthAuthorize = useDynamicTestOAuthAuthorize();
     const userId = `user_${randomUUID()}`;
