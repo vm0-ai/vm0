@@ -27,6 +27,8 @@ import {
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodEnvBindings,
+  getConnectorOwnedAccessSecretBindingEntries,
+  type ConnectorOwnedAccessSecretBindingEntry,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -1552,6 +1554,7 @@ interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
   readonly envBindings: Record<string, string>;
+  readonly ownedSecretBindings: readonly ConnectorOwnedAccessSecretBindingEntry[];
   readonly platformSecretNames: ReadonlySet<string>;
   readonly optionalSecretNames: ReadonlySet<string>;
   readonly optionalVariableNames: ReadonlySet<string>;
@@ -1632,6 +1635,9 @@ function connectorEnvBindingSets(
         row.connectorType,
         row.authMethod,
       ),
+      ownedSecretBindings: accessMetadata
+        ? getConnectorOwnedAccessSecretBindingEntries(accessMetadata)
+        : [],
       platformSecretNames: new Set(accessMetadata?.platformSecrets ?? []),
       optionalSecretNames,
       optionalVariableNames,
@@ -1645,14 +1651,12 @@ function collectStoredConnectorRequirements(
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
 
-  for (const { envBindings, platformSecretNames } of bindingSets) {
+  for (const { envBindings, ownedSecretBindings } of bindingSets) {
+    for (const { secretName } of ownedSecretBindings) {
+      secretNames.add(secretName);
+    }
     for (const valueRef of Object.values(envBindings)) {
-      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-        const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-        if (!platformSecretNames.has(secretName)) {
-          secretNames.add(secretName);
-        }
-      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+      if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
         variableNames.add(valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length));
       }
     }
@@ -1762,6 +1766,7 @@ function resolveStoredConnectorState(
     connectorType,
     authMethod,
     envBindings,
+    ownedSecretBindings,
     platformSecretNames,
     optionalSecretNames,
     optionalVariableNames,
@@ -1808,22 +1813,16 @@ function resolveStoredConnectorState(
     // store the alias that points at the access secret, not the backing secret name.
     if (accessMetadata?.kind === "refresh-token") {
       const secretName = accessMetadata.accessToken;
-      for (const [envName, valueRef] of Object.entries(envBindings)) {
-        if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
+      for (const {
+        envName,
+        secretName: boundSecretName,
+      } of ownedSecretBindings) {
+        if (boundSecretName === secretName) {
           secretConnectorMap[envName] = connectorType;
         }
       }
     } else if (accessMetadata?.kind === "static") {
-      for (const [envName, valueRef] of Object.entries(
-        accessMetadata.envBindings,
-      )) {
-        if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-          continue;
-        }
-        const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-        if (platformSecretNames.has(secretName)) {
-          continue;
-        }
+      for (const { envName } of ownedSecretBindings) {
         secretConnectorMap[envName] = connectorType;
       }
     }

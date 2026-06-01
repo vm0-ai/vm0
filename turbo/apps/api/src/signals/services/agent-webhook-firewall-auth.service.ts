@@ -9,6 +9,7 @@ import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runne
 import {
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodAccessMetadata,
+  getConnectorOwnedAccessSecretBindingEntries,
   type ConnectorAuthMethodAccessMetadata,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -1723,19 +1724,21 @@ function connectorAccessSecretName(
 ): string | undefined {
   switch (accessMetadata.kind) {
     case "refresh-token": {
-      if (
-        accessMetadata.envBindings[key] ===
-        `${CONNECTOR_SECRET_REF_PREFIX}${accessMetadata.accessToken}`
-      ) {
-        return accessMetadata.accessToken;
-      }
-      return undefined;
+      const entry = getConnectorOwnedAccessSecretBindingEntries(
+        accessMetadata,
+      ).find((binding) => {
+        return binding.envName === key;
+      });
+      return entry?.secretName === accessMetadata.accessToken
+        ? accessMetadata.accessToken
+        : undefined;
     }
     case "static": {
-      const valueRef = accessMetadata.envBindings[key];
-      return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true
-        ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
-        : undefined;
+      return getConnectorOwnedAccessSecretBindingEntries(accessMetadata).find(
+        (binding) => {
+          return binding.envName === key;
+        },
+      )?.secretName;
     }
     case "none": {
       return undefined;

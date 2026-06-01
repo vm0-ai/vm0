@@ -43,6 +43,7 @@ import {
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodAccessMetadata,
+  getConnectorOwnedAccessSecretBindingEntries,
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
@@ -1749,6 +1750,42 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     expect(getConnectorOwnedSecretNames("google-ads", "oauth")).toStrictEqual([
       "GOOGLE_ADS_ACCESS_TOKEN",
       "GOOGLE_ADS_REFRESH_TOKEN",
+    ]);
+  });
+
+  it("returns connector-owned access secret binding entries", () => {
+    const googleAdsAccess = getConnectorAuthMethodAccessMetadata(
+      "google-ads",
+      "oauth",
+    );
+    const slockAccess = getConnectorAuthMethodAccessMetadata("slock", "oauth");
+    const githubAccess = getConnectorAuthMethodAccessMetadata(
+      "github",
+      "oauth",
+    );
+    if (!googleAdsAccess || !slockAccess || !githubAccess) {
+      throw new Error("Expected access metadata for test connectors");
+    }
+
+    expect(
+      getConnectorOwnedAccessSecretBindingEntries(googleAdsAccess),
+    ).toStrictEqual([
+      {
+        envName: "GOOGLE_ADS_TOKEN",
+        secretName: "GOOGLE_ADS_ACCESS_TOKEN",
+      },
+    ]);
+    expect(
+      getConnectorOwnedAccessSecretBindingEntries(slockAccess),
+    ).toStrictEqual([
+      { envName: "SLOCK_TOKEN", secretName: "SLOCK_ACCESS_TOKEN" },
+      { envName: "SLOCK_SERVER_ID", secretName: "SLOCK_SERVER_ID" },
+    ]);
+    expect(
+      getConnectorOwnedAccessSecretBindingEntries(githubAccess),
+    ).toStrictEqual([
+      { envName: "GH_TOKEN", secretName: "GITHUB_ACCESS_TOKEN" },
+      { envName: "GITHUB_TOKEN", secretName: "GITHUB_ACCESS_TOKEN" },
     ]);
   });
 });
