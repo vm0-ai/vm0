@@ -1642,31 +1642,78 @@ describe("getConnectorAuthMethodEnvBindings", () => {
 
 describe("getConnectorAuthMethodAccessMetadata", () => {
   it("returns refresh-token access metadata for the selected OAuth method", () => {
-    expect(getConnectorAuthMethodAccessMetadata("stripe", "oauth")).toEqual({
+    expect(
+      getConnectorAuthMethodAccessMetadata("stripe", "oauth"),
+    ).toStrictEqual({
       kind: "refresh-token",
       accessToken: "STRIPE_ACCESS_TOKEN",
       refreshToken: "STRIPE_REFRESH_TOKEN",
       envBindings: {
         STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
       },
+      platformSecrets: [],
     });
   });
 
   it("returns static access metadata for the selected API-token method", () => {
-    expect(getConnectorAuthMethodAccessMetadata("stripe", "api-token")).toEqual(
-      {
-        kind: "static",
-        envBindings: {
-          STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
-        },
+    expect(
+      getConnectorAuthMethodAccessMetadata("stripe", "api-token"),
+    ).toStrictEqual({
+      kind: "static",
+      envBindings: {
+        STRIPE_TOKEN: "$secrets.STRIPE_TOKEN",
       },
-    );
+      platformSecrets: [],
+    });
+  });
+
+  it("returns platform-owned secret metadata for Google Ads", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("google-ads", "oauth"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
+      refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+      envBindings: {
+        GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+        GOOGLE_ADS_DEVELOPER_TOKEN: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
+      },
+      platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
+    });
   });
 
   it("returns undefined for an unknown auth method", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("stripe", "missing"),
     ).toBeUndefined();
+  });
+
+  it("keeps platform-owned secrets referenced by selected env bindings", () => {
+    for (const type of connectorTypeSchema.options) {
+      for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
+        const accessMetadata = getConnectorAuthMethodAccessMetadata(
+          type,
+          authMethod,
+        );
+        if (!accessMetadata) {
+          continue;
+        }
+        const secretRefs = new Set(Object.values(accessMetadata.envBindings));
+        for (const secretName of accessMetadata.platformSecrets) {
+          expect(
+            secretRefs.has(`$secrets.${secretName}`),
+            `${type}/${authMethod}: platform secret ${secretName} must be exposed through envBindings`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("excludes platform-owned sources from connector-owned secret names", () => {
+    expect(getConnectorSecretNames("google-ads", "oauth")).toStrictEqual([
+      "GOOGLE_ADS_ACCESS_TOKEN",
+      "GOOGLE_ADS_REFRESH_TOKEN",
+    ]);
   });
 });
 
@@ -1780,7 +1827,7 @@ describe("getConnectorEnvBindingEntries", () => {
   it("authorization-grant auth methods have consistent secrets and envBindings naming", () => {
     // All naming derives from a single prefix XXX:
     //   oauth secrets:      XXX_ACCESS_TOKEN (required), XXX_REFRESH_TOKEN (optional)
-    //   envBindings: values -> declared connector secrets
+    //   envBindings: values -> declared connector secrets or platform sources
     //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
       if (!hasConnectorAuthorizationGrant(type)) continue;
@@ -1812,6 +1859,13 @@ describe("getConnectorEnvBindingEntries", () => {
       }
 
       const envBindings = getConnectorAuthMethodEnvBindings(type, "oauth");
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        type,
+        "oauth",
+      );
+      const platformSecretNames: ReadonlySet<string> = new Set(
+        accessMetadata?.platformSecrets ?? [],
+      );
       const mappedSecretNames = Object.values(envBindings).map((valueRef) => {
         expect(
           valueRef.startsWith("$secrets."),
@@ -1826,6 +1880,9 @@ describe("getConnectorEnvBindingEntries", () => {
       ).toContain(accessSecretName);
 
       for (const secretName of mappedSecretNames) {
+        if (platformSecretNames.has(secretName)) {
+          continue;
+        }
         expect(
           oauthSecrets,
           `${type}: mapped secret ${secretName} must be declared by OAuth auth method`,

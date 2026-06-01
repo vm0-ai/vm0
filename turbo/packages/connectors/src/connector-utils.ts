@@ -22,6 +22,7 @@ import {
   type ConnectorGrantConfig,
   type ConnectorGrantKind,
   type ConnectorManualGrantFieldConfig,
+  type ConnectorPlatformSecretName,
   type ConnectorRevokeKind,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
@@ -227,20 +228,35 @@ function connectorAccessEnvBindings(
   }
 }
 
+function connectorAccessPlatformSecrets(
+  access: ConnectorAccessConfig,
+): readonly ConnectorPlatformSecretName[] {
+  switch (access.kind) {
+    case "static":
+    case "refresh-token":
+      return access.platformSecrets ?? [];
+    case "none":
+      return [];
+  }
+}
+
 export type ConnectorAuthMethodAccessMetadata =
   | {
       readonly kind: "static";
       readonly envBindings: ConnectorEnvBindings;
+      readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
       readonly kind: "refresh-token";
       readonly accessToken: string;
       readonly refreshToken: string;
       readonly envBindings: ConnectorEnvBindings;
+      readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
       readonly kind: "none";
       readonly envBindings: ConnectorEnvBindings;
+      readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     };
 
 export function getConnectorAuthMethodAccessMetadata(
@@ -257,6 +273,7 @@ export function getConnectorAuthMethodAccessMetadata(
       return {
         kind: "static",
         envBindings: method.access.envBindings,
+        platformSecrets: method.access.platformSecrets ?? [],
       };
     case "refresh-token":
       return {
@@ -264,11 +281,13 @@ export function getConnectorAuthMethodAccessMetadata(
         accessToken: method.access.accessToken,
         refreshToken: method.access.refreshToken,
         envBindings: method.access.envBindings,
+        platformSecrets: method.access.platformSecrets ?? [],
       };
     case "none":
       return {
         kind: "none",
         envBindings: {},
+        platformSecrets: [],
       };
   }
 }
@@ -715,11 +734,17 @@ function connectorMethodSecretNames(
     }
   }
 
+  const platformSecretNames: ReadonlySet<string> = new Set(
+    connectorAccessPlatformSecrets(method.access),
+  );
   for (const valueRef of Object.values(
     connectorAccessEnvBindings(method.access),
   )) {
     if (valueRef.startsWith("$secrets.")) {
-      names.add(valueRef.slice("$secrets.".length));
+      const secretName = valueRef.slice("$secrets.".length);
+      if (!platformSecretNames.has(secretName)) {
+        names.add(secretName);
+      }
     }
   }
 

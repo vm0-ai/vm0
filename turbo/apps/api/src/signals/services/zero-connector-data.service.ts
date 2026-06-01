@@ -1182,11 +1182,12 @@ function connectorSecretNameFromRef(valueRef: string): string | undefined {
 
 function staticAccessSecretName(
   envBindings: ConnectorEnvBindings,
+  platformSecretNames: ReadonlySet<string>,
 ): string | undefined {
   const secretNames = new Set<string>();
   for (const valueRef of Object.values(envBindings)) {
     const secretName = connectorSecretNameFromRef(valueRef);
-    if (secretName) {
+    if (secretName && !platformSecretNames.has(secretName)) {
       secretNames.add(secretName);
     }
   }
@@ -1217,6 +1218,7 @@ function connectorTokenSecretMetadataForAuthMethod(args: {
     case "static": {
       const accessSecretName = staticAccessSecretName(
         accessMetadata.envBindings,
+        new Set(accessMetadata.platformSecrets),
       );
       return accessSecretName
         ? {

@@ -1860,7 +1860,8 @@ describe("POST /api/zero/runs", () => {
     );
   });
 
-  it("injects authorized Slock OAuth secrets through the runtime firewall", async () => {
+  it("injects authorized Slock OAuth secrets through the runtime firewall without platform secrets", async () => {
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -1947,6 +1948,7 @@ describe("POST /api/zero/runs", () => {
     });
     expect(decrypted).not.toHaveProperty("SLOCK_ACCESS_TOKEN");
     expect(decrypted).not.toHaveProperty("SLOCK_REFRESH_TOKEN");
+    expect(decrypted).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
     expect(executionContext.secretConnectorMap).toStrictEqual({
       SLOCK_TOKEN: "slock",
     });
@@ -1999,6 +2001,7 @@ describe("POST /api/zero/runs", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
       readonly firewalls: readonly { readonly name: string }[];
@@ -2009,6 +2012,9 @@ describe("POST /api/zero/runs", () => {
       GOOGLE_ADS_TOKEN: "google-ads-access",
       GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
     });
+    expect(executionContext.environment).not.toHaveProperty(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    );
     expect(executionContext.secretConnectorMap).toStrictEqual({
       GOOGLE_ADS_TOKEN: "google-ads",
     });

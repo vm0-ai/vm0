@@ -1017,11 +1017,15 @@ async function findDecryptedSecret(args: {
 
 function staticAccessSecretName(
   envBindings: Readonly<Record<string, string>>,
+  platformSecretNames: ReadonlySet<string>,
 ): string | undefined {
   const secretNames = new Set<string>();
   for (const valueRef of Object.values(envBindings)) {
     if (valueRef.startsWith(SECRET_REF_PREFIX)) {
-      secretNames.add(valueRef.slice(SECRET_REF_PREFIX.length));
+      const secretName = valueRef.slice(SECRET_REF_PREFIX.length);
+      if (!platformSecretNames.has(secretName)) {
+        secretNames.add(secretName);
+      }
     }
   }
   return secretNames.size === 1 ? [...secretNames][0] : undefined;
@@ -1047,7 +1051,10 @@ function accessTokenSecretNameForAuthCodeMethod(
       return accessMetadata.accessToken;
     }
     case "static": {
-      const secretName = staticAccessSecretName(accessMetadata.envBindings);
+      const secretName = staticAccessSecretName(
+        accessMetadata.envBindings,
+        new Set(accessMetadata.platformSecrets),
+      );
       if (!secretName) {
         throw new Error(
           `${type}: auth-code auth method has no static access secret`,
