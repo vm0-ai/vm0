@@ -396,6 +396,25 @@ describe("zero user permission grants", () => {
       }),
     });
     expect(askResponse.status).toBe(400);
+
+    const unsupportedTtlResponse = await app.request(
+      "/api/zero/user-permission-grants",
+      {
+        method: "PUT",
+        headers: {
+          authorization: AUTH_HEADERS.authorization,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agentId,
+          connectorRef: SLACK_CONNECTOR,
+          permission: SLACK_READ_PERMISSION,
+          action: "allow",
+          ttlSeconds: 301,
+        }),
+      },
+    );
+    expect(unsupportedTtlResponse.status).toBe(400);
   });
 
   it("filters expired grants and folds active grants into legacy policies", async () => {
