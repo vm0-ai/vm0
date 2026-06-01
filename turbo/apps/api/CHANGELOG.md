@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.90.5](https://github.com/vm0-ai/vm0/compare/api-v1.90.4...api-v1.90.5) (2026-06-01)
+
+
+### Bug Fixes
+
+* enforce reconnect-required firewall auth state ([#15585](https://github.com/vm0-ai/vm0/issues/15585)) ([956d2a9](https://github.com/vm0-ai/vm0/commit/956d2a90be5ff299c2d1cbce9ae784b8d1b322a9))
+
 ## [1.90.4](https://github.com/vm0-ai/vm0/compare/api-v1.90.3...api-v1.90.4) (2026-05-31)
 
 
