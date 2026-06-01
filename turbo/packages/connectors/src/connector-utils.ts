@@ -33,7 +33,6 @@ import {
   type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
-export { isGoogleOAuthConnector } from "./auth-providers/oauth/google-connectors";
 
 const CONNECTOR_AUTH_METHOD_PRIORITY = {
   oauth: 0,

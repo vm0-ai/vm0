@@ -712,7 +712,6 @@ export {
   getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
-  isGoogleOAuthConnector,
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {

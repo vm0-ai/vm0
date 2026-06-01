@@ -56,7 +56,6 @@ import {
   hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
-  isGoogleOAuthConnector,
   type ConnectorEnvReader,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
@@ -72,7 +71,10 @@ import {
   revokeConnectorAuthMethodAccessToken,
   startConnectorDeviceAuthorization,
 } from "../auth-providers/connector-auth";
-import { GOOGLE_OAUTH_CONNECTOR_TYPES } from "../auth-providers/oauth/google-connectors";
+import {
+  GOOGLE_OAUTH_CONNECTOR_TYPES,
+  isGoogleOAuthConnector,
+} from "../auth-providers/oauth/google-connectors";
 import { buildGoogleAuthorizationUrl } from "../auth-providers/oauth/google";
 import { getConnectorFirewall } from "../firewalls";
 

@@ -253,7 +253,7 @@ describe("directed authorize page", () => {
     expect(logoLink.closest("a")).toHaveAttribute("href", "/connectors");
   });
 
-  it("shows Google OAuth notice when Google connector is not yet connected (AUTH-D-060)", async () => {
+  it("shows Google security warning notice when Google connector is not yet connected (AUTH-D-060)", async () => {
     // No mockConnectorsConnected → connector not in the connected list
     detachedSetupPage({
       context,
@@ -273,7 +273,7 @@ describe("directed authorize page", () => {
     expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
   });
 
-  it("does not show Google OAuth notice when Google connector is already connected (AUTH-D-061)", async () => {
+  it("does not show Google security warning notice when Google connector is already connected (AUTH-D-061)", async () => {
     mockConnectorsConnected("gmail");
 
     detachedSetupPage({
@@ -292,7 +292,7 @@ describe("directed authorize page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not show Google OAuth notice when connector is already authorized (AUTH-D-062)", async () => {
+  it("does not show Google security warning notice when connector is already authorized (AUTH-D-062)", async () => {
     mockConnectorsConnected("gmail");
     server.use(
       mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
@@ -314,7 +314,7 @@ describe("directed authorize page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not show Google OAuth notice for non-Google OAuth connectors (AUTH-D-063)", async () => {
+  it("does not show Google security warning notice for non-Google auth-code connectors (AUTH-D-063)", async () => {
     mockConnectorsConnected("github");
 
     detachedSetupPage({

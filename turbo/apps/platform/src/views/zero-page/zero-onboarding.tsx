@@ -277,7 +277,7 @@ function ConnectStepContent() {
     const launchMode = getConnectorConnectLaunchMode({
       type,
       availableAuthMethods: connector.availableAuthMethods,
-      preferModalForGoogleOAuth: true,
+      preferModalForGoogleSecurityWarning: true,
     });
     if (launchMode === "modal") {
       setSelectedConnector(type);

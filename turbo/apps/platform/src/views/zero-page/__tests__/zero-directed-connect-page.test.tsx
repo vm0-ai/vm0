@@ -767,7 +767,7 @@ describe("directed connect page", () => {
     });
   });
 
-  it("shows Google OAuth notice for a Google connector when not connected (CONN-D-060)", async () => {
+  it("shows Google security warning notice for a Google connector when not connected (CONN-D-060)", async () => {
     detachedSetupPage({ context, path: "/connectors/gmail/connect" });
 
     await waitFor(() => {
@@ -783,7 +783,7 @@ describe("directed connect page", () => {
     expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
   });
 
-  it("shows Google OAuth notice for other Google connectors (CONN-D-061)", async () => {
+  it("shows Google security warning notice for other Google connectors (CONN-D-061)", async () => {
     detachedSetupPage({ context, path: "/connectors/google-sheets/connect" });
 
     await waitFor(() => {
@@ -797,7 +797,7 @@ describe("directed connect page", () => {
     ).toBeInTheDocument();
   });
 
-  it("does not show Google OAuth notice for non-Google OAuth connectors (CONN-D-062)", async () => {
+  it("does not show Google security warning notice for non-Google auth-code connectors (CONN-D-062)", async () => {
     detachedSetupPage({ context, path: "/connectors/github/connect" });
 
     await waitFor(() => {
@@ -811,7 +811,7 @@ describe("directed connect page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not show Google OAuth notice when Google connector is already connected (CONN-D-063)", async () => {
+  it("does not show Google security warning notice when Google connector is already connected (CONN-D-063)", async () => {
     mockConnectors([{ type: "gmail" }]);
 
     detachedSetupPage({ context, path: "/connectors/gmail/connect" });

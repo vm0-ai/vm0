@@ -35,7 +35,7 @@ test("connect button opens api-token form (CONN-I-011)", async () => {
   expect(screen.getByText("Save")).toBeInTheDocument();
 });
 
-test("connect button on Google connector opens dialog with OAuth notice (CONN-I-020)", async () => {
+test("connect button on Google connector opens dialog with security warning notice (CONN-I-020)", async () => {
   detachedSetupPage({ context, path: "/connectors" });
 
   await waitFor(() => {
@@ -54,7 +54,7 @@ test("connect button on Google connector opens dialog with OAuth notice (CONN-I-
   expect(screen.getByText(/Go to vm0\.ai \(unsafe\)/)).toBeInTheDocument();
 });
 
-test("connect button on api-token-only connector opens dialog without OAuth notice (CONN-I-021)", async () => {
+test("connect button on api-token-only connector opens dialog without security warning notice (CONN-I-021)", async () => {
   detachedSetupPage({ context, path: "/connectors" });
 
   await waitFor(() => {

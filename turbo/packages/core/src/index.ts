@@ -224,7 +224,6 @@ export {
   getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
-  isGoogleOAuthConnector,
   connectorResponseSchema,
   connectorListResponseSchema,
   scopeDiffResponseSchema,

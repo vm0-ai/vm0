@@ -5,7 +5,6 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
@@ -27,7 +26,11 @@ import {
 } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
+import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
+import {
+  Vm0LogoLink,
+  GoogleSecurityWarningNotice,
+} from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
 // ---------------------------------------------------------------------------
@@ -176,8 +179,10 @@ function DirectedAuthorizeCard() {
         item.availableAuthMethods,
       )
     : null;
-  const showGoogleOAuthNotice =
-    !isAuthorized && !isConnected && isGoogleOAuthConnector(connectorType);
+  const showGoogleSecurityWarningNotice =
+    !isAuthorized &&
+    !isConnected &&
+    shouldShowGoogleSecurityWarningNotice(connectorType);
 
   const handleAuthorize = () => {
     if (!canAuthorize) {
@@ -225,7 +230,9 @@ function DirectedAuthorizeCard() {
                   <p className="w-60 text-sm text-muted-foreground">
                     {config.helpText}
                   </p>
-                  {showGoogleOAuthNotice && <GoogleOAuthNotice />}
+                  {showGoogleSecurityWarningNotice && (
+                    <GoogleSecurityWarningNotice />
+                  )}
                 </>
               )}
             </div>
