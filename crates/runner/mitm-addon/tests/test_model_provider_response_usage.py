@@ -84,7 +84,7 @@ def _standard_success_payload(
     resolved_input_tokens = provider_case.input_tokens if input_tokens is None else input_tokens
     resolved_output_tokens = provider_case.output_tokens if output_tokens is None else output_tokens
     resolved_cached_tokens = provider_case.cached_tokens if cached_tokens is None else cached_tokens
-    usage_payload = {
+    usage_payload: dict[str, object] = {
         "input_tokens": resolved_input_tokens,
         "output_tokens": resolved_output_tokens,
     }
@@ -92,7 +92,7 @@ def _standard_success_payload(
         usage_payload["input_tokens_details"] = {
             "cached_tokens": resolved_cached_tokens,
         }
-    payload = {
+    payload: dict[str, object] = {
         "id": provider_case.message_id,
         "model": provider_case.model,
         "usage": usage_payload,
