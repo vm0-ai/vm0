@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.405.6](https://github.com/vm0-ai/vm0/compare/web-v12.405.5...web-v12.405.6) (2026-06-01)
+
+
+### Refactoring
+
+* remove connector session handoff ([#15689](https://github.com/vm0-ai/vm0/issues/15689)) ([1ea6d2a](https://github.com/vm0-ai/vm0/commit/1ea6d2a3aa5a0db8d8b6118cba818210a5a49df6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.9
+
 ## [12.405.5](https://github.com/vm0-ai/vm0/compare/web-v12.405.4...web-v12.405.5) (2026-06-01)
 
 

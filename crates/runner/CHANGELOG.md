@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.105.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.14...runner-rs-v0.105.15) (2026-06-01)
+
+
+### Bug Fixes
+
+* **mitm-addon:** require keyword auth options ([#15694](https://github.com/vm0-ai/vm0/issues/15694)) ([d97034d](https://github.com/vm0-ai/vm0/commit/d97034d35bc870c84cc22815dc87bde27ec6b88e))
+* **mitm-addon:** scope registry cache state by path ([#15683](https://github.com/vm0-ai/vm0/issues/15683)) ([157164b](https://github.com/vm0-ai/vm0/commit/157164b7c65e68d7de28fa368c3d03bfc277f8c6))
+* **mitm-addon:** validate firewall auth success responses ([#15695](https://github.com/vm0-ai/vm0/issues/15695)) ([0584be6](https://github.com/vm0-ai/vm0/commit/0584be6eb1f7b21efef75005c5341a76819b85fb))
+
 ## [0.105.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.13...runner-rs-v0.105.14) (2026-06-01)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.18](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.17...vsock-guest-v0.18.18) (2026-06-01)
+
+
+### Refactoring
+
+* split exec control modules ([#15692](https://github.com/vm0-ai/vm0/issues/15692)) ([2c43082](https://github.com/vm0-ai/vm0/commit/2c4308234dbf0b40683caabedf91a6bb85f43e78))
+
 ## [0.18.17](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.16...vsock-guest-v0.18.17) (2026-05-31)
 
 

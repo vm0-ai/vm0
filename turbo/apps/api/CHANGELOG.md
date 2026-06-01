@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.90.10](https://github.com/vm0-ai/vm0/compare/api-v1.90.9...api-v1.90.10) (2026-06-01)
+
+
+### Bug Fixes
+
+* prevent lower-tier checkout replacement ([#15623](https://github.com/vm0-ai/vm0/issues/15623)) ([5382807](https://github.com/vm0-ai/vm0/commit/5382807e08a67fa9495fe93a2a0fcc658a4d45c7))
+* validate chat thread path ids ([#15691](https://github.com/vm0-ai/vm0/issues/15691)) ([19eeffa](https://github.com/vm0-ai/vm0/commit/19eeffa13693e13dc41509b096e2ad7a37d3ebfe))
+
+
+### Refactoring
+
+* remove connector session handoff ([#15689](https://github.com/vm0-ai/vm0/issues/15689)) ([1ea6d2a](https://github.com/vm0-ai/vm0/commit/1ea6d2a3aa5a0db8d8b6118cba818210a5a49df6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.9
+    * @vm0/core bumped to 8.305.1
+    * @vm0/db bumped to 1.24.1
+
 ## [1.90.9](https://github.com/vm0-ai/vm0/compare/api-v1.90.8...api-v1.90.9) (2026-06-01)
 
 

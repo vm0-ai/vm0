@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.305.1](https://github.com/vm0-ai/vm0/compare/core-v8.305.0...core-v8.305.1) (2026-06-01)
+
+
+### Refactoring
+
+* remove connector session handoff ([#15689](https://github.com/vm0-ai/vm0/issues/15689)) ([1ea6d2a](https://github.com/vm0-ai/vm0/commit/1ea6d2a3aa5a0db8d8b6118cba818210a5a49df6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.9
+
 ## [8.305.0](https://github.com/vm0-ai/vm0/compare/core-v8.304.9...core-v8.305.0) (2026-06-01)
 
 
