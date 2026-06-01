@@ -3634,6 +3634,8 @@ class TestCompiledFirewallMatching:
             {"base": "https:///hook"},
             {"base": "https://example.com/hook#fragment"},
             {"base": "https://user:pass@example.com/hook"},
+            {"base": "https://0177.0.0.1?token=static"},
+            {"base": "https://127。0。0。1?token=static"},
             {"base": "https://example.com\\hook"},
             {"base": "https://example.com/\x00hook"},
             {"base": "https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
@@ -3690,6 +3692,7 @@ class TestCompiledFirewallMatching:
         "auth_config",
         [
             {"base": "https://example.com/hook?token=static"},
+            {"base": "https://example.com?token=a@b"},
             {"base": "${{ secrets.WEBHOOK_URL }}"},
             {"base": "${{ secrets.WEBHOOK_BASE_URL }}/v1"},
             {"base": "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
