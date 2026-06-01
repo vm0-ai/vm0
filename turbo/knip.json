@@ -28,7 +28,6 @@
         "require-in-the-middle",
         "cpu-features"
       ],
-      "ignoreBinaries": ["drizzle-kit"],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
       }
