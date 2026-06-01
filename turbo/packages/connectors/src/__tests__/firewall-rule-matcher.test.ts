@@ -938,6 +938,9 @@ describe("matchFirewallBaseUrl", () => {
     ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
     ["invalid authority percent escape", "https://api%zz.github.com/repos"],
     ["percent-encoded authority dot", "https://api%2egithub.com/repos"],
+    ["percent-encoded authority slash", "https://api%2Fgithub.com/repos"],
+    ["percent-encoded authority backslash", "https://api%5Cgithub.com/repos"],
+    ["percent-encoded authority at sign", "https://api%40github.com/repos"],
     [
       "percent-encoded authority dot after scheme backslash",
       "https:\\api%2egithub.com/repos",
@@ -977,6 +980,21 @@ describe("matchFirewallBaseUrl", () => {
     [
       "percent-encoded authority colon",
       "https://api.github.com%3A443/repos",
+      "https://api.github.com",
+    ],
+    [
+      "percent-encoded authority slash",
+      "https://api%2Fgithub.com/repos",
+      "https://api.github.com",
+    ],
+    [
+      "percent-encoded authority backslash",
+      "https://api%5Cgithub.com/repos",
+      "https://api.github.com",
+    ],
+    [
+      "percent-encoded authority at sign",
+      "https://api%40github.com/repos",
       "https://api.github.com",
     ],
     [

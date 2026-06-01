@@ -534,6 +534,9 @@ class TestMatchBaseUrl:
             "https://[::1]junk/repos",
             "https://api%2egithub.com/repos",
             "https://api.github.com%3A443/repos",
+            "https://api%2Fgithub.com/repos",
+            "https://api%5Cgithub.com/repos",
+            "https://api%40github.com/repos",
         ],
     )
     def test_static_base_malformed_request_authority_returns_none(self, url):
