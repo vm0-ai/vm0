@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.106.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.15...runner-rs-v0.106.0) (2026-06-01)
+
+
+### Features
+
+* add canonical workspace drive foundation ([#15688](https://github.com/vm0-ai/vm0/issues/15688)) ([593460a](https://github.com/vm0-ai/vm0/commit/593460ab818768ae75d1fd658a7211a2120a956b))
+
+
+### Bug Fixes
+
+* block encoded backslash firewall paths ([#15738](https://github.com/vm0-ai/vm0/issues/15738)) ([957e298](https://github.com/vm0-ai/vm0/commit/957e29807717b6e40215e3f1aab191ca67a3b42a))
+* classify x dm deep links as with-url posts ([#15757](https://github.com/vm0-ai/vm0/issues/15757)) ([d5f85f1](https://github.com/vm0-ai/vm0/commit/d5f85f1e03944f4e3a139d3f10ae3441d9cb5aea))
+* **mitm-addon:** bill x counts from total tweet count ([#15756](https://github.com/vm0-ai/vm0/issues/15756)) ([ae3b32d](https://github.com/vm0-ai/vm0/commit/ae3b32dbcdad2afa23f701c1c7965b6e9afec308))
+* **mitm-addon:** bound request capture decoding ([#15729](https://github.com/vm0-ai/vm0/issues/15729)) ([13392a0](https://github.com/vm0-ai/vm0/commit/13392a0858b0208a5081d5560afe2b0858137eb9))
+* **mitm-addon:** bound x billing request body decoding ([#15731](https://github.com/vm0-ai/vm0/issues/15731)) ([ac1b5b9](https://github.com/vm0-ai/vm0/commit/ac1b5b9581318ba4b4ab411af726fba3991d981b))
+* **mitm-addon:** keep websocket usage flows tracked ([#15722](https://github.com/vm0-ai/vm0/issues/15722)) ([9605293](https://github.com/vm0-ai/vm0/commit/9605293c0e0f32961ec40a42ed916039a4777c10))
+* **mitm-addon:** stop logging webhook payload bodies ([#15717](https://github.com/vm0-ai/vm0/issues/15717)) ([75b73a6](https://github.com/vm0-ai/vm0/commit/75b73a617f07c8c905c34dc0cd689127b3061c2d))
+* **runner:** skip unclaimed jobs during soft drain ([#15745](https://github.com/vm0-ai/vm0/issues/15745)) ([b12aea2](https://github.com/vm0-ai/vm0/commit/b12aea21c7ca019089c03609ae44236552023dc1))
+* sanitize captured network log headers ([#15758](https://github.com/vm0-ai/vm0/issues/15758)) ([da717a5](https://github.com/vm0-ai/vm0/commit/da717a582e20826834fd9169cf2fcd627c6cb4a0))
+
+
+### Documentation
+
+* document mitm usage flush lifecycle ([#15744](https://github.com/vm0-ai/vm0/issues/15744)) ([f0fdc84](https://github.com/vm0-ai/vm0/commit/f0fdc842bcc8673578f2bbc4b98c64b765b6efbc))
+* **mitm-addon:** document event-less sse capture ([#15733](https://github.com/vm0-ai/vm0/issues/15733)) ([8e56540](https://github.com/vm0-ai/vm0/commit/8e56540281db516a2e170d1eec44d00564235ff9))
+
+
+### Refactoring
+
+* **mitm-addon:** centralize x body refinement buckets ([#15706](https://github.com/vm0-ai/vm0/issues/15706)) ([44a45b7](https://github.com/vm0-ai/vm0/commit/44a45b7a1dbc2c6bfdf3594b5d0a9873afdd286e))
+* **mitm-addon:** unify firewall auth cache payload shape ([#15725](https://github.com/vm0-ai/vm0/issues/15725)) ([0d40dc4](https://github.com/vm0-ai/vm0/commit/0d40dc44230517678cd4308e0d2f0a95c4e63a01))
+
 ## [0.105.15](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.14...runner-rs-v0.105.15) (2026-06-01)
 
 

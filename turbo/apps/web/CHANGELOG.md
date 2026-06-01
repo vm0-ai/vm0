@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.406.0](https://github.com/vm0-ai/vm0/compare/web-v12.405.6...web-v12.406.0) (2026-06-01)
+
+
+### Features
+
+* add user permission grants api ([#15727](https://github.com/vm0-ai/vm0/issues/15727)) ([d866875](https://github.com/vm0-ai/vm0/commit/d8668757f060fc37bd54c7e0b1368500c880ce38))
+
+
+### Bug Fixes
+
+* preserve signup attribution in stripe metadata ([#15759](https://github.com/vm0-ai/vm0/issues/15759)) ([eaca49b](https://github.com/vm0-ai/vm0/commit/eaca49be6a4cc398937f6102079d525d171b73d2))
+* **web:** route dotted docs urls through proxy ([#15742](https://github.com/vm0-ai/vm0/issues/15742)) ([ce8fe02](https://github.com/vm0-ai/vm0/commit/ce8fe026ba31f02321b4a761542ff3a358ddc402))
+
+
+### Refactoring
+
+* move legacy file redirects to api ([#15732](https://github.com/vm0-ai/vm0/issues/15732)) ([372e41e](https://github.com/vm0-ai/vm0/commit/372e41e54a10b1dc4a86ee3fe5aab28efb11b0f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.51.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.40.1
+
 ## [12.405.6](https://github.com/vm0-ai/vm0/compare/web-v12.405.5...web-v12.405.6) (2026-06-01)
 
 
