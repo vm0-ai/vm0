@@ -16,6 +16,7 @@ use crate::executor;
 use crate::lock;
 use crate::paths::{HomePaths, RootfsPaths, RunnerPaths};
 use crate::prefetch;
+use crate::profile;
 use crate::proxy;
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 
@@ -156,7 +157,7 @@ pub async fn run_benchmark(
         },
         device_rate_limits: None,
         workspace_drive: Some(sandbox::WorkspaceDriveConfig {
-            size_bytes: u64::from(profile_config.workspace_disk_mb) * 1024 * 1024,
+            size_bytes: profile::workspace_disk_mb_to_bytes(profile_config.workspace_disk_mb),
         }),
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;

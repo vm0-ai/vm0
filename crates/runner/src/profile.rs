@@ -14,6 +14,10 @@ pub struct ProfileDef {
 
 pub const DEFAULT_PROFILE: &str = "vm0/default";
 
+pub(crate) fn workspace_disk_mb_to_bytes(workspace_disk_mb: u32) -> u64 {
+    u64::from(workspace_disk_mb) * 1024 * 1024
+}
+
 /// Return the profile definition for a given profile name.
 pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     static DEFAULT: ProfileDef = ProfileDef {
@@ -80,6 +84,11 @@ mod tests {
         assert_eq!(def.memory_mb, 4096);
         assert_eq!(def.rootfs_disk_mb, 8192);
         assert_eq!(def.workspace_disk_mb, 16384);
+    }
+
+    #[test]
+    fn workspace_disk_mb_to_bytes_converts_mib_to_bytes() {
+        assert_eq!(workspace_disk_mb_to_bytes(16), 16 * 1024 * 1024);
     }
 
     #[test]

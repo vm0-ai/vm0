@@ -506,12 +506,11 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 def.rootfs_disk_mb,
             )
             .await?;
-            let workspace_size_bytes = workspace_image_size_bytes(def.workspace_disk_mb);
             let snapshot_hash = compute_snapshot_hash(
                 &rootfs_hash,
                 def.vcpu,
                 def.memory_mb,
-                workspace_size_bytes,
+                def.workspace_disk_mb,
                 FIRECRACKER_VERSION,
                 KERNEL_VERSION,
                 &provider.config_hash(),
@@ -715,7 +714,7 @@ async fn build_snapshot(
         output_dir: snapshot_dir.to_path_buf(),
         vcpu_count: def.vcpu,
         memory_mb: def.memory_mb,
-        workspace_image_size_bytes: workspace_image_size_bytes(def.workspace_disk_mb),
+        workspace_image_size_bytes: profile::workspace_disk_mb_to_bytes(def.workspace_disk_mb),
     };
 
     let pending = provider.create_uncommitted_snapshot(create_config).await?;
@@ -1634,14 +1633,14 @@ async fn compute_ca_cert_fingerprint(paths: &HomePaths) -> RunnerResult<String> 
 /// This hash is local-only (R2 stores only the shared template). It covers:
 ///   - `SNAPSHOT_CACHE_VERSION` — manual bump counter
 ///   - `rootfs_hash` — the rootfs this snapshot is built from
-///   - `vcpu`, `memory_mb`, `workspace_image_size_bytes` — VM resource config
+///   - `vcpu`, `memory_mb`, `workspace_disk_mb` — VM resource config
 ///   - `fc_version`, `kernel_version` — Firecracker and guest kernel versions
 ///   - `provider_config_hash` — sandbox-fc internal config (boot args, prewarm, etc.)
 fn compute_snapshot_hash(
     rootfs_hash: &str,
     vcpu: u32,
     memory_mb: u32,
-    workspace_image_size_bytes: u64,
+    workspace_disk_mb: u32,
     fc_version: &str,
     kernel_version: &str,
     provider_config_hash: &str,
@@ -1656,8 +1655,8 @@ fn compute_snapshot_hash(
     hasher.update(vcpu.to_le_bytes());
     hasher.update(b"memory_mb:");
     hasher.update(memory_mb.to_le_bytes());
-    hasher.update(b"workspace_image_size_bytes:");
-    hasher.update(workspace_image_size_bytes.to_le_bytes());
+    hasher.update(b"workspace_disk_mb:");
+    hasher.update(workspace_disk_mb.to_le_bytes());
     hasher.update(b"fc_version:");
     hasher.update(fc_version.as_bytes());
     hasher.update(b"kernel_version:");
@@ -1666,10 +1665,6 @@ fn compute_snapshot_hash(
     hasher.update(provider_config_hash.as_bytes());
 
     hex::encode(hasher.finalize())
-}
-
-fn workspace_image_size_bytes(workspace_disk_mb: u32) -> u64 {
-    u64::from(workspace_disk_mb) * 1024 * 1024
 }
 
 /// Return `(logical, disk)` as human-readable strings (e.g. "65.2 MiB").
@@ -3490,7 +3485,7 @@ exit 1
             "rootfs_aaa",
             2,
             4096,
-            workspace_image_size_bytes(16_384),
+            16_384,
             "v1.14.1",
             "6.1.155",
             "config_xxx",
@@ -3499,7 +3494,7 @@ exit 1
             "rootfs_aaa",
             2,
             4096,
-            workspace_image_size_bytes(16_384),
+            16_384,
             "v1.14.1",
             "6.1.155",
             "config_xxx",
@@ -3510,105 +3505,42 @@ exit 1
 
     #[test]
     fn compute_snapshot_hash_sensitive_to_each_field() {
-        let base = compute_snapshot_hash(
-            "rootfs_aaa",
-            2,
-            4096,
-            workspace_image_size_bytes(16_384),
-            "v1.14.1",
-            "6.1.155",
-            "cfg",
-        );
+        let base =
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.14.1", "6.1.155", "cfg");
 
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_bbb",
-                2,
-                4096,
-                workspace_image_size_bytes(16_384),
-                "v1.14.1",
-                "6.1.155",
-                "cfg"
-            ),
+            compute_snapshot_hash("rootfs_bbb", 2, 4096, 16_384, "v1.14.1", "6.1.155", "cfg"),
             "must change with rootfs_hash"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_aaa",
-                4,
-                4096,
-                workspace_image_size_bytes(16_384),
-                "v1.14.1",
-                "6.1.155",
-                "cfg"
-            ),
+            compute_snapshot_hash("rootfs_aaa", 4, 4096, 16_384, "v1.14.1", "6.1.155", "cfg"),
             "must change with vcpu"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_aaa",
-                2,
-                8192,
-                workspace_image_size_bytes(16_384),
-                "v1.14.1",
-                "6.1.155",
-                "cfg"
-            ),
+            compute_snapshot_hash("rootfs_aaa", 2, 8192, 16_384, "v1.14.1", "6.1.155", "cfg"),
             "must change with memory_mb"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_aaa",
-                2,
-                4096,
-                workspace_image_size_bytes(32_768),
-                "v1.14.1",
-                "6.1.155",
-                "cfg"
-            ),
-            "must change with workspace_image_size_bytes"
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 32_768, "v1.14.1", "6.1.155", "cfg"),
+            "must change with workspace_disk_mb"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_aaa",
-                2,
-                4096,
-                workspace_image_size_bytes(16_384),
-                "v1.15.0",
-                "6.1.155",
-                "cfg"
-            ),
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.15.0", "6.1.155", "cfg"),
             "must change with fc_version"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_aaa",
-                2,
-                4096,
-                workspace_image_size_bytes(16_384),
-                "v1.14.1",
-                "6.2.0",
-                "cfg"
-            ),
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.14.1", "6.2.0", "cfg"),
             "must change with kernel_version"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash(
-                "rootfs_aaa",
-                2,
-                4096,
-                workspace_image_size_bytes(16_384),
-                "v1.14.1",
-                "6.1.155",
-                "cfg2"
-            ),
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.14.1", "6.1.155", "cfg2"),
             "must change with provider_config_hash"
         );
     }
