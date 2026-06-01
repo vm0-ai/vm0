@@ -83,12 +83,17 @@ const encryptedProviderStateSchema = z.object({
 
 type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
 
-type PollClaimedSessionArgs = {
+type DeviceAuthMethodRef<
+  Type extends DeviceAuthGrantConnectorType = DeviceAuthGrantConnectorType,
+> = {
+  readonly type: Type;
+  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId<Type>;
+};
+
+type PollClaimedSessionArgs = DeviceAuthMethodRef & {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: DeviceAuthGrantConnectorType;
-  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId;
   readonly authClient: ConnectorAuthClient;
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
@@ -98,10 +103,7 @@ type PollClaimedSessionArgs = {
   }) => Promise<ConnectorResponse>;
 };
 
-type ResolvedDeviceAuthMethod = {
-  readonly type: DeviceAuthGrantConnectorType;
-  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId;
-};
+type ResolvedDeviceAuthMethod = DeviceAuthMethodRef;
 
 const connectorOauthDeviceAuthDisabled = Object.freeze({
   status: 403 as const,
@@ -250,9 +252,9 @@ function resolveStoredDeviceAuthMethod(
   return resolved;
 }
 
-function resolveRequiredAuthClient(
-  type: DeviceAuthGrantConnectorType,
-  authMethod: ConnectorDeviceAuthGrantAuthMethodId,
+function resolveRequiredAuthClient<Type extends DeviceAuthGrantConnectorType>(
+  type: Type,
+  authMethod: ConnectorDeviceAuthGrantAuthMethodId<Type>,
 ): ConnectorAuthClient | ReturnType<typeof internalServerError> {
   const authClient = resolveConnectorAuthClientForMethod(
     type,
