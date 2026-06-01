@@ -239,6 +239,8 @@ interface ExistingClientMessageIdRow {
   readonly threadUserId: string;
   readonly role: string;
   readonly runId: string | null;
+  readonly revokesMessageId: string | null;
+  readonly interruptsRunId: string | null;
   readonly messageCreatedAt: Date;
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
@@ -276,7 +278,9 @@ function resolveExistingClientMessageIdRow(
   if (
     row.chatThreadId !== params.threadId ||
     row.threadUserId !== params.userId ||
-    row.role !== "user"
+    row.role !== "user" ||
+    row.revokesMessageId !== null ||
+    row.interruptsRunId !== null
   ) {
     return { kind: "conflict" };
   }
@@ -312,6 +316,8 @@ async function resolveClientMessageId(
       threadUserId: chatThreads.userId,
       role: chatMessages.role,
       runId: chatMessages.runId,
+      revokesMessageId: chatMessages.revokesMessageId,
+      interruptsRunId: chatMessages.interruptsRunId,
       messageCreatedAt: chatMessages.createdAt,
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
@@ -1374,6 +1380,8 @@ function appendUnassociatedUserMessage(params: {
         threadUserId: chatThreads.userId,
         role: chatMessages.role,
         runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
+        interruptsRunId: chatMessages.interruptsRunId,
         messageCreatedAt: chatMessages.createdAt,
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,

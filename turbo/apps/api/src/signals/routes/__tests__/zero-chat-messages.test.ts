@@ -1194,6 +1194,55 @@ describe("POST /api/zero/chat/messages", () => {
     expect(messages).toStrictEqual([]);
   });
 
+  it("rejects clientMessageId reuse from a queued recall message", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({ agentId: fixture.agentId, prompt: "first" });
+    await clearAllDetached();
+    await send({
+      agentId: fixture.agentId,
+      prompt: "queued for recall",
+      threadId: first.body.threadId,
+    });
+
+    const [queued] = await store
+      .set(writeDb$)
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, first.body.threadId),
+          eq(chatMessages.content, "queued for recall"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+    const recallClientMessageId = randomUUID();
+    await send({
+      agentId: fixture.agentId,
+      threadId: first.body.threadId,
+      revokesMessageId: queued!.id,
+      clientMessageId: recallClientMessageId,
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "normal retry with recall id",
+          threadId: first.body.threadId,
+          clientMessageId: recallClientMessageId,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "CONFLICT",
+      message: "clientMessageId is already in use",
+    });
+  });
+
   it("creates a follow-up run on an existing thread and continues the last session", async () => {
     const fixture = await track(seedFixture());
     const first = await send({ agentId: fixture.agentId, prompt: "first" });
