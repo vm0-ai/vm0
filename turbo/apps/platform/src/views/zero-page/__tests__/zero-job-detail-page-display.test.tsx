@@ -18,6 +18,7 @@ import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname, search } from "../../../signals/location.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -258,6 +259,27 @@ describe("zero job detail page - connector display", () => {
     expect(
       screen.queryByLabelText(/Manage Slack permissions/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("should show connector permission management for non-admin members when user grants are enabled", async () => {
+    mockAPIsWithConnectors();
+    setMockOrg({ role: "member" });
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("switch", { name: /Slack access/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/Manage Slack permissions/i),
+    ).toBeInTheDocument();
   });
 });
 
