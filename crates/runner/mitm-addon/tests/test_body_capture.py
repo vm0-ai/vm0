@@ -15,7 +15,7 @@ from body_utils import (
     _encode_body,
     _is_sensitive_header,
     _is_text_content,
-    _redact_headers,
+    _sanitize_headers_for_capture,
     _truncate_bytes_utf8_safe,
     add_capture_fields,
     create_stream_decompressor,
@@ -194,7 +194,7 @@ class TestIsSensitiveHeader:
         assert _is_sensitive_header("X-Password") is True
 
 
-class TestRedactHeaders:
+class TestSanitizeHeadersForCapture:
     def test_redacts_sensitive_keeps_others(self, headers):
         headers = headers(
             ("Content-Type", "application/json"),
@@ -202,7 +202,7 @@ class TestRedactHeaders:
             ("Host", "api.example.com"),
             ("Cookie", "session=abc"),
         )
-        result = _redact_headers(headers)
+        result = _sanitize_headers_for_capture(headers)
         assert result["Content-Type"] == "application/json"
         assert result["Authorization"] == "***"
         assert result["Host"] == "api.example.com"
@@ -214,10 +214,39 @@ class TestRedactHeaders:
             ("Set-Cookie", "b=2"),
             ("Host", "example.com"),
         )
-        result = _redact_headers(headers)
+        result = _sanitize_headers_for_capture(headers)
         assert result["Set-Cookie"] == "***"
         assert result["Host"] == "example.com"
         assert len(result) == 2
+
+    def test_url_bearing_headers_strip_query_and_fragment(self, headers):
+        headers = headers(
+            ("Location", "https://client.example/callback?code=secret#fragment"),
+            ("Referer", "https://app.example/page?token=secret#fragment"),
+            ("content-location", "/objects/123?signature=secret#fragment"),
+            ("referrer", "/previous?pii=secret#fragment"),
+        )
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Location"] == "https://client.example/callback"
+        assert result["Referer"] == "https://app.example/page"
+        assert result["content-location"] == "/objects/123"
+        assert result["referrer"] == "/previous"
+
+    def test_link_header_sanitizes_uri_references(self, headers):
+        headers = headers(
+            (
+                "Link",
+                '<https://api.example/items?cursor=secret#fragment>; rel="next", '
+                '</local?token=secret#fragment>; rel="prev"',
+            ),
+        )
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Link"] == '<https://api.example/items>; rel="next", </local>; rel="prev"'
+
+    def test_malformed_link_header_redacts(self, headers):
+        headers = headers(("Link", '<https://api.example/items?cursor=secret; rel="next"'))
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Link"] == "***"
 
 
 class TestAddCaptureFields:
@@ -277,6 +306,23 @@ class TestAddCaptureFields:
         assert "response_headers" in entry
         assert entry["response_headers"]["Content-Type"] == "application/json"
         assert entry["response_headers"]["X-Request-Id"] == "req-123"
+
+    def test_captured_url_bearing_headers_are_sanitized(self, real_flow, headers):
+        flow = real_flow(
+            method="GET",
+            host="api.example.com",
+            request_headers=headers(
+                ("Host", "api.example.com"),
+                ("Referer", "https://app.example/page?token=secret#fragment"),
+            ),
+            response_headers=headers(
+                ("Location", "https://client.example/callback?code=secret#fragment"),
+            ),
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_headers"]["Referer"] == "https://app.example/page"
+        assert entry["response_headers"]["Location"] == "https://client.example/callback"
 
     def test_response_headers_redacts_sensitive(self, real_flow, headers):
         flow = real_flow(

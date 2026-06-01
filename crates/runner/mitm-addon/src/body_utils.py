@@ -7,7 +7,7 @@ Exports:
 - Streaming / one-shot decompression for gzip, deflate, br, zstd.
 - Conservative request-body decoding for billing inspection.
 - UTF-8-safe truncation, text/binary content detection and encoding.
-- Header redaction for sensitive names (auth, token, cookie, …).
+- Header sanitization for sensitive names and URL-bearing values.
 - ``add_capture_fields`` — composes capture-mode log entry fields.
 """
 
@@ -22,9 +22,11 @@ import zstandard
 from mitmproxy import ctx, http
 
 import flow_metadata_keys as metadata_keys
+import network_log_sanitization
 
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
+_REDACTED_HEADER_VALUE = "***"
 
 # UTF-8 byte-boundary markers (RFC 3629).  Continuation bytes match
 # ``0b10xxxxxx`` → ``(byte & 0xC0) == _UTF8_CONT_MARK``.  Lead bytes fall
@@ -79,6 +81,14 @@ _SENSITIVE_HEADER_KEYWORDS = (
     "credential",
     "password",
     "cookie",
+)
+_URL_BEARING_CAPTURE_HEADER_NAMES = frozenset(
+    {
+        "location",
+        "content-location",
+        "referer",
+        "referrer",
+    }
 )
 
 
@@ -440,13 +450,25 @@ def _is_sensitive_header(name: str) -> bool:
     return any(kw in lower for kw in _SENSITIVE_HEADER_KEYWORDS)
 
 
-def _redact_headers(headers) -> dict:
-    """Build a dict of headers with sensitive values replaced by ***."""
+def _sanitize_header_value_for_capture(name: str, value: str) -> str:
+    lower_name = name.lower()
+    if _is_sensitive_header(name):
+        return _REDACTED_HEADER_VALUE
+    if lower_name in _URL_BEARING_CAPTURE_HEADER_NAMES:
+        return network_log_sanitization.sanitize_url_for_network_log(value)
+    if lower_name == "link":
+        sanitized_link = network_log_sanitization.sanitize_link_header_for_network_log(value)
+        return _REDACTED_HEADER_VALUE if sanitized_link is None else sanitized_link
+    return value
+
+
+def _sanitize_headers_for_capture(headers) -> dict:
+    """Build a dict of captured headers safe for persistent network logs."""
     result = {}
     for name, value in headers.items(multi=True):
         if name in result:
             continue  # keep first occurrence only (headers.items gives all)
-        result[name] = "***" if _is_sensitive_header(name) else value
+        result[name] = _sanitize_header_value_for_capture(name, value)
     return result
 
 
@@ -504,7 +526,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     empty body and normally produces no body fields.
     """
     # Request headers (always available)
-    log_entry["request_headers"] = _redact_headers(flow.request.headers)
+    log_entry["request_headers"] = _sanitize_headers_for_capture(flow.request.headers)
 
     # Request body
     if flow.request.raw_content:
@@ -522,7 +544,7 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
 
     # Response headers
     if flow.response:
-        log_entry["response_headers"] = _redact_headers(flow.response.headers)
+        log_entry["response_headers"] = _sanitize_headers_for_capture(flow.response.headers)
 
     # Response body — read from stream_buffer (available for all responses).
     # The buffer contains raw wire bytes (possibly gzip/br/zstd compressed).

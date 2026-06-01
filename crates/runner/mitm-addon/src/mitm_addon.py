@@ -34,6 +34,7 @@ from mitmproxy.addonmanager import Loader
 import body_utils
 import flow_metadata_keys as metadata_keys
 import matching
+import network_log_sanitization
 import registry
 import response_streaming
 import usage
@@ -239,22 +240,6 @@ def _record_browser_firewall_passthrough(
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
 
 
-def _sanitize_url_for_log(url: str) -> str:
-    """Return a URL string safe for persistent logs.
-
-    Runtime metadata keeps the raw URL because firewall/auth and connector
-    billing can need query parameters. Persistent logs do not.
-    """
-    try:
-        parts = urllib.parse.urlsplit(url)
-    except ValueError:
-        cut_points = [index for marker in ("?", "#") if (index := url.find(marker)) != -1]
-        if not cut_points:
-            return url
-        return url[: min(cut_points)]
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-
-
 def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
     target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
     if target is not None:
@@ -281,7 +266,7 @@ def _http_network_log_entry(
         "host": host,
         "port": port,
         "method": flow.request.method,
-        "url": _sanitize_url_for_log(url),
+        "url": network_log_sanitization.sanitize_url_for_network_log(url),
         "status": status_code,
         "latency_ms": latency_ms,
         "request_size": request_size,
@@ -735,7 +720,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
-        safe_url = _sanitize_url_for_log(original_url)
+        safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
         log_proxy_entry(
             proxy_log_path,
             "warn",
@@ -801,10 +786,11 @@ def error(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
         usage.report_connector_usage(flow, run_id)
 
+    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
     log_proxy_entry(
         proxy_log_path,
         "warn",
-        f"Error: {error_msg}: {_sanitize_url_for_log(original_url)}",
+        f"Error: {error_msg}: {safe_url}",
         type="connection_error",
         error=error_msg,
     )
