@@ -10,6 +10,7 @@ use super::sink::ControlSinkState;
 use super::{
     EXEC_CONTROL_SINK_NOT_CONFIGURED_MESSAGE, EXEC_OPERATION_ALREADY_ACTIVE_MESSAGE,
     EXEC_OPERATION_INACTIVE_MESSAGE, EXEC_OPERATION_NONCE_MISMATCH_MESSAGE,
+    ExecControlRegistration,
 };
 
 #[derive(Clone)]
@@ -28,11 +29,6 @@ impl Default for ExecControlRegistry {
 struct ExecControlEntry {
     nonce: ExecControlNonce,
     sink: Option<Arc<ControlSinkState>>,
-}
-
-pub(crate) struct ExecControlRegistration {
-    pub(crate) guard: ExecControlGuard,
-    pub(crate) bootstrap_endpoint: Option<String>,
 }
 
 pub(crate) struct ExecControlGuard {

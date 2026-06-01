@@ -16,6 +16,11 @@ mod tests;
 
 pub(crate) use registry::{ExecControlGuard, ExecControlRegistry};
 
+pub(crate) struct ExecControlRegistration {
+    pub(crate) guard: ExecControlGuard,
+    pub(crate) bootstrap_endpoint: Option<String>,
+}
+
 const CONTROL_ACCEPT_POLL_TIMEOUT: Duration = Duration::from_millis(100);
 const CONTROL_SINK_IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PENDING_CONTROL_REQUESTS: usize = 8;
