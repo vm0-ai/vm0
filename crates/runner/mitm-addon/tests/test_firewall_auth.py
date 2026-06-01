@@ -48,13 +48,15 @@ def _auth_success(
     query: dict[str, str] | None = None,
 ) -> auth._FirewallAuthSuccess:
     return auth._FirewallAuthSuccess(
-        headers=headers,
+        payload=auth._FirewallAuthPayload(
+            headers=headers,
+            resolved_secrets=resolved_secrets or [],
+            base=base,
+            query=query,
+        ),
         expires_at=expires_at,
-        resolved_secrets=resolved_secrets or [],
         refreshed_connectors=refreshed_connectors or [],
         refreshed_secrets=refreshed_secrets or [],
-        base=base,
-        query=query,
     )
 
 
@@ -97,6 +99,8 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == mock_headers
         assert headers["cache_hit"] is False
+        assert headers["refreshed_connectors"] == []
+        assert headers["refreshed_secrets"] == []
         mock_fetch.assert_called_once()
         assert mock_fetch.call_args.args == (encrypted, auth_templates, "tok-xyz")
         assert mock_fetch.call_args.kwargs == {
@@ -112,7 +116,7 @@ class TestGetFirewallHeaders:
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
         assert cached_headers(cache_key)
-        assert require_cached_headers(cache_key).headers == mock_headers
+        assert require_cached_headers(cache_key).payload.headers == mock_headers
 
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = ("run-1", "https://api.github.com")
@@ -172,7 +176,7 @@ class TestGetFirewallHeaders:
         # fetch_firewall_headers wraps urllib; pins the TTL-expiry→re-fetch contract (#9991).
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
-        assert require_cached_headers(cache_key).headers == fresh_headers
+        assert require_cached_headers(cache_key).payload.headers == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self, headers):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
@@ -374,7 +378,7 @@ class TestGetFirewallHeaders:
         assert second["query"] == cached_query
         assert second["cache_hit"] is True
         mock_fetch.assert_called_once()
-        assert require_cached_headers(cache_key).query == cached_query
+        assert require_cached_headers(cache_key).payload.query == cached_query
 
     async def test_base_and_query_are_cached_together(self):
         """auth.base and auth.query survive the same cache entry."""
@@ -401,8 +405,8 @@ class TestGetFirewallHeaders:
         assert second["cache_hit"] is True
         mock_fetch.assert_called_once()
         cached = require_cached_headers(cache_key)
-        assert cached.base == cached_base
-        assert cached.query == cached_query
+        assert cached.payload.base == cached_base
+        assert cached.payload.query == cached_query
 
     async def test_cache_hit_omits_base_when_absent(self, headers):
         """Cached entry without 'base' does not include it in result."""
@@ -510,7 +514,7 @@ class TestGetFirewallHeaders:
         assert forced_result["cache_hit"] is False
         assert not force_refresh_pending(cache_key)
         assert require_last_force_refresh_at(cache_key) >= before_forced
-        assert require_cached_headers(cache_key).headers == forced_headers
+        assert require_cached_headers(cache_key).payload.headers == forced_headers
 
     async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
         """A same-key waiter must not reuse headers from the stale-prone leader fetch."""
@@ -555,7 +559,9 @@ class TestGetFirewallHeaders:
         assert force_refresh_values == [False, True]
         assert leader_result["headers"] == {"Authorization": "Bearer maybe-stale"}
         assert waiter_result["headers"] == {"Authorization": "Bearer refreshed"}
-        assert require_cached_headers(cache_key).headers == {"Authorization": "Bearer refreshed"}
+        assert require_cached_headers(cache_key).payload.headers == {
+            "Authorization": "Bearer refreshed"
+        }
         assert not force_refresh_pending(cache_key)
 
     async def test_force_refresh_absent_passes_false(self, headers):
@@ -1254,9 +1260,9 @@ class TestFetchFirewallHeaders:
                 "https://api.vm0.ai",
             )
 
-        assert result.headers == {"Authorization": "Bearer tok"}
-        assert result.base is None
-        assert result.query is None
+        assert result.payload.headers == {"Authorization": "Bearer tok"}
+        assert result.payload.base is None
+        assert result.payload.query is None
 
         # urllib.request.Request construction is the external boundary (#9991).
         mock_req_cls.assert_called_once()
@@ -1338,14 +1344,14 @@ class TestFetchFirewallHeaders:
             )
 
         assert isinstance(result, auth._FirewallAuthSuccess)
-        assert result.headers == {
+        assert result.payload.headers == {
             "Authorization": "Bearer tok",
             "X-Custom": "custom",
         }
-        assert result.base == "https://example.com/webhook/secret"
-        assert result.query == {"api_key": "resolved-key"}
+        assert result.payload.base == "https://example.com/webhook/secret"
+        assert result.payload.query == {"api_key": "resolved-key"}
         assert result.expires_at == expires_at
-        assert result.resolved_secrets == ["API_TOKEN"]
+        assert result.payload.resolved_secrets == ["API_TOKEN"]
         assert result.refreshed_connectors == ["notion"]
         assert result.refreshed_secrets == ["NOTION_TOKEN"]
         assert not hasattr(result, "futureField")
@@ -1414,7 +1420,7 @@ class TestFetchFirewallHeaders:
                 auth_base="${{ secrets.DISCORD_WEBHOOK_URL }}",
             )
 
-        assert result.base == "https://discord.com/api/webhooks/123/abc"
+        assert result.payload.base == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
 
@@ -1443,8 +1449,8 @@ class TestFetchFirewallHeaders:
                 auth_query={"api_key": "${{ secrets.API_KEY }}"},
             )
 
-        assert result.base == "https://example.com/webhook/secret"
-        assert result.query == {"api_key": "resolved-key"}
+        assert result.payload.base == "https://example.com/webhook/secret"
+        assert result.payload.query == {"api_key": "resolved-key"}
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.WEBHOOK_URL }}"
         assert body["authQuery"] == {"api_key": "${{ secrets.API_KEY }}"}
@@ -1820,7 +1826,7 @@ class TestFetchFirewallHeaders:
         ):
             result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")
 
-        assert result.headers == {"Auth": "tok"}
+        assert result.payload.headers == {"Auth": "tok"}
         # Verify the URL was built from the ctx-provided api_url
         call_args = mock_req_cls.call_args
         assert call_args[0][0] == "https://ctx-url.vm0.ai/api/webhooks/agent/firewall/auth"

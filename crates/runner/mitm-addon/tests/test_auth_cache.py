@@ -17,7 +17,10 @@ from tests.auth_state_helpers import (
 
 
 def _auth_success(headers: dict[str, str], expires_at: object) -> auth._FirewallAuthSuccess:
-    return auth._FirewallAuthSuccess(headers=headers, expires_at=expires_at)
+    return auth._FirewallAuthSuccess(
+        payload=auth._FirewallAuthPayload(headers=headers),
+        expires_at=expires_at,
+    )
 
 
 class TestFirewallHeaderCache:

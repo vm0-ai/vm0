@@ -73,28 +73,32 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
 
 
+@dataclass(frozen=True)
+class _FirewallAuthPayload:
+    """Cacheable /firewall/auth data applied to outbound requests."""
+
+    headers: dict[str, str]
+    resolved_secrets: list[str] = field(default_factory=list)
+    base: str | None = None
+    query: dict[str, str] | None = None
+
+
 @dataclass
 class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
-    headers: dict[str, str]
+    payload: _FirewallAuthPayload
     expires_at: object = None
-    resolved_secrets: list[str] = field(default_factory=list)
-    base: str | None = None
-    query: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
 class _FirewallAuthSuccess:
     """Validated /firewall/auth success response consumed by the auth cache."""
 
-    headers: dict[str, str]
+    payload: _FirewallAuthPayload
     expires_at: object = None
-    resolved_secrets: list[str] = field(default_factory=list)
     refreshed_connectors: list[str] = field(default_factory=list)
     refreshed_secrets: list[str] = field(default_factory=list)
-    base: str | None = None
-    query: dict[str, str] | None = None
 
 
 @dataclass
@@ -350,14 +354,17 @@ def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
     if base is not None and not isinstance(base, str):
         raise _malformed_firewall_auth_success("base must be a string")
 
-    return _FirewallAuthSuccess(
+    payload = _FirewallAuthPayload(
         headers=_parse_string_map(decoded_map["headers"], "headers"),
-        expires_at=decoded_map.get("expiresAt"),
         resolved_secrets=_parse_optional_string_list(decoded_map, "resolvedSecrets"),
-        refreshed_connectors=_parse_optional_string_list(decoded_map, "refreshedConnectors"),
-        refreshed_secrets=_parse_optional_string_list(decoded_map, "refreshedSecrets"),
         base=base,
         query=_parse_optional_string_map(decoded_map, "query"),
+    )
+    return _FirewallAuthSuccess(
+        payload=payload,
+        expires_at=decoded_map.get("expiresAt"),
+        refreshed_connectors=_parse_optional_string_list(decoded_map, "refreshedConnectors"),
+        refreshed_secrets=_parse_optional_string_list(decoded_map, "refreshedSecrets"),
     )
 
 
@@ -503,6 +510,29 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
     return (time.time() if now is None else now) < value
 
 
+def _build_token_meta(
+    payload: _FirewallAuthPayload,
+    *,
+    cache_hit: bool,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+) -> dict:
+    token_meta: dict = {
+        "headers": payload.headers,
+        "resolved_secrets": payload.resolved_secrets,
+        "cache_hit": cache_hit,
+    }
+    if refreshed_connectors is not None:
+        token_meta["refreshed_connectors"] = refreshed_connectors
+    if refreshed_secrets is not None:
+        token_meta["refreshed_secrets"] = refreshed_secrets
+    if payload.base is not None:
+        token_meta["base"] = payload.base
+    if payload.query is not None:
+        token_meta["query"] = payload.query
+    return token_meta
+
+
 def _build_cache_hit(
     cached: _FirewallHeaderCacheEntry, firewall_billable: bool = False
 ) -> dict | None:
@@ -514,16 +544,7 @@ def _build_cache_hit(
             return None
     elif not _has_valid_expiry(expires_at, now):
         return None
-    hit = {
-        "headers": cached.headers,
-        "resolved_secrets": cached.resolved_secrets,
-        "cache_hit": True,
-    }
-    if cached.base is not None:
-        hit["base"] = cached.base
-    if cached.query is not None:
-        hit["query"] = cached.query
-    return hit
+    return _build_token_meta(cached.payload, cache_hit=True)
 
 
 async def get_firewall_headers(
@@ -595,14 +616,9 @@ async def get_firewall_headers(
                 "Billable firewall auth response did not include a valid cache expiry"
             )
         cache_entry = _FirewallHeaderCacheEntry(
-            headers=result.headers,
+            payload=result.payload,
             expires_at=result.expires_at,
-            resolved_secrets=result.resolved_secrets,
         )
-        if result.base is not None:
-            cache_entry.base = result.base
-        if result.query is not None:
-            cache_entry.query = result.query
 
         # A 401 can request a forced refresh while this non-forced fetch is
         # in flight. Return the current result to this request, but do not let
@@ -611,18 +627,12 @@ async def get_firewall_headers(
         if not marker_appeared_during_non_forced_fetch:
             state.cache = cache_entry
 
-        ret: dict = {
-            "headers": result.headers,
-            "resolved_secrets": result.resolved_secrets,
-            "refreshed_connectors": result.refreshed_connectors,
-            "refreshed_secrets": result.refreshed_secrets,
-            "cache_hit": False,
-        }
-        if result.base is not None:
-            ret["base"] = result.base
-        if result.query is not None:
-            ret["query"] = result.query
-        return ret
+        return _build_token_meta(
+            result.payload,
+            cache_hit=False,
+            refreshed_connectors=result.refreshed_connectors,
+            refreshed_secrets=result.refreshed_secrets,
+        )
 
 
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
