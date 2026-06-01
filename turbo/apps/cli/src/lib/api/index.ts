@@ -219,6 +219,12 @@ export {
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
 
+// Domain modules - Zero Banking
+export {
+  callZeroBanking,
+  type ZeroBankingResponse,
+} from "./domains/zero-banking";
+
 // Domain modules - Web
 export {
   downloadWebFile,

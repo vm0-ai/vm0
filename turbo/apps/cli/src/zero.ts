@@ -28,6 +28,7 @@ import { generateCommand } from "./commands/zero/generate";
 import { zeroWebCommand } from "./commands/zero/web";
 import { zeroHostCommand } from "./commands/zero/host";
 import { zeroMapsCommand } from "./commands/zero/maps";
+import { zeroBankingCommand } from "./commands/zero/banking";
 import { zeroModelCommand } from "./commands/zero/model";
 import { zeroModelProviderCommand } from "./commands/zero/model-provider";
 import {
@@ -69,6 +70,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   web: null,
   host: "host:write",
   maps: "maps:read",
+  banking: "banking:read",
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -99,6 +101,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroWebCommand,
   zeroHostCommand,
   zeroMapsCommand,
+  zeroBankingCommand,
 ];
 
 function shouldHideCommand(
@@ -155,6 +158,9 @@ export function buildZeroHelpText(
       : [
           '  Get directions?       zero maps directions --origin "SFO" --destination "Mountain View" --json',
         ]),
+    ...(shouldHideCommand("banking", payload)
+      ? []
+      : ["  Read bank data?       zero banking accounts --json"]),
     "  Check your identity?   zero whoami",
   ];
 

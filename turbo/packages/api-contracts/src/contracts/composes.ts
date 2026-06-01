@@ -57,6 +57,7 @@ export const ZERO_CAPABILITIES = [
   "connector:read",
   "billing:read",
   "billing:write",
+  "banking:read",
   "maps:read",
   "computer-use:write",
   "file:read",
@@ -130,6 +131,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "billing:write": {
       group: "Billing",
       label: "Buy credits and manage billing",
+    },
+    "banking:read": {
+      group: "Banking",
+      label: "Read enabled banking accounts",
     },
     "maps:read": { group: "Maps", label: "Use managed maps services" },
     "computer-use:write": {

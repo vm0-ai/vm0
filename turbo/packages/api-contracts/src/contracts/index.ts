@@ -1296,6 +1296,27 @@ export {
   type ZeroImageIoGenerateResponse,
 } from "./zero-image-io-generate";
 export {
+  zeroBankingContract,
+  zeroBankingProviderSchema,
+  zeroBankingAccountSchema,
+  zeroBankingBalanceSchema,
+  zeroBankingTransactionSchema,
+  zeroBankingAccountsResponseSchema,
+  zeroBankingBalancesRequestSchema,
+  zeroBankingBalancesResponseSchema,
+  zeroBankingTransactionsRequestSchema,
+  zeroBankingTransactionsResponseSchema,
+  type ZeroBankingContract,
+  type ZeroBankingAccount,
+  type ZeroBankingBalance,
+  type ZeroBankingTransaction,
+  type ZeroBankingAccountsResponse,
+  type ZeroBankingBalancesRequest,
+  type ZeroBankingBalancesResponse,
+  type ZeroBankingTransactionsRequest,
+  type ZeroBankingTransactionsResponse,
+} from "./zero-banking";
+export {
   zeroMapsContract,
   zeroMapsOperationSchema,
   zeroMapsResponseSchema,
