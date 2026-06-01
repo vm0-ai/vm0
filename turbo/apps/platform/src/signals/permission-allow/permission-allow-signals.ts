@@ -30,8 +30,6 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 const PERMISSION_ACCESS_REQUESTS_CHANGED_TOPIC =
   "permissionAccessRequestsChanged";
 
-const USER_PERMISSION_GRANT_TTL_SECONDS = 86_400;
-
 // ---------------------------------------------------------------------------
 // Route params
 // ---------------------------------------------------------------------------
@@ -412,7 +410,6 @@ export const upsertUserPermissionGrant$ = command(
       client.upsert({
         body: {
           ...params,
-          ttlSeconds: USER_PERMISSION_GRANT_TTL_SECONDS,
         },
         fetchOptions: { signal },
       }),

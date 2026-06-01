@@ -261,7 +261,6 @@ describe("permission allow page - self-service user grants", () => {
       connectorRef: "slack",
       permission: "channels:read",
       action: "deny",
-      ttlSeconds: 86_400,
     });
     expect(policyCalled).toBeFalsy();
   });
@@ -318,7 +317,6 @@ describe("permission allow page - self-service user grants", () => {
       connectorRef: "slack",
       permission: "channels:read",
       action: "allow",
-      ttlSeconds: 86_400,
     });
     expect(requestCreated).toBeFalsy();
     expect(requestsListed).toBeFalsy();

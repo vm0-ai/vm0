@@ -24,7 +24,7 @@ export function createMockUserPermissionGrantResponse(
     connectorRef: "slack",
     permission: "channels:read",
     action: "allow",
-    expiresAt: "2099-01-01T00:00:00.000Z",
+    expiresAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -61,7 +61,7 @@ export const apiUserPermissionGrantsHandlers = [
       connectorRef: body.connectorRef,
       permission: body.permission,
       action: body.action,
-      expiresAt: new Date(now.getTime() + body.ttlSeconds * 1000).toISOString(),
+      expiresAt: null,
       createdAt: existing?.createdAt ?? now.toISOString(),
       updatedAt: now.toISOString(),
     };

@@ -535,7 +535,6 @@ describe("zero chat thread page display - permission action card", () => {
         connectorRef: "vercel",
         permission: "projects:write",
         action: "allow",
-        ttlSeconds: 86_400,
       });
     });
     expect(requestCreated).toBeFalsy();
@@ -627,7 +626,6 @@ describe("zero chat thread page display - permission action card", () => {
         connectorRef: "vercel",
         permission: "projects:write",
         action: "deny",
-        ttlSeconds: 86_400,
       });
     });
     expect(policyUpdated).toBeFalsy();

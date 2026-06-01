@@ -882,12 +882,10 @@ export {
 export {
   zeroUserPermissionGrantsContract,
   userPermissionGrantActionSchema,
-  userPermissionGrantTtlSecondsSchema,
   userPermissionGrantResponseSchema,
   listUserPermissionGrantsQuerySchema,
   upsertUserPermissionGrantRequestSchema,
   type UserPermissionGrantAction,
-  type UserPermissionGrantTtlSeconds,
   type UserPermissionGrantResponse,
   type ListUserPermissionGrantsQuery,
   type UpsertUserPermissionGrantRequest,

@@ -208,10 +208,6 @@ async function lockVisibleAgentForUpdate(
   return agent ?? null;
 }
 
-function expiresAtFromTtl(now: Date, ttlSeconds: number): Date {
-  return new Date(now.getTime() + ttlSeconds * 1000);
-}
-
 async function upsertVisibleGrantRow(
   db: Db,
   args: UpsertUserPermissionGrantArgs,
@@ -227,7 +223,6 @@ async function upsertVisibleGrantRow(
     }
 
     const timestamp = nowDate();
-    const expiresAt = expiresAtFromTtl(timestamp, args.grant.ttlSeconds);
     const [row] = await tx
       .insert(userPermissionGrants)
       .values({
@@ -237,7 +232,7 @@ async function upsertVisibleGrantRow(
         connectorRef: args.grant.connectorRef,
         permission: args.grant.permission,
         action: args.grant.action,
-        expiresAt,
+        expiresAt: null,
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -251,7 +246,7 @@ async function upsertVisibleGrantRow(
         ],
         set: {
           action: args.grant.action,
-          expiresAt,
+          expiresAt: null,
           updatedAt: timestamp,
         },
       })
