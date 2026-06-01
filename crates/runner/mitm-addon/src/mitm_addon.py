@@ -51,6 +51,17 @@ _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
+_BROWSER_USER_AGENT_MARKERS = (
+    " chrome/",
+    " chromium/",
+    " crios/",
+    " edg/",
+    " firefox/",
+    " fxios/",
+    " headlesschrome/",
+    " opr/",
+    " safari/",
+)
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
@@ -197,6 +208,35 @@ def _fallback_network_log_host_port(flow: http.HTTPFlow, original_url: str) -> t
 def _set_network_log_target_from_url(flow: http.HTTPFlow, url: str) -> None:
     host, port = _fallback_network_log_host_port(flow, url)
     _set_network_log_target(flow, url=url, host=host, port=port)
+
+
+def _is_browser_user_agent(user_agent: str | None) -> bool:
+    if not user_agent:
+        return False
+
+    normalized = f" {user_agent.lower()}"
+    return "mozilla/" in normalized and any(
+        marker in normalized for marker in _BROWSER_USER_AGENT_MARKERS
+    )
+
+
+def _is_browser_request(flow: http.HTTPFlow) -> bool:
+    return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
+
+
+def _record_browser_firewall_passthrough(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+) -> None:
+    """Record the firewall allow decision without applying provider auth."""
+    api_entry = allow.api_entry
+    flow.metadata[metadata_keys.FIREWALL_BASE] = api_entry["base"]
+    flow.metadata[metadata_keys.FIREWALL_NAME] = allow.name
+    flow.metadata[metadata_keys.FIREWALL_PERMISSION] = allow.permission or ""
+    flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = allow.rule or ""
+    flow.metadata[metadata_keys.FIREWALL_PARAMS] = allow.params
+    flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
 
 
 def _sanitize_url_for_log(url: str) -> str:
@@ -440,6 +480,10 @@ async def request(flow: http.HTTPFlow) -> None:
                 )
                 return
             if isinstance(result, matching.FirewallAllow):
+                if _is_browser_request(flow):
+                    _record_browser_firewall_passthrough(flow, result)
+                    return
+
                 _maybe_track_usage_flow(
                     flow,
                     is_billable_firewall(result.name, vm_info),
