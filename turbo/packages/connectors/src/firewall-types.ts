@@ -1123,8 +1123,16 @@ function rawAuthorityFromBaseUrl(base: string): string | null {
   const schemeEnd = base.indexOf("://");
   if (schemeEnd === -1) return null;
   const rest = base.slice(schemeEnd + 3);
-  const slashIdx = rest.indexOf("/");
-  return slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+  const delimiterIndexes = [
+    rest.indexOf("/"),
+    rest.indexOf("?"),
+    rest.indexOf("#"),
+  ].filter((index) => {
+    return index !== -1;
+  });
+  const authorityEnd =
+    delimiterIndexes.length === 0 ? -1 : Math.min(...delimiterIndexes);
+  return authorityEnd === -1 ? rest : rest.slice(0, authorityEnd);
 }
 
 function validateNoUserinfo(

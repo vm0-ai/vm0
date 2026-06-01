@@ -283,7 +283,17 @@ describe("resolveFirewallSelections", () => {
       return collectAndValidatePermissions(config("https://0177.0.0.1/hook"));
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
+      return collectAndValidatePermissions(
+        config("https://0177.0.0.1?token=static"),
+      );
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
       return collectAndValidatePermissions(config("https://127。0。0。1/hook"));
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://127。0。0。1?token=static"),
+      );
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
       return collectAndValidatePermissions(
@@ -355,6 +365,7 @@ describe("resolveFirewallSelections", () => {
   it("collectAndValidatePermissions accepts static and templated auth.base URLs", () => {
     const validAuthBases = [
       "https://example.com/hook?token=static",
+      "https://example.com?token=a@b",
       "${{ secrets.WEBHOOK_URL }}",
       "${{ secrets.WEBHOOK_BASE_URL }}/v1",
       "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}",
