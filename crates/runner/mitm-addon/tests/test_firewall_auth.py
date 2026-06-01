@@ -1090,6 +1090,39 @@ class TestHandleFirewallRequest:
 # =========================================================================
 
 
+class TestMakeApiRequest:
+    def test_builds_platform_api_request_with_standard_headers(self):
+        with patch.object(auth, "VERCEL_BYPASS", ""):
+            req = auth.make_api_request(
+                "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+                b"{}",
+                "tok-xyz",
+            )
+
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/firewall/auth"
+        assert req.data == b"{}"
+        headers = dict(req.header_items())
+        assert headers["Content-type"] == "application/json"
+        assert headers["Authorization"] == "Bearer tok-xyz"
+        assert headers["User-agent"] == "vm0-mitm-addon/1.0"
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param("file:///etc/passwd", id="file"),
+            pytest.param("ftp://example.com/api", id="ftp"),
+            pytest.param(
+                "//api.vm0.ai/api/webhooks/agent/firewall/auth",
+                id="scheme-relative",
+            ),
+            pytest.param("https:path-without-host", id="https-without-host"),
+        ],
+    )
+    def test_rejects_non_absolute_http_urls(self, url: str):
+        with pytest.raises(ValueError, match="absolute http"):
+            auth.make_api_request(url, b"{}", "tok-xyz")
+
+
 class TestFetchFirewallHeaders:
     def test_builds_correct_request(self, headers):
         mock_resp = MagicMock()
@@ -1123,6 +1156,15 @@ class TestFetchFirewallHeaders:
         assert "base" not in body
         assert call_args[1]["headers"]["Authorization"] == "Bearer tok-xyz"
         assert call_args[1]["headers"]["Content-Type"] == "application/json"
+
+    def test_invalid_api_url_raises_before_urlopen(self):
+        with (
+            patch("auth.urllib.request.urlopen") as mock_urlopen,
+            pytest.raises(ValueError, match="absolute http"),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "file:///etc/passwd")
+
+        mock_urlopen.assert_not_called()
 
     def test_includes_vercel_bypass_header(self, headers):
         mock_resp = MagicMock()

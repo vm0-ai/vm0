@@ -234,10 +234,13 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     Centralises User-Agent, Authorization, Content-Type, and the optional
     Vercel bypass header so that callers cannot accidentally omit them.
     """
-    # S310 (suspicious-url-open-usage): `url` is always built by callers
-    # from `ctx.options.vm0_api_url` (operator-configured at mitmdump launch),
-    # never from user-controlled input, so the file:/custom-scheme risk S310
-    # guards against doesn't apply here.
+    parsed_url = urllib.parse.urlsplit(url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise ValueError("Platform API URL must be an absolute http(s) URL")
+
+    # S310 (suspicious-url-open-usage): callers build `url` from the
+    # operator-configured platform API URL, and the scheme is validated above
+    # before urllib can consume the request.
     req = urllib.request.Request(  # noqa: S310
         url,
         data=data,
@@ -318,13 +321,6 @@ def _fetch_firewall_headers_sync(
         body["forceRefresh"] = True
     data = json.dumps(body).encode()
     req = make_api_request(url, data, sandbox_token)
-    # `req` always targets ctx.options.vm0_api_url (operator-set at mitmdump
-    # launch), never user-controlled input — so the file://-scheme risk that
-    # both S310 and Semgrep's dynamic-urllib-use-detected rule guard against
-    # does not apply. Defense in depth: reject anything that isn't an http(s)
-    # URL before opening it.
-    if not req.full_url.startswith(("http://", "https://")):
-        raise ValueError(f"Unexpected URL scheme: {req.full_url!r}")
     try:
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310

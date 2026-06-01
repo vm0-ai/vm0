@@ -41,6 +41,19 @@ class TestUsageWebhookDelivery:
         assert exc.value.code == 302
         assert [request.path for request in usage_webhook_server.requests] == ["/webhook"]
 
+    def test_post_webhook_rejects_invalid_url_before_open(self):
+        with (
+            patch.object(usage.webhook._opener, "open") as mock_open,
+            pytest.raises(ValueError, match="absolute http"),
+        ):
+            usage.webhook._post_webhook(
+                "file:///etc/passwd",
+                "tok",
+                {"runId": "run-1"},
+            )
+
+        mock_open.assert_not_called()
+
     def test_succeeds_on_first_attempt(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):
@@ -207,7 +220,7 @@ class TestUsageWebhookDelivery:
 
         assert usage.counters._pending_reports == 1
         assert "non-retryable" in proxy_log.read_text()
-        with pytest.raises(ValueError, match="unknown url type"):
+        with pytest.raises(ValueError, match="absolute http"):
             sync_usage_executor.shutdown(wait=True)
 
     def test_sleeps_between_retries(
@@ -230,7 +243,7 @@ class TestUsageWebhookDelivery:
     def test_programming_error_is_not_retried(self, tmp_path):
         """Non-retryable request construction errors must propagate immediately."""
         proxy_log = tmp_path / "proxy.jsonl"
-        with pytest.raises(ValueError, match="unknown url type"):
+        with pytest.raises(ValueError, match="absolute http"):
             usage.webhook._do_post_webhook_attempts(
                 "not-a-url",
                 "tok",
@@ -246,7 +259,7 @@ class TestUsageWebhookDelivery:
 
     def test_programming_error_with_payload_collision_preserves_original_error(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
-        with pytest.raises(ValueError, match="unknown url type"):
+        with pytest.raises(ValueError, match="absolute http"):
             usage.webhook._do_post_webhook_attempts(
                 "not-a-url",
                 "tok",
