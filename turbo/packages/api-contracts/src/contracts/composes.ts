@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { CANONICAL_WORKING_DIR } from "./runners";
 
 const c = initContract();
 
 export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
+
+export function expandMountPath(mountPath: string | undefined): string {
+  if (mountPath === undefined || mountPath === MOUNT_PATH_TEMPLATE) {
+    return CANONICAL_WORKING_DIR;
+  }
+  return mountPath;
+}
 
 /**
  * Version query parameter schema for compose versions

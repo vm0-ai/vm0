@@ -61,6 +61,7 @@ export {
   artifactConfigSchema,
   artifactsArraySchema,
   MOUNT_PATH_TEMPLATE,
+  expandMountPath,
   agentDefinitionSchema,
   agentComposeContentSchema,
   agentComposeApiContentSchema,

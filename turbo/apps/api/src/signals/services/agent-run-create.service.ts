@@ -1,7 +1,6 @@
 import { command, type Getter } from "ccstate";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-  CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   type SecretConnectorMetadata,
   type StorageManifest,
@@ -73,7 +72,7 @@ import {
   expandVariablesInString,
   extractAndGroupVariables,
 } from "@vm0/core/variable-expander";
-import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
+import { expandMountPath } from "@vm0/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
@@ -614,10 +613,7 @@ function withAutoMemoryArtifact(
 }
 
 function resolveComposeArtifactMountPath(artifact: ComposeArtifact): string {
-  if (!artifact.mount_path || artifact.mount_path === MOUNT_PATH_TEMPLATE) {
-    return CANONICAL_WORKING_DIR;
-  }
-  return artifact.mount_path;
+  return expandMountPath(artifact.mount_path);
 }
 
 function composeArtifacts(
