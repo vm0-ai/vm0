@@ -3145,19 +3145,20 @@ async function buildRunnerJobPayload(
         ),
       )
     : args.body;
-  const storageManifest = await prepareAgentRunStorageManifest({
-    get,
-    db,
-    content: args.resolved.content,
-    vars: body.vars,
-    agentOrgId: args.resolved.orgId,
-    runtimeOrgId: args.orgId,
-    userId: args.userId,
-    artifacts: args.artifacts,
-    volumeVersionOverrides: body.volumeVersions,
-    additionalVolumes: args.additionalVolumes,
-    framework: args.framework,
-  });
+  const storageManifest = await get(
+    prepareAgentRunStorageManifest({
+      db,
+      content: args.resolved.content,
+      vars: body.vars,
+      agentOrgId: args.resolved.orgId,
+      runtimeOrgId: args.orgId,
+      userId: args.userId,
+      artifacts: args.artifacts,
+      volumeVersionOverrides: body.volumeVersions,
+      additionalVolumes: args.additionalVolumes,
+      framework: args.framework,
+    }),
+  );
   const builtContext = await buildStoredExecutionContext({
     ...args,
     body,
