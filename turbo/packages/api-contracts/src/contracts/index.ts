@@ -60,6 +60,7 @@ export {
   volumeConfigSchema,
   artifactConfigSchema,
   artifactsArraySchema,
+  MOUNT_PATH_TEMPLATE,
   agentDefinitionSchema,
   agentComposeContentSchema,
   agentComposeApiContentSchema,

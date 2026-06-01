@@ -4,6 +4,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
+
 /**
  * Version query parameter schema for compose versions
  *
@@ -158,22 +160,24 @@ const volumeConfigSchema = z.object({
 });
 
 /**
- * Mount path must be an absolute path (starts with "/"). When omitted,
- * artifacts default to the canonical workspace root at resolution time.
+ * Mount path must be an absolute path (starts with "/") or the canonical
+ * workspace template. When omitted, artifacts default to the canonical
+ * workspace root at resolution time.
  */
 const mountPathSchema = z
   .string()
   .min(1, "mount_path cannot be empty")
   .refine((val) => {
-    return val.startsWith("/");
-  }, "mount_path must be an absolute path");
+    return val === MOUNT_PATH_TEMPLATE || val.startsWith("/");
+  }, "mount_path must be an absolute path or ${{ working_dir }}");
 
 /**
  * Artifact entry in compose.
  * - name: required storage name
  * - version: optional, defaults to "latest" at resolution time
  * - mount_path: optional, defaults to the canonical workspace root at
- *   resolution time.
+ *   resolution time. `${{ working_dir }}` is also accepted as a shorthand for
+ *   the same canonical workspace root.
  */
 const artifactConfigSchema = z.object({
   name: z.string().min(1, "Artifact name is required"),

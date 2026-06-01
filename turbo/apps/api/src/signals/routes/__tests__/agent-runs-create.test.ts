@@ -5,6 +5,7 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   CANONICAL_WORKING_DIR,
 } from "@vm0/api-contracts/contracts/runners";
+import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -1460,7 +1461,9 @@ describe("POST /api/agent/runs", () => {
       fixture: fx,
       overrides: { volumes: ["kb:/mnt/kb"] },
       volumes: { kb: { name: "knowledge-base", version: "latest" } },
-      artifacts: [{ name: "compose-artifact" }],
+      artifacts: [
+        { name: "compose-artifact", mount_path: MOUNT_PATH_TEMPLATE },
+      ],
     });
 
     const response = await accept(

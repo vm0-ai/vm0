@@ -73,6 +73,7 @@ import {
   expandVariablesInString,
   extractAndGroupVariables,
 } from "@vm0/core/variable-expander";
+import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
@@ -613,7 +614,7 @@ function withAutoMemoryArtifact(
 }
 
 function resolveComposeArtifactMountPath(artifact: ComposeArtifact): string {
-  if (!artifact.mount_path) {
+  if (!artifact.mount_path || artifact.mount_path === MOUNT_PATH_TEMPLATE) {
     return CANONICAL_WORKING_DIR;
   }
   return artifact.mount_path;
