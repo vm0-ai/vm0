@@ -11,6 +11,7 @@ fn main() {
     // but CI artifact caches may not — explicit rerun-if-changed ensures correctness).
     println!("cargo::rerun-if-changed=scripts/build-template.sh");
     println!("cargo::rerun-if-changed=scripts/customize-rootfs.sh");
+    println!("cargo::rerun-if-changed=scripts/mount-workspace-drive.sh");
     println!("cargo::rerun-if-changed=scripts/verify-rootfs.sh");
 
     generate_addon_files();
