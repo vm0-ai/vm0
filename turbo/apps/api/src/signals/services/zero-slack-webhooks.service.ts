@@ -73,7 +73,7 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
-import { formatIntegrationRunError } from "./integration-run-errors.service";
+import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { zeroComposeList } from "./zero-compose-data.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
@@ -1082,14 +1082,16 @@ async function runAgentForSlackOrg(
 
   return {
     status: "failed",
-    response: await formatIntegrationRunError({
-      set,
-      orgId: params.orgId,
-      userId: params.userId,
-      code: result.body.error.code,
-      message: result.body.error.message,
+    response: await set(
+      formatIntegrationRunError$,
+      {
+        orgId: params.orgId,
+        userId: params.userId,
+        code: result.body.error.code,
+        message: result.body.error.message,
+      },
       signal,
-    }),
+    ),
   };
 }
 

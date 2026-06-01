@@ -31,7 +31,7 @@ import {
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { signGithubConnectParams } from "./github-oauth.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
-import { formatIntegrationRunError } from "./integration-run-errors.service";
+import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -776,14 +776,16 @@ function routeErrorMessage(args: {
     "code" in error && typeof error.code === "string"
       ? error.code
       : "INTERNAL_SERVER_ERROR";
-  return formatIntegrationRunError({
-    set: args.set,
-    orgId: args.orgId,
-    userId: args.userId,
-    code,
-    message,
-    signal: args.signal,
-  });
+  return args.set(
+    formatIntegrationRunError$,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      code,
+      message,
+    },
+    args.signal,
+  );
 }
 
 function stringField(body: unknown, key: string): string | undefined {

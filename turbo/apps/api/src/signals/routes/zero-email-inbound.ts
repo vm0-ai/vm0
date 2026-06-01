@@ -14,7 +14,7 @@ import { clerk$ } from "../external/clerk";
 import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route";
-import { formatIntegrationRunError } from "../services/integration-run-errors.service";
+import { formatIntegrationRunError$ } from "../services/integration-run-errors.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import {
   apiUrl,
@@ -231,14 +231,16 @@ function runError(args: {
       "code" in result.body.error && typeof result.body.error.code === "string"
         ? result.body.error.code
         : "INTERNAL_SERVER_ERROR";
-    return formatIntegrationRunError({
-      set: args.set,
-      orgId: args.context.orgId,
-      userId: args.context.userId,
-      code,
-      message: result.body.error.message,
-      signal: args.signal,
-    });
+    return args.set(
+      formatIntegrationRunError$,
+      {
+        orgId: args.context.orgId,
+        userId: args.context.userId,
+        code,
+        message: result.body.error.message,
+      },
+      args.signal,
+    );
   }
   return "Failed to create the agent run.";
 }

@@ -63,7 +63,7 @@ import {
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
-import { formatIntegrationRunError } from "./integration-run-errors.service";
+import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
@@ -1754,14 +1754,16 @@ async function runAgentForTelegram(
 
   return {
     status: "failed",
-    response: await formatIntegrationRunError({
-      set,
-      orgId: args.auth.orgId,
-      userId: args.auth.userId,
-      code: result.body.error.code,
-      message: result.body.error.message,
+    response: await set(
+      formatIntegrationRunError$,
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        code: result.body.error.code,
+        message: result.body.error.message,
+      },
       signal,
-    }),
+    ),
   };
 }
 

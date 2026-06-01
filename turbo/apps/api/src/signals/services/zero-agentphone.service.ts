@@ -40,7 +40,7 @@ import {
 } from "../external/agentphone-client";
 import { safeUrlParse, settle } from "../utils";
 import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
-import { formatIntegrationRunError } from "./integration-run-errors.service";
+import { formatIntegrationRunError$ } from "./integration-run-errors.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -1915,14 +1915,16 @@ async function runAgentForAgentPhone(
 
   return {
     status: "failed",
-    response: await formatIntegrationRunError({
-      set,
-      orgId: args.auth.orgId,
-      userId: args.auth.userId,
-      code: result.body.error.code,
-      message: result.body.error.message,
+    response: await set(
+      formatIntegrationRunError$,
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        code: result.body.error.code,
+        message: result.body.error.message,
+      },
       signal,
-    }),
+    ),
   };
 }
 
