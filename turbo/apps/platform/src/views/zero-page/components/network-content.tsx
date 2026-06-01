@@ -522,14 +522,16 @@ function NetworkLogRow({
           {formatLatency(entry.latency_ms)}
         </TableCell>
         <TableCell className="max-w-[120px]">
-          <div className="flex flex-wrap items-center gap-1 text-xs">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 text-xs">
             {entry.firewall_name ? (
-              <span className="truncate text-cyan-600 dark:text-cyan-400">
+              <span className="min-w-0 max-w-full truncate text-cyan-600 dark:text-cyan-400">
                 {entry.firewall_name}
               </span>
             ) : null}
             {entry.browser_user_agent ? (
-              <span className="font-mono text-muted-foreground">browser</span>
+              <span className="shrink-0 font-mono text-muted-foreground">
+                browser
+              </span>
             ) : null}
           </div>
         </TableCell>
