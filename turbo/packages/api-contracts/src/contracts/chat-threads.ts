@@ -293,14 +293,20 @@ export const chatThreadsContract = c.router({
 /**
  * Chat thread by ID route contract (/api/chat-threads/[id])
  */
+const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
+const chatThreadThreadIdPathParamsSchema = z.object({
+  threadId: z.string().uuid(),
+});
+
 export const chatThreadByIdContract = c.router({
   get: {
     method: "GET",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     responses: {
       200: chatThreadDetailSchema,
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -310,7 +316,7 @@ export const chatThreadByIdContract = c.router({
     method: "PATCH",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: z.object({
       draftContent: z.string().nullable().optional(),
       draftAttachments: z
@@ -320,6 +326,7 @@ export const chatThreadByIdContract = c.router({
     }),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -329,9 +336,10 @@ export const chatThreadByIdContract = c.router({
     method: "DELETE",
     path: "/api/zero/chat-threads/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -349,13 +357,14 @@ export const chatThreadMarkReadContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/mark-read",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
       200: z.object({
         lastReadMessageId: z.string().nullable(),
         changed: z.boolean(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -377,10 +386,11 @@ export const chatThreadPinContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/pin",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -393,10 +403,11 @@ export const chatThreadUnpinContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/unpin",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: c.noBody(),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -418,10 +429,11 @@ export const chatThreadRenameContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:id/rename",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: chatThreadIdPathParamsSchema,
     body: z.object({ title: z.string().min(1) }),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -615,7 +627,7 @@ export const chatThreadMessagesContract = c.router({
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/messages",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
+    pathParams: chatThreadThreadIdPathParamsSchema,
     query: z.object({
       sinceId: z.string().uuid().optional(),
       beforeId: z.string().uuid().optional(),
@@ -626,6 +638,7 @@ export const chatThreadMessagesContract = c.router({
         messages: z.array(pagedChatMessageSchema),
         hasHistoryBefore: z.boolean().optional(),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -638,11 +651,12 @@ export const chatThreadArtifactsContract = c.router({
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/artifacts",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
+    pathParams: chatThreadThreadIdPathParamsSchema,
     responses: {
       200: z.object({
         runs: z.array(chatThreadArtifactRunSchema),
       }),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -653,7 +667,7 @@ export const chatThreadArtifactsContract = c.router({
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/artifacts",
     headers: authHeadersSchema,
-    pathParams: z.object({ threadId: z.string() }),
+    pathParams: chatThreadThreadIdPathParamsSchema,
     body: z.object({
       runId: z.string(),
       fileId: z.string(),
