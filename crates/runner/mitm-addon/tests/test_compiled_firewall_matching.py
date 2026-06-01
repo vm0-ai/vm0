@@ -182,6 +182,32 @@ class TestCompiledFirewallMatching:
         assert isinstance(result, matching.FirewallAllow)
         assert result.params == {"Org": "acme", "org": "team", "id": "123"}
 
+    def test_compiled_rule_accepts_hyphenated_param_name(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.axiom.co",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "ingest", "rules": ["POST /v1/ingest/{dataset-id}"]},
+                    ],
+                }
+            ],
+            name="axiom",
+        )
+        policies = {"axiom": {"allow": ["ingest"], "deny": [], "unknownPolicy": "deny"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.axiom.co/v1/ingest/events",
+            "POST",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "ingest"
+        assert result.params == {"dataset-id": "events"}
+
     @pytest.mark.parametrize(
         "base",
         [

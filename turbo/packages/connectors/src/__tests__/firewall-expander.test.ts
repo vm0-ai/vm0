@@ -605,6 +605,12 @@ describe("validateRule", () => {
     }).not.toThrow();
   });
 
+  it("should accept hyphenated parameter names used by generated firewalls", () => {
+    expect(() => {
+      return validateRule("POST /v1/ingest/{dataset-id}", "p", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject {param*} not in last segment", () => {
     expect(() => {
       return validateRule("GET /foo/{path*}/bar", "read", "github");

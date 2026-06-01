@@ -22,6 +22,14 @@ describe("matchFirewallPath", () => {
     ).toEqual({ owner: "myorg", repo: "myrepo" });
   });
 
+  it("captures hyphenated parameter names used by generated firewalls", () => {
+    expect(
+      matchFirewallPath("/v1/ingest/events", "/v1/ingest/{dataset-id}"),
+    ).toEqual({
+      "dataset-id": "events",
+    });
+  });
+
   it("matches greedy + (one or more)", () => {
     expect(
       matchFirewallPath(
