@@ -803,6 +803,7 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
+        mock_resp.__exit__.return_value = False
         mock_resp.read.return_value = b"not-json"
 
         with (
