@@ -75,6 +75,8 @@ def create_anthropic_messages_sse_usage_extractor(
     usage: dict = {}
     parser = SseUsageScanner(
         _AnthropicMessagesSseUsageHandler(usage, on_parse_error=on_parse_error),
+        # Anthropic-shaped streams can omit SSE event names and rely on JSON
+        # "type" fields to classify message_start/message_delta payloads.
         capture_data_without_event=True,
     )
     return parser, usage
