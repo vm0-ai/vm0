@@ -360,7 +360,7 @@ class TestResponseHeadersHandler:
             {
                 "data": [{"id": "1"}, {"id": "2"}],
                 "includes": {"users": [{"id": "u1"}]},
-                "meta": {"result_count": 2},
+                "meta": {"result_count": 2, "total_tweet_count": 3},
             }
         ).encode()
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
@@ -380,6 +380,7 @@ class TestResponseHeadersHandler:
         assert json_state["response_data_count"] == 2
         assert json_state["response_includes"] == {"users": 1}
         assert json_state["response_result_count"] == 2
+        assert json_state["response_total_tweet_count"] == 3
 
     def test_model_provider_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
         """Billable model provider JSON should parse usage without unbounded buffering."""

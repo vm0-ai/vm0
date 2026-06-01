@@ -425,6 +425,107 @@ class TestReportConnectorUsage:
         assert p["category"] == "posts.read"
         assert p["quantity"] == 12567
 
+    def test_tweet_counts_zero_total_does_not_bill_buckets(self, tmp_path, real_flow):
+        """Count endpoint data arrays are time buckets, not returned posts."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 0},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 0},
+                ],
+                "meta": {"total_tweet_count": 0},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=nothing",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/2/tweets/counts/recent", "/2/tweets/counts/all"],
+    )
+    def test_tweet_counts_total_lower_than_bucket_count_bills_total(
+        self, tmp_path, real_flow, path
+    ):
+        """Both count endpoints bill total_tweet_count, not time-bucket count."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 1},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 0},
+                    {"start": "2026-04-16T00:00", "end": "2026-04-17T00:00", "tweet_count": 0},
+                ],
+                "meta": {"total_tweet_count": 1},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query="query=rare",
+            body=body,
+            rule=f"GET {path}",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 1
+
+    def test_tweet_counts_path_matching_requires_exact_endpoint(self, tmp_path, real_flow):
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+                "meta": {"total_tweet_count": 1},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent/extra",
+            body=body,
+            rule="GET /2/tweets/counts/recent/extra",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 3
+
+    def test_tweet_counts_missing_total_skips_billing_and_logs_warning(self, tmp_path, real_flow):
+        """Parsed count endpoint responses without total_tweet_count should not bill buckets."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 2},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 3},
+                ],
+                "meta": {},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=missing_total",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert any(
+            entry["level"] == "warn" and "total_tweet_count" in entry["message"]
+            for entry in entries
+        )
+
     def test_handles_gzip_body(self, tmp_path, real_flow):
         """gzip-encoded response body decompresses before parsing."""
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
@@ -1015,7 +1116,7 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
 
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat == {"posts.read": 3, "user.read": 1}
+        assert by_cat == {"posts.read": 2, "user.read": 1}
 
     def test_legacy_x_json_fallback_ignores_boolean_result_count(self, tmp_path, real_flow):
         body = json.dumps({"meta": {"result_count": True}}).encode()
