@@ -389,6 +389,14 @@ _BODY_REFINEMENT_RULES: tuple[_BodyRefinementRule, ...] = (
 )
 
 
+def bucket_needs_body_refinement(bucket: str, method: str, path: str) -> bool:
+    """Return True when request body inspection can refine this bucket."""
+    return any(
+        bucket == rule.source_bucket and method == rule.method and path == rule.path
+        for rule in _BODY_REFINEMENT_RULES
+    )
+
+
 def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | None) -> str:
     """Refine a bucket using the request body, when the body carries
     billing-relevant signal.

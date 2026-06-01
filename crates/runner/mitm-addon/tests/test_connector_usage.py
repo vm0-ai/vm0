@@ -2,7 +2,9 @@
 
 import gzip
 import json
+import zlib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from mitmproxy.test import tutils
@@ -88,8 +90,16 @@ class TestReportConnectorUsage:
         permission="tweet.read",
         rule="GET /2/tweets",
         content_encoding="",
+        request_body: bytes | None = None,
+        request_encoding: str | None = None,
     ):
-        flow = real_flow(with_response=False, host="api.x.com", path=path)
+        flow = real_flow(
+            with_response=False,
+            host="api.x.com",
+            path=path,
+            request_body=request_body,
+            request_encoding=request_encoding,
+        )
         flow.metadata["original_url"] = (
             f"https://api.x.com{path}?{query}" if query else f"https://api.x.com{path}"
         )
@@ -632,6 +642,115 @@ class TestReportConnectorUsage:
         flow.request.content = json.dumps({"text": "hello world"}).encode()
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "content.create"
+        assert p["quantity"] == 1
+
+    @pytest.mark.parametrize(
+        ("request_encoding", "request_body"),
+        [
+            ("gzip", gzip.compress(json.dumps({"text": "hello world"}).encode())),
+            ("deflate", zlib.compress(json.dumps({"text": "hello world"}).encode())),
+        ],
+    )
+    def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
+        self, tmp_path, real_flow, request_encoding, request_body
+    ):
+        """Small compressed tweet create bodies still refine to Content: Create."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=request_body,
+            request_encoding=request_encoding,
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
+        assert p["quantity"] == 1
+
+    def test_tweet_create_gzip_decoded_body_over_cap_stays_conservative(self, tmp_path, real_flow):
+        """A gzip body that expands beyond the billing inspection cap is not refined."""
+        long_text = "x" * body_utils.STREAM_BUFFER_LIMIT
+        request_body = gzip.compress(json.dumps({"text": long_text}).encode())
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=request_body,
+            request_encoding="gzip",
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    def test_tweet_create_raw_body_over_cap_stays_conservative(self, tmp_path, real_flow):
+        """An oversized identity request body is not refined."""
+        request_body = b"{" + b'"text":"' + b"x" * body_utils.STREAM_BUFFER_LIMIT + b'"}'
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=request_body,
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    @pytest.mark.parametrize("request_encoding", ["gzip", "br", "zstd", "x-vm0-test"])
+    def test_tweet_create_invalid_or_unsupported_encoding_stays_conservative(
+        self, tmp_path, real_flow, request_encoding
+    ):
+        """Invalid compressed or unsupported encoded bodies are not refined."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=b'{"text":"hello world"}',
+            request_encoding=request_encoding,
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    def test_non_refinement_flow_does_not_decode_request_body(self, tmp_path, real_flow):
+        """Only body-refinement candidates should inspect request content."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/123/retweeted_by?max_results=10",
+            body=json.dumps({"data": [{"id": "u1"}]}).encode(),
+            permission="tweet.read",
+            rule="GET /2/tweets/{id}/retweeted_by",
+            request_body=gzip.compress(b'{"unused": true}'),
+            request_encoding="gzip",
+        )
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+
+        with patch(
+            "mitmproxy.net.encoding.decode",
+            side_effect=AssertionError("request body should not be decoded"),
+        ):
+            p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "user.read"
         assert p["quantity"] == 1
 
     @pytest.mark.parametrize(

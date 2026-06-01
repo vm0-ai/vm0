@@ -7,7 +7,6 @@ through the X firewall and buffers them for aggregate platform upload.
 import json
 import urllib.parse
 import uuid
-import zlib
 from collections.abc import Callable, Iterable
 from typing import TypedDict
 
@@ -23,6 +22,7 @@ from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR
 from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
 from .response_parser import ConnectorResponseParser
 from .x_billing import (
+    bucket_needs_body_refinement,
     classify_bucket,
     classify_includes_bucket,
     refine_bucket_with_body,
@@ -67,6 +67,7 @@ def _is_stream_path(path: str) -> bool:
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
 _MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
+_REQUEST_BODY_REFINEMENT_LIMIT = body_utils.STREAM_BUFFER_LIMIT
 
 _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
@@ -530,19 +531,19 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
     if endpoint_bucket is None:
         return
-    try:
-        request_body = flow.request.content
-    except (zlib.error, ValueError):
-        # Bogus Content-Encoding on the request: stay on the conservative
-        # (more expensive) bucket, matching refine_bucket_with_body's own
-        # "never under-charge" rule for parse failures.
-        request_body = None
-    endpoint_bucket = refine_bucket_with_body(
-        endpoint_bucket,
-        flow.request.method,
-        request_path,
-        request_body,
-    )
+    if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
+        request_body = body_utils.decode_request_body_for_billing(
+            flow.request.raw_content,
+            flow.request.headers,
+            max_raw=_REQUEST_BODY_REFINEMENT_LIMIT,
+            max_decoded=_REQUEST_BODY_REFINEMENT_LIMIT,
+        )
+        endpoint_bucket = refine_bucket_with_body(
+            endpoint_bucket,
+            flow.request.method,
+            request_path,
+            request_body,
+        )
 
     req_meta = _parse_request_metadata(flow)
     resp_meta = _parse_response_metadata(flow)
