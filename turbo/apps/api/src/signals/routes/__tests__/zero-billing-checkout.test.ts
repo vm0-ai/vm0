@@ -388,11 +388,7 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(response.body).toStrictEqual({
       url: "https://checkout.stripe.com/session/attributed",
     });
-    const expectedMetadata = {
-      orgId: fixture.orgId,
-      tier: "pro",
-      priceId: TEST_PRICE_PRO,
-      flow: "standard",
+    const expectedAttribution = {
       vm0_source: "presentation",
       utm_source: "google",
       utm_medium: "cpc",
@@ -401,6 +397,19 @@ describe("POST /api/zero/billing/checkout", () => {
       gclid: "test-gclid",
       gclid_present: "true",
     };
+    const expectedMetadata = {
+      orgId: fixture.orgId,
+      tier: "pro",
+      priceId: TEST_PRICE_PRO,
+      flow: "standard",
+      ...expectedAttribution,
+    };
+    expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
+      metadata: {
+        orgId: fixture.orgId,
+        ...expectedAttribution,
+      },
+    });
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expectedMetadata,

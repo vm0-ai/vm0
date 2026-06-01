@@ -206,14 +206,6 @@ export const createCheckoutSession$ = command(
     args: CreateCheckoutSessionArgs,
     signal: AbortSignal,
   ): Promise<string> => {
-    const customerId = await set(
-      getOrCreateStripeCustomer$,
-      args.orgId,
-      signal,
-    );
-    signal.throwIfAborted();
-
-    const stripe = getStripeClient();
     const metadata = checkoutSessionMetadata({
       orgId: args.orgId,
       tier: args.tier,
@@ -221,6 +213,14 @@ export const createCheckoutSession$ = command(
       trialDays: args.trialDays,
       adAttribution: args.adAttribution,
     });
+    const customerId = await set(
+      getOrCreateStripeCustomer$,
+      { orgId: args.orgId, metadata: args.adAttribution },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -336,7 +336,7 @@ export const createCreditCheckoutSession$ = command(
   ): Promise<string> => {
     const customerId = await set(
       getOrCreateStripeCustomer$,
-      args.orgId,
+      { orgId: args.orgId },
       signal,
     );
     signal.throwIfAborted();
