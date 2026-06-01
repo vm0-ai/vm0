@@ -42,7 +42,10 @@ class TestFirewallHeaderCache:
             )
 
         assert fetch_count == 1
-        assert all(r["headers"] == {"Authorization": "Bearer token"} for r in results)
+        for result in results:
+            assert result["headers"] == {"Authorization": "Bearer token"}
+            assert "cache_hit" in result
+            assert type(result["cache_hit"]) is bool
         cache_hit_flags = [result["cache_hit"] for result in results]
         assert sum(flag is False for flag in cache_hit_flags) == 1
         assert sum(flag is True for flag in cache_hit_flags) == 2
