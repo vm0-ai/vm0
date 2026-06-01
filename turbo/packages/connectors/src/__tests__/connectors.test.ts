@@ -63,10 +63,6 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
   getConnectorAuthProviderClientArgs,
-  hasConnectorAuthCodeGrantProvider,
-  hasConnectorDeviceAuthGrantProvider,
-  hasConnectorRefreshTokenAccessProvider,
-  hasConnectorTokenRevokeProvider,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
   revokeConnectorAuthMethodAccessToken,
@@ -489,60 +485,50 @@ describe("connector auth method config", () => {
   });
 });
 
-describe("connector provider capability checks", () => {
-  it("matches exactly the connector types that declare auth-code and device-auth grants", () => {
-    const authCodeGrantTypes = new Set<ConnectorType>(
-      connectorTypeSchema.options.filter(hasConnectorAuthCodeGrant),
-    );
-    const deviceAuthGrantTypes = new Set<ConnectorType>(
-      connectorTypeSchema.options.filter(hasConnectorDeviceAuthGrant),
-    );
-
+describe("connector selected auth method capability checks", () => {
+  it("matches exactly the auth methods that declare auth-code and device-auth grants", () => {
     for (const type of connectorTypeSchema.options) {
-      expect(hasConnectorAuthCodeGrantProvider(type)).toBe(
-        authCodeGrantTypes.has(type),
+      const authMethods = getConfiguredConnectorAuthMethods(type);
+      expect(hasConnectorAuthCodeGrant(type)).toBe(
+        authMethods.some((authMethod) => {
+          return connectorAuthMethodHasGrantKind(type, authMethod, "auth-code");
+        }),
       );
-      expect(hasConnectorDeviceAuthGrantProvider(type)).toBe(
-        deviceAuthGrantTypes.has(type),
+      expect(hasConnectorDeviceAuthGrant(type)).toBe(
+        authMethods.some((authMethod) => {
+          return connectorAuthMethodHasGrantKind(
+            type,
+            authMethod,
+            "device-auth",
+          );
+        }),
       );
       for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-        expect(hasConnectorAuthCodeGrantProvider(type, authMethod)).toBe(
+        expect(
           connectorAuthMethodHasGrantKind(type, authMethod, "auth-code"),
+        ).toBe(
+          getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code",
         );
-        expect(hasConnectorDeviceAuthGrantProvider(type, authMethod)).toBe(
+        expect(
           connectorAuthMethodHasGrantKind(type, authMethod, "device-auth"),
+        ).toBe(
+          getConnectorAuthMethod(type, authMethod)?.grant.kind ===
+            "device-auth",
         );
       }
     }
   });
 
-  it("matches exactly the connector types that declare refresh-token access", () => {
+  it("matches exactly the auth methods that declare refresh-token access", () => {
     expectTypeOf<"base44">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"notion">().toMatchTypeOf<RefreshTokenAccessConnectorType>();
     expectTypeOf<"github">().not.toMatchTypeOf<RefreshTokenAccessConnectorType>();
 
-    const refreshTokenAccessTypes = new Set<ConnectorType>(
-      connectorTypeSchema.options.filter((type) => {
-        return getConfiguredConnectorAuthMethods(type).some((authMethod) => {
-          return (
-            getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
-            "refresh-token"
-          );
-        });
-      }),
-    );
-
     for (const type of connectorTypeSchema.options) {
-      expect(hasConnectorRefreshTokenAccessProvider(type)).toBe(
-        refreshTokenAccessTypes.has(type),
-      );
       for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
         const hasRefreshTokenAccess =
           getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
           "refresh-token";
-        expect(hasConnectorRefreshTokenAccessProvider(type, authMethod)).toBe(
-          hasRefreshTokenAccess,
-        );
         expect(
           connectorAuthMethodSupportsRefreshTokenAccess(type, authMethod),
         ).toBe(hasRefreshTokenAccess);
@@ -554,25 +540,15 @@ describe("connector provider capability checks", () => {
     expectTypeOf<"github">().toMatchTypeOf<TokenRevokeConnectorType>();
     expectTypeOf<"notion">().not.toMatchTypeOf<TokenRevokeConnectorType>();
 
-    const tokenRevokeTypes = new Set<ConnectorType>(
-      connectorTypeSchema.options.filter((type) => {
-        return getConfiguredConnectorAuthMethods(type).some((authMethod) => {
-          return connectorAuthMethodSupportsTokenRevoke(type, authMethod);
-        });
-      }),
-    );
-
     for (const type of connectorTypeSchema.options) {
-      expect(hasConnectorTokenRevokeProvider(type)).toBe(
-        tokenRevokeTypes.has(type),
-      );
       for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
         const supportsTokenRevoke = connectorAuthMethodSupportsTokenRevoke(
           type,
           authMethod,
         );
-        expect(hasConnectorTokenRevokeProvider(type, authMethod)).toBe(
-          supportsTokenRevoke,
+        expect(supportsTokenRevoke).toBe(
+          getConnectorAuthMethod(type, authMethod)?.revoke.kind ===
+            "token-revoke",
         );
       }
     }
@@ -590,30 +566,36 @@ describe("connector provider capability checks", () => {
     );
   });
 
-  it("does not expose refresh-token access providers for non-refreshable auth methods", () => {
-    expect(hasConnectorRefreshTokenAccessProvider("github")).toBe(false);
+  it("does not mark non-refreshable auth methods as refresh-token access", () => {
+    expect(
+      connectorAuthMethodSupportsRefreshTokenAccess("github", "oauth"),
+    ).toBe(false);
     expect(
       getConnectorAuthMethodAccessMetadata("github", "oauth")?.kind,
     ).not.toBe("refresh-token");
   });
 
   it("supports multiple provider-backed auth-code methods for one connector", async () => {
-    expect(hasConnectorAuthCodeGrantProvider("test-oauth", "oauth")).toBe(true);
-    expect(hasConnectorAuthCodeGrantProvider("test-oauth", "api")).toBe(true);
-    expect(hasConnectorAuthCodeGrantProvider("test-oauth", "missing")).toBe(
-      false,
-    );
-    expect(hasConnectorDeviceAuthGrantProvider("test-oauth", "api")).toBe(
-      false,
-    );
-    expect(hasConnectorRefreshTokenAccessProvider("test-oauth", "oauth")).toBe(
-      true,
-    );
-    expect(hasConnectorRefreshTokenAccessProvider("test-oauth", "api")).toBe(
-      true,
-    );
     expect(
-      hasConnectorRefreshTokenAccessProvider("test-oauth", "missing"),
+      connectorAuthMethodHasGrantKind("test-oauth", "oauth", "auth-code"),
+    ).toBe(true);
+    expect(
+      connectorAuthMethodHasGrantKind("test-oauth", "api", "auth-code"),
+    ).toBe(true);
+    expect(
+      connectorAuthMethodHasGrantKind("test-oauth", "missing", "auth-code"),
+    ).toBe(false);
+    expect(
+      connectorAuthMethodHasGrantKind("test-oauth", "api", "device-auth"),
+    ).toBe(false);
+    expect(
+      connectorAuthMethodSupportsRefreshTokenAccess("test-oauth", "oauth"),
+    ).toBe(true);
+    expect(
+      connectorAuthMethodSupportsRefreshTokenAccess("test-oauth", "api"),
+    ).toBe(true);
+    expect(
+      connectorAuthMethodSupportsRefreshTokenAccess("test-oauth", "missing"),
     ).toBe(false);
     expect(
       getConnectorAuthMethodEnvBindings("test-oauth", "api"),

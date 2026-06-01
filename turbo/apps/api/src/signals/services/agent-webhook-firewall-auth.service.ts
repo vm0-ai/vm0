@@ -10,6 +10,7 @@ import {
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorOwnedAccessSecretBindingEntries,
+  connectorAuthMethodSupportsRefreshTokenAccess,
   type ConnectorAuthMethodAccessMetadata,
 } from "@vm0/connectors/connector-utils";
 import {
@@ -25,7 +26,6 @@ import {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorAuthProviderClientArgs,
-  hasConnectorRefreshTokenAccessProvider,
   refreshConnectorAuthProviderAccessToken,
   type ConnectorAuthProviderClientArgs,
   type ProviderEnv,
@@ -1018,7 +1018,7 @@ function prepareRefreshTokenContext(
     return { ok: false, reason: "not-refreshable" };
   }
   if (
-    !hasConnectorRefreshTokenAccessProvider(
+    !connectorAuthMethodSupportsRefreshTokenAccess(
       parsedConnectorType.data,
       connectorAccess.authMethod,
     )

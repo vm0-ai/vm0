@@ -1,5 +1,4 @@
 import {
-  connectorTypeSchema,
   type ConnectorAuthCodeGrantAuthMethodId,
   type AuthCodeGrantConnectorType,
   type ConnectorAuthCodeGrantConfig,
@@ -198,12 +197,6 @@ interface ConnectorAuthMethodProviderEntry<Type extends ConnectorType> {
     Type & RefreshTokenAccessConnectorType
   >;
   readonly revoke?: ConnectorTokenRevokeProvider;
-}
-
-interface ConnectorAuthMethodProviderCapabilities {
-  readonly grant?: { readonly kind: "auth-code" | "device-auth" };
-  readonly access?: { readonly kind: "refresh-token" };
-  readonly revoke?: { readonly kind: "token-revoke" };
 }
 
 type ConnectorProviderBackedAuthMethodEntries<
@@ -512,12 +505,6 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
 const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY: ConnectorAuthMethodProviderRegistry =
   CONNECTOR_AUTH_METHOD_PROVIDERS;
 
-function isConnectorProviderBackedType(
-  type: ConnectorType,
-): type is ConnectorProviderBackedType {
-  return Object.hasOwn(CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY, type);
-}
-
 function connectorAuthMethodProviderEntryFor<
   Type extends ConnectorProviderBackedType,
 >(
@@ -528,153 +515,6 @@ function connectorAuthMethodProviderEntryFor<
     Record<string, ConnectorAuthMethodProviderEntry<Type>>
   > = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type];
   return providers[authMethod];
-}
-
-function connectorAuthMethodProviderCapabilities(
-  type: string,
-  authMethod: string,
-): ConnectorAuthMethodProviderCapabilities | undefined {
-  const connectorType = connectorTypeSchema.safeParse(type);
-  if (
-    !connectorType.success ||
-    !isConnectorProviderBackedType(connectorType.data)
-  ) {
-    return undefined;
-  }
-  return connectorAuthMethodProviderEntryFor(connectorType.data, authMethod);
-}
-
-function connectorAuthMethodProviderCapabilityEntries(
-  type: string,
-): readonly ConnectorAuthMethodProviderCapabilities[] {
-  const connectorType = connectorTypeSchema.safeParse(type);
-  if (
-    !connectorType.success ||
-    !isConnectorProviderBackedType(connectorType.data)
-  ) {
-    return [];
-  }
-  const providers: Readonly<
-    Record<string, ConnectorAuthMethodProviderCapabilities>
-  > = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[connectorType.data];
-  return Object.values(providers);
-}
-
-export function hasConnectorAuthProvider(
-  type: string,
-): type is ConnectorAuthProviderType {
-  return (
-    hasConnectorAuthCodeGrantProvider(type) ||
-    hasConnectorDeviceAuthGrantProvider(type)
-  );
-}
-
-export function hasConnectorAuthCodeGrantProvider(
-  type: string,
-): type is AuthCodeGrantConnectorType;
-export function hasConnectorAuthCodeGrantProvider<
-  T extends AuthCodeGrantConnectorType,
->(
-  type: T,
-  authMethod: string,
-): authMethod is ConnectorAuthCodeGrantAuthMethodId<T>;
-export function hasConnectorAuthCodeGrantProvider(
-  type: string,
-  authMethod: string,
-): boolean;
-export function hasConnectorAuthCodeGrantProvider(
-  type: string,
-  authMethod?: string,
-): boolean {
-  if (authMethod === undefined) {
-    return connectorAuthMethodProviderCapabilityEntries(type).some(
-      (provider) => {
-        return provider.grant?.kind === "auth-code";
-      },
-    );
-  }
-  return hasConnectorAuthCodeGrantProviderForMethod(type, authMethod);
-}
-
-function hasConnectorAuthCodeGrantProviderForMethod(
-  type: string,
-  authMethod: string,
-): boolean {
-  return (
-    connectorAuthMethodProviderCapabilities(type, authMethod)?.grant?.kind ===
-    "auth-code"
-  );
-}
-
-export function hasConnectorDeviceAuthGrantProvider(
-  type: string,
-): type is DeviceAuthGrantConnectorType;
-export function hasConnectorDeviceAuthGrantProvider<
-  T extends DeviceAuthGrantConnectorType,
->(
-  type: T,
-  authMethod: string,
-): authMethod is ConnectorDeviceAuthGrantAuthMethodId<T>;
-export function hasConnectorDeviceAuthGrantProvider(
-  type: string,
-  authMethod: string,
-): boolean;
-export function hasConnectorDeviceAuthGrantProvider(
-  type: string,
-  authMethod?: string,
-): boolean {
-  if (authMethod === undefined) {
-    return connectorAuthMethodProviderCapabilityEntries(type).some(
-      (provider) => {
-        return provider.grant?.kind === "device-auth";
-      },
-    );
-  }
-  return hasConnectorDeviceAuthGrantProviderForMethod(type, authMethod);
-}
-
-function hasConnectorDeviceAuthGrantProviderForMethod(
-  type: string,
-  authMethod: string,
-): boolean {
-  return (
-    connectorAuthMethodProviderCapabilities(type, authMethod)?.grant?.kind ===
-    "device-auth"
-  );
-}
-
-export function hasConnectorRefreshTokenAccessProvider(
-  type: string,
-  authMethod?: string,
-): type is RefreshTokenAccessConnectorType {
-  if (authMethod === undefined) {
-    return connectorAuthMethodProviderCapabilityEntries(type).some(
-      (provider) => {
-        return provider.access?.kind === "refresh-token";
-      },
-    );
-  }
-  return (
-    connectorAuthMethodProviderCapabilities(type, authMethod)?.access?.kind ===
-    "refresh-token"
-  );
-}
-
-export function hasConnectorTokenRevokeProvider(
-  type: string,
-  authMethod?: string,
-): type is TokenRevokeConnectorType {
-  if (authMethod === undefined) {
-    return connectorAuthMethodProviderCapabilityEntries(type).some(
-      (provider) => {
-        return provider.revoke?.kind === "token-revoke";
-      },
-    );
-  }
-  return (
-    connectorAuthMethodProviderCapabilities(type, authMethod)?.revoke?.kind ===
-    "token-revoke"
-  );
 }
 
 export async function buildConnectorAuthCodeAuthorizationUrl<

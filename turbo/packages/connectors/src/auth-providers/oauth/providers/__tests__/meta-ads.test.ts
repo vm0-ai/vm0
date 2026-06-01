@@ -4,7 +4,6 @@ import {
   getConnectorAuthMethodAuthCodeGrantConfig,
   resolveConnectorAuthClientForMethod,
 } from "../../../../connector-utils";
-import { hasConnectorAuthCodeGrantProvider } from "../../../connector-auth";
 import {
   buildMetaAdsAuthorizationUrl,
   exchangeMetaAdsCode,
@@ -150,10 +149,6 @@ describe("connector/providers/meta-ads", () => {
   });
 
   describe("metaAdsProvider", () => {
-    it("registers meta-ads as an auth-code grant provider", () => {
-      expect(hasConnectorAuthCodeGrantProvider("meta-ads")).toBe(true);
-    });
-
     it("buildAuthUrl delegates to buildMetaAdsAuthorizationUrl", () => {
       const url = metaAdsProvider.grant.buildAuthUrl({
         authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
