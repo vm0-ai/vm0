@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 import type { Stripe } from "stripe";
@@ -27,7 +26,12 @@ interface CompleteCheckoutSessionArgs {
 type CheckoutCompletionResult =
   | { readonly status: "completed" }
   | { readonly status: "pending" }
-  | { readonly status: "customer_mismatch" };
+  | { readonly status: "customer_mismatch" }
+  | {
+      readonly status: "tier_conflict";
+      readonly currentTier: string | null;
+      readonly targetTier: SubscriptionCheckoutTier;
+    };
 
 interface CreateCreditCheckoutSessionArgs {
   readonly orgId: string;
@@ -38,13 +42,17 @@ interface CreateCreditCheckoutSessionArgs {
 
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
+export type SubscriptionCheckoutTier =
+  (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 
 /** Returns the active (first) price ID for a given tier. */
-export function activePriceId(tier: "pro" | "team"): string | undefined {
+export function activePriceId(
+  tier: SubscriptionCheckoutTier,
+): string | undefined {
   return env("ZERO_PRICE")?.[tier]?.[0];
 }
 
-export function tierFromPriceId(priceId: string): OrgTier {
+export function tierFromPriceId(priceId: string): SubscriptionCheckoutTier {
   const priceMap = env("ZERO_PRICE");
   if (priceMap) {
     for (const tier of STRIPE_SUBSCRIPTION_PRICE_TIERS) {
@@ -54,6 +62,56 @@ export function tierFromPriceId(priceId: string): OrgTier {
     }
   }
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
+}
+
+function billingTierRank(tier: string | null | undefined): number {
+  switch (tier) {
+    case "team": {
+      return 2;
+    }
+    case "pro": {
+      return 1;
+    }
+    case "free":
+    case "pro-suspend":
+    default: {
+      return 0;
+    }
+  }
+}
+
+function billingTierLabel(tier: string | null | undefined): string {
+  switch (tier) {
+    case "team": {
+      return "Team";
+    }
+    case "pro": {
+      return "Pro";
+    }
+    case "free": {
+      return "Free";
+    }
+    case "pro-suspend": {
+      return "Pro suspended";
+    }
+    default: {
+      return tier ?? "Pro suspended";
+    }
+  }
+}
+
+export function checkoutWouldReplaceWithSameOrLowerTier(args: {
+  readonly currentTier: string | null | undefined;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): boolean {
+  return billingTierRank(args.currentTier) >= billingTierRank(args.targetTier);
+}
+
+export function checkoutTierConflictMessage(args: {
+  readonly currentTier: string | null | undefined;
+  readonly targetTier: SubscriptionCheckoutTier;
+}): string {
+  return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }
 
 export function activeCustomCreditPriceId(): string | undefined {
@@ -178,7 +236,11 @@ export const completeCheckoutSession$ = command(
   ): Promise<CheckoutCompletionResult> => {
     const db = set(writeDb$);
     const [org] = await db
-      .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+      .select({
+        stripeCustomerId: orgMetadata.stripeCustomerId,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        tier: orgMetadata.tier,
+      })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, args.orgId))
       .limit(1);
@@ -189,7 +251,7 @@ export const completeCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const customerId = stripeObjectId(session.customer);
-    if (!customerId || customerId !== org?.stripeCustomerId) {
+    if (!org || !customerId || customerId !== org.stripeCustomerId) {
       return { status: "customer_mismatch" };
     }
 
@@ -211,6 +273,19 @@ export const completeCheckoutSession$ = command(
     }
 
     const tier = tierFromPriceId(priceId);
+    if (
+      org.stripeSubscriptionId !== subscription.id &&
+      checkoutWouldReplaceWithSameOrLowerTier({
+        currentTier: org.tier,
+        targetTier: tier,
+      })
+    ) {
+      return {
+        status: "tier_conflict",
+        currentTier: org.tier,
+        targetTier: tier,
+      };
+    }
     const periodEnd = subscriptionPeriodEnd(subscription);
 
     await db

@@ -10,7 +10,12 @@ import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getCampaign } from "./one-time-products";
-import { tierFromPriceId } from "./zero-billing-checkout.service";
+import {
+  checkoutTierConflictMessage,
+  checkoutWouldReplaceWithSameOrLowerTier,
+  type SubscriptionCheckoutTier,
+  tierFromPriceId,
+} from "./zero-billing-checkout.service";
 
 const L = logger("WebhookStripe");
 const TRIALING_CREDIT_EXPIRY_DAYS = 7;
@@ -60,6 +65,11 @@ interface SubscriptionInput {
 
 interface SubscriptionDeletedInput {
   readonly id: string;
+}
+
+interface CheckoutSubscriptionContext {
+  readonly customerId: string;
+  readonly subscriptionId: string;
 }
 
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
@@ -383,6 +393,79 @@ async function handlePaidCheckoutPurpose(
   return true;
 }
 
+function checkoutSubscriptionContext(
+  session: CheckoutSessionInput,
+): CheckoutSubscriptionContext | null {
+  const subscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id;
+  if (!subscriptionId) {
+    L.warn("checkout.session.completed without subscription ID", {
+      sessionId: session.id,
+    });
+    return null;
+  }
+
+  const customerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer?.id;
+  if (!customerId) {
+    L.warn("checkout.session.completed without customer ID", {
+      sessionId: session.id,
+    });
+    return null;
+  }
+
+  return { customerId, subscriptionId };
+}
+
+async function shouldSkipCheckoutSubscriptionUpdate(
+  db: Db,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+    readonly tier: SubscriptionCheckoutTier;
+  },
+): Promise<boolean> {
+  const [existing] = await db
+    .select({
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, args.customerId))
+    .limit(1);
+
+  if (existing?.stripeSubscriptionId === args.subscriptionId) {
+    L.debug("checkout.session.completed already processed", {
+      subscriptionId: args.subscriptionId,
+    });
+    return true;
+  }
+  if (
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: existing?.tier,
+      targetTier: args.tier,
+    })
+  ) {
+    L.warn("checkout.session.completed rejected tier replacement", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+      currentTier: existing?.tier ?? null,
+      targetTier: args.tier,
+      reason: checkoutTierConflictMessage({
+        currentTier: existing?.tier,
+        targetTier: args.tier,
+      }),
+    });
+    return true;
+  }
+
+  return false;
+}
+
 async function handleCheckoutCompleted(
   db: Db,
   session: CheckoutSessionInput,
@@ -395,27 +478,11 @@ async function handleCheckoutCompleted(
     return;
   }
 
-  const subscriptionId =
-    typeof session.subscription === "string"
-      ? session.subscription
-      : session.subscription?.id;
-  if (!subscriptionId) {
-    L.warn("checkout.session.completed without subscription ID", {
-      sessionId: session.id,
-    });
+  const checkoutContext = checkoutSubscriptionContext(session);
+  if (!checkoutContext) {
     return;
   }
-
-  const customerId =
-    typeof session.customer === "string"
-      ? session.customer
-      : session.customer?.id;
-  if (!customerId) {
-    L.warn("checkout.session.completed without customer ID", {
-      sessionId: session.id,
-    });
-    return;
-  }
+  const { customerId, subscriptionId } = checkoutContext;
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
@@ -426,14 +493,13 @@ async function handleCheckoutCompleted(
   }
 
   const tier = tierFromPriceId(priceId);
-  const [existing] = await db
-    .select({ stripeSubscriptionId: orgMetadata.stripeSubscriptionId })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.stripeCustomerId, customerId))
-    .limit(1);
-
-  if (existing?.stripeSubscriptionId === subscriptionId) {
-    L.debug("checkout.session.completed already processed", { subscriptionId });
+  if (
+    await shouldSkipCheckoutSubscriptionUpdate(db, {
+      customerId,
+      subscriptionId,
+      tier,
+    })
+  ) {
     return;
   }
 

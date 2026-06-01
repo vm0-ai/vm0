@@ -61,6 +61,9 @@ function zeroToken(args: {
 async function seedOrgRow(values?: {
   readonly onboardingPaymentPending?: boolean;
   readonly stripeCustomerId?: string;
+  readonly stripeSubscriptionId?: string;
+  readonly subscriptionStatus?: string;
+  readonly tier?: string;
 }): Promise<{
   readonly orgId: string;
   readonly userId: string;
@@ -72,6 +75,9 @@ async function seedOrgRow(values?: {
     orgId,
     onboardingPaymentPending: values?.onboardingPaymentPending ?? false,
     stripeCustomerId: values?.stripeCustomerId,
+    stripeSubscriptionId: values?.stripeSubscriptionId,
+    subscriptionStatus: values?.subscriptionStatus,
+    tier: values?.tier,
   });
   return { orgId, userId };
 }
@@ -109,6 +115,17 @@ describe("POST /api/zero/billing/checkout", () => {
 
   async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
     const fixture = await seedOrgRow();
+    createdOrgIds.push(fixture.orgId);
+    return fixture;
+  }
+
+  async function trackedBillingSeed(values: {
+    readonly stripeCustomerId: string;
+    readonly stripeSubscriptionId: string;
+    readonly subscriptionStatus: string;
+    readonly tier: string;
+  }): Promise<{ orgId: string; userId: string }> {
+    const fixture = await seedOrgRow(values);
     createdOrgIds.push(fixture.orgId);
     return fixture;
   }
@@ -251,6 +268,76 @@ describe("POST /api/zero/billing/checkout", () => {
       metadata: { orgId: fixture.orgId },
       subscription_data: { metadata: { orgId: fixture.orgId } },
     });
+  });
+
+  it("returns 400 when checkout would downgrade the current tier", async () => {
+    const fixture = await trackedBillingSeed({
+      stripeCustomerId: `cus_${randomUUID().slice(0, 8)}`,
+      stripeSubscriptionId: `sub_${randomUUID().slice(0, 8)}`,
+      subscriptionStatus: "active",
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Cannot create Pro checkout while current tier is Team; use billing management to change plans",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when checkout would duplicate the current tier", async () => {
+    const fixture = await trackedBillingSeed({
+      stripeCustomerId: `cus_${randomUUID().slice(0, 8)}`,
+      stripeSubscriptionId: `sub_${randomUUID().slice(0, 8)}`,
+      subscriptionStatus: "active",
+      tier: "pro",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Cannot create Pro checkout while current tier is Pro; use billing management to change plans",
+        code: "BAD_REQUEST",
+      },
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
   });
 
   it("attaches ad attribution to Stripe checkout and subscription metadata", async () => {
@@ -504,6 +591,9 @@ describe("POST /api/zero/billing/checkout/complete", () => {
   async function trackedSeed(values?: {
     readonly onboardingPaymentPending?: boolean;
     readonly stripeCustomerId?: string;
+    readonly stripeSubscriptionId?: string;
+    readonly subscriptionStatus?: string;
+    readonly tier?: string;
   }): Promise<{ orgId: string; userId: string }> {
     const fixture = await seedOrgRow(values);
     createdOrgIds.push(fixture.orgId);
@@ -571,6 +661,120 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       subscriptionStatus: "trialing",
       onboardingPaymentPending: false,
       currentPeriodEnd: new Date(1_800_000_000 * 1000),
+    });
+  });
+
+  it("allows completion when the same subscription is already stored", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "active",
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_completed",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: subscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_TEAM },
+            current_period_end: 1_800_000_000,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: true });
+  });
+
+  it("returns 400 when completed checkout would downgrade the current tier", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const existingSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const checkoutSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: existingSubscriptionId,
+      subscriptionStatus: "active",
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_completed",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: checkoutSubscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: checkoutSubscriptionId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PRO },
+            current_period_end: 1_800_000_000,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message:
+          "Cannot create Pro checkout while current tier is Team; use billing management to change plans",
+        code: "BAD_REQUEST",
+      },
+    });
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toStrictEqual({
+      tier: "team",
+      stripeSubscriptionId: existingSubscriptionId,
+      subscriptionStatus: "active",
     });
   });
 

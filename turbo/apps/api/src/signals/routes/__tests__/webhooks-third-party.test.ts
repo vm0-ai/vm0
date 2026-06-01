@@ -2209,6 +2209,41 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.stripeSubscriptionId).toBe(subId);
     });
 
+    it("does not replace a higher current tier with a lower checkout", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const teamSubId = stripeId("sub");
+      const proSubId = stripeId("sub");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        subscriptionStatus: "active",
+        tier: "team",
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: proSubId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: stripeId("cs"),
+          subscription: proSubId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.subscriptionStatus).toBe("active");
+    });
+
     it("does not grant one-time credits before checkout payment settles", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),

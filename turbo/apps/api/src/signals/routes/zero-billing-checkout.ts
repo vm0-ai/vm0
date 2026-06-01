@@ -12,6 +12,8 @@ import { db$ } from "../external/db";
 import {
   activePriceId,
   completeCheckoutSession$,
+  checkoutTierConflictMessage,
+  checkoutWouldReplaceWithSameOrLowerTier,
   createCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
 import type { RouteEntry } from "../route";
@@ -58,19 +60,35 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage(`Price not configured for ${tier} tier`);
   }
 
+  const db = get(db$);
+  const [metadata] = await db
+    .select({
+      onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, auth.orgId))
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: metadata?.tier,
+      targetTier: tier,
+    })
+  ) {
+    return badRequestMessage(
+      checkoutTierConflictMessage({
+        currentTier: metadata?.tier,
+        targetTier: tier,
+      }),
+    );
+  }
+
   if (trialDays !== undefined) {
     if (tier !== "pro") {
       return badRequestMessage("Trial checkout is only available for Pro tier");
     }
-    const db = get(db$);
-    const [metadata] = await db
-      .select({
-        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, auth.orgId))
-      .limit(1);
-    signal.throwIfAborted();
     if (metadata?.onboardingPaymentPending !== true) {
       return badRequestMessage(
         "Pro trial checkout is only available during onboarding",
@@ -134,6 +152,14 @@ const checkoutCompleteAuthed$ = command(
     if (result.status === "customer_mismatch") {
       return badRequestMessage(
         "Checkout session does not belong to current organization",
+      );
+    }
+    if (result.status === "tier_conflict") {
+      return badRequestMessage(
+        checkoutTierConflictMessage({
+          currentTier: result.currentTier,
+          targetTier: result.targetTier,
+        }),
       );
     }
 
