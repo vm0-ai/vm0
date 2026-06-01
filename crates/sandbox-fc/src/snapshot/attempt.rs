@@ -79,6 +79,8 @@ async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevic
     }
 }
 
+// The path is known at attempt construction; cleanup is required only after
+// image creation starts.
 enum AttemptWorkspaceImage {
     NotCreated(PathBuf),
     Owned(PathBuf),
@@ -393,6 +395,7 @@ impl SnapshotAttempt {
         netns_pool: NetnsPool,
         device_pool: DevicePoolHandle,
         cow_device: PooledNbdCowDevice,
+        workspace_image_path: PathBuf,
     ) -> Self {
         Self {
             paths,
@@ -415,6 +418,7 @@ impl SnapshotAttempt {
         paths: SandboxPaths,
         sock_paths: SockPaths,
         output: SnapshotOutputPaths,
+        workspace_image_path: PathBuf,
     ) -> Self {
         Self {
             paths,
@@ -1374,7 +1378,10 @@ mod tests {
         let sock_dir = dir.path().join("sock");
         let sock_paths = SockPaths::new(sock_dir.clone());
         let stale_socket = sock_dir.join("api.sock");
-        let mut attempt = SnapshotAttempt::new_without_cow_for_test(paths, sock_paths, output);
+        let workspace_image =
+            snapshot_attempt_workspace_image_file(paths.workspace(), "socket-cleanup-test");
+        let mut attempt =
+            SnapshotAttempt::new_without_cow_for_test(paths, sock_paths, output, workspace_image);
 
         tokio::fs::create_dir_all(&sock_dir)
             .await
@@ -1397,8 +1404,10 @@ mod tests {
         let paths = SandboxPaths::new(output.work_dir());
         let sock_dir = dir.path().join("sock");
         let sock_paths = SockPaths::new(sock_dir.clone());
+        let workspace_image =
+            snapshot_attempt_workspace_image_file(paths.workspace(), "default-test");
         (
-            SnapshotAttempt::new_without_cow_for_test(paths, sock_paths, output),
+            SnapshotAttempt::new_without_cow_for_test(paths, sock_paths, output, workspace_image),
             sock_dir,
         )
     }
