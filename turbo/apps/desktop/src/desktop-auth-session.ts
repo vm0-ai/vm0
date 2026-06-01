@@ -67,6 +67,14 @@ function signedOutDesktopAuthState(): DesktopAuthState {
   };
 }
 
+function signingInDesktopAuthState(): DesktopAuthState {
+  return {
+    status: "signing_in",
+    user: null,
+    organization: null,
+  };
+}
+
 /**
  * Owns the desktop auth token state machine, extracted from `main.ts` and kept
  * free of Electron imports so it can be integration-tested by injecting fakes,
@@ -86,6 +94,7 @@ export class DesktopAuthSession {
   private token: string | null = null;
   private tokenRefresh: Promise<string | null> | null = null;
   private pendingCode: string | null = null;
+  private signingIn = false;
 
   constructor(options: DesktopAuthSessionOptions) {
     this.apiBaseUrl = options.apiBaseUrl;
@@ -113,6 +122,24 @@ export class DesktopAuthSession {
   }
 
   async getAuthState(): Promise<DesktopAuthState> {
+    if (this.signingIn) {
+      return signingInDesktopAuthState();
+    }
+
+    const state = await this.fetchAuthState();
+    if (state.status !== "signed_out") {
+      return state;
+    }
+
+    const restoredToken = await this.getToken({ forceRefresh: true });
+    if (!restoredToken) {
+      return state;
+    }
+
+    return await this.fetchAuthState();
+  }
+
+  private async fetchAuthState(): Promise<DesktopAuthState> {
     const meUrl = new URL(AUTH_ME_PATH, this.apiBaseUrl);
     const meResponse = await this.fetchWithSessionAuth(meUrl);
     if (meResponse.status === 401) {
@@ -155,11 +182,17 @@ export class DesktopAuthSession {
   }
 
   async consumeCode(code: string): Promise<void> {
-    await this.runAuthWindow({
-      url: this.consumeUrl(code),
-      visible: false,
-      allowInteractiveFallbacks: true,
-    });
+    this.setSigningIn(true);
+    try {
+      await this.runAuthWindow({
+        url: this.consumeUrl(code),
+        visible: false,
+        allowInteractiveFallbacks: true,
+      });
+    } finally {
+      this.setSigningIn(false);
+    }
+
     await this.onAuthCompleted();
   }
 
@@ -207,6 +240,14 @@ export class DesktopAuthSession {
     } finally {
       this.tokenRefresh = null;
     }
+  }
+
+  private setSigningIn(value: boolean): void {
+    if (this.signingIn === value) {
+      return;
+    }
+    this.signingIn = value;
+    this.onChange();
   }
 
   private async fetchWithSessionAuth(requestUrl: URL): Promise<Response> {

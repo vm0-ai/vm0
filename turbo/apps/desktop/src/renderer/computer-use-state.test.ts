@@ -33,6 +33,12 @@ const signedOutAuth: DesktopAuthState = {
   organization: null,
 };
 
+const signingInAuth: DesktopAuthState = {
+  status: "signing_in",
+  user: null,
+  organization: null,
+};
+
 const signedInAuth: DesktopAuthState = {
   status: "signed_in",
   user: { userId: "user-1", email: "user@example.com" },
@@ -63,6 +69,9 @@ describe("shouldAutoStartComputerUse", () => {
     );
     expect(shouldAutoStartComputerUse(computerUseState(), null)).toBe(false);
     expect(shouldAutoStartComputerUse(computerUseState(), signedOutAuth)).toBe(
+      false,
+    );
+    expect(shouldAutoStartComputerUse(computerUseState(), signingInAuth)).toBe(
       false,
     );
     expect(
