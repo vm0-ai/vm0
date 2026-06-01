@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.305.0](https://github.com/vm0-ai/vm0/compare/core-v8.304.9...core-v8.305.0) (2026-06-01)
+
+
+### Features
+
+* add user permission grant foundation ([#15633](https://github.com/vm0-ai/vm0/issues/15633)) ([b27e76d](https://github.com/vm0-ai/vm0/commit/b27e76d5b9cfe13a72900976c16ebbd1a65fac80))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.8
+    * @vm0/connectors bumped to 1.40.0
+
 ## [8.304.9](https://github.com/vm0-ai/vm0/compare/core-v8.304.8...core-v8.304.9) (2026-06-01)
 
 

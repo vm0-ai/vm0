@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.90.9](https://github.com/vm0-ai/vm0/compare/api-v1.90.8...api-v1.90.9) (2026-06-01)
+
+
+### Bug Fixes
+
+* **api:** handle duplicate client message ids ([#15627](https://github.com/vm0-ai/vm0/issues/15627)) ([a57b209](https://github.com/vm0-ai/vm0/commit/a57b209e57b2904b082d59059a1d94b49e0caddb))
+
+
+### Refactoring
+
+* split api and web env templates ([#15679](https://github.com/vm0-ai/vm0/issues/15679)) ([6e4773e](https://github.com/vm0-ai/vm0/commit/6e4773e2356b60686e906b31b146a480b2e96823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.8
+    * @vm0/connectors bumped to 1.40.0
+    * @vm0/core bumped to 8.305.0
+    * @vm0/db bumped to 1.24.0
+
 ## [1.90.8](https://github.com/vm0-ai/vm0/compare/api-v1.90.7...api-v1.90.8) (2026-06-01)
 
 

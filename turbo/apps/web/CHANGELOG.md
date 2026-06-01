@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.405.5](https://github.com/vm0-ai/vm0/compare/web-v12.405.4...web-v12.405.5) (2026-06-01)
+
+
+### Refactoring
+
+* split api and web env templates ([#15679](https://github.com/vm0-ai/vm0/issues/15679)) ([6e4773e](https://github.com/vm0-ai/vm0/commit/6e4773e2356b60686e906b31b146a480b2e96823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.8
+  * devDependencies
+    * @vm0/connectors bumped to 1.40.0
+
 ## [12.405.4](https://github.com/vm0-ai/vm0/compare/web-v12.405.3...web-v12.405.4) (2026-06-01)
 
 
