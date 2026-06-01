@@ -1705,10 +1705,31 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
             `${type}/${authMethod}: platform secret ${secretName} must be exposed through envBindings`,
           ).toBe(true);
         }
+        const platformSecretNames: ReadonlySet<string> = new Set(
+          accessMetadata.platformSecrets,
+        );
+        const ownedSecretNames: ReadonlySet<string> = new Set(
+          getConnectorOwnedSecretNames(type, authMethod),
+        );
+        for (const secretName of platformSecretNames) {
+          expect(
+            ownedSecretNames.has(secretName),
+            `${type}/${authMethod}: platform secret ${secretName} must not be connector-owned`,
+          ).toBe(false);
+        }
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (method?.grant.kind === "manual") {
+          for (const [name, field] of Object.entries(method.grant.fields)) {
+            if (field.storage === "variable") {
+              continue;
+            }
+            expect(
+              platformSecretNames.has(name),
+              `${type}/${authMethod}: manual grant secret ${name} must stay connector-owned`,
+            ).toBe(false);
+          }
+        }
         if (accessMetadata.kind === "refresh-token") {
-          const platformSecretNames: ReadonlySet<string> = new Set(
-            accessMetadata.platformSecrets,
-          );
           expect(
             platformSecretNames.has(accessMetadata.accessToken),
             `${type}/${authMethod}: access token storage must stay connector-owned`,
