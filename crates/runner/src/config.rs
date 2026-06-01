@@ -19,10 +19,11 @@
 //! Each [`ProfileConfig`] carries two hashes with different scopes:
 //! - `rootfs_hash` — content hash of the bootable guest filesystem image on
 //!   this runner. Shared across snapshot variants on the same host.
-//! - `snapshot_hash` — content hash of the FC/kernel/vcpu/memory/provider
-//!   config used to capture the memory snapshot from that rootfs. Local-only:
-//!   snapshots are produced on each runner by booting the rootfs and
-//!   capturing state, since the captured memory binds to host-specific state.
+//! - `snapshot_hash` — content hash of the rootfs hash plus the
+//!   FC/kernel/vcpu/memory/provider config used to capture the memory snapshot.
+//!   Local-only: snapshots are produced on each runner by booting the rootfs
+//!   and capturing state, since the captured memory binds to host-specific
+//!   state.
 //!
 //! Together they identify an exact boot image on this host.
 //!
@@ -103,14 +104,14 @@ pub struct FirecrackerConfig {
 pub struct ProfileConfig {
     /// Content-addressed rootfs hash (shared across snapshot variants on this host).
     pub rootfs_hash: String,
-    /// Content-addressed snapshot hash (local-only, covers FC/kernel/vcpu/memory/provider config).
+    /// Content-addressed snapshot hash (local-only, covers rootfs plus VM/provider config).
     pub snapshot_hash: String,
     /// Guest vCPU count. Must be non-zero and ≤ 1024.
     pub vcpu: u32,
     /// Guest RAM in MiB. Must be non-zero and ≤ 1 TiB.
     pub memory_mb: u32,
-    /// Guest disk in MiB, used to size the COW overlay. Must be non-zero
-    /// and ≤ 1 TiB.
+    /// Guest disk in MiB, used to size the rootfs image and workspace drive.
+    /// Must be non-zero and ≤ 1 TiB.
     pub disk_mb: u32,
 }
 

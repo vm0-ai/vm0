@@ -294,7 +294,7 @@ async fn run_with_firecracker(
     let drive_bind_str = paths.cow_device_bind().display().to_string();
     let workspace_drive_bind_str = paths.workspace_device_bind().display().to_string();
 
-    // 6. Configure VM via API (6 parallel PUT calls).
+    // 6. Configure VM via API (7 parallel PUT calls).
     let inv = InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
     tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;

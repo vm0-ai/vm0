@@ -142,6 +142,7 @@ Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS tha
 - Linux kernel v6.1.155 (for microVM)
 - Node.js 24.x, pnpm, pm2
 - mitmproxy (network observability)
+- mkfs.ext4 / e2fsprogs (workspace drive image initialization)
 - debootstrap (rootfs build only)
 
 #### Architecture
@@ -196,6 +197,12 @@ sandbox:
 - Device: `/dev/nbdN` (writable block device)
 - Reads of unmodified blocks go to base image, writes captured in COW file
 - Enables instant boot without rootfs copy
+
+**Per-VM Workspace Drive**:
+- Sparse ext4 image: `/var/lib/vm0-runner/workspaces/{sandbox_id}/workspace.ext4`
+- Exposed to the guest as `/dev/vdb`
+- Mounted by the runner at `/home/user/workspace`
+- Sized from the runner profile `disk_mb`
 
 #### Network Architecture
 
