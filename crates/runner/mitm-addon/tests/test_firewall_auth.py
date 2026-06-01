@@ -774,6 +774,58 @@ class TestHandleFirewallRequest:
         assert body["base"] == "https://api.github.com"
         assert "connectors" not in body
 
+    async def test_malformed_success_response_returns_502_without_auth_mutation(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.github.com",
+            path="/repos?existing=1",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://api.github.com",
+            "auth": {
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        allow = _allow(api_entry)
+        mock_resp = MagicMock()
+        mock_resp.__enter__.return_value = mock_resp
+        mock_resp.read.return_value = b"not-json"
+
+        with (
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        assert cached_headers(("test-run", "https://api.github.com")) is None
+        body = json.loads(flow.response.content)
+        assert body["error"] == "auth_failed"
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
+        mock_resp.__exit__.assert_called_once()
+
     async def test_structured_api_error_is_preserved(self, real_flow, mitm_ctx, tmp_path):
         flow = real_flow(with_response=False, host="api.github.com", path="/repos")
         flow.metadata["vm_run_id"] = "test-run"
