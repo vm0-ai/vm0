@@ -986,6 +986,12 @@ describe("validateBaseUrl", () => {
       return validateBaseUrl("https://127.1", "fw");
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
+      return validateBaseUrl("https://127。0。0。1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127.0.0.1。", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
       return validateBaseUrl("https://127.0.0.1.", "fw");
     }).not.toThrow();
   });

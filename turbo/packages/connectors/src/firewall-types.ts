@@ -1168,6 +1168,11 @@ function normalizeHostForIpv4LiteralSyntax(host: string): string {
   return normalized;
 }
 
+function rawHostForCanonicalIpv4Syntax(host: string): string {
+  const normalized = host.toLowerCase();
+  return normalized.endsWith(".") ? normalized.slice(0, -1) : normalized;
+}
+
 function splitAuthorityHostSegments(host: string): string[] {
   if (host.startsWith("[") && host.endsWith("]")) {
     return [host];
@@ -1260,7 +1265,8 @@ function validateHostHasCanonicalIpv4Syntax(
   const normalizedHost = normalizeHostForIpv4LiteralSyntax(host);
   if (
     isIpv4LiteralLike(normalizedHost) &&
-    !isCanonicalIpv4Address(normalizedHost)
+    (rawHostForCanonicalIpv4Syntax(host) !== normalizedHost ||
+      !isCanonicalIpv4Address(normalizedHost))
   ) {
     throw new Error(
       errMsg(base, serviceName, "host must use canonical IPv4 address syntax"),

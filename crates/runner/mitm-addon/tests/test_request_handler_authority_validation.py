@@ -315,6 +315,47 @@ async def test_accepts_equivalent_host_authority_default_https_port(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+@pytest.mark.parametrize(
+    "host_header",
+    [
+        "0177.0.0.1",
+        "127。0。0。1",
+        "127.0.0.1。",
+        "\uff11\uff12\uff17.\uff10.\uff10.\uff11",
+    ],
+)
+async def test_rejects_noncanonical_ipv4_host_authority_before_firewall_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, host_header
+):
+    reg_path = _write_github_firewall_registry(tmp_path, base="https://127.0.0.1")
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="127.0.0.1",
+        path="/repos",
+        request_headers=headers(("Host", host_header)),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "invalid_authority"
+    assert body["sni"] == "127.0.0.1"
+    assert body["host_header"] == host_header
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_error"] == "invalid_authority"
+    assert flow.metadata["original_url"] == "https://127.0.0.1/repos"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
 @pytest.mark.parametrize("host_header", ["api.github.com", "api.github.com:8443"])
 async def test_accepts_matching_non_default_host_authority_port(
     tmp_path,

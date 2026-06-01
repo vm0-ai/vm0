@@ -523,6 +523,9 @@ class TestMatchBaseUrl:
             "https://0x7f.0.0.1",
             "https://2130706433",
             "https://127.1",
+            "https://127。0。0。1",
+            "https://127.0.0.1。",
+            "https://\uff11\uff12\uff17.\uff10.\uff10.\uff11",
         ],
     )
     def test_static_base_malformed_authority_returns_none(self, base):
@@ -545,6 +548,9 @@ class TestMatchBaseUrl:
             "https://0x7f.0.0.1/repos",
             "https://2130706433/repos",
             "https://127.1/repos",
+            "https://127。0。0。1/repos",
+            "https://127.0.0.1。/repos",
+            "https://\uff11\uff12\uff17.\uff10.\uff10.\uff11/repos",
         ],
     )
     def test_static_base_malformed_request_authority_returns_none(self, url):

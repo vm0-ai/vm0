@@ -112,7 +112,7 @@ def _is_ipv4_number_component(value: str) -> bool:
         return len(value) > _IPV4_HEX_PREFIX_LENGTH and all(
             char in "0123456789abcdefABCDEF" for char in value[_IPV4_HEX_PREFIX_LENGTH:]
         )
-    return value.isdigit()
+    return all("0" <= char <= "9" for char in value)
 
 
 def _is_ipv4_literal_like(value: str) -> bool:
@@ -134,6 +134,10 @@ def _is_canonical_ipv4_address(value: str) -> bool:
         if int(part) > _IPV4_MAX_OCTET:
             return False
     return True
+
+
+def _strip_optional_ascii_trailing_dot(value: str) -> str:
+    return value[:-1] if value.endswith(".") else value
 
 
 def _has_unicode_control_chars(value: str) -> bool:
@@ -375,7 +379,9 @@ def normalize_idna_hostname(host: str) -> str:
     if not normalized:
         raise ValueError("empty hostname")
     if _is_ipv4_literal_like(normalized):
-        if not _is_canonical_ipv4_address(normalized):
+        if _strip_optional_ascii_trailing_dot(host) != normalized or not _is_canonical_ipv4_address(
+            normalized
+        ):
             raise UnicodeError("non-canonical IPv4 address")
         return normalized
 
