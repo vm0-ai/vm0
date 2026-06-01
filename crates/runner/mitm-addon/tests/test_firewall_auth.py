@@ -67,24 +67,26 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == mock_headers
         assert headers["cache_hit"] is False
-        # fetch_firewall_headers wraps urllib; args-once-with pins the cache-miss contract (#9991).
-        mock_fetch.assert_called_once_with(
-            encrypted,
-            auth_templates,
-            "tok-xyz",
-            None,
-            None,
-            None,
-            None,
-            None,
-            False,
-            force_refresh=False,
-        )
+        mock_fetch.assert_called_once()
+        assert mock_fetch.call_args.args == (encrypted, auth_templates, "tok-xyz")
+        assert mock_fetch.call_args.kwargs == {
+            "secret_connector_map": None,
+            "secret_connector_metadata_map": None,
+            "vars_map": None,
+            "auth_base": None,
+            "auth_query": None,
+            "firewall_billable": False,
+            "force_refresh": False,
+        }
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
         assert cached_headers(cache_key)
         assert require_cached_headers(cache_key).headers == mock_headers
+
+    def test_optional_auth_inputs_are_keyword_only(self):
+        with pytest.raises(TypeError, match="positional"):
+            auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz", {})
 
     async def test_cache_hit_returns_cached(self, headers):
         cache_key = ("run-1", "https://api.github.com")
@@ -246,7 +248,7 @@ class TestGetFirewallHeaders:
         assert headers["headers"] == fresh_headers
         assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
-        assert mock_fetch.call_args.args[8] is True
+        assert mock_fetch.call_args.kwargs["firewall_billable"] is True
         assert require_cached_headers(cache_key).expires_at == expires_at
 
     async def test_billable_cache_with_expired_expiry_refetches(self, headers):
@@ -457,7 +459,8 @@ class TestGetFirewallHeaders:
         allow_fetch_return = asyncio.Event()
         first_force_refresh_values = []
 
-        async def delayed_fetch(*args, force_refresh=False):
+        async def delayed_fetch(*args, **kwargs):
+            force_refresh = kwargs["force_refresh"]
             first_force_refresh_values.append(force_refresh)
             fetch_entered.set()
             await allow_fetch_return.wait()
@@ -513,7 +516,8 @@ class TestGetFirewallHeaders:
         allow_first_fetch_return = asyncio.Event()
         force_refresh_values = []
 
-        async def fetch_with_blocked_leader(*args, force_refresh=False):
+        async def fetch_with_blocked_leader(*args, **kwargs):
+            force_refresh = kwargs["force_refresh"]
             force_refresh_values.append(force_refresh)
             if not force_refresh:
                 first_fetch_entered.set()
