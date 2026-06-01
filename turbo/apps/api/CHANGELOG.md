@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.90.6](https://github.com/vm0-ai/vm0/compare/api-v1.90.5...api-v1.90.6) (2026-06-01)
+
+
+### Bug Fixes
+
+* block suspended org uploads ([#15591](https://github.com/vm0-ai/vm0/issues/15591)) ([0c2fc41](https://github.com/vm0-ai/vm0/commit/0c2fc415d2da084c040c7b6594512a66b95b87cd))
+
+
+### Performance Improvements
+
+* **computer-use:** store screenshots in object storage instead of jsonb ([#15404](https://github.com/vm0-ai/vm0/issues/15404)) ([e743943](https://github.com/vm0-ai/vm0/commit/e74394382c14df85ecbc761564859dc0bf0b23bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.5
+    * @vm0/core bumped to 8.304.7
+    * @vm0/db bumped to 1.23.10
+
 ## [1.90.5](https://github.com/vm0-ai/vm0/compare/api-v1.90.4...api-v1.90.5) (2026-06-01)
 
 

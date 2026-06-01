@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.177.11](https://github.com/vm0-ai/vm0/compare/cli-v9.177.10...cli-v9.177.11) (2026-06-01)
+
+
+### Performance Improvements
+
+* **computer-use:** store screenshots in object storage instead of jsonb ([#15404](https://github.com/vm0-ai/vm0/issues/15404)) ([e743943](https://github.com/vm0-ai/vm0/commit/e74394382c14df85ecbc761564859dc0bf0b23bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.5
+    * @vm0/core bumped to 8.304.7
+
 ## [9.177.10](https://github.com/vm0-ai/vm0/compare/cli-v9.177.9...cli-v9.177.10) (2026-05-31)
 
 
