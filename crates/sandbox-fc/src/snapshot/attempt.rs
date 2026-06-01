@@ -81,16 +81,12 @@ async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevic
 
 // The path is known at attempt construction; cleanup is required only after
 // image creation starts.
+#[derive(Default)]
 enum AttemptWorkspaceImage {
     NotCreated(PathBuf),
     Owned(PathBuf),
+    #[default]
     Cleaned,
-}
-
-impl Default for AttemptWorkspaceImage {
-    fn default() -> Self {
-        Self::Cleaned
-    }
 }
 
 impl AttemptWorkspaceImage {
@@ -769,10 +765,6 @@ impl SnapshotAttempt {
         self.cleanup_resources.cleanup_publish_attempt().await
     }
 
-    fn cleanup_workspace_image(&mut self, warning: &'static str) -> bool {
-        self.cleanup_resources.cleanup_workspace_image(warning)
-    }
-
     fn drop_forwarder_handles(&mut self) {
         self.cleanup_resources.drop_forwarder_handles();
     }
@@ -1201,7 +1193,11 @@ mod tests {
             .expect("write cow");
         attempt.track_workspace_image_for_test(workspace_image.clone());
 
-        assert!(attempt.cleanup_workspace_image("failed to cleanup workspace image in test"));
+        assert!(
+            attempt
+                .cleanup_resources
+                .cleanup_workspace_image("failed to cleanup workspace image in test")
+        );
 
         assert!(
             !tokio::fs::try_exists(&workspace_image).await.unwrap(),
