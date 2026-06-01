@@ -52,10 +52,21 @@ sheet for drift.
 
 import json
 import re
+from collections.abc import Callable
+from typing import NamedTuple
 
 import matching
 
 from .x_tlds import IANA_TLDS
+
+
+class _BodyRefinementRule(NamedTuple):
+    source_bucket: str
+    method: str
+    path: str
+    target_bucket: str
+    matches_body: Callable[[bytes | None], bool]
+
 
 # Permission → default bucket.  The default matches the majority of
 # paths in the scope; outliers go in `_PATH_OVERRIDES`.  Prices are
@@ -340,6 +351,44 @@ def _tweet_text_likely_contains_url(text: str) -> bool:
     )
 
 
+def _tweet_create_body_is_plain_text_without_url(body: bytes | None) -> bool:
+    if not body:
+        return False
+    try:
+        obj = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    if not isinstance(obj, dict):
+        return False
+    # Quote tweets embed a link to the quoted post; X likely bills
+    # these as "with URL" on the rendered tweet.  Stay conservative.
+    if obj.get("quote_tweet_id") is not None:
+        return False
+    # Attached media renders as a t.co preview URL in the published
+    # tweet.  Stay conservative.
+    media = obj.get("media")
+    if isinstance(media, dict) and media.get("media_ids"):
+        return False
+    # A `card_uri` attaches a link preview card to the tweet — the
+    # published post always renders a URL.  Treat as with-URL even
+    # when the text itself is plain.
+    if obj.get("card_uri"):
+        return False
+    text = obj.get("text")
+    return isinstance(text, str) and not _tweet_text_likely_contains_url(text)
+
+
+_BODY_REFINEMENT_RULES: tuple[_BodyRefinementRule, ...] = (
+    _BodyRefinementRule(
+        source_bucket="content.create_with_url",
+        method="POST",
+        path="/2/tweets",
+        target_bucket="content.create",
+        matches_body=_tweet_create_body_is_plain_text_without_url,
+    ),
+)
+
+
 def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | None) -> str:
     """Refine a bucket using the request body, when the body carries
     billing-relevant signal.
@@ -350,33 +399,9 @@ def refine_bucket_with_body(bucket: str, method: str, path: str, body: bytes | N
     media attachment.  All parse failures or ambiguity → stay on the
     more expensive bucket, matching the "never under-charge" rule.
     """
-    if bucket != "content.create_with_url" or method != "POST" or path != "/2/tweets":
-        return bucket
-    if not body:
-        return bucket
-    try:
-        obj = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        return bucket
-    if not isinstance(obj, dict):
-        return bucket
-    # Quote tweets embed a link to the quoted post; X likely bills
-    # these as "with URL" on the rendered tweet.  Stay conservative.
-    if obj.get("quote_tweet_id") is not None:
-        return bucket
-    # Attached media renders as a t.co preview URL in the published
-    # tweet.  Stay conservative.
-    media = obj.get("media")
-    if isinstance(media, dict) and media.get("media_ids"):
-        return bucket
-    # A `card_uri` attaches a link preview card to the tweet — the
-    # published post always renders a URL.  Treat as with-URL even
-    # when the text itself is plain.
-    if obj.get("card_uri"):
-        return bucket
-    text = obj.get("text")
-    if not isinstance(text, str):
-        return bucket
-    if _tweet_text_likely_contains_url(text):
-        return bucket
-    return "content.create"
+    for rule in _BODY_REFINEMENT_RULES:
+        if bucket != rule.source_bucket or method != rule.method or path != rule.path:
+            continue
+        if rule.matches_body(body):
+            return rule.target_bucket
+    return bucket
