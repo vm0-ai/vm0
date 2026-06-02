@@ -99,7 +99,13 @@ function useScrollReveal() {
   return ref;
 }
 
-function ConnectorCard({ connector, i }: { connector: CampaignConnector; i: number }) {
+function ConnectorCard({
+  connector,
+  i,
+}: {
+  connector: CampaignConnector;
+  i: number;
+}) {
   return (
     <div
       key={`${connector.name}-${i}`}
@@ -164,7 +170,10 @@ export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
     } catch {
       // posthog may be uninitialized (no key); tracking is best-effort.
     }
-    if (typeof window !== "undefined" && typeof window.plausible === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.plausible === "function"
+    ) {
       window.plausible("LP Viewed", { props });
     }
   }, [config.utm_campaign, config.segment, config.slug]);
@@ -184,7 +193,10 @@ export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
     } catch {
       // best-effort
     }
-    if (typeof window !== "undefined" && typeof window.plausible === "function") {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.plausible === "function"
+    ) {
       window.plausible("LP CTA Clicked", { props });
     }
   }
