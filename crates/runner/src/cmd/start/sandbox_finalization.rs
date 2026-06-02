@@ -953,6 +953,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finalizer_promotes_workspace_cache_with_guest_session_id_without_context_session() {
+        let (_budget, lease) = test_budget_lease();
+        let fixture = FinalizeTestFixture::new().await;
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: None,
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: b"image".len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert!(workspace_image.can_attempt_promotion(Some("sess-guest")));
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "unused-context-session",
+            network_log_session,
+            CancellationToken::new(),
+        );
+        context.session_id = None;
+        context.guest_session_id = Some("sess-guest".into());
+        context.workspace_image = Some(workspace_image);
+        context.workspace_promotable = true;
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("guest-session-promotion"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        let idle_states = fixture.idle_pool.lock().await.held_session_states();
+        assert_eq!(idle_states.len(), 1);
+        assert_eq!(idle_states[0].session_id, "sess-guest");
+        let cache_states = cache.held_session_states().await;
+        assert_eq!(cache_states.len(), 1);
+        assert_eq!(cache_states[0].session_id, "sess-guest");
+    }
+
+    #[tokio::test]
     async fn finalizer_closes_network_log_session_before_cancel_destroy() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
