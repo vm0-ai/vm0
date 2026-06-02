@@ -57,6 +57,9 @@ const EXIT_SIGKILL: i32 = 137;
 const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(5);
+const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
+const AGENT_ENV_KEY_MAX_CHARS: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES: usize = 8 * 1024;
@@ -65,6 +68,42 @@ const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
     b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
 const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
+    "BASH_ENV",
+    "ENV",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "NODE_OPTIONS",
+];
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_CMD: &str = r#"set +e
+section() { printf '\n== %s ==\n' "$1"; }
+
+section identity
+id 2>&1
+uname -a 2>&1
+pwd 2>&1
+
+section guest-agent-binary
+ls -l /usr/local/bin/guest-agent 2>&1
+stat /usr/local/bin/guest-agent 2>&1
+if command -v file >/dev/null 2>&1; then file /usr/local/bin/guest-agent 2>&1; else echo "file: unavailable"; fi
+if command -v sha256sum >/dev/null 2>&1; then sha256sum /usr/local/bin/guest-agent 2>&1; else echo "sha256sum: unavailable"; fi
+
+section resources
+ulimit -a 2>&1
+df -h 2>&1
+if command -v free >/dev/null 2>&1; then free -m 2>&1; elif [ -r /proc/meminfo ]; then head -20 /proc/meminfo 2>&1; else echo "memory: unavailable"; fi
+if [ -r /proc/sys/fs/file-nr ]; then cat /proc/sys/fs/file-nr 2>&1; else echo "/proc/sys/fs/file-nr: unavailable"; fi
+
+section processes
+if command -v ps >/dev/null 2>&1; then ps -e --no-headers 2>/dev/null | wc -l; else ls -1 /proc 2>/dev/null | grep -E '^[0-9]+$' | wc -l; fi
+
+section dmesg
+dmesg 2>&1 | tail -50
+"#;
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 use crate::error::{RunnerError, RunnerResult};
@@ -181,6 +220,26 @@ impl AgentStdoutStreamDiagnostics {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AgentEnvDiagnostics {
+    env_count: usize,
+    runner_owned_count: usize,
+    external_count: usize,
+    suspicious_keys: Vec<String>,
+    logged_keys: Vec<String>,
+    omitted_key_count: usize,
+}
+
+impl AgentEnvDiagnostics {
+    fn suspicious_keys_csv(&self) -> String {
+        self.suspicious_keys.join(",")
+    }
+
+    fn logged_keys_csv(&self) -> String {
+        self.logged_keys.join(",")
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ProcessCancelTimeouts {
     write: Duration,
@@ -235,6 +294,175 @@ fn non_empty_failure_error(exit_code: i32, error: String) -> String {
 
 fn agent_exit_failure_message(exit_code: i32) -> String {
     format!("Agent exited with code {exit_code}")
+}
+
+fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnostics {
+    let mut keys: Vec<String> = env
+        .keys()
+        .map(|key| sanitize_env_key_for_diagnostic(key))
+        .collect();
+    keys.sort();
+
+    let mut suspicious_keys: Vec<String> = BOOTSTRAP_SENSITIVE_ENV_KEYS
+        .iter()
+        .copied()
+        .filter(|key| env.contains_key(*key))
+        .map(sanitize_env_key_for_diagnostic)
+        .collect();
+    suspicious_keys.sort();
+
+    let logged_keys: Vec<String> = keys
+        .iter()
+        .take(AGENT_ENV_KEY_DIAGNOSTIC_LIMIT)
+        .cloned()
+        .collect();
+    let omitted_key_count = keys.len().saturating_sub(logged_keys.len());
+    let runner_owned_count = env
+        .keys()
+        .filter(|key| is_runner_owned_env_key(key))
+        .count();
+
+    AgentEnvDiagnostics {
+        env_count: env.len(),
+        runner_owned_count,
+        external_count: env.len().saturating_sub(runner_owned_count),
+        suspicious_keys,
+        logged_keys,
+        omitted_key_count,
+    }
+}
+
+fn sanitize_env_key_for_diagnostic(key: &str) -> String {
+    let escaped = key.escape_debug().to_string();
+    truncate_chars(&escaped, AGENT_ENV_KEY_MAX_CHARS)
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let mut truncated = String::new();
+    for _ in 0..max_chars {
+        let Some(ch) = chars.next() else {
+            return truncated;
+        };
+        truncated.push(ch);
+    }
+    if chars.next().is_some() {
+        truncated.push_str("...");
+    }
+    truncated
+}
+
+fn is_runner_owned_env_key(key: &str) -> bool {
+    key.starts_with("VM0_") || RUNNER_OWNED_ENV_KEYS.contains(&key)
+}
+
+fn should_collect_agent_abnormal_exit_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    stderr: &str,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && exit.exit_code != 0
+        && exit.diagnostic.is_empty()
+        && stderr.is_empty()
+        && failure_diagnostic.is_none()
+        && guest_error.is_none()
+}
+
+fn log_agent_process_exit_summary(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+) {
+    info!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        exit_code = exit.exit_code,
+        stdout_len = exit.stdout.len(),
+        stderr_len = exit.stderr.len(),
+        stdout_truncated = exit.stdout_truncated,
+        stderr_truncated = exit.stderr_truncated,
+        diagnostic_present = !exit.diagnostic.is_empty(),
+        stream_overflowed = exit.stream_overflowed,
+        env_count = env_diagnostics.env_count,
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        "agent process exit summary"
+    );
+}
+
+fn log_agent_abnormal_exit_env_diagnostics(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+) {
+    warn!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        exit_code = exit.exit_code,
+        env_count = env_diagnostics.env_count,
+        runner_owned_env_count = env_diagnostics.runner_owned_count,
+        external_env_count = env_diagnostics.external_count,
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        env_keys = %env_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = env_diagnostics.omitted_key_count,
+        "agent abnormal exit env diagnostics"
+    );
+}
+
+async fn collect_agent_abnormal_exit_diagnostics(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit_code: i32,
+) {
+    let request = ExecRequest {
+        cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_CMD,
+        timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
+        env: &[],
+        sudo: true,
+        stdin_bytes: None,
+        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+    };
+
+    match sandbox.exec(&request).await {
+        Ok(result) => {
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                sandbox_reuse_result = reuse_result.as_wire(),
+                exit_code,
+                diagnostic_exit_code = result.exit_code,
+                diagnostic_stdout_len = result.stdout.len(),
+                diagnostic_stderr_len = result.stderr.len(),
+                diagnostic_stdout_truncated = result.stdout_truncated,
+                diagnostic_stderr_truncated = result.stderr_truncated,
+                diagnostic_stdout = %stdout,
+                diagnostic_stderr = %stderr,
+                "agent abnormal exit in-vm diagnostics"
+            );
+        }
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                sandbox_reuse_result = reuse_result.as_wire(),
+                exit_code,
+                error = %error,
+                "failed to collect agent abnormal exit in-vm diagnostics"
+            );
+        }
+    }
 }
 
 fn cancelled_agent_process_exit(pid: u32, stream_overflowed: bool) -> sandbox::ProcessExit {
@@ -929,6 +1157,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 5. Build env vars (passed directly via vsock protocol)
     let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
+    let env_diagnostics = build_agent_env_diagnostics(&env_map);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -1119,6 +1348,13 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
         exit_code = exit.exit_code,
         "agent exited"
     );
+    log_agent_process_exit_summary(
+        context.run_id,
+        sandbox.id(),
+        start.reuse_result,
+        &exit,
+        &env_diagnostics,
+    );
 
     // Check for OOM kill when process was terminated by SIGKILL.
     // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
@@ -1155,15 +1391,41 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     } else if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
+        let guest_error = if stderr.is_empty() {
+            read_guest_error_file(sandbox, context.run_id).await
+        } else {
+            None
+        };
+        if should_collect_agent_abnormal_exit_diagnostics(
+            wait_cancelled,
+            &exit,
+            &stderr,
+            failure_diagnostic.as_ref(),
+            guest_error.as_deref(),
+        ) {
+            log_agent_abnormal_exit_env_diagnostics(
+                context.run_id,
+                sandbox.id(),
+                start.reuse_result,
+                &exit,
+                &env_diagnostics,
+            );
+            collect_agent_abnormal_exit_diagnostics(
+                sandbox,
+                context.run_id,
+                sandbox.id(),
+                start.reuse_result,
+                exit.exit_code,
+            )
+            .await;
+        }
         let error = if !stderr.is_empty() {
             stderr
         } else {
             // Stderr is empty (redirected to log file). Check for a structured
             // error file written by the guest-agent for final failure
             // handoff.
-            read_guest_error_file(sandbox, context.run_id)
-                .await
-                .unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
+            guest_error.unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
         };
         Some(ExecutionFailure::new(
             exit.exit_code,
@@ -2490,6 +2752,46 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.environment = Some(environment);
         ctx
+    }
+
+    #[test]
+    fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
+        let mut env = HashMap::from([
+            ("BASH_ENV".to_string(), "super-secret-bash-env".to_string()),
+            ("NORMAL_KEY".to_string(), "normal-secret-value".to_string()),
+            ("VM0_RUN_ID".to_string(), "runner-secret-value".to_string()),
+        ]);
+        for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
+            env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
+        }
+
+        let diagnostics = build_agent_env_diagnostics(&env);
+
+        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3);
+        assert_eq!(diagnostics.runner_owned_count, 1);
+        assert_eq!(
+            diagnostics.external_count,
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 2
+        );
+        assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
+        assert_eq!(
+            diagnostics.logged_keys.len(),
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT
+        );
+        assert_eq!(diagnostics.omitted_key_count, 3);
+        let mut sorted_logged_keys = diagnostics.logged_keys.clone();
+        sorted_logged_keys.sort();
+        assert_eq!(diagnostics.logged_keys, sorted_logged_keys);
+        let rendered = format!(
+            "{} {}",
+            diagnostics.suspicious_keys_csv(),
+            diagnostics.logged_keys_csv()
+        );
+        assert!(rendered.contains("BASH_ENV"));
+        assert!(rendered.contains("VM0_RUN_ID"));
+        assert!(!rendered.contains("super-secret-bash-env"));
+        assert!(!rendered.contains("normal-secret-value"));
+        assert!(!rendered.contains("runner-secret-value"));
     }
 
     #[test]
@@ -4785,6 +5087,22 @@ mod tests {
         Ok((outcome.exit_code(), outcome.error().map(ToOwned::to_owned)))
     }
 
+    async fn capture_execute_inner_events(
+        factory: &MockSandboxFactory,
+        ctx: &ExecutionContext,
+        config: &ExecutorConfig,
+        params: &JobParams,
+    ) -> RunnerResult<((i32, Option<String>), Vec<CapturedEvent>)> {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+        tracing::callsite::rebuild_interest_cache();
+
+        let result = run_execute_inner(factory, ctx, config, params).await?;
+
+        Ok((result, captured.entries()))
+    }
+
     async fn create_overridden_sandbox(
         overrides: Arc<sandbox_mock::MockSandboxOverrides>,
     ) -> Box<dyn Sandbox> {
@@ -5458,6 +5776,123 @@ mod tests {
 
         assert_eq!(exit_code, 7);
         assert_eq!(error.as_deref(), Some("Agent exited with code 7"));
+    }
+
+    #[tokio::test]
+    async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        let calls = overrides.exec_calls();
+        assert_eq!(calls.len(), 1);
+        let call = &calls[0];
+        assert!(call.cmd.contains("guest-agent-binary"));
+        assert!(!call.cmd.contains("ps aux"));
+        assert!(!call.cmd.contains("printenv"));
+        assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
+        assert!(call.env.is_empty());
+        assert!(call.sudo);
+        assert!(call.stdin_bytes.is_none());
+        assert_eq!(call.output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_success_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error.is_none());
+        assert!(overrides.exec_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_stderr_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(
+            1,
+            7,
+            Vec::new(),
+            b"guest stderr".to_vec(),
+        ));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 7);
+        assert_eq!(error.as_deref(), Some("guest stderr"));
+        assert!(overrides.exec_calls().is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn execute_inner_abnormal_exit_logs_env_keys_without_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        let mut ctx = context_with_env(HashMap::from([
+            ("BASH_ENV".into(), "super-secret-bash-env".into()),
+            ("NORMAL_KEY".into(), "normal-secret-value".into()),
+        ]));
+        ctx.secret_values = Some(vec!["stored-secret-value".into()]);
+
+        let ((exit_code, error), events) =
+            capture_execute_inner_events(&factory, &ctx, &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        let event = events
+            .iter()
+            .find(|event| {
+                event.fields.get("message").map(String::as_str)
+                    == Some("agent abnormal exit env diagnostics")
+            })
+            .unwrap_or_else(|| panic!("missing abnormal env diagnostics event: {events:#?}"));
+        assert!(
+            event
+                .fields
+                .get("env_keys")
+                .is_some_and(|keys| keys.contains("BASH_ENV") && keys.contains("NORMAL_KEY")),
+            "event={event:#?}"
+        );
+        assert_eq!(
+            event.fields.get("suspicious_env_keys").map(String::as_str),
+            Some("BASH_ENV")
+        );
+        let rendered_fields = events
+            .iter()
+            .flat_map(|event| event.fields.values())
+            .cloned()
+            .collect::<Vec<String>>()
+            .join("\n");
+        assert!(!rendered_fields.contains("super-secret-bash-env"));
+        assert!(!rendered_fields.contains("normal-secret-value"));
+        assert!(!rendered_fields.contains("stored-secret-value"));
     }
 
     #[tokio::test]

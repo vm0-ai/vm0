@@ -54,8 +54,11 @@ pub struct ExecMatcher {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecCall {
     pub cmd: String,
+    pub timeout: Duration,
+    pub env: Vec<String>,
     pub sudo: bool,
     pub stdin_bytes: Option<Vec<u8>>,
+    pub output_limits: ExecOutputLimits,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -320,6 +323,8 @@ pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
+    /// Recorded exec calls across all sandboxes built from this override set.
+    exec_calls: Mutex<Vec<ExecCall>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
     wait_process_code: Option<i32>,
     /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
@@ -389,6 +394,7 @@ impl MockSandboxOverrides {
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
+            exec_calls: Mutex::new(Vec::new()),
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_error: None,
@@ -453,6 +459,12 @@ impl MockSandboxOverrides {
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Recorded exec calls across all sandboxes built from this override set,
+    /// in call order.
+    pub fn exec_calls(&self) -> Vec<ExecCall> {
+        self.exec_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a factory `create()` result applied to the next factory create
@@ -862,11 +874,22 @@ impl Sandbox for MockSandbox {
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
-        self.exec_calls.lock_ignoring_poison().push(ExecCall {
+        let call = ExecCall {
             cmd: request.cmd.to_string(),
+            timeout: request.timeout,
+            env: request
+                .env
+                .iter()
+                .map(|(key, _)| (*key).to_string())
+                .collect(),
             sudo: request.sudo,
             stdin_bytes: request.stdin_bytes.map(Vec::from),
-        });
+            output_limits: request.output_limits,
+        };
+        self.exec_calls.lock_ignoring_poison().push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides.exec_calls.lock_ignoring_poison().push(call);
+        }
         // Check pattern matchers before the FIFO queue.
         let result = if let Some(overrides) = &self.overrides {
             let mut matchers = overrides.exec_matchers.lock_ignoring_poison();
