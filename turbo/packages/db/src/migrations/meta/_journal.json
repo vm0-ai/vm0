@@ -2941,6 +2941,13 @@
       "when": 1780386413956,
       "tag": "0419_damp_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 420,
+      "version": "7",
+      "when": 1780390186070,
+      "tag": "0420_backfill_user_permission_grants",
+      "breakpoints": true
     }
   ]
 }

@@ -171,6 +171,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Gate the per-user Zero firewall permission grant rollout. Disabled by default while storage, API, runtime, and UI changes land separately.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
