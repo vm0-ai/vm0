@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.107.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.0...runner-rs-v0.107.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* block private auth.base rewrite destinations ([#15889](https://github.com/vm0-ai/vm0/issues/15889)) ([efc6115](https://github.com/vm0-ai/vm0/commit/efc6115bb1501df09b299f690f6d3ecf68387ff7))
+
+
+### Refactoring
+
+* split compiled firewall matcher tests ([#15885](https://github.com/vm0-ai/vm0/issues/15885)) ([bdf3939](https://github.com/vm0-ai/vm0/commit/bdf3939956c8a378dde9b11080a5be79feb55fcd))
+
 ## [0.107.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.7...runner-rs-v0.107.0) (2026-06-02)
 
 

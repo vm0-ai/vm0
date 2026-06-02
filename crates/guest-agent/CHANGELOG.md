@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.2...guest-agent-v0.34.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** fail checkpoint on unreadable artifact root ([#15886](https://github.com/vm0-ai/vm0/issues/15886)) ([8812f88](https://github.com/vm0-ai/vm0/commit/8812f887b4559f8b68f36a7f1824780eacb14bfa))
+
 ## [0.34.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.1...guest-agent-v0.34.2) (2026-06-02)
 
 

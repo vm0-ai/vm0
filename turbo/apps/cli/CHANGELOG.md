@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.180.0](https://github.com/vm0-ai/vm0/compare/cli-v9.179.0...cli-v9.180.0) (2026-06-02)
+
+
+### Features
+
+* add source grounding to presentation generation ([#15893](https://github.com/vm0-ai/vm0/issues/15893)) ([ab2dbe4](https://github.com/vm0-ai/vm0/commit/ab2dbe4082c2865304dd464c36fe5bfe3772c6a8))
+
+
+### Bug Fixes
+
+* add reusable zero host slug suffixes ([#15869](https://github.com/vm0-ai/vm0/issues/15869)) ([563d67f](https://github.com/vm0-ai/vm0/commit/563d67f6a59c05606f650c4e9d64571b526b890a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.56.0
+    * @vm0/connectors bumped to 1.44.0
+    * @vm0/core bumped to 8.308.0
+
 ## [9.179.0](https://github.com/vm0-ai/vm0/compare/cli-v9.178.1...cli-v9.179.0) (2026-06-02)
 
 

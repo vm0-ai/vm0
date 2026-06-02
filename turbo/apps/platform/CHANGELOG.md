@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.402.0](https://github.com/vm0-ai/vm0/compare/app-v0.401.0...app-v0.402.0) (2026-06-02)
+
+
+### Features
+
+* add github pr tracking in chat threads ([#15867](https://github.com/vm0-ai/vm0/issues/15867)) ([4756f5e](https://github.com/vm0-ai/vm0/commit/4756f5e53c3e2b011773680fbf994634b2c4b890))
+* add read-only memory viewer page to platform ([#15901](https://github.com/vm0-ai/vm0/issues/15901)) ([6edb542](https://github.com/vm0-ai/vm0/commit/6edb5421c366c5ec98f8e4d24db261c3271dd946))
+* render markdown files in skills detail dialog ([#15899](https://github.com/vm0-ai/vm0/issues/15899)) ([2f7305c](https://github.com/vm0-ai/vm0/commit/2f7305ca5d9d5108ad7e37344ebd45534f1151e4)), closes [#15897](https://github.com/vm0-ai/vm0/issues/15897)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.0
+    * @vm0/connectors bumped to 1.44.0
+    * @vm0/core bumped to 8.308.0
+
 ## [0.401.0](https://github.com/vm0-ai/vm0/compare/app-v0.400.0...app-v0.401.0) (2026-06-02)
 
 

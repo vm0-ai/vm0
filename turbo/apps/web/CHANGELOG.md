@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.408.0](https://github.com/vm0-ai/vm0/compare/web-v12.407.0...web-v12.408.0) (2026-06-02)
+
+
+### Features
+
+* add github pr tracking in chat threads ([#15867](https://github.com/vm0-ai/vm0/issues/15867)) ([4756f5e](https://github.com/vm0-ai/vm0/commit/4756f5e53c3e2b011773680fbf994634b2c4b890))
+* add read-only memory viewer page to platform ([#15901](https://github.com/vm0-ai/vm0/issues/15901)) ([6edb542](https://github.com/vm0-ai/vm0/commit/6edb5421c366c5ec98f8e4d24db261c3271dd946))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.44.0
+
 ## [12.407.0](https://github.com/vm0-ai/vm0/compare/web-v12.406.5...web-v12.407.0) (2026-06-02)
 
 
