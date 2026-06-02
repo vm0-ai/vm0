@@ -76,6 +76,15 @@ pub(super) struct SpawnContext {
     pub(super) test_observer: StartLoopTestObserver,
 }
 
+pub(super) struct SpawnJobRequest {
+    pub(super) claimed: ClaimedJob,
+    pub(super) sandbox_id: SandboxId,
+    pub(super) job_profile: JobProfile,
+    pub(super) reuse_entry: Option<ReusableIdleSandbox>,
+    pub(super) reuse_result: SandboxReuseResult,
+    pub(super) active_session_guard: ActiveSessionGuard,
+}
+
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
@@ -88,19 +97,21 @@ pub(super) struct SpawnContext {
 /// After a successful execution with a session ID available, the sandbox
 /// is parked in the idle pool instead of being destroyed.
 pub(super) fn spawn_job(
-    claimed: ClaimedJob,
-    sandbox_id: SandboxId,
-    job_profile: JobProfile,
-    reuse_entry: Option<ReusableIdleSandbox>,
-    reuse_result: SandboxReuseResult,
+    request: SpawnJobRequest,
     ctx: &SpawnContext,
     jobs: &mut JoinSet<Option<RunId>>,
 ) {
+    let SpawnJobRequest {
+        claimed,
+        sandbox_id,
+        job_profile,
+        reuse_entry,
+        reuse_result,
+        mut active_session_guard,
+    } = request;
     let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
-    let mut active_session_guard =
-        ActiveSessionGuard::new(ctx.active_sessions.clone(), session_id.clone());
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let active_lease = job_profile.budget_lease;
