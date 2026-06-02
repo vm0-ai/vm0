@@ -9,7 +9,12 @@ export function initPostHog(): void {
   }
 
   posthog.init(POSTHOG_KEY, {
-    api_host: "/ingest",
+    // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
+    // /flags, ingest and replay (/s) to PostHog US so ad blockers do not drop
+    // events. Shared with so.vm0.ai for one ingest domain. The legacy /ingest
+    // vercel.json rewrite is now unused (kept as fallback for now).
+    api_host: "https://j.vm0.ai",
+    ui_host: "https://us.posthog.com",
     autocapture: false,
     capture_pageview: false,
     // Replay is off app-wide; it is enabled only for scoped flows (currently

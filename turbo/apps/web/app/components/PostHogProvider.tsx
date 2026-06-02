@@ -20,9 +20,11 @@ function ensureInitialized(): void {
     return;
   }
   posthog.init(POSTHOG_KEY, {
-    // Reverse-proxy through /ingest so ad blockers do not drop events.
-    // See next.config.js `rewrites` for the upstream destination.
-    api_host: "/ingest",
+    // First-party reverse proxy (Cloudflare-fronted): forwards /static assets,
+    // /flags and ingest to PostHog US so ad blockers do not drop events.
+    // Shared with so.vm0.ai for one ingest domain. The legacy /ingest
+    // next.config rewrite is now unused and can be removed in a follow-up.
+    api_host: "https://j.vm0.ai",
     ui_host: "https://us.posthog.com",
     autocapture: false,
     // Manual $pageview is required for the App Router because the SDK's
