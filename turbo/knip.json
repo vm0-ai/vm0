@@ -21,11 +21,7 @@
         "!src/mocks/**!"
       ],
       "ignoreDependencies": [
-        "@vm0/ui",
-        "e2b",
-        "import-in-the-middle",
-        "require-in-the-middle",
-        "cpu-features"
+        "@vm0/ui"
       ],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]

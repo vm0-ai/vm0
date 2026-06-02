@@ -21,8 +21,6 @@
     "@tabler/icons-react": "^3.36.1",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/ui": "workspace:*",
-    "cpu-features": "0.0.10",
-    "import-in-the-middle": "^3.0.0",
     "next": "^16.2.6",
     "next-intl": "^4.11.0",
     "react": "^19.2.6",
@@ -30,7 +28,6 @@
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
-    "require-in-the-middle": "^8.0.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -46,7 +43,6 @@
     "@vm0/connectors": "workspace:*",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
-    "e2b": "^2.10.3",
     "eslint": "^9.34.0",
     "happy-dom": "^20.9.0",
     "msw": "^2.13.2",
