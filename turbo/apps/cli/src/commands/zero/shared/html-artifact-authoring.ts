@@ -13,6 +13,7 @@ interface HtmlArtifactAuthoringOptions {
   readonly slugSource?: string;
   readonly siteSlug?: string;
   readonly details: readonly string[];
+  readonly contentPlanningRules?: readonly string[];
   readonly artifactRules: readonly string[];
 }
 
@@ -50,6 +51,7 @@ interface HtmlArtifactAuthoringPacket {
   };
   readonly authoring: {
     readonly details: readonly string[];
+    readonly contentPlanningRules?: readonly string[];
     readonly artifactRules: readonly string[];
   };
   readonly outputDir: string;
@@ -89,6 +91,23 @@ function outputDirForSite(site: string): string {
   return `./generated/mockups/${site}`;
 }
 
+function formatRuleList(rules: readonly string[]): string[] {
+  return rules.map((rule) => {
+    return `- ${rule}`;
+  });
+}
+
+function buildOptionalRuleSection(
+  title: string,
+  rules: readonly string[],
+): string[] {
+  if (rules.length === 0) {
+    return [];
+  }
+
+  return [`## ${title}`, ...formatRuleList(rules), ""];
+}
+
 export function createHtmlArtifactAuthoringPacket(
   options: HtmlArtifactAuthoringOptions,
 ): HtmlArtifactAuthoringPacket {
@@ -100,6 +119,11 @@ export function createHtmlArtifactAuthoringPacket(
   }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
+  const contentPlanningRules = options.contentPlanningRules ?? [];
+  const contentPlanningSection = buildOptionalRuleSection(
+    "Stage 0: Source-Grounded Deck Planning",
+    contentPlanningRules,
+  );
   const selectionSchema = {
     skills: "string[]",
     template: "string",
@@ -150,6 +174,7 @@ export function createHtmlArtifactAuthoringPacket(
     "## User Prompt",
     options.prompt,
     "",
+    ...contentPlanningSection,
     "## Stage 1: Resource Selection",
     "- Choose generation resources from the bundled federated registry slice below.",
     "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
@@ -240,6 +265,7 @@ export function createHtmlArtifactAuthoringPacket(
     },
     authoring: {
       details: options.details,
+      ...(contentPlanningRules.length > 0 ? { contentPlanningRules } : {}),
       artifactRules: options.artifactRules,
     },
     outputDir,

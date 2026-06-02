@@ -50,6 +50,13 @@ describe("zero generate presentation command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate presentation");
     expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("## Stage 0: Source-Grounded Deck Planning");
+    expect(stdout).toContain(
+      "Use this stage when the user supplies files, links, transcripts, notes, or asks for a source-based deck.",
+    );
+    expect(stdout).toContain(
+      "Do not fabricate unsupported facts, metrics, quotes, examples, or conclusions. Mark gaps or assumptions explicitly.",
+    );
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");

@@ -178,6 +178,14 @@ ${formatRegistryListing(templates, "presentation templates")}`;
                 : "agent decides"
             }`,
           ],
+          contentPlanningRules: [
+            "Use this stage when the user supplies files, links, transcripts, notes, or asks for a source-based deck.",
+            "Read the sources before drafting slide content. The prompt defines objective, audience, and tone; the sources define facts.",
+            "Extract the source structure, key claims, evidence, metrics, dates, named entities, tables, charts, and reusable visuals.",
+            "Draft an internal slide plan before authoring: slide purpose, sourced claims, key bullets, visual treatment, source anchors, and gaps.",
+            "Do not fabricate unsupported facts, metrics, quotes, examples, or conclusions. Mark gaps or assumptions explicitly.",
+            "For prompt-only decks, avoid fake specificity and do not imply source grounding.",
+          ],
           artifactRules: [
             "Think like a presentation designer, not a web page designer.",
             "Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
