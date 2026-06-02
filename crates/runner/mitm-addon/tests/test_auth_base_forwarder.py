@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import errno
 import threading
 from collections.abc import Iterator
 from typing import NamedTuple
@@ -260,6 +261,47 @@ class TestAuthBaseForwarderSecurity:
         context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
         assert conn.sock is wrapped_sock
 
+    def test_validated_connection_ignores_missing_tcp_nodelay(self):
+        raw_sock = MagicMock()
+        raw_sock.setsockopt.side_effect = OSError(errno.ENOPROTOOPT, "not supported")
+        wrapped_sock = MagicMock()
+        context = MagicMock()
+        context.wrap_socket.return_value = wrapped_sock
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        with patch.object(forwarder.socket, "create_connection", return_value=raw_sock):
+            conn.connect()
+
+        raw_sock.close.assert_not_called()
+        context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
+        assert conn.sock is wrapped_sock
+
+    def test_validated_connection_closes_raw_socket_when_tls_wrap_fails(self):
+        raw_sock = MagicMock()
+        context = MagicMock()
+        context.wrap_socket.side_effect = OSError("tls failed")
+        conn = forwarder._make_validated_https_connection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        vars(conn)["_context"] = context
+
+        with (
+            patch.object(forwarder.socket, "create_connection", return_value=raw_sock),
+            pytest.raises(OSError, match="tls failed"),
+        ):
+            conn.connect()
+
+        raw_sock.close.assert_called_once_with()
+
     def test_rejects_file_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             forwarder._forward_request_sync("file:///etc/passwd", "GET", [], None)
@@ -271,7 +313,7 @@ class TestAuthBaseForwarderSecurity:
     def test_rejects_http_scheme_without_opening_connection(self):
         with (
             patch.object(forwarder.http_client, "HTTPConnection") as http_conn,
-            patch.object(forwarder.http_client, "HTTPSConnection") as https_conn,
+            patch.object(forwarder, "_make_validated_https_connection") as https_conn,
             pytest.raises(ValueError, match="Unsupported URL scheme"),
         ):
             forwarder._forward_request_sync("http://example.com/path", "GET", [], None)
@@ -300,7 +342,7 @@ class TestAuthBaseForwarderSecurity:
     def test_rejects_userinfo_authority(self, url):
         with (
             patch.object(forwarder.http_client, "HTTPConnection") as http_conn,
-            patch.object(forwarder.http_client, "HTTPSConnection") as https_conn,
+            patch.object(forwarder, "_make_validated_https_connection") as https_conn,
             pytest.raises(ValueError, match="Unsupported URL authority"),
         ):
             forwarder._forward_request_sync(url, "GET", [], None)

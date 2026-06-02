@@ -6,9 +6,11 @@ the low-level HTTP details for that forward path.
 """
 
 import asyncio
+import errno
 import http.client as http_client
 import ipaddress
 import socket
+import ssl
 import urllib.parse
 from typing import NamedTuple
 
@@ -67,17 +69,59 @@ def _connect_to_validated_addresses(validated_addresses: tuple[_ValidatedAddress
     return create_connection
 
 
+def _create_https_context() -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    context.set_alpn_protocols(["http/1.1"])
+    return context
+
+
+class _ValidatedTLSConnection(http_client.HTTPConnection):
+    default_port = DEFAULT_HTTPS_PORT
+
+    def __init__(
+        self,
+        host: str,
+        port: int | None,
+        *,
+        timeout,
+        validated_addresses: tuple[_ValidatedAddress, ...],
+    ) -> None:
+        super().__init__(host, port=port, timeout=timeout)
+        self._validated_addresses = validated_addresses
+        self._context = _create_https_context()
+
+    def connect(self) -> None:
+        raw_sock = _connect_to_validated_addresses(self._validated_addresses)(
+            (self.host, self.port),
+            self.timeout,
+            None,
+        )
+        try:
+            raw_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError as exc:
+            if exc.errno != errno.ENOPROTOOPT:
+                raw_sock.close()
+                raise
+        try:
+            self.sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
+        except Exception:
+            raw_sock.close()
+            raise
+
+
 def _make_validated_https_connection(
     host: str,
     port: int | None,
     *,
     timeout,
     validated_addresses: tuple[_ValidatedAddress, ...],
-) -> http_client.HTTPSConnection:
-    conn = http_client.HTTPSConnection(host, port=port, timeout=timeout)
-    # Keep stdlib TLS/SNI handling while forcing TCP to use validated addresses.
-    vars(conn)["_create_connection"] = _connect_to_validated_addresses(validated_addresses)
-    return conn
+) -> http_client.HTTPConnection:
+    return _ValidatedTLSConnection(
+        host,
+        port=port,
+        timeout=timeout,
+        validated_addresses=validated_addresses,
+    )
 
 
 def header_pairs(headers) -> list[tuple[str, str]]:
