@@ -20,16 +20,16 @@ export const codexOauthProvider: ModelProviderAuthProvider = {
     kind: "refresh-token",
     getAccessSecretName: getChatgptSecretName,
     getRefreshSecretName: getChatgptRefreshSecretName,
-    getClientId: () => {
-      return CHATGPT_OAUTH_CLIENT_ID;
-    },
-    getClientSecret: () => {
-      return undefined;
+    resolveAuthClient: () => {
+      return {
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: CHATGPT_OAUTH_CLIENT_ID,
+      };
     },
     refreshToken: (args) => {
       return refreshChatgptToken(
-        args.clientId ?? CHATGPT_OAUTH_CLIENT_ID,
-        args.clientSecret ?? "",
+        args.authClient.clientId,
         args.refreshToken,
         args.signal,
       );

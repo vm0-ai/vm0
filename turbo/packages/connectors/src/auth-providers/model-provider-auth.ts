@@ -59,7 +59,7 @@ export function isModelProviderOAuthRefreshConfigured(args: {
       return false;
 
     case "refresh-token":
-      return Boolean(access.getClientId(args.currentEnv));
+      return Boolean(access.resolveAuthClient(args.currentEnv));
   }
 }
 
@@ -78,14 +78,13 @@ export async function refreshModelProviderOAuthToken(args: {
       );
 
     case "refresh-token": {
-      const clientId = access.getClientId(args.currentEnv);
-      if (!clientId) {
-        throw new Error(`${args.providerKey} OAuth client ID not configured`);
+      const authClient = access.resolveAuthClient(args.currentEnv);
+      if (!authClient) {
+        throw new Error(`${args.providerKey} OAuth client not configured`);
       }
 
       return await access.refreshToken({
-        clientId,
-        clientSecret: access.getClientSecret(args.currentEnv),
+        authClient,
         refreshToken: args.refreshToken,
         signal: args.signal,
       });

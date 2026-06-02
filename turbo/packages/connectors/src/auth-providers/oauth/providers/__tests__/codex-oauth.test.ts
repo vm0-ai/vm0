@@ -44,8 +44,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       const result = await refreshChatgptToken(
-        "x",
-        "x",
+        CODEX_PUBLIC_CLIENT_ID,
         "old-rt",
         testRefreshSignal(),
       );
@@ -61,8 +60,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       const result = await refreshChatgptToken(
-        "x",
-        "x",
+        CODEX_PUBLIC_CLIENT_ID,
         "old-rt",
         testRefreshSignal(),
       );
@@ -85,7 +83,11 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt", testRefreshSignal()),
+        refreshChatgptToken(
+          CODEX_PUBLIC_CLIENT_ID,
+          "old-rt",
+          testRefreshSignal(),
+        ),
       ).rejects.toMatchObject({
         name: "ChatgptRefreshError",
         code: "refresh_token_expired",
@@ -102,7 +104,11 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt", testRefreshSignal()),
+        refreshChatgptToken(
+          CODEX_PUBLIC_CLIENT_ID,
+          "old-rt",
+          testRefreshSignal(),
+        ),
       ).rejects.toMatchObject({
         name: "ChatgptRefreshError",
         code: "refresh_token_reused",
@@ -124,8 +130,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       const error = await refreshChatgptToken(
-        "x",
-        "x",
+        CODEX_PUBLIC_CLIENT_ID,
         "old-rt",
         testRefreshSignal(),
       ).catch((e: unknown) => {
@@ -147,8 +152,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       const error = await refreshChatgptToken(
-        "x",
-        "x",
+        CODEX_PUBLIC_CLIENT_ID,
         "old-rt",
         testRefreshSignal(),
       ).catch((e: unknown) => {
@@ -165,8 +169,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       const error = await refreshChatgptToken(
-        "x",
-        "x",
+        CODEX_PUBLIC_CLIENT_ID,
         "old-rt",
         testRefreshSignal(),
       ).catch((e: unknown) => {
@@ -183,7 +186,11 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt", testRefreshSignal()),
+        refreshChatgptToken(
+          CODEX_PUBLIC_CLIENT_ID,
+          "old-rt",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow(/No access token in ChatGPT refresh response/);
     });
   });
@@ -203,14 +210,12 @@ describe("connector/providers/codex-oauth", () => {
       expect(codexOauthProvider.grant.kind).toBe("none");
     });
 
-    it("getClientId returns the Codex public client_id (used by refresh)", () => {
-      expect(getCodexRefreshAccess().getClientId({})).toBe(
-        CODEX_PUBLIC_CLIENT_ID,
-      );
-    });
-
-    it("getClientSecret returns undefined (PKCE-only)", () => {
-      expect(getCodexRefreshAccess().getClientSecret({})).toBeUndefined();
+    it("resolves the Codex public client for refresh", () => {
+      expect(getCodexRefreshAccess().resolveAuthClient({})).toStrictEqual({
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: CODEX_PUBLIC_CLIENT_ID,
+      });
     });
 
     it("returns documented secret names", () => {

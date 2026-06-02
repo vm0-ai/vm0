@@ -11,6 +11,7 @@ import type {
   RefreshTokenAccessConnectorType,
   TokenRevokeConnectorType,
 } from "../connectors";
+import type { StaticConnectorAuthClient } from "../connector-utils";
 import type {
   AuthUrlResult,
   ConnectorAuthCodeAuthorizeArgs,
@@ -153,9 +154,10 @@ export type DeviceAuthConnectorAuthProvider<
 
 export type ModelProviderGrantProvider = NoneGrantProvider;
 
-interface ModelProviderOAuthRefreshArgs {
-  readonly clientId?: string;
-  readonly clientSecret?: string;
+export type ModelProviderAuthClient = StaticConnectorAuthClient;
+
+interface ModelProviderAuthProviderRefreshArgs {
+  readonly authClient: ModelProviderAuthClient;
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }
@@ -164,10 +166,11 @@ interface ModelProviderRefreshTokenAccessProvider {
   readonly kind: "refresh-token";
   getAccessSecretName(): string;
   getRefreshSecretName(): string;
-  getClientId(currentEnv: ProviderEnv): string | undefined;
-  getClientSecret(currentEnv: ProviderEnv): string | undefined;
+  resolveAuthClient(
+    currentEnv: ProviderEnv,
+  ): ModelProviderAuthClient | undefined;
   refreshToken(
-    args: ModelProviderOAuthRefreshArgs,
+    args: ModelProviderAuthProviderRefreshArgs,
   ): Promise<OAuthRefreshResult>;
 }
 
