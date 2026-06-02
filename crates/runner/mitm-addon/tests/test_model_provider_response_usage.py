@@ -155,13 +155,10 @@ class TestModelProviderResponseUsage:
         tmp_path: Path,
         *,
         billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ) -> None:
         flow.metadata["vm_run_id"] = run_id
-        if client_ip is not None:
-            flow.metadata["vm_client_ip"] = client_ip
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         if proxy_log_path is not None:
             flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
@@ -176,7 +173,6 @@ class TestModelProviderResponseUsage:
         provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ) -> None:
@@ -184,7 +180,6 @@ class TestModelProviderResponseUsage:
             flow,
             tmp_path,
             billable=billable,
-            client_ip=client_ip,
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
@@ -200,7 +195,6 @@ class TestModelProviderResponseUsage:
         provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ):
@@ -210,7 +204,6 @@ class TestModelProviderResponseUsage:
             tmp_path,
             provider_case,
             billable=billable,
-            client_ip=client_ip,
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
@@ -762,7 +755,6 @@ class TestModelProviderResponseUsage:
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
-            client_ip=None,
         )
         body = _standard_success_payload(OPENAI_RESPONSES_CASE)
         flow.metadata["stream_buffer"] = bytearray(body)
@@ -784,7 +776,6 @@ class TestModelProviderResponseUsage:
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
-            client_ip=None,
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
@@ -983,7 +974,6 @@ class TestModelProviderResponseUsage:
             real_flow,
             tmp_path,
             ANTHROPIC_JSON_CASE,
-            client_ip=None,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
         flow.response = tutils.tresp(
@@ -1003,7 +993,6 @@ class TestModelProviderResponseUsage:
         flow = real_flow(with_response=False, host="api.github.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         flow.metadata["firewall_action"] = "ALLOW"
@@ -1035,7 +1024,6 @@ class TestModelProviderResponseUsageWebhookDelivery:
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-int-001"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"

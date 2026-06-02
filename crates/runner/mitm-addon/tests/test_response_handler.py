@@ -32,7 +32,6 @@ class TestResponseHandler:
 
         # Simulate request handler setting metadata
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
 
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
@@ -167,7 +166,6 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
 
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
@@ -196,7 +194,6 @@ class TestResponseHandler:
         body = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096)
 
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
@@ -226,7 +223,6 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
 
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
@@ -249,7 +245,6 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
 
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
@@ -270,7 +265,6 @@ class TestResponseHandler:
         log_path = str(tmp_path / "network.jsonl")
 
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.example.com/"
@@ -320,7 +314,6 @@ class TestResponseHandler:
         """401 response with firewall_base pops the cache entry and marks force-refresh (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-1"
-        flow.metadata["vm_client_ip"] = "10.200.0.5"
 
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
@@ -347,7 +340,6 @@ class TestResponseHandler:
         """401 should request a forced refresh even if no cache entry exists yet."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-new"
-        flow.metadata["vm_client_ip"] = "10.200.0.5"
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_base"] = "https://api.github.com"
@@ -371,7 +363,6 @@ class TestResponseHandler:
         hit the provider's rate limits (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-cd"
-        flow.metadata["vm_client_ip"] = "10.200.0.5"
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_base"] = "https://api.github.com"
@@ -399,7 +390,6 @@ class TestResponseHandler:
         token-invalidation recovery (#9860)."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["vm_run_id"] = "run-conn-re"
-        flow.metadata["vm_client_ip"] = "10.200.0.5"
         flow.metadata["vm_network_log_path"] = ""
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_base"] = "https://api.github.com"
@@ -424,7 +414,6 @@ class TestResponseHandler:
         """Response with status >= 400 writes to per-job proxy log."""
         flow = real_flow(with_response=False, host="api.example.com")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
 
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_network_log_path"] = ""

@@ -404,7 +404,6 @@ async def request(flow: http.HTTPFlow) -> None:
     try:
         # Store info for response handler
         flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-        flow.metadata["vm_client_ip"] = client_ip
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
         flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
@@ -423,7 +422,6 @@ async def request(flow: http.HTTPFlow) -> None:
         original_url = trusted_authority.url
         flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        flow.metadata["trusted_authority_port"] = trusted_authority.port
         _set_network_log_target(
             flow,
             url=original_url,

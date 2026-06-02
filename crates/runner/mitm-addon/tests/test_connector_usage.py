@@ -577,7 +577,6 @@ class TestReportConnectorUsage:
         """responseheaders + response bill X JSON without full-body buffering."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -646,7 +645,6 @@ class TestReportConnectorUsage:
         """Selective X JSON extraction must count a top-level data object as one resource."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/1")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -679,7 +677,6 @@ class TestReportConnectorUsage:
         """Parsed X soft errors must not fall back to URL hints and bill missing resources."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -720,7 +717,6 @@ class TestReportConnectorUsage:
         """Non-object JSON roots stay unparsed so request-side hints still bill."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -1574,7 +1570,6 @@ class TestReportConnectorUsage:
         """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -1626,7 +1621,6 @@ class TestReportConnectorUsage:
         """Malformed include values are ignored while valid siblings still bill."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
