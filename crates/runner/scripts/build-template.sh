@@ -116,7 +116,7 @@ CODEX_CLI_VERSION="0.136.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
 AGENT_BROWSER_VERSION="0.27.1"
-PNPM_VERSION="11.5.0"
+PNPM_VERSION="11.5.1"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
