@@ -43,6 +43,14 @@ fn parse_env_args(env: &[String]) -> RunnerResult<Vec<(String, String)>> {
         .collect()
 }
 
+fn benchmark_proxy_api_url(server: Option<&config::ServerConfig>) -> RunnerResult<Option<String>> {
+    let Some(server) = server else {
+        return Ok(None);
+    };
+    crate::platform_api_url::validate_platform_api_url(&server.url)?;
+    Ok(Some(server.url.clone()))
+}
+
 #[derive(Args)]
 pub struct BenchmarkArgs {
     /// The bash command to execute in the VM
@@ -76,6 +84,7 @@ pub async fn run_benchmark(
     // 1. Load config, force concurrency=1
     let mut runner_config = config::load(&args.config).await?;
     runner_config.sandbox.max_concurrent = 1;
+    let proxy_api_url = benchmark_proxy_api_url(runner_config.server.as_ref())?;
 
     let home = HomePaths::new()?;
 
@@ -110,7 +119,7 @@ pub async fn run_benchmark(
         addon_dir: runner_paths.mitm_addon_dir(),
         registry_path: runner_paths.proxy_registry(),
         registry_lock_path: runner_paths.proxy_registry_lock(),
-        api_url: runner_config.server.as_ref().map(|s| s.url.clone()),
+        api_url: proxy_api_url,
     })
     .await?;
     mitm.start().await?;
@@ -394,6 +403,48 @@ mod tests {
         let input = vec!["GOOD=ok".to_string(), "BAD".to_string()];
         let err = parse_env_args(&input).unwrap_err();
         assert!(err.to_string().contains("'BAD'"), "got: {err}");
+    }
+
+    #[test]
+    fn benchmark_proxy_api_url_allows_absent_server() {
+        assert_eq!(benchmark_proxy_api_url(None).unwrap(), None);
+    }
+
+    #[test]
+    fn benchmark_proxy_api_url_allows_https_server() {
+        let server = config::ServerConfig {
+            url: "https://api.vm0.ai".into(),
+            token: "runner-token".into(),
+        };
+
+        assert_eq!(
+            benchmark_proxy_api_url(Some(&server)).unwrap(),
+            Some("https://api.vm0.ai".into())
+        );
+    }
+
+    #[test]
+    fn benchmark_proxy_api_url_allows_loopback_http_server() {
+        let server = config::ServerConfig {
+            url: "http://127.0.0.1:3000".into(),
+            token: "runner-token".into(),
+        };
+
+        assert_eq!(
+            benchmark_proxy_api_url(Some(&server)).unwrap(),
+            Some("http://127.0.0.1:3000".into())
+        );
+    }
+
+    #[test]
+    fn benchmark_proxy_api_url_rejects_non_loopback_http_server() {
+        let server = config::ServerConfig {
+            url: "http://api.vm0.ai".into(),
+            token: "runner-token".into(),
+        };
+
+        let err = benchmark_proxy_api_url(Some(&server)).unwrap_err();
+        assert!(err.to_string().contains("platform API URL must use https"));
     }
 
     #[tokio::test]
