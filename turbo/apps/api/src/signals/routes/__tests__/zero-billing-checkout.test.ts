@@ -269,14 +269,12 @@ describe("POST /api/zero/billing/checkout", () => {
         orgId: fixture.orgId,
         tier: "pro",
         priceId: TEST_PRICE_PRO,
-        flow: "standard",
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
-          flow: "standard",
         },
       },
     });
@@ -401,7 +399,6 @@ describe("POST /api/zero/billing/checkout", () => {
       orgId: fixture.orgId,
       tier: "pro",
       priceId: TEST_PRICE_PRO,
-      flow: "standard",
       ...expectedAttribution,
     };
     expect(context.mocks.stripe.customers.create).toHaveBeenCalledWith({
@@ -459,14 +456,12 @@ describe("POST /api/zero/billing/checkout", () => {
         orgId: fixture.orgId,
         tier: "pro",
         priceId: TEST_PRICE_PRO,
-        flow: "trial",
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
-          flow: "trial",
         },
         trial_period_days: 7,
       },

@@ -123,7 +123,6 @@ function checkoutSessionMetadata(args: {
   readonly orgId: string;
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
-  readonly trialDays?: 7;
   readonly adAttribution:
     | Readonly<Record<string, string | undefined>>
     | undefined;
@@ -132,7 +131,6 @@ function checkoutSessionMetadata(args: {
     orgId: args.orgId,
     tier: args.tier,
     priceId: args.priceId,
-    flow: args.trialDays === undefined ? "standard" : "trial",
   };
   for (const [key, value] of Object.entries(args.adAttribution ?? {})) {
     if (value) {
@@ -210,7 +208,6 @@ export const createCheckoutSession$ = command(
       orgId: args.orgId,
       tier: args.tier,
       priceId: args.priceId,
-      trialDays: args.trialDays,
       adAttribution: args.adAttribution,
     });
     const customerId = await set(
