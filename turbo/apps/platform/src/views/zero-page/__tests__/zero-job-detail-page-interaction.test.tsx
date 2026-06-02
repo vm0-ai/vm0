@@ -271,11 +271,25 @@ describe("zero job detail page - interaction and state", () => {
       ).toBeInTheDocument();
     });
 
-    const denyButton = queryAllByRoleFast("button").find((element) => {
+    const readGroupButton = queryAllByRoleFast("button").find((element) => {
+      return /^Read \(\d+\)$/.test(element.textContent ?? "");
+    });
+    expect(readGroupButton).toBeDefined();
+    click(readGroupButton!);
+
+    const permissionRow = screen
+      .getByText("channels:read")
+      .closest("div")?.parentElement;
+    expect(permissionRow).not.toBeNull();
+    const denyButton = queryAllByRoleFast(
+      "button",
+      permissionRow as HTMLElement,
+    ).find((element) => {
       return element.textContent === "Deny";
     });
     expect(denyButton).toBeDefined();
     click(denyButton!);
+
     const applyButton = queryAllByRoleFast("button").find((element) => {
       return element.textContent === "Apply";
     });
@@ -283,13 +297,13 @@ describe("zero job detail page - interaction and state", () => {
     click(applyButton!);
 
     await waitFor(() => {
-      expect(grantBodies).toContainEqual(
-        expect.objectContaining({
-          agentId: "e0000000-0000-4000-a000-000000000010",
-          connectorRef: "slack",
-          action: "deny",
-        }),
-      );
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: "e0000000-0000-4000-a000-000000000010",
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "deny",
     });
     expect(policyUpdated).toBeFalsy();
   });

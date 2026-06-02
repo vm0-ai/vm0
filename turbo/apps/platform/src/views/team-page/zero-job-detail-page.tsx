@@ -121,6 +121,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
+import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import type {
   UserPermissionGrantAction,
   UserPermissionGrantResponse,
@@ -462,51 +463,81 @@ function userGrantsToFirewallPolicies(
   return Object.keys(policies).length > 0 ? policies : null;
 }
 
+function changedUserGrantPolicies({
+  connectorType,
+  initialPolicies,
+  policies,
+}: {
+  connectorType: ConnectorType;
+  initialPolicies: FirewallPolicies;
+  policies: FirewallPolicies;
+}): {
+  readonly permission: string;
+  readonly action: UserPermissionGrantAction;
+}[] {
+  const initial = resolveFirewallPolicies(initialPolicies, [connectorType])?.[
+    connectorType
+  ];
+  const current = policies[connectorType];
+  const changes: {
+    permission: string;
+    action: UserPermissionGrantAction;
+  }[] = [];
+
+  for (const [permission, action] of Object.entries(current?.policies ?? {})) {
+    if (initial?.policies[permission] !== action) {
+      changes.push({ permission, action: userGrantAction(action) });
+    }
+  }
+
+  const unknownPolicy = current?.unknownPolicy;
+  if (unknownPolicy !== undefined && initial?.unknownPolicy !== unknownPolicy) {
+    changes.push({
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: userGrantAction(unknownPolicy),
+    });
+  }
+
+  return changes;
+}
+
 async function saveUserGrantPolicies({
   agentId,
   connectorType,
+  initialPolicies,
   policies,
   pageSignal,
   upsertGrant,
 }: {
   agentId: string;
   connectorType: ConnectorType;
+  initialPolicies: FirewallPolicies;
   policies: FirewallPolicies;
   pageSignal: AbortSignal;
   upsertGrant: UpsertUserPermissionGrant;
 }): Promise<void> {
-  const connectorPolicies = policies[connectorType];
-  const namedPolicies = connectorPolicies?.policies ?? {};
-  for (const [permission, action] of Object.entries(namedPolicies)) {
+  for (const { permission, action } of changedUserGrantPolicies({
+    connectorType,
+    initialPolicies,
+    policies,
+  })) {
     await upsertGrant(
       {
         agentId,
         connectorRef: connectorType,
         permission,
-        action: userGrantAction(action),
+        action,
       },
       pageSignal,
     );
   }
-  const unknownPolicy = connectorPolicies?.unknownPolicy;
-  if (unknownPolicy === undefined) {
-    return;
-  }
-  await upsertGrant(
-    {
-      agentId,
-      connectorRef: connectorType,
-      permission: UNKNOWN_PERMISSION_GRANT,
-      action: userGrantAction(unknownPolicy),
-    },
-    pageSignal,
-  );
 }
 
 async function saveDrawerPolicies({
   agentId,
   connectorType,
   userPermissionGrantsEnabled,
+  initialPolicies,
   policies,
   pageSignal,
   upsertGrant,
@@ -516,6 +547,7 @@ async function saveDrawerPolicies({
   agentId: string;
   connectorType: ConnectorType;
   userPermissionGrantsEnabled: boolean;
+  initialPolicies: FirewallPolicies;
   policies: FirewallPolicies;
   pageSignal: AbortSignal;
   upsertGrant: UpsertUserPermissionGrant;
@@ -526,6 +558,7 @@ async function saveDrawerPolicies({
     await saveUserGrantPolicies({
       agentId,
       connectorType,
+      initialPolicies,
       policies,
       pageSignal,
       upsertGrant,
@@ -790,6 +823,9 @@ function JobPermissionsTab({
     userPermissionGrantsEnabled && userGrantsLoadable.state === "hasData"
       ? userGrantsToFirewallPolicies(userGrantsLoadable.data)
       : null;
+  const drawerInitialPolicies = userPermissionGrantsEnabled
+    ? (userGrantPolicies ?? {})
+    : (permissionPolicies ?? {});
   const reloadDetail = useSet(reloadAgentDetail$);
   const savePermPol = useSet(savePermissionPolicies$);
   const [, upsertGrant] = useLoadableSet(upsertUserPermissionGrant$);
@@ -871,11 +907,7 @@ function JobPermissionsTab({
             agentId={agentId}
             connectorType={connectorType}
             displayName={displayName}
-            initialPolicies={
-              userPermissionGrantsEnabled
-                ? (userGrantPolicies ?? {})
-                : (permissionPolicies ?? {})
-            }
+            initialPolicies={drawerInitialPolicies}
             readOnly={!canManagePermissions}
             onApply={async (policies) => {
               if (connectorType === null) {
@@ -885,6 +917,7 @@ function JobPermissionsTab({
                 agentId,
                 connectorType,
                 userPermissionGrantsEnabled,
+                initialPolicies: drawerInitialPolicies,
                 policies,
                 pageSignal,
                 upsertGrant,
