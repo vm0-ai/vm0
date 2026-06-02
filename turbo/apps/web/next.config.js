@@ -21,8 +21,9 @@ const MODEL_SLUG_REDIRECTS = [
 ];
 
 function resolveApiBackendUrl() {
+  const apiBackendUrl = process.env.VM0_API_BACKEND_URL?.trim();
   return (
-    process.env.VM0_API_BACKEND_URL ??
+    apiBackendUrl ||
     (process.env.VERCEL_ENV === "production"
       ? "https://vm0-api.vm6.ai"
       : process.env.VERCEL_ENV === undefined

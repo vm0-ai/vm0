@@ -1918,6 +1918,26 @@ describe("API backend rewrites", () => {
     vi.unstubAllEnvs();
   });
 
+  it("should use the local API fallback when the backend URL is empty", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "");
+    vi.stubEnv("VERCEL_ENV", undefined);
+
+    const rewrites = await getBeforeFileRewrites();
+
+    expect(rewrites).toEqual(
+      expect.arrayContaining([
+        {
+          source: ZERO_FEATURE_SWITCHES_REWRITE_SOURCE,
+          destination: "http://localhost:3001/api/zero/feature-switches",
+        },
+        {
+          source: REALTIME_TOKEN_REWRITE_SOURCE,
+          destination: "http://localhost:3001/api/zero/realtime/token",
+        },
+      ]),
+    );
+  });
+
   it("should proxy migrated API backend routes to apps/api", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
