@@ -156,4 +156,54 @@ mod tests {
         assert!(!cmd.contains("umount"));
         assert!(!cmd.contains("\nsync"));
     }
+
+    #[test]
+    fn unmount_command_uses_canonical_workspace_and_workspace_device() {
+        let cmd = workspace_unmount_command();
+
+        assert!(cmd.contains("workspace_dir='/home/user/workspace'"));
+        assert!(cmd.contains("workspace_device='/dev/vdb'"));
+        assert!(cmd.contains("sync -f -- \"$workspace_dir\""));
+        assert!(cmd.contains("umount -- \"$workspace_dir\""));
+    }
+
+    #[test]
+    fn unmount_command_rejects_missing_or_unrelated_mountpoints() {
+        let cmd = workspace_unmount_command();
+
+        assert!(cmd.contains("refuse_workspace_symlink_path()"));
+        assert!(cmd.contains("refusing to use symlink workspace path component"));
+        assert!(cmd.contains("if ! mountpoint -q -- \"$workspace_dir\""));
+        assert!(cmd.contains("workspace drive is not mounted"));
+        assert!(
+            cmd.contains("[ -z \"$workspace_dev\" ] || [ \"$target_dev\" != \"$workspace_dev\" ]")
+        );
+        assert!(cmd.contains("refusing to unmount non-workspace mountpoint"));
+    }
+
+    #[test]
+    fn unmount_command_checks_mount_identity_before_sync_and_unmount() {
+        let cmd = workspace_unmount_command();
+        let mountpoint_check = cmd
+            .find("if ! mountpoint -q -- \"$workspace_dir\"")
+            .expect("mountpoint presence check");
+        let identity_check = cmd
+            .find("if [ -z \"$workspace_dev\" ] || [ \"$target_dev\" != \"$workspace_dev\" ]")
+            .expect("workspace device identity check");
+        let sync = cmd.find("sync -f -- \"$workspace_dir\"").expect("sync");
+        let unmount = cmd.find("umount -- \"$workspace_dir\"").expect("umount");
+
+        assert!(
+            mountpoint_check < identity_check,
+            "mountpoint must exist before comparing device identity"
+        );
+        assert!(
+            identity_check < sync,
+            "device identity must be verified before sync"
+        );
+        assert!(
+            identity_check < unmount,
+            "device identity must be verified before unmount"
+        );
+    }
 }
