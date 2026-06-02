@@ -81,6 +81,22 @@ class TestLogNetworkEntry:
 
 
 class TestAddFirewallMetadata:
+    def test_copies_valid_firewall_error_metadata(self, real_flow):
+        flow = real_flow(with_response=False)
+        flow.metadata.update({metadata_keys.FIREWALL_ERROR: "TOKEN_REFRESH_FAILED"})
+        log_entry = {}
+
+        logging_utils.add_firewall_metadata(flow, log_entry)
+
+        assert log_entry == {
+            "firewall_base": "",
+            "firewall_name": "",
+            "firewall_permission": "",
+            "firewall_rule_match": "",
+            "firewall_billable": False,
+            "firewall_error": "TOKEN_REFRESH_FAILED",
+        }
+
     def test_defaults_missing_required_firewall_metadata(self, real_flow):
         flow = real_flow(with_response=False)
         log_entry = {}

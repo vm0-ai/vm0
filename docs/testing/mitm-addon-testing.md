@@ -93,7 +93,7 @@ phases:
 
 ```python
 def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
-    flow = real_flow(with_response=False, host="api.github.com", path="/repos")
+    flow = real_flow(with_response=True, host="api.github.com", path="/repos")
     flow.metadata.update(
         {
             "vm_run_id": "run-abc-123",

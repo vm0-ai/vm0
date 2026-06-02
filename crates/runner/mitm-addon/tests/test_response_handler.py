@@ -107,7 +107,6 @@ class TestResponseHandler:
                 metadata_keys.FIREWALL_RULE_MATCH: "GET /items",
                 metadata_keys.FIREWALL_BILLABLE: True,
                 metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "repo": "vm0"},
-                metadata_keys.FIREWALL_ERROR: "TOKEN_REFRESH_FAILED",
                 metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN"],
                 metadata_keys.AUTH_REFRESHED_CONNECTORS: ["github"],
                 metadata_keys.AUTH_REFRESHED_SECRETS: ["GITHUB_TOKEN"],
@@ -127,7 +126,6 @@ class TestResponseHandler:
         assert entry["firewall_rule_match"] == "GET /items"
         assert entry["firewall_billable"] is True
         assert entry["firewall_params"] == {"owner": "vm0-ai", "repo": "vm0"}
-        assert entry["firewall_error"] == "TOKEN_REFRESH_FAILED"
         assert entry["auth_resolved_secrets"] == ["GITHUB_TOKEN"]
         assert entry["auth_refreshed_connectors"] == ["github"]
         assert entry["auth_refreshed_secrets"] == ["GITHUB_TOKEN"]
