@@ -315,10 +315,9 @@ enum BlockingGate {
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
 ///
 /// Tests create this via [`MockSandboxRuntime::with_overrides`] so every
-/// sandbox produced by the factory checks these overrides before falling
-/// back to the default FIFO-queue behaviour. Queue fields on this type are
-/// shared globally by every factory and sandbox that receives the same
-/// `Arc<MockSandboxOverrides>`.
+/// sandbox produced by the factory can share queued behavior and call
+/// observations. Queue fields on this type are shared globally by every
+/// factory and sandbox that receives the same `Arc<MockSandboxOverrides>`.
 pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
@@ -471,7 +470,8 @@ impl MockSandboxOverrides {
     }
 
     /// Queue a read_file result applied to the next read made through any
-    /// sandbox built from these overrides.
+    /// sandbox built from these overrides after that sandbox's local read queue
+    /// is empty.
     pub fn push_read_file_result(&self, result: Result<Option<Vec<u8>>>) {
         self.read_file_results
             .lock_ignoring_poison()
