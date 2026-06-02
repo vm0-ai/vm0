@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.5...sandbox-v0.18.0) (2026-06-01)
+
+
+### Features
+
+* add canonical workspace drive foundation ([#15688](https://github.com/vm0-ai/vm0/issues/15688)) ([593460a](https://github.com/vm0-ai/vm0/commit/593460ab818768ae75d1fd658a7211a2120a956b))
+
 ## [0.17.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.4...sandbox-v0.17.5) (2026-05-28)
 
 

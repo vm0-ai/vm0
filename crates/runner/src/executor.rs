@@ -57,6 +57,9 @@ const EXIT_SIGKILL: i32 = 137;
 const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(5);
+const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
+const AGENT_ENV_KEY_MAX_CHARS: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES: usize = 8 * 1024;
@@ -65,6 +68,18 @@ const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
     b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
 const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
+    "BASH_ENV",
+    "ENV",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "NODE_OPTIONS",
+];
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
+    include_str!("../scripts/agent-abnormal-exit-diagnostics.sh");
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 use crate::error::{RunnerError, RunnerResult};
@@ -84,6 +99,7 @@ use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
     ResumeSession, SandboxReuseResult,
 };
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -100,6 +116,7 @@ pub struct ExecutorConfig {
 pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
+    pub workspace_disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
@@ -179,6 +196,32 @@ impl AgentStdoutStreamDiagnostics {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AgentEnvDiagnostics {
+    env_count: usize,
+    runner_owned_count: usize,
+    external_count: usize,
+    suspicious_keys: Vec<String>,
+}
+
+impl AgentEnvDiagnostics {
+    fn suspicious_keys_csv(&self) -> String {
+        self.suspicious_keys.join(",")
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AgentEnvKeyDiagnostics {
+    logged_keys: Vec<String>,
+    omitted_key_count: usize,
+}
+
+impl AgentEnvKeyDiagnostics {
+    fn logged_keys_csv(&self) -> String {
+        self.logged_keys.join(",")
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ProcessCancelTimeouts {
     write: Duration,
@@ -233,6 +276,177 @@ fn non_empty_failure_error(exit_code: i32, error: String) -> String {
 
 fn agent_exit_failure_message(exit_code: i32) -> String {
     format!("Agent exited with code {exit_code}")
+}
+
+fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnostics {
+    let mut suspicious_keys: Vec<String> = BOOTSTRAP_SENSITIVE_ENV_KEYS
+        .iter()
+        .copied()
+        .filter(|key| env.contains_key(*key))
+        .map(sanitize_env_key_for_diagnostic)
+        .collect();
+    suspicious_keys.sort();
+
+    let runner_owned_count = env
+        .keys()
+        .filter(|key| is_runner_owned_env_key(key))
+        .count();
+
+    AgentEnvDiagnostics {
+        env_count: env.len(),
+        runner_owned_count,
+        external_count: env.len().saturating_sub(runner_owned_count),
+        suspicious_keys,
+    }
+}
+
+fn build_agent_env_key_diagnostics(env: &[(String, String)]) -> AgentEnvKeyDiagnostics {
+    let mut keys: Vec<String> = env
+        .iter()
+        .map(|(key, _)| sanitize_env_key_for_diagnostic(key))
+        .collect();
+    keys.sort();
+
+    let logged_keys: Vec<String> = keys
+        .iter()
+        .take(AGENT_ENV_KEY_DIAGNOSTIC_LIMIT)
+        .cloned()
+        .collect();
+    let omitted_key_count = keys.len().saturating_sub(logged_keys.len());
+
+    AgentEnvKeyDiagnostics {
+        logged_keys,
+        omitted_key_count,
+    }
+}
+
+fn sanitize_env_key_for_diagnostic(key: &str) -> String {
+    let mut chars = key.escape_debug();
+    let mut truncated = String::new();
+    for _ in 0..AGENT_ENV_KEY_MAX_CHARS {
+        let Some(ch) = chars.next() else {
+            return truncated;
+        };
+        truncated.push(ch);
+    }
+    if chars.next().is_some() {
+        truncated.push_str("...");
+    }
+    truncated
+}
+
+fn is_runner_owned_env_key(key: &str) -> bool {
+    key.starts_with("VM0_") || RUNNER_OWNED_ENV_KEYS.contains(&key)
+}
+
+fn should_collect_agent_abnormal_exit_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    stderr: &str,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && exit.exit_code != 0
+        && exit.diagnostic.is_empty()
+        && stderr.is_empty()
+        && failure_diagnostic.is_none()
+        && guest_error.is_none()
+}
+
+fn log_agent_process_exit_summary(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+) {
+    info!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        exit_code = exit.exit_code,
+        stdout_len = exit.stdout.len(),
+        stderr_len = exit.stderr.len(),
+        stdout_truncated = exit.stdout_truncated,
+        stderr_truncated = exit.stderr_truncated,
+        diagnostic_present = !exit.diagnostic.is_empty(),
+        stream_overflowed = exit.stream_overflowed,
+        env_count = env_diagnostics.env_count,
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        "agent process exit summary"
+    );
+}
+
+fn log_agent_abnormal_exit_env_diagnostics(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+    env_key_diagnostics: &AgentEnvKeyDiagnostics,
+) {
+    warn!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        exit_code = exit.exit_code,
+        env_count = env_diagnostics.env_count,
+        runner_owned_env_count = env_diagnostics.runner_owned_count,
+        external_env_count = env_diagnostics.external_count,
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        env_keys = %env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = env_key_diagnostics.omitted_key_count,
+        "agent abnormal exit env diagnostics"
+    );
+}
+
+async fn collect_agent_abnormal_exit_diagnostics(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit_code: i32,
+) {
+    let request = ExecRequest {
+        cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT,
+        timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
+        env: &[],
+        sudo: true,
+        stdin_bytes: None,
+        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+    };
+
+    match sandbox.exec(&request).await {
+        Ok(result) => {
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                sandbox_reuse_result = reuse_result.as_wire(),
+                exit_code,
+                diagnostic_exit_code = result.exit_code,
+                diagnostic_stdout_len = result.stdout.len(),
+                diagnostic_stderr_len = result.stderr.len(),
+                diagnostic_stdout_truncated = result.stdout_truncated,
+                diagnostic_stderr_truncated = result.stderr_truncated,
+                diagnostic_stdout = %stdout,
+                diagnostic_stderr = %stderr,
+                "agent abnormal exit in-vm diagnostics"
+            );
+        }
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                sandbox_reuse_result = reuse_result.as_wire(),
+                exit_code,
+                error = %error,
+                "failed to collect agent abnormal exit in-vm diagnostics"
+            );
+        }
+    }
 }
 
 fn cancelled_agent_process_exit(pid: u32, stream_overflowed: bool) -> sandbox::ProcessExit {
@@ -541,6 +755,9 @@ async fn execute_new_sandbox(
             memory_mb: params.memory_mb,
         },
         device_rate_limits: params.device_rate_limits.clone(),
+        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+            size_mb: params.workspace_disk_mb,
+        }),
     };
 
     // Create and start sandbox
@@ -569,6 +786,23 @@ async fn execute_new_sandbox(
         return Err(e.into());
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(e);
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     Ok(execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -625,6 +859,25 @@ async fn execute_reused_sandbox(
 
     let source_ip = source_ip.to_string();
     let network_log_session = register_proxy(config, context, &source_ip).await;
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        return ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(e.to_string())),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: Some(network_log_session),
+            guest_session_id: None,
+        };
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -770,9 +1023,9 @@ async fn post_job_cleanup(
     stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
-    append_stdout_stream_diagnostics_to_system_log(
+    append_stdout_stream_diagnostics_to_stream_log(
         context.run_id,
-        &config.log_paths.system_log(context.run_id),
+        &config.log_paths.system_stream_log(context.run_id),
         stdout_stream_diagnostics,
     )
     .await;
@@ -888,6 +1141,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 5. Build env vars (passed directly via vsock protocol)
     let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
+    let env_diagnostics = build_agent_env_diagnostics(&env_map);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -897,7 +1151,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
     //    guest-agent owns the guest-side system log for telemetry; the runner
-    //    separately writes streamed chunks to the host log file in real time.
+    //    separately writes streamed chunks to a host stream log in real time.
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
@@ -926,8 +1180,8 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);
 
-    // Spawn background task to drain stdout chunks and write to host log file.
-    let host_log_path = config.log_paths.system_log(context.run_id);
+    // Spawn background task to drain stdout chunks and write to the host stream log file.
+    let host_log_path = config.log_paths.system_stream_log(context.run_id);
     let stream_task = handle
         .take_stdout_receiver()
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
@@ -1078,6 +1332,13 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
         exit_code = exit.exit_code,
         "agent exited"
     );
+    log_agent_process_exit_summary(
+        context.run_id,
+        sandbox.id(),
+        start.reuse_result,
+        &exit,
+        &env_diagnostics,
+    );
 
     // Check for OOM kill when process was terminated by SIGKILL.
     // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
@@ -1114,15 +1375,43 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     } else if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
+        let guest_error = if stderr.is_empty() {
+            read_guest_error_file(sandbox, context.run_id).await
+        } else {
+            None
+        };
+        if should_collect_agent_abnormal_exit_diagnostics(
+            wait_cancelled,
+            &exit,
+            &stderr,
+            failure_diagnostic.as_ref(),
+            guest_error.as_deref(),
+        ) {
+            let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
+            log_agent_abnormal_exit_env_diagnostics(
+                context.run_id,
+                sandbox.id(),
+                start.reuse_result,
+                &exit,
+                &env_diagnostics,
+                &env_key_diagnostics,
+            );
+            collect_agent_abnormal_exit_diagnostics(
+                sandbox,
+                context.run_id,
+                sandbox.id(),
+                start.reuse_result,
+                exit.exit_code,
+            )
+            .await;
+        }
         let error = if !stderr.is_empty() {
             stderr
         } else {
             // Stderr is empty (redirected to log file). Check for a structured
             // error file written by the guest-agent for final failure
             // handoff.
-            read_guest_error_file(sandbox, context.run_id)
-                .await
-                .unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
+            guest_error.unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
         };
         Some(ExecutionFailure::new(
             exit.exit_code,
@@ -1342,7 +1631,7 @@ async fn drain_stdout_to_file(
     Ok(report)
 }
 
-async fn append_stdout_stream_diagnostics_to_system_log(
+async fn append_stdout_stream_diagnostics_to_stream_log(
     run_id: RunId,
     path: &Path,
     diagnostics: AgentStdoutStreamDiagnostics,
@@ -1356,7 +1645,7 @@ async fn append_stdout_stream_diagnostics_to_system_log(
             run_id = %run_id,
             path = %path.display(),
             error = %e,
-            "failed to append stdout stream diagnostic marker to host system log"
+            "failed to append stdout stream diagnostic marker to host stream log"
         );
     }
 }
@@ -1404,11 +1693,9 @@ const GUEST_SANDBOX_OPS_LOG_SUFFIX: &str = ".jsonl";
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
-/// The agent phase is streamed to the host in real time via vsock stdout
-/// chunks. The final copy here overwrites with the complete guest-side file,
-/// including setup output written before agent streaming starts. Agent stdout
-/// that is not written by guest-agent's logger is intentionally not part of
-/// the final system log.
+/// The final system log copy keeps `system-*` as the guest-authored log. The
+/// supervised process stdout/stderr stream is written separately to
+/// `system-stream-*` in real time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GuestLogCopyFailureKind {
     Failed,
@@ -2260,7 +2547,7 @@ mod tests {
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, VecDeque};
     use std::fmt;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -2451,6 +2738,65 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.environment = Some(environment);
         ctx
+    }
+
+    #[test]
+    fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
+        let mut env = HashMap::from([
+            ("BASH_ENV".to_string(), "super-secret-bash-env".to_string()),
+            ("NORMAL_KEY".to_string(), "normal-secret-value".to_string()),
+            ("VM0_RUN_ID".to_string(), "runner-secret-value".to_string()),
+            (
+                "VM0_SECRET_VALUES".to_string(),
+                "stored-secret-value".to_string(),
+            ),
+        ]);
+        for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
+            env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
+        }
+        env.insert(
+            format!("AAA_{}", "x".repeat(AGENT_ENV_KEY_MAX_CHARS * 4)),
+            "long-secret-value".to_string(),
+        );
+
+        let diagnostics = build_agent_env_diagnostics(&env);
+
+        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 5);
+        assert_eq!(diagnostics.runner_owned_count, 2);
+        assert_eq!(
+            diagnostics.external_count,
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3
+        );
+        assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
+        let env_pairs: Vec<(String, String)> = env.into_iter().collect();
+        let key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
+        assert_eq!(
+            key_diagnostics.logged_keys.len(),
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT
+        );
+        assert_eq!(key_diagnostics.omitted_key_count, 5);
+        let mut sorted_logged_keys = key_diagnostics.logged_keys.clone();
+        sorted_logged_keys.sort();
+        assert_eq!(key_diagnostics.logged_keys, sorted_logged_keys);
+        let long_key = key_diagnostics
+            .logged_keys
+            .iter()
+            .find(|key| key.starts_with("AAA_"))
+            .expect("long key should be logged before the ZZZ keys");
+        assert_eq!(long_key.chars().count(), AGENT_ENV_KEY_MAX_CHARS + 3);
+        assert!(long_key.ends_with("..."));
+        let rendered = format!(
+            "{} {}",
+            diagnostics.suspicious_keys_csv(),
+            key_diagnostics.logged_keys_csv()
+        );
+        assert!(rendered.contains("BASH_ENV"));
+        assert!(rendered.contains("VM0_RUN_ID"));
+        assert!(!rendered.contains("super-secret-bash-env"));
+        assert!(!rendered.contains("normal-secret-value"));
+        assert!(!rendered.contains("runner-secret-value"));
+        assert!(!rendered.contains("stored-secret-value"));
+        assert!(!rendered.contains("long-secret-value"));
     }
 
     #[test]
@@ -4113,12 +4459,10 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        tokio::fs::write(
-            log_paths.system_log(ctx.run_id),
-            b"transient host-streamed stdout\n",
-        )
-        .await
-        .unwrap();
+        let system_stream_log_path = log_paths.system_stream_log(ctx.run_id);
+        tokio::fs::write(&system_stream_log_path, b"transient host-streamed stdout\n")
+            .await
+            .unwrap();
 
         // Queue guest-copy results: system log + metrics log + sandbox ops log.
         sandbox.push_copy_file_result(Ok(b"system log line 1\nsystem log line 2\n".to_vec()));
@@ -4134,7 +4478,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
-        assert!(!system_log.contains("transient host-streamed stdout"));
+        let system_stream_log = tokio::fs::read_to_string(system_stream_log_path)
+            .await
+            .unwrap();
+        assert_eq!(system_stream_log, "transient host-streamed stdout\n");
 
         let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
             .await
@@ -4234,8 +4581,9 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
         let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-        tokio::fs::write(&system_log_path, b"transient host-streamed stdout\n")
+        tokio::fs::write(&system_stream_log_path, b"transient host-streamed stdout\n")
             .await
             .unwrap();
         sandbox.push_copy_file_result(Ok(b"guest system log".to_vec()));
@@ -4254,10 +4602,12 @@ mod tests {
         .await;
 
         let system_log = tokio::fs::read(&system_log_path).await.unwrap();
-        let mut expected = b"guest system log\n".to_vec();
-        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_log, b"guest system log");
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        let mut expected_stream_log = b"transient host-streamed stdout\n".to_vec();
+        expected_stream_log.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        expected_stream_log.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
+        assert_eq!(system_stream_log, expected_stream_log);
     }
 
     // -----------------------------------------------------------------------
@@ -4440,6 +4790,7 @@ mod tests {
         JobParams {
             vcpu: 2,
             memory_mb: 2048,
+            workspace_disk_mb: 16_384,
             restore_guest_state: false,
             device_rate_limits: None,
         }
@@ -4608,6 +4959,115 @@ mod tests {
         }
     }
 
+    struct QueuedCopyFileSandbox {
+        inner: Box<dyn Sandbox>,
+        copy_file_results: Mutex<VecDeque<Vec<u8>>>,
+    }
+
+    impl QueuedCopyFileSandbox {
+        fn new(inner: Box<dyn Sandbox>, copy_file_results: Vec<Vec<u8>>) -> Self {
+            Self {
+                inner,
+                copy_file_results: Mutex::new(VecDeque::from(copy_file_results)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for QueuedCopyFileSandbox {
+        fn id(&self) -> &str {
+            self.inner.id()
+        }
+
+        fn source_ip(&self) -> &str {
+            self.inner.source_ip()
+        }
+
+        fn process_pid(&self) -> Option<u32> {
+            self.inner.process_pid()
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            self.inner.kill().await
+        }
+
+        async fn park(&mut self) -> sandbox::Result<()> {
+            self.inner.park().await
+        }
+
+        async fn unpark(&mut self) -> sandbox::Result<()> {
+            self.inner.unpark().await
+        }
+
+        async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+            self.inner.exec(request).await
+        }
+
+        async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+            self.inner.read_file(path, max_bytes).await
+        }
+
+        async fn copy_file(
+            &self,
+            path: &str,
+            host_path: &std::path::Path,
+            options: CopyFileOptions,
+        ) -> sandbox::Result<sandbox::CopyFileResult> {
+            let bytes = self
+                .copy_file_results
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .pop_front();
+            let Some(bytes) = bytes else {
+                return self.inner.copy_file(path, host_path, options).await;
+            };
+
+            if bytes.len() as u64 > options.max_bytes {
+                return Err(SandboxError::Operation {
+                    operation: SandboxOperation::CopyFile,
+                    reason: SandboxOperationReason::Other,
+                    message: format!("test copy_file exceeded {} bytes", options.max_bytes),
+                });
+            }
+            if let Some(parent) = host_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(host_path, &bytes)?;
+            Ok(sandbox::CopyFileResult {
+                bytes_copied: bytes.len() as u64,
+            })
+        }
+
+        async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            self.inner.write_file(path, content).await
+        }
+
+        async fn start_process(
+            &self,
+            request: &StartProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+            self.inner.start_process(request).await
+        }
+
+        async fn wait_process(
+            &self,
+            handle: sandbox::GuestProcessHandle,
+            timeout: Duration,
+        ) -> sandbox::Result<ProcessExit> {
+            self.inner.wait_process(handle, timeout).await
+        }
+    }
+
     async fn run_execute_inner(
         factory: &MockSandboxFactory,
         ctx: &ExecutionContext,
@@ -4643,6 +5103,7 @@ mod tests {
                     memory_mb: 2048,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .unwrap()
@@ -4709,6 +5170,7 @@ mod tests {
                         memory_mb: 2048,
                     },
                     device_rate_limits: None,
+                    workspace_drive: None,
                 })
                 .await
                 .unwrap(),
@@ -4946,6 +5408,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_job_workspace_mount_failure_destroys_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "mount -t ext4".to_string(),
+            exit_code: 64,
+            stdout: Vec::new(),
+            stderr: b"mount denied".to_vec(),
+        });
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_none(),
+            "fresh mount failure should be destroyed inline"
+        );
+        assert!(
+            outcome.network_log_session.is_none(),
+            "network log session should be closed before returning"
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "agent must not start after workspace mount failure"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
+    }
+
+    #[tokio::test]
     async fn execute_inner_appends_stream_overflow_marker() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -4955,7 +5466,7 @@ mod tests {
         overrides.push_wait_process_exit(exit);
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -4963,8 +5474,8 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
-        assert_eq!(system_log, STDOUT_STREAM_OVERFLOW_MARKER);
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        assert_eq!(system_stream_log, STDOUT_STREAM_OVERFLOW_MARKER);
     }
 
     #[tokio::test]
@@ -4978,7 +5489,7 @@ mod tests {
         }]);
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -4986,10 +5497,10 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
     }
 
     #[tokio::test]
@@ -5010,7 +5521,7 @@ mod tests {
         });
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -5021,10 +5532,60 @@ mod tests {
             error_msg.as_deref(),
             Some("Agent process killed by OOM killer")
         );
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"bootstrap diagnostic\n".to_vec(),
+            truncated: false,
+        }]);
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let ctx = minimal_context();
+        let source_ip = sandbox.source_ip().to_string();
+        let network_log_session = register_proxy(&config, &ctx, &source_ip).await;
+        let sandbox: Box<dyn Sandbox> = Box::new(QueuedCopyFileSandbox::new(
+            sandbox,
+            vec![b"guest system log\n".to_vec()],
+        ));
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_prepared_sandbox_run(
+            PreparedSandboxRun {
+                sandbox,
+                source_ip,
+                network_log_session,
+            },
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 126);
+        assert_eq!(outcome.error(), Some("Agent exited with code 126"));
+        assert!(outcome.sandbox.is_some());
+        assert_proxy_registry_empty(dir.path()).await;
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        assert_eq!(system_log, b"guest system log\n");
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
     }
 
     #[tokio::test]
@@ -5035,6 +5596,7 @@ mod tests {
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let limits = test_device_rate_limits();
         let params = JobParams {
+            workspace_disk_mb: 512,
             device_rate_limits: Some(limits.clone()),
             ..default_params()
         };
@@ -5049,6 +5611,10 @@ mod tests {
         let configs = overrides.create_configs();
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].device_rate_limits, Some(limits));
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig { size_mb: 512 })
+        );
     }
 
     #[tokio::test]
@@ -5199,6 +5765,160 @@ mod tests {
 
         assert_eq!(exit_code, 7);
         assert_eq!(error.as_deref(), Some("Agent exited with code 7"));
+    }
+
+    #[tokio::test]
+    async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        let calls = overrides.exec_calls();
+        let diagnostic_calls: Vec<&sandbox_mock::ExecCall> = calls
+            .iter()
+            .filter(|call| call.cmd.contains("guest-agent-binary"))
+            .collect();
+        assert_eq!(diagnostic_calls.len(), 1);
+        let call = diagnostic_calls[0];
+        assert!(call.cmd.contains("guest-agent-binary"));
+        let active_diagnostic_cmd = call
+            .cmd
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| !line.starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in ["environ", "printenv", "ps aux", "ps -ef", "ps e"] {
+            assert!(
+                !active_diagnostic_cmd.contains(forbidden),
+                "diagnostic command must not collect environment values via {forbidden}"
+            );
+        }
+        assert!(
+            !active_diagnostic_cmd
+                .lines()
+                .any(|line| line == "env" || line.starts_with("env ")),
+            "diagnostic command must not collect raw environment output"
+        );
+        assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
+        assert!(call.env_keys.is_empty());
+        assert!(call.sudo);
+        assert!(call.stdin_bytes.is_none());
+        assert_eq!(call.output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_success_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error.is_none());
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_stderr_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(
+            1,
+            7,
+            Vec::new(),
+            b"guest stderr".to_vec(),
+        ));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 7);
+        assert_eq!(error.as_deref(), Some("guest stderr"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_process_diagnostic_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut exit = ProcessExit::new(1, 126, Vec::new(), Vec::new());
+        exit.diagnostic = "guest-agent bootstrap diagnostic".to_string();
+        overrides.push_wait_process_exit(exit);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let diagnostic = FailureDiagnostic::new(
+            agent_diagnostics::FailureClass::CliNonzero,
+            agent_diagnostics::AgentFramework::ClaudeCode,
+            agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        );
+        overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+        overrides.push_read_file_result(Ok(None));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
     }
 
     #[tokio::test]
@@ -5541,7 +6261,7 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
@@ -5552,10 +6272,10 @@ mod tests {
         assert!(reuse_outcome.sandbox.is_some());
         assert!(reuse_outcome.network_log_session.is_some());
         assert_proxy_registry_empty(dir.path()).await;
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"reuse partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
     }
 
     #[tokio::test]
@@ -5722,8 +6442,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // Build a MockSandbox that fails on the first exec (fix_guest_clock)
+        // First exec mounts the workspace drive, second exec fixes the clock.
         let sandbox = MockSandbox::new("reuse-clock-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -5751,8 +6472,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
+        // Workspace mount and clock fix succeed, then reseed_guest_entropy fails.
         let sandbox = MockSandbox::new("reuse-reseed-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
@@ -5768,6 +6490,42 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on reseed failure"
         );
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_workspace_mount_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-mount-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            64,
+            Vec::new(),
+            b"mount denied".to_vec(),
+        )));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on workspace mount failure"
+        );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned so finalization can close it"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     /// Verify that session restore failure during reuse still returns the sandbox.

@@ -15,15 +15,22 @@ import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   permissionAccessRequestsCreateContract,
+  permissionAccessRequestsListContract,
   type PermissionAccessRequestResponse,
   zeroAgentPermissionPoliciesContract,
   zeroAgentsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockPermissionRequests } from "../../../mocks/handlers/api-permission-access-requests.ts";
+import {
+  createMockUserPermissionGrantResponse,
+  setMockUserPermissionGrants,
+} from "../../../mocks/handlers/api-user-permission-grants.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -521,6 +528,439 @@ describe("zero chat thread page display - permission action card", () => {
     await waitFor(() => {
       expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
     });
+  });
+
+  it("writes a current-user grant for members when user permission grants are enabled", async () => {
+    let grantBody: unknown;
+    let requestCreated = false;
+    let requestsListed = false;
+
+    setMockOrg({ role: "member" });
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Awrite&action=allow",
+          runId: "run-user-grant-permission-action",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            slack: { policies: { "channels:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+      mockApi(permissionAccessRequestsCreateContract.create, ({ respond }) => {
+        requestCreated = true;
+        return respond(201, pendingPermissionRequest());
+      }),
+      mockApi(permissionAccessRequestsListContract.list, ({ respond }) => {
+        requestsListed = true;
+        return respond(200, []);
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(hasSubscription("permissionAccessRequestsChanged")).toBeFalsy();
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+      });
+    });
+    expect(requestCreated).toBeFalsy();
+    expect(requestsListed).toBeFalsy();
+    expect(hasSubscription("permissionAccessRequestsChanged")).toBeFalsy();
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+  });
+
+  it("writes a current-user grant for admins when user permission grants are enabled", async () => {
+    let grantBody: unknown;
+    let policyUpdated = false;
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=deny",
+          runId: "run-admin-user-grant-permission-action",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "allow" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBody = body;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
+        policyUpdated = true;
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    click(await within(card).findByText("Confirm"));
+
+    await waitFor(() => {
+      expect(grantBody).toMatchObject({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "vercel",
+        permission: "projects:write",
+        action: "deny",
+      });
+    });
+    expect(policyUpdated).toBeFalsy();
+    expect(within(card).getByText("Permission denied")).toBeInTheDocument();
+  });
+
+  it("uses default connector policies for already-applied chat permission actions", async () => {
+    let grantCalled = false;
+
+    setMockOrg({ role: "member" });
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow",
+          runId: "run-user-grant-permission-default-applied",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            slack: { policies: { "channels:read": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantCalled = true;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(grantCalled).toBeFalsy();
+  });
+
+  it("uses current-user grants for already-applied chat permission actions", async () => {
+    setMockOrg({ role: "member" });
+    setMockUserPermissionGrants([
+      createMockUserPermissionGrantResponse({
+        agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+        connectorRef: "slack",
+        permission: "channels:write",
+        action: "allow",
+      }),
+    ]);
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Awrite&action=allow",
+          runId: "run-user-grant-permission-action-applied",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            slack: { policies: { "channels:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    const button = queryAllByRoleFast("button", card).find((element) => {
+      return element.textContent === "Permissions updated";
+    });
+    expect(button).toBeDefined();
+    expect(button).toBeDisabled();
+  });
+
+  it("does not write grants for unknown chat permission actions", async () => {
+    let grantCalled = false;
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=unknown%3Apermission&action=allow",
+          runId: "run-user-grant-unknown-permission-action",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantCalled = true;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    const button = queryAllByRoleFast("button", card).find((element) => {
+      return element.textContent === "Unknown permission";
+    });
+    expect(button).toBeDefined();
+    expect(button).toBeDisabled();
+
+    click(button!);
+
+    expect(grantCalled).toBeFalsy();
+  });
+
+  it("disables chat permission actions when current-user grants fail to load", async () => {
+    let grantCalled = false;
+
+    setMockOrg({ role: "member" });
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow",
+          runId: "run-user-grant-load-failed",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            slack: { policies: { "channels:read": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantCalled = true;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    const button = queryAllByRoleFast("button", card).find((element) => {
+      return element.textContent === "Failed to load permissions";
+    });
+    expect(button).toBeDefined();
+    expect(button).toBeDisabled();
+
+    click(button!);
+
+    expect(grantCalled).toBeFalsy();
   });
 });
 

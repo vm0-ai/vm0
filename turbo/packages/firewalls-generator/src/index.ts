@@ -96,6 +96,7 @@ import { generate as generateGroq } from "./groq";
 import { generate as generateGumroad } from "./gumroad";
 import { generate as generateHeygen } from "./heygen";
 import { generate as generateHelicone } from "./helicone";
+import { generate as generateHitem3d } from "./hitem3d";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHoncho } from "./honcho";
 import { generate as generateHubspot } from "./hubspot";
@@ -334,6 +335,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   gumroad: generateGumroad,
   heygen: generateHeygen,
   helicone: generateHelicone,
+  hitem3d: generateHitem3d,
   htmlcsstoimage: generateHtmlcsstoimage,
   honcho: generateHoncho,
   hubspot: generateHubspot,

@@ -72,6 +72,25 @@ function getButtonByText(matcher: string | RegExp): HTMLElement {
   return button;
 }
 
+async function clickTestOAuthDeviceConnectButton() {
+  const heading = await screen.findByRole("heading", {
+    name: "OAuth Device Authorization",
+  });
+  const section = heading.parentElement;
+  if (!section) {
+    throw new Error("OAuth Device Authorization section not found");
+  }
+
+  const button = queryAllByRoleFast("button", section).find((element) => {
+    return elementTextMatches(element, "Connect Test OAuth Device (internal)");
+  });
+  if (!button) {
+    throw new Error("Test OAuth device connect button not found");
+  }
+
+  await userEvent.click(button);
+}
+
 function mockConnectorOauthStart() {
   server.use(
     mockApi(zeroConnectorOauthStartContract.start, ({ params, respond }) => {
@@ -181,9 +200,7 @@ describe("connect modal - content by auth method", () => {
     expect(
       screen.queryByText("Connection methods unavailable"),
     ).not.toBeInTheDocument();
-    await userEvent.click(
-      await screen.findByText("Connect Test OAuth Device (internal)"),
-    );
+    await clickTestOAuthDeviceConnectButton();
 
     await waitFor(() => {
       expect(
@@ -235,9 +252,7 @@ describe("connect modal - content by auth method", () => {
       featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
     });
 
-    await userEvent.click(
-      await screen.findByText("Connect Test OAuth Device (internal)"),
-    );
+    await clickTestOAuthDeviceConnectButton();
 
     await waitFor(() => {
       expect(
@@ -272,9 +287,7 @@ describe("connect modal - content by auth method", () => {
         featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
       });
 
-      await userEvent.click(
-        await screen.findByText("Connect Test OAuth Device (internal)"),
-      );
+      await clickTestOAuthDeviceConnectButton();
       vi.spyOn(window, "open").mockReturnValue(
         createMockAuthWindow(false) as unknown as Window,
       );
@@ -292,9 +305,7 @@ describe("connect modal - content by auth method", () => {
       featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
     });
 
-    await userEvent.click(
-      await screen.findByText("Connect Test OAuth Device (internal)"),
-    );
+    await clickTestOAuthDeviceConnectButton();
 
     await waitFor(() => {
       expect(

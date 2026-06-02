@@ -111,6 +111,7 @@
     "generate:gumroad": "tsx src/index.ts gumroad",
     "generate:helicone": "tsx src/index.ts helicone",
     "generate:heygen": "tsx src/index.ts heygen",
+    "generate:hitem3d": "tsx src/index.ts hitem3d",
     "generate:htmlcsstoimage": "tsx src/index.ts htmlcsstoimage",
     "generate:honcho": "tsx src/index.ts honcho",
     "generate:hubspot": "tsx src/index.ts hubspot",

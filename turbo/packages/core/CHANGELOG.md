@@ -1,5 +1,50 @@
 # Changelog
 
+## [8.305.5](https://github.com/vm0-ai/vm0/compare/core-v8.305.4...core-v8.305.5) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.2
+
+## [8.305.4](https://github.com/vm0-ai/vm0/compare/core-v8.305.3...core-v8.305.4) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.1
+    * @vm0/connectors bumped to 1.41.1
+
+## [8.305.3](https://github.com/vm0-ai/vm0/compare/core-v8.305.2...core-v8.305.3) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.0
+    * @vm0/connectors bumped to 1.41.0
+
+## [8.305.2](https://github.com/vm0-ai/vm0/compare/core-v8.305.1...core-v8.305.2) (2026-06-01)
+
+
+### Refactoring
+
+* derive platform secrets from access config ([#15739](https://github.com/vm0-ai/vm0/issues/15739)) ([45d6def](https://github.com/vm0-ai/vm0/commit/45d6def9bec9822671272fd4ebb3b5379b50f5af))
+* move google security warning helper to platform ([#15730](https://github.com/vm0-ai/vm0/issues/15730)) ([7289928](https://github.com/vm0-ai/vm0/commit/728992840fd0700d14afaed5fa3d92b860538c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.51.0
+    * @vm0/connectors bumped to 1.40.1
+
 ## [8.305.1](https://github.com/vm0-ai/vm0/compare/core-v8.305.0...core-v8.305.1) (2026-06-01)
 
 

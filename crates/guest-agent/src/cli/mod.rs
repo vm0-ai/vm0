@@ -40,6 +40,7 @@ use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use termination::{TerminationReason, TerminationState};
@@ -134,6 +135,9 @@ pub async fn execute_cli(
         // If a future setup step fails after spawn, dropping `Child` must not
         // leave a CLI process running in the VM.
         .kill_on_drop(true);
+    // Set the child cwd explicitly at spawn time so the CLI observes the
+    // current canonical workspace mount instead of relying on inherited cwd.
+    set_cli_current_dir(&mut cmd, paths::CANONICAL_WORKING_DIR)?;
 
     match framework {
         env::Framework::ClaudeCode => {
@@ -658,6 +662,24 @@ pub async fn execute_cli(
     })
 }
 
+fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<(), AgentError> {
+    let path = Path::new(path);
+    let metadata = std::fs::metadata(path).map_err(|e| {
+        AgentError::Execution(format!(
+            "canonical working directory unavailable before CLI spawn: {}: {e}",
+            path.display()
+        ))
+    })?;
+    if !metadata.is_dir() {
+        return Err(AgentError::Execution(format!(
+            "canonical working directory is not a directory before CLI spawn: {}",
+            path.display()
+        )));
+    }
+    cmd.current_dir(path);
+    Ok(())
+}
+
 fn select_failure_diagnostic(
     existing: Option<&CliFailureDiagnostic>,
     candidate: CliFailureDiagnostic,
@@ -707,8 +729,56 @@ fn with_carried_failure_reason(
 
 #[cfg(test)]
 mod tests {
-    use super::{CliFailureDiagnostic, select_failure_diagnostic, with_carried_failure_reason};
+    use super::{
+        CliFailureDiagnostic, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason,
+    };
     use agent_diagnostics::{FailureDetailSource, FailureReason};
+
+    #[tokio::test]
+    async fn cli_current_dir_helper_sets_child_working_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut cmd = tokio::process::Command::new("pwd");
+        cmd.stdout(std::process::Stdio::piped());
+
+        set_cli_current_dir(&mut cmd, dir.path().to_str().expect("utf8 temp path"))
+            .expect("set cwd");
+        let output = cmd.output().await.expect("pwd");
+
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            dir.path().to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn cli_current_dir_helper_errors_for_missing_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join("missing");
+        let mut cmd = tokio::process::Command::new("pwd");
+
+        let err = set_cli_current_dir(&mut cmd, missing.to_str().expect("utf8 temp path"))
+            .expect_err("missing cwd should fail");
+
+        assert!(
+            err.to_string()
+                .contains("canonical working directory unavailable")
+        );
+    }
+
+    #[test]
+    fn cli_current_dir_helper_errors_for_non_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("workspace-file");
+        std::fs::write(&file, b"not a directory").expect("write file");
+        let mut cmd = tokio::process::Command::new("pwd");
+
+        let err = set_cli_current_dir(&mut cmd, file.to_str().expect("utf8 temp path"))
+            .expect_err("non-directory cwd should fail");
+
+        assert!(err.to_string().contains("is not a directory"));
+    }
 
     #[test]
     fn specific_codex_failure_diagnostic_survives_later_generic_event() {

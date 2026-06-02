@@ -1,3 +1,4 @@
+use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -6,6 +7,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use sandbox::{RemoteExecResult, SandboxControl, SandboxControlError};
 
+use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::client::send_exec;
 use super::protocol::{ExecRequest, ExecResponse};
 use super::resolver::resolve_control_socket;
@@ -33,7 +35,7 @@ impl SandboxControl for FirecrackerControl {
 
         let sock_path = resolve_control_socket(sandbox_id)?;
 
-        let timeout_secs = u32::try_from(timeout.as_secs()).unwrap_or(u32::MAX);
+        let timeout_secs = request_timeout_secs(timeout);
         let request = ExecRequest {
             command: command.to_owned(),
             timeout_secs,
@@ -41,11 +43,14 @@ impl SandboxControl for FirecrackerControl {
         };
 
         // Add 5 seconds for control socket overhead beyond the command timeout.
-        let control_timeout = timeout + Duration::from_secs(5);
-        let response = send_exec(&sock_path, &request, control_timeout)
+        let response = send_exec(&sock_path, &request, control_timeout(timeout_secs))
             .await
             .map_err(|e| {
-                SandboxControlError::Connection(format!("failed to connect to sandbox: {e}"))
+                if e.kind() == io::ErrorKind::InvalidInput {
+                    SandboxControlError::Io(e)
+                } else {
+                    SandboxControlError::Connection(format!("failed to connect to sandbox: {e}"))
+                }
             })?;
 
         match response {
@@ -79,6 +84,16 @@ impl SandboxControl for FirecrackerControl {
     }
 }
 
+fn request_timeout_secs(timeout: Duration) -> u32 {
+    u32::try_from(timeout.as_secs()).unwrap_or(u32::MAX)
+}
+
+fn control_timeout(timeout_secs: u32) -> Duration {
+    // Match control server's timeout_secs -> saturated timeout_ms conversion.
+    let timeout_ms = timeout_secs.saturating_mul(1000);
+    Duration::from_millis(u64::from(timeout_ms) + CONTROL_SOCKET_OVERHEAD_MS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +115,24 @@ mod tests {
         let control = FirecrackerControl;
         let dir = control.runtime_dir("test-id");
         assert!(dir.ends_with("test-id"));
+    }
+
+    #[test]
+    fn normal_timeout_uses_server_wait_budget() {
+        let timeout_secs = request_timeout_secs(Duration::from_secs(5));
+
+        assert_eq!(timeout_secs, 5);
+        assert_eq!(control_timeout(timeout_secs), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn oversized_timeout_clamps_to_server_wait_budget() {
+        let timeout_secs = request_timeout_secs(Duration::MAX);
+
+        assert_eq!(timeout_secs, u32::MAX);
+        assert_eq!(
+            control_timeout(timeout_secs),
+            Duration::from_millis(u64::from(u32::MAX) + CONTROL_SOCKET_OVERHEAD_MS)
+        );
     }
 }

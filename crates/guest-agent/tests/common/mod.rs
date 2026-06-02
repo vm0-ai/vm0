@@ -43,6 +43,46 @@ pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
 
+/// Integration tests call `execute_cli` directly, bypassing the runner-side
+/// workspace-drive mount. Create the canonical mountpoint once at the host-test
+/// boundary so tests exercise the same cwd contract as production.
+pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
+    let path = Path::new(guest_agent::paths::CANONICAL_WORKING_DIR);
+    if path.is_dir() {
+        return Ok(());
+    }
+
+    match std::fs::create_dir_all(path) {
+        Ok(()) => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {}
+        Err(e) => {
+            return Err(format!(
+                "create canonical workspace {}: {e}",
+                path.display()
+            ));
+        }
+    }
+
+    let status = std::process::Command::new("sudo")
+        .args(["-n", "mkdir", "-p"])
+        .arg(path)
+        .status()
+        .map_err(|e| format!("invoke sudo mkdir for {}: {e}", path.display()))?;
+    if !status.success() {
+        return Err(format!(
+            "sudo mkdir failed for canonical workspace {} with status {status}",
+            path.display()
+        ));
+    }
+    if !path.is_dir() {
+        return Err(format!(
+            "canonical workspace was not created as a directory: {}",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
 /// Build the mock binary (idempotent when up to date) and resolve its
 /// filesystem path.
 ///
@@ -176,6 +216,7 @@ pub unsafe fn setup_env(
         std::env::set_var("HOME", workdir);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
+    ensure_canonical_workspace_for_test()?;
     std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
     Ok(())
 }

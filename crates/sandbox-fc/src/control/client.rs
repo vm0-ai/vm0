@@ -13,12 +13,15 @@ use super::protocol::{ExecRequest, ExecResponse, read_frame, write_frame};
 /// The returned [`ExecResponse::Success`] still contains base64-encoded stdout
 /// and stderr. Use `FirecrackerControl::exec_remote` when the caller wants
 /// decoded byte buffers.
+///
+/// Returns [`io::ErrorKind::InvalidInput`] when `timeout` cannot be represented
+/// as a Tokio deadline.
 pub async fn send_exec(
     sock_path: &Path,
     request: &ExecRequest,
     timeout: Duration,
 ) -> io::Result<ExecResponse> {
-    let deadline = tokio::time::Instant::now() + timeout;
+    let deadline = deadline_after(timeout)?;
 
     let mut stream = tokio::time::timeout_at(deadline, UnixStream::connect(sock_path))
         .await
@@ -39,6 +42,12 @@ pub async fn send_exec(
     .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "request timed out"))?
 }
 
+fn deadline_after(timeout: Duration) -> io::Result<tokio::time::Instant> {
+    tokio::time::Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "request timeout overflowed"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,6 +66,22 @@ mod tests {
         let result = send_exec(&sock_path, &request, Duration::from_millis(100)).await;
         let error = result.unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn send_exec_oversized_timeout_returns_invalid_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+
+        let request = ExecRequest {
+            command: "echo test".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+
+        let result = send_exec(&sock_path, &request, Duration::MAX).await;
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[tokio::test(start_paused = true)]

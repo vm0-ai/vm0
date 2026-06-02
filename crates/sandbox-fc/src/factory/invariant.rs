@@ -81,7 +81,7 @@ impl InvariantConfig {
                 stats_polling_interval_s: 5,
             },
             prewarm_script: PREWARM_SCRIPT,
-            drive_layout: "nbd-cow-v1",
+            drive_layout: "nbd-cow-workspace-v1",
         }
     }
 }

@@ -386,6 +386,7 @@ define_per_run_logs! {
     network_log => ("network-", ".jsonl"),
     proxy_log => ("proxy-", ".jsonl"),
     system_log => ("system-", ".log"),
+    system_stream_log => ("system-stream-", ".log"),
     metrics_log => ("metrics-", ".jsonl"),
     sandbox_ops_log => ("sandbox-ops-", ".jsonl"),
 }
@@ -606,6 +607,10 @@ mod tests {
                 PathBuf::from(format!("/test/logs/system-{id}.log")),
             ),
             (
+                lp.system_stream_log(id),
+                PathBuf::from(format!("/test/logs/system-stream-{id}.log")),
+            ),
+            (
                 lp.metrics_log(id),
                 PathBuf::from(format!("/test/logs/metrics-{id}.jsonl")),
             ),
@@ -635,6 +640,9 @@ mod tests {
             "system-550e8400-e29b-41d4-a716-446655440000.log"
         ));
         assert!(LogPaths::is_gc_eligible_log(
+            "system-stream-550e8400-e29b-41d4-a716-446655440000.log"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
             "metrics-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
         assert!(LogPaths::is_gc_eligible_log(
@@ -646,6 +654,9 @@ mod tests {
         assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
         assert!(LogPaths::is_gc_eligible_log(
             ".system-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-101-7-1"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
+            ".system-stream-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-101-7-1"
         ));
         assert!(LogPaths::is_gc_eligible_log(
             ".metrics-550e8400-e29b-41d4-a716-446655440000.jsonl.vm0tmp-101-7-2"
@@ -662,6 +673,7 @@ mod tests {
         let paths = [
             lp.network_log(id),
             lp.system_log(id),
+            lp.system_stream_log(id),
             lp.metrics_log(id),
             lp.sandbox_ops_log(id),
             lp.proxy_log(id),

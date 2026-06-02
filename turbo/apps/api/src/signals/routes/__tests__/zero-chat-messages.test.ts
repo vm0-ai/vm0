@@ -1655,6 +1655,187 @@ describe("POST /api/zero/chat/messages", () => {
     expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
   });
 
+  it("rejects unsupported model-first selections before creating a thread", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const clientThreadId = randomUUID();
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "do not persist invalid model",
+          clientThreadId,
+          modelSelection: {
+            modelProviderId: "00000000-0000-4000-8000-000000000000",
+            selectedModel: "codex",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    const [thread] = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, clientThreadId))
+      .limit(1);
+    expect(thread).toBeUndefined();
+    const [preference] = await writeDb
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      )
+      .limit(1);
+    expect(preference).toBeUndefined();
+  });
+
+  it("rejects removed model-first selections from web chat", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+
+    for (const selectedModel of [
+      "claude-haiku-4-5",
+      "anthropic/claude-haiku-4.5",
+    ]) {
+      const response = await accept(
+        client().send({
+          headers: authHeaders(),
+          body: {
+            agentId: fixture.agentId,
+            prompt: `removed ${selectedModel}`,
+            modelSelection: {
+              modelProviderId: "00000000-0000-4000-8000-000000000000",
+              selectedModel,
+            },
+          },
+        }),
+        [400],
+      );
+
+      expect(response.body.error).toMatchObject({
+        code: "BAD_REQUEST",
+        message: "modelSelection.selectedModel: Invalid model selection",
+      });
+    }
+
+    const threads = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.userId, fixture.userId));
+    expect(threads).toStrictEqual([]);
+
+    const messages = await writeDb
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        inArray(chatMessages.content, [
+          "removed claude-haiku-4-5",
+          "removed anthropic/claude-haiku-4.5",
+        ]),
+      );
+    expect(messages).toStrictEqual([]);
+
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId));
+    expect(runs).toStrictEqual([]);
+
+    const [preference] = await writeDb
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      )
+      .limit(1);
+    expect(preference).toBeUndefined();
+  });
+
+  it("rejects invalid stored model-first thread pins before run creation", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const threadId = randomUUID();
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: null,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: "codex",
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "continue invalid stored model thread",
+          threadId,
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "BAD_REQUEST",
+      message: "Invalid model selection",
+    });
+    const [run] = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId))
+      .limit(1);
+    expect(run).toBeUndefined();
+  });
+
+  it("rejects unsupported selected models for explicit VM0 provider pins", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      type: "vm0",
+    });
+    const clientThreadId = randomUUID();
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "do not run invalid vm0 provider model",
+          clientThreadId,
+          modelSelection: {
+            modelProviderId: providerId,
+            selectedModel: "codex",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "BAD_REQUEST",
+      message: "Invalid model selection",
+    });
+    const [thread] = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, clientThreadId))
+      .limit(1);
+    expect(thread).toBeUndefined();
+  });
+
   it("passes explicit provider selection into the runner job context", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
@@ -1666,7 +1847,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
     const deepseekProviderId = await seedModelProvider(
       fixture,
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       {
         type: "deepseek-api-key",
         isDefault: false,
@@ -1724,7 +1905,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
     const deepseekProviderId = await seedModelProvider(
       fixture,
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       {
         type: "deepseek-api-key",
         isDefault: false,
@@ -1765,22 +1946,18 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await removeComposeFrameworkApiKey(fixture);
-    await seedModelProvider(fixture, "deepseek-v4-flash", {
+    await seedModelProvider(fixture, "deepseek-v4-pro", {
       type: "deepseek-api-key",
       userId: fixture.userId,
       isDefault: true,
       secretValue: "member-deepseek-key",
     });
-    const orgProviderId = await seedModelProvider(
-      fixture,
-      "deepseek-v4-flash",
-      {
-        type: "deepseek-api-key",
-        userId: ORG_SENTINEL_USER_ID,
-        isDefault: true,
-        secretValue: "org-deepseek-key",
-      },
-    );
+    const orgProviderId = await seedModelProvider(fixture, "deepseek-v4-pro", {
+      type: "deepseek-api-key",
+      userId: ORG_SENTINEL_USER_ID,
+      isDefault: true,
+      secretValue: "org-deepseek-key",
+    });
     await writeDb.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
       model: "deepseek-v4-pro",

@@ -64,13 +64,10 @@ describe("model-first canonical catalog", () => {
       "claude-opus-4-7",
       "claude-opus-4-6",
       "claude-sonnet-4-6",
-      "claude-haiku-4-5",
       "deepseek-v4-pro",
-      "deepseek-v4-flash",
       "kimi-k2.6",
       "kimi-k2.5",
       "MiniMax-M3",
-      "MiniMax-M2.7",
       "glm-5.1",
       "gpt-5.5",
       "gpt-5.4",
@@ -81,6 +78,15 @@ describe("model-first canonical catalog", () => {
   it("validates canonical models and credential scopes", () => {
     expect(supportedRunModelSchema.safeParse("gpt-5.5").success).toBe(true);
     expect(supportedRunModelSchema.safeParse("custom-model").success).toBe(
+      false,
+    );
+    expect(supportedRunModelSchema.safeParse("claude-haiku-4-5").success).toBe(
+      false,
+    );
+    expect(supportedRunModelSchema.safeParse("deepseek-v4-flash").success).toBe(
+      false,
+    );
+    expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
       false,
     );
     expect(modelProviderCredentialScopeSchema.safeParse("org").success).toBe(
@@ -105,7 +111,16 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("z-ai/glm-5.1")).toBe("glm-5.1");
     expect(normalizeRunModelId("custom/model")).toBe("custom/model");
     expect(isSupportedRunModel("glm-5.1")).toBe(true);
-    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
+    expect(normalizeRunModelId("deepseek/deepseek-v4-flash")).toBe(
+      "deepseek/deepseek-v4-flash",
+    );
+    expect(normalizeRunModelId("anthropic/claude-haiku-4.5")).toBe(
+      "anthropic/claude-haiku-4.5",
+    );
+    expect(normalizeRunModelId("minimax/minimax-m2.7")).toBe(
+      "minimax/minimax-m2.7",
+    );
+    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(false);
   });
 
   it("returns compatible provider types for canonical models", () => {
@@ -126,11 +141,8 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
       "openrouter-api-key",
     );
-    expect(getProvidersForModel("minimax/minimax-m2.7")).toEqual([
-      "vm0",
-      "minimax-api-key",
-      "openrouter-api-key",
-    ]);
+    expect(getProvidersForModel("anthropic/claude-haiku-4.5")).toEqual([]);
+    expect(getProvidersForModel("minimax/minimax-m2.7")).toEqual([]);
     expect(getProvidersForModel("MiniMax-M3")).toEqual([
       "vm0",
       "minimax-api-key",
@@ -160,9 +172,6 @@ describe("model-first canonical catalog", () => {
     );
     expect(getProviderRuntimeModel("openrouter-api-key", "kimi-k2.6")).toBe(
       "moonshotai/kimi-k2.6",
-    );
-    expect(getProviderRuntimeModel("openrouter-api-key", "MiniMax-M2.7")).toBe(
-      "minimax/minimax-m2.7",
     );
     expect(getProviderRuntimeModel("minimax-api-key", "MiniMax-M3")).toBe(
       "MiniMax-M3",
@@ -336,12 +345,13 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M3");
-    expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
-    expect(models).toContain("deepseek-v4-flash");
     expect(models).toContain("gpt-5.5");
     expect(models).toContain("gpt-5.4-mini");
+    expect(models).not.toContain("claude-haiku-4-5");
+    expect(models).not.toContain("MiniMax-M2.7");
+    expect(models).not.toContain("deepseek-v4-flash");
   });
 });
 
@@ -352,7 +362,6 @@ describe("normalizeVm0ModelId", () => {
     ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
     ["z-ai/glm-5.1", "glm-5.1"],
     ["moonshotai/kimi-k2.6", "kimi-k2.6"],
-    ["minimax/minimax-m2.7", "MiniMax-M2.7"],
   ])("normalizes %s to %s", (model, expected) => {
     expect(normalizeVm0ModelId(model)).toBe(expected);
   });
@@ -379,8 +388,8 @@ describe("model image input support", () => {
   it.each([
     "glm-5.1",
     "deepseek-v4-pro",
-    "deepseek/deepseek-v4-flash",
-    "MiniMax-M2.7",
+    "deepseek/deepseek-v4-pro",
+    "MiniMax-M2.1",
   ])("marks %s as not image-input capable", (model) => {
     expect(modelSupportsImageInput(model)).toBe(false);
     expect(getModelImageInputSupport(model)).toBe("unsupported");
@@ -393,13 +402,34 @@ describe("model image input support", () => {
 });
 
 describe("minimax-api-key provider", () => {
-  it("uses M3 by default while keeping M2 models available", () => {
+  it("uses M3 by default while keeping supported M2 models available", () => {
     expect(getModels("minimax-api-key")).toEqual([
       "MiniMax-M3",
-      "MiniMax-M2.7",
       "MiniMax-M2.1",
     ]);
     expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
+  });
+});
+
+describe("removed poor agent backend models", () => {
+  it("removes old provider aliases from static provider model lists", () => {
+    expect(getModels("openrouter-api-key")).not.toContain(
+      "anthropic/claude-haiku-4.5",
+    );
+    expect(getModels("openrouter-api-key")).not.toContain(
+      "deepseek/deepseek-v4-flash",
+    );
+    expect(getModels("openrouter-api-key")).not.toContain(
+      "minimax/minimax-m2.7",
+    );
+    expect(getModels("vercel-ai-gateway")).not.toContain(
+      "anthropic/claude-haiku-4.5",
+    );
+  });
+
+  it("uses DeepSeek Pro as the direct DeepSeek default", () => {
+    expect(getModels("deepseek-api-key")).toEqual(["deepseek-v4-pro"]);
+    expect(getDefaultModel("deepseek-api-key")).toBe("deepseek-v4-pro");
   });
 });
 

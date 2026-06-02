@@ -28,7 +28,6 @@ export {
   ApiError,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   createErrorResponse,
-  formatChatgptCodexUsageLimitError,
   formatRunErrorForExternalSurface,
   isActionableRunError,
   isGenericRunErrorForDisplay,
@@ -708,7 +707,7 @@ export {
   type ConnectorEnvBindings,
 } from "@vm0/connectors/connectors";
 export {
-  getConnectorSecretNames,
+  getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
@@ -883,12 +882,10 @@ export {
 export {
   zeroUserPermissionGrantsContract,
   userPermissionGrantActionSchema,
-  userPermissionGrantTtlSecondsSchema,
   userPermissionGrantResponseSchema,
   listUserPermissionGrantsQuerySchema,
   upsertUserPermissionGrantRequestSchema,
   type UserPermissionGrantAction,
-  type UserPermissionGrantTtlSeconds,
   type UserPermissionGrantResponse,
   type ListUserPermissionGrantsQuery,
   type UpsertUserPermissionGrantRequest,

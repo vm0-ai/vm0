@@ -51,6 +51,13 @@ _STREAM_ENDPOINTS = frozenset(
     }
 )
 
+_COUNT_ENDPOINTS = frozenset(
+    {
+        "/2/tweets/counts/recent",
+        "/2/tweets/counts/all",
+    }
+)
+
 
 def _is_stream_path(path: str) -> bool:
     """Return True when *path* is one of the X v2 NDJSON streaming endpoints.
@@ -59,6 +66,10 @@ def _is_stream_path(path: str) -> bool:
     must NOT match because it's a regular JSON request/response, not a stream.
     """
     return path in _STREAM_ENDPOINTS
+
+
+def _is_count_path(path: str) -> bool:
+    return path in _COUNT_ENDPOINTS
 
 
 # Single NDJSON line cap — matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT`` in
@@ -73,6 +84,10 @@ _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
     ("meta", "total_tweet_count"): ScalarField("int", max_bytes=64),
 }
+
+
+def _as_non_bool_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
@@ -101,13 +116,13 @@ def _parse_x_json_response_fields(extracted: JsonExtractionResult) -> dict:
     if includes:
         result["response_includes"] = dict(includes)
 
-    rcs = [
-        value
-        for path in (("meta", "result_count"), ("meta", "total_tweet_count"))
-        if isinstance((value := extracted.values.get(path)), int) and not isinstance(value, bool)
-    ]
-    if rcs:
-        result["response_result_count"] = max(rcs)
+    result_count = _as_non_bool_int(extracted.values.get(("meta", "result_count")))
+    if result_count is not None:
+        result["response_result_count"] = result_count
+
+    total_tweet_count = _as_non_bool_int(extracted.values.get(("meta", "total_tweet_count")))
+    if total_tweet_count is not None:
+        result["response_total_tweet_count"] = total_tweet_count
 
     return result
 
@@ -313,6 +328,9 @@ def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
         as an upper-bound fallback when the response body cannot be parsed.
       - ``is_stream``: bool — True when the request path is one of the X v2
         NDJSON streaming endpoints (see :data:`_STREAM_ENDPOINTS`).
+      - ``is_count_endpoint``: bool — True when the request path is an X Post
+        Counts endpoint whose ``data`` array contains time buckets instead of
+        returned posts.
 
     Reads from ``flow.metadata[metadata_keys.ORIGINAL_URL]`` (set by the request handler
     via ``url_utils.get_original_url``) rather than ``pretty_url`` to stay
@@ -334,6 +352,7 @@ def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
         "has_expansions": "expansions" in qs,
         "max_results": max_results,
         "is_stream": _is_stream_path(parsed.path),
+        "is_count_endpoint": _is_count_path(parsed.path),
     }
 
 
@@ -346,12 +365,11 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
       - ``response_data_count``: int — ``len(data)`` for a list payload,
         ``1`` for a single object payload.
       - ``response_includes``: dict[str, int] — counts per ``includes.<key>``.
-      - ``response_result_count``: int — total matched count.  Sourced
-        from ``meta.result_count`` (search / paginated endpoints) or
-        ``meta.total_tweet_count`` (``/2/tweets/counts/*``, where ``data``
-        carries time buckets, not tweets, and the real count lives in
-        ``meta``).  Both fields are alternative spellings of the same
-        billing dimension, so we collapse them into one log key.
+      - ``response_result_count``: int — ``meta.result_count`` from search
+        / paginated endpoints.
+      - ``response_total_tweet_count``: int — ``meta.total_tweet_count``
+        from ``/2/tweets/counts/*`` endpoints, where ``data`` carries time
+        buckets, not tweets.
 
     For X NDJSON streaming endpoints, the responseheaders hook registers an
     incremental parser that populates ``flow.metadata[metadata_keys.X_NDJSON_STATE]``
@@ -437,11 +455,13 @@ def _compute_billable_counts(
     data are billed"), so the primary count must reflect what was
     actually in the response, not what was requested.
 
-    - **Body parsed**: ``max(data_count, result_count)`` — trust the
-      actual response.  Soft errors (HTTP 200 + ``errors`` array, no
-      ``data``) and zero-result searches yield primary 0, which is
-      skipped from the returned dict so no empty ``usage_event`` row
-      is created.
+    - **Body parsed, count endpoint**: use ``meta.total_tweet_count``.
+      ``data`` is a time-bucket array for count endpoints, not returned
+      posts.
+    - **Body parsed, other endpoints**: ``max(data_count, result_count)`` —
+      trust the actual response.  Soft errors (HTTP 200 + ``errors`` array,
+      no ``data``) and zero-result searches yield primary 0, which is skipped
+      from the returned dict so no empty ``usage_event`` row is created.
     - **Body NOT parsed**: fall back to request-side hints
       ``max(ids_count, max_results, 1)``.  When the URL also carries
       no hints we emit no ``usage_event`` row; :func:`report_usage`
@@ -458,21 +478,41 @@ def _compute_billable_counts(
     result = resp_meta.get("response_result_count") or 0
 
     if resp_meta.get("body_parsed"):
-        # Body was parsed — trust actual response counts.
-        # Soft errors (no data field) and empty searches correctly yield 0.
-        primary = max(data, result)
+        if req_meta.get("is_count_endpoint"):
+            total = _as_non_bool_int(resp_meta.get("response_total_tweet_count"))
+            if total is None:
+                log_warn(
+                    "X count endpoint response missing total_tweet_count; skipping primary billing",
+                    {
+                        "category": endpoint_bucket,
+                        "response_data_count": data,
+                    },
+                )
+                primary = 0
+            else:
+                primary = total
+        else:
+            # Body was parsed — trust actual response counts.
+            # Soft errors (no data field) and empty searches correctly yield 0.
+            primary = max(data, result)
     else:
-        # Body couldn't be parsed — fall back to request-side hints.
-        # With no hints at all we leave primary at 0 and let the caller
-        # log this loss of visibility; blind-guessing a quantity risks
-        # over-charging by a large factor on small real responses.
-        ids = req_meta.get("request_ids_count") or 0
-        max_r = req_meta.get("max_results") or 0
-        primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
+        if req_meta.get("is_count_endpoint"):
+            primary = 0
+        else:
+            # Body couldn't be parsed — fall back to request-side hints.
+            # With no hints at all we leave primary at 0 and let the caller
+            # log this loss of visibility; blind-guessing a quantity risks
+            # over-charging by a large factor on small real responses.
+            ids = req_meta.get("request_ids_count") or 0
+            max_r = req_meta.get("max_results") or 0
+            primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
 
     counts: dict[str, int] = {}
     if primary > 0:
         counts[endpoint_bucket] = primary
+
+    if req_meta.get("is_count_endpoint"):
+        return counts
 
     includes = resp_meta.get("response_includes") or {}
     for key, n in includes.items():
@@ -571,17 +611,19 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         flow.request.method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
     )
 
-    # Loud-but-zero billing path: GET with an unparseable response body
-    # AND no URL-side count hints.  We deliberately emit nothing rather
-    # than blind-guess a quantity — the error log carries enough context
-    # for ops to audit and, if needed, back-charge manually.  Use
-    # ``is None`` so a legitimate ``?max_results=0`` (no-op query) is
-    # distinguished from the absent-field case.
+    # Loud-but-zero billing path: GET with an unparseable response body and
+    # no reliable count source.  We deliberately emit nothing rather than
+    # blind-guess a quantity — the error log carries enough context for ops
+    # to audit and, if needed, back-charge manually.  Use ``is None`` so a
+    # legitimate ``?max_results=0`` (no-op query) is distinguished from the
+    # absent-field case.
+    missing_count_visibility = bool(req_meta.get("is_count_endpoint")) or (
+        req_meta.get("request_ids_count") is None and req_meta.get("max_results") is None
+    )
     if (
         flow.request.method == "GET"
         and not resp_meta.get("body_parsed")
-        and req_meta.get("request_ids_count") is None
-        and req_meta.get("max_results") is None
+        and missing_count_visibility
     ):
         log_extra: dict[str, object] = {
             "body_truncated": bool(resp_meta.get("body_truncated")),
@@ -592,7 +634,11 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         log_proxy_entry(
             proxy_log_path,
             "error",
-            "X response unparseable and request carries no count hints — skipping billing",
+            (
+                "X count endpoint response unparseable — skipping billing"
+                if req_meta.get("is_count_endpoint")
+                else "X response unparseable and request carries no count hints — skipping billing"
+            ),
             **log_context,
             **log_extra,
         )

@@ -33,8 +33,10 @@ export const googleAds = {
           tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+          platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
           envBindings: {
             GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+            GOOGLE_ADS_DEVELOPER_TOKEN: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
           },
         },
         revoke: { kind: "none" },

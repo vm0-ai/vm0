@@ -6,8 +6,10 @@ pub struct ProfileDef {
     pub vcpu: u32,
     /// Memory in MiB for VMs using this profile.
     pub memory_mb: u32,
-    /// Disk size in MiB for VMs using this profile.
-    pub disk_mb: u32,
+    /// Rootfs disk size in MiB for VMs using this profile.
+    pub rootfs_disk_mb: u32,
+    /// Workspace disk size in MiB for VMs using this profile.
+    pub workspace_disk_mb: u32,
 }
 
 pub const DEFAULT_PROFILE: &str = "vm0/default";
@@ -17,7 +19,8 @@ pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     static DEFAULT: ProfileDef = ProfileDef {
         vcpu: 2,
         memory_mb: 4096,
-        disk_mb: 16384,
+        rootfs_disk_mb: 8192,
+        workspace_disk_mb: 16384,
     };
 
     match name {
@@ -75,7 +78,8 @@ mod tests {
         let def = get("vm0/default").unwrap();
         assert_eq!(def.vcpu, 2);
         assert_eq!(def.memory_mb, 4096);
-        assert_eq!(def.disk_mb, 16384);
+        assert_eq!(def.rootfs_disk_mb, 8192);
+        assert_eq!(def.workspace_disk_mb, 16384);
     }
 
     #[test]

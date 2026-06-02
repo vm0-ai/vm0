@@ -14,12 +14,6 @@ import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
-const PLATFORM_INJECTED_SECRET_NAMES: Partial<
-  Record<string, readonly string[]>
-> = {
-  "google-ads": ["GOOGLE_ADS_DEVELOPER_TOKEN"],
-};
-
 interface ConnectorAuthSources {
   readonly secretBackedKeys: ReadonlySet<string>;
   readonly variableBackedKeys: ReadonlySet<string>;
@@ -122,10 +116,6 @@ function connectorAuthSources(
     });
   }
 
-  for (const name of PLATFORM_INJECTED_SECRET_NAMES[connectorType] ?? []) {
-    secretBackedKeys.add(name);
-  }
-
   return { secretBackedKeys, variableBackedKeys };
 }
 
@@ -147,10 +137,6 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
     manualFields?.secrets.forEach((name) => {
       placeholderKeys.add(name);
     });
-  }
-
-  for (const name of PLATFORM_INJECTED_SECRET_NAMES[connectorType] ?? []) {
-    placeholderKeys.add(name);
   }
 
   return placeholderKeys;

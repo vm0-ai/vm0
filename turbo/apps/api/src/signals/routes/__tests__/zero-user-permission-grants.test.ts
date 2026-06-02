@@ -7,16 +7,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewalls";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { writeDb$ } from "../../external/db";
-import {
-  foldUserPermissionGrantsToFirewallPolicies,
-  loadActiveUserPermissionGrants,
-} from "../../services/zero-user-permission-grants.service";
+import { loadActiveUserPermissionGrants } from "../../services/zero-user-permission-grants.service";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -179,7 +177,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -204,7 +201,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -217,7 +213,7 @@ describe("zero user permission grants", () => {
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
-    expect(upserted.body.expiresAt).not.toBeNull();
+    expect(upserted.body.expiresAt).toBeNull();
 
     const db = store.set(writeDb$);
     await db.insert(userPermissionGrants).values({
@@ -285,7 +281,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -301,7 +296,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -316,7 +310,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -358,7 +351,6 @@ describe("zero user permission grants", () => {
           connectorRef: "not-a-real-connector",
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -373,7 +365,6 @@ describe("zero user permission grants", () => {
           connectorRef: "not-a-real-connector",
           permission: UNKNOWN_PERMISSION_GRANT,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -390,7 +381,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: "not-a-real-permission",
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -405,7 +395,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: UNKNOWN_PERMISSION_GRANT,
           action: "deny",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -429,29 +418,9 @@ describe("zero user permission grants", () => {
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
         action: "ask",
-        ttlSeconds: 300,
       }),
     });
     expect(askResponse.status).toBe(400);
-
-    const unsupportedTtlResponse = await app.request(
-      "/api/zero/user-permission-grants",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-          ttlSeconds: 301,
-        }),
-      },
-    );
-    expect(unsupportedTtlResponse.status).toBe(400);
   });
 
   it("filters expired grants and folds active grants into legacy policies", async () => {
@@ -530,16 +499,16 @@ describe("zero user permission grants", () => {
       }),
     ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION]);
 
-    expect(foldUserPermissionGrantsToFirewallPolicies(active)).toStrictEqual({
+    expect(permissionGrantsToFirewallPolicies(active)).toStrictEqual({
       slack: {
         policies: { [SLACK_WRITE_PERMISSION]: "deny" },
         unknownPolicy: "deny",
       },
     });
-    expect(foldUserPermissionGrantsToFirewallPolicies([])).toBeNull();
+    expect(permissionGrantsToFirewallPolicies([])).toBeNull();
   });
 
-  it("updates action, expiresAt, and updatedAt without changing createdAt", async () => {
+  it("updates action and updatedAt without changing createdAt", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     await enableUserPermissionGrants(fixture.orgId, fixture.userId);
@@ -553,7 +522,6 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "allow",
-          ttlSeconds: 300,
         },
         headers: AUTH_HEADERS,
       }),
@@ -587,13 +555,13 @@ describe("zero user permission grants", () => {
           connectorRef: SLACK_CONNECTOR,
           permission: SLACK_READ_PERMISSION,
           action: "deny",
-          ttlSeconds: 900,
         },
         headers: AUTH_HEADERS,
       }),
       [200],
     );
     expect(second.body.action).toBe("deny");
+    expect(second.body.expiresAt).toBeNull();
 
     const stored = await readStoredGrant({
       orgId: fixture.orgId,
@@ -605,8 +573,6 @@ describe("zero user permission grants", () => {
     expect(stored?.action).toBe("deny");
     expect(stored?.createdAt.getTime()).toBe(oldTimestamp.getTime());
     expect(stored?.updatedAt.getTime()).toBeGreaterThan(oldTimestamp.getTime());
-    expect(stored?.expiresAt?.getTime()).toBeGreaterThan(
-      oldExpiresAt.getTime(),
-    );
+    expect(stored?.expiresAt).toBeNull();
   });
 });

@@ -51,16 +51,18 @@ export function DesktopAuthStartClient() {
 
   return (
     <AuthLayout>
-      <SignIn
-        appearance={getClerkAppearance(theme)}
-        fallbackRedirectUrl={callbackPath}
-        forceRedirectUrl={callbackPath}
-        oauthFlow="redirect"
-        path="/desktop-auth/start"
-        routing="path"
-        signUpFallbackRedirectUrl={callbackPath}
-        signUpForceRedirectUrl={callbackPath}
-      />
+      <div className="relative z-10 flex w-full max-w-md flex-col gap-3">
+        <SignIn
+          appearance={getClerkAppearance(theme)}
+          fallbackRedirectUrl={callbackPath}
+          forceRedirectUrl={callbackPath}
+          oauthFlow="redirect"
+          path="/desktop-auth/start"
+          routing="path"
+          signUpFallbackRedirectUrl={callbackPath}
+          signUpForceRedirectUrl={callbackPath}
+        />
+      </div>
     </AuthLayout>
   );
 }

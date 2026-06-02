@@ -231,7 +231,7 @@ describe("GET /api/zero/connectors/search", () => {
       return c.id === "test-oauth-device";
     });
     expect(connector).toBeDefined();
-    expect(connector?.authMethods).toStrictEqual(["oauth"]);
+    expect(connector?.authMethods).toStrictEqual(["oauth", "api"]);
   });
 
   it("shows Base44 as a connector without a feature switch", async () => {

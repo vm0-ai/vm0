@@ -129,10 +129,18 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Cannot continue session",
   "Invalid signature in thinking block",
   "Run cancelled",
+  // Upstream model usage/quota limits are shown verbatim (the CLI already
+  // emits clean, user-friendly copy with reset time and upgrade links).
+  // Codex: "You've hit your usage limit …"
   "usage limit",
   "usage_limit",
   "usage-limit",
   "UsageLimit",
+  // Claude Code subscription limits:
+  //   "You've hit your session limit · resets …"
+  //   "You've hit your weekly limit · resets …"
+  "session limit",
+  "weekly limit",
 ] as const;
 
 export function isActionableRunError(errorMessage: string): boolean {
@@ -144,10 +152,7 @@ export function isActionableRunError(errorMessage: string): boolean {
 
 export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
   const normalizedErrorMessage = errorMessage.trim() || "Run failed";
-  return (
-    !formatChatgptCodexUsageLimitError(normalizedErrorMessage) &&
-    !isActionableRunError(normalizedErrorMessage)
-  );
+  return !isActionableRunError(normalizedErrorMessage);
 }
 
 /**
@@ -171,11 +176,6 @@ export function formatRunErrorForExternalSurface(params: {
       };
 }): string {
   const errorMessage = params.message.trim() || "Run failed";
-  const chatgptCodexUsageLimitMessage =
-    formatChatgptCodexUsageLimitError(errorMessage);
-  if (chatgptCodexUsageLimitMessage) {
-    return chatgptCodexUsageLimitMessage;
-  }
 
   if (
     params.code === "INSUFFICIENT_CREDITS" &&
@@ -193,49 +193,4 @@ export function formatRunErrorForExternalSurface(params: {
   return isGenericRunErrorForDisplay(errorMessage)
     ? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
     : errorMessage;
-}
-
-const CHATGPT_CODEX_USAGE_DETAILS_URL =
-  "https://chatgpt.com/codex/settings/usage";
-
-function isChatgptCodexUsageLimitError(errorMessage: string): boolean {
-  const normalized = errorMessage.toLowerCase();
-  return (
-    normalized.includes("usage limit") &&
-    (normalized.includes("chatgpt.com/codex") ||
-      normalized.includes("codex/settings/usage") ||
-      normalized.includes("chatgpt codex"))
-  );
-}
-
-function extractChatgptCodexRetryPhrase(errorMessage: string): string | null {
-  const match = /\btry again\s+(at|after|in)\s+([^.;\n\r]+)/i.exec(
-    errorMessage,
-  );
-  if (!match) {
-    return null;
-  }
-
-  const preposition = match[1];
-  const retryAt = match[2]?.trim();
-  if (!preposition || !retryAt) {
-    return null;
-  }
-  if (retryAt.length > 80 || !/^[a-z0-9\s:,+/-]+$/i.test(retryAt)) {
-    return null;
-  }
-
-  return `${preposition.toLowerCase()} ${retryAt}`;
-}
-
-export function formatChatgptCodexUsageLimitError(
-  errorMessage: string,
-): string | null {
-  if (!isChatgptCodexUsageLimitError(errorMessage)) {
-    return null;
-  }
-
-  const retryPhrase = extractChatgptCodexRetryPhrase(errorMessage);
-  const retrySentence = retryPhrase ? ` This limit resets ${retryPhrase}.` : "";
-  return `ChatGPT Codex usage limit reached.${retrySentence} View details in [ChatGPT Codex usage settings](${CHATGPT_CODEX_USAGE_DETAILS_URL}), or switch to another model to continue now.`;
 }

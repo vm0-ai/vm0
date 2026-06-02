@@ -216,6 +216,16 @@ class TestMatchPathPrefix:
         result = matching.match_path_prefix(["v1", "acme", "projects", "123"], ["v1", "{org}"])
         assert result == ({"org": "acme"}, 2)
 
+    def test_compiled_full_match_rejects_extra_segments_that_prefix_consumes(self):
+        pattern = matching.compile_path_pattern("/v1/{org}")
+        assert pattern is not None
+
+        assert matching.match_compiled_path("/v1/acme/projects", pattern) is None
+        assert matching.match_path_prefix(["v1", "acme", "projects"], ["v1", "{org}"]) == (
+            {"org": "acme"},
+            2,
+        )
+
     def test_mismatch(self):
         result = matching.match_path_prefix(["v2", "acme"], ["v1", "{org}"])
         assert result is None

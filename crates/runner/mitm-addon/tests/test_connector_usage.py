@@ -66,6 +66,21 @@ class TestXStreamPathRouting:
         assert "x_ndjson_state" not in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
+    def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
+        flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
+        flow.response.headers = header_map(
+            {"content-type": "application/json", "content-encoding": "br"}
+        )
+
+        with mitm_ctx() as log:
+            mitm_addon.responseheaders(flow)
+
+        assert callable(response_stream(flow))
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+        assert log.debug.call_count == 1
+        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
+
 
 class TestReportConnectorUsage:
     """Tests for report_connector_usage helper (issue #9504)."""
@@ -425,6 +440,128 @@ class TestReportConnectorUsage:
         assert p["category"] == "posts.read"
         assert p["quantity"] == 12567
 
+    def test_tweet_counts_zero_total_does_not_bill_buckets(self, tmp_path, real_flow):
+        """Count endpoint data arrays are time buckets, not returned posts."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 0},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 0},
+                ],
+                "meta": {"total_tweet_count": 0},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=nothing",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/2/tweets/counts/recent", "/2/tweets/counts/all"],
+    )
+    def test_tweet_counts_total_lower_than_bucket_count_bills_total(
+        self, tmp_path, real_flow, path
+    ):
+        """Both count endpoints bill total_tweet_count, not time-bucket count."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 1},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 0},
+                    {"start": "2026-04-16T00:00", "end": "2026-04-17T00:00", "tweet_count": 0},
+                ],
+                "meta": {"total_tweet_count": 1},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query="query=rare",
+            body=body,
+            rule=f"GET {path}",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 1
+
+    def test_tweet_counts_path_matching_requires_exact_endpoint(self, tmp_path, real_flow):
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+                "meta": {"total_tweet_count": 1},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent/extra",
+            body=body,
+            rule="GET /2/tweets/counts/recent/extra",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 3
+
+    def test_tweet_counts_missing_total_skips_billing_and_logs_warning(self, tmp_path, real_flow):
+        """Parsed count endpoint responses without total_tweet_count should not bill buckets."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 2},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 3},
+                ],
+                "meta": {},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=missing_total",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert any(
+            entry["level"] == "warn" and "total_tweet_count" in entry["message"]
+            for entry in entries
+        )
+
+    def test_tweet_counts_unparseable_ignores_request_hints_and_logs_error(
+        self, tmp_path, real_flow
+    ):
+        """Count endpoint request hints do not represent returned post count."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="max_results=50",
+            body=b"not json",
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert any(
+            entry["level"] == "error" and "count endpoint" in entry["message"] for entry in entries
+        )
+
     def test_handles_gzip_body(self, tmp_path, real_flow):
         """gzip-encoded response body decompresses before parsing."""
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
@@ -470,6 +607,38 @@ class TestReportConnectorUsage:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"posts.read": 1, "user.read": 1}
+
+    def test_full_response_pipeline_brotli_x_json_uses_bounded_fallback(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Brotli streaming decode is skipped, but X JSON fallback remains active."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+
+        with mitm_ctx() as log:
+            mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            body_utils.brotli.compress(b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}')
+        )
+
+        payloads = self._call_and_get_billing(flow)
+
+        by_category = {event["category"]: event["quantity"] for event in payloads}
+        assert by_category == {"posts.read": 1, "user.read": 1}
+        assert "connector_response_finish" not in flow.metadata
+        assert "x_ndjson_state" not in flow.metadata
+        assert log.debug.call_count == 1
+        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
     def test_full_response_pipeline_x_data_object_bills_single_resource(
         self, tmp_path, real_flow, mitm_ctx
@@ -834,8 +1003,8 @@ class TestReportConnectorUsage:
         assert p["category"] == "content.create"
         assert p["quantity"] == 1
 
-    def test_tweet_create_quote_or_media_stays_on_with_url_bucket(self, tmp_path, real_flow):
-        """Quote tweets and attached media both render as link previews;
+    def test_tweet_create_rendered_link_signals_stay_on_with_url_bucket(self, tmp_path, real_flow):
+        """Quote tweets, attached media, cards, and DM deep links render links;
         we stay on the expensive bucket even when the text has no URL."""
         for req_body in [
             # quote tweet
@@ -844,6 +1013,13 @@ class TestReportConnectorUsage:
             json.dumps({"text": "pic", "media": {"media_ids": ["42"]}}).encode(),
             # attached card
             json.dumps({"text": "card", "card_uri": "card://123"}).encode(),
+            # direct-message deep link
+            json.dumps(
+                {
+                    "text": "DM me for details",
+                    "direct_message_deep_link": "https://x.com/messages/compose?recipient_id=123",
+                }
+            ).encode(),
         ]:
             flow = self._make_x_flow(
                 real_flow,
@@ -858,6 +1034,29 @@ class TestReportConnectorUsage:
             flow.request.content = req_body
             p = self._call_and_get_single_billing(flow)
             assert p["category"] == "content.create_with_url"
+            assert p["quantity"] == 1
+
+    @pytest.mark.parametrize("direct_message_deep_link", ["", "   ", None, 123, {"url": "x"}])
+    def test_tweet_create_invalid_direct_message_deep_link_downgrades_to_content_create(
+        self, tmp_path, real_flow, direct_message_deep_link
+    ):
+        """Invalid DM deep-link values do not block the plain-text downgrade."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = json.dumps(
+            {"text": "DM me for details", "direct_message_deep_link": direct_message_deep_link}
+        ).encode()
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
+        assert p["quantity"] == 1
 
     def test_tweet_create_unparseable_body_stays_conservative(self, tmp_path, real_flow):
         """A malformed request body keeps billing on the max bucket so
@@ -1015,7 +1214,7 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
 
         by_cat = {p["category"]: p["quantity"] for p in payloads}
-        assert by_cat == {"posts.read": 3, "user.read": 1}
+        assert by_cat == {"posts.read": 2, "user.read": 1}
 
     def test_legacy_x_json_fallback_ignores_boolean_result_count(self, tmp_path, real_flow):
         body = json.dumps({"meta": {"result_count": True}}).encode()

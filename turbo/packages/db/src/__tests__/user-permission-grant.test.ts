@@ -64,6 +64,8 @@ describe("userPermissionGrants schema", () => {
       expect.arrayContaining([
         "uq_user_permission_grants_grant",
         "idx_user_permission_grants_lookup",
+        "idx_user_permission_grants_user_id",
+        "idx_user_permission_grants_agent_id",
         "chk_user_permission_grants_action",
       ]),
     );

@@ -31,6 +31,31 @@ export const testOauthDevice = {
         },
         revoke: { kind: "none" },
       },
+      api: {
+        featureFlag: FeatureSwitchKey.TestOauthConnector,
+        label: "API Device Authorization",
+        helpText:
+          "Secondary test-only OAuth device method used to exercise method-aware device authorization sessions.",
+        client: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "test-oauth-device-api-client",
+        },
+        grant: {
+          kind: "device-auth",
+          deviceAuthUrl: "/api/test/oauth-provider/device/code",
+          tokenUrl: "/api/test/oauth-provider/token",
+          scopes: ["read"],
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            TEST_OAUTH_DEVICE_API_TOKEN:
+              "$secrets.TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
     },
     defaultAuthMethod: "oauth",
   },

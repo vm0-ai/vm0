@@ -57,6 +57,8 @@ export const userPermissionGrants = pgTable(
         table.userId,
         table.agentId,
       ),
+      index("idx_user_permission_grants_user_id").on(table.userId),
+      index("idx_user_permission_grants_agent_id").on(table.agentId),
       check(
         "chk_user_permission_grants_action",
         sql`${table.action} IN ('allow', 'deny')`,

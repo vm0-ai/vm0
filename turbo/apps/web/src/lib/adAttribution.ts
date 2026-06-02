@@ -32,6 +32,14 @@ const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
 const VM0_ROOT_DOMAIN = "vm0.ai";
 
+const AD_TRAFFIC_MARKERS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "utm_source",
+  "utm_campaign",
+] as const;
+
 // 90 days: covers the signup -> paid funnel, and is the standard ad
 // click-attribution window. First-touch, so it is never extended on revisit.
 const COOKIE_MAX_AGE_SECONDS = 90 * 24 * 60 * 60;
@@ -195,6 +203,99 @@ export function currentLandingAttributionContext(): LandingAttributionContext {
     hostname: window.location.hostname,
     pathname: window.location.pathname,
   };
+}
+
+function hasAdTraffic(params: URLSearchParams): boolean {
+  return AD_TRAFFIC_MARKERS.some((param) => {
+    return params.has(param);
+  });
+}
+
+function appendHomepageAttributionParams(
+  url: URLSearchParams,
+  landingSearch: string,
+): void {
+  const landingParams = new URLSearchParams(landingSearch);
+  url.set(ATTRIBUTION_SOURCE_PARAM, HOMEPAGE_ATTRIBUTION_VALUE);
+  for (const param of AD_ATTRIBUTION_PARAMS) {
+    for (const value of landingParams.getAll(param)) {
+      url.append(param, value);
+    }
+  }
+}
+
+// Build the signed-out homepage CTA href. Keep users on the normal web
+// /sign-up flow, but decorate ad/campaign visits so the sign-up page can carry
+// the same attribution into Clerk's final app redirect.
+export function buildSignupHref(landingSearch: string): string {
+  const params = new URLSearchParams(landingSearch);
+  if (!hasAdTraffic(params)) {
+    return "/sign-up";
+  }
+
+  const signupParams = new URLSearchParams();
+  appendHomepageAttributionParams(signupParams, landingSearch);
+  return `/sign-up?${signupParams.toString()}`;
+}
+
+export function buildSignupRedirectUrl(
+  appUrl: string,
+  signUpSearch: string,
+  allowedRedirectOrigins: readonly string[] = [appUrl],
+): string {
+  const params = new URLSearchParams(signUpSearch);
+  const redirectUrl = readAllowedRedirectUrl(params, allowedRedirectOrigins);
+  if (redirectUrl) {
+    return redirectUrl;
+  }
+
+  if (!hasAdTraffic(params)) {
+    return appUrl;
+  }
+
+  const url = new URL("/onboarding", appUrl);
+  appendHomepageAttributionParams(url.searchParams, signUpSearch);
+  return url.toString();
+}
+
+function readAllowedRedirectUrl(
+  params: URLSearchParams,
+  allowedRedirectOrigins: readonly string[],
+): string | null {
+  const rawRedirectUrl = params.get("redirect_url");
+  if (!rawRedirectUrl) {
+    return null;
+  }
+
+  try {
+    const redirectUrl = new URL(rawRedirectUrl);
+    return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
+      ? redirectUrl.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedRedirectOrigin(
+  redirectUrl: URL,
+  allowedRedirectOrigins: readonly string[],
+): boolean {
+  return allowedRedirectOrigins.some((allowedOrigin) => {
+    if (allowedOrigin.startsWith("https://*.")) {
+      const suffix = allowedOrigin.slice("https://*.".length);
+      return (
+        redirectUrl.protocol === "https:" &&
+        redirectUrl.hostname.endsWith(`.${suffix}`)
+      );
+    }
+
+    try {
+      return new URL(allowedOrigin).origin === redirectUrl.origin;
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Cookie I/O is isolated behind this interface so the write path is testable
