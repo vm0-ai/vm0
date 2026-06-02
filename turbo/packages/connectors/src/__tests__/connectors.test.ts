@@ -29,7 +29,7 @@ import {
   type TokenRevokeConnectorType,
 } from "../connectors";
 import {
-  connectorAuthMethodSupportsRefreshTokenAccess,
+  connectorAuthMethodHasAccessKind,
   connectorAuthMethodSupportsTokenRevoke,
   connectorAuthMethodHasGrantKind,
   connectorAuthMethodRefHasGrantKind,
@@ -661,7 +661,7 @@ describe("connector selected auth method capability checks", () => {
           getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
           "refresh-token";
         expect(
-          connectorAuthMethodSupportsRefreshTokenAccess(type, authMethod),
+          connectorAuthMethodHasAccessKind(type, authMethod, "refresh-token"),
         ).toBe(hasRefreshTokenAccess);
       }
     }
@@ -699,7 +699,7 @@ describe("connector selected auth method capability checks", () => {
 
   it("does not mark non-refreshable auth methods as refresh-token access", () => {
     expect(
-      connectorAuthMethodSupportsRefreshTokenAccess("github", "oauth"),
+      connectorAuthMethodHasAccessKind("github", "oauth", "refresh-token"),
     ).toBe(false);
     expect(
       getConnectorAuthMethodAccessMetadata("github", "oauth")?.kind,
@@ -720,13 +720,17 @@ describe("connector selected auth method capability checks", () => {
       connectorAuthMethodHasGrantKind("test-oauth", "api", "device-auth"),
     ).toBe(false);
     expect(
-      connectorAuthMethodSupportsRefreshTokenAccess("test-oauth", "oauth"),
+      connectorAuthMethodHasAccessKind("test-oauth", "oauth", "refresh-token"),
     ).toBe(true);
     expect(
-      connectorAuthMethodSupportsRefreshTokenAccess("test-oauth", "api"),
+      connectorAuthMethodHasAccessKind("test-oauth", "api", "refresh-token"),
     ).toBe(true);
     expect(
-      connectorAuthMethodSupportsRefreshTokenAccess("test-oauth", "missing"),
+      connectorAuthMethodHasAccessKind(
+        "test-oauth",
+        "missing",
+        "refresh-token",
+      ),
     ).toBe(false);
     expect(
       getConnectorAuthMethodEnvBindings("test-oauth", "api"),

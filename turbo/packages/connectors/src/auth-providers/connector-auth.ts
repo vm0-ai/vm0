@@ -21,6 +21,8 @@ import {
   isStaticConfidentialConnectorAuthClient,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClientForMethod,
+  type ConnectorAuthMethodClientRefByAccessKind,
+  type ConnectorAuthMethodClientRefByGrantKind,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
 import type {
@@ -430,38 +432,14 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
 const CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY: ConnectorAuthMethodProviderRegistry =
   CONNECTOR_AUTH_METHOD_PROVIDERS;
 
-type ConnectorAuthCodeMethodClientRef = {
-  readonly [Type in AuthCodeGrantConnectorType]: {
-    readonly [Method in ConnectorAuthCodeGrantAuthMethodId<Type>]: {
-      readonly type: Type;
-      readonly authMethod: Method;
-      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
-    };
-  }[ConnectorAuthCodeGrantAuthMethodId<Type>];
-}[AuthCodeGrantConnectorType];
+type ConnectorAuthCodeMethodClientRef =
+  ConnectorAuthMethodClientRefByGrantKind<"auth-code">;
 
-type ConnectorDeviceAuthMethodClientRef = {
-  readonly [Type in DeviceAuthGrantConnectorType]: {
-    readonly [Method in ConnectorDeviceAuthGrantAuthMethodId<Type>]: {
-      readonly type: Type;
-      readonly authMethod: Method;
-      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
-    };
-  }[ConnectorDeviceAuthGrantAuthMethodId<Type>];
-}[DeviceAuthGrantConnectorType];
+type ConnectorDeviceAuthMethodClientRef =
+  ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
 
-type ConnectorRefreshTokenAccessMethodClientRef = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: {
-      readonly type: Type;
-      readonly authMethod: Method;
-      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
-    };
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
+type ConnectorRefreshTokenAccessMethodClientRef =
+  ConnectorAuthMethodClientRefByAccessKind<"refresh-token">;
 
 type ConnectorAuthCodeAuthorizationUrlArgs =
   ConnectorAuthCodeMethodClientRef & {

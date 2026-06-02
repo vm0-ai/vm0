@@ -8,7 +8,6 @@ import type {
 import {
   connectorAuthMethodIdSchema,
   type ConnectorAuthMethodId,
-  type ConnectorDeviceAuthGrantAuthMethodId,
   type ConnectorType,
   type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
@@ -16,8 +15,8 @@ import {
   connectorAuthMethodRefHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodIdsForGrantKind,
-  resolveConnectorAuthClientForMethod,
-  type ConnectorAuthClientForMethod,
+  resolveConnectorAuthMethodClientRefByGrantKind,
+  type ConnectorAuthMethodClientRefByGrantKind,
   type ConnectorAuthMethodRef,
   type ConnectorAuthMethodRefByGrantKind,
 } from "@vm0/connectors/connector-utils";
@@ -86,15 +85,8 @@ const encryptedProviderStateSchema = z.object({
 type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
 
 type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
-type DeviceAuthMethodClientRef = {
-  readonly [Type in DeviceAuthGrantConnectorType]: {
-    readonly [Method in ConnectorDeviceAuthGrantAuthMethodId<Type>]: {
-      readonly type: Type;
-      readonly authMethod: Method;
-      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
-    };
-  }[ConnectorDeviceAuthGrantAuthMethodId<Type>];
-}[DeviceAuthGrantConnectorType];
+type DeviceAuthMethodClientRef =
+  ConnectorAuthMethodClientRefByGrantKind<"device-auth">;
 
 type PollClaimedSessionArgs = DeviceAuthMethodClientRef & {
   readonly writeDb: Db;
@@ -252,26 +244,17 @@ function resolveStoredDeviceAuthMethod(
   return resolved;
 }
 
-function resolveRequiredAuthClient<
-  Type extends DeviceAuthGrantConnectorType,
-  Method extends ConnectorDeviceAuthGrantAuthMethodId<Type>,
->(method: {
-  readonly type: Type;
-  readonly authMethod: Method;
-}): DeviceAuthMethodClientRef | ReturnType<typeof internalServerError> {
-  const authClient = resolveConnectorAuthClientForMethod(
-    method.type,
-    method.authMethod,
+function resolveRequiredAuthClient(
+  method: DeviceAuthMethodRef,
+): DeviceAuthMethodClientRef | ReturnType<typeof internalServerError> {
+  const clientRef = resolveConnectorAuthMethodClientRefByGrantKind(
+    method,
     optionalEnv,
   );
-  if (!authClient) {
+  if (!clientRef) {
     return internalServerError(`${method.type} OAuth is not configured`);
   }
-  return {
-    type: method.type,
-    authMethod: method.authMethod,
-    authClient,
-  } as DeviceAuthMethodClientRef;
+  return clientRef;
 }
 
 async function lockDeviceAuthSessionOwner(

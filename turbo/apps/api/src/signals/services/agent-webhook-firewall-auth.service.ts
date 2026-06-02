@@ -9,18 +9,17 @@ import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runne
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodStorageMetadata,
-  resolveConnectorAuthClientForMethod,
+  resolveConnectorAuthMethodClientRefByAccessKind,
   connectorAuthMethodRefHasAccessKind,
-  type ConnectorAuthClientForMethod,
+  type ConnectorAuthMethodClientRefByAccessKind,
   type ConnectorAuthMethodRef,
+  type ConnectorAuthMethodRefByAccessKind,
   type ConnectorAuthMethodAccessMetadata,
   type ConnectorAuthMethodStorageMetadata,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorAuthMethodIdSchema,
   connectorTypeSchema,
-  type ConnectorAuthMethodIdsByAccessKind,
-  type RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
@@ -315,18 +314,8 @@ type PreparedRefreshTokenContext =
       readonly context: RefreshTokenContext;
     };
 
-type ConnectorRefreshTokenAccessClientRef = {
-  readonly [Type in RefreshTokenAccessConnectorType]: {
-    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
-      Type,
-      "refresh-token"
-    >]: {
-      readonly type: Type;
-      readonly authMethod: Method;
-      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
-    };
-  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
-}[RefreshTokenAccessConnectorType];
+type ConnectorRefreshTokenAccessClientRef =
+  ConnectorAuthMethodClientRefByAccessKind<"refresh-token">;
 
 type ConnectorPreparedRefreshTokenContext =
   ConnectorRefreshTokenAccessClientRef & {
@@ -334,29 +323,15 @@ type ConnectorPreparedRefreshTokenContext =
     readonly context: RefreshTokenContext;
   };
 
-function resolveRefreshTokenAccessClientRef<
-  Type extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
->(authMethodRef: {
-  readonly type: Type;
-  readonly authMethod: Method;
-}): ConnectorRefreshTokenAccessClientRef | undefined {
-  const authClient = resolveConnectorAuthClientForMethod(
-    authMethodRef.type,
-    authMethodRef.authMethod,
+function resolveRefreshTokenAccessClientRef(
+  authMethodRef: ConnectorAuthMethodRefByAccessKind<"refresh-token">,
+): ConnectorRefreshTokenAccessClientRef | undefined {
+  return resolveConnectorAuthMethodClientRefByAccessKind(
+    authMethodRef,
     (name) => {
       return optionalEnv(name);
     },
   );
-  if (!authClient) {
-    return undefined;
-  }
-
-  return {
-    type: authMethodRef.type,
-    authMethod: authMethodRef.authMethod,
-    authClient,
-  } as ConnectorRefreshTokenAccessClientRef;
 }
 
 type PrepareRefreshTokenContextResult =
