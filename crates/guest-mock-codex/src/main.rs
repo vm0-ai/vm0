@@ -389,43 +389,6 @@ mod tests {
     }
 
     #[test]
-    fn build_session_path_rejects_absolute_thread_id() {
-        assert_invalid_thread_id("/tmp/escape");
-    }
-
-    #[test]
-    fn build_session_path_rejects_traversal_thread_id() {
-        assert_invalid_thread_id("../escape");
-    }
-
-    #[test]
-    fn build_session_path_rejects_nested_thread_id() {
-        assert_invalid_thread_id("nested/id");
-    }
-
-    #[test]
-    fn build_session_path_rejects_non_uuid_thread_id() {
-        assert_invalid_thread_id("xyz-uuid");
-    }
-
-    #[test]
-    fn build_session_path_rejects_non_canonical_uuid_thread_id() {
-        assert_invalid_thread_id("0199A213-81C0-7800-8AA1-BBAB2A035A53");
-    }
-
-    #[test]
-    fn build_session_path_rejects_simple_uuid_thread_id() {
-        assert_invalid_thread_id("0199a21381c078008aa1bbab2a035a53");
-    }
-
-    fn assert_invalid_thread_id(thread_id: &str) {
-        let home = Path::new("/tmp/.codex");
-        let day = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let err = build_session_path(home, day, thread_id).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    }
-
-    #[test]
     fn build_events_shape() {
         let evs = build_events("tid-1", "hello");
         assert_eq!(evs[0]["type"], "thread.started");

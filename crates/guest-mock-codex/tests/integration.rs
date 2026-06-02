@@ -229,6 +229,50 @@ fn resume_rejects_nested_thread_id_without_writing_events_or_files() {
 }
 
 #[test]
+fn resume_rejects_non_uuid_thread_id_without_writing_events_or_files() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(dir.path(), &["exec", "resume", "xyz-uuid", "--", "hi"]).unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
+fn resume_rejects_uppercase_uuid_thread_id_without_writing_events_or_files() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(
+        dir.path(),
+        &[
+            "exec",
+            "resume",
+            "0199A213-81C0-7800-8AA1-BBAB2A035A53",
+            "--",
+            "hi",
+        ],
+    )
+    .unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
+fn resume_rejects_simple_uuid_thread_id_without_writing_events_or_files() {
+    let dir = TempDir::new().unwrap();
+
+    let out = run(
+        dir.path(),
+        &[
+            "exec",
+            "resume",
+            "0199a21381c078008aa1bbab2a035a53",
+            "--",
+            "hi",
+        ],
+    )
+    .unwrap();
+    assert_invalid_resume_rejected(dir.path(), &out);
+}
+
+#[test]
 fn accepts_all_no_op_flags_without_failing() {
     let dir = TempDir::new().unwrap();
     let out = run(
