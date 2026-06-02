@@ -55,7 +55,7 @@ pub struct ExecMatcher {
 pub struct ExecCall {
     pub cmd: String,
     pub timeout: Duration,
-    pub env: Vec<String>,
+    pub env_keys: Vec<String>,
     pub sudo: bool,
     pub stdin_bytes: Option<Vec<u8>>,
     pub output_limits: ExecOutputLimits,
@@ -888,7 +888,7 @@ impl Sandbox for MockSandbox {
         let call = ExecCall {
             cmd: request.cmd.to_string(),
             timeout: request.timeout,
-            env: request
+            env_keys: request
                 .env
                 .iter()
                 .map(|(key, _)| (*key).to_string())

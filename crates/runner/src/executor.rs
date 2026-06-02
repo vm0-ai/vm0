@@ -5817,7 +5817,7 @@ mod tests {
         assert!(!call.cmd.contains("ps aux"));
         assert!(!call.cmd.contains("printenv"));
         assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
-        assert!(call.env.is_empty());
+        assert!(call.env_keys.is_empty());
         assert!(call.sudo);
         assert!(call.stdin_bytes.is_none());
         assert_eq!(call.output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
