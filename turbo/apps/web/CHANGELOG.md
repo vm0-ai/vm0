@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.406.4](https://github.com/vm0-ai/vm0/compare/web-v12.406.3...web-v12.406.4) (2026-06-02)
+
+
+### Bug Fixes
+
+* **web:** handle empty api backend env ([#15851](https://github.com/vm0-ai/vm0/issues/15851)) ([f4ae2a5](https://github.com/vm0-ai/vm0/commit/f4ae2a5a593e1f50a48fb3a057741b96069cd012))
+* **web:** hide internal clerk error text constants ([#15859](https://github.com/vm0-ai/vm0/issues/15859)) ([8a29a0b](https://github.com/vm0-ai/vm0/commit/8a29a0b641735e95405b4909f1b9bf8952ba01fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.53.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.41.2
+
 ## [12.406.3](https://github.com/vm0-ai/vm0/compare/web-v12.406.2...web-v12.406.3) (2026-06-02)
 
 

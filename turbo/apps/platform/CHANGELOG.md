@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.399.15](https://github.com/vm0-ai/vm0/compare/app-v0.399.14...app-v0.399.15) (2026-06-02)
+
+
+### Bug Fixes
+
+* avoid implicit permission updated state ([#15751](https://github.com/vm0-ai/vm0/issues/15751)) ([32f6a32](https://github.com/vm0-ai/vm0/commit/32f6a329150082a43b37b7605fdd60407d062d49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.53.0
+    * @vm0/connectors bumped to 1.41.2
+    * @vm0/core bumped to 8.305.6
+
 ## [0.399.14](https://github.com/vm0-ai/vm0/compare/app-v0.399.13...app-v0.399.14) (2026-06-02)
 
 

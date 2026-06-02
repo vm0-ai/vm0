@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.178.0](https://github.com/vm0-ai/vm0/compare/cli-v9.177.19...cli-v9.178.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** show permission wording from grant rollout ([#15860](https://github.com/vm0-ai/vm0/issues/15860)) ([cd0b814](https://github.com/vm0-ai/vm0/commit/cd0b814897f2283f82b31993767c42faa3ce1e53))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.53.0
+    * @vm0/connectors bumped to 1.41.2
+    * @vm0/core bumped to 8.305.6
+
 ## [9.177.19](https://github.com/vm0-ai/vm0/compare/cli-v9.177.18...cli-v9.177.19) (2026-06-02)
 
 

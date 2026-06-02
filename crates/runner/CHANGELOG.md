@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.106.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.5...runner-rs-v0.106.6) (2026-06-02)
+
+
+### Bug Fixes
+
+* require https for auth base rewrites ([#15858](https://github.com/vm0-ai/vm0/issues/15858)) ([22d5d41](https://github.com/vm0-ai/vm0/commit/22d5d41b26b19da9f723974a6837822df06a0fe0))
+
 ## [0.106.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.4...runner-rs-v0.106.5) (2026-06-02)
 
 

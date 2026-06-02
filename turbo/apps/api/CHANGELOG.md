@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.92.0](https://github.com/vm0-ai/vm0/compare/api-v1.91.4...api-v1.92.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** show permission wording from grant rollout ([#15860](https://github.com/vm0-ai/vm0/issues/15860)) ([cd0b814](https://github.com/vm0-ai/vm0/commit/cd0b814897f2283f82b31993767c42faa3ce1e53))
+
+
+### Bug Fixes
+
+* **api:** clean up user permission grants on user deletion ([#15857](https://github.com/vm0-ai/vm0/issues/15857)) ([e42ad22](https://github.com/vm0-ai/vm0/commit/e42ad22fdd1dd7403fdaac7df2f7df3a892fbd10))
+
+
+### Refactoring
+
+* make connector storage ownership explicit ([#15853](https://github.com/vm0-ai/vm0/issues/15853)) ([921b75f](https://github.com/vm0-ai/vm0/commit/921b75fd143449178d9b14f011b8c33b10deb2f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.53.0
+    * @vm0/connectors bumped to 1.41.2
+    * @vm0/core bumped to 8.305.6
+    * @vm0/db bumped to 1.24.6
+
 ## [1.91.4](https://github.com/vm0-ai/vm0/compare/api-v1.91.3...api-v1.91.4) (2026-06-02)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.0...guest-agent-v0.34.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* classify Claude Code session/weekly limits as usage limits ([#15854](https://github.com/vm0-ai/vm0/issues/15854)) ([140fcaa](https://github.com/vm0-ai/vm0/commit/140fcaae9e2d190c91746ee556174418acdcad04)), closes [#15852](https://github.com/vm0-ai/vm0/issues/15852)
+
 ## [0.34.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.5...guest-agent-v0.34.0) (2026-06-01)
 
 

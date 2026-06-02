@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.2...sandbox-fc-v0.36.3) (2026-06-02)
+
+
+### Documentation
+
+* clarify balloon deflate memory metric ([#15865](https://github.com/vm0-ai/vm0/issues/15865)) ([cc9bf49](https://github.com/vm0-ai/vm0/commit/cc9bf49d87f0c1ee4b3ca875cb37123410f8fd1e))
+
 ## [0.36.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.1...sandbox-fc-v0.36.2) (2026-06-02)
 
 
