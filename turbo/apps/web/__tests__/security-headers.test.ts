@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MODEL_SLUGS } from "../app/[locale]/models/data";
 import { matchesApiBackendRewritePath } from "../api-backend-rewrites.js";
 
 type PathMatchResult =
@@ -1757,6 +1758,12 @@ interface RewriteEntry {
   readonly destination: string;
 }
 
+interface RedirectEntry {
+  readonly source: string;
+  readonly destination: string;
+  readonly permanent?: boolean;
+}
+
 async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
   const configModule = await import("../next.config.js");
   const config = configModule.default;
@@ -1770,6 +1777,17 @@ async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
     return rewrites;
   }
   return rewrites.beforeFiles ?? [];
+}
+
+async function getRedirects(): Promise<RedirectEntry[]> {
+  const configModule = await import("../next.config.js");
+  const config = configModule.default;
+
+  if (!config.redirects) {
+    throw new Error("redirects() function not found in Next.js config");
+  }
+
+  return await config.redirects();
 }
 
 function findHeader(
@@ -1862,6 +1880,36 @@ describe("Security Response Headers", () => {
 
       expect(csp).toContain("worker-src 'self' blob:");
     });
+  });
+});
+
+describe("Model page redirects", () => {
+  it("should redirect legacy model slugs to existing model pages", async () => {
+    const redirects = await getRedirects();
+    const modelSlugs = new Set(MODEL_SLUGS);
+    const expectedRedirects = [
+      ["kimi-k2.6", "kimi-k2-6"],
+      ["kimi-k2.5", "kimi-k2-5"],
+      ["glm-5.1", "glm-5-1"],
+      ["claude-haiku-4-5", "claude-sonnet-4-6"],
+      ["deepseek-v4-flash", "deepseek-v4-pro"],
+      ["minimax-m2.7", "minimax-m3"],
+      ["minimax-m2-7", "minimax-m3"],
+    ] as const;
+
+    for (const [from, to] of expectedRedirects) {
+      expect(modelSlugs.has(to)).toBe(true);
+      expect(redirects).toContainEqual({
+        source: `/models/${from}`,
+        destination: `/models/${to}`,
+        permanent: true,
+      });
+      expect(redirects).toContainEqual({
+        source: `/:locale/models/${from}`,
+        destination: `/:locale/models/${to}`,
+        permanent: true,
+      });
+    }
   });
 });
 

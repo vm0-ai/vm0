@@ -108,6 +108,9 @@ describe("migration 0418 remove poor agent backend models", () => {
       "org-openrouter-deepseek-canonical",
     );
     const canonicalVercelHaikuOrgId = uniqueId("org-vercel-haiku-canonical");
+    const aliasAnthropicHaikuOrgId = uniqueId("org-anthropic-haiku-alias");
+    const aliasDeepSeekOrgId = uniqueId("org-deepseek-alias");
+    const aliasMiniMaxOrgId = uniqueId("org-minimax-alias");
     const activeOrgId = uniqueId("org-active");
 
     const [minimaxOpenRouterProvider] = await db
@@ -167,6 +170,27 @@ describe("migration 0418 remove poor agent backend models", () => {
         type: "vercel-ai-gateway",
         authMethod: "api-key",
         selectedModel: "claude-haiku-4-5",
+      },
+      {
+        orgId: aliasAnthropicHaikuOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "anthropic-api-key",
+        authMethod: "api-key",
+        selectedModel: "anthropic/claude-haiku-4.5",
+      },
+      {
+        orgId: aliasDeepSeekOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "deepseek-api-key",
+        authMethod: "api-key",
+        selectedModel: "deepseek/deepseek-v4-flash",
+      },
+      {
+        orgId: aliasMiniMaxOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "minimax-api-key",
+        authMethod: "api-key",
+        selectedModel: "minimax/minimax-m2.7",
       },
     ]);
 
@@ -333,6 +357,9 @@ describe("migration 0418 remove poor agent backend models", () => {
           canonicalOpenRouterMiniMaxOrgId,
           canonicalOpenRouterDeepSeekOrgId,
           canonicalVercelHaikuOrgId,
+          aliasAnthropicHaikuOrgId,
+          aliasDeepSeekOrgId,
+          aliasMiniMaxOrgId,
           activeOrgId,
         ]),
       )
@@ -374,6 +401,21 @@ describe("migration 0418 remove poor agent backend models", () => {
           orgId: canonicalVercelHaikuOrgId,
           type: "vercel-ai-gateway",
           selectedModel: "anthropic/claude-sonnet-4.6",
+        },
+        {
+          orgId: aliasAnthropicHaikuOrgId,
+          type: "anthropic-api-key",
+          selectedModel: "claude-sonnet-4-6",
+        },
+        {
+          orgId: aliasDeepSeekOrgId,
+          type: "deepseek-api-key",
+          selectedModel: "deepseek-v4-pro",
+        },
+        {
+          orgId: aliasMiniMaxOrgId,
+          type: "minimax-api-key",
+          selectedModel: "MiniMax-M3",
         },
       ]),
     );

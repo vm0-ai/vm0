@@ -111,19 +111,31 @@ SET
                 WHEN type IN ('openrouter-api-key', 'vercel-ai-gateway') THEN 'anthropic/claude-sonnet-4.6'
                 ELSE 'claude-sonnet-4-6'
             END
-        WHEN 'anthropic/claude-haiku-4.5' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'anthropic/claude-haiku-4.5' THEN
+            CASE
+                WHEN type IN ('openrouter-api-key', 'vercel-ai-gateway') THEN 'anthropic/claude-sonnet-4.6'
+                ELSE 'claude-sonnet-4-6'
+            END
         WHEN 'deepseek-v4-flash' THEN
             CASE
                 WHEN type = 'openrouter-api-key' THEN 'deepseek/deepseek-v4-pro'
                 ELSE 'deepseek-v4-pro'
             END
-        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek/deepseek-v4-pro'
+        WHEN 'deepseek/deepseek-v4-flash' THEN
+            CASE
+                WHEN type = 'openrouter-api-key' THEN 'deepseek/deepseek-v4-pro'
+                ELSE 'deepseek-v4-pro'
+            END
         WHEN 'MiniMax-M2.7' THEN
             CASE
                 WHEN type IN ('openrouter-api-key', 'vercel-ai-gateway') THEN 'anthropic/claude-sonnet-4.6'
                 ELSE 'MiniMax-M3'
             END
-        WHEN 'minimax/minimax-m2.7' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'minimax/minimax-m2.7' THEN
+            CASE
+                WHEN type IN ('openrouter-api-key', 'vercel-ai-gateway') THEN 'anthropic/claude-sonnet-4.6'
+                ELSE 'MiniMax-M3'
+            END
     END,
     updated_at = NOW()
 WHERE selected_model IN (
