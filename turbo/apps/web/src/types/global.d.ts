@@ -7,5 +7,10 @@ export type DesktopAuthBridge = {
 declare global {
   interface Window {
     readonly vm0DesktopAuth?: DesktopAuthBridge;
+    // Plausible analytics queue, bootstrapped in app/layout.tsx.
+    plausible?: (
+      event: string,
+      options?: { props?: Record<string, unknown> },
+    ) => void;
   }
 }
