@@ -33,14 +33,7 @@ def _make_response_chunk_parser(
     feed: _ResponseChunkParser,
     headers: http.Headers,
 ) -> _ResponseChunkParser:
-    decompressor = body_utils.create_stream_decompressor(headers)
-    if decompressor is None:
-        return feed
-
-    def parse_chunk(chunk: bytes) -> None:
-        feed(decompressor(chunk))
-
-    return parse_chunk
+    return body_utils.create_stream_decode_feed(headers, feed)
 
 
 def _make_model_sse_parse_error_logger(

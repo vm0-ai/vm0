@@ -3,7 +3,9 @@
 import gzip
 import json
 
+import brotli
 import pytest
+import zstandard
 from mitmproxy.test import tutils
 
 import body_utils
@@ -320,6 +322,57 @@ class TestResponseHeadersHandler:
         assert usage_result["message_id"] == "msg_1"
         assert usage_result["tokens.input"] == 10
         assert usage_result["tokens.output"] == 20
+
+    def test_model_provider_zstd_json_scans_past_decode_chunk_limit(self, real_flow, headers):
+        """Zstd usage parsing should chunk decoded output without total truncation."""
+        body = (
+            b'{"id":"msg_zstd","model":"claude-sonnet-4-6","content":[{"text":"'
+            + b"A" * (body_utils.STREAM_DECODE_CHUNK_LIMIT * 3)
+            + b'"}],"usage":{"input_tokens":10,"output_tokens":20}}'
+        )
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "zstd"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(zstandard.ZstdCompressor().compress(body))
+        usage_result, error = flow.metadata["model_json_usage_finish"]()
+        assert error is None
+        assert usage_result["message_id"] == "msg_zstd"
+        assert usage_result["tokens.input"] == 10
+        assert usage_result["tokens.output"] == 20
+
+    def test_model_provider_brotli_usage_stream_fails_closed(self, real_flow, headers, mitm_ctx):
+        """Brotli usage streams should not feed unsafe decoded output to parsers."""
+        body = json.dumps(
+            {
+                "id": "msg_br",
+                "model": "claude-sonnet-4-6",
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+            }
+        ).encode()
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        with mitm_ctx() as log:
+            response_stream(flow)(brotli.compress(body))
+        usage_result, error = flow.metadata["model_json_usage_finish"]()
+        assert usage_result is None
+        assert error == "incomplete json"
+        assert log.debug.call_count == 1
+        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
     def test_openai_model_provider_gzip_json_extractor(self, real_flow, headers):
         """OpenAI model-provider JSON uses the Responses usage extractor."""

@@ -4,7 +4,7 @@ Exports:
 
 - ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the responseheaders streaming
   buffer and by the decompression safety cap.
-- Streaming / one-shot decompression for gzip, deflate, br, zstd.
+- Streaming usage decoding and one-shot decompression for gzip, deflate, br, zstd.
 - Conservative request-body decoding for billing inspection.
 - UTF-8-safe truncation, text/binary content detection and encoding.
 - Header sanitization for sensitive names and URL-bearing values.
@@ -15,7 +15,7 @@ import base64
 import contextlib
 import zlib
 from collections.abc import Callable
-from typing import Literal, NamedTuple
+from typing import IO, Literal, NamedTuple
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
@@ -26,6 +26,10 @@ import network_log_sanitization
 
 # Cap for non-model-provider response body buffering and decompression output.
 STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
+# Maximum decoded chunk size fed to incremental usage parsers. This bounds
+# transient decompressor output without truncating the total response scanned by
+# bounded-state parsers.
+STREAM_DECODE_CHUNK_LIMIT = 64 * 1024  # 64 KB
 _REDACTED_HEADER_VALUE = "***"
 
 # UTF-8 byte-boundary markers (RFC 3629).  Continuation bytes match
@@ -55,6 +59,9 @@ class _BoundedDecodeResult(NamedTuple):
     body: bytes
     failed: bool
     error: Exception | None = None
+
+
+_StreamDecodeFeed = Callable[[bytes], None]
 
 
 # ---------------------------------------------------------------------------
@@ -92,59 +99,149 @@ _URL_BEARING_CAPTURE_HEADER_NAMES = frozenset(
 )
 
 
-def _make_streaming_decompressor(
-    decomp_fn: Callable[[bytes], bytes],
-    error_cls: type[Exception],
+def _log_streaming_decode_error(encoding_label: str, exc: Exception) -> None:
+    with contextlib.suppress(AttributeError):
+        # ctx.log unavailable outside mitmproxy runtime
+        ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
+
+
+def _log_streaming_decode_skipped(encoding_label: str, reason: str) -> None:
+    with contextlib.suppress(AttributeError):
+        # ctx.log unavailable outside mitmproxy runtime
+        ctx.log.debug(f"Streaming decompression skipped ({encoding_label}): {reason}")
+
+
+def _make_streaming_decode_guard(
+    decode_fn: _StreamDecodeFeed,
+    error_cls: type[Exception] | tuple[type[Exception], ...],
     encoding_label: str,
-) -> Callable[[bytes], bytes]:
-    """Wrap a chunk decompressor with log-once + short-circuit on failure.
+) -> _StreamDecodeFeed:
+    """Wrap a streaming decoder with log-once + short-circuit on failure.
 
     ``zlib`` / ``brotli`` / ``zstd`` streaming decompressors have internal
     state that becomes undefined after a decompression error — subsequent
-    ``decomp_fn(chunk)`` calls may keep raising or silently produce garbage
+    ``decode_fn(chunk)`` calls may keep raising or silently produce garbage
     plaintext.  On first error we log once (at debug, mirroring the
     non-streaming ``decompress_body`` pattern), latch a broken flag, and
-    return ``b""`` for every subsequent chunk so downstream parsers don't
+    ignore every subsequent chunk so downstream parsers don't
     consume corrupt output.
     """
     broken = False
 
-    def wrapper(chunk: bytes) -> bytes:
+    def wrapper(chunk: bytes) -> None:
         nonlocal broken
         if broken:
-            return b""
+            return
         try:
-            return decomp_fn(chunk)
+            decode_fn(chunk)
         except error_cls as exc:
             broken = True
-            with contextlib.suppress(AttributeError):
-                # ctx.log unavailable outside mitmproxy runtime
-                ctx.log.debug(f"Streaming decompression failed ({encoding_label}): {exc}")
-            return b""
+            _log_streaming_decode_error(encoding_label, exc)
 
     return wrapper
 
 
-def create_stream_decompressor(headers: http.Headers):
-    """Create an incremental decompressor for streaming chunks.
+def _make_skipped_stream_decode_feed(encoding_label: str, reason: str) -> _StreamDecodeFeed:
+    logged = False
 
-    Returns a callable that decompresses each chunk, maintaining state
-    across calls.  Returns None if the response is not compressed.
+    def decode(_chunk: bytes) -> None:
+        nonlocal logged
+        if logged:
+            return
+        logged = True
+        _log_streaming_decode_skipped(encoding_label, reason)
+
+    return decode
+
+
+def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -> None:
+    for offset in range(0, len(data), max_decoded_chunk):
+        feed(data[offset : offset + max_decoded_chunk])
+
+
+def _create_zlib_stream_decode_feed(
+    feed: _StreamDecodeFeed,
+    *,
+    encoding: Literal["gzip", "deflate"],
+    max_decoded_chunk: int,
+) -> _StreamDecodeFeed:
+    wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+    obj = zlib.decompressobj(wbits)
+
+    def decode(chunk: bytes) -> None:
+        data = chunk
+        while data:
+            decoded = obj.decompress(data, max_length=max_decoded_chunk)
+            if decoded:
+                feed(decoded)
+            next_data = obj.unconsumed_tail
+            if not next_data:
+                return
+            data = next_data
+
+    return _make_streaming_decode_guard(decode, zlib.error, encoding)
+
+
+class _ChunkedDecodeSink(IO[bytes]):
+    def __init__(self, feed: _StreamDecodeFeed, max_decoded_chunk: int) -> None:
+        self._feed = feed
+        self._max_decoded_chunk = max_decoded_chunk
+
+    def write(self, data: bytes) -> int:
+        _feed_chunks(self._feed, data, self._max_decoded_chunk)
+        return len(data)
+
+    def writable(self) -> bool:
+        return True
+
+    def flush(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def _create_zstd_stream_decode_feed(
+    feed: _StreamDecodeFeed, *, max_decoded_chunk: int
+) -> _StreamDecodeFeed:
+    sink = _ChunkedDecodeSink(feed, max_decoded_chunk)
+    writer = zstandard.ZstdDecompressor().stream_writer(sink)
+
+    def decode(chunk: bytes) -> None:
+        writer.write(chunk)
+
+    return _make_streaming_decode_guard(decode, zstandard.ZstdError, "zstd")
+
+
+def create_stream_decode_feed(
+    headers: http.Headers,
+    feed: _StreamDecodeFeed,
+    *,
+    max_decoded_chunk: int = STREAM_DECODE_CHUNK_LIMIT,
+) -> _StreamDecodeFeed:
+    """Create a bounded streaming decoder that feeds decoded usage-parser chunks.
+
+    Usage parsers are bounded-state scanners and may need to inspect long
+    responses, so this helper does not enforce a total decoded-byte cap. It
+    bounds each decoded chunk before parser entry to prevent high-ratio
+    compressed input from materialising one large ``bytes`` object.
     """
+    if max_decoded_chunk <= 0:
+        raise ValueError("max_decoded_chunk must be positive")
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
-        return None
+        return feed
     if encoding in ("gzip", "deflate"):
-        wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
-        obj = zlib.decompressobj(wbits)
-        return _make_streaming_decompressor(obj.decompress, zlib.error, encoding)
+        return _create_zlib_stream_decode_feed(
+            feed,
+            encoding=encoding,
+            max_decoded_chunk=max_decoded_chunk,
+        )
     if encoding == "br":
-        dec = brotli.Decompressor()
-        return _make_streaming_decompressor(dec.process, brotli.error, "br")
+        return _make_skipped_stream_decode_feed("br", "brotli streaming output cannot be bounded")
     if encoding == "zstd":
-        obj = zstandard.ZstdDecompressor().decompressobj()
-        return _make_streaming_decompressor(obj.decompress, zstandard.ZstdError, "zstd")
-    return None
+        return _create_zstd_stream_decode_feed(feed, max_decoded_chunk=max_decoded_chunk)
+    return _make_skipped_stream_decode_feed(encoding, "unsupported content encoding")
 
 
 def decompress_body(
