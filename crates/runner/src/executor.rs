@@ -5874,6 +5874,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_inner_nonzero_with_process_diagnostic_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut exit = ProcessExit::new(1, 126, Vec::new(), Vec::new());
+        exit.diagnostic = "guest-agent bootstrap diagnostic".to_string();
+        overrides.push_wait_process_exit(exit);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
     async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagnostics() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
