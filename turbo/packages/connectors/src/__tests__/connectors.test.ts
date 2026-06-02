@@ -16,7 +16,6 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
-  type ConnectorAuthMethodIds,
   type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
@@ -60,7 +59,6 @@ import {
   hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
-  type ConnectorAuthClientForMethod,
   type ConnectorEnvReader,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
@@ -106,25 +104,6 @@ function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
 
 const server = setupServer();
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
-
-type OAuthAuthMethodConnectorType = {
-  readonly [Type in ConnectorType]: "oauth" extends ConnectorAuthMethodIds<Type>
-    ? Type
-    : never;
-}[ConnectorType];
-
-function getOauthAuthClient<Type extends OAuthAuthMethodConnectorType>(
-  type: Type,
-  readEnv: ConnectorEnvReader,
-):
-  | ConnectorAuthClientForMethod<Type, ConnectorAuthMethodIds<Type> & "oauth">
-  | undefined {
-  const authMethod = "oauth" as ConnectorAuthMethodIds<Type> & "oauth";
-  return resolveConnectorAuthClientForMethod<
-    Type,
-    ConnectorAuthMethodIds<Type> & "oauth"
-  >(type, authMethod, readEnv);
-}
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -873,9 +852,13 @@ describe("connector selected auth method capability checks", () => {
       );
 
       for (const type of providerTypes) {
-        const oauthClient = getOauthAuthClient(type, () => {
-          return "test-client-credential";
-        });
+        const oauthClient = resolveConnectorAuthClientForMethod(
+          type,
+          "oauth",
+          () => {
+            return "test-client-credential";
+          },
+        );
         expect(oauthClient, `${type}: OAuth client`).toBeDefined();
         if (!oauthClient) {
           throw new Error(`${type} OAuth client not found`);
@@ -974,9 +957,13 @@ describe("connector selected auth method capability checks", () => {
       }),
     );
 
-    const oauthClient = getOauthAuthClient("test-oauth-device", () => {
-      return undefined;
-    });
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "oauth",
+      () => {
+        return undefined;
+      },
+    );
     expect(oauthClient).toBeDefined();
 
     if (!oauthClient) {
@@ -1194,9 +1181,13 @@ describe("connector selected auth method capability checks", () => {
       }),
     );
 
-    const oauthClient = getOauthAuthClient("base44", () => {
-      return undefined;
-    });
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "base44",
+      "oauth",
+      () => {
+        return undefined;
+      },
+    );
     expect(oauthClient).toBeDefined();
 
     if (!oauthClient) {
@@ -1485,9 +1476,13 @@ describe("connector selected auth method capability checks", () => {
       ),
     );
 
-    const oauthClient = getOauthAuthClient("slock", () => {
-      return undefined;
-    });
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "slock",
+      "oauth",
+      () => {
+        return undefined;
+      },
+    );
     expect(oauthClient).toBeDefined();
 
     if (!oauthClient) {
@@ -2331,14 +2326,17 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("derives static confidential OAuth client from connector config", () => {
-    const oauthClient = getOauthAuthClient("github", (name) => {
-      return (
-        {
-          GH_OAUTH_CLIENT_ID: "github-client-id",
-          GH_OAUTH_CLIENT_SECRET: "github-client-secret",
-        } as Record<string, string>
-      )[name];
-    });
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "github",
+      "oauth",
+      (name) => {
+        const env = new Map([
+          ["GH_OAUTH_CLIENT_ID", "github-client-id"],
+          ["GH_OAUTH_CLIENT_SECRET", "github-client-secret"],
+        ]);
+        return env.get(name);
+      },
+    );
 
     expect(oauthClient).toStrictEqual({
       clientRegistration: "static",
@@ -2349,15 +2347,23 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("does not configure static confidential OAuth when the secret is missing", () => {
-    const oauthClient = getOauthAuthClient("github", (name) => {
-      return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
-    });
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "github",
+      "oauth",
+      (name) => {
+        return name === "GH_OAUTH_CLIENT_ID" ? "github-client-id" : undefined;
+      },
+    );
 
     expect(oauthClient).toBeUndefined();
   });
 
   it("supports literal static OAuth clients without runtime OAuth client env", () => {
-    const oauthClient = getOauthAuthClient("test-oauth", emptyEnv);
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "test-oauth",
+      "oauth",
+      emptyEnv,
+    );
 
     expect(oauthClient).toStrictEqual({
       clientRegistration: "static",
@@ -2368,7 +2374,11 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("supports static public OAuth clients with only a client id", () => {
-    const oauthClient = getOauthAuthClient("test-oauth-device", emptyEnv);
+    const oauthClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "oauth",
+      emptyEnv,
+    );
 
     expect(oauthClient).toStrictEqual({
       clientRegistration: "static",
@@ -2378,14 +2388,17 @@ describe("getRuntimeAvailableConnectorTypes", () => {
   });
 
   it("identifies static OAuth client variants", () => {
-    const staticAuthClient = getOauthAuthClient("github", (name) => {
-      return (
-        {
-          GH_OAUTH_CLIENT_ID: "github-client-id",
-          GH_OAUTH_CLIENT_SECRET: "github-client-secret",
-        } as Record<string, string>
-      )[name];
-    });
+    const staticAuthClient = resolveConnectorAuthClientForMethod(
+      "github",
+      "oauth",
+      (name) => {
+        const env = new Map([
+          ["GH_OAUTH_CLIENT_ID", "github-client-id"],
+          ["GH_OAUTH_CLIENT_SECRET", "github-client-secret"],
+        ]);
+        return env.get(name);
+      },
+    );
     if (!staticAuthClient) {
       throw new Error("Expected GitHub OAuth client");
     }
@@ -2398,7 +2411,11 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       expect(clientSecret).toBe("github-client-secret");
     }
 
-    const publicAuthClient = getOauthAuthClient("test-oauth-device", emptyEnv);
+    const publicAuthClient = resolveConnectorAuthClientForMethod(
+      "test-oauth-device",
+      "oauth",
+      emptyEnv,
+    );
     if (!publicAuthClient) {
       throw new Error("Expected public OAuth client");
     }
