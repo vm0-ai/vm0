@@ -24,7 +24,6 @@ interface UpdatedZeroSkill {
   readonly description: string | null;
   readonly content: string | null;
   readonly files: readonly { readonly path: string; readonly size: number }[];
-  readonly fileContents: readonly SkillFileInput[];
 }
 
 export const updateZeroSkill$ = command(
@@ -82,7 +81,6 @@ export const updateZeroSkill$ = command(
           size: Buffer.byteLength(file.content, "utf8"),
         };
       }),
-      fileContents: args.files,
     };
   },
 );

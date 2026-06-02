@@ -333,8 +333,15 @@ export const zeroAgentSkillContentResponseSchema = z.object({
   description: z.string().nullable(),
   content: z.string().nullable(),
   files: z.array(skillFileMetadataSchema).nullable(),
-  fileContents: z.array(skillFileEntrySchema).nullable(),
 });
+
+/**
+ * Skill detail response schema (get with every file's content)
+ */
+export const zeroAgentSkillDetailResponseSchema =
+  zeroAgentSkillContentResponseSchema.extend({
+    fileContents: z.array(skillFileEntrySchema).nullable(),
+  });
 
 /**
  * Skill list response schema
@@ -388,7 +395,7 @@ export const zeroSkillsDetailContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
     responses: {
-      200: zeroAgentSkillContentResponseSchema,
+      200: zeroAgentSkillDetailResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -574,6 +581,9 @@ export type ZeroAgentSkillFilesRequest = z.infer<
 >;
 export type ZeroAgentSkillContentResponse = z.infer<
   typeof zeroAgentSkillContentResponseSchema
+>;
+export type ZeroAgentSkillDetailResponse = z.infer<
+  typeof zeroAgentSkillDetailResponseSchema
 >;
 export type ZeroSkillsCollectionContract = typeof zeroSkillsCollectionContract;
 export type ZeroSkillsDetailContract = typeof zeroSkillsDetailContract;

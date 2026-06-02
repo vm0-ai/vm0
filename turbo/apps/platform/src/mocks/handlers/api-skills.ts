@@ -3,15 +3,16 @@ import {
   zeroSkillsDetailContract,
   type ZeroAgentCustomSkill,
   type ZeroAgentSkillContentResponse,
+  type ZeroAgentSkillDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
 
 import { mockApi } from "../msw-contract.ts";
 
-const DEFAULT_SKILLS: ZeroAgentSkillContentResponse[] = [];
+const DEFAULT_SKILLS: ZeroAgentSkillDetailResponse[] = [];
 
-let mockSkills: ZeroAgentSkillContentResponse[] = [...DEFAULT_SKILLS];
+let mockSkills: ZeroAgentSkillDetailResponse[] = [...DEFAULT_SKILLS];
 
-function metadata(skill: ZeroAgentSkillContentResponse): ZeroAgentCustomSkill {
+function metadata(skill: ZeroAgentSkillDetailResponse): ZeroAgentCustomSkill {
   return {
     name: skill.name,
     displayName: skill.displayName,
@@ -22,31 +23,45 @@ function metadata(skill: ZeroAgentSkillContentResponse): ZeroAgentCustomSkill {
 function toDetail(
   skill: ZeroAgentCustomSkill,
   content = "",
-): ZeroAgentSkillContentResponse {
-  const fileContents = [{ path: "SKILL.md", content }];
+): ZeroAgentSkillDetailResponse {
   return {
     ...skill,
     content,
     files: [
       { path: "SKILL.md", size: new TextEncoder().encode(content).length },
     ],
-    fileContents,
+    fileContents: [{ path: "SKILL.md", content }],
+  };
+}
+
+function toDetailResponse(
+  skill: ZeroAgentSkillContentResponse | ZeroAgentSkillDetailResponse,
+): ZeroAgentSkillDetailResponse {
+  if ("fileContents" in skill) {
+    return skill;
+  }
+  return {
+    ...skill,
+    fileContents:
+      skill.content === null
+        ? null
+        : [{ path: "SKILL.md", content: skill.content }],
   };
 }
 
 export function setMockSkills(
-  skills: readonly (ZeroAgentSkillContentResponse | ZeroAgentCustomSkill)[],
+  skills: readonly (
+    | ZeroAgentSkillDetailResponse
+    | ZeroAgentSkillContentResponse
+    | ZeroAgentCustomSkill
+  )[],
 ): void {
   mockSkills = skills.map((skill) => {
-    if ("fileContents" in skill) {
-      return skill;
+    if ("content" in skill) {
+      return toDetailResponse(skill);
     }
     return toDetail(skill);
   });
-}
-
-export function getMockSkills(): readonly ZeroAgentSkillContentResponse[] {
-  return mockSkills;
 }
 
 export function resetMockSkills(): void {
@@ -90,7 +105,7 @@ export const apiSkillsHandlers = [
     const skillFile = body.files.find((file) => {
       return file.path === "SKILL.md";
     });
-    const updated: ZeroAgentSkillContentResponse = {
+    const response: ZeroAgentSkillContentResponse = {
       ...existing,
       content: skillFile?.content ?? null,
       files: body.files.map((file) => {
@@ -99,9 +114,12 @@ export const apiSkillsHandlers = [
           size: new TextEncoder().encode(file.content).length,
         };
       }),
+    };
+    const updated: ZeroAgentSkillDetailResponse = {
+      ...response,
       fileContents: body.files,
     };
     mockSkills[index] = updated;
-    return respond(200, updated);
+    return respond(200, response);
   }),
 ];

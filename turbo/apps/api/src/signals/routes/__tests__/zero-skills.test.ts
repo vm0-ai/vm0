@@ -737,7 +737,7 @@ describe("GET /api/zero/skills/:name", () => {
     });
   });
 
-  it("returns file listing for a multi-file skill", async () => {
+  it("returns file listing and file contents for a multi-file skill", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
@@ -766,9 +766,7 @@ describe("GET /api/zero/skills/:name", () => {
     mockSkillContent(context, {
       s3Key,
       content: "# Multi",
-      extraFiles: [
-        { path: "templates/prompt.md", size: 12, content: "Use the tool" },
-      ],
+      extraFiles: [{ path: "templates/prompt.md", content: "Use the tool" }],
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1102,10 +1100,6 @@ describe("PUT /api/zero/skills/:name", () => {
         { path: "SKILL.md", size: 17 },
         { path: "templates/prompt.md", size: 12 },
       ],
-      fileContents: [
-        { path: "SKILL.md", content: "# Updated Content" },
-        { path: "templates/prompt.md", content: "Use the tool" },
-      ],
     });
 
     const storageName = getCustomSkillStorageName(skillName);
@@ -1158,7 +1152,6 @@ describe("PUT /api/zero/skills/:name", () => {
       description: null,
       content: "# CLI Updated",
       files: [{ path: "SKILL.md", size: 13 }],
-      fileContents: [{ path: "SKILL.md", content: "# CLI Updated" }],
     });
   });
 });

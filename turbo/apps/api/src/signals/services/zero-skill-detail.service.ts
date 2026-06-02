@@ -113,43 +113,23 @@ export function zeroSkillDetail(
       };
     });
 
-    const skillFile = manifest.files.find((f) => {
-      return normalize(f.path) === SKILL_FILENAME;
-    });
-
-    if (!skillFile) {
-      return {
-        name: skill.name,
-        displayName: skill.displayName ?? null,
-        description: skill.description ?? null,
-        content: null,
-        files: filesList,
-        fileContents: null,
-      };
-    }
-
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
     const archiveBuffer = await get(downloadS3Buffer(bucket, archiveKey));
-    const extractedFiles = extractFilesFromTarGz(
+    const fileContents = extractFilesFromTarGz(
       archiveBuffer,
-      manifest.files.map((file) => {
+      filesList.map((file) => {
         return file.path;
       }),
     );
-    const content = extractedFiles.get(SKILL_FILENAME) ?? null;
-    const fileContents = filesList.flatMap((file) => {
-      const fileContent = extractedFiles.get(file.path);
-      if (fileContent === undefined) {
-        return [];
-      }
-      return [{ path: file.path, content: fileContent }];
+    const skillFileContent = fileContents.find((file) => {
+      return normalize(file.path) === SKILL_FILENAME;
     });
 
     return {
       name: skill.name,
       displayName: skill.displayName ?? null,
       description: skill.description ?? null,
-      content,
+      content: skillFileContent?.content ?? null,
       files: filesList,
       fileContents,
     };

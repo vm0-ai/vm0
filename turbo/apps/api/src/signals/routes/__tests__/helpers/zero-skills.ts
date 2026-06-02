@@ -150,8 +150,7 @@ export const seedSkillStorage$ = command(
 
 interface SkillContentMockExtra {
   readonly path: string;
-  readonly size: number;
-  readonly content?: string;
+  readonly content: string;
 }
 
 interface SkillContentMockArgs {
@@ -182,7 +181,7 @@ function octal(value: number, length: number): string {
 }
 
 function createTarEntry(filename: string, content: Buffer): Buffer {
-  // POSIX tar header (USTAR-compatible) is sufficient for the API tar parser
+  // POSIX tar header (USTAR-compatible) is sufficient for extractFileFromTarGz
   // to parse the filename, size, and payload.
   const header = Buffer.alloc(TAR_BLOCK_SIZE);
   header.write(filename, 0, 100, "utf8");
@@ -202,23 +201,23 @@ function createTarEntry(filename: string, content: Buffer): Buffer {
   // Final checksum: 6 octal digits, NUL, space.
   header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148);
 
-  const padding = TAR_BLOCK_SIZE - (content.length % TAR_BLOCK_SIZE);
+  const padding = content.length % TAR_BLOCK_SIZE;
   const dataBlocks =
-    padding < TAR_BLOCK_SIZE
-      ? Buffer.concat([content, Buffer.alloc(padding)])
-      : content;
+    padding === 0
+      ? content
+      : Buffer.concat([content, Buffer.alloc(TAR_BLOCK_SIZE - padding)]);
 
   return Buffer.concat([header, dataBlocks]);
 }
 
-function createTarGzFromFiles(
-  files: readonly { readonly path: string; readonly content: Buffer }[],
+function createTarGz(
+  files: readonly { readonly filename: string; readonly content: Buffer }[],
 ): Buffer {
   const eofBlocks = Buffer.alloc(TAR_BLOCK_SIZE * 2);
   return gzipSync(
     Buffer.concat([
       ...files.map((file) => {
-        return createTarEntry(file.path, file.content);
+        return createTarEntry(file.filename, file.content);
       }),
       eofBlocks,
     ]),
@@ -226,7 +225,7 @@ function createTarGzFromFiles(
 }
 
 function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
-  return createTarGzFromFiles([{ path: filename, content }]);
+  return createTarGz([{ filename, content }]);
 }
 
 function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
@@ -262,19 +261,17 @@ export function mockSkillContent(
   args: SkillContentMockArgs,
 ): void {
   const contentBuffer = Buffer.from(args.content, "utf8");
-  const extraFiles =
-    args.extraFiles?.map((file) => {
-      const extraContentBuffer = Buffer.from(file.content ?? "", "utf8");
-      return {
-        path: file.path,
-        size:
-          file.content === undefined ? file.size : extraContentBuffer.length,
-        content: extraContentBuffer,
-      };
-    }) ?? [];
-  const archive = createTarGzFromFiles([
-    { path: "SKILL.md", content: contentBuffer },
-    ...extraFiles,
+  const extraFiles = (args.extraFiles ?? []).map((file) => {
+    return {
+      path: file.path,
+      content: Buffer.from(file.content, "utf8"),
+    };
+  });
+  const archive = createTarGz([
+    { filename: "SKILL.md", content: contentBuffer },
+    ...extraFiles.map((file) => {
+      return { filename: file.path, content: file.content };
+    }),
   ]);
 
   const manifest = {
@@ -282,14 +279,18 @@ export function mockSkillContent(
     createdAt: new Date(0).toISOString(),
     files: [
       { path: "SKILL.md", hash: "test-hash-skill", size: contentBuffer.length },
-      ...extraFiles.map((f) => {
-        return { path: f.path, hash: "test-hash-extra", size: f.size };
+      ...extraFiles.map((file) => {
+        return {
+          path: file.path,
+          hash: "test-hash-extra",
+          size: file.content.length,
+        };
       }),
     ],
     totalSize:
       contentBuffer.length +
-      extraFiles.reduce((sum, f) => {
-        return sum + f.size;
+      extraFiles.reduce((sum, file) => {
+        return sum + file.content.length;
       }, 0),
     fileCount: 1 + extraFiles.length,
   };

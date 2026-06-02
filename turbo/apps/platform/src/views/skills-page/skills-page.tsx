@@ -1,18 +1,17 @@
+import { useEffect, useMemo, useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   ZeroAgentCustomSkill,
-  ZeroAgentSkillContentResponse,
+  ZeroAgentSkillDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { IconChevronRight, IconSearch } from "@tabler/icons-react";
 import {
-  IconDeviceFloppy,
-  IconFileText,
-  IconLoader2,
-  IconSearch,
-} from "@tabler/icons-react";
-import {
-  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
   Input,
   Select,
   SelectContent,
@@ -21,29 +20,24 @@ import {
   SelectValue,
 } from "@vm0/ui";
 
-import { isOrgAdmin$ } from "../../signals/org.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import { sortedAgents$ } from "../../signals/agent.ts";
 import {
   filteredOrgSkills$,
-  saveSelectedSkillContent$,
-  selectedSkillDirty$,
-  selectedSkillDraft$,
   selectedSkillAgentId$,
   selectedSkillDetail$,
   selectedSkillName$,
   setSelectedSkillAgentId$,
-  setSelectedSkillDraft$,
   setSelectedSkillName$,
   setSkillSearch$,
   skillSearch$,
   skillUsages$,
 } from "../../signals/skills-page/skills-signals.ts";
-import { onDomEventFn } from "../../signals/utils.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
+import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
 const ALL_AGENTS_FILTER = "all";
+const LIST_AVATAR_LIMIT = 5;
 
 function skillTitle(skill: {
   readonly name: string;
@@ -58,7 +52,7 @@ function agentTitle(agent: TeamComposeItem): string {
 
 export function SkillsPage() {
   const skillsLoadable = useLoadable(filteredOrgSkills$);
-  const selectedSkillName = useLastResolved(selectedSkillName$);
+  const selectedSkillName = useGet(selectedSkillName$);
   const skillUsages = useLastResolved(skillUsages$) ?? new Map();
   const skills =
     skillsLoadable.state === "hasData" ? skillsLoadable.data : null;
@@ -77,16 +71,21 @@ export function SkillsPage() {
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto grid max-w-[1180px] gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="mx-auto max-w-[1180px]">
           <SkillsListPanel
             skills={skills}
             loading={loading}
             selectedSkillName={selectedSkillName}
             skillUsages={skillUsages}
           />
-          <SkillDetailPanel />
         </div>
       </main>
+      <SkillDetailDialog
+        open={selectedSkillName !== null}
+        agents={
+          selectedSkillName ? (skillUsages.get(selectedSkillName) ?? []) : []
+        }
+      />
     </div>
   );
 }
@@ -103,13 +102,19 @@ function SkillsListPanel({
   readonly skillUsages: ReadonlyMap<string, readonly TeamComposeItem[]>;
 }) {
   return (
-    <section className="zero-card flex min-h-[420px] flex-col overflow-hidden">
+    <section className="zero-card flex min-h-[520px] flex-col overflow-hidden">
       <SkillsToolbar />
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {loading ? (
           <SkillListSkeleton />
         ) : skills && skills.length > 0 ? (
-          <div className="flex flex-col gap-1">
+          <div>
+            <div className="hidden grid-cols-[minmax(180px,1.1fr)_minmax(220px,1.7fr)_132px_44px] gap-4 border-b border-border/70 px-4 py-2 text-xs font-medium text-muted-foreground md:grid">
+              <span>Skill</span>
+              <span>Description</span>
+              <span>Used by</span>
+              <span className="sr-only">Open</span>
+            </div>
             {skills.map((skill) => {
               return (
                 <SkillListItem
@@ -123,7 +128,6 @@ function SkillsListPanel({
           </div>
         ) : (
           <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
-            <IconFileText size={26} className="mb-3 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">
               No custom skills
             </p>
@@ -149,8 +153,8 @@ function SkillsToolbar() {
   });
 
   return (
-    <div className="shrink-0 border-b border-border/70 p-3">
-      <div className="relative">
+    <div className="flex shrink-0 flex-col gap-3 border-b border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative min-w-0 flex-1">
         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
@@ -161,7 +165,7 @@ function SkillsToolbar() {
           className="h-9 pl-9"
         />
       </div>
-      <div className="mt-2">
+      <div className="sm:w-56">
         <Select
           value={selectedAgentId ?? ALL_AGENTS_FILTER}
           onValueChange={(value) => {
@@ -197,31 +201,36 @@ function SkillListItem({
   readonly agents: readonly TeamComposeItem[];
 }) {
   const selectSkill = useSet(setSelectedSkillName$);
-  const usageLabel =
-    agents.length === 1 ? "1 agent" : `${agents.length} agents`;
 
   return (
     <button
       type="button"
-      className={`flex w-full flex-col rounded-lg px-3 py-2.5 text-left transition-colors ${
+      className={`grid w-full grid-cols-1 gap-2 border-b border-border/60 px-3 py-3 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(180px,1.1fr)_minmax(220px,1.7fr)_132px_44px] md:items-center md:gap-4 md:px-4 ${
         selected
-          ? "bg-gray-200 text-gray-900"
-          : "text-foreground hover:bg-sidebar-accent"
+          ? "bg-muted/70 text-foreground"
+          : "text-foreground hover:bg-muted/40"
       }`}
       onClick={() => {
         selectSkill(skill.name);
       }}
     >
-      <span className="flex min-w-0 items-center gap-2">
-        <IconFileText size={15} className="shrink-0 text-muted-foreground" />
-        <span className="truncate text-sm font-medium">
-          {skillTitle(skill)}
+      <span className="flex min-w-0 items-center">
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">
+            {skillTitle(skill)}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {skill.name}
+          </span>
         </span>
       </span>
-      <span className="mt-1 truncate text-xs text-muted-foreground">
+      <span className="min-w-0 truncate text-sm text-muted-foreground">
         {skill.description ?? skill.name}
       </span>
-      <span className="mt-2 text-xs text-muted-foreground">{usageLabel}</span>
+      <AgentAvatarStack agents={agents} />
+      <span className="hidden justify-self-end text-muted-foreground md:inline-flex">
+        <IconChevronRight size={16} />
+      </span>
     </button>
   );
 }
@@ -231,10 +240,14 @@ function SkillListSkeleton() {
     <div className="flex flex-col gap-2 p-1" data-testid="skills-loading">
       {[0, 1, 2, 3].map((index) => {
         return (
-          <div key={index} className="rounded-lg px-3 py-2.5">
-            <div className="h-4 w-40 rounded bg-muted" />
-            <div className="mt-2 h-3 w-56 max-w-full rounded bg-muted" />
-            <div className="mt-3 h-3 w-16 rounded bg-muted" />
+          <div
+            key={index}
+            className="grid gap-3 rounded-lg px-3 py-3 md:grid-cols-[minmax(180px,1.1fr)_minmax(220px,1.7fr)_132px_44px]"
+          >
+            <div className="h-9 w-44 rounded bg-muted" />
+            <div className="h-9 w-full rounded bg-muted" />
+            <div className="h-7 w-20 rounded bg-muted" />
+            <div className="hidden h-5 w-5 rounded bg-muted md:block" />
           </div>
         );
       })}
@@ -242,34 +255,47 @@ function SkillListSkeleton() {
   );
 }
 
-function SkillDetailPanel() {
+function SkillDetailDialog({
+  open,
+  agents,
+}: {
+  readonly open: boolean;
+  readonly agents: readonly TeamComposeItem[];
+}) {
+  const setSelectedSkillName = useSet(setSelectedSkillName$);
   const detailLoadable = useLoadable(selectedSkillDetail$);
   const selectedSkillName = useLastResolved(selectedSkillName$);
-  const skillUsages = useLastResolved(skillUsages$) ?? new Map();
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   const loading = detailLoadable.state === "loading" && !detail;
 
-  if (loading) {
-    return <SkillDetailSkeleton />;
-  }
-
-  if (!selectedSkillName || !detail) {
-    return (
-      <section className="zero-card flex min-h-[420px] items-center justify-center px-6 text-center">
-        <div>
-          <IconFileText
-            size={28}
-            className="mx-auto mb-3 text-muted-foreground"
-          />
-          <p className="text-sm font-medium text-foreground">Select a skill</p>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <SkillEditor detail={detail} agents={skillUsages.get(detail.name) ?? []} />
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setSelectedSkillName(null);
+        }
+      }}
+    >
+      <DialogContent
+        aria-describedby="skill-detail-dialog-description"
+        className="max-w-[940px] gap-0 overflow-hidden p-0"
+      >
+        <DialogTitle className="sr-only">Skill details</DialogTitle>
+        <DialogDescription
+          id="skill-detail-dialog-description"
+          className="sr-only"
+        >
+          View skill content, usage, and files.
+        </DialogDescription>
+        {loading || !selectedSkillName || !detail ? (
+          <SkillDetailSkeleton />
+        ) : (
+          <SkillEditor detail={detail} agents={agents} />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -277,135 +303,202 @@ function SkillEditor({
   detail,
   agents,
 }: {
-  readonly detail: ZeroAgentSkillContentResponse;
+  readonly detail: ZeroAgentSkillDetailResponse;
   readonly agents: readonly TeamComposeItem[];
 }) {
-  const draft = useLastResolved(selectedSkillDraft$) ?? detail.content ?? "";
-  const dirty = useLastResolved(selectedSkillDirty$) ?? false;
-  const setDraft = useSet(setSelectedSkillDraft$);
-  const pageSignal = useGet(pageSignal$);
-  const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
-  const [saveLoadable, saveSkill] = useLoadableSet(saveSelectedSkillContent$);
-  const saving = saveLoadable.state === "loading";
-
-  const canSave = isAdmin && dirty && !saving;
   const files = detail.files ?? [];
-  const handleSave = onDomEventFn(async () => {
-    if (!canSave) {
-      return;
+  const preferredFilePath =
+    files.find((file) => {
+      return file.path === "SKILL.md";
+    })?.path ??
+    files[0]?.path ??
+    (detail.content !== null ? "SKILL.md" : null);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
+    preferredFilePath,
+  );
+  const fileContentMap = useMemo(() => {
+    const contents = new Map<string, string>();
+    for (const file of detail.fileContents ?? []) {
+      contents.set(file.path, file.content);
     }
-    await saveSkill(draft, pageSignal);
-  });
-  const fileCountLabel =
-    files.length === 1 ? "1 file" : `${files.length} files`;
+    if (detail.content !== null && !contents.has("SKILL.md")) {
+      contents.set("SKILL.md", detail.content);
+    }
+    return contents;
+  }, [detail.content, detail.fileContents]);
+  const selectedContent = selectedFilePath
+    ? (fileContentMap.get(selectedFilePath) ?? null)
+    : null;
+  useEffect(() => {
+    setSelectedFilePath(preferredFilePath);
+  }, [detail.name, preferredFilePath]);
 
   return (
-    <section className="zero-card flex min-h-[560px] min-w-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 flex-col gap-4 border-b border-border/70 p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <IconFileText
-                size={18}
-                className="shrink-0 text-muted-foreground"
-              />
-              <h2 className="truncate text-base font-semibold text-foreground">
-                {skillTitle(detail)}
-              </h2>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {detail.description ?? detail.name}
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 gap-2 rounded-lg border"
-            disabled={!canSave}
-            onClick={handleSave}
-          >
-            {saving ? (
-              <IconLoader2 size={14} className="animate-spin" />
-            ) : (
-              <IconDeviceFloppy size={14} />
-            )}
-            Save
-          </Button>
-        </div>
+    <div className="flex max-h-[88vh] min-w-0 flex-col overflow-hidden">
+      <DialogHeader className="shrink-0 border-b border-border/70 px-5 py-4 pr-14">
+        <h2 className="truncate text-base font-semibold leading-none tracking-tight">
+          {skillTitle(detail)}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {detail.description ?? detail.name}
+        </p>
+      </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span className="zero-badge rounded-md px-2 py-1">
-            {fileCountLabel}
-          </span>
-          <span className="zero-badge rounded-md px-2 py-1">
-            {agents.length === 1 ? "1 agent" : `${agents.length} agents`}
-          </span>
-        </div>
-
-        <SkillAgents agents={agents} />
-      </div>
-
-      <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
         <div className="flex min-h-0 flex-col">
           <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-4 text-xs font-medium text-muted-foreground">
-            SKILL.md
+            <span className="truncate">
+              {selectedFilePath ?? "No file selected"}
+            </span>
           </div>
-          <textarea
-            aria-label="Skill instructions"
-            value={draft}
-            readOnly={!isAdmin}
-            onChange={(event) => {
-              setDraft(detail.name, event.target.value);
-            }}
-            className="min-h-[420px] flex-1 resize-none bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
-            placeholder="SKILL.md"
-            spellCheck={false}
-          />
+          {selectedFilePath && selectedContent !== null ? (
+            <pre
+              aria-label="Skill content"
+              className="min-h-[420px] flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
+            >
+              {selectedContent}
+            </pre>
+          ) : (
+            <div className="flex min-h-[420px] flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
+              {selectedFilePath
+                ? "No content available for this file."
+                : "No files."}
+            </div>
+          )}
         </div>
-        <SkillFiles files={files} />
+        <aside className="min-h-0 border-t border-border/70 bg-muted/20 lg:border-l lg:border-t-0">
+          <BoundAgentsPanel agents={agents} />
+          <SkillFiles
+            files={files}
+            selectedPath={selectedFilePath}
+            onSelectFile={setSelectedFilePath}
+          />
+        </aside>
       </div>
-    </section>
+    </div>
   );
 }
 
-function SkillAgents({
+function BoundAgentsPanel({
+  agents,
+}: {
+  readonly agents: readonly TeamComposeItem[];
+}) {
+  return (
+    <div className="border-b border-border/70">
+      <div className="flex h-9 items-center justify-between px-3">
+        <span className="text-xs font-medium text-muted-foreground">
+          Used by
+        </span>
+        <span className="text-xs text-muted-foreground">{agents.length}</span>
+      </div>
+      <div className="max-h-[180px] overflow-auto px-2 pb-2">
+        {agents.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {agents.map((agent) => {
+              return (
+                <Link
+                  key={agent.id}
+                  pathname={ROUTES.agentDetail}
+                  options={{ pathParams: { agentId: agent.id } }}
+                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                >
+                  <AgentAvatar agent={agent} />
+                  <span className="truncate">{agentTitle(agent)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="px-2 pb-3 text-xs text-muted-foreground">
+            No agents use this skill.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgentAvatar({ agent }: { readonly agent: TeamComposeItem }) {
+  const title = agentTitle(agent);
+  if (agent.avatarUrl) {
+    return (
+      <AvatarFromUrl
+        avatarUrl={agent.avatarUrl}
+        alt={title}
+        size={24}
+        className="size-6 shrink-0 rounded-full object-cover"
+      />
+    );
+  }
+
+  return (
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-background text-[10px] text-muted-foreground">
+      {title.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+function AgentAvatarStack({
   agents,
 }: {
   readonly agents: readonly TeamComposeItem[];
 }) {
   if (agents.length === 0) {
-    return null;
+    return (
+      <span className="text-xs text-muted-foreground" aria-label="No agents">
+        None
+      </span>
+    );
   }
 
+  const visibleAgents = agents.slice(0, LIST_AVATAR_LIMIT);
+  const overflow = agents.length - visibleAgents.length;
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {agents.map((agent) => {
+    <span
+      className="flex min-w-0 items-center"
+      aria-label={`${agents.length} ${agents.length === 1 ? "agent" : "agents"} use this skill`}
+    >
+      {visibleAgents.map((agent, index) => {
         return (
-          <Link
+          <span
             key={agent.id}
-            pathname={ROUTES.agentDetail}
-            options={{ pathParams: { agentId: agent.id } }}
-            className="inline-flex h-7 max-w-full items-center rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            className={`rounded-full ring-2 ring-background ${
+              index === 0 ? "" : "-ml-2"
+            }`}
           >
-            <span className="truncate">{agentTitle(agent)}</span>
-          </Link>
+            <AgentAvatar agent={agent} />
+          </span>
         );
       })}
-    </div>
+      {overflow > 0 ? (
+        <span
+          className="-ml-2 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-background"
+          aria-label={`${overflow} more ${overflow === 1 ? "agent" : "agents"}`}
+        >
+          +{overflow}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
 function SkillFiles({
   files,
+  selectedPath,
+  onSelectFile,
 }: {
   readonly files: readonly { readonly path: string; readonly size: number }[];
+  readonly selectedPath: string | null;
+  readonly onSelectFile: (path: string) => void;
 }) {
   const totalSize = files.reduce((sum, file) => {
     return sum + file.size;
   }, 0);
 
   return (
-    <aside className="min-h-0 border-t border-border/70 bg-muted/20 lg:border-l lg:border-t-0">
+    <div className="min-h-0">
       <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
         <span className="text-xs font-medium text-muted-foreground">Files</span>
         <span className="text-xs text-muted-foreground">
@@ -413,29 +506,43 @@ function SkillFiles({
         </span>
       </div>
       <div className="max-h-[240px] overflow-auto p-2 lg:max-h-none">
-        {files.map((file) => {
-          return (
-            <div
-              key={file.path}
-              className="flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1.5"
-            >
-              <span className="min-w-0 truncate text-xs text-foreground">
-                {file.path}
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {formatBytes(file.size)}
-              </span>
-            </div>
-          );
-        })}
+        {files.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {files.map((file) => {
+              const selected = file.path === selectedPath;
+              return (
+                <button
+                  key={file.path}
+                  type="button"
+                  aria-pressed={selected}
+                  className={`flex min-w-0 items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors ${
+                    selected
+                      ? "bg-accent text-accent-foreground"
+                      : "text-foreground hover:bg-accent/70"
+                  }`}
+                  onClick={() => {
+                    onSelectFile(file.path);
+                  }}
+                >
+                  <span className="min-w-0 truncate text-xs">{file.path}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatBytes(file.size)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="px-2 pb-3 text-xs text-muted-foreground">No files.</p>
+        )}
       </div>
-    </aside>
+    </div>
   );
 }
 
 function SkillDetailSkeleton() {
   return (
-    <section className="zero-card min-h-[560px] overflow-hidden">
+    <section className="min-h-[560px] overflow-hidden">
       <div className="border-b border-border/70 p-4">
         <div className="h-5 w-56 rounded bg-muted" />
         <div className="mt-3 h-4 w-72 max-w-full rounded bg-muted" />
