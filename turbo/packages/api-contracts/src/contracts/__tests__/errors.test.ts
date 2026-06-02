@@ -54,14 +54,37 @@ describe("formatRunErrorForExternalSurface", () => {
     ).toBe(INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE);
   });
 
-  it("preserves ChatGPT Codex usage limit guidance", () => {
+  it("shows Codex usage limit errors verbatim", () => {
+    const codexUsageLimit =
+      "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";
+    const formatted = formatRunErrorForExternalSurface({
+      code: "UNKNOWN",
+      message: codexUsageLimit,
+    });
+    expect(formatted).toBe(codexUsageLimit);
+    expect(formatted).not.toContain("switch to another model");
+  });
+
+  it("shows Claude session limit errors verbatim", () => {
+    const sessionLimit =
+      "You've hit your session limit · resets 12:50pm (Asia/Shanghai)";
     expect(
       formatRunErrorForExternalSurface({
         code: "UNKNOWN",
-        message:
-          "ChatGPT Codex usage limit reached. Visit chatgpt.com/codex/settings/usage.",
+        message: sessionLimit,
       }),
-    ).toContain("ChatGPT Codex usage limit reached.");
+    ).toBe(sessionLimit);
+  });
+
+  it("shows Claude weekly limit errors verbatim", () => {
+    const weeklyLimit =
+      "You've hit your weekly limit · resets 10am (Asia/Shanghai)";
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: weeklyLimit,
+      }),
+    ).toBe(weeklyLimit);
   });
 
   it("falls back to the Web generic message for unallowlisted errors", () => {

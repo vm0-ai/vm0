@@ -28,7 +28,6 @@ export {
   ApiError,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   createErrorResponse,
-  formatChatgptCodexUsageLimitError,
   formatRunErrorForExternalSurface,
   isActionableRunError,
   isGenericRunErrorForDisplay,
