@@ -155,6 +155,9 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
             html_url: "https://github.com/vm0-ai/vm0/pull/15070",
             state: "open",
             merged_at: null,
+            draft: false,
+            mergeable: true,
+            mergeable_state: "clean",
             head: { sha: "abc123" },
           });
         },
@@ -173,6 +176,15 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
                 completed_at: "2026-06-02T00:01:00Z",
               },
             ],
+          });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0/commits/abc123/status",
+        () => {
+          return HttpResponse.json({
+            state: "success",
+            statuses: [],
           });
         },
       ),
@@ -195,6 +207,7 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
         url: "https://github.com/vm0-ai/vm0/pull/15070",
         state: "open",
         headSha: "abc123",
+        mergeStatus: "ready",
         rollup: "success",
         checks: [
           {
@@ -208,6 +221,144 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
         ],
       },
     ]);
+  });
+
+  it("returns conflict merge status when GitHub reports an unmergeable PR", async () => {
+    const fixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await trackGithubConnector(seedGithubConnector({ fixture }));
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "assistant",
+        content:
+          "Review https://github.com/vm0-ai/vm0/pull/15071 before merging.",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.get("https://api.github.com/repos/vm0-ai/vm0/pulls/15071", () => {
+        return HttpResponse.json({
+          title: "Update PR tracking merge status",
+          html_url: "https://github.com/vm0-ai/vm0/pull/15071",
+          state: "open",
+          merged_at: null,
+          draft: false,
+          mergeable: false,
+          mergeable_state: "dirty",
+          head: { sha: "def456" },
+        });
+      }),
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0/commits/def456/check-runs",
+        () => {
+          return HttpResponse.json({ check_runs: [] });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0/commits/def456/status",
+        () => {
+          return HttpResponse.json({
+            state: "success",
+            statuses: [],
+          });
+        },
+      ),
+    );
+
+    const client = setupApp({ context })(chatThreadGithubPrsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.prs[0]).toMatchObject({
+      repo: "vm0-ai/vm0",
+      number: 15_071,
+      mergeStatus: "conflicts",
+      rollup: "none",
+    });
+  });
+
+  it("surfaces pending aggregate commit status when GitHub returns no status contexts", async () => {
+    const fixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await trackGithubConnector(seedGithubConnector({ fixture }));
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "assistant",
+        content:
+          "Review https://github.com/vm0-ai/vm0/pull/15072 before merging.",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.get("https://api.github.com/repos/vm0-ai/vm0/pulls/15072", () => {
+        return HttpResponse.json({
+          title: "Wait for pending checks",
+          html_url: "https://github.com/vm0-ai/vm0/pull/15072",
+          state: "open",
+          merged_at: null,
+          draft: false,
+          mergeable: true,
+          mergeable_state: "clean",
+          head: { sha: "ghi789" },
+        });
+      }),
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0/commits/ghi789/check-runs",
+        () => {
+          return HttpResponse.json({ check_runs: [] });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/vm0-ai/vm0/commits/ghi789/status",
+        () => {
+          return HttpResponse.json({
+            state: "pending",
+            statuses: [],
+          });
+        },
+      ),
+    );
+
+    const client = setupApp({ context })(chatThreadGithubPrsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.prs[0]).toMatchObject({
+      repo: "vm0-ai/vm0",
+      number: 15_072,
+      mergeStatus: null,
+      rollup: "pending",
+      checks: [
+        {
+          name: "GitHub status",
+          status: "in_progress",
+          conclusion: null,
+          url: "https://github.com/vm0-ai/vm0/pull/15072",
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    });
   });
 
   it("returns 403 when the agent has not authorized the GitHub connector", async () => {

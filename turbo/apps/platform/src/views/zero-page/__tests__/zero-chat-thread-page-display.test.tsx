@@ -13,6 +13,7 @@ import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import {
+  chatMessagesContract,
   chatThreadArtifactsContract,
   chatThreadGithubPrsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -34,9 +35,40 @@ import {
   createMockUserPermissionGrantResponse,
   setMockUserPermissionGrants,
 } from "../../../mocks/handlers/api-user-permission-grants.ts";
+import {
+  createDefaultMockGithubIntegration,
+  setMockGithubIntegration,
+} from "../../../mocks/handlers/api-integrations-github.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+function queryRoleByText(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  text: string,
+): HTMLElement | undefined {
+  return queryAllByRoleFast(role).find((element) => {
+    return element.textContent?.trim() === text;
+  });
+}
+
+function getRoleByText(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  text: string,
+): HTMLElement {
+  const element = queryRoleByText(role, text);
+  expect(element).toBeDefined();
+  return element!;
+}
+
+function queryRoleByAriaLabel(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  label: string,
+): HTMLElement | undefined {
+  return queryAllByRoleFast(role).find((element) => {
+    return element.getAttribute("aria-label") === label;
+  });
+}
 
 function mockConnectorOauthStart() {
   server.use(
@@ -2904,9 +2936,10 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
     ]);
   }
 
-  it("opens a sheet with tracked GitHub PR action status when enabled and authorized", async () => {
+  it("opens a docked panel with tracked GitHub PR action status when enabled and authorized", async () => {
     const user = userEvent.setup();
     let prsRequests = 0;
+    const sentPrompts: string[] = [];
     mockChatLifecycle({
       chatMessages: [
         {
@@ -2920,9 +2953,38 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
       ],
     });
     setConnectedGithubConnector();
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({
+        labelListeners: [
+          {
+            id: "a0000000-0000-4000-a000-000000000010",
+            labelName: "pr-review-merge",
+            triggerMode: "created_by_me",
+            prompt: "review",
+            enabled: true,
+            canManage: true,
+            agent: {
+              id: "c0000000-0000-4000-a000-000000000001",
+              name: "zero",
+            },
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      }),
+    );
     server.use(
       mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
         return respond(200, { enabledTypes: ["github"] });
+      }),
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        if ("prompt" in body && body.prompt) {
+          sentPrompts.push(body.prompt);
+        }
+        return respond(201, {
+          runId: null,
+          threadId: "thread-test-1",
+        });
       }),
       mockApi(chatThreadGithubPrsContract.list, ({ params, respond }) => {
         prsRequests += 1;
@@ -2936,6 +2998,7 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
               url: "https://github.com/vm0-ai/vm0/pull/15070",
               state: "open",
               headSha: "abc123",
+              mergeStatus: "ready",
               rollup: "success",
               checks: [
                 {
@@ -2945,6 +3008,74 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
                   url: "https://github.com/vm0-ai/vm0/actions/runs/1",
                   startedAt: "2026-06-02T00:00:00Z",
                   completedAt: "2026-06-02T00:01:00Z",
+                },
+              ],
+            },
+            {
+              repo: "vm0-ai/vm0",
+              number: 15_071,
+              title: "Fix merge conflict",
+              url: "https://github.com/vm0-ai/vm0/pull/15071",
+              state: "open",
+              headSha: "def456",
+              mergeStatus: "conflicts",
+              rollup: "failure",
+              checks: [
+                {
+                  name: "Build",
+                  status: "completed",
+                  conclusion: "failure",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/2",
+                  startedAt: "2026-06-02T00:00:00Z",
+                  completedAt: "2026-06-02T00:01:00Z",
+                },
+                {
+                  name: "Deploy",
+                  status: "in_progress",
+                  conclusion: null,
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/3",
+                  startedAt: "2026-06-02T00:02:00Z",
+                  completedAt: null,
+                },
+                {
+                  name: "Lint",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/4",
+                  startedAt: "2026-06-02T00:03:00Z",
+                  completedAt: "2026-06-02T00:04:00Z",
+                },
+                {
+                  name: "Test",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/5",
+                  startedAt: "2026-06-02T00:04:00Z",
+                  completedAt: "2026-06-02T00:05:00Z",
+                },
+                {
+                  name: "Package",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/6",
+                  startedAt: "2026-06-02T00:05:00Z",
+                  completedAt: "2026-06-02T00:06:00Z",
+                },
+                {
+                  name: "Security",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/7",
+                  startedAt: "2026-06-02T00:06:00Z",
+                  completedAt: "2026-06-02T00:07:00Z",
+                },
+                {
+                  name: "E2E",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/8",
+                  startedAt: "2026-06-02T00:07:00Z",
+                  completedAt: "2026-06-02T00:08:00Z",
                 },
               ],
             },
@@ -2970,10 +3101,122 @@ describe("zero chat thread page display - GitHub PR tracking", () => {
     });
     expect(screen.getByText("vm0-ai/vm0 #15070")).toBeInTheDocument();
     expect(screen.getByText("Add GitHub PR tracking")).toBeInTheDocument();
-    expect(screen.getByText("Passing")).toBeInTheDocument();
+    expect(screen.getByText("Ready to merge")).toBeInTheDocument();
+    expect(screen.getByText("Fix merge conflict")).toBeInTheDocument();
+    expect(screen.getByText("Conflicts")).toBeInTheDocument();
+    expect(screen.queryByText("Passing")).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByText("Fix merge conflict")
+        .compareDocumentPosition(screen.getByText("Add GitHub PR tracking")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByText("CI")).toBeInTheDocument();
-    expect(screen.getByText("success")).toBeInTheDocument();
+    expect(screen.getAllByText("Success").length).toBeGreaterThan(0);
+    expect(screen.getByText("Build")).toBeInTheDocument();
+    expect(screen.getByText("Deploy")).toBeInTheDocument();
+    expect(screen.getByText("E2E")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(
+      screen
+        .getByText("Build")
+        .compareDocumentPosition(screen.getByText("Deploy")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(queryRoleByText("link", "Open PR")).toBeUndefined();
+    expect(queryRoleByText("link", "CI")).toBeUndefined();
+    const ciRow = screen.getByText("CI").closest("details");
+    expect(ciRow).toBeInstanceOf(HTMLDetailsElement);
+    if (!(ciRow instanceof HTMLDetailsElement)) {
+      throw new Error("CI check row was not rendered");
+    }
+    expect(ciRow.open).toBeFalsy();
+    await user.click(screen.getByText("CI"));
+    expect(ciRow.open).toBeTruthy();
+    expect(within(ciRow).getByText("Started")).toBeVisible();
+    expect(within(ciRow).getByText("Completed")).toBeVisible();
+    const actionLink = queryAllByRoleFast("link", ciRow).find((link) => {
+      return link.textContent?.trim() === "Open action";
+    });
+    expect(actionLink).toBeDefined();
+    expect(actionLink).toHaveAttribute(
+      "href",
+      "https://github.com/vm0-ai/vm0/actions/runs/1",
+    );
+
+    await user.click(getRoleByText("button", "Fix conflict"));
+    expect(sentPrompts).toContain("fix pr 15071 conflict & push");
+
+    const addLabelButton = queryRoleByAriaLabel(
+      "button",
+      "Add label to PR 15070",
+    );
+    expect(addLabelButton).toBeDefined();
+    await user.click(addLabelButton!);
+    await user.click(getRoleByText("menuitem", "pr-review-merge"));
+    expect(sentPrompts).toContain('add label "pr-review-merge" to pr 15070');
     expect(prsRequests).toBeGreaterThan(0);
+  });
+
+  it("hides add label when no GitHub integration labels are configured", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "Created https://github.com/vm0-ai/vm0/pull/15070 and waiting on CI.",
+          runId: "run-github-pr-tracking-no-labels",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setConnectedGithubConnector();
+    setMockGithubIntegration(
+      createDefaultMockGithubIntegration({ labelListeners: [] }),
+    );
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["github"] });
+      }),
+      mockApi(chatThreadGithubPrsContract.list, ({ respond }) => {
+        return respond(200, {
+          prs: [
+            {
+              repo: "vm0-ai/vm0",
+              number: 15_070,
+              title: "Add GitHub PR tracking",
+              url: "https://github.com/vm0-ai/vm0/pull/15070",
+              state: "open",
+              headSha: "abc123",
+              mergeStatus: "ready",
+              rollup: "success",
+              checks: [],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    await user.click(await screen.findByLabelText("Open GitHub PR tracking"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Add GitHub PR tracking")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Add label")).not.toBeInTheDocument();
+    expect(
+      queryAllByRoleFast("button").some((button) => {
+        return button.getAttribute("aria-label")?.startsWith("Add label to PR");
+      }),
+    ).toBeFalsy();
   });
 
   it("hides the GitHub PR tracking button when the agent is not authorized", async () => {

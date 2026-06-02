@@ -27,6 +27,9 @@ const githubPullSchema = z
     html_url: z.string(),
     state: z.enum(["open", "closed"]),
     merged_at: z.string().nullable().optional(),
+    draft: z.boolean().optional(),
+    mergeable: z.boolean().nullable().optional(),
+    mergeable_state: z.string().nullable().optional(),
     head: z.object({ sha: z.string() }),
   })
   .passthrough();
@@ -45,6 +48,30 @@ const githubCheckRunSchema = z
 const githubCheckRunsSchema = z
   .object({
     check_runs: z.array(githubCheckRunSchema),
+  })
+  .passthrough();
+
+const githubCommitStatusStateSchema = z.enum([
+  "error",
+  "failure",
+  "pending",
+  "success",
+]);
+
+const githubCommitStatusContextSchema = z
+  .object({
+    context: z.string(),
+    state: githubCommitStatusStateSchema,
+    target_url: z.string().nullable().optional(),
+    created_at: z.string().nullable().optional(),
+    updated_at: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const githubCommitStatusSchema = z
+  .object({
+    state: githubCommitStatusStateSchema,
+    statuses: z.array(githubCommitStatusContextSchema),
   })
   .passthrough();
 
@@ -281,6 +308,93 @@ function rollupCheckRuns(
   return "success";
 }
 
+function githubPrMergeStatus(
+  pull: z.infer<typeof githubPullSchema>,
+  rollup: ChatThreadGithubPr["rollup"],
+): ChatThreadGithubPr["mergeStatus"] {
+  if (pull.state !== "open" || pull.merged_at) {
+    return null;
+  }
+
+  if (pull.draft === true || pull.mergeable_state === "draft") {
+    return "draft";
+  }
+
+  if (pull.mergeable === false || pull.mergeable_state === "dirty") {
+    return "conflicts";
+  }
+
+  if (
+    pull.mergeable_state === "clean" &&
+    (rollup === "success" || rollup === "none")
+  ) {
+    return "ready";
+  }
+
+  if (pull.mergeable === true && (rollup === "success" || rollup === "none")) {
+    return "ready";
+  }
+
+  if (
+    pull.mergeable_state === "blocked" ||
+    pull.mergeable_state === "behind" ||
+    pull.mergeable_state === "has_hooks" ||
+    pull.mergeable_state === "unstable"
+  ) {
+    return "blocked";
+  }
+
+  return null;
+}
+
+function githubStatusStateToCheckStatus(
+  state: z.infer<typeof githubCommitStatusStateSchema>,
+): string {
+  return state === "pending" ? "in_progress" : "completed";
+}
+
+function githubStatusStateToConclusion(
+  state: z.infer<typeof githubCommitStatusStateSchema>,
+): string | null {
+  if (state === "pending") {
+    return null;
+  }
+  return state === "success" ? "success" : "failure";
+}
+
+function githubCommitStatusChecks(
+  commitStatus: z.infer<typeof githubCommitStatusSchema>,
+  fallbackUrl: string,
+): ChatThreadGithubPr["checks"] {
+  const checks = commitStatus.statuses.map((status) => {
+    const checkStatus = githubStatusStateToCheckStatus(status.state);
+    return {
+      name: status.context || "GitHub status",
+      status: checkStatus,
+      conclusion: githubStatusStateToConclusion(status.state),
+      url: status.target_url ?? null,
+      startedAt: status.created_at ?? null,
+      completedAt:
+        checkStatus === "completed" ? (status.updated_at ?? null) : null,
+    };
+  });
+
+  if (checks.length > 0 || commitStatus.state !== "pending") {
+    return checks;
+  }
+
+  return [
+    {
+      name: "GitHub status",
+      status: "in_progress",
+      conclusion: null,
+      url: fallbackUrl,
+      startedAt: null,
+      completedAt: null,
+    },
+  ];
+}
+
 async function fetchGithubPr(
   ref: GithubPrRef,
   token: string,
@@ -293,23 +407,35 @@ async function fetchGithubPr(
     githubPullSchema,
     signal,
   );
-  const checkRuns = await githubJson(
-    `/repos/${repoPath}/commits/${encodeURIComponent(pull.head.sha)}/check-runs?per_page=100`,
-    token,
-    githubCheckRunsSchema,
-    signal,
-  );
+  const [checkRuns, commitStatus] = await Promise.all([
+    githubJson(
+      `/repos/${repoPath}/commits/${encodeURIComponent(pull.head.sha)}/check-runs?per_page=100`,
+      token,
+      githubCheckRunsSchema,
+      signal,
+    ),
+    githubJson(
+      `/repos/${repoPath}/commits/${encodeURIComponent(pull.head.sha)}/status`,
+      token,
+      githubCommitStatusSchema,
+      signal,
+    ),
+  ]);
 
-  const checks = checkRuns.check_runs.map((check) => {
-    return {
-      name: check.name,
-      status: check.status,
-      conclusion: check.conclusion ?? null,
-      url: check.html_url ?? null,
-      startedAt: check.started_at ?? null,
-      completedAt: check.completed_at ?? null,
-    };
-  });
+  const checks = [
+    ...checkRuns.check_runs.map((check) => {
+      return {
+        name: check.name,
+        status: check.status,
+        conclusion: check.conclusion ?? null,
+        url: check.html_url ?? null,
+        startedAt: check.started_at ?? null,
+        completedAt: check.completed_at ?? null,
+      };
+    }),
+    ...githubCommitStatusChecks(commitStatus, pull.html_url),
+  ];
+  const rollup = rollupCheckRuns(checks);
 
   return {
     repo: `${ref.owner}/${ref.repo}`,
@@ -318,7 +444,8 @@ async function fetchGithubPr(
     url: pull.html_url,
     state: pull.merged_at ? "merged" : pull.state,
     headSha: pull.head.sha,
-    rollup: rollupCheckRuns(checks),
+    mergeStatus: githubPrMergeStatus(pull, rollup),
+    rollup,
     checks,
   };
 }

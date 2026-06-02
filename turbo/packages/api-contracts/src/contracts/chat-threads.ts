@@ -70,6 +70,7 @@ const chatThreadGithubPrSchema = z.object({
   url: z.string(),
   state: z.enum(["open", "closed", "merged"]),
   headSha: z.string(),
+  mergeStatus: z.enum(["ready", "conflicts", "blocked", "draft"]).nullable(),
   rollup: z.enum(["success", "failure", "pending", "none", "unknown"]),
   checks: z.array(chatThreadGithubPrCheckRunSchema),
 });
