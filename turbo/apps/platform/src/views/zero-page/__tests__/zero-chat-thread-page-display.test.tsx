@@ -2212,6 +2212,56 @@ describe("zero chat thread page display - artifacts drawer", () => {
     );
   });
 
+  it("opens the artifacts drawer when ChatArtifactSidebar feature is enabled", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create a file",
+          runId: "run-sidebar-artifacts",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-sidebar-artifacts",
+              files: [
+                {
+                  id: "file-sidebar-1",
+                  filename: "report.pdf",
+                  contentType: "application/pdf",
+                  size: 1024,
+                  url: "https://example.com/report.pdf",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatArtifactSidebar]: true },
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Artifacts" })).toBeInTheDocument();
+    });
+  });
+
   it("renders markdown artifacts through the text loader instead of an iframe", async () => {
     const user = userEvent.setup();
     let requestedUrl = "";

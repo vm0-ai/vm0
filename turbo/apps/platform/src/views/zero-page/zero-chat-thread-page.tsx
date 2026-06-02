@@ -1752,10 +1752,10 @@ export function ZeroChatThreadPage() {
           </div>
         )}
       </div>
-      {!sidebarEnabled && leftThread && (
+      {leftThread && (
         <ChatArtifactsDrawer thread={leftThread} />
       )}
-      {!sidebarEnabled && rightThread && (
+      {rightThread && (
         <ChatArtifactsDrawer key={rightThread.threadId} thread={rightThread} />
       )}
       {lightboxUrl && <AttachmentLightbox />}
