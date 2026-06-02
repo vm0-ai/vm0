@@ -253,7 +253,7 @@ export function ZeroSettingsTab({
                 aria-label={`How ${resolvedAgentName} sounds`}
               >
                 <div
-                  className="flex w-full flex-wrap gap-2"
+                  className="grid w-full grid-cols-2 gap-2"
                   role="group"
                   aria-label="Tone"
                 >
@@ -266,7 +266,7 @@ export function ZeroSettingsTab({
                           return setTone(opt);
                         }}
                         className={cn(
-                          "min-w-[7.75rem] flex-1 rounded-lg border border-[0.7px] px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:flex-none",
+                          "w-full min-w-0 rounded-lg border border-[0.7px] px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           tone === opt
                             ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                             : "zero-chip text-muted-foreground hover:text-foreground",
