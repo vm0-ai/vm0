@@ -1080,6 +1080,21 @@ mod tests {
         handle.cleanup().await;
     }
 
+    #[test]
+    fn tracked_indices_include_cooldown_and_in_flight() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(2, Duration::from_secs(60), dir.path(), always_free);
+        pool.in_flight.insert(0);
+        pool.release(lease(0, dir.path()));
+        pool.in_flight.insert(1);
+
+        let tracked = pool.tracked_indices();
+
+        assert_eq!(tracked.len(), 2);
+        assert!(tracked.contains(&0));
+        assert!(tracked.contains(&1));
+    }
+
     #[tokio::test]
     async fn waiting_acquires_spawn_demand_scans_up_to_limit() {
         let dir = tempfile::tempdir().expect("tempdir");
