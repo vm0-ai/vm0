@@ -30,9 +30,9 @@ import {
 } from "../connectors";
 import {
   connectorAuthMethodHasAccessKind,
-  connectorAuthMethodSupportsTokenRevoke,
   connectorAuthMethodHasGrantKind,
   connectorAuthMethodRefHasGrantKind,
+  connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodGrantScopes,
   getConnectorAuthMethodIdsForAccessKind,
@@ -673,9 +673,12 @@ describe("connector selected auth method capability checks", () => {
 
     for (const type of connectorTypeSchema.options) {
       for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-        const supportsTokenRevoke = connectorAuthMethodSupportsTokenRevoke(
-          type,
-          authMethod,
+        const supportsTokenRevoke = connectorAuthMethodRefHasRevokeKind(
+          {
+            type,
+            authMethod,
+          },
+          "token-revoke",
         );
         expect(supportsTokenRevoke).toBe(
           getConnectorAuthMethod(type, authMethod)?.revoke.kind ===
@@ -686,17 +689,25 @@ describe("connector selected auth method capability checks", () => {
   });
 
   it("detects token revoke support from selected auth method config", () => {
-    expect(connectorAuthMethodSupportsTokenRevoke("github", "oauth")).toBe(
-      true,
-    );
-    expect(connectorAuthMethodSupportsTokenRevoke("notion", "oauth")).toBe(
-      false,
-    );
-    expect(connectorAuthMethodSupportsTokenRevoke("stripe", "api-token")).toBe(
-      false,
-    );
+    expect(
+      connectorAuthMethodRefHasRevokeKind(
+        { type: "github", authMethod: "oauth" },
+        "token-revoke",
+      ),
+    ).toBe(true);
+    expect(
+      connectorAuthMethodRefHasRevokeKind(
+        { type: "notion", authMethod: "oauth" },
+        "token-revoke",
+      ),
+    ).toBe(false);
+    expect(
+      connectorAuthMethodRefHasRevokeKind(
+        { type: "stripe", authMethod: "api-token" },
+        "token-revoke",
+      ),
+    ).toBe(false);
   });
-
   it("does not mark non-refreshable auth methods as refresh-token access", () => {
     expect(
       connectorAuthMethodHasAccessKind("github", "oauth", "refresh-token"),

@@ -6,7 +6,7 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  connectorAuthMethodSupportsTokenRevoke,
+  connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodStorageMetadata,
   getConnectorAuthMethodScopeDiff,
@@ -15,18 +15,20 @@ import {
   getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
+  type ConnectorAuthMethodRef,
+  type ConnectorAuthMethodRefByRevokeKind,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type ConnectorAuthProviderType,
-  type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -121,12 +123,12 @@ interface EncryptedConnectorTokenSecret {
   readonly description: string;
 }
 
-interface PendingConnectorTokenRevoke {
-  readonly type: TokenRevokeConnectorType;
-  readonly authMethod: string;
+type TokenRevokeMethodRef = ConnectorAuthMethodRefByRevokeKind<"token-revoke">;
+
+type PendingConnectorTokenRevoke = TokenRevokeMethodRef & {
   readonly encryptedAccessToken: string;
   readonly featureSwitchContext: FeatureSwitchContext;
-}
+};
 
 function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
@@ -498,15 +500,13 @@ async function loadPendingConnectorTokenRevoke(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: TokenRevokeConnectorType;
-  readonly authMethod: string;
+  readonly method: TokenRevokeMethodRef;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingConnectorTokenRevoke | null> {
-  const connectorType = args.type;
   const secretMetadata = connectorTokenSecretMetadataForAuthMethod({
-    type: connectorType,
-    authMethod: args.authMethod,
+    type: args.method.type,
+    authMethod: args.method.authMethod,
   });
   if (!secretMetadata) {
     return null;
@@ -532,11 +532,29 @@ async function loadPendingConnectorTokenRevoke(args: {
   }
 
   return {
-    type: connectorType,
-    authMethod: args.authMethod,
+    ...args.method,
     encryptedAccessToken: accessTokenSecret.encryptedValue,
     featureSwitchContext: args.featureSwitchContext,
   };
+}
+
+function resolveTokenRevokeMethodRef(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+}): TokenRevokeMethodRef | null {
+  const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
+    args.authMethod,
+  );
+  if (!parsedAuthMethod.success) {
+    return null;
+  }
+  const method: ConnectorAuthMethodRef = {
+    type: args.type,
+    authMethod: parsedAuthMethod.data,
+  };
+  return connectorAuthMethodRefHasRevokeKind(method, "token-revoke")
+    ? method
+    : null;
 }
 
 async function revokePendingConnectorToken(args: {
@@ -684,15 +702,16 @@ export const deleteZeroConnectorLocalState$ = command(
       }
 
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-      if (
-        connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)
-      ) {
+      const tokenRevokeMethod = resolveTokenRevokeMethodRef({
+        type: args.type,
+        authMethod: existing.authMethod,
+      });
+      if (tokenRevokeMethod) {
         pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
           db: tx,
           orgId: args.orgId,
           userId: args.userId,
-          type: args.type,
-          authMethod: existing.authMethod,
+          method: tokenRevokeMethod,
           featureSwitchContext,
           signal,
         });
@@ -982,13 +1001,16 @@ async function cleanupExistingStoredConnectorForManualGrantConnect(
   }
 
   let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-  if (connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)) {
+  const tokenRevokeMethod = resolveTokenRevokeMethodRef({
+    type: args.type,
+    authMethod: existing.authMethod,
+  });
+  if (tokenRevokeMethod) {
     pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
       db,
       orgId: args.orgId,
       userId: args.userId,
-      type: args.type,
-      authMethod: existing.authMethod,
+      method: tokenRevokeMethod,
       featureSwitchContext: args.featureSwitchContext,
       signal: args.signal,
     });

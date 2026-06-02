@@ -32,7 +32,6 @@ import {
   type DynamicPublicConnectorAuthClientConfig,
   type StaticConfidentialConnectorAuthClientConfig,
   type StaticPublicConnectorAuthClientConfig,
-  type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
 
@@ -606,15 +605,6 @@ export function getConnectorAuthMethodGrantScopes(
   return [
     ...connectorGrantScopes(getConnectorAuthMethod(type, authMethod)?.grant),
   ];
-}
-
-export function connectorAuthMethodSupportsTokenRevoke(
-  type: ConnectorType,
-  authMethod: string,
-): type is TokenRevokeConnectorType {
-  return (
-    getConnectorAuthMethod(type, authMethod)?.revoke.kind === "token-revoke"
-  );
 }
 
 export function getConnectorGenerationTypes(
