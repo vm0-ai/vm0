@@ -56,6 +56,9 @@ WHERE deprecated.id = policy.id
 UPDATE org_model_policies AS replacement
 SET
     is_default = true,
+    default_provider_type = policy.replacement_default_provider_type,
+    credential_scope = policy.replacement_credential_scope,
+    model_provider_id = policy.replacement_model_provider_id,
     updated_at = NOW()
 FROM vm0_remove_poor_agent_model_policies AS policy
 WHERE policy.was_default = true

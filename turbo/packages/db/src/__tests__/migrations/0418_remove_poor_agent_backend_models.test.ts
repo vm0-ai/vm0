@@ -100,6 +100,7 @@ describe("migration 0418 remove poor agent backend models", () => {
     const deepseekConflictOrgId = uniqueId("org-deepseek-conflict");
     const minimaxVm0OrgId = uniqueId("org-minimax-vm0");
     const minimaxOpenRouterOrgId = uniqueId("org-minimax-openrouter");
+    const existingReplacementOrgId = uniqueId("org-existing-replacement");
     const duplicateReplacementOrgId = uniqueId("org-duplicate-replacement");
     const canonicalOpenRouterMiniMaxOrgId = uniqueId(
       "org-openrouter-minimax-canonical",
@@ -132,6 +133,17 @@ describe("migration 0418 remove poor agent backend models", () => {
         type: "openrouter-api-key",
         authMethod: "api-key",
         selectedModel: "anthropic/claude-haiku-4.5",
+      })
+      .returning({ id: modelProviders.id });
+
+    const [existingReplacementOpenRouterProvider] = await db
+      .insert(modelProviders)
+      .values({
+        orgId: existingReplacementOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "openrouter-api-key",
+        authMethod: "api-key",
+        selectedModel: "minimax/minimax-m2.7",
       })
       .returning({ id: modelProviders.id });
 
@@ -232,6 +244,21 @@ describe("migration 0418 remove poor agent backend models", () => {
         modelProviderId: minimaxOpenRouterProvider!.id,
       },
       {
+        orgId: existingReplacementOrgId,
+        model: "claude-sonnet-4-6",
+        isDefault: false,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      },
+      {
+        orgId: existingReplacementOrgId,
+        model: "MiniMax-M2.7",
+        isDefault: true,
+        defaultProviderType: "openrouter-api-key",
+        credentialScope: "org",
+        modelProviderId: existingReplacementOpenRouterProvider!.id,
+      },
+      {
         orgId: duplicateReplacementOrgId,
         model: "claude-haiku-4-5",
         isDefault: false,
@@ -309,6 +336,7 @@ describe("migration 0418 remove poor agent backend models", () => {
           deepseekConflictOrgId,
           minimaxVm0OrgId,
           minimaxOpenRouterOrgId,
+          existingReplacementOrgId,
           duplicateReplacementOrgId,
         ]),
       )
@@ -347,6 +375,14 @@ describe("migration 0418 remove poor agent backend models", () => {
           defaultProviderType: "openrouter-api-key",
           credentialScope: "org",
           modelProviderId: minimaxOpenRouterProvider!.id,
+        },
+        {
+          orgId: existingReplacementOrgId,
+          model: "claude-sonnet-4-6",
+          isDefault: true,
+          defaultProviderType: "openrouter-api-key",
+          credentialScope: "org",
+          modelProviderId: existingReplacementOpenRouterProvider!.id,
         },
         {
           orgId: duplicateReplacementOrgId,
