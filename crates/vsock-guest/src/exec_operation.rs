@@ -875,7 +875,7 @@ fn spawn_exec_operation_drain<R, S>(
     spawner: S,
 ) -> io::Result<(JoinHandle<()>, mpsc::Receiver<BoundedDrainResult>)>
 where
-    R: std::os::unix::io::AsRawFd + Send + 'static,
+    R: Into<OwnedFd> + Send + 'static,
     S: ThreadSpawner,
 {
     let DrainWorker {
