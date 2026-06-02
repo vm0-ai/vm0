@@ -151,11 +151,11 @@ UPDATE zero_agents
 SET
     selected_model = CASE selected_model
         WHEN 'claude-haiku-4-5' THEN 'claude-sonnet-4-6'
-        WHEN 'anthropic/claude-haiku-4.5' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'anthropic/claude-haiku-4.5' THEN 'claude-sonnet-4-6'
         WHEN 'deepseek-v4-flash' THEN 'deepseek-v4-pro'
-        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek/deepseek-v4-pro'
+        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek-v4-pro'
         WHEN 'MiniMax-M2.7' THEN 'MiniMax-M3'
-        WHEN 'minimax/minimax-m2.7' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'minimax/minimax-m2.7' THEN 'MiniMax-M3'
     END,
     updated_at = NOW()
 WHERE selected_model IN (
@@ -171,11 +171,11 @@ UPDATE chat_threads
 SET
     selected_model = CASE selected_model
         WHEN 'claude-haiku-4-5' THEN 'claude-sonnet-4-6'
-        WHEN 'anthropic/claude-haiku-4.5' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'anthropic/claude-haiku-4.5' THEN 'claude-sonnet-4-6'
         WHEN 'deepseek-v4-flash' THEN 'deepseek-v4-pro'
-        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek/deepseek-v4-pro'
+        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek-v4-pro'
         WHEN 'MiniMax-M2.7' THEN 'MiniMax-M3'
-        WHEN 'minimax/minimax-m2.7' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'minimax/minimax-m2.7' THEN 'MiniMax-M3'
     END,
     updated_at = NOW()
 WHERE selected_model IN (
@@ -191,11 +191,11 @@ UPDATE org_members_metadata
 SET
     selected_model = CASE selected_model
         WHEN 'claude-haiku-4-5' THEN 'claude-sonnet-4-6'
-        WHEN 'anthropic/claude-haiku-4.5' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'anthropic/claude-haiku-4.5' THEN 'claude-sonnet-4-6'
         WHEN 'deepseek-v4-flash' THEN 'deepseek-v4-pro'
-        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek/deepseek-v4-pro'
+        WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek-v4-pro'
         WHEN 'MiniMax-M2.7' THEN 'MiniMax-M3'
-        WHEN 'minimax/minimax-m2.7' THEN 'anthropic/claude-sonnet-4.6'
+        WHEN 'minimax/minimax-m2.7' THEN 'MiniMax-M3'
     END,
     updated_at = NOW()
 WHERE selected_model IN (

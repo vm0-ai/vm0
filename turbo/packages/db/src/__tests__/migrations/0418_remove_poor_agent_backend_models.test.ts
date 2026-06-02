@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -273,6 +273,22 @@ describe("migration 0418 remove poor agent backend models", () => {
       userId,
       composeId,
     });
+    const aliasComposeId = await seedCompose({
+      orgId: activeOrgId,
+      userId,
+    });
+    await db.insert(zeroAgents).values({
+      id: aliasComposeId,
+      orgId: activeOrgId,
+      owner: userId,
+      name: uniqueId("agent-alias"),
+      selectedModel: "minimax/minimax-m2.7",
+    });
+    const aliasPreferenceUserId = uniqueId("user-alias-preference");
+    await db.execute(sql`
+      INSERT INTO org_members_metadata (org_id, user_id, selected_model)
+      VALUES (${activeOrgId}, ${aliasPreferenceUserId}, 'anthropic/claude-haiku-4.5')
+    `);
 
     await runMigration0418();
     await runMigration0418();
@@ -424,6 +440,10 @@ describe("migration 0418 remove poor agent backend models", () => {
       .select({ selectedModel: zeroAgents.selectedModel })
       .from(zeroAgents)
       .where(eq(zeroAgents.id, composeId));
+    const [aliasAgent] = await db
+      .select({ selectedModel: zeroAgents.selectedModel })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, aliasComposeId));
     const [updatedThread] = await db
       .select({ selectedModel: chatThreads.selectedModel })
       .from(chatThreads)
@@ -431,15 +451,31 @@ describe("migration 0418 remove poor agent backend models", () => {
     const [memberMetadata] = await db
       .select({ selectedModel: orgMembersMetadata.selectedModel })
       .from(orgMembersMetadata)
-      .where(eq(orgMembersMetadata.orgId, activeOrgId));
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, activeOrgId),
+          eq(orgMembersMetadata.userId, userId),
+        ),
+      );
+    const [aliasMemberMetadata] = await db
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, activeOrgId),
+          eq(orgMembersMetadata.userId, aliasPreferenceUserId),
+        ),
+      );
     const [historicalRun] = await db
       .select({ selectedModel: zeroRuns.selectedModel })
       .from(zeroRuns)
       .where(eq(zeroRuns.id, historicalRunId));
 
     expect(agent?.selectedModel).toBe("MiniMax-M3");
-    expect(updatedThread?.selectedModel).toBe("deepseek/deepseek-v4-pro");
+    expect(aliasAgent?.selectedModel).toBe("MiniMax-M3");
+    expect(updatedThread?.selectedModel).toBe("deepseek-v4-pro");
     expect(memberMetadata?.selectedModel).toBe("claude-sonnet-4-6");
+    expect(aliasMemberMetadata?.selectedModel).toBe("claude-sonnet-4-6");
     expect(historicalRun?.selectedModel).toBe("MiniMax-M2.7");
   });
 });
