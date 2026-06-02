@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.19](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.18...vsock-guest-v0.18.19) (2026-06-02)
+
+
+### Refactoring
+
+* tighten vsock drain fd ownership ([#15910](https://github.com/vm0-ai/vm0/issues/15910)) ([271e2be](https://github.com/vm0-ai/vm0/commit/271e2bea4252867abcbee078c487e57848550d44))
+
 ## [0.18.18](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.18.17...vsock-guest-v0.18.18) (2026-06-01)
 
 

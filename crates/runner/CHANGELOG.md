@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.107.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.1...runner-rs-v0.107.2) (2026-06-02)
+
+
+### Refactoring
+
+* extract local queue protocol from provider ([#15913](https://github.com/vm0-ai/vm0/issues/15913)) ([abd8a3d](https://github.com/vm0-ai/vm0/commit/abd8a3da10ab5a473ff753046b2bc8b4f9acfc15))
+
 ## [0.107.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.0...runner-rs-v0.107.1) (2026-06-02)
 
 

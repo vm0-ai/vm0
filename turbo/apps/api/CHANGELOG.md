@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.95.1](https://github.com/vm0-ai/vm0/compare/api-v1.95.0...api-v1.95.1) (2026-06-02)
+
+
+### Refactoring
+
+* type connector auth provider args by method ([#15892](https://github.com/vm0-ai/vm0/issues/15892)) ([3207904](https://github.com/vm0-ai/vm0/commit/32079047b3404f139a1912e86943f886b925a8f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.1
+    * @vm0/connectors bumped to 1.44.1
+    * @vm0/core bumped to 8.308.1
+    * @vm0/db bumped to 1.25.2
+
 ## [1.95.0](https://github.com/vm0-ai/vm0/compare/api-v1.94.0...api-v1.95.0) (2026-06-02)
 
 
