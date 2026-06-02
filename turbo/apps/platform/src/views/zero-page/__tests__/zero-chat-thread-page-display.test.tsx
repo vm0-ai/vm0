@@ -470,7 +470,7 @@ describe("zero chat thread page display - permission action card", () => {
         {
           role: "assistant",
           content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Awrite&action=allow",
           runId: "run-user-grant-permission-action",
           status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
@@ -487,7 +487,7 @@ describe("zero chat thread page display - permission action card", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: {
-            vercel: { policies: { "projects:write": "deny" } },
+            slack: { policies: { "channels:write": "deny" } },
           },
           customSkills: [],
           modelProviderId: null,
@@ -532,8 +532,8 @@ describe("zero chat thread page display - permission action card", () => {
     await waitFor(() => {
       expect(grantBody).toMatchObject({
         agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-        connectorRef: "vercel",
-        permission: "projects:write",
+        connectorRef: "slack",
+        permission: "channels:write",
         action: "allow",
       });
     });
@@ -632,13 +632,74 @@ describe("zero chat thread page display - permission action card", () => {
     expect(within(card).getByText("Permission denied")).toBeInTheDocument();
   });
 
+  it("uses default connector policies for already-applied chat permission actions", async () => {
+    let grantCalled = false;
+
+    setMockOrg({ role: "member" });
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow",
+          runId: "run-user-grant-permission-default-applied",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            slack: { policies: { "channels:read": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantCalled = true;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    expect(grantCalled).toBeFalsy();
+  });
+
   it("uses current-user grants for already-applied chat permission actions", async () => {
     setMockOrg({ role: "member" });
     setMockUserPermissionGrants([
       createMockUserPermissionGrantResponse({
         agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
-        connectorRef: "vercel",
-        permission: "projects:write",
+        connectorRef: "slack",
+        permission: "channels:write",
         action: "allow",
       }),
     ]);
@@ -647,7 +708,7 @@ describe("zero chat thread page display - permission action card", () => {
         {
           role: "assistant",
           content:
-            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Awrite&action=allow",
           runId: "run-user-grant-permission-action-applied",
           status: "completed",
           createdAt: "2026-03-10T00:00:00Z",
@@ -664,7 +725,7 @@ describe("zero chat thread page display - permission action card", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: {
-            vercel: { policies: { "projects:write": "deny" } },
+            slack: { policies: { "channels:write": "deny" } },
           },
           customSkills: [],
           modelProviderId: null,

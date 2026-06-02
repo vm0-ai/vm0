@@ -295,7 +295,7 @@ describe("permission allow page - self-service user grants", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:write&action=allow`,
       featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
     });
 
@@ -317,11 +317,48 @@ describe("permission allow page - self-service user grants", () => {
     expect(grantBody).toMatchObject({
       agentId: AGENT_ID,
       connectorRef: "slack",
-      permission: "channels:read",
+      permission: "channels:write",
       action: "allow",
     });
     expect(requestCreated).toBeFalsy();
     expect(requestsListed).toBeFalsy();
+  });
+
+  it("uses default connector policies for already-applied state when the feature is enabled", async () => {
+    let grantCalled = false;
+    let requestCreated = false;
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantCalled = true;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+      mockApi(permissionAccessRequestsCreateContract.create, ({ respond }) => {
+        requestCreated = true;
+        return respond(201, pendingRequest());
+      }),
+    );
+    setupMemberContext();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    expect(grantCalled).toBeFalsy();
+    expect(requestCreated).toBeFalsy();
   });
 
   it("uses current-user grants for already-applied state when the feature is enabled", async () => {

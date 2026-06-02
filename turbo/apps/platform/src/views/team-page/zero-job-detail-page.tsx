@@ -99,6 +99,7 @@ import {
 import {
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
+  userPermissionGrantsToFirewallPolicies,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   allConnectorTypes$,
@@ -122,10 +123,7 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
-import type {
-  UserPermissionGrantAction,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { UserPermissionGrantAction } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
 type UpsertUserPermissionGrant = (
   params: {
@@ -442,25 +440,6 @@ function userGrantAction(
     throw new Error("User permission grants do not support ask");
   }
   return policy;
-}
-
-function userGrantsToFirewallPolicies(
-  grants: readonly UserPermissionGrantResponse[],
-): FirewallPolicies | null {
-  const policies: FirewallPolicies = {};
-  for (const grant of grants) {
-    const current = policies[grant.connectorRef] ?? { policies: {} };
-    if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
-      policies[grant.connectorRef] = {
-        ...current,
-        unknownPolicy: grant.action,
-      };
-      continue;
-    }
-    current.policies[grant.permission] = grant.action;
-    policies[grant.connectorRef] = current;
-  }
-  return Object.keys(policies).length > 0 ? policies : null;
 }
 
 function changedUserGrantPolicies({
@@ -821,7 +800,7 @@ function JobPermissionsTab({
   );
   const userGrantPolicies =
     userPermissionGrantsEnabled && userGrantsLoadable.state === "hasData"
-      ? userGrantsToFirewallPolicies(userGrantsLoadable.data)
+      ? userPermissionGrantsToFirewallPolicies(userGrantsLoadable.data)
       : null;
   const drawerInitialPolicies = userPermissionGrantsEnabled
     ? (userGrantPolicies ?? {})

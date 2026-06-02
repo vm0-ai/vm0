@@ -44,7 +44,7 @@ import {
   submitAccessRequest$,
   permissionAllowUserPermissionGrants$,
   userPermissionGrantsEnabled$,
-  findMatchingUserPermissionGrant,
+  resolveUserPermissionGrantPolicy,
   upsertUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
@@ -780,14 +780,13 @@ function DoctorModeView({
   };
 
   if (userPermissionGrantsEnabled) {
-    const grantApplied = findMatchingUserPermissionGrant(
+    const effectivePolicy = resolveUserPermissionGrantPolicy(
       userPermissionGrants,
       ref,
       permission.name,
-      action,
     );
 
-    if (grantApplied || grantLoadable.state === "hasData") {
+    if (effectivePolicy === action || grantLoadable.state === "hasData") {
       return resultCard;
     }
 

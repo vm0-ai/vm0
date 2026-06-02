@@ -10,13 +10,15 @@ import {
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type {
-  FirewallPolicies,
-  FirewallPolicyValue,
+import {
+  UNKNOWN_PERMISSION_GRANT,
+  type FirewallPolicies,
+  type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import {
   getConnectorFirewall,
   isFirewallConnectorType,
+  resolveFirewallPolicies,
 } from "@vm0/connectors/firewalls";
 import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
@@ -237,24 +239,35 @@ export const userPermissionGrantsEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.UserPermissionGrants] ?? false;
 });
 
-function findMatchingUserPermissionGrant(
+export function userPermissionGrantsToFirewallPolicies(
+  grants: readonly UserPermissionGrantResponse[],
+): FirewallPolicies | null {
+  const policies: FirewallPolicies = {};
+  for (const grant of grants) {
+    const current = policies[grant.connectorRef] ?? { policies: {} };
+    if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
+      policies[grant.connectorRef] = {
+        ...current,
+        unknownPolicy: grant.action,
+      };
+      continue;
+    }
+    current.policies[grant.permission] = grant.action;
+    policies[grant.connectorRef] = current;
+  }
+  return Object.keys(policies).length > 0 ? policies : null;
+}
+
+export function resolveUserPermissionGrantPolicy(
   grants: readonly UserPermissionGrantResponse[],
   connectorRef: string,
   permission: string,
-  action: UserPermissionGrantAction,
-): UserPermissionGrantResponse | null {
-  return (
-    grants.find((grant) => {
-      return (
-        grant.connectorRef === connectorRef &&
-        grant.permission === permission &&
-        grant.action === action
-      );
-    }) ?? null
-  );
+): FirewallPolicyValue | undefined {
+  return resolveFirewallPolicies(
+    userPermissionGrantsToFirewallPolicies(grants),
+    [connectorRef],
+  )?.[connectorRef]?.policies[permission];
 }
-
-export { findMatchingUserPermissionGrant };
 
 async function listUserPermissionGrants(
   get: <T>(atom: Computed<T>) => T,

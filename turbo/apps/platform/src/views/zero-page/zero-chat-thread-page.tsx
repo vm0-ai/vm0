@@ -64,7 +64,10 @@ import {
   CONNECTOR_TYPES,
   type ConnectorAuthMethodIdsByGrantKind,
 } from "@vm0/connectors/connectors";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type {
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -164,8 +167,8 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agentById } from "../../signals/agent.ts";
 import {
   extractPermissions,
-  findMatchingUserPermissionGrant,
   permissionExistingRequestByAction,
+  resolveUserPermissionGrantPolicy,
   saveAdminFocusedPolicy$,
   subscribePermissionAccessRequestsChanged$,
   submitAccessRequest$,
@@ -2834,7 +2837,7 @@ function isPermissionActionFinished(params: {
 function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userPermissionGrantsEnabled: boolean;
-  hasMatchingGrant: boolean;
+  userGrantPolicy: FirewallPolicyValue | undefined;
   storedPolicy: string | undefined;
   action: "allow" | "deny";
 }): boolean {
@@ -2842,7 +2845,7 @@ function isPermissionActionAlreadyApplied(params: {
     return false;
   }
   return params.userPermissionGrantsEnabled
-    ? params.hasMatchingGrant
+    ? params.userGrantPolicy === params.action
     : params.storedPolicy === params.action;
 }
 
@@ -3089,11 +3092,10 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       : null;
   const userGrants =
     userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
-  const matchingGrant = findMatchingUserPermissionGrant(
+  const userGrantPolicy = resolveUserPermissionGrantPolicy(
     userGrants,
     block.connectorRef,
     block.permission,
-    block.action,
   );
   const storedPolicy =
     agent?.permissionPolicies?.[block.connectorRef]?.policies?.[
@@ -3102,7 +3104,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const alreadyApplied = isPermissionActionAlreadyApplied({
     hasAgent: Boolean(agent),
     userPermissionGrantsEnabled,
-    hasMatchingGrant: Boolean(matchingGrant),
+    userGrantPolicy,
     storedPolicy,
     action: block.action,
   });
