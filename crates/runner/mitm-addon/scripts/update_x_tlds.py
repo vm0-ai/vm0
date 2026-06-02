@@ -14,6 +14,7 @@ import urllib.request
 from http import HTTPStatus
 from pathlib import Path
 from types import ModuleType
+from typing import NamedTuple
 
 SOURCE_HOST = "data.iana.org"
 SOURCE_PATH = "/TLD/tlds-alpha-by-domain.txt"
@@ -28,6 +29,23 @@ TLD_RE = re.compile(r"^[a-z0-9-]+$")
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+class SnapshotComparison(NamedTuple):
+    checked_version: str
+    source_version: str
+    checked_count: int
+    source_count: int
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+
+    @property
+    def has_set_drift(self) -> bool:
+        return bool(self.added or self.removed)
+
+    @property
+    def has_version_drift(self) -> bool:
+        return self.checked_version != self.source_version
 
 
 def fetch_source() -> str:
@@ -149,6 +167,45 @@ def check_generated() -> int:
     return 1
 
 
+def compare_snapshot_to_source(source: str) -> SnapshotComparison:
+    checked_version, checked_tlds = read_existing_snapshot()
+    source_version, source_tlds = parse_source(source)
+    checked_set = set(checked_tlds)
+    source_set = set(source_tlds)
+    return SnapshotComparison(
+        checked_version=checked_version,
+        source_version=source_version,
+        checked_count=len(checked_tlds),
+        source_count=len(source_tlds),
+        added=tuple(sorted(source_set - checked_set)),
+        removed=tuple(sorted(checked_set - source_set)),
+    )
+
+
+def check_source(source_file: Path) -> int:
+    comparison = compare_snapshot_to_source(source_file.read_text(encoding="utf-8"))
+    sys.stdout.write(
+        f"checked-in IANA TLD version {comparison.checked_version} "
+        f"({comparison.checked_count} TLDs)\n"
+    )
+    sys.stdout.write(
+        f"source IANA TLD version {comparison.source_version} ({comparison.source_count} TLDs)\n"
+    )
+    if comparison.has_set_drift:
+        sys.stderr.write("IANA TLD set drift detected\n")
+        if comparison.added:
+            sys.stderr.write(f"added: {', '.join(comparison.added)}\n")
+        if comparison.removed:
+            sys.stderr.write(f"removed: {', '.join(comparison.removed)}\n")
+        return 1
+
+    if comparison.has_version_drift:
+        sys.stdout.write("IANA TLD version differs, but the TLD set is unchanged\n")
+    else:
+        sys.stdout.write("IANA TLD version and TLD set match supplied source\n")
+    return 0
+
+
 def write_generated_module(contents: str) -> None:
     tmp_path: Path | None = None
     try:
@@ -184,14 +241,25 @@ def main() -> int:
         help="verify the checked-in generated module is canonical without network access",
     )
     parser.add_argument(
+        "--check-source",
+        action="store_true",
+        help="compare the checked-in TLD set against --source-file without updating",
+    )
+    parser.add_argument(
         "--source-file",
         type=Path,
         help="read an IANA tlds-alpha-by-domain.txt file instead of fetching the live source",
     )
     args = parser.parse_args()
 
+    if args.check and args.check_source:
+        parser.error("--check cannot be combined with --check-source")
     if args.check:
         if args.source_file is not None:
             parser.error("--check cannot be combined with --source-file")
         return check_generated()
+    if args.check_source:
+        if args.source_file is None:
+            parser.error("--check-source requires --source-file")
+        return check_source(args.source_file)
     return update_generated(args.source_file)
