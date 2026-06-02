@@ -323,7 +323,7 @@ class TestResponseHeadersHandler:
         assert usage_result["tokens.input"] == 10
         assert usage_result["tokens.output"] == 20
 
-    def test_model_provider_zstd_json_scans_past_decode_chunk_limit(self, real_flow, headers):
+    def test_model_provider_zstd_json_scans_past_decode_chunk_limit(self, real_flow):
         """Zstd usage parsing should chunk decoded output without total truncation."""
         body = (
             b'{"id":"msg_zstd","model":"claude-sonnet-4-6","content":[{"text":"'
@@ -347,8 +347,8 @@ class TestResponseHeadersHandler:
         assert usage_result["tokens.input"] == 10
         assert usage_result["tokens.output"] == 20
 
-    def test_model_provider_brotli_usage_stream_fails_closed(self, real_flow, headers, mitm_ctx):
-        """Brotli usage streams should not feed unsafe decoded output to parsers."""
+    def test_model_provider_brotli_usage_stream_fails_closed(self, real_flow, mitm_ctx):
+        """Brotli usage streams should leave JSON extraction to the bounded fallback."""
         body = json.dumps(
             {
                 "id": "msg_br",
@@ -364,13 +364,11 @@ class TestResponseHeadersHandler:
             headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
         )
 
-        mitm_addon.responseheaders(flow)
-
         with mitm_ctx() as log:
-            response_stream(flow)(brotli.compress(body))
-        usage_result, error = flow.metadata["model_json_usage_finish"]()
-        assert usage_result is None
-        assert error == "incomplete json"
+            mitm_addon.responseheaders(flow)
+
+        response_stream(flow)(brotli.compress(body))
+        assert "model_json_usage_finish" not in flow.metadata
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 

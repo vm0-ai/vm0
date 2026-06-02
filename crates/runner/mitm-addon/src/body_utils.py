@@ -141,19 +141,6 @@ def _make_streaming_decode_guard(
     return wrapper
 
 
-def _make_skipped_stream_decode_feed(encoding_label: str, reason: str) -> _StreamDecodeFeed:
-    logged = False
-
-    def decode(_chunk: bytes) -> None:
-        nonlocal logged
-        if logged:
-            return
-        logged = True
-        _log_streaming_decode_skipped(encoding_label, reason)
-
-    return decode
-
-
 def _feed_chunks(feed: _StreamDecodeFeed, data: bytes, max_decoded_chunk: int) -> None:
     for offset in range(0, len(data), max_decoded_chunk):
         feed(data[offset : offset + max_decoded_chunk])
@@ -218,13 +205,14 @@ def create_stream_decode_feed(
     feed: _StreamDecodeFeed,
     *,
     max_decoded_chunk: int = STREAM_DECODE_CHUNK_LIMIT,
-) -> _StreamDecodeFeed:
+) -> _StreamDecodeFeed | None:
     """Create a bounded streaming decoder that feeds decoded usage-parser chunks.
 
     Usage parsers are bounded-state scanners and may need to inspect long
     responses, so this helper does not enforce a total decoded-byte cap. It
     bounds each decoded chunk before parser entry to prevent high-ratio
-    compressed input from materialising one large ``bytes`` object.
+    compressed input from materialising one large ``bytes`` object. Returns
+    None when a content encoding cannot be safely decoded incrementally.
     """
     if max_decoded_chunk <= 0:
         raise ValueError("max_decoded_chunk must be positive")
@@ -238,10 +226,12 @@ def create_stream_decode_feed(
             max_decoded_chunk=max_decoded_chunk,
         )
     if encoding == "br":
-        return _make_skipped_stream_decode_feed("br", "brotli streaming output cannot be bounded")
+        _log_streaming_decode_skipped("br", "brotli streaming output cannot be bounded")
+        return None
     if encoding == "zstd":
         return _create_zstd_stream_decode_feed(feed, max_decoded_chunk=max_decoded_chunk)
-    return _make_skipped_stream_decode_feed(encoding, "unsupported content encoding")
+    _log_streaming_decode_skipped(encoding, "unsupported content encoding")
+    return None
 
 
 def decompress_body(

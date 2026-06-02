@@ -867,6 +867,44 @@ class TestModelProviderResponseUsage:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
 
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
+    def test_full_pipeline_brotli_model_json_uses_bounded_fallback(
+        self, tmp_path, real_flow, provider_case
+    ):
+        """Brotli streaming decode is skipped, but bounded JSON fallback remains active."""
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        payload = _standard_success_payload(provider_case)
+        compressed = body_utils.brotli.compress(payload)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+
+        webhook = self._run_response(flow)
+
+        extracted = flow.metadata["model_provider_usage"]
+        expected_usage = _expected_usage(provider_case)
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
+        if provider_case.uses_openai_responses:
+            assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == _expected_event_quantities(provider_case)
+
     def test_full_pipeline_incomplete_model_json_does_not_report_partial_usage(
         self, tmp_path, real_flow
     ):

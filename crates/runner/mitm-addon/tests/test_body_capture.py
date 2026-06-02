@@ -1452,12 +1452,14 @@ class TestStreamDecodeFeed:
     def test_gzip_happy_path(self, headers):
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
+        assert parse is not None
         parse(gzip.compress(b"hello world"))
         assert b"".join(chunks) == b"hello world"
 
     def test_zstd_happy_path(self, headers):
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert parse is not None
         parse(zstandard.ZstdCompressor().compress(b"hello world"))
         assert b"".join(chunks) == b"hello world"
 
@@ -1474,6 +1476,7 @@ class TestStreamDecodeFeed:
             parse = create_stream_decode_feed(
                 headers(("Content-Encoding", encoding)), chunks.append
             )
+            assert parse is not None
             for idx in range(0, len(compressed), 3):
                 parse(compressed[idx : idx + 3])
             assert b"".join(chunks) == plaintext, encoding
@@ -1481,6 +1484,7 @@ class TestStreamDecodeFeed:
     def test_no_encoding_feeds_original_chunks(self, headers):
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(), chunks.append)
+        assert parse is not None
         parse(b"hello")
         parse(b" world")
         assert chunks == [b"hello", b" world"]
@@ -1488,6 +1492,7 @@ class TestStreamDecodeFeed:
     def test_identity_feeds_original_chunks(self, headers):
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "identity")), chunks.append)
+        assert parse is not None
         parse(b"hello")
         assert chunks == [b"hello"]
 
@@ -1495,6 +1500,7 @@ class TestStreamDecodeFeed:
         plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3 + 123)
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
+        assert parse is not None
 
         parse(gzip.compress(plaintext))
 
@@ -1506,6 +1512,7 @@ class TestStreamDecodeFeed:
         plaintext = b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3 + 123)
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert parse is not None
 
         parse(zstandard.ZstdCompressor().compress(plaintext))
 
@@ -1532,6 +1539,7 @@ class TestStreamDecodeFeed:
         monkeypatch.setattr("body_utils.zstandard.ZstdDecompressor", CountingZstdDecompressor)
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
+        assert parse is not None
 
         parse(zstandard.ZstdCompressor().compress(b"hello world"))
 
@@ -1542,6 +1550,7 @@ class TestStreamDecodeFeed:
         chunks: list[bytes] = []
         with mitm_ctx() as log:
             parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
+            assert parse is not None
             parse(b"not gzip at all")
             parse(b"more garbage")
             parse(b"even more")
@@ -1555,8 +1564,7 @@ class TestStreamDecodeFeed:
         chunks: list[bytes] = []
         with mitm_ctx() as log:
             parse = create_stream_decode_feed(headers(("Content-Encoding", "br")), chunks.append)
-            parse(brotli.compress(b"A" * (STREAM_DECODE_CHUNK_LIMIT * 3)))
-            parse(brotli.compress(b"hello"))
+        assert parse is None
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped" in log.debug.call_args[0][0]
         assert "br" in log.debug.call_args[0][0]
@@ -1566,6 +1574,7 @@ class TestStreamDecodeFeed:
         chunks: list[bytes] = []
         with mitm_ctx() as log:
             parse = create_stream_decode_feed(headers(("Content-Encoding", "zstd")), chunks.append)
+            assert parse is not None
             parse(b"not zstd at all")
             parse(b"more garbage")
         assert log.debug.call_count == 1
@@ -1576,6 +1585,7 @@ class TestStreamDecodeFeed:
         # No mitm_ctx patch — ctx.log is unavailable.  Guard must swallow.
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
+        assert parse is not None
         parse(b"garbage")
         parse(b"more garbage")
         assert chunks == []
@@ -1586,8 +1596,7 @@ class TestStreamDecodeFeed:
             parse = create_stream_decode_feed(
                 headers(("Content-Encoding", "compress")), chunks.append
             )
-            parse(b"compressed")
-            parse(b"more")
+        assert parse is None
         assert log.debug.call_count == 1
         assert "unsupported content encoding" in log.debug.call_args[0][0]
         assert chunks == []
@@ -1623,6 +1632,7 @@ class TestStreamDecodeFeed:
         chunks: list[bytes] = []
         with mitm_ctx():
             parse = create_stream_decode_feed(headers(("Content-Encoding", "gzip")), chunks.append)
+            assert parse is not None
             parse(b"not gzip")
             parse(b"more garbage")
             parse(b"and more")
