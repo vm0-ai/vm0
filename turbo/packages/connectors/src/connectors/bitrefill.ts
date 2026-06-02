@@ -15,6 +15,10 @@ export const bitrefill = {
           "3. Generate an API key\n" +
           "4. Copy the Personal API token\n\n" +
           "This connector currently supports Bitrefill Personal API Bearer tokens. Business and Affiliate Basic auth credentials are not supported yet.",
+        storage: {
+          secrets: ["BITREFILL_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -18,6 +18,18 @@ export const slock = {
           clientRegistration: "dynamic",
           clientType: "public",
         },
+        storage: {
+          secrets: [
+            "SLOCK_ACCESS_TOKEN",
+            "SLOCK_SERVER_ID",
+            "SLOCK_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "SLOCK_ACCESS_TOKEN",
+            refreshToken: "SLOCK_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: `${SLOCK_API_BASE_URL}/api/auth/device/authorize`,
@@ -27,8 +39,6 @@ export const slock = {
         access: {
           kind: "refresh-token",
           tokenUrl: SLOCK_REFRESH_TOKEN_URL,
-          accessToken: "SLOCK_ACCESS_TOKEN",
-          refreshToken: "SLOCK_REFRESH_TOKEN",
           envBindings: {
             SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
             SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",

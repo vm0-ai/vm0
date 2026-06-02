@@ -11,6 +11,10 @@ export const clearbit = {
         label: "API Key",
         helpText:
           "1. Log in to [Clearbit](https://dashboard.clearbit.com)\n2. Go to **Settings > Keys & Settings**\n3. Reveal and copy your **Secret API Key**\n\nClearbit API keys are available only for accounts created in 2023 or earlier; new 2024+ accounts may require HubSpot/Breeze Intelligence access instead.",
+        storage: {
+          secrets: ["CLEARBIT_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

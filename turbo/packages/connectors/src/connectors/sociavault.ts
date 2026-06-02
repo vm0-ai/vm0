@@ -11,6 +11,10 @@ export const sociavault = {
         label: "API Key",
         helpText:
           "1. Sign up or log in to the [SociaVault Dashboard](https://sociavault.com)\n2. Copy your API key\n3. SociaVault authenticates requests with the `X-API-Key` header",
+        storage: {
+          secrets: ["SOCIAVAULT_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

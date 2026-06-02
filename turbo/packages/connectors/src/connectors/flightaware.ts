@@ -11,6 +11,10 @@ export const flightaware = {
         label: "AeroAPI Key",
         helpText:
           "1. Sign in to the [FlightAware AeroAPI portal](https://flightaware.com/aeroapi/portal/)\n2. Open your API key settings\n3. Copy your AeroAPI key\n4. Send it in the `x-apikey` header for AeroAPI requests",
+        storage: {
+          secrets: ["FLIGHTAWARE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

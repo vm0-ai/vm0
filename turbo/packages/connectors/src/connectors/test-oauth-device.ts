@@ -17,6 +17,13 @@ export const testOauthDevice = {
           clientType: "public",
           clientId: "test-oauth-device-client",
         },
+        storage: {
+          secrets: ["TEST_OAUTH_DEVICE_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "TEST_OAUTH_DEVICE_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: "/api/test/oauth-provider/device/code",
@@ -40,6 +47,13 @@ export const testOauthDevice = {
           clientRegistration: "static",
           clientType: "public",
           clientId: "test-oauth-device-api-client",
+        },
+        storage: {
+          secrets: ["TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
+          },
         },
         grant: {
           kind: "device-auth",

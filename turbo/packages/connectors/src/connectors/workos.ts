@@ -11,6 +11,10 @@ export const workos = {
         label: "API Key",
         helpText:
           "Go to WorkOS Dashboard → API Keys → copy your secret key (starts with `sk_live_` for production or `sk_test_` for sandbox).",
+        storage: {
+          secrets: ["WORKOS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

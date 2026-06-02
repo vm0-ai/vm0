@@ -12,6 +12,10 @@ export const testrail = {
         label: "API Key",
         helpText:
           "1. In TestRail, open **My Settings** (top-right user menu) → **API Keys**\n2. Click **Add Key**, name it (e.g. `vm0`), copy the generated key\n3. Enter the email you log in with, the generated API key, and your TestRail instance subdomain — the prefix of `https://<subdomain>.testrail.io`\n4. If your team self-hosts TestRail Server, set `TESTRAIL_INSTANCE` to the full host (e.g. `tests.example.com`) — the firewall accepts both forms",
+        storage: {
+          secrets: ["TESTRAIL_EMAIL", "TESTRAIL_TOKEN"],
+          variables: ["TESTRAIL_INSTANCE"],
+        },
         grant: {
           kind: "manual",
           fields: {

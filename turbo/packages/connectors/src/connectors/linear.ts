@@ -18,6 +18,14 @@ export const linear = {
           clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
           clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["LINEAR_ACCESS_TOKEN", "LINEAR_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "LINEAR_ACCESS_TOKEN",
+            refreshToken: "LINEAR_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -32,8 +40,6 @@ export const linear = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "LINEAR_ACCESS_TOKEN",
-          refreshToken: "LINEAR_REFRESH_TOKEN",
           envBindings: {
             LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
           },

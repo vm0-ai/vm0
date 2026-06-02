@@ -18,6 +18,14 @@ export const monday = {
           clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
           clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["MONDAY_ACCESS_TOKEN", "MONDAY_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "MONDAY_ACCESS_TOKEN",
+            refreshToken: "MONDAY_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -41,8 +49,6 @@ export const monday = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "MONDAY_ACCESS_TOKEN",
-          refreshToken: "MONDAY_REFRESH_TOKEN",
           envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },

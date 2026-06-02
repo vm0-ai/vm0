@@ -17,6 +17,17 @@ export const googleSheets = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: [
+            "GOOGLE_SHEETS_ACCESS_TOKEN",
+            "GOOGLE_SHEETS_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "GOOGLE_SHEETS_ACCESS_TOKEN",
+            refreshToken: "GOOGLE_SHEETS_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -28,8 +39,6 @@ export const googleSheets = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GOOGLE_SHEETS_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_SHEETS_REFRESH_TOKEN",
           envBindings: {
             GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
           },

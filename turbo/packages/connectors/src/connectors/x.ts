@@ -18,6 +18,14 @@ export const x = {
           clientIdEnv: "X_OAUTH_CLIENT_ID",
           clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["X_ACCESS_TOKEN", "X_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "X_ACCESS_TOKEN",
+            refreshToken: "X_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -49,8 +57,6 @@ export const x = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "X_ACCESS_TOKEN",
-          refreshToken: "X_REFRESH_TOKEN",
           envBindings: {
             X_TOKEN: "$secrets.X_ACCESS_TOKEN",
           },

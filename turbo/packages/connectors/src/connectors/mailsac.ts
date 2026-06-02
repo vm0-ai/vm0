@@ -11,6 +11,10 @@ export const mailsac = {
         label: "API Key",
         helpText:
           "1. Go to [Mailsac](https://mailsac.com) and sign up for an account\n2. Log in to your Mailsac dashboard\n3. Navigate to [API Keys](https://mailsac.com/api-keys)\n4. Copy your API key from the dashboard",
+        storage: {
+          secrets: ["MAILSAC_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

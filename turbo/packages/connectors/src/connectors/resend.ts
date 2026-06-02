@@ -11,6 +11,10 @@ export const resend = {
         label: "API Key",
         helpText:
           "1. Log in to [Resend](https://resend.com)\n2. Navigate to the [API Keys](https://resend.com/api-keys) page\n3. Click **Create API Key**\n4. Enter a name for your key (up to 50 characters)\n5. Select the permission level: **Full access** or **Sending access**\n6. If choosing sending access, select which domain the key can access\n7. Copy the generated API key",
+        storage: {
+          secrets: ["RESEND_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -11,6 +11,10 @@ export const greenhouse = {
         label: "API Key",
         helpText:
           "1. In Greenhouse, click **Configure** (gear icon) → **Dev Center** (left sidebar)\n2. Click **API Credential Management** → **Create new API credentials**\n3. For **API type**, select **Harvest API** (v1/v2). For **Partner**, choose **Custom** (or **Unlisted vendor**). Description: **vm0**\n4. Select the endpoints you want this key to access (permission scoping)\n5. Click **View and store credentials** and copy the API key — it is only shown once\n6. Paste it here\n\n**Note:** Harvest v1/v2 will be deprecated on August 31, 2026; migrate to OAuth v3 before that date.",
+        storage: {
+          secrets: ["GREENHOUSE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -11,6 +11,10 @@ export const qdrant = {
         label: "API Key",
         helpText:
           "1. Log in to [Qdrant Cloud](https://cloud.qdrant.io)\n2. Open your cluster's detail page and go to **API Keys**\n3. Click **Create** and configure your key\n4. Copy the key (shown only once)",
+        storage: {
+          secrets: ["QDRANT_TOKEN"],
+          variables: ["QDRANT_BASE_URL"],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -361,6 +361,18 @@ export const CONNECTOR_PLATFORM_SECRET_NAMES = [
 export type ConnectorPlatformSecretName =
   (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
 
+export interface ConnectorStorageConfig {
+  readonly secrets: readonly string[];
+  readonly variables: readonly string[];
+  /** Role mapping for provider-written or refreshable connector secrets. */
+  readonly secretRoles?: ConnectorSecretRolesConfig;
+}
+
+export interface ConnectorSecretRolesConfig {
+  readonly accessToken?: string;
+  readonly refreshToken?: string;
+}
+
 interface ConnectorEnvBindingAccessConfigBase {
   readonly envBindings: ConnectorEnvBindings;
   /**
@@ -377,8 +389,6 @@ export interface ConnectorStaticAccessConfig extends ConnectorEnvBindingAccessCo
 export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
   readonly kind: "refresh-token";
   readonly tokenUrl: string;
-  readonly accessToken: string;
-  readonly refreshToken: string;
 }
 
 export interface ConnectorNoAccessConfig {
@@ -407,6 +417,13 @@ interface ConnectorAuthMethodConfigBase {
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
   showExperimentalLabel?: boolean;
+  /**
+   * Connector-scoped storage names owned by this auth method.
+   *
+   * These lists are write/delete allowlists, not guarantees that rows currently
+   * exist in the DB.
+   */
+  storage: ConnectorStorageConfig;
 }
 
 /**
@@ -581,6 +598,180 @@ export type ConnectorConfig = ConnectorConfigBase & {
   readonly authMethods: ConnectorAuthMethods;
 };
 
+type ConnectorStorageSecretName<Storage> = Storage extends {
+  readonly secrets: readonly (infer Name)[];
+}
+  ? Extract<Name, string>
+  : never;
+
+type ConnectorStorageVariableName<Storage> = Storage extends {
+  readonly variables: readonly (infer Name)[];
+}
+  ? Extract<Name, string>
+  : never;
+
+type ConnectorAccessPlatformSecretName<Access> = Access extends {
+  readonly platformSecrets: readonly (infer Name)[];
+}
+  ? Extract<Name, ConnectorPlatformSecretName>
+  : never;
+
+type ConnectorRuntimeValueRef<Storage, Access> =
+  | `$secrets.${ConnectorStorageSecretName<Storage> | ConnectorAccessPlatformSecretName<Access>}`
+  | `$vars.${ConnectorStorageVariableName<Storage>}`;
+
+type ValidatedConnectorEnvBindings<EnvBindings, Storage, Access> = {
+  readonly [EnvName in keyof EnvBindings]: EnvBindings[EnvName] extends ConnectorRuntimeValueRef<
+    Storage,
+    Access
+  >
+    ? EnvBindings[EnvName]
+    : ConnectorRuntimeValueRef<Storage, Access>;
+};
+
+type ValidatedConnectorAccessConfig<Access, Storage> = Access extends {
+  readonly envBindings: infer EnvBindings;
+}
+  ? Access & {
+      readonly envBindings: ValidatedConnectorEnvBindings<
+        EnvBindings,
+        Storage,
+        Access
+      >;
+    }
+  : Access;
+
+type ValidatedConnectorManualGrantField<
+  Field,
+  FieldName extends string,
+  Storage,
+> =
+  FieldName extends ConnectorStorageSecretName<Storage>
+    ? Field extends { readonly storage: "variable" }
+      ? never
+      : Field
+    : FieldName extends ConnectorStorageVariableName<Storage>
+      ? Field extends { readonly storage: "variable" }
+        ? Field
+        : never
+      : never;
+
+type ValidatedConnectorGrantConfig<Grant, Storage> = Grant extends {
+  readonly kind: "manual";
+  readonly fields: infer Fields;
+}
+  ? Grant & {
+      readonly fields: {
+        readonly [FieldName in keyof Fields]: FieldName extends string
+          ? ValidatedConnectorManualGrantField<
+              Fields[FieldName],
+              FieldName,
+              Storage
+            >
+          : never;
+      };
+    }
+  : Grant;
+
+type ValidatedConnectorSecretName<Name, Storage> =
+  Name extends ConnectorStorageSecretName<Storage>
+    ? Name
+    : ConnectorStorageSecretName<Storage>;
+
+type ValidatedConnectorSecretRoles<Bindings, Storage> = Bindings & {
+  readonly accessToken?: Bindings extends {
+    readonly accessToken: infer Name;
+  }
+    ? ValidatedConnectorSecretName<Name, Storage>
+    : ConnectorStorageSecretName<Storage>;
+  readonly refreshToken?: Bindings extends {
+    readonly refreshToken: infer Name;
+  }
+    ? ValidatedConnectorSecretName<Name, Storage>
+    : ConnectorStorageSecretName<Storage>;
+};
+
+type ConnectorSecretRolesFromStorage<Storage> = Storage extends {
+  readonly secretRoles: infer Bindings;
+}
+  ? Bindings
+  : Record<string, never>;
+
+type ConnectorRefreshSecretRoles<Storage> = ValidatedConnectorSecretRoles<
+  ConnectorSecretRolesFromStorage<Storage>,
+  Storage
+> & {
+  readonly accessToken: ConnectorStorageSecretName<Storage>;
+  readonly refreshToken: ConnectorStorageSecretName<Storage>;
+};
+
+type ConnectorStaticProviderSecretRoles<Storage> =
+  ValidatedConnectorSecretRoles<
+    ConnectorSecretRolesFromStorage<Storage>,
+    Storage
+  > & {
+    readonly accessToken: ConnectorStorageSecretName<Storage>;
+  };
+
+type ValidatedConnectorStorageSecretRolesProperty<Method, Storage> =
+  Method extends {
+    readonly access: { readonly kind: "refresh-token" };
+  }
+    ? {
+        readonly secretRoles: ConnectorRefreshSecretRoles<Storage>;
+      }
+    : Method extends {
+          readonly grant: { readonly kind: "auth-code" | "device-auth" };
+          readonly access: { readonly kind: "static" };
+        }
+      ? {
+          readonly secretRoles: ConnectorStaticProviderSecretRoles<Storage>;
+        }
+      : Storage extends { readonly secretRoles: infer Bindings }
+        ? {
+            readonly secretRoles: ValidatedConnectorSecretRoles<
+              Bindings,
+              Storage
+            >;
+          }
+        : { readonly secretRoles?: ConnectorSecretRolesConfig };
+
+type ValidatedConnectorAuthMethod<Method> = Method extends {
+  readonly storage: infer Storage;
+  readonly grant: infer Grant;
+  readonly access: infer Access;
+}
+  ? Method & {
+      readonly storage: Storage &
+        ConnectorStorageConfig &
+        ValidatedConnectorStorageSecretRolesProperty<Method, Storage>;
+      readonly grant: ValidatedConnectorGrantConfig<Grant, Storage>;
+      readonly access: ValidatedConnectorAccessConfig<Access, Storage>;
+    }
+  : never;
+
+type ValidatedConnectorConfig<Config> = Config extends {
+  readonly authMethods: infer AuthMethods;
+}
+  ? Config & {
+      readonly authMethods: {
+        readonly [Method in keyof AuthMethods]: ValidatedConnectorAuthMethod<
+          AuthMethods[Method]
+        >;
+      };
+    }
+  : never;
+
+type ValidatedConnectorRegistry<Configs> = {
+  readonly [Type in keyof Configs]: ValidatedConnectorConfig<Configs[Type]>;
+};
+
+function defineConnectors<
+  const Configs extends Record<string, ConnectorConfig>,
+>(configs: Configs & ValidatedConnectorRegistry<Configs>): Configs {
+  return configs;
+}
+
 /**
  * Connector type configuration
  * Maps type to display info, auth methods, and runtime env bindings.
@@ -589,7 +780,7 @@ export type ConnectorConfig = ConnectorConfigBase & {
  * Spreading here keeps the ConnectorType union literal-keyed so the
  * schema, utility getters, and autocomplete all continue to work.
  */
-const CONNECTOR_TYPES_DEF = {
+const CONNECTOR_TYPES_DEF = defineConnectors({
   ...github,
   ...gmail,
   ...notion,
@@ -839,7 +1030,7 @@ const CONNECTOR_TYPES_DEF = {
   ...zep,
   ...zeptomail,
   ...zoom,
-} as const satisfies Record<string, ConnectorConfig>;
+} as const);
 
 export type ConnectorType = Extract<keyof typeof CONNECTOR_TYPES_DEF, string>;
 type ConnectorAuthMethodsOf<Type extends ConnectorType> =

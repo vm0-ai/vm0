@@ -17,6 +17,13 @@ export const github = {
           clientIdEnv: "GH_OAUTH_CLIENT_ID",
           clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GITHUB_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GITHUB_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://github.com/login/oauth/access_token",

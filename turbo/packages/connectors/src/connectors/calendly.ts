@@ -11,6 +11,10 @@ export const calendly = {
         label: "Personal Access Token",
         helpText:
           "1. Log in to [Calendly](https://calendly.com)\n2. Go to **Integrations > API & Webhooks**\n3. Generate a Personal Access Token\n4. Copy the token",
+        storage: {
+          secrets: ["CALENDLY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -12,6 +12,10 @@ export const replicate = {
         label: "API Token",
         helpText:
           "1. Sign up at [replicate.com](https://replicate.com)\n2. Click your avatar → **API Tokens**\n3. Click **Create token**, give it a name\n4. Copy the token (starts with `r8_`)\n5. Paste it here",
+        storage: {
+          secrets: ["REPLICATE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

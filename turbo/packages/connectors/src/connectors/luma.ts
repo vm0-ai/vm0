@@ -12,6 +12,10 @@ export const luma = {
         label: "API Key",
         helpText:
           "1. Log in at [lu.ma](https://lu.ma)\n2. Go to Calendars Home → select your calendar → Settings → Developer\n3. Generate or copy your API key\n4. Paste the key here",
+        storage: {
+          secrets: ["LUMA_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

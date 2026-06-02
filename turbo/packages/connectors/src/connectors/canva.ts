@@ -20,6 +20,14 @@ export const canva = {
           clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
           clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["CANVA_ACCESS_TOKEN", "CANVA_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "CANVA_ACCESS_TOKEN",
+            refreshToken: "CANVA_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -41,8 +49,6 @@ export const canva = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "CANVA_ACCESS_TOKEN",
-          refreshToken: "CANVA_REFRESH_TOKEN",
           envBindings: {
             CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
           },

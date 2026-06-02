@@ -20,6 +20,14 @@ export const zoom = {
           clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
           clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["ZOOM_ACCESS_TOKEN", "ZOOM_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "ZOOM_ACCESS_TOKEN",
+            refreshToken: "ZOOM_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -43,8 +51,6 @@ export const zoom = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "ZOOM_ACCESS_TOKEN",
-          refreshToken: "ZOOM_REFRESH_TOKEN",
           envBindings: {
             ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
           },

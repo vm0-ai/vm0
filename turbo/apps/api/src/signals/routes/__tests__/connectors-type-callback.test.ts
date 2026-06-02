@@ -290,6 +290,10 @@ function testManualAuthMethod(args: {
   return {
     label: `Manual ${args.secretName}`,
     helpText: "Test-only manual grant.",
+    storage: {
+      secrets: [args.secretName],
+      variables: [args.variableName],
+    },
     grant: {
       kind: "manual",
       fields: {

@@ -19,6 +19,17 @@ export const googleCalendar = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: [
+            "GOOGLE_CALENDAR_ACCESS_TOKEN",
+            "GOOGLE_CALENDAR_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "GOOGLE_CALENDAR_ACCESS_TOKEN",
+            refreshToken: "GOOGLE_CALENDAR_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -30,8 +41,6 @@ export const googleCalendar = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GOOGLE_CALENDAR_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_CALENDAR_REFRESH_TOKEN",
           envBindings: {
             GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
           },

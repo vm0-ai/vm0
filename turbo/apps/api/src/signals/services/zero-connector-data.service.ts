@@ -8,15 +8,13 @@ import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zer
 import {
   connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
-  getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodStorageMetadata,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNamesForAuthMethod,
-  getConnectorOwnedAccessSecretBindingEntries,
   getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
-  type ConnectorAuthMethodAccessMetadata,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
@@ -409,18 +407,18 @@ function connectorProvidedEnvNamesForStoredConnectors(
 ): Set<string> {
   const provided = new Set<string>();
   for (const connector of connectorList) {
-    const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    const metadata = getConnectorAuthMethodStorageMetadata(
       connector.type,
       connector.authMethod,
     );
-    if (!accessMetadata) {
+    if (!metadata) {
       continue;
     }
-    for (const {
-      envName,
-      secretName,
-    } of getConnectorOwnedAccessSecretBindingEntries(accessMetadata)) {
-      if (!connectorScopedSecretNames.secretNames.has(secretName)) {
+    for (const { envName, source } of metadata.runtimeBindings) {
+      if (source.kind !== "connector-secret") {
+        continue;
+      }
+      if (!connectorScopedSecretNames.secretNames.has(source.name)) {
         continue;
       }
       provided.add(envName);
@@ -1205,45 +1203,37 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
-function staticConnectorOwnedAccessSecretName(
-  accessMetadata: Extract<
-    ConnectorAuthMethodAccessMetadata,
-    { readonly kind: "static" }
-  >,
-): string | undefined {
-  const secretNames = new Set<string>();
-  for (const { secretName } of getConnectorOwnedAccessSecretBindingEntries(
-    accessMetadata,
-  )) {
-    secretNames.add(secretName);
-  }
-  if (secretNames.size !== 1) {
-    return undefined;
-  }
-  return [...secretNames][0];
-}
-
 function connectorTokenSecretMetadataForAuthMethod(args: {
   readonly type: ConnectorType;
   readonly authMethod: string;
 }): ConnectorTokenSecretMetadata | undefined {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+  const method = getConnectorAuthMethod(args.type, args.authMethod);
+  const metadata = getConnectorAuthMethodStorageMetadata(
     args.type,
     args.authMethod,
   );
+  if (!method || !metadata) {
+    return undefined;
+  }
 
-  switch (accessMetadata?.kind) {
+  switch (method.access.kind) {
     case "refresh-token": {
+      const accessSecretName = metadata.secretRoles.accessToken;
+      const refreshSecretName = metadata.secretRoles.refreshToken;
+      if (!accessSecretName || !refreshSecretName) {
+        throw new Error(
+          `${args.type} connector auth method ${args.authMethod} is missing refresh token secret roles`,
+        );
+      }
       return {
-        accessSecretName: accessMetadata.accessToken,
-        refreshSecretName: accessMetadata.refreshToken,
+        accessSecretName,
+        refreshSecretName,
         isRefreshable: true,
       };
     }
 
     case "static": {
-      const accessSecretName =
-        staticConnectorOwnedAccessSecretName(accessMetadata);
+      const accessSecretName = metadata.secretRoles.accessToken;
       return accessSecretName
         ? {
             accessSecretName,

@@ -18,6 +18,14 @@ export const gmail = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GMAIL_ACCESS_TOKEN", "GMAIL_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GMAIL_ACCESS_TOKEN",
+            refreshToken: "GMAIL_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -26,8 +34,6 @@ export const gmail = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GMAIL_ACCESS_TOKEN",
-          refreshToken: "GMAIL_REFRESH_TOKEN",
           envBindings: {
             GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
           },

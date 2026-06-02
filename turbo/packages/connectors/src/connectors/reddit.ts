@@ -20,6 +20,14 @@ export const reddit = {
           clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
           clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["REDDIT_ACCESS_TOKEN", "REDDIT_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "REDDIT_ACCESS_TOKEN",
+            refreshToken: "REDDIT_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -28,8 +36,6 @@ export const reddit = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "REDDIT_ACCESS_TOKEN",
-          refreshToken: "REDDIT_REFRESH_TOKEN",
           envBindings: {
             REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
           },

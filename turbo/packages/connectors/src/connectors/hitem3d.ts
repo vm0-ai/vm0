@@ -13,6 +13,10 @@ export const hitem3d = {
         label: "API Credentials",
         helpText:
           "1. Sign in to the [Hitem3D Developer Platform](https://platform.hitem3d.ai)\n2. Purchase or enable a resource package\n3. Open the API Key page and create an enabled API key\n4. Copy the client ID and client secret. Paste them here.",
+        storage: {
+          secrets: ["HITEM3D_CLIENT_ID", "HITEM3D_CLIENT_SECRET"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

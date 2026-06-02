@@ -35,12 +35,18 @@ export const testOauth = {
         label: "OAuth",
         helpText: "Test-only OAuth provider. Only reachable in dev/preview.",
         client: TEST_OAUTH_CLIENT,
+        storage: {
+          secrets: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "TEST_OAUTH_ACCESS_TOKEN",
+            refreshToken: "TEST_OAUTH_REFRESH_TOKEN",
+          },
+        },
         grant: TEST_OAUTH_AUTH_CODE_GRANT,
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "TEST_OAUTH_ACCESS_TOKEN",
-          refreshToken: "TEST_OAUTH_REFRESH_TOKEN",
           envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
           },
@@ -53,12 +59,21 @@ export const testOauth = {
         helpText:
           "Secondary test-only OAuth method used to exercise method-aware provider registration.",
         client: TEST_OAUTH_CLIENT,
+        storage: {
+          secrets: [
+            "TEST_OAUTH_API_ACCESS_TOKEN",
+            "TEST_OAUTH_API_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "TEST_OAUTH_API_ACCESS_TOKEN",
+            refreshToken: "TEST_OAUTH_API_REFRESH_TOKEN",
+          },
+        },
         grant: TEST_OAUTH_AUTH_CODE_GRANT,
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "TEST_OAUTH_API_ACCESS_TOKEN",
-          refreshToken: "TEST_OAUTH_API_REFRESH_TOKEN",
           envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
           },

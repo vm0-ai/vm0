@@ -20,6 +20,14 @@ export const docusign = {
           clientIdEnv: "DOCUSIGN_OAUTH_CLIENT_ID",
           clientSecretEnv: "DOCUSIGN_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["DOCUSIGN_ACCESS_TOKEN", "DOCUSIGN_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "DOCUSIGN_ACCESS_TOKEN",
+            refreshToken: "DOCUSIGN_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -28,8 +36,6 @@ export const docusign = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "DOCUSIGN_ACCESS_TOKEN",
-          refreshToken: "DOCUSIGN_REFRESH_TOKEN",
           envBindings: {
             DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
           },

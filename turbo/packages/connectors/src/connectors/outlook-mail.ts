@@ -20,6 +20,14 @@ export const outlookMail = {
           clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
           clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["OUTLOOK_MAIL_ACCESS_TOKEN", "OUTLOOK_MAIL_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "OUTLOOK_MAIL_ACCESS_TOKEN",
+            refreshToken: "OUTLOOK_MAIL_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -33,8 +41,6 @@ export const outlookMail = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "OUTLOOK_MAIL_ACCESS_TOKEN",
-          refreshToken: "OUTLOOK_MAIL_REFRESH_TOKEN",
           envBindings: {
             OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
           },

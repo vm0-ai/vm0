@@ -13,6 +13,10 @@ export const atlascloud = {
         label: "API Key",
         helpText:
           "1. Sign in to [Atlas Cloud](https://console.atlascloud.ai)\n2. Go to **API Keys**\n3. Click **Create API Key**\n4. Copy the key and use it with `https://api.atlascloud.ai/v1` for OpenAI-compatible chat or `https://api.atlascloud.ai/api/v1` for image, video, and media APIs",
+        storage: {
+          secrets: ["ATLASCLOUD_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

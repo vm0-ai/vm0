@@ -11,6 +11,10 @@ export const mem0 = {
         label: "API Key",
         helpText:
           "Go to [app.mem0.ai](https://app.mem0.ai) → **API Keys** → create or copy your key.",
+        storage: {
+          secrets: ["MEM0_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

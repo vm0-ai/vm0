@@ -12,6 +12,10 @@ export const twilio = {
         label: "API Key",
         helpText:
           "1. Open the [Twilio Console](https://console.twilio.com) — your **Account SID** is shown on the dashboard\n2. Click **View** next to **Auth Token** to reveal the live auth token\n3. Copy both values and paste them below — the SID always starts with `AC`",
+        storage: {
+          secrets: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

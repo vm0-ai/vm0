@@ -13,6 +13,10 @@ export const doubao = {
         label: "Doubao API Key",
         helpText:
           "1. Sign in to the [Volcengine new speech console](https://console.volcengine.com/speech/new)\n2. Open **设置 → API Key 管理** ([direct link](https://console.volcengine.com/speech/new/setting/apikeys))\n3. Click **创建 API Key**, name it, and copy the UUID value\n4. The key authorises every endpoint under `openspeech.bytedance.com` — TTS, ASR file recognition, voice cloning",
+        storage: {
+          secrets: ["DOUBAO_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -18,6 +18,14 @@ export const sentry = {
           clientIdEnv: "SENTRY_OAUTH_CLIENT_ID",
           clientSecretEnv: "SENTRY_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SENTRY_ACCESS_TOKEN", "SENTRY_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "SENTRY_ACCESS_TOKEN",
+            refreshToken: "SENTRY_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -33,8 +41,6 @@ export const sentry = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "SENTRY_ACCESS_TOKEN",
-          refreshToken: "SENTRY_REFRESH_TOKEN",
           envBindings: {
             SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
           },

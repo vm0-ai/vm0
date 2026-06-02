@@ -43,6 +43,7 @@ import {
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodStorageMetadata,
   getConnectorOwnedAccessSecretBindingEntries,
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodEnvBindings,
@@ -198,6 +199,10 @@ function restoreEnv(values: Record<string, string | undefined>): void {
 const manualAuthMethodConfig = {
   label: "API Token",
   helpText: "Enter an API token.",
+  storage: {
+    secrets: ["API_TOKEN"],
+    variables: [],
+  },
   grant: {
     kind: "manual",
     fields: {
@@ -458,6 +463,10 @@ describe("connector auth method config", () => {
     const apiTokenMethod = {
       label: "API Token",
       helpText: "Enter an API token.",
+      storage: {
+        secrets: ["GITHUB_API_TOKEN"],
+        variables: ["GITHUB_API_HOST"],
+      },
       grant: {
         kind: "manual",
         fields: {
@@ -484,6 +493,10 @@ describe("connector auth method config", () => {
     const apiMethod = {
       label: "Secondary API Token",
       helpText: "Enter a secondary API token.",
+      storage: {
+        secrets: ["GITHUB_SECONDARY_TOKEN"],
+        variables: ["GITHUB_SECONDARY_HOST"],
+      },
       grant: {
         kind: "manual",
         fields: {
@@ -1862,6 +1875,132 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       { envName: "GH_TOKEN", secretName: "GITHUB_ACCESS_TOKEN" },
       { envName: "GITHUB_TOKEN", secretName: "GITHUB_ACCESS_TOKEN" },
     ]);
+  });
+});
+
+describe("getConnectorAuthMethodStorageMetadata", () => {
+  it("returns explicit static provider token storage roles", () => {
+    expect(
+      getConnectorAuthMethodStorageMetadata("github", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["GITHUB_ACCESS_TOKEN"],
+        variables: [],
+      },
+      secretRoles: {
+        accessToken: "GITHUB_ACCESS_TOKEN",
+      },
+      runtimeBindings: [
+        {
+          envName: "GH_TOKEN",
+          valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "GITHUB_ACCESS_TOKEN",
+          },
+        },
+        {
+          envName: "GITHUB_TOKEN",
+          valueRef: "$secrets.GITHUB_ACCESS_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "GITHUB_ACCESS_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("keeps manual static API tokens role-free", () => {
+    expect(
+      getConnectorAuthMethodStorageMetadata("stripe", "api-token"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["STRIPE_TOKEN"],
+        variables: [],
+      },
+      secretRoles: {},
+      runtimeBindings: [
+        {
+          envName: "STRIPE_TOKEN",
+          valueRef: "$secrets.STRIPE_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "STRIPE_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("represents provider extra secrets as storage-owned runtime sources", () => {
+    expect(
+      getConnectorAuthMethodStorageMetadata("slock", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: [
+          "SLOCK_ACCESS_TOKEN",
+          "SLOCK_SERVER_ID",
+          "SLOCK_REFRESH_TOKEN",
+        ],
+        variables: [],
+      },
+      secretRoles: {
+        accessToken: "SLOCK_ACCESS_TOKEN",
+        refreshToken: "SLOCK_REFRESH_TOKEN",
+      },
+      runtimeBindings: [
+        {
+          envName: "SLOCK_TOKEN",
+          valueRef: "$secrets.SLOCK_ACCESS_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "SLOCK_ACCESS_TOKEN",
+          },
+        },
+        {
+          envName: "SLOCK_SERVER_ID",
+          valueRef: "$secrets.SLOCK_SERVER_ID",
+          source: {
+            kind: "connector-secret",
+            name: "SLOCK_SERVER_ID",
+          },
+        },
+      ],
+    });
+  });
+
+  it("represents platform secrets as platform runtime sources", () => {
+    expect(
+      getConnectorAuthMethodStorageMetadata("google-ads", "oauth"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
+        variables: [],
+      },
+      secretRoles: {
+        accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
+        refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+      },
+      runtimeBindings: [
+        {
+          envName: "GOOGLE_ADS_TOKEN",
+          valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "GOOGLE_ADS_ACCESS_TOKEN",
+          },
+        },
+        {
+          envName: "GOOGLE_ADS_DEVELOPER_TOKEN",
+          valueRef: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
+          source: {
+            kind: "platform-secret",
+            name: "GOOGLE_ADS_DEVELOPER_TOKEN",
+          },
+        },
+      ],
+    });
   });
 });
 

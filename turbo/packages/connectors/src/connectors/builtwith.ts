@@ -11,6 +11,10 @@ export const builtwith = {
         label: "API Key",
         helpText:
           "1. Log in to [BuiltWith](https://api.builtwith.com)\n2. Open the **API access** page in your account\n3. Copy your **API key**\n4. Pass it as the `KEY` query parameter on every request",
+        storage: {
+          secrets: ["BUILTWITH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

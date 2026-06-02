@@ -11,6 +11,10 @@ export const pika = {
         label: "Developer Key",
         helpText:
           "1. Go to [pika.me/dev](https://www.pika.me/dev/)\n2. Sign in or create an account\n3. Create a new Developer Key\n4. Copy the key (format: `dk_...`)",
+        storage: {
+          secrets: ["PIKA_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

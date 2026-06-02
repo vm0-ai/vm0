@@ -12,6 +12,10 @@ export const pdforge = {
         label: "API Key",
         helpText:
           "1. Create an account on [pdforge](https://pdforge.com)\n2. Two API keys are automatically generated when you create your account\n3. Go to the **API Keys** menu in the sidebar to view your keys\n4. Copy your API key and use it in the `Authorization: Bearer pdfnoodle_api_[your_key]` header",
+        storage: {
+          secrets: ["PDFORGE_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

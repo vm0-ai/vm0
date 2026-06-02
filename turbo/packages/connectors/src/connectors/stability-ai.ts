@@ -12,6 +12,10 @@ export const stabilityAi = {
         label: "API Key",
         helpText:
           "1. Sign up at [platform.stability.ai](https://platform.stability.ai)\n2. Go to **Account → API Keys → Create API Key**\n3. Copy the key (starts with `sk-`). Paste here. Free credits on signup.",
+        storage: {
+          secrets: ["STABILITY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

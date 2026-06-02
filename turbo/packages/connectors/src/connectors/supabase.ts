@@ -20,6 +20,14 @@ export const supabase = {
           clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
           clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SUPABASE_ACCESS_TOKEN", "SUPABASE_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "SUPABASE_ACCESS_TOKEN",
+            refreshToken: "SUPABASE_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -41,8 +49,6 @@ export const supabase = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "SUPABASE_ACCESS_TOKEN",
-          refreshToken: "SUPABASE_REFRESH_TOKEN",
           envBindings: {
             SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
           },
@@ -53,6 +59,10 @@ export const supabase = {
         label: "Service Role Key",
         helpText:
           "1. Log in to the [Supabase Dashboard](https://supabase.com/dashboard)\n2. Open your project's **Connect** dialog, or go to **Project Settings > API Keys**\n3. For legacy keys, copy the `anon` key (for client-side) or `service_role` key (for server-side) from the **Legacy API Keys** tab\n4. For new keys, open the **API Keys** tab, click **Create new API Keys** if needed, and copy the value from the **Publishable key** section",
+        storage: {
+          secrets: ["SUPABASE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

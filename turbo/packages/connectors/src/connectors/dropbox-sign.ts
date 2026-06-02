@@ -12,6 +12,10 @@ export const dropboxSign = {
         label: "API Key",
         helpText:
           "1. Log in to [Dropbox Sign](https://sign.dropbox.com)\n2. Click **API** in the left sidebar and open the **API Dashboard**\n3. Click **Reveal key** for an existing key, or **Generate key** to create a new one\n4. Copy the 40-character hex key and paste it here\n\nTip: While developing, add `test_mode=1` to signature-request calls to avoid billing and real emails.",
+        storage: {
+          secrets: ["DROPBOX_SIGN_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -17,6 +17,14 @@ export const googleDrive = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GOOGLE_DRIVE_ACCESS_TOKEN", "GOOGLE_DRIVE_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GOOGLE_DRIVE_ACCESS_TOKEN",
+            refreshToken: "GOOGLE_DRIVE_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -28,8 +36,6 @@ export const googleDrive = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GOOGLE_DRIVE_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_DRIVE_REFRESH_TOKEN",
           envBindings: {
             GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
           },

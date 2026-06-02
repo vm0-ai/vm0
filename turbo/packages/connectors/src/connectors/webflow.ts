@@ -18,6 +18,13 @@ export const webflow = {
           clientIdEnv: "WEBFLOW_OAUTH_CLIENT_ID",
           clientSecretEnv: "WEBFLOW_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["WEBFLOW_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "WEBFLOW_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://api.webflow.com/oauth/access_token",
@@ -52,6 +59,10 @@ export const webflow = {
         label: "Site Token",
         helpText:
           "1. Log in to [Webflow](https://webflow.com) (site administrator access required)\n2. In your workspace, find the site and click the gear icon to open **Site Settings**\n3. In the left sidebar, select **Apps & integrations**\n4. Scroll to the bottom of the page to the **API access** section\n5. Click **Generate API token**\n6. Enter a name for your token and choose the required scopes\n7. Click **Generate token**\n8. Copy the generated token and save it in a secure location",
+        storage: {
+          secrets: ["WEBFLOW_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

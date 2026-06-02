@@ -21,6 +21,17 @@ export const garminConnect = {
           clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
           clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: [
+            "GARMIN_CONNECT_ACCESS_TOKEN",
+            "GARMIN_CONNECT_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "GARMIN_CONNECT_ACCESS_TOKEN",
+            refreshToken: "GARMIN_CONNECT_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -29,8 +40,6 @@ export const garminConnect = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GARMIN_CONNECT_ACCESS_TOKEN",
-          refreshToken: "GARMIN_CONNECT_REFRESH_TOKEN",
           envBindings: {
             GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
           },

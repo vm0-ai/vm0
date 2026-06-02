@@ -15,6 +15,10 @@ export const bentoml = {
         label: "BentoCloud API Token",
         helpText:
           "1. Log in to [BentoCloud](https://cloud.bentoml.com)\n2. Open your profile menu, then go to **API Tokens**\n3. Create a Personal or Organization API token with the access your workflow needs\n4. Copy the token and enter your organization endpoint, for example `https://your-org.cloud.bentoml.com`",
+        storage: {
+          secrets: ["BENTO_CLOUD_API_KEY"],
+          variables: ["BENTO_CLOUD_API_ENDPOINT"],
+        },
         grant: {
           kind: "manual",
           fields: {

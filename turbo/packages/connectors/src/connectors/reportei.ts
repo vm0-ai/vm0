@@ -11,6 +11,10 @@ export const reportei = {
         label: "API Token",
         helpText:
           "1. Log in to [Reportei](https://app.reportei.com)\n2. Go to **Company Settings** (Configurações da Empresa)\n3. Navigate to the **API Reportei** section\n4. Click **Generate new token** or copy your existing token",
+        storage: {
+          secrets: ["REPORTEI_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

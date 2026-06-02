@@ -12,6 +12,10 @@ export const meshy = {
         label: "API Key",
         helpText:
           "1. Sign in to [Meshy](https://www.meshy.ai)\n2. Open the [API settings page](https://www.meshy.ai/settings/api)\n3. Click **Create API Key**\n4. Copy the API key. You will not be able to see it again.",
+        storage: {
+          secrets: ["MESHY_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

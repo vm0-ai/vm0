@@ -11,6 +11,10 @@ export const kommo = {
         label: "API Key",
         helpText:
           "1. Log in to [Kommo](https://www.kommo.com) and create a **private integration**\n2. Go to the **Keys and Scopes** tab in your private integration settings\n3. Click **Generate long-lived token**\n4. Set the token expiration date (from 1 day to 5 years)\n5. Copy and save the token immediately (it will only be displayed once)",
+        storage: {
+          secrets: ["KOMMO_API_KEY"],
+          variables: ["KOMMO_SUBDOMAIN"],
+        },
         grant: {
           kind: "manual",
           fields: {
