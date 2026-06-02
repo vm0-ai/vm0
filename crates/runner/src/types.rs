@@ -8,7 +8,7 @@ use api_contracts::generated::types::runners::storage::StorageManifest;
 
 use crate::ids::RunId;
 
-pub(crate) const MAX_HELD_SESSION_STATES: usize = 100;
+pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
 pub(crate) const SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG: &str = "sessionWorkspaceImageCache";
 
 // ---------------------------------------------------------------------------

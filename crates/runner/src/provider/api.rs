@@ -18,8 +18,8 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::types::{
-    CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job, PollResponse,
-    SandboxReuseResult,
+    CompleteRequest, ExecutionContext, HeartbeatState, HeldSessionState, Job,
+    MAX_HELD_SESSION_STATES, PollResponse, SandboxReuseResult,
 };
 use sandbox::SandboxId;
 
@@ -33,11 +33,8 @@ const POLL_SLOW: Duration = Duration::from_secs(30);
 const POLL_FAST: Duration = Duration::from_secs(5);
 /// Retry delay after a job-notification wakeup reaches poll but poll fails.
 const POLL_WAKEUP_RETRY: Duration = POLL_FAST;
-/// Keep in sync with the API poll contract's `heldSessionStates.max(100)`.
-const MAX_POLL_HELD_SESSION_STATES: usize = 100;
-
 fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSessionState]> {
-    if states.len() <= MAX_POLL_HELD_SESSION_STATES {
+    if states.len() <= MAX_HELD_SESSION_STATES {
         return Cow::Borrowed(states);
     }
 
@@ -47,7 +44,7 @@ fn poll_held_session_states(states: &[HeldSessionState]) -> Cow<'_, [HeldSession
             .cmp(&a.last_completed_at)
             .then_with(|| a.session_id.cmp(&b.session_id))
     });
-    capped.truncate(MAX_POLL_HELD_SESSION_STATES);
+    capped.truncate(MAX_HELD_SESSION_STATES);
     Cow::Owned(capped)
 }
 
@@ -806,7 +803,7 @@ mod tests {
 
     #[test]
     fn poll_held_session_states_caps_to_newest_contract_limit() {
-        let states: Vec<HeldSessionState> = (0..=MAX_POLL_HELD_SESSION_STATES)
+        let states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
             .map(|index| HeldSessionState {
                 session_id: format!("sess-{index:03}"),
                 last_completed_at: format!(
@@ -823,9 +820,9 @@ mod tests {
             .map(|state| state.session_id.as_str())
             .collect();
 
-        assert_eq!(capped_sessions.len(), MAX_POLL_HELD_SESSION_STATES);
+        assert_eq!(capped_sessions.len(), MAX_HELD_SESSION_STATES);
         assert!(!capped_sessions.contains(&"sess-000"));
-        assert!(capped_sessions.contains(&"sess-100"));
+        assert!(capped_sessions.contains(&"sess-1024"));
     }
 
     #[tokio::test]

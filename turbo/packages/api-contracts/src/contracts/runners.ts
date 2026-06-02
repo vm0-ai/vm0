@@ -82,7 +82,7 @@ export const runnersPollContract = c.router({
     body: z.object({
       group: runnerGroupSchema,
       profiles: z.array(z.string()).optional(),
-      heldSessionStates: z.array(heldSessionStateSchema).max(100).optional(),
+      heldSessionStates: z.array(heldSessionStateSchema).max(1024).optional(),
     }),
     responses: {
       200: z.object({
