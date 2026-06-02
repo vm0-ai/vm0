@@ -166,10 +166,7 @@ export function IllustrationDetailClient({
                 {t("primaryCta")}
                 <IconArrowUpRight size={16} />
               </a>
-              <Link
-                href="/illustration"
-                className="illu-detail-cta-secondary"
-              >
+              <Link href="/illustration" className="illu-detail-cta-secondary">
                 {t("secondaryCta")}
               </Link>
             </div>
@@ -355,10 +352,7 @@ export function IllustrationDetailClient({
                 {t("primaryCta")}
                 <IconArrowUpRight size={16} />
               </a>
-              <Link
-                href="/illustration"
-                className="illu-detail-cta-secondary"
-              >
+              <Link href="/illustration" className="illu-detail-cta-secondary">
                 {t("secondaryCta")}
               </Link>
             </div>

@@ -146,7 +146,10 @@ function IllustrationCard({ style, onOpen }: CardProps) {
       <div className="illu-tile-caption">
         <h3>
           {hasDetailPage(style) ? (
-            <Link href={`/illustration/${style.slug}`} className="illu-tile-link">
+            <Link
+              href={`/illustration/${style.slug}`}
+              className="illu-tile-link"
+            >
               {style.title}
             </Link>
           ) : (

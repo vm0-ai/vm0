@@ -44,6 +44,68 @@ async function getDefaultDocsPages() {
   });
 }
 
+// Docs sub-pages — one entry per locale with hreflang alternates
+async function buildDocsUrls(
+  defaultDocsPages: Awaited<ReturnType<typeof getDefaultDocsPages>>,
+): Promise<MetadataRoute.Sitemap> {
+  const urls: MetadataRoute.Sitemap = [];
+
+  for (const page of defaultDocsPages) {
+    if (!page.path) continue;
+
+    const available = await getDocsAvailableLocales(page.path, locales);
+    if (available.length === 0) continue;
+
+    const alternates = buildAlternates(`/docs/${page.path}`, available);
+
+    for (const locale of available) {
+      urls.push({
+        url: `${baseUrl}/${locale}/docs/${page.path}`,
+        lastModified: BUILD_DATE,
+        changeFrequency: "weekly",
+        priority: 0.6,
+        alternates: { languages: alternates },
+      });
+    }
+  }
+
+  return urls;
+}
+
+// Blog post pages — only when blog is enabled
+async function buildBlogUrls(
+  defaultPosts: Awaited<ReturnType<typeof getDefaultPosts>>,
+): Promise<MetadataRoute.Sitemap> {
+  if (defaultPosts.length === 0) return [];
+
+  const urls: MetadataRoute.Sitemap = [];
+  const blogBaseUrl = getBlogBaseUrl();
+
+  for (const post of defaultPosts) {
+    const available = await getPostAvailableLocales(post.slug, locales);
+    if (available.length === 0) continue;
+
+    const alternates = buildAlternates(`/blog/posts/${post.slug}`, available);
+
+    const imageUrl = post.cover.startsWith("http")
+      ? post.cover
+      : `${blogBaseUrl}${post.cover}`;
+
+    for (const locale of available) {
+      urls.push({
+        url: `${baseUrl}/${locale}/blog/posts/${post.slug}`,
+        lastModified: new Date(post.publishedAt),
+        changeFrequency: "monthly",
+        priority: 0.7,
+        images: [imageUrl],
+        alternates: { languages: alternates },
+      });
+    }
+  }
+
+  return urls;
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Pre-fetch blog posts once so we can both emit post URLs and derive a
   // realistic lastmod for the /blog index from the most recent post.
@@ -204,52 +266,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  // Docs sub-pages — one entry per locale with hreflang alternates
-  for (const page of defaultDocsPages) {
-    if (!page.path) continue;
-
-    const available = await getDocsAvailableLocales(page.path, locales);
-    if (available.length === 0) continue;
-
-    const alternates = buildAlternates(`/docs/${page.path}`, available);
-
-    for (const locale of available) {
-      urls.push({
-        url: `${baseUrl}/${locale}/docs/${page.path}`,
-        lastModified: BUILD_DATE,
-        changeFrequency: "weekly",
-        priority: 0.6,
-        alternates: { languages: alternates },
-      });
-    }
-  }
-
-  // Blog post pages — only when blog is enabled
-  if (defaultPosts.length > 0) {
-    const blogBaseUrl = getBlogBaseUrl();
-
-    for (const post of defaultPosts) {
-      const available = await getPostAvailableLocales(post.slug, locales);
-      if (available.length === 0) continue;
-
-      const alternates = buildAlternates(`/blog/posts/${post.slug}`, available);
-
-      const imageUrl = post.cover.startsWith("http")
-        ? post.cover
-        : `${blogBaseUrl}${post.cover}`;
-
-      for (const locale of available) {
-        urls.push({
-          url: `${baseUrl}/${locale}/blog/posts/${post.slug}`,
-          lastModified: new Date(post.publishedAt),
-          changeFrequency: "monthly",
-          priority: 0.7,
-          images: [imageUrl],
-          alternates: { languages: alternates },
-        });
-      }
-    }
-  }
+  urls.push(...(await buildDocsUrls(defaultDocsPages)));
+  urls.push(...(await buildBlogUrls(defaultPosts)));
 
   return urls;
 }

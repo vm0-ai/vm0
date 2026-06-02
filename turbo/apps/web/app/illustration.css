@@ -722,12 +722,14 @@
   color: hsl(var(--muted-foreground));
 }
 .illu-detail-recipe-command code {
-  font-family: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-family:
+    var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
   font-size: 14px;
   color: hsl(var(--foreground));
 }
 .illu-detail-recipe-prompt {
-  font-family: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-family:
+    var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.65;
   color: hsl(var(--foreground));
