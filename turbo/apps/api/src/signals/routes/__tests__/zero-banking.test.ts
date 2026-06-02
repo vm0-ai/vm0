@@ -410,6 +410,63 @@ describe("POST /api/zero/banking/*", () => {
     ]);
   });
 
+  it("reads balances through Finicity with only sanitized fields returned", async () => {
+    const fixture = await track(seedBankingFixture());
+    server.use(
+      finicityAuthHandler(),
+      http.get(
+        `${FINICITY_BASE_URL}/aggregation/v1/customers/${fixture.providerCustomerId}/accounts`,
+        () => {
+          return HttpResponse.json({
+            accounts: [
+              {
+                id: fixture.enabledAccountId,
+                name: "Provider Checking",
+                type: "checking",
+                balance: 1234.56,
+                availableBalance: 1200.34,
+                currency: "USD",
+                balanceDate: 1_767_225_600,
+                rawProviderField: "not returned",
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const client = setupApp({ context })(zeroBankingContract);
+    const response = await accept(
+      client.balances({
+        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        body: { accountId: fixture.enabledAccountId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      operation: "balances",
+      provider: "finicity",
+      balance: {
+        accountId: fixture.enabledAccountId,
+        name: "Provider Checking",
+        type: "checking",
+        balance: 1234.56,
+        availableBalance: 1200.34,
+        currency: "USD",
+        balanceDate: 1_767_225_600,
+      },
+    });
+    await expect(bankingAuditEvents(fixture)).resolves.toMatchObject([
+      {
+        action: "balances.read",
+        status: "allowed",
+        failureCode: null,
+        providerAccountId: fixture.enabledAccountId,
+      },
+    ]);
+  });
+
   it("rejects zero tokens without banking capability before provider access", async () => {
     const fixture = await track(seedBankingFixture());
     let authRequestCount = 0;
