@@ -586,7 +586,8 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use sandbox::{SandboxFactory, SandboxId};
+    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+    use sandbox::{ExecResult, SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
     use tokio_util::sync::CancellationToken;
 
@@ -596,9 +597,11 @@ mod tests {
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::network_log_manager::NetworkLogManager;
+    use crate::paths::RunnerPaths;
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::types::SandboxReuseResult;
+    use crate::workspace_image_cache::{SessionWorkspaceCache, WorkspaceImagePrepareRequest};
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
@@ -685,6 +688,33 @@ mod tests {
         }
     }
 
+    async fn prepare_test_workspace_image_lease(
+        paths: &RunnerPaths,
+        cache: &SessionWorkspaceCache,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+        session_id: &str,
+    ) -> WorkspaceImageLease {
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: b"image".len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        lease
+    }
+
     #[tokio::test]
     async fn finalizer_closes_network_log_session_before_parking() {
         let (_budget, lease) = test_budget_lease();
@@ -725,6 +755,85 @@ mod tests {
                 .await,
             "parked sandbox must not retain the previous run's network-log attribution",
         );
+    }
+
+    #[tokio::test]
+    async fn workspace_promotion_unmounts_and_promotes_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease =
+            prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, "sess-promote")
+                .await;
+        let sandbox = MockSandbox::new("workspace-promotion");
+
+        let promoted = promote_workspace_image_from_active_sandbox(
+            &sandbox,
+            run_id,
+            Some(&lease),
+            true,
+            WorkspaceCacheTerminalStatus::Success,
+            &crate::idle_pool::StorageFingerprints::default(),
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some("sess-promote"),
+                reason: "test",
+            },
+        )
+        .await;
+
+        assert!(promoted);
+        drop(lease);
+        let states = cache.held_session_states().await;
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].session_id, "sess-promote");
+        let exec_calls = sandbox.exec_calls();
+        assert_eq!(exec_calls.len(), 1);
+        assert!(exec_calls[0].sudo);
+        assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+    }
+
+    #[tokio::test]
+    async fn workspace_promotion_skips_cache_when_guest_unmount_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease =
+            prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, "sess-failed")
+                .await;
+        let sandbox = MockSandbox::new("workspace-promotion-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(64, Vec::new(), b"not mounted".to_vec())));
+
+        let promoted = promote_workspace_image_from_active_sandbox(
+            &sandbox,
+            run_id,
+            Some(&lease),
+            true,
+            WorkspaceCacheTerminalStatus::Success,
+            &crate::idle_pool::StorageFingerprints::default(),
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some("sess-failed"),
+                reason: "test",
+            },
+        )
+        .await;
+
+        assert!(!promoted);
+        drop(lease);
+        assert!(
+            cache.held_session_states().await.is_empty(),
+            "unmount failure must not advertise an unflushed workspace image"
+        );
+        assert_eq!(sandbox.exec_calls().len(), 1);
     }
 
     #[tokio::test]

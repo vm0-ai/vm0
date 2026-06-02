@@ -74,12 +74,13 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         mode,
     );
     drop(pool);
-    if let Some(cache) = hb.workspace_cache.as_ref() {
-        let active_sessions = active_session_ids(hb.active_sessions);
-        let cache_states = cache.held_session_states().await;
-        state.held_session_states =
-            merge_held_session_states(state.held_session_states, cache_states, &active_sessions);
-    }
+    state.held_session_states = current_held_session_states(
+        state.held_session_states,
+        hb.workspace_cache.as_ref(),
+        hb.active_sessions,
+        None,
+    )
+    .await;
     info!(
         mode = ?mode,
         running = state.running_count,
@@ -91,6 +92,24 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         .set_held_session_states(state.held_session_states.clone())
         .await;
     hb.provider.heartbeat(&state).await;
+}
+
+pub(super) async fn current_held_session_states(
+    idle_states: Vec<HeldSessionState>,
+    workspace_cache: Option<&SessionWorkspaceCache>,
+    active_sessions: &ActiveSessions,
+    extra_active_session: Option<&str>,
+) -> Vec<HeldSessionState> {
+    let Some(cache) = workspace_cache else {
+        return idle_states;
+    };
+
+    let mut active_sessions = active_session_ids(active_sessions);
+    if let Some(session_id) = extra_active_session {
+        active_sessions.insert(session_id.to_owned());
+    }
+    let cache_states = cache.held_session_states().await;
+    merge_held_session_states(idle_states, cache_states, &active_sessions)
 }
 
 fn merge_held_session_states(
@@ -178,6 +197,11 @@ mod tests {
     use crate::idle_pool::{
         IdlePoolConfig, ParkResult, ParkedIdleCandidate, SyntheticParkedIdleCandidateParts,
     };
+    use crate::paths::RunnerPaths;
+    use crate::workspace_image_cache::{
+        WorkspaceCacheTerminalStatus, WorkspaceImagePrepareRequest,
+    };
+    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{SandboxFactory, SandboxId};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
@@ -212,6 +236,45 @@ mod tests {
         })
     }
 
+    async fn seed_workspace_cache_state(
+        cache: &SessionWorkspaceCache,
+        paths: &RunnerPaths,
+        session_id: &str,
+        completed_at: &str,
+    ) {
+        let run_id = crate::ids::RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: b"image".len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&active_image, b"image").await.unwrap();
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    completed_at.into(),
+                    &crate::idle_pool::StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+        drop(lease);
+    }
+
     #[test]
     fn heartbeat_running_count_no_idle() {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
@@ -235,6 +298,41 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
+    }
+
+    #[tokio::test]
+    async fn current_held_session_states_keeps_cache_sessions_and_filters_claimed_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        seed_workspace_cache_state(&cache, &paths, "sess-cache", "2026-06-01T00:00:00.000Z").await;
+        seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
+            .await;
+        let active_sessions = super::super::active_sessions::new_active_sessions();
+        let idle = vec![HeldSessionState {
+            session_id: "sess-idle".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+        }];
+
+        let states =
+            current_held_session_states(idle, Some(&cache), &active_sessions, Some("sess-claimed"))
+                .await;
+
+        assert!(
+            states.iter().any(|state| state.session_id == "sess-idle"),
+            "idle session should remain advertised"
+        );
+        assert!(
+            states.iter().any(|state| state.session_id == "sess-cache"),
+            "unrelated workspace cache session should remain advertised"
+        );
+        assert!(
+            !states
+                .iter()
+                .any(|state| state.session_id == "sess-claimed"),
+            "currently claimed session should be filtered until the run finishes"
+        );
     }
 
     #[test]

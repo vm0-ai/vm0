@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::factory_lifecycle::SharedFactory;
+use super::heartbeat::current_held_session_states;
 use super::idle_lifecycle::{
     SharedIdlePool, add_run_with_idle_status_snapshot, spawn_idle_destroy_job,
 };
@@ -255,6 +256,13 @@ async fn try_reuse_from_pool(
         let held_session_states = pool.held_session_states();
         (taken, snapshot, held_session_states)
     };
+    let held_session_states = current_held_session_states(
+        held_session_states,
+        ctx.spawn_ctx.exec_config.workspace_cache.as_ref(),
+        &ctx.spawn_ctx.active_sessions,
+        Some(session_id),
+    )
+    .await;
     ctx.spawn_ctx
         .provider
         .set_held_session_states(held_session_states)
