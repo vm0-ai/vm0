@@ -78,32 +78,8 @@ const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
     "LD_AUDIT",
     "NODE_OPTIONS",
 ];
-const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_CMD: &str = r#"set +e
-section() { printf '\n== %s ==\n' "$1"; }
-
-section identity
-id 2>&1
-uname -a 2>&1
-pwd 2>&1
-
-section guest-agent-binary
-ls -l /usr/local/bin/guest-agent 2>&1
-stat /usr/local/bin/guest-agent 2>&1
-if command -v file >/dev/null 2>&1; then file /usr/local/bin/guest-agent 2>&1; else echo "file: unavailable"; fi
-if command -v sha256sum >/dev/null 2>&1; then sha256sum /usr/local/bin/guest-agent 2>&1; else echo "sha256sum: unavailable"; fi
-
-section resources
-ulimit -a 2>&1
-df -h 2>&1
-if command -v free >/dev/null 2>&1; then free -m 2>&1; elif [ -r /proc/meminfo ]; then head -20 /proc/meminfo 2>&1; else echo "memory: unavailable"; fi
-if [ -r /proc/sys/fs/file-nr ]; then cat /proc/sys/fs/file-nr 2>&1; else echo "/proc/sys/fs/file-nr: unavailable"; fi
-
-section processes
-if command -v ps >/dev/null 2>&1; then ps -e --no-headers 2>/dev/null | wc -l; else ls -1 /proc 2>/dev/null | grep -E '^[0-9]+$' | wc -l; fi
-
-section dmesg
-dmesg 2>&1 | tail -50
-"#;
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
+    include_str!("../scripts/agent-abnormal-exit-diagnostics.sh");
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 use crate::error::{RunnerError, RunnerResult};
@@ -433,7 +409,7 @@ async fn collect_agent_abnormal_exit_diagnostics(
     exit_code: i32,
 ) {
     let request = ExecRequest {
-        cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_CMD,
+        cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT,
         timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
         env: &[],
         sudo: true,
@@ -5814,17 +5790,23 @@ mod tests {
         assert_eq!(diagnostic_calls.len(), 1);
         let call = diagnostic_calls[0];
         assert!(call.cmd.contains("guest-agent-binary"));
+        let active_diagnostic_cmd = call
+            .cmd
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| !line.starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
         for forbidden in ["environ", "printenv", "ps aux", "ps -ef", "ps e"] {
             assert!(
-                !call.cmd.contains(forbidden),
+                !active_diagnostic_cmd.contains(forbidden),
                 "diagnostic command must not collect environment values via {forbidden}"
             );
         }
         assert!(
-            !call.cmd.lines().any(|line| {
-                let trimmed = line.trim_start();
-                trimmed == "env" || trimmed.starts_with("env ")
-            }),
+            !active_diagnostic_cmd
+                .lines()
+                .any(|line| line == "env" || line.starts_with("env ")),
             "diagnostic command must not collect raw environment output"
         );
         assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
