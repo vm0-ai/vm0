@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.106.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.3...runner-rs-v0.106.4) (2026-06-02)
+
+
+### Bug Fixes
+
+* bound streaming usage decompression output ([#15831](https://github.com/vm0-ai/vm0/issues/15831)) ([25128d0](https://github.com/vm0-ai/vm0/commit/25128d05e9407c782ffe727f30d0dd97f1586aa1))
+
 ## [0.106.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.2...runner-rs-v0.106.3) (2026-06-02)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.1...sandbox-fc-v0.36.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* enforce snapshot artifact file integrity ([#15835](https://github.com/vm0-ai/vm0/issues/15835)) ([e69b584](https://github.com/vm0-ai/vm0/commit/e69b5840c39dc6aa73f9f30cb1753ef0dee36d36))
+
 ## [0.36.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.0...sandbox-fc-v0.36.1) (2026-06-02)
 
 ## [0.36.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.23...sandbox-fc-v0.36.0) (2026-06-01)

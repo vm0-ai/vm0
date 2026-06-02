@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.406.3](https://github.com/vm0-ai/vm0/compare/web-v12.406.2...web-v12.406.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* remove poor agent backend models ([#15807](https://github.com/vm0-ai/vm0/issues/15807)) ([e73e675](https://github.com/vm0-ai/vm0/commit/e73e675f6fa38e199634b37734f2f73a56437a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.2
+
 ## [12.406.2](https://github.com/vm0-ai/vm0/compare/web-v12.406.1...web-v12.406.2) (2026-06-02)
 
 

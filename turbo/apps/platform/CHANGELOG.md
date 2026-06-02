@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.399.14](https://github.com/vm0-ai/vm0/compare/app-v0.399.13...app-v0.399.14) (2026-06-02)
+
+
+### Bug Fixes
+
+* remove poor agent backend models ([#15807](https://github.com/vm0-ai/vm0/issues/15807)) ([e73e675](https://github.com/vm0-ai/vm0/commit/e73e675f6fa38e199634b37734f2f73a56437a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.2
+    * @vm0/core bumped to 8.305.5
+
 ## [0.399.13](https://github.com/vm0-ai/vm0/compare/app-v0.399.12...app-v0.399.13) (2026-06-02)
 
 
