@@ -45,6 +45,20 @@ async function seedGithubConnector(args: {
   });
 }
 
+async function seedStripeApiTokenConnector(args: {
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<void> {
+  const writeDb = store.set(writeDb$);
+  await writeDb.insert(connectors).values({
+    userId: args.userId,
+    orgId: args.orgId,
+    type: "stripe",
+    authMethod: "api-token",
+    oauthScopes: null,
+  });
+}
+
 async function deleteConnectorsByOrg(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
   await writeDb.delete(connectors).where(eq(connectors.orgId, orgId));
@@ -155,6 +169,31 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
       removedScopes: [],
       currentScopes: GITHUB_CURRENT_SCOPES,
       storedScopes: GITHUB_CURRENT_SCOPES,
+    });
+  });
+
+  it("returns an empty diff for selected manual auth methods on mixed connectors", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededFixtures.push(
+      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    );
+    await seedStripeApiTokenConnector({ orgId, userId });
+    mocks.clerk.session(userId, orgId);
+    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
+    const response = await accept(
+      client.getScopeDiff({
+        params: { type: "stripe" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      addedScopes: [],
+      removedScopes: [],
+      currentScopes: [],
+      storedScopes: [],
     });
   });
 

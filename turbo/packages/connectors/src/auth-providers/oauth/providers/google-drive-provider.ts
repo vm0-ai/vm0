@@ -13,6 +13,7 @@ export const googleDriveProvider: AuthCodeConnectorAuthProvider<"google-drive"> 
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-drive",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const googleDriveProvider: AuthCodeConnectorAuthProvider<"google-drive"> 
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-drive",
           clientId,
           clientSecret,
@@ -55,10 +57,12 @@ export const googleDriveProvider: AuthCodeConnectorAuthProvider<"google-drive"> 
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
+          args.tokenUrl,
           "google-drive",
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

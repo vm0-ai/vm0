@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
+import { CopyablePrompt } from "../../components/CopyablePrompt";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
 import { getAppUrl } from "../../../src/lib/zero/url";
@@ -45,16 +46,14 @@ function GalleryCard({ item, appUrl }: { item: GalleryItem; appUrl: string }) {
           </div>
         </div>
       </a>
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <h2 className="text-[14px] font-medium text-[hsl(var(--foreground))]">
-          {item.title}
-        </h2>
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <CopyablePrompt prompt={item.prompt} />
         <a
           href={remixHref}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] bg-[#ed4e01] px-3.5 text-sm font-medium text-white transition-colors hover:bg-[#d94600]"
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] bg-[#ed4e01] px-3.5 text-sm font-medium text-white transition-colors hover:bg-[#d94600]"
         >
           <IconSparkles size={15} stroke={2} />
-          Prompt remix
+          Try it
         </a>
       </div>
     </article>
@@ -78,8 +77,8 @@ export function WebDesignClient() {
         >
           <h1 className="hero-title">Website Design</h1>
           <p className="hero-description">
-            Image-led website examples you can open, inspect, and remix into
-            your own Zero creation.
+            Get your creative website from a single, short prompt. We promise it
+            works with no extra setup in VM0.
           </p>
         </div>
       </section>

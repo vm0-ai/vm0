@@ -5,17 +5,14 @@ import {
   chatMessagesContract,
   type AttachFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -26,7 +23,6 @@ import {
   inArray,
   isNotNull,
   isNull,
-  or,
   sql,
 } from "drizzle-orm";
 import type { z } from "zod";
@@ -41,7 +37,12 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
-import { badRequestMessage, notFound, providerDeleted } from "../../lib/error";
+import {
+  badRequestMessage,
+  conflict,
+  notFound,
+  providerDeleted,
+} from "../../lib/error";
 import { env } from "../../lib/env";
 import { buildArtifactKey } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
@@ -51,12 +52,19 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
-import { ensureOrgModelPolicies } from "../services/zero-model-policy.service";
 import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
 } from "../services/zero-chat-title.service";
-import { checkOrgCreditsForRunAdmission } from "../services/zero-run-admission.service";
+import {
+  MODEL_FIRST_SELECTION_PROVIDER_ID,
+  type ModelFirstPin,
+  modelOnlyModelFirstPin,
+  modelProviderPinAvailable,
+  resolveDefaultModelFirstPin,
+  resolveModelFirstProviderAdmission,
+  resolveModelSelectionPin,
+} from "../services/zero-model-selection.service";
 import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
@@ -106,36 +114,14 @@ interface AgentForChatSend {
   readonly visibility: "public" | "private";
 }
 
-interface ThreadModelPin {
-  readonly modelProviderId: string | null;
-  readonly modelProviderType: string | null;
-  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
-  readonly selectedModel: string | null;
-}
-
-function parseModelProviderCredentialScope(
-  value: string | null,
-): ModelProviderCredentialScope | null {
-  if (value === null || value === "org" || value === "member") {
-    return value;
-  }
-  throw new Error(`Unknown model provider credential scope "${value}"`);
-}
-
-function modelOnlyThreadPin(selectedModel: string | null): ThreadModelPin {
-  return {
-    modelProviderId: null,
-    modelProviderType: null,
-    modelProviderCredentialScope: null,
-    selectedModel,
-  };
-}
+type ThreadModelPin = ModelFirstPin;
 
 interface ResolvedThread {
   readonly threadId: string;
   readonly sessionId: string | undefined;
   readonly incompleteContext: string;
   readonly isNewThread: boolean;
+  readonly isClientThreadRetry: boolean;
 }
 
 interface WebChatPriorRunMessage {
@@ -195,6 +181,7 @@ type NormalSendFailure =
   | ReturnType<typeof notFound>
   | ReturnType<typeof providerDeleted>
   | ReturnType<typeof forbidden>
+  | ReturnType<typeof conflict>
   | ReturnType<typeof badRequestMessage>;
 
 interface CreatedChatMessageResponse {
@@ -207,6 +194,17 @@ interface CreatedChatMessageResponse {
   };
 }
 
+type ClientSendResolution =
+  | CreatedChatMessageResponse
+  | ReturnType<typeof conflict>;
+
+type CreateChatThreadResult =
+  | {
+      readonly id: string;
+      readonly clientThreadAlreadyExisted: boolean;
+    }
+  | ReturnType<typeof notFound>;
+
 type AppendMessageResult =
   | {
       readonly ok: true;
@@ -217,21 +215,152 @@ type AppendMessageResult =
       readonly message: string;
     };
 
+type ClientMessageIdResolution =
+  | {
+      readonly kind: "available";
+    }
+  | {
+      readonly kind: "queued";
+      readonly createdAt: Date;
+      readonly inserted: boolean;
+    }
+  | {
+      readonly kind: "associated";
+      readonly runId: string;
+      readonly status: string;
+      readonly createdAt: Date;
+    }
+  | {
+      readonly kind: "conflict";
+    };
+
+interface ExistingClientMessageIdRow {
+  readonly chatThreadId: string;
+  readonly threadUserId: string;
+  readonly role: string;
+  readonly runId: string | null;
+  readonly revokesMessageId: string | null;
+  readonly interruptsRunId: string | null;
+  readonly messageCreatedAt: Date;
+  readonly runStatus: string | null;
+  readonly runCreatedAt: Date | null;
+}
+
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
 // Existing web chat threads carry a small recent-run window in the system
 // prompt. Session compatibility is handled separately by forceNewSession.
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const WEB_CHAT_INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
-const ORG_SENTINEL_USER_ID = "__org__";
-const MODEL_FIRST_SELECTION_PROVIDER_ID =
-  "00000000-0000-4000-8000-000000000000";
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
 
 function forbidden(message: string) {
   return {
     status: 403 as const,
     body: { error: { message, code: "FORBIDDEN" as const } },
+  };
+}
+
+function duplicateClientMessageIdResponse() {
+  return conflict("clientMessageId is already in use");
+}
+
+function resolveExistingClientMessageIdRow(
+  row: ExistingClientMessageIdRow | undefined,
+  params: {
+    readonly threadId: string;
+    readonly userId: string;
+  },
+): ClientMessageIdResolution {
+  if (!row) {
+    return { kind: "available" };
+  }
+  if (
+    row.chatThreadId !== params.threadId ||
+    row.threadUserId !== params.userId ||
+    row.role !== "user" ||
+    row.revokesMessageId !== null ||
+    row.interruptsRunId !== null
+  ) {
+    return { kind: "conflict" };
+  }
+  if (row.runId === null) {
+    return {
+      kind: "queued",
+      createdAt: row.messageCreatedAt,
+      inserted: false,
+    };
+  }
+  if (!row.runCreatedAt || !row.runStatus) {
+    return { kind: "conflict" };
+  }
+  return {
+    kind: "associated",
+    runId: row.runId,
+    status: row.runStatus,
+    createdAt: row.runCreatedAt,
+  };
+}
+
+async function resolveClientMessageId(
+  db: Db,
+  params: {
+    readonly clientMessageId: string;
+    readonly threadId: string;
+    readonly userId: string;
+  },
+): Promise<ClientMessageIdResolution> {
+  const [message] = await db
+    .select({
+      chatThreadId: chatMessages.chatThreadId,
+      threadUserId: chatThreads.userId,
+      role: chatMessages.role,
+      runId: chatMessages.runId,
+      revokesMessageId: chatMessages.revokesMessageId,
+      interruptsRunId: chatMessages.interruptsRunId,
+      messageCreatedAt: chatMessages.createdAt,
+      runStatus: agentRuns.status,
+      runCreatedAt: agentRuns.createdAt,
+    })
+    .from(chatMessages)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .where(eq(chatMessages.id, params.clientMessageId))
+    .limit(1);
+  return resolveExistingClientMessageIdRow(message, params);
+}
+
+function clientMessageIdResolutionResponse(
+  resolution: ClientMessageIdResolution,
+  threadId: string,
+):
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+  | undefined {
+  if (resolution.kind === "available") {
+    return undefined;
+  }
+  if (resolution.kind === "conflict") {
+    return duplicateClientMessageIdResponse();
+  }
+  if (resolution.kind === "associated") {
+    return {
+      status: 201,
+      body: {
+        runId: resolution.runId,
+        threadId,
+        status: resolution.status,
+        createdAt: resolution.createdAt.toISOString(),
+      },
+    };
+  }
+  return {
+    status: 201,
+    body: {
+      runId: null,
+      threadId,
+      createdAt: resolution.createdAt.toISOString(),
+    },
   };
 }
 
@@ -729,64 +858,50 @@ async function activeRunExistsForThread(
   return run !== undefined;
 }
 
-async function defaultModelFirstPin(
-  db: Db,
-  orgId: string,
-  userId: string,
-): Promise<ThreadModelPin> {
-  const [preference] = await db
-    .select({ selectedModel: orgMembersMetadata.selectedModel })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, orgId),
-        eq(orgMembersMetadata.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  const preferredModel = preference?.selectedModel ?? null;
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      preferredModel
-        ? and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.model, preferredModel),
-          )
-        : and(
-            eq(orgModelPolicies.orgId, orgId),
-            eq(orgModelPolicies.isDefault, true),
-          ),
-    )
-    .limit(1);
-
-  if (!policy && preferredModel) {
-    return defaultModelFirstPin(db, orgId, "__no_preference__");
+async function resolveClientMessageSend(params: {
+  readonly db: Db;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly clientMessageId: string | undefined;
+}): Promise<ClientSendResolution | undefined> {
+  if (!params.clientMessageId) {
+    return undefined;
   }
+  const resolution = await resolveClientMessageId(params.db, {
+    clientMessageId: params.clientMessageId,
+    threadId: params.threadId,
+    userId: params.userId,
+  });
+  return clientMessageIdResolutionResponse(resolution, params.threadId);
+}
 
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: null,
-    };
+async function resolveClientThreadRetryRun(
+  db: Db,
+  threadId: string,
+): Promise<CreatedChatMessageResponse | undefined> {
+  const [run] = await db
+    .select({
+      runId: agentRuns.id,
+      status: agentRuns.status,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.chatThreadId, threadId))
+    .orderBy(asc(agentRuns.createdAt))
+    .limit(1);
+  if (!run) {
+    return undefined;
   }
 
   return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
+    status: 201,
+    body: {
+      runId: run.runId,
+      threadId,
+      status: run.status,
+      createdAt: run.createdAt.toISOString(),
+    },
   };
 }
 
@@ -802,30 +917,7 @@ async function getStoredThreadModelPin(
   if (!thread?.selectedModel) {
     return null;
   }
-  return modelOnlyThreadPin(thread.selectedModel);
-}
-
-async function modelProviderPinAvailable(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelProviderId: string;
-}): Promise<boolean> {
-  const [provider] = await params.db
-    .select({ id: modelProviders.id })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, params.modelProviderId),
-        eq(modelProviders.orgId, params.orgId),
-        or(
-          eq(modelProviders.userId, params.userId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
-      ),
-    )
-    .limit(1);
-  return provider !== undefined;
+  return modelOnlyModelFirstPin(thread.selectedModel);
 }
 
 async function getFirstRunModelPin(
@@ -849,7 +941,7 @@ async function getFirstRunModelPin(
   if (!run?.selectedModel) {
     return null;
   }
-  return modelOnlyThreadPin(run.selectedModel);
+  return modelOnlyModelFirstPin(run.selectedModel);
 }
 
 async function existingModelFirstThreadPin(
@@ -868,65 +960,6 @@ function emptyModelFirstThreadPin(): ThreadModelPin {
     modelProviderType: null,
     modelProviderCredentialScope: null,
     selectedModel: null,
-  };
-}
-
-async function resolveModelSelectionPin(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelSelection: NonNullable<IncomingModelSelection>;
-}): Promise<ThreadModelPin | ReturnType<typeof badRequestMessage>> {
-  const { db, orgId, userId, modelSelection } = params;
-  if (modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID) {
-    const available = await modelProviderPinAvailable({
-      db,
-      orgId,
-      userId,
-      modelProviderId: modelSelection.modelProviderId,
-    });
-    if (!available) {
-      return badRequestMessage("Unknown model provider for this workspace");
-    }
-    return {
-      modelProviderId: modelSelection.modelProviderId,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelSelection.selectedModel,
-    };
-  }
-
-  await ensureOrgModelPolicies(db, orgId, userId);
-  const [policy] = await db
-    .select({
-      model: orgModelPolicies.model,
-      defaultProviderType: orgModelPolicies.defaultProviderType,
-      credentialScope: orgModelPolicies.credentialScope,
-      modelProviderId: orgModelPolicies.modelProviderId,
-    })
-    .from(orgModelPolicies)
-    .where(
-      and(
-        eq(orgModelPolicies.orgId, orgId),
-        eq(orgModelPolicies.model, modelSelection.selectedModel),
-      ),
-    )
-    .limit(1);
-  if (!policy) {
-    return {
-      modelProviderId: null,
-      modelProviderType: null,
-      modelProviderCredentialScope: null,
-      selectedModel: modelSelection.selectedModel,
-    };
-  }
-  return {
-    modelProviderId: policy.modelProviderId ?? null,
-    modelProviderType: policy.defaultProviderType,
-    modelProviderCredentialScope: parseModelProviderCredentialScope(
-      policy.credentialScope,
-    ),
-    selectedModel: policy.model,
   };
 }
 
@@ -979,7 +1012,10 @@ async function persistThreadPinIfUnset(
   }
   await db
     .update(chatThreads)
-    .set({ ...modelOnlyThreadPin(pin.selectedModel), updatedAt: nowDate() })
+    .set({
+      ...modelOnlyModelFirstPin(pin.selectedModel),
+      updatedAt: nowDate(),
+    })
     .where(and(eq(chatThreads.id, threadId), isNull(chatThreads.selectedModel)))
     .returning({ selectedModel: chatThreads.selectedModel });
   return pin;
@@ -1020,7 +1056,7 @@ async function resolveRunModelPin(params: {
         userId: params.userId,
         modelSelection: params.modelSelection,
       })
-    : await defaultModelFirstPin(params.db, params.orgId, params.userId);
+    : await resolveDefaultModelFirstPin(params.db, params.orgId, params.userId);
   if ("status" in pin) {
     return pin;
   }
@@ -1135,11 +1171,46 @@ async function createChatThread(
     readonly clientThreadId: string | undefined;
     readonly pin: ThreadModelPin;
   },
-): Promise<{ readonly id: string }> {
+): Promise<CreateChatThreadResult> {
+  if (args.clientThreadId) {
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        id: args.clientThreadId,
+        userId: args.userId,
+        agentComposeId: args.agentId,
+        title: null,
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: args.pin.selectedModel,
+      })
+      .onConflictDoNothing({ target: chatThreads.id })
+      .returning({ id: chatThreads.id });
+    if (thread) {
+      return { id: thread.id, clientThreadAlreadyExisted: false };
+    }
+
+    const [existingThread] = await db
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.clientThreadId),
+          eq(chatThreads.userId, args.userId),
+          eq(chatThreads.agentComposeId, args.agentId),
+        ),
+      )
+      .limit(1);
+    if (!existingThread) {
+      return notFound("Chat thread not found");
+    }
+    return { id: existingThread.id, clientThreadAlreadyExisted: true };
+  }
+
   const [thread] = await db
     .insert(chatThreads)
     .values({
-      ...(args.clientThreadId ? { id: args.clientThreadId } : {}),
       userId: args.userId,
       agentComposeId: args.agentId,
       title: null,
@@ -1152,7 +1223,7 @@ async function createChatThread(
   if (!thread) {
     throw new Error("Failed to create chat thread");
   }
-  return thread;
+  return { id: thread.id, clientThreadAlreadyExisted: false };
 }
 
 async function resolveThread(params: {
@@ -1171,11 +1242,15 @@ async function resolveThread(params: {
       clientThreadId: params.clientThreadId,
       pin: params.initialPin,
     });
+    if ("status" in thread) {
+      return thread;
+    }
     return {
       threadId: thread.id,
       sessionId: undefined,
       incompleteContext: "",
-      isNewThread: true,
+      isNewThread: !thread.clientThreadAlreadyExisted,
+      isClientThreadRetry: thread.clientThreadAlreadyExisted,
     };
   }
 
@@ -1208,6 +1283,7 @@ async function resolveThread(params: {
           groupIncompleteRoundsByRunId(incompleteRows),
         ),
     isNewThread: false,
+    isClientThreadRetry: false,
   };
 }
 
@@ -1263,7 +1339,7 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
-}): Promise<{ readonly createdAt: Date }> {
+}): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
@@ -1293,29 +1369,33 @@ function appendUnassociatedUserMessage(params: {
       .returning({ createdAt: chatMessages.createdAt });
     if (inserted) {
       await touchChatThreadLastMessageAt(tx, params.threadId);
-      return inserted;
+      return { kind: "queued", createdAt: inserted.createdAt, inserted: true };
     }
     if (!explicitId) {
       throw new Error("Failed to insert unassociated user message");
     }
     const [existing] = await tx
-      .select({ createdAt: chatMessages.createdAt })
+      .select({
+        chatThreadId: chatMessages.chatThreadId,
+        threadUserId: chatThreads.userId,
+        role: chatMessages.role,
+        runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
+        interruptsRunId: chatMessages.interruptsRunId,
+        messageCreatedAt: chatMessages.createdAt,
+        runStatus: agentRuns.status,
+        runCreatedAt: agentRuns.createdAt,
+      })
       .from(chatMessages)
       .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-      .where(
-        and(
-          eq(chatMessages.id, explicitId),
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatThreads.userId, params.userId),
-          eq(chatMessages.role, "user"),
-          isNull(chatMessages.runId),
-        ),
-      )
+      .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .where(eq(chatMessages.id, explicitId))
       .limit(1);
-    if (!existing) {
-      throw new Error("Failed to resolve unassociated user message");
-    }
-    return existing;
+    const resolution = resolveExistingClientMessageIdRow(existing, {
+      threadId: params.threadId,
+      userId: params.userId,
+    });
+    return resolution.kind === "available" ? { kind: "conflict" } : resolution;
   });
 }
 
@@ -1757,7 +1837,10 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
-}): Promise<CreatedChatMessageResponse> {
+}): Promise<
+  | CreatedChatMessageResponse
+  | ReturnType<typeof duplicateClientMessageIdResponse>
+> {
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -1766,18 +1849,20 @@ async function queueUnassociatedNormalMessage(params: {
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
   });
-  await publishChatMessageCreated(
-    params.userId,
+  if (message.kind === "queued" && message.inserted) {
+    await publishChatMessageCreated(
+      params.userId,
+      params.prepared.thread.threadId,
+    );
+  }
+  const response = clientMessageIdResolutionResponse(
+    message,
     params.prepared.thread.threadId,
   );
-  return {
-    status: 201,
-    body: {
-      runId: null,
-      threadId: params.prepared.thread.threadId,
-      createdAt: message.createdAt.toISOString(),
-    },
-  };
+  if (!response) {
+    return duplicateClientMessageIdResponse();
+  }
+  return response;
 }
 
 function scheduleChatTitleGeneration(params: {
@@ -1859,58 +1944,6 @@ function scheduleCreatedChatRunSideEffects(params: {
     runId: params.runId,
     appendQueueMarker: params.runStatus === "queued",
   });
-}
-
-async function resolveEffectiveModelProviderType(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelPin: ThreadModelPin;
-  readonly requestedModelProvider: string | undefined;
-}): Promise<string | null | undefined> {
-  if (params.modelPin.modelProviderType) {
-    return params.modelPin.modelProviderType;
-  }
-  if (!params.modelPin.modelProviderId) {
-    return params.requestedModelProvider;
-  }
-
-  const [provider] = await params.db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.id, params.modelPin.modelProviderId),
-        eq(modelProviders.orgId, params.orgId),
-        or(
-          eq(modelProviders.userId, params.userId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        ),
-      ),
-    )
-    .limit(1);
-
-  return provider?.type ?? params.requestedModelProvider;
-}
-
-async function resolveProviderAdmission(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly modelPin: ThreadModelPin;
-  readonly requestedModelProvider: string | undefined;
-}): Promise<{
-  readonly effectiveModelProvider: string | null | undefined;
-  readonly error: Awaited<ReturnType<typeof checkOrgCreditsForRunAdmission>>;
-}> {
-  const effectiveModelProvider =
-    await resolveEffectiveModelProviderType(params);
-  const error = await checkOrgCreditsForRunAdmission({
-    db: params.db,
-    orgId: params.orgId,
-    modelProviderType: effectiveModelProvider,
-  });
-  return { effectiveModelProvider, error };
 }
 
 async function buildInsufficientCreditsAssistantMessage(params: {
@@ -2041,7 +2074,7 @@ const createNormalChatRun$ = command(
       args.body.modelProvider && args.body.modelProvider !== "default"
         ? args.body.modelProvider
         : undefined;
-    const providerAdmission = await resolveProviderAdmission({
+    const providerAdmission = await resolveModelFirstProviderAdmission({
       db: prepared.db,
       orgId: args.orgId,
       userId: args.userId,
@@ -2151,6 +2184,29 @@ const sendNormalMessage$ = command(
     signal.throwIfAborted();
     if ("status" in prepared) {
       return prepared;
+    }
+
+    const clientMessageResolution = await resolveClientMessageSend({
+      db: prepared.db,
+      userId: args.userId,
+      threadId: prepared.thread.threadId,
+      clientMessageId: args.body.clientMessageId,
+    });
+    signal.throwIfAborted();
+    if (clientMessageResolution) {
+      return clientMessageResolution;
+    }
+
+    if (prepared.thread.isClientThreadRetry) {
+      const existingRun = await resolveClientThreadRetryRun(
+        prepared.db,
+        prepared.thread.threadId,
+      );
+      signal.throwIfAborted();
+      if (existingRun) {
+        return existingRun;
+      }
+      return badRequestMessage("Client thread id is already in use");
     }
 
     if (await activeRunExistsForThread(prepared.db, prepared.thread.threadId)) {

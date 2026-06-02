@@ -1,5 +1,275 @@
 # Changelog
 
+## [9.177.16](https://github.com/vm0-ai/vm0/compare/cli-v9.177.15...cli-v9.177.16) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.51.0
+    * @vm0/connectors bumped to 1.40.1
+    * @vm0/core bumped to 8.305.2
+
+## [9.177.15](https://github.com/vm0-ai/vm0/compare/cli-v9.177.14...cli-v9.177.15) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.9
+    * @vm0/core bumped to 8.305.1
+
+## [9.177.14](https://github.com/vm0-ai/vm0/compare/cli-v9.177.13...cli-v9.177.14) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.8
+    * @vm0/connectors bumped to 1.40.0
+    * @vm0/core bumped to 8.305.0
+
+## [9.177.13](https://github.com/vm0-ai/vm0/compare/cli-v9.177.12...cli-v9.177.13) (2026-06-01)
+
+
+### Refactoring
+
+* retire legacy firewall matcher ([#15291](https://github.com/vm0-ai/vm0/issues/15291)) ([a288950](https://github.com/vm0-ai/vm0/commit/a2889506f42f55331238d928a64e0c85b69e9ff0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/connectors bumped to 1.39.6
+    * @vm0/core bumped to 8.304.9
+
+## [9.177.12](https://github.com/vm0-ai/vm0/compare/cli-v9.177.11...cli-v9.177.12) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.6
+    * @vm0/connectors bumped to 1.39.5
+    * @vm0/core bumped to 8.304.8
+
+## [9.177.11](https://github.com/vm0-ai/vm0/compare/cli-v9.177.10...cli-v9.177.11) (2026-06-01)
+
+
+### Performance Improvements
+
+* **computer-use:** store screenshots in object storage instead of jsonb ([#15404](https://github.com/vm0-ai/vm0/issues/15404)) ([e743943](https://github.com/vm0-ai/vm0/commit/e74394382c14df85ecbc761564859dc0bf0b23bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.5
+    * @vm0/core bumped to 8.304.7
+
+## [9.177.10](https://github.com/vm0-ai/vm0/compare/cli-v9.177.9...cli-v9.177.10) (2026-05-31)
+
+
+### Refactoring
+
+* support multiple connector auth methods ([#15582](https://github.com/vm0-ai/vm0/issues/15582)) ([e00abe8](https://github.com/vm0-ai/vm0/commit/e00abe8ce57f5e14d56dfe8b1ae0e18e2e1e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.4
+    * @vm0/connectors bumped to 1.39.4
+    * @vm0/core bumped to 8.304.6
+
+## [9.177.9](https://github.com/vm0-ai/vm0/compare/cli-v9.177.8...cli-v9.177.9) (2026-05-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.3
+    * @vm0/connectors bumped to 1.39.3
+    * @vm0/core bumped to 8.304.5
+
+## [9.177.8](https://github.com/vm0-ai/vm0/compare/cli-v9.177.7...cli-v9.177.8) (2026-05-31)
+
+
+### Refactoring
+
+* route manual connector grants by method ([#15541](https://github.com/vm0-ai/vm0/issues/15541)) ([65eaa81](https://github.com/vm0-ai/vm0/commit/65eaa8144bd0096f741114f97362eeb69a50e503))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.2
+    * @vm0/connectors bumped to 1.39.2
+    * @vm0/core bumped to 8.304.4
+
+## [9.177.7](https://github.com/vm0-ai/vm0/compare/cli-v9.177.6...cli-v9.177.7) (2026-05-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.1
+    * @vm0/connectors bumped to 1.39.1
+    * @vm0/core bumped to 8.304.3
+
+## [9.177.6](https://github.com/vm0-ai/vm0/compare/cli-v9.177.5...cli-v9.177.6) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.50.0
+    * @vm0/connectors bumped to 1.39.0
+    * @vm0/core bumped to 8.304.2
+
+## [9.177.5](https://github.com/vm0-ai/vm0/compare/cli-v9.177.4...cli-v9.177.5) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.49.0
+    * @vm0/core bumped to 8.304.1
+
+## [9.177.4](https://github.com/vm0-ai/vm0/compare/cli-v9.177.3...cli-v9.177.4) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.48.3
+    * @vm0/connectors bumped to 1.38.2
+    * @vm0/core bumped to 8.304.0
+
+## [9.177.3](https://github.com/vm0-ai/vm0/compare/cli-v9.177.2...cli-v9.177.3) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.48.2
+    * @vm0/connectors bumped to 1.38.1
+    * @vm0/core bumped to 8.303.1
+
+## [9.177.2](https://github.com/vm0-ai/vm0/compare/cli-v9.177.1...cli-v9.177.2) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.48.1
+    * @vm0/connectors bumped to 1.38.0
+    * @vm0/core bumped to 8.303.0
+
+## [9.177.1](https://github.com/vm0-ai/vm0/compare/cli-v9.177.0...cli-v9.177.1) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.48.0
+    * @vm0/connectors bumped to 1.37.8
+    * @vm0/core bumped to 8.302.4
+
+## [9.177.0](https://github.com/vm0-ai/vm0/compare/cli-v9.176.5...cli-v9.177.0) (2026-05-29)
+
+
+### Features
+
+* **cli:** add zero generate sprite command ([#15408](https://github.com/vm0-ai/vm0/issues/15408)) ([9e9479d](https://github.com/vm0-ai/vm0/commit/9e9479d69efb27c1154b5ce35a749be411a6df24))
+
+## [9.176.5](https://github.com/vm0-ai/vm0/compare/cli-v9.176.4...cli-v9.176.5) (2026-05-29)
+
+
+### Bug Fixes
+
+* **cli:** simplify html generate flags ([#15393](https://github.com/vm0-ai/vm0/issues/15393)) ([b92e466](https://github.com/vm0-ai/vm0/commit/b92e46638c00132b8752540b1c971bbc9ec09493))
+* **computer-use:** require editable focus for type-text ([#15397](https://github.com/vm0-ai/vm0/issues/15397)) ([dc58393](https://github.com/vm0-ai/vm0/commit/dc58393e79f87989f59a9c0ea0b3912b41bdeea1))
+* make computer-use --app accept bundle id only ([#15401](https://github.com/vm0-ai/vm0/issues/15401)) ([674b2bf](https://github.com/vm0-ai/vm0/commit/674b2bfc219d4c28b3e0a560a20bce1a1d7f40e9)), closes [#15275](https://github.com/vm0-ai/vm0/issues/15275)
+
+## [9.176.4](https://github.com/vm0-ai/vm0/compare/cli-v9.176.3...cli-v9.176.4) (2026-05-29)
+
+
+### Bug Fixes
+
+* **cli:** clean up generate artifact flags ([#15389](https://github.com/vm0-ai/vm0/issues/15389)) ([12581b7](https://github.com/vm0-ai/vm0/commit/12581b76cb5057f46fd63df5691fba4dce369167))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/connectors bumped to 1.37.7
+    * @vm0/core bumped to 8.302.3
+
+## [9.176.3](https://github.com/vm0-ai/vm0/compare/cli-v9.176.2...cli-v9.176.3) (2026-05-29)
+
+
+### Bug Fixes
+
+* allow zero tokens to manage credit checkout ([#15358](https://github.com/vm0-ai/vm0/issues/15358)) ([b220f32](https://github.com/vm0-ai/vm0/commit/b220f32577741af5e30017b72b884f0172b29ec6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+
+## [9.176.2](https://github.com/vm0-ai/vm0/compare/cli-v9.176.1...cli-v9.176.2) (2026-05-29)
+
+
+### Bug Fixes
+
+* harden auto recharge setup ([#15364](https://github.com/vm0-ai/vm0/issues/15364)) ([e75d12c](https://github.com/vm0-ai/vm0/commit/e75d12c927037591842954858c033603e19e9ab2))
+
+## [9.176.1](https://github.com/vm0-ai/vm0/compare/cli-v9.176.0...cli-v9.176.1) (2026-05-29)
+
+
+### Refactoring
+
+* derive connector checks from lifecycle config ([#15328](https://github.com/vm0-ai/vm0/issues/15328)) ([d910717](https://github.com/vm0-ai/vm0/commit/d9107173fb255846c20e46d903852cf449aceae3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/connectors bumped to 1.37.6
+    * @vm0/core bumped to 8.302.1
+
+## [9.176.0](https://github.com/vm0-ai/vm0/compare/cli-v9.175.1...cli-v9.176.0) (2026-05-29)
+
+
+### Features
+
+* register ink-storefront image style ([#15272](https://github.com/vm0-ai/vm0/issues/15272)) ([35e2f13](https://github.com/vm0-ai/vm0/commit/35e2f1325bde2d8ccbad685252e1090b5989d5c8))
+
 ## [9.175.1](https://github.com/vm0-ai/vm0/compare/cli-v9.175.0...cli-v9.175.1) (2026-05-29)
 
 

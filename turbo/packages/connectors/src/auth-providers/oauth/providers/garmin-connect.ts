@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const GARMIN_CONNECT_AUTHORIZATION_URL =
@@ -90,12 +90,12 @@ export async function buildGarminConnectAuthorizationUrl(
  * Exchange authorization code for access token with PKCE code_verifier.
  */
 export async function exchangeGarminConnectCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   state: string,
 ): Promise<GarminConnectTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("garmin-connect");
   const codeVerifier = await deriveCodeVerifier(state);
 
   const response = await fetch(authCodeGrant.tokenUrl, {
@@ -153,12 +153,14 @@ export async function exchangeGarminConnectCode(
  * Access token expires_in: 86400s (1 day). Ref: https://developerportal.garmin.com
  */
 export async function refreshGarminConnectToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<GarminConnectRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("garmin-connect");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

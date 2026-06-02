@@ -15,7 +15,7 @@ from body_utils import (
     _encode_body,
     _is_sensitive_header,
     _is_text_content,
-    _redact_headers,
+    _sanitize_headers_for_capture,
     _truncate_bytes_utf8_safe,
     add_capture_fields,
     create_stream_decompressor,
@@ -194,7 +194,7 @@ class TestIsSensitiveHeader:
         assert _is_sensitive_header("X-Password") is True
 
 
-class TestRedactHeaders:
+class TestSanitizeHeadersForCapture:
     def test_redacts_sensitive_keeps_others(self, headers):
         headers = headers(
             ("Content-Type", "application/json"),
@@ -202,7 +202,7 @@ class TestRedactHeaders:
             ("Host", "api.example.com"),
             ("Cookie", "session=abc"),
         )
-        result = _redact_headers(headers)
+        result = _sanitize_headers_for_capture(headers)
         assert result["Content-Type"] == "application/json"
         assert result["Authorization"] == "***"
         assert result["Host"] == "api.example.com"
@@ -214,10 +214,44 @@ class TestRedactHeaders:
             ("Set-Cookie", "b=2"),
             ("Host", "example.com"),
         )
-        result = _redact_headers(headers)
+        result = _sanitize_headers_for_capture(headers)
         assert result["Set-Cookie"] == "***"
         assert result["Host"] == "example.com"
         assert len(result) == 2
+
+    def test_url_bearing_headers_strip_query_and_fragment(self, headers):
+        headers = headers(
+            ("Location", "https://user:pass@client.example/callback?code=secret#fragment"),
+            ("Referer", "https://app.example/page?token=secret#fragment"),
+            ("content-location", "/objects/123?signature=secret#fragment"),
+            ("referrer", "/previous?pii=secret#fragment"),
+        )
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Location"] == "https://client.example/callback"
+        assert result["Referer"] == "https://app.example/page"
+        assert result["content-location"] == "/objects/123"
+        assert result["referrer"] == "/previous"
+
+    def test_link_header_sanitizes_uri_references(self, headers):
+        headers = headers(
+            (
+                "Link",
+                '<https://api.example/items?cursor=secret#fragment>; rel="next", '
+                '</local?token=secret#fragment>; rel="prev"',
+            ),
+        )
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Link"] == '<https://api.example/items>; rel="next", </local>; rel="prev"'
+
+    def test_malformed_link_header_redacts(self, headers):
+        headers = headers(("Link", '<https://api.example/items?cursor=secret; rel="next"'))
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Link"] == "***"
+
+    def test_link_header_without_uri_reference_redacts(self, headers):
+        headers = headers(("Link", 'https://api.example/items?cursor=secret; rel="next"'))
+        result = _sanitize_headers_for_capture(headers)
+        assert result["Link"] == "***"
 
 
 class TestAddCaptureFields:
@@ -278,6 +312,23 @@ class TestAddCaptureFields:
         assert entry["response_headers"]["Content-Type"] == "application/json"
         assert entry["response_headers"]["X-Request-Id"] == "req-123"
 
+    def test_captured_url_bearing_headers_are_sanitized(self, real_flow, headers):
+        flow = real_flow(
+            method="GET",
+            host="api.example.com",
+            request_headers=headers(
+                ("Host", "api.example.com"),
+                ("Referer", "https://app.example/page?token=secret#fragment"),
+            ),
+            response_headers=headers(
+                ("Location", "https://client.example/callback?code=secret#fragment"),
+            ),
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["request_headers"]["Referer"] == "https://app.example/page"
+        assert entry["response_headers"]["Location"] == "https://client.example/callback"
+
     def test_response_headers_redacts_sensitive(self, real_flow, headers):
         flow = real_flow(
             method="POST",
@@ -321,6 +372,53 @@ class TestAddCaptureFields:
         entry = {}
         add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+
+    def test_request_gzip_zip_bomb_capped_without_full_content_decode(self, real_flow, monkeypatch):
+        original = b"x" * (STREAM_BUFFER_LIMIT + 4096)
+        compressed = gzip.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=compressed,
+            request_content_type="text/plain",
+            request_encoding="gzip",
+            response_body=b"ok",
+        )
+
+        def fail_full_decode(*_args, **_kwargs):
+            raise AssertionError("request capture must not access flow.request.content")
+
+        monkeypatch.setattr(flow.request, "get_content", fail_full_decode)
+
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["request_body_truncated"] is True
+        assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
+        assert set(entry["request_body"]) == {"x"}
+
+    def test_request_gzip_exact_limit_not_truncated(self, real_flow):
+        original = b"x" * STREAM_BUFFER_LIMIT
+        compressed = gzip.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=compressed,
+            request_content_type="text/plain",
+            request_encoding="gzip",
+            response_body=b"ok",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert "request_body_truncated" not in entry
         assert len(entry["request_body"]) == STREAM_BUFFER_LIMIT
 
     def test_truncates_large_response_body(self, real_flow):
@@ -418,6 +516,22 @@ class TestAddCaptureFields:
         assert entry["request_body_encoding"] == "binary"  # marked as binary
         assert "request_headers" in entry  # headers still captured
         assert "response_body" in entry  # response unaffected
+
+    def test_request_unsupported_encoding_marks_body_binary(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="text/plain",
+            request_encoding="x-custom",
+            response_content_type="application/json",
+            include_request_id=True,
+            request_body=b"opaque",
+            response_body=b"ok",
+        )
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
 
     def test_binary_request_body_marks_encoding(self, real_flow, headers):
         flow = real_flow(
@@ -672,6 +786,23 @@ class TestAddCaptureFields:
         assert "response_body_encoding" not in entry
         assert "response_headers" in entry
 
+    def test_empty_stream_buffer_requires_dict_state_when_present(self, real_flow):
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray()
+        flow.metadata["stream_buffer_state"] = ["truncated"]
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*empty.*stream_buffer_state.*type=list",
+        ):
+            add_capture_fields(flow, entry)
+
     def test_non_empty_stream_buffer_requires_state(self, real_flow):
         body = b'{"ok": true}'
         flow = real_flow(
@@ -683,7 +814,10 @@ class TestAddCaptureFields:
         )
         flow.metadata["stream_buffer"] = bytearray(body)
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_stream_buffer_requires_non_empty_state(self, real_flow):
@@ -698,7 +832,28 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {}
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
+            add_capture_fields(flow, entry)
+
+    def test_non_empty_stream_buffer_requires_dict_state(self, real_flow):
+        body = b'{"ok": true}'
+        flow = real_flow(
+            method="POST",
+            host="api.example.com",
+            request_content_type="application/json",
+            response_content_type="application/json",
+            include_request_id=True,
+        )
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = ["truncated"]
+        entry = {}
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated.*type=list",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_compressed_stream_buffer_requires_state(self, real_flow):
@@ -712,7 +867,10 @@ class TestAddCaptureFields:
         )
         flow.metadata["stream_buffer"] = bytearray(gzip.compress(b""))
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_compressed_stream_buffer_requires_truncated_state(self, real_flow):
@@ -728,7 +886,10 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(compressed)
         flow.metadata["stream_buffer_state"] = {"total_bytes": len(compressed)}
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_non_empty_stream_buffer_requires_truncated_state(self, real_flow):
@@ -743,7 +904,10 @@ class TestAddCaptureFields:
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.metadata["stream_buffer_state"] = {"total_bytes": len(body)}
         entry = {}
-        with pytest.raises(KeyError, match="truncated"):
+        with pytest.raises(
+            RuntimeError,
+            match=r"stream_buffer.*stream_buffer_state.*truncated",
+        ):
             add_capture_fields(flow, entry)
 
     def test_stream_buffer_truncated_marks_truncation(self, real_flow):

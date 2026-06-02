@@ -236,6 +236,7 @@ turbo_consumer() {
   local consumer="false"
   if [ "$EVENT_NAME" != "push" ] && {
     is_true "${WEB_CHANGED:-false}" ||
+    is_true "${API_CHANGED:-false}" ||
     is_true "${CLI_CHANGED:-false}" ||
     is_true "${CRATES_CHANGED:-false}" ||
     is_true "${CI_CHANGED:-false}" ||

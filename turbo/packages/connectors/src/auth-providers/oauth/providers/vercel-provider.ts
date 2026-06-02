@@ -20,6 +20,7 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeVercelCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,

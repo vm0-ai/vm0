@@ -572,3 +572,73 @@ describe("createScrollSignals - scroll position persistence", () => {
     }
   });
 });
+
+// VC-SCROLL-012: awayFromBottom$ tracks the live distance from the bottom so a
+// scroll-to-bottom button can subscribe to it.
+describe("createScrollSignals - awayFromBottom$ readable", () => {
+  it("stays false while the viewport is at the bottom (VC-SCROLL-012)", () => {
+    const container = document.createElement("div");
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    setScrollableSize(container, 1000, 300);
+
+    const { setScrollContainer$, awayFromBottom$ } = createScrollSignals();
+    context.store.set(setScrollContainer$, container);
+    expect(context.store.get(awayFromBottom$)).toBeFalsy();
+
+    // Sitting within the at-bottom threshold keeps it false.
+    container.scrollTop = 695;
+    container.dispatchEvent(new Event("scroll"));
+    expect(context.store.get(awayFromBottom$)).toBeFalsy();
+  });
+
+  it("becomes true when scrolled up and false again at the bottom (VC-SCROLL-013)", () => {
+    const container = document.createElement("div");
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    setScrollableSize(container, 1000, 300);
+
+    const { setScrollContainer$, awayFromBottom$ } = createScrollSignals();
+    context.store.set(setScrollContainer$, container);
+
+    // Scroll well away from the bottom.
+    container.scrollTop = 200;
+    container.dispatchEvent(new Event("scroll"));
+    expect(context.store.get(awayFromBottom$)).toBeTruthy();
+
+    // Returning to the bottom clears it.
+    container.scrollTop = 700;
+    container.dispatchEvent(new Event("scroll"));
+    expect(context.store.get(awayFromBottom$)).toBeFalsy();
+  });
+
+  it("is true on bind when a non-bottom position is restored (VC-SCROLL-014)", () => {
+    const threadId = `thread-${Math.random().toString(36).slice(2)}`;
+
+    const first = document.createElement("div");
+    first.appendChild(document.createElement("div"));
+    document.body.appendChild(first);
+    setScrollableSize(first, 1000, 300);
+    {
+      const { setScrollContainer$ } = createScrollSignals(threadId);
+      context.store.set(setScrollContainer$, first);
+      first.scrollTop = 700;
+      first.dispatchEvent(new Event("scroll"));
+      first.dispatchEvent(new Event("wheel"));
+      first.scrollTop = 250;
+      first.dispatchEvent(new Event("scroll"));
+    }
+
+    const second = document.createElement("div");
+    second.appendChild(document.createElement("div"));
+    document.body.appendChild(second);
+    setScrollableSize(second, 1000, 300);
+    const { setScrollContainer$, awayFromBottom$ } =
+      createScrollSignals(threadId);
+    context.store.set(setScrollContainer$, second);
+
+    expect(context.store.get(awayFromBottom$)).toBeTruthy();
+  });
+});

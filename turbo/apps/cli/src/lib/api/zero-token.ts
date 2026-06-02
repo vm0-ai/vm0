@@ -1,13 +1,9 @@
-import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-
 export interface ZeroTokenPayload {
   userId: string;
   runId: string;
   orgId: string;
   scope: string;
   capabilities: string[];
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   iat: number;
   exp: number;
 }
@@ -42,18 +38,4 @@ export function decodeZeroTokenPayload(
     // Malformed token — fall through
   }
   return undefined;
-}
-
-export function zeroTokenAllowsFeatureSwitch(
-  key: FeatureSwitchKey,
-  payload: ZeroTokenPayload | undefined = decodeZeroTokenPayload(),
-): boolean {
-  if (!payload) return true;
-  const tokenValue = payload.featureSwitches?.[key];
-  if (typeof tokenValue === "boolean") return tokenValue;
-
-  return isFeatureEnabled(key, {
-    userId: payload.userId,
-    orgId: payload.orgId,
-  });
 }

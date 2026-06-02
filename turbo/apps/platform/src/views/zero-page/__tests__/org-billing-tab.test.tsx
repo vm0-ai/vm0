@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -15,6 +16,7 @@ import {
   zeroBillingStatusContract,
   zeroBillingAutoRechargeContract,
   zeroBillingCheckoutContract,
+  zeroBillingCreditCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingDowngradeContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
@@ -196,6 +198,135 @@ describe("org billing tab - pricing sub-page navigation", () => {
     for (const btn of currentPlanButtons) {
       expect(btn).toBeDisabled();
     }
+  });
+});
+
+describe("org billing tab - buy credits section", () => {
+  afterEach(() => {
+    if (!window.location.href.startsWith("http://localhost")) {
+      window.location.href = "http://localhost/";
+    }
+  });
+
+  it("shows buy credits for free workspaces", async () => {
+    setMockBillingStatus({ tier: "free", credits: 0 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Buy credits")).toBeInTheDocument();
+    expect(screen.getByText("Quick buy $20.00")).toBeInTheDocument();
+  });
+
+  it("hides buy credits for suspended workspaces", async () => {
+    setMockBillingStatus({
+      tier: "pro-suspend",
+      credits: 0,
+      subscriptionStatus: null,
+      hasSubscription: false,
+      cancelAtPeriodEnd: false,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("No active plan")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Buy credits")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quick buy $20.00")).not.toBeInTheDocument();
+  });
+
+  it("starts custom amount credit checkout", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=custom",
+        });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Custom"));
+    await fill(screen.getByLabelText("Custom dollar amount"), "123");
+
+    const buyButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Quick buy $123.00";
+    });
+    expect(buyButton).toBeDefined();
+    click(buyButton!);
+
+    await waitFor(() => {
+      expect(capturedBody).toMatchObject({
+        credits: 123_000,
+        customAmount: true,
+      });
+    });
+    expect(capturedBody).toMatchObject({
+      successUrl: expect.stringContaining(
+        "credit_checkout_session_id={CHECKOUT_SESSION_ID}",
+      ),
+    });
+  });
+
+  it("shows range toast without starting checkout for invalid custom amounts", async () => {
+    const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+      return "" as ReturnType<typeof toast.error>;
+    });
+    let capturedBody: unknown = null;
+    server.use(
+      mockApi(zeroBillingCreditCheckoutContract.create, ({ body, respond }) => {
+        capturedBody = body;
+        return respond(200, {
+          url: "https://checkout.stripe.com/test?credits=invalid",
+        });
+      }),
+    );
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Custom"));
+    await fill(screen.getByLabelText("Custom dollar amount"), "10001");
+
+    const buyButton = queryAllByRoleFast("button").find((el) => {
+      return el.textContent?.trim() === "Quick buy";
+    });
+    expect(buyButton).toBeDefined();
+    expect(buyButton!).toHaveAttribute("aria-disabled", "true");
+    click(buyButton!);
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith("Enter between $1 and $10,000");
+    });
+    expect(capturedBody).toBeNull();
+    errorSpy.mockRestore();
   });
 });
 

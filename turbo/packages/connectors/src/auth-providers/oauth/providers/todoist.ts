@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const TODOIST_AUTHORIZATION_URL = "https://todoist.com/oauth/authorize";
@@ -22,11 +22,11 @@ interface TodoistTokenResult {
  * Todoist uses comma-separated scopes.
  */
 export function buildTodoistAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("todoist");
   const params = new URLSearchParams({
     client_id: clientId,
     scope: authCodeGrant.scopes.join(","),
@@ -43,12 +43,12 @@ export function buildTodoistAuthorizationUrl(
  * User info is fetched separately via the v1 User API.
  */
 export async function exchangeTodoistCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<TodoistTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("todoist");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {

@@ -122,6 +122,7 @@ seed_test_oauth_connector() {
         --argjson expiresIn "$expires_in" \
         '{
             connectorName: "test-oauth",
+            authMethod: "oauth",
             accessToken: $accessToken,
             refreshToken: $refreshToken,
             expiresIn: $expiresIn
@@ -163,7 +164,7 @@ connect_test_oauth_via_authorization_code() {
     enable_test_oauth_feature_switch || return 1
 
     local start_body
-    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{}')
+    start_body=$(zero_curl "/api/zero/connectors/test-oauth/oauth/start" -X POST -d '{"authMethod":"oauth"}')
     local authorization_url
     authorization_url=$(printf '%s' "$start_body" | jq -r '.authorizationUrl // empty')
     [ -n "$authorization_url" ] || {
@@ -236,7 +237,6 @@ agents:
   ${AGENT_NAME}-refresh:
     description: "test-oauth mid-run refresh"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF
@@ -318,7 +318,6 @@ agents:
   ${AGENT_NAME}-stale:
     description: "test-oauth stale access token (DB drift)"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_OAUTH_TOKEN: \${{ secrets.TEST_OAUTH_TOKEN }}
 EOF

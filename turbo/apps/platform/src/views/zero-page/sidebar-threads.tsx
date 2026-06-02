@@ -65,9 +65,17 @@ import {
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
   chatThreadsHasMore$,
-  chatThreadsTotalCount$,
+  chatThreadsNextCursor$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
+import {
+  loadMoreSidebarChatThreads$,
+  sidebarChatThreadsExtraHasMore$,
+  sidebarChatThreadsHasLoadedExtraPages$,
+  sidebarChatThreadsLatestCursor$,
+  sidebarChatThreadsLoadMoreError$,
+  sidebarChatThreadsLoadingMore$,
+} from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -580,19 +588,32 @@ function ChatThreadRenameDialog() {
   );
 }
 
-function AllThreadsLink({ totalCount }: { totalCount: number }) {
-  const setSidebarExpanded = useSet(setSidebarExpanded$);
+function LoadMoreThreadsButton({
+  loadingMore,
+  loadMoreError,
+  onLoadMore,
+}: {
+  loadingMore: boolean;
+  loadMoreError: string | null;
+  onLoadMore: () => void;
+}) {
   return (
-    <Link
-      pathname="/chats"
-      onClick={() => {
-        setSidebarExpanded(false);
-      }}
-      className="flex h-8 items-center gap-2 rounded-lg px-2 text-left text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-      data-testid="sidebar-all-threads-link"
-    >
-      <span className="truncate">All threads ({totalCount})</span>
-    </Link>
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={onLoadMore}
+        disabled={loadingMore}
+        className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
+        data-testid="sidebar-chat-threads-load-more"
+      >
+        {loadingMore ? "Loading…" : "Load more"}
+      </button>
+      {loadMoreError && (
+        <p className="px-2 text-xs leading-5 text-destructive">
+          {loadMoreError}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -603,8 +624,28 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const hasMore = useLastResolved(chatThreadsHasMore$) ?? false;
-  const totalCount = useLastResolved(chatThreadsTotalCount$) ?? 0;
+  const firstPageHasMore = useLastResolved(chatThreadsHasMore$) ?? false;
+  const firstPageNextCursor = useLastResolved(chatThreadsNextCursor$);
+  const hasLoadedExtraPages =
+    useLastResolved(sidebarChatThreadsHasLoadedExtraPages$) ?? false;
+  const extraHasMore =
+    useLastResolved(sidebarChatThreadsExtraHasMore$) ?? false;
+  const extraLatestCursor = useLastResolved(sidebarChatThreadsLatestCursor$);
+  const loadingMore = useLastResolved(sidebarChatThreadsLoadingMore$) ?? false;
+  const loadMoreError =
+    useLastResolved(sidebarChatThreadsLoadMoreError$) ?? null;
+  const loadMore = useSet(loadMoreSidebarChatThreads$);
+  const hasMore = hasLoadedExtraPages ? extraHasMore : firstPageHasMore;
+  const cursorForLoadMore = hasLoadedExtraPages
+    ? extraLatestCursor
+    : firstPageNextCursor;
+
+  function handleLoadMore() {
+    if (!cursorForLoadMore || loadingMore) {
+      return;
+    }
+    detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
+  }
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -627,7 +668,13 @@ function ChatThreads() {
       {chatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
-      {hasMore && <AllThreadsLink totalCount={totalCount} />}
+      {hasMore && cursorForLoadMore && (
+        <LoadMoreThreadsButton
+          loadingMore={loadingMore}
+          loadMoreError={loadMoreError}
+          onLoadMore={handleLoadMore}
+        />
+      )}
       <ChatThreadRenameDialog />
       <Dialog
         open={pendingDeleteThreadId !== null}

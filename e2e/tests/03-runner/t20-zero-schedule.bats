@@ -32,7 +32,6 @@ agents:
   ${AGENT_NAME}:
     description: "E2E zero schedule test agent"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     cd "$TEST_DIR"
@@ -139,7 +138,6 @@ agents:
   ${LOOP_AGENT_NAME}:
     description: "E2E loop schedule test"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     cd "$LOOP_TEST_DIR"

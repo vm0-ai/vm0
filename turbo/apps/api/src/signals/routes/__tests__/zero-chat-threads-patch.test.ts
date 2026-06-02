@@ -323,7 +323,7 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
     );
   });
 
-  it("returns 404 for a malformed UUID without touching the DB", async () => {
+  it("returns 400 for a malformed UUID without touching the DB", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -336,13 +336,12 @@ describe("PATCH /api/zero/chat-threads/:id", () => {
         body: { draftContent: "hello" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [404],
+      [400],
     );
-    expect(response.body).toStrictEqual({
-      error: { message: "Chat thread not found", code: "NOT_FOUND" },
-    });
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("id");
 
-    // Seeded thread untouched (the malformed-id branch short-circuits before DB).
+    // Seeded thread untouched (path validation short-circuits before DB).
     const row = await getThreadDraft(fixture.threadId);
     expect(row?.draftContent).toBeNull();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();

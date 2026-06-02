@@ -1,11 +1,9 @@
 /**
  * ESLint rule: no-global-assignment
  *
- * Disallows attaching new properties to the runtime global object. The
- * `globalThis.services` singleton in src/lib/init-services.ts is the one
- * sanctioned global in this app; every other global escapes the serverless
- * lifecycle guarantees we rely on (Vercel Fluid pool reuse, per-request
- * isolation) and creates state that outlives a single request.
+ * Disallows attaching new properties to the runtime global object. Runtime
+ * globals escape the serverless lifecycle guarantees we rely on and create
+ * state that outlives a single request.
  *
  * Flags:
  *   - globalThis.X = v  /  global.X = v
@@ -20,16 +18,13 @@
  * `Object.defineProperty(window, ...)`, etc., which are not the same class
  * of problem.
  *
- * Only direct-child writes are flagged. `globalThis.services.db = x` mutates
- * a property on `services`, not on the global, and is allowed (though
- * generally also a bad idea — that's not this rule's job).
+ * Only direct-child writes are flagged. `globalThis.cache.value = x` mutates
+ * a property on `cache`, not on the global, and is out of scope for this rule.
  *
  * Exempt files (file-suffix match, Posix-normalized):
- *   - src/lib/init-services.ts      (installs the sanctioned singleton)
- *   - src/types/global.d.ts          (ambient declaration of Services)
+ *   - src/types/global.d.ts          (ambient browser declarations)
  *
  * Good:
- *   const db = globalThis.services.db;
  *   window.location.href = "/";
  *
  * Bad:
@@ -43,10 +38,7 @@ import { createRule } from "../utils.ts";
 
 const GLOBAL_ROOT_NAMES = new Set(["globalThis", "global"]);
 
-const ALLOWED_FILE_SUFFIXES = [
-  "src/lib/init-services.ts",
-  "src/types/global.d.ts",
-];
+const ALLOWED_FILE_SUFFIXES = ["src/types/global.d.ts"];
 
 function isAllowedFile(filename: string): boolean {
   const posix = filename.replace(/\\/g, "/");
@@ -85,20 +77,19 @@ export default createRule({
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Disallow attaching new properties to globalThis/global. The globalThis.services pattern in src/lib/init-services.ts is the only sanctioned global.",
+      description: "Disallow attaching new properties to globalThis/global.",
       recommended: true,
     },
     schema: [],
     messages: {
       noGlobalAssignment:
-        "Do not assign to `{{root}}.*`. Globals are banned except for the `globalThis.services` pattern defined in `src/lib/init-services.ts` and `src/types/global.d.ts`.",
+        "Do not assign to `{{root}}.*`. Runtime globals are banned; keep state request-scoped or module-local.",
       noGlobalDefineProperty:
-        "Do not call `{{method}}` on `{{root}}`. Globals are banned except for the `globalThis.services` pattern defined in `src/lib/init-services.ts`.",
+        "Do not call `{{method}}` on `{{root}}`. Runtime globals are banned; keep state request-scoped or module-local.",
       noGlobalAssign:
-        "Do not use `Object.assign` to attach properties to `{{root}}`. Globals are banned except for the `globalThis.services` pattern.",
+        "Do not use `Object.assign` to attach properties to `{{root}}`. Runtime globals are banned.",
       noDeclareGlobal:
-        "Do not add `declare global` blocks. Extend the `Services` type in `src/types/global.d.ts` if you need to expose a new service.",
+        "Do not add `declare global` blocks. Add browser-only declarations to `src/types/global.d.ts` only when necessary.",
     },
   },
   create(context) {

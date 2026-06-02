@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const gmail = {
   gmail: {
     label: "Gmail",
@@ -10,19 +12,20 @@ export const gmail = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Gmail access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["https://www.googleapis.com/auth/gmail.modify"],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GMAIL_ACCESS_TOKEN",
           refreshToken: "GMAIL_REFRESH_TOKEN",
           envBindings: {

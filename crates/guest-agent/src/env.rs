@@ -66,7 +66,6 @@ static VERCEL_BYPASS: LazyLock<String> = LazyLock::new(|| env_or_empty("VERCEL_P
 static RESUME_SESSION_ID: LazyLock<String> =
     LazyLock::new(|| env_or_empty("VM0_RESUME_SESSION_ID"));
 static API_START_TIME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_START_TIME"));
-static WORKING_DIR: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_WORKING_DIR"));
 static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECRET_VALUES"));
 static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
 static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_TOOLS"));
@@ -269,10 +268,6 @@ pub fn resume_session_id() -> &'static str {
 /// `VM0_API_START_TIME`; empty string means unset.
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
-}
-/// Guest working directory from `VM0_WORKING_DIR`; empty string means unset.
-pub fn working_dir() -> &'static str {
-    &WORKING_DIR
 }
 /// Encoded secret values from `VM0_SECRET_VALUES`; empty string means no secrets.
 pub fn secret_values() -> &'static str {

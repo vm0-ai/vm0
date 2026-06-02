@@ -137,6 +137,10 @@ pub(super) fn snapshot_attempt_cow_file(work_dir: &Path, token: &str) -> PathBuf
     snapshot_attempt_dir(work_dir, token).join("cow.img")
 }
 
+pub(super) fn snapshot_attempt_workspace_image_file(work_dir: &Path, token: &str) -> PathBuf {
+    snapshot_attempt_dir(work_dir, token).join("workspace.ext4")
+}
+
 pub(super) struct SnapshotAttemptDirGuard {
     dir: Option<PathBuf>,
 }
@@ -207,6 +211,22 @@ mod tests {
         assert_ne!(
             snapshot_attempt_cow_file(work, "abc123ef"),
             work.join("cow.img")
+        );
+    }
+
+    #[test]
+    fn snapshot_attempt_workspace_image_file_is_attempt_scoped() {
+        let work = std::path::Path::new("/tmp/snapshot-work");
+
+        assert_eq!(
+            snapshot_attempt_workspace_image_file(work, "abc123ef"),
+            work.join("attempts")
+                .join("abc123ef")
+                .join("workspace.ext4")
+        );
+        assert_ne!(
+            snapshot_attempt_workspace_image_file(work, "abc123ef"),
+            work.join("workspace.ext4")
         );
     }
 

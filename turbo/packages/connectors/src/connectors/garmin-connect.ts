@@ -1,6 +1,9 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL =
+  "https://diauth.garmin.com/di-oauth2-service/oauth/token";
+
 export const garminConnect = {
   "garmin-connect": {
     label: "Garmin Connect",
@@ -12,19 +15,20 @@ export const garminConnect = {
         featureFlag: FeatureSwitchKey.GarminConnectConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Garmin Connect to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GARMIN_CONNECT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GARMIN_CONNECT_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GARMIN_CONNECT_ACCESS_TOKEN",
           refreshToken: "GARMIN_CONNECT_REFRESH_TOKEN",
           envBindings: {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
+import type { ConnectorDeviceAuthGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
-import { getDeviceAuthGrantConfig } from "../grant-config";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -86,10 +86,6 @@ const serversObjectResponseSchema = z
 const nestedServersObjectResponseSchema = z
   .object({ data: serversObjectResponseSchema })
   .passthrough();
-
-function slockDeviceAuthGrant() {
-  return getDeviceAuthGrantConfig("slock");
-}
 
 async function safeJson(response: Response): Promise<unknown> {
   return await response.json().catch(() => {
@@ -300,8 +296,10 @@ async function fetchSlockServerId(
   return { ok: true, serverId: server.id };
 }
 
-export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(slockDeviceAuthGrant().deviceAuthUrl, {
+export async function startSlockDeviceAuth(args: {
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
+}): Promise<OAuthDeviceAuthStartResult> {
+  const response = await fetch(args.deviceAuthGrant.deviceAuthUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -327,9 +325,10 @@ export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult
 }
 
 export async function pollSlockDeviceAuth(args: {
+  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(slockDeviceAuthGrant().tokenUrl, {
+  const response = await fetch(args.deviceAuthGrant.tokenUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -407,9 +406,12 @@ export async function pollSlockDeviceAuth(args: {
 }
 
 export async function refreshSlockToken(args: {
+  readonly tokenUrl: string;
   readonly refreshToken: string;
+  readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/refresh`, {
+  const response = await fetch(args.tokenUrl, {
+    signal: args.signal,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -8,6 +8,8 @@ import { rootSignal$ } from "./root-signal.ts";
 import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
 import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
+import { recordAdAttribution } from "./bootstrap/ad-attribution.ts";
+import { recordSignupAttribution$ } from "./bootstrap/signup-attribution.ts";
 
 const L = logger("Route");
 
@@ -117,10 +119,19 @@ const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
     throw new Error("No route matches, pathname: " + get(pathname$));
   }
   L.debug("loading route", currentRoute.path);
+  recordAdAttribution(get(searchParams$));
 
   await set(currentRoute.setup, routeSignal);
   signal.throwIfAborted();
   capturePageView();
+  // Record first-touch signup attribution as part of the route-load lifecycle.
+  // Bind to the parent `signal`, not the per-route `routeSignal`: a superseding
+  // route load aborts the previous `routeSignal` via resetRouteSignal$, and
+  // binding here would reject the superseded load with AbortError. The parent
+  // signal mirrors the `signal.throwIfAborted()` gate above, so supersession
+  // completes cleanly. The command early-returns when there is nothing to
+  // record, so this only performs network work on the first qualifying load.
+  await set(recordSignupAttribution$, signal);
 });
 
 const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {

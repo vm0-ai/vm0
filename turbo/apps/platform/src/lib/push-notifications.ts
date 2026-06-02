@@ -6,7 +6,6 @@
  */
 
 import { command, state } from "ccstate";
-import { pwaOfflineCacheEnabled$ } from "../signals/external/feature-switch.ts";
 import { clerk$ } from "../signals/auth.ts";
 import { apiBase$ } from "../signals/fetch.ts";
 import { bestEffort } from "../signals/utils.ts";
@@ -19,20 +18,18 @@ const subscribing$ = state(false);
  * No-ops if push is not supported in this browser.
  */
 export const registerServiceWorker$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ set }, signal: AbortSignal) => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       return;
     }
 
-    const pwaOfflineEnabled = get(pwaOfflineCacheEnabled$);
     signal.throwIfAborted();
 
     await bestEffort(
       (async () => {
-        const registration = await navigator.serviceWorker.register(
-          "/sw.js",
-          pwaOfflineEnabled ? { updateViaCache: "none" } : undefined,
-        );
+        const registration = await navigator.serviceWorker.register("/sw.js", {
+          updateViaCache: "none",
+        });
 
         signal.throwIfAborted();
         set(swRegistration$, registration);

@@ -2878,6 +2878,48 @@
       "when": 1779949024715,
       "tag": "0410_api_token_connector_cutover",
       "breakpoints": true
+    },
+    {
+      "idx": 411,
+      "version": "7",
+      "when": 1780011948644,
+      "tag": "0411_backfill_claude_opus_4_8",
+      "breakpoints": true
+    },
+    {
+      "idx": 412,
+      "version": "7",
+      "when": 1780049375925,
+      "tag": "0412_nifty_gertrude_yorkes",
+      "breakpoints": true
+    },
+    {
+      "idx": 413,
+      "version": "7",
+      "when": 1780054787507,
+      "tag": "0413_remove_schedule_model_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 414,
+      "version": "7",
+      "when": 1780224193715,
+      "tag": "0414_luxuriant_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 415,
+      "version": "7",
+      "when": 1780295991153,
+      "tag": "0415_luxuriant_magus",
+      "breakpoints": true
+    },
+    {
+      "idx": 416,
+      "version": "7",
+      "when": 1780301544137,
+      "tag": "0416_exotic_invaders",
+      "breakpoints": true
     }
   ]
 }

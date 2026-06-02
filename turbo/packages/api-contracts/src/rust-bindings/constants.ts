@@ -2,6 +2,7 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../contracts/model-providers";
+import { CANONICAL_WORKING_DIR } from "../contracts/runners";
 
 export interface RustStringConstantBinding {
   readonly rustModulePath: readonly string[];
@@ -39,6 +40,7 @@ const modelProviderEnvPlaceholderModule = [
   "model_provider_env",
   "placeholders",
 ] as const;
+const runnerPathsModule = ["runners", "paths"] as const;
 
 function codexOauthPlaceholder(name: CodexOauthPlaceholderName): string {
   const value =
@@ -65,6 +67,11 @@ function modelProviderEnvPlaceholder(
 }
 
 export const rustStringConstantBindings = [
+  {
+    rustModulePath: runnerPathsModule,
+    rustConstName: "CANONICAL_WORKING_DIR",
+    value: CANONICAL_WORKING_DIR,
+  },
   ...codexOauthPlaceholderNames.map((name) => {
     return {
       rustModulePath: codexOauthPlaceholderModule,

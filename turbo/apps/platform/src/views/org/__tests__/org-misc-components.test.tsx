@@ -162,9 +162,6 @@ function testSchedule(
     consecutiveFailures: 0,
     nextRunAt: null,
     lastRunAt: null,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
     ...overrides,
   };
 }

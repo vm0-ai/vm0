@@ -24,6 +24,10 @@ import {
   defaultAgentName$,
   sortedAgents$,
 } from "../../signals/agent.ts";
+import {
+  orgMembers$,
+  type OrgMember,
+} from "../../signals/external/org-members.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -135,9 +139,17 @@ function AgentSplitView({
   onCreate: (visibility: "public" | "private") => void;
 }) {
   const agentsLoadable = useLoadable(sortedAgents$);
+  const membersLoadable = useLoadable(orgMembers$);
   const loading = agentsLoadable.state === "loading";
   const agents =
     agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
+  const members =
+    membersLoadable.state === "hasData" ? membersLoadable.data : [];
+  const membersById = new Map(
+    members.map((member) => {
+      return [member.userId, member];
+    }),
+  );
   const skeleton = loading && !agents;
 
   const publicAgents =
@@ -154,6 +166,7 @@ function AgentSplitView({
       <AgentSplitSection
         title="Public"
         agents={publicAgents}
+        membersById={membersById}
         skeleton={skeleton}
         headerAction={
           <div className="flex items-center gap-3">
@@ -189,6 +202,7 @@ function AgentSplitView({
       <AgentSplitSection
         title="Private"
         agents={privateAgents}
+        membersById={membersById}
         skeleton={skeleton}
         headerAction={
           <Button
@@ -211,11 +225,13 @@ function AgentSplitView({
 function AgentSplitSection({
   title,
   agents,
+  membersById,
   skeleton,
   headerAction,
 }: {
   title: string;
   agents: AgentProps["agent"][];
+  membersById: ReadonlyMap<string, OrgMember>;
   skeleton: boolean;
   headerAction: ReactNode;
 }) {
@@ -228,13 +244,19 @@ function AgentSplitSection({
       {skeleton ? (
         <AgentSplitSkeleton />
       ) : agents.length > 0 ? (
-        <AgentSplitBody agents={agents} />
+        <AgentSplitBody agents={agents} membersById={membersById} />
       ) : null}
     </section>
   );
 }
 
-function AgentSplitBody({ agents }: { agents: AgentProps["agent"][] }) {
+function AgentSplitBody({
+  agents,
+  membersById,
+}: {
+  agents: AgentProps["agent"][];
+  membersById: ReadonlyMap<string, OrgMember>;
+}) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {agents.map((agent) => {
@@ -245,7 +267,10 @@ function AgentSplitBody({ agents }: { agents: AgentProps["agent"][] }) {
             options={{ pathParams: { agentId: agent.id } }}
             className="block no-underline text-inherit"
           >
-            <AgentCard agent={agent} />
+            <AgentCard
+              agent={agent}
+              creator={agentCreator(agent, membersById)}
+            />
           </Link>
         );
       })}
@@ -429,13 +454,83 @@ function CreateTeammateDialogContent({
 type AgentProps = {
   agent: {
     id: string;
+    ownerId?: string;
     displayName?: string | null;
     description?: string | null;
     visibility?: "public" | "private" | null;
   };
+  creator: AgentCreator;
 };
 
-function AgentCard({ agent }: AgentProps) {
+interface AgentCreator {
+  readonly name: string;
+  readonly imageUrl: string | null;
+}
+
+function orgMemberDisplayName(member: OrgMember): string {
+  const fullName = [member.firstName, member.lastName]
+    .filter((part): part is string => {
+      return Boolean(part);
+    })
+    .join(" ");
+  return fullName || member.email || member.userId;
+}
+
+function agentCreator(
+  agent: AgentProps["agent"],
+  membersById: ReadonlyMap<string, OrgMember>,
+): AgentCreator {
+  if (!agent.ownerId) {
+    return { name: "Unknown", imageUrl: null };
+  }
+
+  const member = membersById.get(agent.ownerId);
+  return member
+    ? { name: orgMemberDisplayName(member), imageUrl: member.imageUrl }
+    : { name: agent.ownerId, imageUrl: null };
+}
+
+function CreatorAvatar({ creator }: { creator: AgentCreator }) {
+  if (creator.imageUrl) {
+    return (
+      <img
+        src={creator.imageUrl}
+        alt=""
+        aria-hidden="true"
+        className="h-full w-full rounded-full object-cover"
+      />
+    );
+  }
+
+  return (
+    <span className="flex h-full w-full items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
+      {creator.name.charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+function CreatorBadge({ creator }: { creator: AgentCreator }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="img"
+            aria-label={`Created by ${creator.name}`}
+            className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border border-background bg-background shadow-sm"
+          >
+            <CreatorAvatar creator={creator} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="end">
+          <p className="text-xs">Created by {creator.name}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function AgentCard({ agent, creator }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
@@ -444,8 +539,15 @@ function AgentCard({ agent }: AgentProps) {
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
     : "";
   return (
-    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
-      <CardContent className="px-5 py-4 flex items-center gap-3">
+    <Card className="zero-card relative cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
+      {!isPrivate && <CreatorBadge creator={creator} />}
+      <CardContent
+        className={
+          isPrivate
+            ? "px-5 py-4 flex items-center gap-3"
+            : "pl-5 pr-12 py-4 flex items-center gap-3"
+        }
+      >
         <AgentAvatarImg
           name={agent.id}
           alt={displayName}

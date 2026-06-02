@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+
 export const stripe = {
   stripe: {
     label: "Stripe",
@@ -13,19 +15,20 @@ export const stripe = {
         featureFlag: FeatureSwitchKey.StripeConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Stripe to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://connect.stripe.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["read_write"],
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "STRIPE_ACCESS_TOKEN",
           refreshToken: "STRIPE_REFRESH_TOKEN",
           envBindings: {

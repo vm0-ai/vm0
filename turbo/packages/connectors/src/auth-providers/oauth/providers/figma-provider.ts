@@ -10,13 +10,19 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
     kind: "auth-code",
     buildAuthUrl: (args) => {
       const { clientId } = args;
-      return buildFigmaAuthorizationUrl(clientId, args.redirectUri, args.state);
+      return buildFigmaAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeFigmaCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -43,7 +49,13 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshFigmaToken(clientId, clientSecret, args.refreshToken);
+      return refreshFigmaToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const googleDocs = {
   "google-docs": {
     label: "Google Docs",
@@ -9,15 +11,15 @@ export const googleDocs = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Docs access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/documents",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -25,6 +27,7 @@ export const googleDocs = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_DOCS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_DOCS_REFRESH_TOKEN",
           envBindings: {

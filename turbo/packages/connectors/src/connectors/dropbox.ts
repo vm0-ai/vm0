@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
+
 export const dropbox = {
   dropbox: {
     label: "Dropbox",
@@ -11,15 +13,15 @@ export const dropbox = {
         featureFlag: FeatureSwitchKey.DropboxConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Dropbox to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "DROPBOX_OAUTH_CLIENT_ID",
+          clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.dropboxapi.com/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "DROPBOX_OAUTH_CLIENT_ID",
-            clientSecretEnv: "DROPBOX_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "account_info.read",
             "files.metadata.read",
@@ -28,6 +30,7 @@ export const dropbox = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "DROPBOX_ACCESS_TOKEN",
           refreshToken: "DROPBOX_REFRESH_TOKEN",
           envBindings: {

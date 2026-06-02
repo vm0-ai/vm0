@@ -3,10 +3,12 @@
 import gzip
 import json
 
+import pytest
 from mitmproxy.test import tutils
 
 import body_utils
 import mitm_addon
+import response_streaming
 from tests.flow_helpers import header_map, response_stream
 
 
@@ -155,6 +157,7 @@ class TestResponseHeadersHandler:
         """
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
@@ -174,6 +177,7 @@ class TestResponseHeadersHandler:
         """Stream endpoint must NOT buffer multi-MB bodies — uses 64 KB cap."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
@@ -208,8 +212,8 @@ class TestResponseHeadersHandler:
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert "x_ndjson_state" not in flow.metadata
-        state, error = flow.metadata["x_json_response_finish"]()
-        assert error is None
+        response_streaming.finalize_connector_response_state(flow)
+        state = flow.metadata["x_json_state"]
         assert state["body_parsed"] is True
         assert state["response_data_count"] == 1
         assert state["response_includes"] == {"users": 1}
@@ -220,6 +224,7 @@ class TestResponseHeadersHandler:
             with_response=False, host="api.x.com", path="/2/tweets/search/stream/rules"
         )
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream/rules"
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
@@ -249,7 +254,7 @@ class TestResponseHeadersHandler:
 
         # No NDJSON parser — error body would fail NDJSON parsing anyway.
         assert "x_ndjson_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
         callback = response_stream(flow)
         error_body = b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}'
         callback(error_body)
@@ -267,6 +272,7 @@ class TestResponseHeadersHandler:
 
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
         flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
         flow.response = tutils.tresp(
             status_code=200,
@@ -354,7 +360,7 @@ class TestResponseHeadersHandler:
             {
                 "data": [{"id": "1"}, {"id": "2"}],
                 "includes": {"users": [{"id": "u1"}]},
-                "meta": {"result_count": 2},
+                "meta": {"result_count": 2, "total_tweet_count": 3},
             }
         ).encode()
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
@@ -369,11 +375,12 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         response_stream(flow)(gzip.compress(body))
-        json_state, error = flow.metadata["x_json_response_finish"]()
-        assert error is None
+        response_streaming.finalize_connector_response_state(flow)
+        json_state = flow.metadata["x_json_state"]
         assert json_state["response_data_count"] == 2
         assert json_state["response_includes"] == {"users": 1}
         assert json_state["response_result_count"] == 2
+        assert json_state["response_total_tweet_count"] == 3
 
     def test_model_provider_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
         """Billable model provider JSON should parse usage without unbounded buffering."""
@@ -464,8 +471,8 @@ class TestResponseHeadersHandler:
         state = flow.metadata["stream_buffer_state"]
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
-        json_state, error = flow.metadata["x_json_response_finish"]()
-        assert error is None
+        response_streaming.finalize_connector_response_state(flow)
+        json_state = flow.metadata["x_json_state"]
         assert json_state["response_data_count"] == 1
         assert json_state["response_result_count"] == 1
 
@@ -489,7 +496,34 @@ class TestResponseHeadersHandler:
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
         assert "x_ndjson_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+
+    @pytest.mark.parametrize("firewall_billable", [False, None])
+    def test_non_billable_x_stream_uses_bounded_forensic_buffer_only(
+        self, real_flow, headers, firewall_billable
+    ):
+        """Non-billable X streams should not attach the billable NDJSON parser."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+        flow.metadata["firewall_name"] = "x"
+        if firewall_billable is not None:
+            flow.metadata["firewall_billable"] = firewall_billable
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+
+        mitm_addon.responseheaders(flow)
+
+        callback = response_stream(flow)
+        callback(b'{"data":{"id":"1"}}\n')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow, headers):
         """Future billable connectors must not get unbounded buffers by default."""
@@ -512,4 +546,4 @@ class TestResponseHeadersHandler:
         assert state["truncated"]
         # And no X-specific state gets attached to a non-x flow.
         assert "x_ndjson_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata

@@ -147,3 +147,34 @@ export async function getComputerUseCommand(
 
   handleError(result, "Failed to get computer-use command");
 }
+
+/**
+ * Download a command screenshot through the authenticated API proxy. The bytes
+ * never traverse a public URL; the API authorizes by command ownership and
+ * streams the object back. Used when the command result carries an
+ * object-storage pointer instead of an inline data URL.
+ */
+export async function fetchComputerUseScreenshot(
+  commandId: string,
+): Promise<{ readonly buffer: Buffer; readonly mimeType: string }> {
+  const config = await getComputerUseClientConfig();
+  const response = await fetch(
+    `${config.baseUrl}/api/zero/computer-use/commands/${encodeURIComponent(
+      commandId,
+    )}/screenshot`,
+    { headers: config.baseHeaders },
+  );
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      "Failed to download computer-use screenshot",
+      "REQUEST_FAILED",
+      response.status,
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const mimeType =
+    response.headers.get("content-type") ?? "application/octet-stream";
+  return { buffer: Buffer.from(arrayBuffer), mimeType };
+}

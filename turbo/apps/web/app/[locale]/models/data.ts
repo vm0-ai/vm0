@@ -93,6 +93,36 @@ export function isReasoningModel(m: ModelEntry): m is ReasoningModelEntry {
 
 export const MODELS: ModelEntry[] = [
   {
+    slug: "claude-opus-4-8",
+    modelId: "claude-opus-4-8",
+    name: "Claude Opus 4.8",
+    vendor: "Anthropic",
+    category: "reasoning",
+    multiplier: 1.7,
+    contextWindowK: 1000,
+    promptCaching: true,
+    modalities: ["Text", "Vision", "Code"],
+    releasedToVm0: "May 28, 2026",
+    pricing: {
+      inputUsd: 5,
+      outputUsd: 25,
+      cacheReadUsd: 0.5,
+      cacheWriteUsd: 6.25,
+    },
+    vm0Tier: "core",
+    byoKeyLabel: "Anthropic API key",
+    defaultFor: [],
+    comparisonSlugs: [
+      "Claude Opus 4.7",
+      "Claude Sonnet 4.6",
+      "GPT-5.5",
+      "Gemini 3.1 Pro",
+      "DeepSeek V4 Pro",
+    ],
+    alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5-5"],
+  },
+
+  {
     slug: "claude-opus-4-7",
     modelId: "claude-opus-4-7",
     name: "Claude Opus 4.7",
@@ -113,13 +143,13 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "Anthropic API key",
     defaultFor: [],
     comparisonSlugs: [
+      "Claude Opus 4.8",
       "Claude Sonnet 4.6",
       "Claude Opus 4.6",
       "Kimi K2.6",
       "DeepSeek V4 Pro",
-      "GPT-5.2 / Gemini 3 Pro",
     ],
-    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-6", "deepseek-v4-pro"],
+    alternativeSlugs: ["claude-opus-4-8", "claude-sonnet-4-6", "kimi-k2-6"],
   },
 
   {
@@ -373,6 +403,31 @@ export const MODELS: ModelEntry[] = [
   },
 
   {
+    slug: "minimax-m3",
+    modelId: "MiniMax-M3",
+    name: "MiniMax M3",
+    vendor: "MiniMax",
+    category: "reasoning",
+    multiplier: 0.2,
+    contextWindowK: 1000,
+    promptCaching: true,
+    modalities: ["Text", "Vision", "Code"],
+    releasedToVm0: "June 1, 2026",
+    pricing: {
+      inputUsd: 0.6,
+      outputUsd: 2.4,
+      cacheReadUsd: 0.12,
+      cacheWriteUsd: null,
+    },
+    vm0Tier: "cost-saving",
+    vm0TimeoutMin: 50,
+    byoKeyLabel: "MiniMax API key",
+    defaultFor: ["MiniMax"],
+    comparisonSlugs: ["MiniMax M2.7", "Kimi K2.6", "Claude Sonnet 4.6"],
+    alternativeSlugs: ["minimax-m2-7", "kimi-k2-6", "claude-sonnet-4-6"],
+  },
+
+  {
     slug: "minimax-m2-7",
     modelId: "MiniMax-M2.7",
     name: "MiniMax M2.7",
@@ -392,7 +447,7 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 50,
     byoKeyLabel: "MiniMax API key",
-    defaultFor: ["MiniMax"],
+    defaultFor: [],
     comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Flash", "GLM-5.1"],
     alternativeSlugs: ["kimi-k2-6", "deepseek-v4-flash", "claude-haiku-4-5"],
   },

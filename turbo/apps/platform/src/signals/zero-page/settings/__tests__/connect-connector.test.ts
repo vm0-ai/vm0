@@ -11,7 +11,7 @@ import {
   permissionDialogType$,
   pollingOAuthAuthCodeConnectorType$,
   pollingOAuthDeviceAuthConnectorType$,
-  submitManualCredentials$,
+  submitManualGrant$,
 } from "../connectors.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../../mocks/ably.ts";
 import type {
@@ -19,7 +19,7 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorOauthStartContract,
   zeroConnectorsMainContract,
@@ -56,6 +56,30 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
       },
     ],
     configuredTypes: ["github"],
+    connectorProvidedEnvNames: [],
+  };
+}
+
+function makeTestOauthConnectorResponse(
+  authMethod: "oauth" | "api",
+  updatedAt: string,
+): ConnectorListResponse {
+  return {
+    connectors: [
+      {
+        id: "00000000-0000-4000-8000-000000000125",
+        type: "test-oauth",
+        authMethod,
+        externalId: "test-oauth-user",
+        externalUsername: "test-oauth-user",
+        externalEmail: null,
+        oauthScopes: ["read"],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt,
+      },
+    ],
+    configuredTypes: ["test-oauth"],
     connectorProvidedEnvNames: [],
   };
 }
@@ -137,6 +161,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -157,6 +182,76 @@ describe("connectConnectorOAuthAuthCode$", () => {
     expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
   });
 
+  it("ignores same-type rows with a different auth method while waiting for auth-code completion", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    const mockWindow = createMockAuthWindow();
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+
+    let pollCount = 0;
+    server.use(
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        pollCount++;
+        if (pollCount <= 1) {
+          return respond(200, makeEmptyConnectorResponse());
+        }
+        if (pollCount === 2) {
+          return respond(
+            200,
+            makeTestOauthConnectorResponse("oauth", "2026-01-02T00:00:00.000Z"),
+          );
+        }
+        return respond(
+          200,
+          makeTestOauthConnectorResponse("api", "2026-01-03T00:00:00.000Z"),
+        );
+      }),
+    );
+
+    let completed = false;
+    const connectPromise = (async () => {
+      const result = await context.store.set(
+        connectConnectorOAuthAuthCode$,
+        "test-oauth",
+        "api",
+        {},
+        context.signal,
+      );
+      completed = true;
+      return result;
+    })();
+
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(1);
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+
+    triggerAblyEvent("connector:changed");
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(2);
+    });
+    await Promise.resolve();
+
+    expect(completed).toBeFalsy();
+    expect(hasSubscription("connector:changed")).toBeTruthy();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBe(
+      "test-oauth",
+    );
+
+    triggerAblyEvent("connector:changed");
+
+    const result = await connectPromise;
+
+    expect(result).toBeTruthy();
+    expect(pollCount).toBeGreaterThanOrEqual(3);
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
+  });
+
   it("clears polling when the auth-code OAuth popup closes before connector appears", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
@@ -174,6 +269,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -202,6 +298,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
       context.store.set(
         connectConnectorOAuthAuthCode$,
         "github",
+        "oauth",
         {},
         context.signal,
       ),
@@ -225,11 +322,13 @@ describe("connectConnectorOAuthAuthCode$", () => {
 
     let pollCount = 0;
     let startRequestUrl: string | null = null;
+    let startRequestBody: unknown;
     server.use(
       mockApi(
         zeroConnectorOauthStartContract.start,
-        ({ request, params, respond }) => {
+        ({ request, body, params, respond }) => {
           startRequestUrl = request.url;
+          startRequestBody = body;
           return respond(200, {
             authorizationUrl: `https://oauth.test/${params.type}/authorize`,
           });
@@ -247,6 +346,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -260,6 +360,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
       expect(startRequestUrl).toBe(
         "https://www.vm0.ai/api/zero/connectors/github/oauth/start",
       );
+      expect(startRequestBody).toStrictEqual({ authMethod: "oauth" });
       expect(mockWindow.location.href).toBe(
         "https://oauth.test/github/authorize",
       );
@@ -318,6 +419,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -359,6 +461,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       { showPermissionDialog: true },
       context.signal,
     );
@@ -390,6 +493,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -426,6 +530,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthAuthCode$,
       "github",
+      "oauth",
       {},
       context.signal,
     );
@@ -449,7 +554,7 @@ describe("connectConnectorOAuthAuthCode$", () => {
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
-  it("rejects device-auth OAuth connectors before opening popup or starting auth-code OAuth", async () => {
+  it("rejects device-auth connectors before opening popup or starting auth-code flow", async () => {
     detachedSetupPage({
       context,
       path: "/",
@@ -472,11 +577,12 @@ describe("connectConnectorOAuthAuthCode$", () => {
       context.store.set(
         connectConnectorOAuthAuthCode$,
         "test-oauth-device",
+        "oauth",
         {},
         context.signal,
       ),
     ).rejects.toThrow(
-      "test-oauth-device does not use authorization-code OAuth",
+      "test-oauth-device oauth does not use an auth-code grant",
     );
 
     expect(open).not.toHaveBeenCalled();
@@ -504,7 +610,8 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
       }),
       mockApi(
         zeroConnectorOauthDeviceAuthSessionContract.create,
-        ({ params, respond }) => {
+        ({ body, params, respond }) => {
+          expect(body).toStrictEqual({ authMethod: "oauth" });
           return respond(200, {
             sessionId: "00000000-0000-4000-8000-000000000123",
             sessionToken: "device-session-token",
@@ -537,6 +644,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthDeviceAuth$,
       "test-oauth-device",
+      "oauth",
       {},
       context.signal,
     );
@@ -555,6 +663,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(
       openConnectorOAuthDeviceAuthVerificationPage$,
       "test-oauth-device",
+      "oauth",
     );
 
     await expect(connectPromise).resolves.toBeTruthy();
@@ -607,6 +716,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     const connectPromise = context.store.set(
       connectConnectorOAuthDeviceAuth$,
       "test-oauth-device",
+      "oauth",
       {},
       context.signal,
     );
@@ -620,6 +730,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(
       openConnectorOAuthDeviceAuthVerificationPage$,
       "test-oauth-device",
+      "oauth",
     );
 
     await expect(connectPromise).resolves.toBeTruthy();
@@ -671,6 +782,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
         return await context.store.set(
           connectConnectorOAuthDeviceAuth$,
           "test-oauth-device",
+          "oauth",
           {},
           context.signal,
         );
@@ -691,6 +803,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
     context.store.set(
       openConnectorOAuthDeviceAuthVerificationPage$,
       "test-oauth-device",
+      "oauth",
     );
 
     await vi.waitFor(() => {
@@ -745,6 +858,7 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
         return await context.store.set(
           connectConnectorOAuthDeviceAuth$,
           "test-oauth-device",
+          "oauth",
           {},
           flowSignal,
         );
@@ -771,14 +885,16 @@ describe("connectConnectorOAuthDeviceAuth$", () => {
   });
 });
 
-describe("submitManualCredentials$", () => {
-  it("strips whitespace from connector API token values before upload", async () => {
+describe("submitManualGrant$", () => {
+  it("strips whitespace from connector manual grant values before upload", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
+    let submittedAuthMethod: string | undefined;
     let submitted: Record<string, string> | undefined;
 
     server.use(
-      mockApi(zeroConnectorApiTokenContract.connect, ({ body, respond }) => {
+      mockApi(zeroConnectorManualGrantContract.connect, ({ body, respond }) => {
+        submittedAuthMethod = body.authMethod;
         submitted = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
@@ -796,11 +912,11 @@ describe("submitManualCredentials$", () => {
     );
 
     await context.store.set(
-      submitManualCredentials$,
+      submitManualGrant$,
       {
         type: "strapi",
         authMethod: "api-token",
-        inputSecrets: {
+        inputValues: {
           STRAPI_TOKEN: " strapi\n token ",
           STRAPI_BASE_URL: " https://strapi.example.com\n",
         },
@@ -809,21 +925,22 @@ describe("submitManualCredentials$", () => {
       context.signal,
     );
 
+    expect(submittedAuthMethod).toBe("api-token");
     expect(submitted).toMatchObject({
       STRAPI_TOKEN: "strapitoken",
       STRAPI_BASE_URL: "https://strapi.example.com",
     });
   });
 
-  it("sets permissionDialogType$ after successful API token submission", async () => {
+  it("sets permissionDialogType$ after successful manual grant submission", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
-      submitManualCredentials$,
+      submitManualGrant$,
       {
         type: "axiom",
         authMethod: "api-token",
-        inputSecrets: { AXIOM_TOKEN: "xaat_test123" },
+        inputValues: { AXIOM_TOKEN: "xaat_test123" },
         options: { showPermissionDialog: true },
       },
       context.signal,

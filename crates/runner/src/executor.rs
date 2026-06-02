@@ -34,7 +34,8 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use api_contracts::generated::model_providers::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 use crate::ids::RunId;
 
@@ -83,6 +84,7 @@ use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
     ResumeSession, SandboxReuseResult,
 };
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -99,6 +101,7 @@ pub struct ExecutorConfig {
 pub struct JobParams {
     pub vcpu: u32,
     pub memory_mb: u32,
+    pub workspace_disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
@@ -540,6 +543,9 @@ async fn execute_new_sandbox(
             memory_mb: params.memory_mb,
         },
         device_rate_limits: params.device_rate_limits.clone(),
+        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+            size_mb: params.workspace_disk_mb,
+        }),
     };
 
     // Create and start sandbox
@@ -568,6 +574,23 @@ async fn execute_new_sandbox(
         return Err(e.into());
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(e);
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     Ok(execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -624,6 +647,25 @@ async fn execute_reused_sandbox(
 
     let source_ip = source_ip.to_string();
     let network_log_session = register_proxy(config, context, &source_ip).await;
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        return ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(e.to_string())),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: Some(network_log_session),
+            guest_session_id: None,
+        };
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -1872,8 +1914,7 @@ async fn restore_claude_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let project_name = context
-        .working_dir
+    let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
@@ -1991,7 +2032,6 @@ fn build_env_json_with_host_env(
     {
         env.insert("VM0_APPEND_SYSTEM_PROMPT".into(), asp.clone());
     }
-    env.insert("VM0_WORKING_DIR".into(), context.working_dir.clone());
     env.insert(
         "VM0_API_START_TIME".into(),
         context
@@ -2055,7 +2095,8 @@ fn build_env_json_with_host_env(
     // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_CoffeeSafeLocal...)
     // are injected by the web API into `context.environment` directly.
 
-    // Secret values (base64-encoded, comma-separated)
+    // Plain secret values (base64-encoded, comma-separated) for redaction.
+    // These are values, not names; base64 is only transport encoding.
     // Always include the sandbox token so it gets redacted in logs.
     {
         use base64::Engine as _;
@@ -2128,6 +2169,8 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_SANDBOX_REUSE_RESULT",
     "VM0_PROMPT",
     "VM0_APPEND_SYSTEM_PROMPT",
+    // Retired runner-owned key. Keep scrubbing user-provided values so the
+    // removed working-dir parameter does not leak into guest CLI processes.
     "VM0_WORKING_DIR",
     "VM0_API_START_TIME",
     "CLI_AGENT_TYPE",
@@ -2420,7 +2463,6 @@ mod tests {
             vars: None,
             checkpoint_id: None,
             sandbox_token: "tok".into(),
-            working_dir: "/workspace".into(),
             storage_manifest: None,
             environment: None,
             resume_session: None,
@@ -2606,7 +2648,7 @@ mod tests {
         assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
-        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
         // Guest-agent needs these to post /complete with full metadata when
         // checkpoint lands before VM teardown.
         assert!(
@@ -2747,6 +2789,7 @@ mod tests {
             ("CUSTOM_ENV".into(), "kept".into()),
             ("VM0_PROMPT".into(), "user prompt".into()),
             ("VM0_API_TOKEN".into(), "stolen".into()),
+            ("VM0_WORKING_DIR".into(), "/legacy".into()),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
             (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
             (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
@@ -2770,6 +2813,7 @@ mod tests {
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
         assert!(!env.contains_key(RUNNER_CONCURRENCY_FACTOR_ENV));
         assert!(!env.contains_key(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV));
@@ -2819,7 +2863,7 @@ mod tests {
             "Use terse answers."
         );
         assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
-        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
     }
 
     #[test]
@@ -3160,7 +3204,6 @@ mod tests {
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
-            "workingDir": "/workspace",
             "cliAgentType": "claude-code",
             "billableFirewalls": [],
             "firewalls": [{
@@ -3203,7 +3246,6 @@ mod tests {
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
-            "workingDir": "/workspace",
             "cliAgentType": "claude-code",
             "billableFirewalls": []
         });
@@ -4439,6 +4481,7 @@ mod tests {
         JobParams {
             vcpu: 2,
             memory_mb: 2048,
+            workspace_disk_mb: 16_384,
             restore_guest_state: false,
             device_rate_limits: None,
         }
@@ -4642,6 +4685,7 @@ mod tests {
                     memory_mb: 2048,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .unwrap()
@@ -4708,6 +4752,7 @@ mod tests {
                         memory_mb: 2048,
                     },
                     device_rate_limits: None,
+                    workspace_drive: None,
                 })
                 .await
                 .unwrap(),
@@ -4945,6 +4990,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_job_workspace_mount_failure_destroys_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "mount -t ext4".to_string(),
+            exit_code: 64,
+            stdout: Vec::new(),
+            stderr: b"mount denied".to_vec(),
+        });
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_none(),
+            "fresh mount failure should be destroyed inline"
+        );
+        assert!(
+            outcome.network_log_session.is_none(),
+            "network log session should be closed before returning"
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "agent must not start after workspace mount failure"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
+    }
+
+    #[tokio::test]
     async fn execute_inner_appends_stream_overflow_marker() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -5034,6 +5128,7 @@ mod tests {
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let limits = test_device_rate_limits();
         let params = JobParams {
+            workspace_disk_mb: 512,
             device_rate_limits: Some(limits.clone()),
             ..default_params()
         };
@@ -5048,6 +5143,10 @@ mod tests {
         let configs = overrides.create_configs();
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].device_rate_limits, Some(limits));
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig { size_mb: 512 })
+        );
     }
 
     #[tokio::test]
@@ -5721,8 +5820,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // Build a MockSandbox that fails on the first exec (fix_guest_clock)
+        // First exec mounts the workspace drive, second exec fixes the clock.
         let sandbox = MockSandbox::new("reuse-clock-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -5750,8 +5850,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
+        // Workspace mount and clock fix succeed, then reseed_guest_entropy fails.
         let sandbox = MockSandbox::new("reuse-reseed-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
@@ -5767,6 +5868,42 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on reseed failure"
         );
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_workspace_mount_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-mount-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            64,
+            Vec::new(),
+            b"mount denied".to_vec(),
+        )));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on workspace mount failure"
+        );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned so finalization can close it"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     /// Verify that session restore failure during reuse still returns the sandbox.

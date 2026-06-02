@@ -213,6 +213,7 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "deepseek-v4-flash": "deepseek-api-key",
     "kimi-k2.6": "moonshot-api-key",
     "kimi-k2.5": "moonshot-api-key",
+    "MiniMax-M3": "minimax-api-key",
     "MiniMax-M2.7": "minimax-api-key",
     "glm-5.1": "zai-api-key",
     "gpt-5.5": "openai-api-key",

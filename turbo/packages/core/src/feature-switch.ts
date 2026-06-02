@@ -134,12 +134,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
-  [FeatureSwitchKey.PwaOfflineCache]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable PWA offline caching (static asset cache-first, offline fallback page, and service worker updateViaCache: none)",
-    enabled: true,
-  },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Mailchimp email marketing connector",
@@ -170,6 +164,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
+    enabled: false,
+  },
+  [FeatureSwitchKey.UserPermissionGrants]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Gate the per-user Zero firewall permission grant rollout. Disabled by default while storage, API, runtime, and UI changes land separately.",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
@@ -265,11 +265,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.HostedSites]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable static hosted-site deployments from zero host.",
-    enabled: true,
-  },
   [FeatureSwitchKey.SandboxIoLimiters]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -283,6 +278,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the inline attachment text editor and modal lightbox with a single page-level artifact sidebar (50/50 with the chat thread area, URL-routed via ?artifact=, fullscreen-capable). When on, inline text/markdown attachments render as anchor chips, all preview chips route to the sidebar, and the artifacts drawer is hidden.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatScrollToBottomButton]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread (above the composer) whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
+    enabled: true,
   },
 };
 

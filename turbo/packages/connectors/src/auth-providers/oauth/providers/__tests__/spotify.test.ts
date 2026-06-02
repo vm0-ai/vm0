@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../../connector-utils";
 import {
   buildSpotifyAuthorizationUrl,
   exchangeSpotifyCode,
@@ -8,10 +9,19 @@ import {
 } from "../spotify";
 import { server } from "./test-server";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
+function authCodeGrant() {
+  return getConnectorAuthMethodAuthCodeGrantConfig("spotify", "oauth");
+}
+
 describe("connector/providers/spotify", () => {
   describe("buildSpotifyAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and scope", () => {
       const url = buildSpotifyAuthorizationUrl(
+        authCodeGrant(),
         "test-client-id",
         "https://example.com/callback",
         "test-state",
@@ -51,6 +61,7 @@ describe("connector/providers/spotify", () => {
       server.use(tokenHandler, meHandler);
 
       const result = await exchangeSpotifyCode(
+        authCodeGrant(),
         "client-id",
         "client-secret",
         "test-code",
@@ -80,6 +91,7 @@ describe("connector/providers/spotify", () => {
 
       await expect(
         exchangeSpotifyCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "bad-code",
@@ -99,6 +111,7 @@ describe("connector/providers/spotify", () => {
 
       await expect(
         exchangeSpotifyCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",
@@ -118,6 +131,7 @@ describe("connector/providers/spotify", () => {
 
       await expect(
         exchangeSpotifyCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",
@@ -142,9 +156,11 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       const result = await refreshSpotifyToken(
+        authCodeGrant().tokenUrl,
         "client-id",
         "client-secret",
         "old-refresh-token",
+        testRefreshSignal(),
       );
 
       expect(result.accessToken).toBe("new-spotify-token");
@@ -165,7 +181,13 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       await expect(
-        refreshSpotifyToken("client-id", "client-secret", "bad-refresh-token"),
+        refreshSpotifyToken(
+          authCodeGrant().tokenUrl,
+          "client-id",
+          "client-secret",
+          "bad-refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Refresh token revoked");
     });
 
@@ -179,7 +201,13 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       await expect(
-        refreshSpotifyToken("client-id", "client-secret", "refresh-token"),
+        refreshSpotifyToken(
+          authCodeGrant().tokenUrl,
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("No access token in Spotify refresh response");
     });
 
@@ -193,7 +221,13 @@ describe("connector/providers/spotify", () => {
       server.use(handler);
 
       await expect(
-        refreshSpotifyToken("client-id", "client-secret", "refresh-token"),
+        refreshSpotifyToken(
+          authCodeGrant().tokenUrl,
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Spotify token refresh failed");
     });
   });

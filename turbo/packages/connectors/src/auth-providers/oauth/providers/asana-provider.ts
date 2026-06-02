@@ -17,6 +17,7 @@ export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeAsanaCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -43,7 +44,13 @@ export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshAsanaToken(clientId, clientSecret, args.refreshToken);
+      return refreshAsanaToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

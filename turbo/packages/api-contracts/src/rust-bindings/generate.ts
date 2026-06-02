@@ -21,9 +21,9 @@ const generatedTypesPath = fileURLToPath(
     import.meta.url,
   ),
 );
-const generatedModelProvidersPath = fileURLToPath(
+const generatedConstantsPath = fileURLToPath(
   new URL(
-    "../../../../../crates/api-contracts/src/generated/model_providers.rs",
+    "../../../../../crates/api-contracts/src/generated/constants.rs",
     import.meta.url,
   ),
 );
@@ -332,8 +332,8 @@ export function renderRustStringConstants(
     "// Do not edit by hand.",
     "// Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust",
     "",
-    "// These values are fake marker bytes used for firewall substitution.",
-    "// They are not real secrets.",
+    "// String constants shared by TypeScript and Rust contracts.",
+    "// Model-provider placeholder values in this file are fake marker bytes, not real secrets.",
     "",
     ...renderConstModuleNode(root, ""),
   ];
@@ -341,8 +341,8 @@ export function renderRustStringConstants(
   return `${lines.join("\n")}\n`;
 }
 
-export async function generateRustModelProvidersFile(
-  outputPath = generatedModelProvidersPath,
+export async function generateRustConstantsFile(
+  outputPath = generatedConstantsPath,
 ): Promise<void> {
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(
@@ -352,12 +352,9 @@ export async function generateRustModelProvidersFile(
 }
 
 export function renderGeneratedMod(): string {
-  return [
-    "pub mod model_providers;",
-    "pub mod routes;",
-    "pub mod types;",
-    "",
-  ].join("\n");
+  return ["pub mod constants;", "pub mod routes;", "pub mod types;", ""].join(
+    "\n",
+  );
 }
 
 export async function generateRustGeneratedModFile(
@@ -370,7 +367,7 @@ export async function generateRustGeneratedModFile(
 export async function generateRustBindings(): Promise<void> {
   await generateRustRoutesFile();
   await generateRustTypesFile();
-  await generateRustModelProvidersFile();
+  await generateRustConstantsFile();
   await generateRustGeneratedModFile();
 }
 

@@ -1240,6 +1240,7 @@ describe("logs command", () => {
                   latency_ms: 150,
                   request_size: 1024,
                   response_size: 2048,
+                  browser_user_agent: true,
                   url: "https://api.example.com/data",
                 },
               ],
@@ -1255,6 +1256,7 @@ describe("logs command", () => {
       expect(logCalls).toContain("GET");
       expect(logCalls).toContain("200");
       expect(logCalls).toContain("150ms");
+      expect(logCalls).toContain("[browser]");
     });
 
     it("should display DENY action without HTTP details", async () => {

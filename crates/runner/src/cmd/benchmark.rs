@@ -17,10 +17,12 @@ use crate::lock;
 use crate::paths::{HomePaths, RootfsPaths, RunnerPaths};
 use crate::prefetch;
 use crate::proxy;
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 #[derive(Default)]
 struct Timing {
     boot_ms: Option<u128>,
+    workspace_mount_ms: Option<u128>,
     clock_ms: Option<u128>,
     exec_ms: Option<u128>,
 }
@@ -153,6 +155,9 @@ pub async fn run_benchmark(
             memory_mb: profile_config.memory_mb,
         },
         device_rate_limits: None,
+        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+            size_mb: profile_config.workspace_disk_mb,
+        }),
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();
@@ -166,6 +171,7 @@ pub async fn run_benchmark(
     // 5. Log timing summary (always, even on error)
     let Timing {
         boot_ms,
+        workspace_mount_ms,
         clock_ms,
         exec_ms,
     } = timing;
@@ -175,6 +181,7 @@ pub async fn run_benchmark(
                 proxy_ms,
                 factory_ms,
                 boot_ms = ?boot_ms,
+                workspace_mount_ms = ?workspace_mount_ms,
                 clock_ms = ?clock_ms,
                 exec_ms = ?exec_ms,
                 total_ms,
@@ -183,7 +190,7 @@ pub async fn run_benchmark(
             );
         }
         Err(e) => {
-            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, clock_ms = ?clock_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
+            info!(proxy_ms, factory_ms, boot_ms = ?boot_ms, workspace_mount_ms = ?workspace_mount_ms, clock_ms = ?clock_ms, exec_ms = ?exec_ms, total_ms, error = %e, "benchmark failed");
         }
     }
 
@@ -304,6 +311,13 @@ async fn run_in_sandbox(
     timing.boot_ms = Some(t_boot.elapsed().as_millis());
     if let Err(e) = start_result {
         return (Err(e.into()), timing);
+    }
+
+    let t_mount = Instant::now();
+    let mount_result = ensure_workspace_drive_mounted(sandbox, sandbox.id()).await;
+    timing.workspace_mount_ms = Some(t_mount.elapsed().as_millis());
+    if let Err(e) = mount_result {
+        return (Err(e), timing);
     }
 
     let t_clock = Instant::now();

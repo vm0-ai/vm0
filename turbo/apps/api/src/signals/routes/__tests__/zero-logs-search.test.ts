@@ -19,6 +19,7 @@ import {
   deleteUsageInsightFixture$,
   seedCompose$,
   seedRun$,
+  seedRuns$,
   seedUsageInsightFixture$,
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
@@ -29,6 +30,19 @@ const mocks = createZeroRouteMocks(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function zeroToken(userId: string, orgId: string): string {
+  const seconds = currentSecond();
+  return signSandboxJwtForTests({
+    scope: "zero",
+    userId,
+    orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: ["agent-run:read"],
+    iat: seconds,
+    exp: seconds + 600,
+  });
 }
 
 function makeAxiomEvent(
@@ -88,23 +102,12 @@ describe("GET /api/zero/logs/search", () => {
       ),
     );
 
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["agent-run:read"],
-      iat: seconds,
-      exp: seconds + 600,
-    });
-
     return {
       orgId: fixture.orgId,
       userId: fixture.userId,
       composeId,
       runId,
-      token,
+      token: zeroToken(fixture.userId, fixture.orgId),
     };
   }
 
@@ -153,6 +156,67 @@ describe("GET /api/zero/logs/search", () => {
     );
     expect(response.body.results).toStrictEqual([]);
     expect(response.body.hasMore).toBeFalsy();
+  });
+
+  it("splits large run ID searches into bounded Axiom queries", async () => {
+    const fixture = await trackUsage(
+      store.set(seedUsageInsightFixture$, undefined, context.signal),
+    );
+    const { composeId } = await store.set(
+      seedCompose$,
+      fixture,
+      context.signal,
+    );
+    const { runIds } = await store.set(
+      seedRuns$,
+      { ...fixture, composeId, count: 501 },
+      context.signal,
+    );
+    await trackOrg(
+      store.set(
+        seedOrgMembership$,
+        { orgId: fixture.orgId, userId: fixture.userId },
+        context.signal,
+      ),
+    );
+
+    const matchedRunId = runIds[runIds.length - 1]!;
+    context.mocks.axiom.query.mockImplementation((apl) => {
+      if (typeof apl !== "string") {
+        return Promise.resolve([]);
+      }
+      const events = apl.includes(matchedRunId)
+        ? [makeAxiomEvent(matchedRunId, 7, "chunked match")]
+        : [];
+      return Promise.resolve(events);
+    });
+
+    const client = setupApp({ context })(zeroLogsSearchContract);
+    const response = await accept(
+      client.searchLogs({
+        query: { keyword: "chunked" },
+        headers: {
+          authorization: `Bearer ${zeroToken(fixture.userId, fixture.orgId)}`,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.results).toHaveLength(1);
+    expect(response.body.results[0]?.runId).toBe(matchedRunId);
+    expect(context.mocks.axiom.query).toHaveBeenCalledTimes(2);
+
+    for (const call of context.mocks.axiom.query.mock.calls) {
+      const apl = call[0];
+      expect(typeof apl).toBe("string");
+      if (typeof apl !== "string") {
+        throw new Error("Expected Axiom query to be a string");
+      }
+      const runIdCount = apl.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,
+      )?.length;
+      expect(runIdCount ?? 0).toBeLessThanOrEqual(500);
+    }
   });
 
   it("returns matched events without context", async () => {

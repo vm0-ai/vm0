@@ -23,7 +23,6 @@ interface VideoOptions {
   firstFrameImageUrl?: string;
   lastFrameImageUrl?: string;
   all?: boolean;
-  json?: boolean;
 }
 
 interface VideoGenerateCommandConfig {
@@ -355,7 +354,6 @@ export function createVideoGenerateCommand(
     )
     .option("--first-frame-image-url <url>", "First frame image URL")
     .option("--last-frame-image-url <url>", "Last frame image URL")
-    .option("--json", "Print metadata as JSON")
     .addHelpText(
       "after",
       `
@@ -390,7 +388,6 @@ Models:
           provider: options.provider,
           prompt: options.prompt,
           all: options.all,
-          json: options.json,
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
@@ -413,11 +410,6 @@ Models:
           firstFrameImageUrl: options.firstFrameImageUrl,
           lastFrameImageUrl: options.lastFrameImageUrl,
         });
-
-        if (options.json) {
-          console.log(JSON.stringify(result));
-          return;
-        }
 
         console.log(chalk.green(`✓ Video generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

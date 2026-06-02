@@ -10,6 +10,7 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildMetaAdsAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -20,6 +21,7 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMetaAdsCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,

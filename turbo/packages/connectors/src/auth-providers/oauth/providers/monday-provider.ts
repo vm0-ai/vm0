@@ -11,6 +11,7 @@ export const mondayProvider: AuthCodeConnectorAuthProvider<"monday"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildMondayAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const mondayProvider: AuthCodeConnectorAuthProvider<"monday"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMondayCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -47,7 +49,13 @@ export const mondayProvider: AuthCodeConnectorAuthProvider<"monday"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshMondayToken(clientId, clientSecret, args.refreshToken);
+      return refreshMondayToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

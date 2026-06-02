@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
+
 export const figma = {
   figma: {
     label: "Figma",
@@ -11,15 +13,15 @@ export const figma = {
         featureFlag: FeatureSwitchKey.FigmaConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Figma to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.figma.com/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "FIGMA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "FIGMA_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "current_user:read",
             "file_content:read",
@@ -34,6 +36,7 @@ export const figma = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "FIGMA_ACCESS_TOKEN",
           refreshToken: "FIGMA_REFRESH_TOKEN",
           envBindings: {

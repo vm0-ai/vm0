@@ -53,7 +53,6 @@ agents:
     framework: claude-code
     volumes:
       - claude-files:/home/user/.config/claude
-    working_dir: /home/user/workspace
 volumes:
   claude-files:
     name: $CLAUDE_VOLUME_NAME

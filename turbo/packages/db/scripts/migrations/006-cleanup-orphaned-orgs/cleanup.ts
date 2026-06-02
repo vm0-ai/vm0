@@ -181,8 +181,8 @@ async function cleanupOrphanedOrg(
   db: ReturnType<typeof drizzle>,
   orgId: string,
 ): Promise<void> {
-  // We can't use the app's service functions directly (they depend on
-  // globalThis.services). Instead, execute the same SQL deletion sequence.
+  // We can't use the app's service functions directly from this migration.
+  // Instead, execute the same SQL deletion sequence.
 
   // Phase 1: External services — skip in migration script.
   // Stripe subscriptions for deleted orgs are likely already expired/cancelled.

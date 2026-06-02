@@ -7,7 +7,6 @@ interface DispatchOptions {
   readonly provider?: string;
   readonly prompt?: string;
   readonly all?: boolean;
-  readonly json?: boolean;
 }
 
 /**
@@ -35,7 +34,6 @@ export async function dispatchGenerate(
   if (resolvedPrompt === null) {
     await runLister(options.generationType, {
       all: options.all,
-      json: options.json,
     });
     return { outcome: "handled" };
   }

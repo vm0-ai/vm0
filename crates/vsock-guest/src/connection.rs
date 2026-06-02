@@ -12,7 +12,7 @@ use vsock_proto::{
 };
 
 use crate::error::to_io_error;
-use crate::exec_control::{ExecControlRegistry, handle_exec_control as route_exec_control};
+use crate::exec_control::{ExecControlRegistry, handle_decoded_exec_control as route_exec_control};
 use crate::exec_operation::{
     ExecOperationRegistry, ExecOperationWorkerRequest, cancel_exec_operation, send_error_response,
     start_exec_operation,
@@ -267,7 +267,15 @@ impl ConnectionDispatcher {
         if !require_non_zero_sequence(msg.seq, "exec cancel", &self.writer)? {
             return Ok(());
         }
-        vsock_proto::decode_exec_cancel(&msg.payload).map_err(to_io_error)?;
+        if let Err(error) = vsock_proto::decode_exec_cancel(&msg.payload) {
+            log(
+                "WARN",
+                &format!(
+                    "exec cancel: ignoring malformed payload seq={} error={error}",
+                    msg.seq
+                ),
+            );
+        }
         cancel_exec_operation(&self.exec_operation_registry, msg.seq);
         Ok(())
     }
@@ -276,19 +284,27 @@ impl ConnectionDispatcher {
         if !require_non_zero_sequence(msg.seq, "exec control", &self.writer)? {
             return Ok(());
         }
-        route_exec_control(
-            msg.seq,
-            &msg.payload,
-            &self.exec_control_registry,
-            &self.writer,
-        )
+        let decoded = match vsock_proto::decode_exec_control(&msg.payload) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+                return Ok(());
+            }
+        };
+        route_exec_control(msg.seq, decoded, &self.exec_control_registry, &self.writer)
     }
 
     fn handle_write_file(&self, msg: &RawMessage) -> io::Result<()> {
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        let decoded = decode_write_file_message(msg)?;
+        let decoded = match decode_write_file_message(msg) {
+            Ok(decoded) => decoded,
+            Err(error) => {
+                send_error_response(msg.seq, &error.to_string(), &self.writer)?;
+                return Ok(());
+            }
+        };
         let Some(operation_guard) =
             acquire_operation_guard(&self.operation_state, msg.seq, &self.writer)?
         else {

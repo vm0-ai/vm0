@@ -72,6 +72,7 @@ import {
   patchThreadMeta$,
   readThreadMeta$,
 } from "../external/idb-thread-meta-store.ts";
+import { reloadBillingStatus$ } from "../zero-page/billing.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -406,6 +407,9 @@ export interface ChatThreadSignals {
   scrollToTop$: Command<void, []>;
   scrollBy$: Command<boolean, [ScrollStepDirection]>;
   prepareKeyboardScroll$: Command<boolean, []>;
+  // True when the message list is scrolled away from the bottom — drives the
+  // feature-gated scroll-to-bottom button.
+  awayFromBottom$: State<boolean>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
   // Starts hidden — `setupChatThreadInitScroll$` flips it on only when the
   // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
@@ -1687,6 +1691,7 @@ function createSendMessage(deps: SendMessageDeps) {
       });
 
       if (sendResult.body.runId === null) {
+        set(reloadBillingStatus$);
         await set(fetchNextPage$, signal);
         signal.throwIfAborted();
         set(scrollToBottom$);

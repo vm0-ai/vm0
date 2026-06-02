@@ -68,6 +68,10 @@ const cronTelegramCleanupResponseSchema = z.object({
   deleted: z.number(),
 });
 
+const cronComputerUseScreenshotCleanupResponseSchema = z.object({
+  cleaned: z.number(),
+});
+
 const cronDrainEmailOutboxResponseSchema = z.object({
   success: z.literal(true),
   drained: z.number(),
@@ -158,6 +162,19 @@ export const cronTelegramCleanupContract = c.router({
   },
 });
 
+export const cronComputerUseScreenshotCleanupContract = c.router({
+  cleanup: {
+    method: "GET",
+    path: "/api/cron/computer-use-screenshot-cleanup",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronComputerUseScreenshotCleanupResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Delete expired desktop computer-use screenshots",
+  },
+});
+
 export const cronDrainEmailOutboxContract = c.router({
   drain: {
     method: "GET",
@@ -218,6 +235,8 @@ export type CronReconcileBillingEntitlementsContract =
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
+export type CronComputerUseScreenshotCleanupContract =
+  typeof cronComputerUseScreenshotCleanupContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
 export type CronExecuteSchedulesContract = typeof cronExecuteSchedulesContract;
@@ -230,6 +249,7 @@ export {
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsResponseSchema,
   cronTelegramCleanupResponseSchema,
+  cronComputerUseScreenshotCleanupResponseSchema,
   cronDrainEmailOutboxResponseSchema,
   cronSyncSkillsResponseSchema,
   cronExecuteSchedulesResponseSchema,

@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const googleAds = {
   "google-ads": {
     label: "Google Ads",
@@ -12,15 +14,15 @@ export const googleAds = {
         showExperimentalLabel: false,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Ads access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/adwords",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -28,10 +30,13 @@ export const googleAds = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
           refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+          platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
           envBindings: {
             GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+            GOOGLE_ADS_DEVELOPER_TOKEN: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
           },
         },
         revoke: { kind: "none" },

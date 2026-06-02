@@ -19,10 +19,11 @@
 //! Each [`ProfileConfig`] carries two hashes with different scopes:
 //! - `rootfs_hash` — content hash of the bootable guest filesystem image on
 //!   this runner. Shared across snapshot variants on the same host.
-//! - `snapshot_hash` — content hash of the FC/kernel/vcpu/memory/provider
-//!   config used to capture the memory snapshot from that rootfs. Local-only:
-//!   snapshots are produced on each runner by booting the rootfs and
-//!   capturing state, since the captured memory binds to host-specific state.
+//! - `snapshot_hash` — content hash of the rootfs hash plus the
+//!   FC/kernel/vcpu/memory/provider config used to capture the memory snapshot.
+//!   Local-only: snapshots are produced on each runner by booting the rootfs
+//!   and capturing state, since the captured memory binds to host-specific
+//!   state.
 //!
 //! Together they identify an exact boot image on this host.
 //!
@@ -103,15 +104,18 @@ pub struct FirecrackerConfig {
 pub struct ProfileConfig {
     /// Content-addressed rootfs hash (shared across snapshot variants on this host).
     pub rootfs_hash: String,
-    /// Content-addressed snapshot hash (local-only, covers FC/kernel/vcpu/memory/provider config).
+    /// Content-addressed snapshot hash (local-only, covers rootfs plus VM/provider config).
     pub snapshot_hash: String,
     /// Guest vCPU count. Must be non-zero and ≤ 1024.
     pub vcpu: u32,
     /// Guest RAM in MiB. Must be non-zero and ≤ 1 TiB.
     pub memory_mb: u32,
-    /// Guest disk in MiB, used to size the COW overlay. Must be non-zero
-    /// and ≤ 1 TiB.
-    pub disk_mb: u32,
+    /// Rootfs disk in MiB. Used to size the bootable rootfs image.
+    /// Must be non-zero and ≤ 1 TiB.
+    pub rootfs_disk_mb: u32,
+    /// Workspace disk in MiB. Used to size the writable workspace drive.
+    /// Must be non-zero and ≤ 1 TiB.
+    pub workspace_disk_mb: u32,
 }
 
 /// Sandbox-level knobs for concurrency and the idle-VM pool.
@@ -284,9 +288,13 @@ async fn validate(
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
 
     for (name, profile) in &config.profiles {
-        if profile.vcpu == 0 || profile.memory_mb == 0 || profile.disk_mb == 0 {
+        if profile.vcpu == 0
+            || profile.memory_mb == 0
+            || profile.rootfs_disk_mb == 0
+            || profile.workspace_disk_mb == 0
+        {
             return Err(RunnerError::Config(format!(
-                "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
+                "profile {name}: vcpu, memory_mb, rootfs_disk_mb, and workspace_disk_mb must be non-zero"
             )));
         }
         if profile.vcpu > MAX_VCPU {
@@ -301,10 +309,16 @@ async fn validate(
                 profile.memory_mb
             )));
         }
-        if profile.disk_mb > MAX_DISK_MB {
+        if profile.rootfs_disk_mb > MAX_DISK_MB {
             return Err(RunnerError::Config(format!(
-                "profile {name}: disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
-                profile.disk_mb
+                "profile {name}: rootfs_disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
+                profile.rootfs_disk_mb
+            )));
+        }
+        if profile.workspace_disk_mb > MAX_DISK_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: workspace_disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
+                profile.workspace_disk_mb
             )));
         }
         if validate_image_artifacts {

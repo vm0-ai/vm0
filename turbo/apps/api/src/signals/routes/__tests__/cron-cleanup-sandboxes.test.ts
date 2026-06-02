@@ -211,7 +211,6 @@ async function insertRunnerJobEntry(
     runnerGroup: "vm0/test",
     profile: "vm0/default",
     executionContext: {
-      workingDir: "/workspace",
       storageManifest: null,
       environment: null,
       resumeSession: null,

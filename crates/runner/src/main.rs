@@ -34,6 +34,7 @@ mod status;
 mod storage_cache;
 mod telemetry;
 mod types;
+mod workspace_mount;
 
 use std::path::Path;
 use std::process::ExitCode;

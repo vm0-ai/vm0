@@ -15,11 +15,11 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import {
-  decryptSecretValue,
-  inspectPersistentSecretCiphertext,
+  decryptStoredSecretValue,
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
+import { isKmsSecretForTests } from "./helpers/encrypt-secret";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -219,7 +219,7 @@ async function chatgptSecret(args: {
       ),
     )
     .limit(1);
-  return secret ? decryptSecretValue(secret.encryptedValue) : null;
+  return secret ? await decryptStoredSecretValue(secret.encryptedValue) : null;
 }
 
 describe("Codex device auth routes", () => {
@@ -303,12 +303,8 @@ describe("Codex device auth routes", () => {
     });
     expect(sessions[0]?.encryptedProviderState).toBeTruthy();
     expect(
-      inspectPersistentSecretCiphertext(sessions[0]!.encryptedProviderState!),
-    ).toStrictEqual({
-      format: "kms",
-      hasLegacy: false,
-      hasKms: true,
-    });
+      isKmsSecretForTests(sessions[0]!.encryptedProviderState!),
+    ).toBeTruthy();
     expect(kms.calls).toHaveLength(1);
   });
 

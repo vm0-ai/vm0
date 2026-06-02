@@ -53,26 +53,34 @@ export const zeroCreditCommand = new Command()
         const origin = await getPlatformOrigin();
         const successUrl = `${origin}/?settings=usage&credit=success`;
         const cancelUrl = `${origin}/?settings=usage&credit=canceled`;
-        const autoRecharge =
-          options.autoRecharge === undefined &&
-          options.autoRechargeThreshold === undefined &&
-          options.autoRechargeAmount === undefined
-            ? undefined
-            : {
-                enabled: options.autoRecharge === true,
-                threshold: options.autoRechargeThreshold,
-                amount: options.autoRechargeAmount,
-              };
+        if (
+          options.autoRecharge !== true &&
+          (options.autoRechargeThreshold !== undefined ||
+            options.autoRechargeAmount !== undefined)
+        ) {
+          throw new Error(
+            "--auto-recharge-threshold and --auto-recharge-amount require --auto-recharge",
+          );
+        }
 
         if (
-          autoRecharge?.enabled === true &&
-          (autoRecharge.threshold === undefined ||
-            autoRecharge.amount === undefined)
+          options.autoRecharge === true &&
+          (options.autoRechargeThreshold === undefined ||
+            options.autoRechargeAmount === undefined)
         ) {
           throw new Error(
             "--auto-recharge requires --auto-recharge-threshold and --auto-recharge-amount",
           );
         }
+
+        const autoRecharge =
+          options.autoRecharge === true
+            ? {
+                enabled: true,
+                threshold: options.autoRechargeThreshold,
+                amount: options.autoRechargeAmount,
+              }
+            : undefined;
 
         const result = await createZeroCreditCheckout({
           credits,

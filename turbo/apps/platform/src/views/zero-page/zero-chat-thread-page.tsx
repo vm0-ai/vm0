@@ -27,6 +27,7 @@ import {
   IconDots,
   IconVolume2,
   IconArrowBarToUp,
+  IconArrowDown,
   IconBrandGoogleDrive,
   IconDownload,
   IconFile,
@@ -59,8 +60,10 @@ import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-provider
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { hasConnectorAuthCodeGrant } from "@vm0/connectors/connector-utils";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorAuthMethodIdsByGrantKind,
+} from "@vm0/connectors/connectors";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
@@ -162,6 +165,7 @@ import {
   extractPermissions,
   permissionExistingRequestByAction,
   saveAdminFocusedPolicy$,
+  subscribePermissionAccessRequestsChanged$,
   submitAccessRequest$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
@@ -199,6 +203,11 @@ import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-devic
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
+const GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD =
+  "oauth" satisfies ConnectorAuthMethodIdsByGrantKind<
+    "google-drive",
+    "auth-code"
+  >;
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -719,10 +728,6 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Agent is still loading");
     return;
   }
-  if (!hasConnectorAuthCodeGrant("google-drive")) {
-    toast.error("Google Drive connection is not available");
-    return;
-  }
   const authWindow = window.open(
     "about:blank",
     "_blank",
@@ -741,7 +746,7 @@ function startGoogleDriveConnectAndSync(params: {
       const result = await accept(
         client.start({
           params: { type: "google-drive" },
-          body: {},
+          body: { authMethod: GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD },
           fetchOptions: { signal: params.pageSignal },
         }),
         [200],
@@ -1858,6 +1863,16 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const awayFromBottom = useGet(thread.awayFromBottom$);
+  const scrollToBottom = useSet(thread.scrollToBottom$);
+  const features = useLastResolved(featureSwitch$);
+  const scrollToBottomButtonEnabled =
+    features?.[FeatureSwitchKey.ChatScrollToBottomButton] ?? false;
+  const showScrollToBottomButton =
+    scrollToBottomButtonEnabled &&
+    awayFromBottom &&
+    !skeletonVisible &&
+    !sessionError;
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onLoadHistory = onDomEventFn(() => {
@@ -1942,6 +1957,19 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               </div>
             </main>
           </div>
+        )}
+        {showScrollToBottomButton && (
+          <button
+            type="button"
+            data-scroll-to-bottom
+            aria-label="Scroll to bottom"
+            onClick={() => {
+              scrollToBottom();
+            }}
+            className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <IconArrowDown size={18} />
+          </button>
         )}
       </div>
 
@@ -2732,6 +2760,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
   const adminLoadable = useLoadable(isOrgAdmin$);
   const [saveLoadable, savePolicy] = useLoadableSet(saveAdminFocusedPolicy$);
   const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
+  const subscribeRequests = useSet(subscribePermissionAccessRequestsChanged$);
   const canManagePermissions =
     adminLoadable.state === "hasData" && adminLoadable.data;
   const existingRequestLoadable = useLoadable(
@@ -2807,6 +2836,11 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       return;
     }
 
+    detach(
+      subscribeRequests(pageSignal),
+      Reason.Daemon,
+      "permission access request realtime subscription",
+    );
     detach(
       submitRequest(
         {
@@ -3026,7 +3060,7 @@ function PaidCreditCheckoutActions({
 }
 
 function InsufficientCreditsCard() {
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const billingLoadable = useLoadable(billingStatusAsync$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const [creditCheckoutLoadable, creditCheckout] =
     useLoadableSet(startCreditCheckout$);

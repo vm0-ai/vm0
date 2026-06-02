@@ -212,6 +212,7 @@ import { generate as generateTicketmaster } from "./ticketmaster";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
+import { generate as generateTripo } from "./tripo";
 import { generate as generateTwenty } from "./twenty";
 import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
@@ -442,6 +443,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   together: generateTogether,
+  tripo: generateTripo,
   twenty: generateTwenty,
   typeform: generateTypeform,
   v0: generateV0,

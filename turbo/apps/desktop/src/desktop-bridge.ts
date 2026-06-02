@@ -13,6 +13,11 @@ export interface DesktopAuthOrganization {
 
 export type DesktopAuthState =
   | {
+      readonly status: "signing_in";
+      readonly user: null;
+      readonly organization: null;
+    }
+  | {
       readonly status: "signed_out";
       readonly user: null;
       readonly organization: null;

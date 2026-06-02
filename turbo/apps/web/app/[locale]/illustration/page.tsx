@@ -6,7 +6,7 @@ import { IllustrationGalleryClient } from "./IllustrationGalleryClient";
 import { ILLUSTRATION_STYLES } from "./data";
 
 const BASE_URL = "https://www.vm0.ai";
-const ASSET_BASE = "https://quiet-moments-gallery-min-715f6d07.sites.vm0.io";
+const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
 
 const fraunces = Fraunces({
   subsets: ["latin"],

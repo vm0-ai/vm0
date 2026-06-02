@@ -11,11 +11,17 @@ import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "../../contracts/model-providers";
+import { CANONICAL_WORKING_DIR } from "../../contracts/runners";
 
 const codexOauthPlaceholders =
   MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"].placeholders!;
 
 const expectedBindings = [
+  {
+    rustModulePath: ["runners", "paths"],
+    rustConstName: "CANONICAL_WORKING_DIR",
+    value: CANONICAL_WORKING_DIR,
+  },
   {
     rustModulePath: ["codex_oauth_token", "placeholders"],
     rustConstName: "CHATGPT_ACCESS_TOKEN",
@@ -113,7 +119,11 @@ describe("Rust string constant bindings", () => {
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod codex_oauth_token {");
     expect(firstRender).toContain("pub mod model_provider_env {");
+    expect(firstRender).toContain("pub mod runners {");
     expect(firstRender).toContain("pub mod placeholders {");
+    expect(firstRender).toContain(
+      `pub const CANONICAL_WORKING_DIR: &str = "${CANONICAL_WORKING_DIR}";`,
+    );
     expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,
     );
@@ -125,7 +135,7 @@ describe("Rust string constant bindings", () => {
       `pub const CHATGPT_REFRESH_TOKEN: &str = "${codexOauthPlaceholders.CHATGPT_REFRESH_TOKEN}";`,
     );
     expect(firstRender).toContain(
-      "These values are fake marker bytes used for firewall substitution.",
+      "String constants shared by TypeScript and Rust contracts.",
     );
   });
 

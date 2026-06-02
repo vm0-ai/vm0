@@ -54,7 +54,6 @@ agents:
   ${AGENT_NAME}-placeholder:
     description: "Zendesk dynamic base URL placeholder test"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     run $VM0_CLI compose --yes "$TEST_DIR/vm0-placeholder.yaml"
@@ -83,7 +82,6 @@ agents:
   ${AGENT_NAME}-proxy:
     description: "Zendesk dynamic base URL proxy test"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     run $VM0_CLI compose --yes "$TEST_DIR/vm0-proxy.yaml"

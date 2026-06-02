@@ -50,22 +50,26 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub checkpoint_id: Option<Uuid>,
     pub sandbox_token: String,
-    pub working_dir: String,
     #[serde(default)]
     pub storage_manifest: Option<StorageManifest>,
     #[serde(default)]
     pub environment: Option<HashMap<String, String>>,
     #[serde(default)]
     pub resume_session: Option<ResumeSession>,
+    // Plain secret values used only for redaction. These are values, not names.
     #[serde(default)]
     pub secret_values: Option<Vec<String>>,
-    // Forwarded to mitm-addon via proxy registry for auth resolution
+    // Encrypted runtime secret namespace forwarded to mitm-addon for auth
+    // resolution. Decrypted keys match `${{ secrets.NAME }}` names; connector
+    // and model-provider keys are env aliases, not storage secret names.
     #[serde(default)]
     pub encrypted_secrets: Option<String>,
-    // Maps secret names to OAuth connector types for runtime token refresh
+    // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`)
+    // to their connector or provider owner. Keys are env aliases, not storage secret names.
     #[serde(default)]
     pub secret_connector_map: Option<HashMap<String, String>>,
-    // Per-secret refresh metadata, forwarded to mitm-addon for owner-aware refresh
+    // Same keys as secret_connector_map; adds source details when the owner
+    // alone is not enough to locate access storage.
     #[serde(default)]
     pub secret_connector_metadata_map: Option<HashMap<String, SecretConnectorMetadata>>,
     pub cli_agent_type: String,
@@ -395,14 +399,12 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok-123",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "billableFirewalls": []
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.prompt, "hello");
         assert_eq!(ctx.sandbox_token, "tok-123");
-        assert_eq!(ctx.working_dir, "/home/user");
         assert_eq!(ctx.cli_agent_type, "claude_code");
         assert!(ctx.append_system_prompt.is_none());
         assert!(ctx.vars.is_none());
@@ -418,7 +420,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "analyze code",
             "sandboxToken": "tok-456",
-            "workingDir": "/workspace",
             "cliAgentType": "claude_code",
             "appendSystemPrompt": "be concise",
             "agentComposeVersionId": "sha256-abc",
@@ -444,7 +445,7 @@ mod tests {
             "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
             "secretValues": ["s1", "s2"],
             "encryptedSecrets": "enc-blob",
-            "secretConnectorMap": {"github": "oauth"},
+            "secretConnectorMap": {"GITHUB_TOKEN": "github"},
             "secretConnectorMetadataMap": {
                 "CHATGPT_ACCESS_TOKEN": {
                     "sourceType": "model-provider",
@@ -645,7 +646,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "billableFirewalls": []
         });
@@ -659,7 +659,6 @@ mod tests {
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "workingDir": "/home/user",
             "cliAgentType": "claude_code",
             "resumeSession": {
                 "sessionId": "sess-abc-123",

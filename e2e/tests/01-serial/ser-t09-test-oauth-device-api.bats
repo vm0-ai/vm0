@@ -89,7 +89,7 @@ assert_response_jq() {
 
     zero_api_request POST \
         "/api/zero/connectors/test-oauth-device/oauth/device/sessions" \
-        '{}'
+        '{"authMethod":"oauth"}'
     assert_api_status 200 "device authorization start"
     assert_response_jq '
       .status == "pending" and

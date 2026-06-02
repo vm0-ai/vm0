@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "./grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import type { GoogleOAuthConnectorType } from "./google-connectors";
 import { throwOAuthError } from "./error";
 
@@ -34,12 +34,12 @@ interface GoogleRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildGoogleAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,13 +58,13 @@ export function buildGoogleAuthorizationUrl(
  * Uses the Google userinfo endpoint to identify the user.
  */
 export async function exchangeGoogleOAuthCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<GoogleTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -120,13 +120,15 @@ export async function exchangeGoogleOAuthCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.google.com/identity/protocols/oauth2/web-server
  */
 export async function refreshGoogleToken(
+  tokenUrl: string,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<GoogleRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

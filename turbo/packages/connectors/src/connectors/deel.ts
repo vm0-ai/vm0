@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
+
 export const deel = {
   deel: {
     label: "Deel",
@@ -12,15 +14,15 @@ export const deel = {
         featureFlag: FeatureSwitchKey.DeelConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Deel to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
+          clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://app.deel.com/oauth2/tokens",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
-            clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "contracts:read",
             "people:read",
@@ -34,6 +36,7 @@ export const deel = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "DEEL_ACCESS_TOKEN",
           refreshToken: "DEEL_REFRESH_TOKEN",
           envBindings: {

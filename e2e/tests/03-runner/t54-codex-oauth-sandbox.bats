@@ -83,7 +83,6 @@ agents:
     framework: codex
     artifacts:
       - ${AUDIT_ARTIFACT_NAME}:/artifacts
-    working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
 }

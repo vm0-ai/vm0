@@ -43,6 +43,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { mockStripeClient } from "../../external/stripe-client";
 import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
@@ -614,6 +615,9 @@ function mockStripeWebhookEnv(): void {
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   mockEnv("ZERO_PRICE", STRIPE_PRICE_MAP);
   mockEnv("ZERO_ONE_TIME_CAMPAIGN", STRIPE_ONE_TIME_CAMPAIGN);
+  mockStripeClient(
+    context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
+  );
 }
 
 function invoiceLinesWithSubscriptionPeriod(periodEnd: number): {
@@ -1030,6 +1034,7 @@ async function seedClerkOauthDeviceAuthSession(
       orgId: fixture.orgId,
       userId: fixture.userId,
       connectorType: "test-oauth-device",
+      authMethod: "oauth",
       sessionTokenHash: `test-session-token-${randomUUID()}`,
       encryptedProviderState: "encrypted-provider-state",
       userCode: "TEST-DEVICE",
@@ -1394,7 +1399,7 @@ describe("POST /api/webhooks/github", () => {
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
   });
 
-  it("continues an existing session for the same GitHub issue", async () => {
+  it("starts a new session for label triggers on a GitHub issue with an existing session", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
@@ -1451,7 +1456,8 @@ describe("POST /api/webhooks/github", () => {
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.sessionId).toBe(session.id);
+    expect(runs[0]?.sessionId).toStrictEqual(expect.any(String));
+    expect(runs[0]?.sessionId).not.toBe(session.id);
     expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
     expect(runs[0]?.appendSystemPrompt).toContain("New detail");
     expect(runs[0]?.appendSystemPrompt).toContain("- MSG_ID: issue:42");
@@ -1460,8 +1466,9 @@ describe("POST /api/webhooks/github", () => {
 
     const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
     expect(callbacks[0]?.payload).toMatchObject({
-      existingSessionId: session.id,
+      sessionContinuityEnabled: false,
     });
+    expect(callbacks[0]?.payload).not.toHaveProperty("existingSessionId");
   });
 
   it("dispatches pull requests with a matching label listener", async () => {
@@ -2202,6 +2209,41 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.stripeSubscriptionId).toBe(subId);
     });
 
+    it("does not replace a higher current tier with a lower checkout", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const teamSubId = stripeId("sub");
+      const proSubId = stripeId("sub");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        subscriptionStatus: "active",
+        tier: "team",
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: proSubId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: stripeId("cs"),
+          subscription: proSubId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.subscriptionStatus).toBe("active");
+    });
+
     it("does not grant one-time credits before checkout payment settles", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -2269,7 +2311,46 @@ describe("POST /api/webhooks/stripe", () => {
       });
     });
 
-    it("grants custom credit purchase credits from the checkout total", async () => {
+    it("grants custom credit purchase credits from the checkout subtotal before discounts", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+      const sessionId = stripeId("cs");
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: sessionId,
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          payment_status: "paid",
+          amount_subtotal: 10_000,
+          amount_total: 5000,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: fixture.orgId,
+            creditsAmountMode: "amount_subtotal",
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await selectStripeBilling(fixture)).credits).toBe(
+        creditsBefore + 100_000,
+      );
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        source: "auto_recharge",
+        stripeInvoiceId: sessionId,
+        amount: 100_000,
+        remaining: 100_000,
+      });
+    });
+
+    it("keeps processing older custom credit checkout sessions from the checkout total", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2297,14 +2378,6 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits).toBe(
         creditsBefore + 100_000,
       );
-      const records = await selectStripeCreditExpiresRecords(fixture);
-      expect(records).toHaveLength(1);
-      expect(records[0]).toMatchObject({
-        source: "auto_recharge",
-        stripeInvoiceId: sessionId,
-        amount: 100_000,
-        remaining: 100_000,
-      });
     });
   });
 
@@ -2374,6 +2447,50 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits - creditsBefore).toBe(
         120_000,
       );
+    });
+
+    it("skips lower subscription invoices when a higher subscription is current", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const teamSubId = stripeId("sub");
+      const proSubId = stripeId("sub");
+      const invId = stripeId("inv");
+      const currentPeriodEnd = new Date("2026-04-26T07:24:12Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        tier: "team",
+        currentPeriodEnd,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: proSubId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
+          parent: { subscription_details: { subscription: proSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.credits).toBe(creditsBefore);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.lastProcessedInvoiceId).toBeNull();
+      expect(billing.currentPeriodEnd).toStrictEqual(currentPeriodEnd);
+      await expect(
+        selectStripeCreditExpiresRecords(fixture),
+      ).resolves.toStrictEqual([]);
     });
 
     it("adds renewal credits to an existing balance", async () => {

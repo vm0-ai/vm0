@@ -65,6 +65,7 @@ create_artifact() {
 setup_test_connector() {
     local connector_name="$1"
     local access_token="$2"
+    local auth_method="${3:-oauth}"
 
     if [[ -z "${E2E_RUNNER_EMAIL:-}" ]]; then
         echo "E2E_RUNNER_EMAIL not set" >&2
@@ -80,7 +81,7 @@ setup_test_connector() {
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl_args+=(-d "{\"connectorName\":\"${connector_name}\",\"accessToken\":\"${access_token}\"}")
+    curl_args+=(-d "{\"connectorName\":\"${connector_name}\",\"authMethod\":\"${auth_method}\",\"accessToken\":\"${access_token}\"}")
 
     local response
     response=$(curl "${curl_args[@]}" \
@@ -108,7 +109,6 @@ agents:
   ${AGENT_NAME}-multi:
     description: "Multi-firewall placeholder test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
@@ -143,7 +143,6 @@ agents:
   ${AGENT_NAME}-auto:
     description: "Auto-firewall connector test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
 EOF
@@ -190,7 +189,6 @@ agents:
   ${AGENT_NAME}-webhook:
     description: "Webhook URL placeholder test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       DISCORD_WEBHOOK_URL: \${{ secrets.DISCORD_WEBHOOK_URL }}
 EOF

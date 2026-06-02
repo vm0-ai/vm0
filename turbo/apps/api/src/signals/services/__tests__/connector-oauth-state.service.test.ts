@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { OAuthGrantConnectorType } from "@vm0/connectors/connectors";
+import type { ConnectorAuthProviderType } from "@vm0/connectors/connectors";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { createStore } from "ccstate";
 import { inArray } from "drizzle-orm";
@@ -14,7 +14,7 @@ const store = createStore();
 
 type SeedOAuthStateInput = {
   readonly state?: string;
-  readonly type?: OAuthGrantConnectorType;
+  readonly type?: ConnectorAuthProviderType;
   readonly consumedAt?: Date | null;
   readonly expiresAt?: Date;
 };
@@ -32,6 +32,7 @@ describe("connector OAuth state claim", () => {
       .values({
         state,
         type: args.type ?? "github",
+        authMethod: "oauth",
         userId: `user_${randomUUID()}`,
         orgId: `org_${randomUUID()}`,
         redirectUri: "https://app.vm0.test/api/connectors/github/callback",
@@ -73,6 +74,7 @@ describe("connector OAuth state claim", () => {
         id: row.id,
         state: row.state,
         type: "github",
+        authMethod: "oauth",
       },
     });
     if (result.kind === "usable") {

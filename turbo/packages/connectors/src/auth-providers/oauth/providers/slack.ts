@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const SLACK_AUTHORIZATION_URL = "https://slack.com/oauth/v2/authorize";
@@ -22,11 +22,11 @@ interface SlackUserInfo {
  * Uses user_scope= (not scope=) to request user-level token.
  */
 export function buildSlackAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("slack");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -42,12 +42,12 @@ export function buildSlackAuthorizationUrl(
  * Extracts authed_user.access_token (xoxp-...), not the bot token.
  */
 export async function exchangeSlackCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<SlackTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("slack");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {

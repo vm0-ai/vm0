@@ -16,7 +16,11 @@ export const zeroBillingStatusRoutes: readonly RouteEntry[] = [
   {
     route: zeroBillingStatusContract.get,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "billing:read",
+      },
       getBillingStatusInner$,
     ),
   },

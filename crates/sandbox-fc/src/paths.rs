@@ -106,7 +106,7 @@ impl FactoryPaths {
     }
 }
 
-/// Per-sandbox workspace paths (persistent data: config, COW).
+/// Per-sandbox workspace paths (persistent data: config, COW, workspace image).
 pub struct SandboxPaths {
     workspace: PathBuf,
 }
@@ -134,6 +134,17 @@ impl SandboxPaths {
     /// Must be a regular file (not a block device) so bind mount works.
     pub fn cow_device_bind(&self) -> PathBuf {
         self.workspace.join("cow-device-bind")
+    }
+
+    /// Active workspace block image for this sandbox.
+    pub fn workspace_image(&self) -> PathBuf {
+        self.workspace.join("workspace.ext4")
+    }
+
+    /// Bind mount target for the workspace image during snapshot restore.
+    /// Must be a regular file (not a directory) so bind mount works.
+    pub fn workspace_device_bind(&self) -> PathBuf {
+        self.workspace.join("workspace-device-bind")
     }
 }
 
@@ -241,6 +252,7 @@ impl SnapshotOutputPaths {
             memory_path: self.memory(),
             cow_path: self.cow(),
             drive_bind_path: work.cow_device_bind(),
+            workspace_drive_bind_path: work.workspace_device_bind(),
             vsock_bind_dir: sock.vsock_dir(),
         }
     }

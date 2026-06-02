@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { hasRequiredScopes } from "@vm0/connectors/connector-utils";
+import { hasRequiredConnectorAuthMethodScopes } from "@vm0/connectors/connector-utils";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 
 type Connector = ConnectorListResponse["connectors"][number];
@@ -18,9 +18,11 @@ export function renderConnectedAsCell(
   if (connector.needsReconnect) {
     return chalk.yellow(`${identity} (reconnect needed)`);
   }
-  const scopeMismatch =
-    connector.authMethod === "oauth" &&
-    !hasRequiredScopes(connector.type, connector.oauthScopes);
+  const scopeMismatch = !hasRequiredConnectorAuthMethodScopes(
+    connector.type,
+    connector.authMethod,
+    connector.oauthScopes,
+  );
   if (scopeMismatch) {
     return chalk.yellow(`${identity} (permissions update available)`);
   }

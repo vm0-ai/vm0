@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 export const googleCalendar = {
   "google-calendar": {
     label: "Google Calendar",
@@ -11,15 +13,15 @@ export const googleCalendar = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Google to grant Google Calendar access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/calendar",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -27,6 +29,7 @@ export const googleCalendar = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "GOOGLE_CALENDAR_ACCESS_TOKEN",
           refreshToken: "GOOGLE_CALENDAR_REFRESH_TOKEN",
           envBindings: {

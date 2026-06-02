@@ -8,7 +8,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { composeJobs } from "@vm0/db/schema/compose-job";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
-import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { connectors } from "@vm0/db/schema/connector";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { exportJobs } from "@vm0/db/schema/export-job";
@@ -31,7 +30,7 @@ import { users } from "@vm0/db/schema/user";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { command, type Getter, type Setter } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -200,266 +199,270 @@ async function deregisterOwnedTelegramWebhooks(
   }
 }
 
-async function revokeOrgConnectorTokens(args: {
-  readonly set: Setter;
-  readonly db: Db;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const rows = await args.db
-    .select({ userId: connectors.userId, type: connectors.type })
-    .from(connectors)
-    .where(eq(connectors.orgId, args.orgId));
-  args.signal.throwIfAborted();
+const revokeOrgConnectorTokens$ = command(
+  async (
+    { set },
+    db: Db,
+    orgId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const rows = await db
+      .select({ userId: connectors.userId, type: connectors.type })
+      .from(connectors)
+      .where(eq(connectors.orgId, orgId));
+    signal.throwIfAborted();
 
-  for (const row of rows) {
-    const parsed = connectorTypeSchema.safeParse(row.type);
-    if (!parsed.success) {
-      L.warn("unknown connector type, skipping revocation", {
-        orgId: args.orgId,
-        type: row.type,
+    for (const row of rows) {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      if (!parsed.success) {
+        L.warn("unknown connector type, skipping revocation", {
+          orgId,
+          type: row.type,
+        });
+        continue;
+      }
+
+      await set(
+        deleteZeroConnectorLocalState$,
+        { orgId, userId: row.userId, type: parsed.data },
+        signal,
+      );
+    }
+  },
+);
+
+const revokeUserConnectorTokens$ = command(
+  async (
+    { set },
+    db: Db,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const rows = await db
+      .select({ orgId: connectors.orgId, type: connectors.type })
+      .from(connectors)
+      .where(eq(connectors.userId, userId));
+    signal.throwIfAborted();
+
+    for (const row of rows) {
+      const parsed = connectorTypeSchema.safeParse(row.type);
+      if (!parsed.success) {
+        L.warn("unknown connector type, skipping revocation", {
+          userId,
+          type: row.type,
+        });
+        continue;
+      }
+
+      await set(
+        deleteZeroConnectorLocalState$,
+        { orgId: row.orgId, userId, type: parsed.data },
+        signal,
+      );
+    }
+  },
+);
+
+const cleanupOrgExternalServices$ = command(
+  async (
+    { set },
+    db: Db,
+    orgId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const steps: readonly {
+      readonly name: string;
+      readonly run: () => Promise<void>;
+    }[] = [
+      {
+        name: "stripe subscription",
+        run: () => {
+          return cancelStripeSubscription(db, orgId);
+        },
+      },
+      {
+        name: "telegram webhooks",
+        run: () => {
+          return deregisterOrgTelegramWebhooks(db, orgId);
+        },
+      },
+      {
+        name: "connector tokens",
+        run: () => {
+          return set(revokeOrgConnectorTokens$, db, orgId, signal);
+        },
+      },
+    ];
+
+    for (const step of steps) {
+      await tapError(step.run(), (error) => {
+        L.warn(`failed to cleanup ${step.name}`, { orgId, error });
       });
-      continue;
+      signal.throwIfAborted();
     }
+  },
+);
 
-    await args.set(
-      deleteZeroConnectorLocalState$,
-      { orgId: args.orgId, userId: row.userId, type: parsed.data },
-      args.signal,
-    );
-  }
-}
+const cleanupUserExternalServices$ = command(
+  async (
+    { set },
+    db: Db,
+    userId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const steps: readonly {
+      readonly name: string;
+      readonly run: () => Promise<void>;
+    }[] = [
+      {
+        name: "connector tokens",
+        run: () => {
+          return set(revokeUserConnectorTokens$, db, userId, signal);
+        },
+      },
+      {
+        name: "telegram owned bots",
+        run: () => {
+          return deregisterOwnedTelegramWebhooks(db, userId);
+        },
+      },
+    ];
 
-async function revokeUserConnectorTokens(args: {
-  readonly set: Setter;
-  readonly db: Db;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const rows = await args.db
-    .select({ orgId: connectors.orgId, type: connectors.type })
-    .from(connectors)
-    .where(eq(connectors.userId, args.userId));
-  args.signal.throwIfAborted();
-
-  for (const row of rows) {
-    const parsed = connectorTypeSchema.safeParse(row.type);
-    if (!parsed.success) {
-      L.warn("unknown connector type, skipping revocation", {
-        userId: args.userId,
-        type: row.type,
+    for (const step of steps) {
+      await tapError(step.run(), (error) => {
+        L.warn(`failed to cleanup ${step.name}`, { userId, error });
       });
-      continue;
+      signal.throwIfAborted();
     }
+  },
+);
 
-    await args.set(
-      deleteZeroConnectorLocalState$,
-      { orgId: row.orgId, userId: args.userId, type: parsed.data },
-      args.signal,
-    );
-  }
-}
-
-async function cleanupOrgExternalServices(args: {
-  readonly set: Setter;
-  readonly db: Db;
-  readonly orgId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const steps: readonly {
-    readonly name: string;
-    readonly run: () => Promise<void>;
-  }[] = [
-    {
-      name: "stripe subscription",
-      run: () => {
-        return cancelStripeSubscription(args.db, args.orgId);
-      },
-    },
-    {
-      name: "telegram webhooks",
-      run: () => {
-        return deregisterOrgTelegramWebhooks(args.db, args.orgId);
-      },
-    },
-    {
-      name: "connector tokens",
-      run: () => {
-        return revokeOrgConnectorTokens(args);
-      },
-    },
-  ];
-
-  for (const step of steps) {
-    await tapError(step.run(), (error) => {
-      L.warn(`failed to cleanup ${step.name}`, { orgId: args.orgId, error });
-    });
-    args.signal.throwIfAborted();
-  }
-}
-
-async function cleanupUserExternalServices(args: {
-  readonly set: Setter;
-  readonly db: Db;
-  readonly userId: string;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const steps: readonly {
-    readonly name: string;
-    readonly run: () => Promise<void>;
-  }[] = [
-    {
-      name: "connector tokens",
-      run: () => {
-        return revokeUserConnectorTokens(args);
-      },
-    },
-    {
-      name: "telegram owned bots",
-      run: () => {
-        return deregisterOwnedTelegramWebhooks(args.db, args.userId);
-      },
-    },
-  ];
-
-  for (const step of steps) {
-    await tapError(step.run(), (error) => {
-      L.warn(`failed to cleanup ${step.name}`, { userId: args.userId, error });
-    });
-    args.signal.throwIfAborted();
-  }
-}
-
-async function deleteObjectsForPrefixes(args: {
-  readonly get: Getter;
-  readonly bucket: string;
-  readonly prefixes: readonly string[];
-}): Promise<void> {
-  for (const prefix of args.prefixes) {
-    const objects = await args.get(listS3Objects(args.bucket, prefix));
-    if (objects.length === 0) {
-      continue;
-    }
-    await args.get(
-      deleteS3Objects(
-        args.bucket,
-        objects.map((object) => {
-          return object.key;
-        }),
-      ),
-    );
-  }
-}
-
-async function deleteUserObjectsForPrefixesBestEffort(args: {
-  readonly get: Getter;
-  readonly bucket: string;
-  readonly prefixes: readonly string[];
-  readonly userId: string;
-}): Promise<void> {
-  for (const prefix of args.prefixes) {
-    const objectsResult = await settle(
-      args.get(listS3Objects(args.bucket, prefix)),
-    );
-    if (!objectsResult.ok) {
-      L.warn("failed to list user storage objects", {
-        userId: args.userId,
-        prefix,
-        error: objectsResult.error,
-      });
-      continue;
-    }
-
-    if (objectsResult.value.length === 0) {
-      continue;
-    }
-
-    const deleteResult = await settle(
-      args.get(
+function deleteObjectsForPrefixes(
+  bucket: string,
+  prefixes: readonly string[],
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    for (const prefix of prefixes) {
+      const objects = await get(listS3Objects(bucket, prefix));
+      if (objects.length === 0) {
+        continue;
+      }
+      await get(
         deleteS3Objects(
-          args.bucket,
-          objectsResult.value.map((object) => {
+          bucket,
+          objects.map((object) => {
             return object.key;
           }),
         ),
+      );
+    }
+  });
+}
+
+function deleteUserObjectsForPrefixesBestEffort(
+  bucket: string,
+  prefixes: readonly string[],
+  userId: string,
+): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    for (const prefix of prefixes) {
+      const objectsResult = await settle(get(listS3Objects(bucket, prefix)));
+      if (!objectsResult.ok) {
+        L.warn("failed to list user storage objects", {
+          userId,
+          prefix,
+          error: objectsResult.error,
+        });
+        continue;
+      }
+
+      if (objectsResult.value.length === 0) {
+        continue;
+      }
+
+      const deleteResult = await settle(
+        get(
+          deleteS3Objects(
+            bucket,
+            objectsResult.value.map((object) => {
+              return object.key;
+            }),
+          ),
+        ),
+      );
+      if (!deleteResult.ok) {
+        L.warn("failed to delete user storage objects", {
+          userId,
+          prefix,
+          error: deleteResult.error,
+        });
+      }
+    }
+  });
+}
+
+function deleteOrgS3Data(db: Db, orgId: string): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const storageRows = await db
+      .select({ s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(eq(storages.orgId, orgId));
+    await get(
+      deleteObjectsForPrefixes(
+        bucket,
+        storageRows.map((row) => {
+          return row.s3Prefix;
+        }),
       ),
     );
-    if (!deleteResult.ok) {
-      L.warn("failed to delete user storage objects", {
-        userId: args.userId,
-        prefix,
-        error: deleteResult.error,
+
+    const exportRows = await db
+      .select({ s3Key: exportJobs.s3Key })
+      .from(exportJobs)
+      .where(and(eq(exportJobs.orgId, orgId), isNotNull(exportJobs.s3Key)));
+    const exportKeys = exportRows.flatMap((row) => {
+      return row.s3Key ? [row.s3Key] : [];
+    });
+    await get(deleteS3Objects(bucket, exportKeys));
+  });
+}
+
+function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const storageRows = await db
+      .select({ s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(eq(storages.userId, userId));
+    await get(
+      deleteUserObjectsForPrefixesBestEffort(
+        bucket,
+        storageRows.map((row) => {
+          return row.s3Prefix;
+        }),
+        userId,
+      ),
+    );
+
+    const exportRows = await db
+      .select({ s3Key: exportJobs.s3Key })
+      .from(exportJobs)
+      .where(and(eq(exportJobs.userId, userId), isNotNull(exportJobs.s3Key)));
+    const exportKeys = exportRows.flatMap((row) => {
+      return row.s3Key ? [row.s3Key] : [];
+    });
+    const deleteExportsResult = await settle(
+      get(deleteS3Objects(bucket, exportKeys)),
+    );
+    if (!deleteExportsResult.ok) {
+      L.warn("failed to delete user export objects", {
+        userId,
+        count: exportKeys.length,
+        error: deleteExportsResult.error,
       });
     }
-  }
-}
-
-async function deleteOrgS3Data(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly orgId: string;
-}): Promise<void> {
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const storageRows = await args.db
-    .select({ s3Prefix: storages.s3Prefix })
-    .from(storages)
-    .where(eq(storages.orgId, args.orgId));
-  await deleteObjectsForPrefixes({
-    get: args.get,
-    bucket,
-    prefixes: storageRows.map((row) => {
-      return row.s3Prefix;
-    }),
   });
-
-  const exportRows = await args.db
-    .select({ s3Key: exportJobs.s3Key })
-    .from(exportJobs)
-    .where(and(eq(exportJobs.orgId, args.orgId), isNotNull(exportJobs.s3Key)));
-  const exportKeys = exportRows.flatMap((row) => {
-    return row.s3Key ? [row.s3Key] : [];
-  });
-  await args.get(deleteS3Objects(bucket, exportKeys));
-}
-
-async function deleteUserS3Data(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly userId: string;
-}): Promise<void> {
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const storageRows = await args.db
-    .select({ s3Prefix: storages.s3Prefix })
-    .from(storages)
-    .where(eq(storages.userId, args.userId));
-  await deleteUserObjectsForPrefixesBestEffort({
-    get: args.get,
-    bucket,
-    userId: args.userId,
-    prefixes: storageRows.map((row) => {
-      return row.s3Prefix;
-    }),
-  });
-
-  const exportRows = await args.db
-    .select({ s3Key: exportJobs.s3Key })
-    .from(exportJobs)
-    .where(
-      and(eq(exportJobs.userId, args.userId), isNotNull(exportJobs.s3Key)),
-    );
-  const exportKeys = exportRows.flatMap((row) => {
-    return row.s3Key ? [row.s3Key] : [];
-  });
-  const deleteExportsResult = await settle(
-    args.get(deleteS3Objects(bucket, exportKeys)),
-  );
-  if (!deleteExportsResult.ok) {
-    L.warn("failed to delete user export objects", {
-      userId: args.userId,
-      count: exportKeys.length,
-      error: deleteExportsResult.error,
-    });
-  }
 }
 
 async function deleteOrgData(db: Db, orgId: string): Promise<void> {
@@ -545,9 +548,6 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
   await db.delete(composeJobs).where(eq(composeJobs.userId, userId));
   await db
-    .delete(connectorSessions)
-    .where(eq(connectorSessions.userId, userId));
-  await db
     .delete(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.userId, userId));
   await db.delete(deviceCodes).where(eq(deviceCodes.userId, userId));
@@ -562,9 +562,9 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
 export const cleanupClerkDeletedOrg$ = command(
   async ({ get, set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
-    await cleanupOrgExternalServices({ set, db, orgId, signal });
+    await set(cleanupOrgExternalServices$, db, orgId, signal);
     signal.throwIfAborted();
-    await deleteOrgS3Data({ get, db, orgId });
+    await get(deleteOrgS3Data(db, orgId));
     signal.throwIfAborted();
     await deleteOrgData(db, orgId);
   },
@@ -573,9 +573,9 @@ export const cleanupClerkDeletedOrg$ = command(
 export const cleanupClerkDeletedUser$ = command(
   async ({ get, set }, userId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
-    await cleanupUserExternalServices({ set, db, userId, signal });
+    await set(cleanupUserExternalServices$, db, userId, signal);
     signal.throwIfAborted();
-    await deleteUserS3Data({ get, db, userId });
+    await get(deleteUserS3Data(db, userId));
     signal.throwIfAborted();
     await deleteUserData(db, userId);
   },

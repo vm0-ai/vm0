@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.34.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.5...guest-agent-v0.34.0) (2026-06-01)
+
+
+### Features
+
+* add canonical workspace drive foundation ([#15688](https://github.com/vm0-ai/vm0/issues/15688)) ([593460a](https://github.com/vm0-ai/vm0/commit/593460ab818768ae75d1fd658a7211a2120a956b))
+
+## [0.33.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.4...guest-agent-v0.33.5) (2026-06-01)
+
+## [0.33.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.3...guest-agent-v0.33.4) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
+## [0.33.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.2...guest-agent-v0.33.3) (2026-05-31)
+
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.1...guest-agent-v0.33.2) (2026-05-31)
+
+
+### Performance Improvements
+
+* **guest-agent:** move event payloads without cloning ([#15558](https://github.com/vm0-ai/vm0/issues/15558)) ([9ebd3fa](https://github.com/vm0-ai/vm0/commit/9ebd3fa72143c81e2a8e5233227f96f51c26fb02))
+
+## [0.33.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.0...guest-agent-v0.33.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* classify codex session limits as usage limits ([#15371](https://github.com/vm0-ai/vm0/issues/15371)) ([f37823f](https://github.com/vm0-ai/vm0/commit/f37823f8e5d8bbb2f2a278bf3e85365b0a91ed52))
+
 ## [0.33.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.32.26...guest-agent-v0.33.0) (2026-05-28)
 
 

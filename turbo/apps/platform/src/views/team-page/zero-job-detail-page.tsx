@@ -21,6 +21,7 @@ import {
   IconMessageCircle,
   IconWand,
 } from "@tabler/icons-react";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   Button,
   Tabs,
@@ -109,6 +110,7 @@ import {
   permSavingType$,
   setPermSavingType$,
 } from "../../signals/zero-page/zero-job-detail-page.ts";
+import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -402,6 +404,212 @@ function PermissionRow({
   );
 }
 
+function PermissionListSkeleton() {
+  return (
+    <div className="mx-auto max-w-[900px]">
+      <div className="zero-card animate-pulse">
+        {Array.from({ length: 4 }, (_, i) => {
+          return (
+            <div
+              key={i}
+              className={cn(
+                "flex items-center gap-3 px-5 py-4",
+                i < 3 && "border-b border-border/50",
+              )}
+            >
+              <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
+              <div className="flex-1 space-y-1.5">
+                <span className="block h-4 w-24 rounded bg-muted/50" />
+                <span className="block h-3 w-48 rounded bg-muted/30" />
+              </div>
+              <span className="h-4 w-7 rounded-full bg-muted/50" />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function NoConnectedConnectors() {
+  return (
+    <>
+      <div className="zero-card py-8 flex flex-col items-center gap-3">
+        <img
+          src={noConnectorImg}
+          alt="No connectors"
+          className="h-20 w-20 object-contain opacity-80"
+        />
+        <p className="text-sm text-muted-foreground text-center">
+          No connected services yet. Head to the{" "}
+          <Link
+            pathname="/connectors"
+            className="font-medium text-foreground hover:underline"
+          >
+            Connectors
+          </Link>{" "}
+          page to connect your first service.
+        </p>
+      </div>
+      <JobCustomConnectorsSection />
+    </>
+  );
+}
+
+function ConnectedConnectorPermissions({
+  filteredConnectors,
+  authorizedSet,
+  search,
+  setSearch,
+  searchActive,
+  setSearchActive,
+  savingType,
+  canManagePermissions,
+  onToggle,
+  onManage,
+}: {
+  filteredConnectors: readonly ConnectorTypeWithStatus[];
+  authorizedSet: ReadonlySet<string>;
+  search: string;
+  setSearch: (value: string) => void;
+  searchActive: boolean;
+  setSearchActive: (active: boolean) => void;
+  savingType: string | null;
+  canManagePermissions: boolean;
+  onToggle: (type: ConnectorType, checked: boolean) => Promise<void>;
+  onManage: (type: ConnectorType) => void;
+}) {
+  return (
+    <>
+      <div className="zero-card">
+        <div className="relative border-b border-border/50">
+          <div
+            className={cn(
+              "px-5 pt-4 pb-3 pr-12 text-sm text-muted-foreground transition-opacity duration-150",
+              searchActive && "opacity-0 select-none",
+            )}
+            aria-hidden={searchActive}
+          >
+            When running, the agent can securely use your connected services.
+            You can manage or turn off access anytime.
+          </div>
+          {searchActive && (
+            <div className="absolute inset-0 flex items-center gap-2 px-5">
+              <IconSearch
+                size={14}
+                stroke={1.5}
+                className="shrink-0 text-muted-foreground"
+              />
+              <input
+                ref={(el) => {
+                  return el?.focus();
+                }}
+                type="text"
+                placeholder="Find connectors..."
+                value={search}
+                onChange={(e) => {
+                  return setSearch(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setSearch("");
+                    setSearchActive(false);
+                  }
+                }}
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setSearchActive(false);
+                }}
+                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                aria-label="Close search"
+              >
+                <IconX size={14} stroke={1.5} />
+              </button>
+            </div>
+          )}
+          {!searchActive && (
+            <button
+              type="button"
+              onClick={() => {
+                return setSearchActive(true);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              aria-label="Find connectors"
+            >
+              <IconSearch size={14} stroke={1.5} />
+            </button>
+          )}
+        </div>
+        {filteredConnectors.length > 0 ? (
+          filteredConnectors.map((c, i) => {
+            return (
+              <PermissionRow
+                key={c.type}
+                connector={c}
+                enabled={authorizedSet.has(c.type)}
+                onToggle={onDomEventFn(async (checked) => {
+                  await onToggle(c.type, checked);
+                })}
+                loading={savingType === c.type}
+                showManage={
+                  canManagePermissions && hasConnectorPermissions(c.type)
+                }
+                onManage={() => {
+                  return onManage(c.type);
+                }}
+                isLast={i === filteredConnectors.length - 1}
+              />
+            );
+          })
+        ) : (
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            No results for &ldquo;{search}&rdquo;
+          </p>
+        )}
+      </div>
+
+      <JobCustomConnectorsSection />
+    </>
+  );
+}
+
+function AgentPermissionsDrawer({
+  agentId,
+  connectorType,
+  displayName,
+  initialPolicies,
+  readOnly,
+  onApply,
+  onClose,
+}: {
+  agentId: string;
+  connectorType: ConnectorType | null;
+  displayName: string;
+  initialPolicies: FirewallPolicies;
+  readOnly: boolean;
+  onApply: (policies: FirewallPolicies) => Promise<void>;
+  onClose: () => void;
+}) {
+  if (!connectorType) {
+    return null;
+  }
+  return (
+    <PermissionsDrawer
+      agentId={agentId}
+      connectorType={connectorType}
+      displayName={displayName}
+      initialPolicies={initialPolicies}
+      readOnly={readOnly}
+      onApply={onApply}
+      onClose={onClose}
+    />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
@@ -443,6 +651,7 @@ function JobPermissionsTab({
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const adminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+  const canManagePermissions = isAdmin;
 
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
@@ -452,7 +661,7 @@ function JobPermissionsTab({
   });
   const authorizedSet = new Set(authorizedConnectors);
 
-  const handleToggle = async (type: string, checked: boolean) => {
+  const handleToggle = async (type: ConnectorType, checked: boolean) => {
     if (savingType !== null) {
       return;
     }
@@ -471,167 +680,44 @@ function JobPermissionsTab({
   };
 
   if (allTypesLoadable.state !== "hasData" || connectorsLoading) {
-    return (
-      <div className="mx-auto max-w-[900px]">
-        <div className="zero-card animate-pulse">
-          {Array.from({ length: 4 }, (_, i) => {
-            return (
-              <div
-                key={i}
-                className={cn(
-                  "flex items-center gap-3 px-5 py-4",
-                  i < 3 && "border-b border-border/50",
-                )}
-              >
-                <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
-                <div className="flex-1 space-y-1.5">
-                  <span className="block h-4 w-24 rounded bg-muted/50" />
-                  <span className="block h-3 w-48 rounded bg-muted/30" />
-                </div>
-                <span className="h-4 w-7 rounded-full bg-muted/50" />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
+    return <PermissionListSkeleton />;
   }
 
   return (
     <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       {connectedConnectors.length === 0 ? (
-        <>
-          <div className="zero-card py-8 flex flex-col items-center gap-3">
-            <img
-              src={noConnectorImg}
-              alt="No connectors"
-              className="h-20 w-20 object-contain opacity-80"
-            />
-            <p className="text-sm text-muted-foreground text-center">
-              No connected services yet. Head to the{" "}
-              <Link
-                pathname="/connectors"
-                className="font-medium text-foreground hover:underline"
-              >
-                Connectors
-              </Link>{" "}
-              page to connect your first service.
-            </p>
-          </div>
-          <JobCustomConnectorsSection />
-        </>
+        <NoConnectedConnectors />
       ) : (
         <>
-          <div className="zero-card">
-            <div className="relative border-b border-border/50">
-              <div
-                className={cn(
-                  "px-5 pt-4 pb-3 pr-12 text-sm text-muted-foreground transition-opacity duration-150",
-                  searchActive && "opacity-0 select-none",
-                )}
-                aria-hidden={searchActive}
-              >
-                When running, the agent can securely use your connected
-                services. You can manage or turn off access anytime.
-              </div>
-              {searchActive && (
-                <div className="absolute inset-0 flex items-center gap-2 px-5">
-                  <IconSearch
-                    size={14}
-                    stroke={1.5}
-                    className="shrink-0 text-muted-foreground"
-                  />
-                  <input
-                    ref={(el) => {
-                      return el?.focus();
-                    }}
-                    type="text"
-                    placeholder="Find connectors..."
-                    value={search}
-                    onChange={(e) => {
-                      return setSearch(e.target.value);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        setSearch("");
-                        setSearchActive(false);
-                      }
-                    }}
-                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch("");
-                      setSearchActive(false);
-                    }}
-                    className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    aria-label="Close search"
-                  >
-                    <IconX size={14} stroke={1.5} />
-                  </button>
-                </div>
-              )}
-              {!searchActive && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    return setSearchActive(true);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  aria-label="Find connectors"
-                >
-                  <IconSearch size={14} stroke={1.5} />
-                </button>
-              )}
-            </div>
-            {filteredConnectors.length > 0 ? (
-              filteredConnectors.map((c, i) => {
-                return (
-                  <PermissionRow
-                    key={c.type}
-                    connector={c}
-                    enabled={authorizedSet.has(c.type)}
-                    onToggle={onDomEventFn(async (checked) => {
-                      await handleToggle(c.type, checked);
-                    })}
-                    loading={savingType === c.type}
-                    showManage={isAdmin && hasConnectorPermissions(c.type)}
-                    onManage={() => {
-                      return setConnectorType(c.type);
-                    }}
-                    isLast={i === filteredConnectors.length - 1}
-                  />
-                );
-              })
-            ) : (
-              <p className="px-5 py-4 text-sm text-muted-foreground">
-                No results for &ldquo;{search}&rdquo;
-              </p>
-            )}
-          </div>
-
-          <JobCustomConnectorsSection />
-
-          {connectorType && (
-            <PermissionsDrawer
-              agentId={agentId}
-              connectorType={connectorType}
-              displayName={displayName}
-              initialPolicies={permissionPolicies ?? {}}
-              readOnly={!isAdmin}
-              onApply={async (policies) => {
-                const saved = await savePermPol(agentId, policies, pageSignal);
-                if (saved !== undefined) {
-                  reloadDetail();
-                }
-                toast.success("Permissions updated");
-              }}
-              onClose={() => {
-                return setConnectorType(null);
-              }}
-            />
-          )}
+          <ConnectedConnectorPermissions
+            filteredConnectors={filteredConnectors}
+            authorizedSet={authorizedSet}
+            search={search}
+            setSearch={setSearch}
+            searchActive={searchActive}
+            setSearchActive={setSearchActive}
+            savingType={savingType}
+            canManagePermissions={canManagePermissions}
+            onToggle={handleToggle}
+            onManage={setConnectorType}
+          />
+          <AgentPermissionsDrawer
+            agentId={agentId}
+            connectorType={connectorType}
+            displayName={displayName}
+            initialPolicies={permissionPolicies ?? {}}
+            readOnly={!canManagePermissions}
+            onApply={async (policies) => {
+              const saved = await savePermPol(agentId, policies, pageSignal);
+              if (saved !== undefined) {
+                reloadDetail();
+              }
+              toast.success("Permissions updated");
+            }}
+            onClose={() => {
+              return setConnectorType(null);
+            }}
+          />
         </>
       )}
     </div>

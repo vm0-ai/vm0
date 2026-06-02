@@ -5,8 +5,9 @@ use std::time::Duration;
 use vsock_proto::{
     self, ExecControlNonce, ExecControlPolicy, ExecControlStatus, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecStartEncodeRequest, ExecTermination, ExecTimeoutPolicy,
-    MSG_ERROR, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT, MSG_EXEC_RESULT,
-    MSG_EXEC_START, MSG_EXEC_STARTED, MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED,
+    MSG_ERROR, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_CONTROL_RESULT, MSG_EXEC_OUTPUT,
+    MSG_EXEC_RESULT, MSG_EXEC_START, MSG_EXEC_STARTED, MSG_OPERATIONS_QUIESCED,
+    MSG_OPERATIONS_RESUMED,
 };
 
 use super::support::*;
@@ -81,6 +82,19 @@ fn send_exec_control(
             .unwrap();
     let msg = vsock_proto::encode(MSG_EXEC_CONTROL, request_seq, &payload).unwrap();
     stream.write_all(&msg).unwrap();
+}
+
+#[test]
+fn malformed_exec_control_payload_returns_error_and_keeps_connection_open() {
+    let (handle, mut host_stream) = start_guest_connection();
+
+    send_control_payload(&mut host_stream, MSG_EXEC_CONTROL, 121, b"bad");
+    let error = read_error_response(&mut host_stream, 121);
+    assert_eq!(error, "invalid payload: exec_control target_seq truncated");
+
+    assert_ping_pong(&mut host_stream, 122);
+
+    finish_guest_connection(handle, host_stream);
 }
 
 fn assert_exec_control_result(
@@ -1466,6 +1480,38 @@ fn exec_operation_explicit_cancel_kills_child_and_returns_cancelled() {
     assert_eq!(result.termination, ExecTermination::Cancelled);
     wait_for_pid_exit(pid, "exec operation explicit cancel");
     child_guard.disarm();
+
+    finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn malformed_exec_cancel_payload_still_cancels_and_keeps_connection_open() {
+    let pid_path = unique_pid_path("exec-operation-malformed-cancel");
+    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
+    let (handle, mut host_stream) = start_guest_connection();
+
+    let command = format!("echo $$ > '{}'; sleep 60", pid_path.as_str());
+    send_exec_start(
+        &mut host_stream,
+        115,
+        &command,
+        LONG_RUNNING_EXEC_TIMEOUT_MS,
+        ExecOutputPolicy::Capture { limit_bytes: 64 },
+        ExecOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    let pid = child_guard.read_pid();
+    assert!(
+        pid_alive(pid),
+        "exec operation child should be running before malformed cancel"
+    );
+
+    send_control_payload(&mut host_stream, MSG_EXEC_CANCEL, 115, b"unexpected");
+    let (_chunks, result) = read_exec_result(&mut host_stream, 115);
+
+    assert_eq!(result.termination, ExecTermination::Cancelled);
+    wait_for_pid_exit(pid, "exec operation malformed cancel");
+    child_guard.disarm();
+    assert_ping_pong(&mut host_stream, 116);
 
     finish_guest_connection(handle, host_stream);
 }

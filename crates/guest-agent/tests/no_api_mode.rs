@@ -101,13 +101,13 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         .expect("heartbeat should exit promptly after shutdown in no-API mode")
         .expect("heartbeat task should not panic")?;
 
-    let mut event = json!({
+    let event = json!({
         "type": "system",
         "subtype": "init",
         "session_id": "session-no-api",
         "cwd": tmp.path().to_string_lossy(),
     });
-    guest_agent::events::send_event(&http, &mut event, 1, &masker).await?;
+    guest_agent::events::send_event(&http, event, 1, &masker).await?;
     assert_eq!(
         std::fs::read_to_string(guest_agent::paths::session_id_file())?,
         "session-no-api"

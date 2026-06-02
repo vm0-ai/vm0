@@ -28,7 +28,6 @@ interface ImageOptions {
   style?: string;
   skipStyle?: boolean;
   all?: boolean;
-  json?: boolean;
 }
 
 interface ImageGenerateCommandConfig {
@@ -186,7 +185,6 @@ export function createImageGenerateCommand(
       "--skip-style",
       "Opt out of styled image generation for this invocation",
     )
-    .option("--json", "Print metadata as JSON")
     .addHelpText("after", () => {
       const styles = listImageStyles();
       return `
@@ -245,7 +243,6 @@ ${formatRegistryListing(styles, "image styles")}`;
           provider: options.provider,
           prompt: options.prompt,
           all: options.all,
-          json: options.json,
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
@@ -280,11 +277,6 @@ ${formatRegistryListing(styles, "image styles")}`;
             ],
           });
 
-          if (options.json) {
-            console.log(JSON.stringify(packet));
-            return;
-          }
-
           console.log(packet.instructions);
           return;
         }
@@ -316,11 +308,6 @@ ${formatRegistryListing(styles, "image styles")}`;
           inputFidelity,
           imagePromptStrength,
         });
-
-        if (options.json) {
-          console.log(JSON.stringify(result));
-          return;
-        }
 
         console.log(chalk.green(`✓ Image generated: ${result.url}`));
         console.log(chalk.dim(`  File: ${result.filename}`));

@@ -12,6 +12,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildLinearAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -22,6 +23,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeLinearCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,7 +50,13 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshLinearToken(clientId, clientSecret, args.refreshToken);
+      return refreshLinearToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: {

@@ -7,6 +7,7 @@ import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
@@ -17,7 +18,7 @@ import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
-import { now, nowDate } from "../../../lib/time";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
@@ -48,6 +49,7 @@ interface GitHubIssuesPayload {
   readonly issueNumber: number;
   readonly agentId: string;
   readonly existingSessionId?: string;
+  readonly sessionContinuityEnabled?: boolean;
   readonly triggerCommentId?: string;
   readonly triggerReactionId?: string;
   readonly triggerCommentBody?: string;
@@ -200,7 +202,11 @@ async function seedGithubInstallation(args: {
 async function seedRunAndCallback(args: {
   readonly fixture: GitHubIssuesFixture;
   readonly payload: GitHubIssuesPayload;
-}): Promise<{ readonly runId: string; readonly callbackId: string }> {
+}): Promise<{
+  readonly runId: string;
+  readonly callbackId: string;
+  readonly sessionId: string;
+}> {
   const createdAt = new Date(now() - 60_000);
   const { runId } = await store.set(
     seedRun$,
@@ -215,6 +221,15 @@ async function seedRunAndCallback(args: {
     },
     context.signal,
   );
+  const writeDb = store.set(writeDb$);
+  const [run] = await writeDb
+    .select({ sessionId: agentRuns.sessionId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    throw new Error("seedRunAndCallback: run not found");
+  }
   const { callbackId } = await store.set(
     seedAgentRunCallback$,
     {
@@ -224,7 +239,7 @@ async function seedRunAndCallback(args: {
     },
     context.signal,
   );
-  return { runId, callbackId };
+  return { runId, callbackId, sessionId: run.sessionId };
 }
 
 async function seedAgentSession(
@@ -237,7 +252,6 @@ async function seedAgentSession(
       userId: fixture.userId,
       orgId: fixture.orgId,
       agentComposeId: fixture.composeId,
-      updatedAt: nowDate(),
     })
     .returning({ id: agentSessions.id });
   if (!row) {
@@ -803,11 +817,10 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       issueNumber: 42,
       agentId: fixture.composeId,
     };
-    const { runId, callbackId } = await seedRunAndCallback({
+    const { runId, callbackId, sessionId } = await seedRunAndCallback({
       fixture,
       payload,
     });
-    const session = await seedAgentSession(fixture);
     completedOutput();
 
     const response = await postSignedCallback({
@@ -824,7 +837,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       issueNumber: payload.issueNumber,
     });
     expect(issueSession).not.toBeNull();
-    expect(issueSession!.agentSessionId).toBe(session.id);
+    expect(issueSession!.agentSessionId).toBe(sessionId);
     expect(issueSession!.userId).toBe(fixture.userId);
     expect(issueSession!.lastCommentId).toBe(GITHUB_COMMENT_ID);
   });
@@ -854,11 +867,10 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       agentSessionId: staleSession.id,
       lastCommentId: "old-comment-id",
     });
-    const { runId, callbackId } = await seedRunAndCallback({
+    const { runId, callbackId, sessionId } = await seedRunAndCallback({
       fixture,
       payload,
     });
-    const newSession = await seedAgentSession(fixture);
     completedOutput();
 
     const response = await postSignedCallback({
@@ -875,8 +887,58 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       issueNumber: payload.issueNumber,
     });
     expect(issueSession).not.toBeNull();
-    expect(issueSession!.agentSessionId).toBe(newSession.id);
+    expect(issueSession!.agentSessionId).toBe(sessionId);
     expect(issueSession!.lastCommentId).toBe(GITHUB_COMMENT_ID);
+  });
+
+  it("does not replace a GitHub issue session when session continuity is disabled", async () => {
+    const fixture = await track(seedFixture());
+    const installation = await seedGithubInstallation({
+      composeId: fixture.composeId,
+    });
+    if (!installation.installationId) {
+      throw new Error("Expected active installation to have remote ID");
+    }
+    mockGithubAppEnv();
+    setupGithubApiMocks(installation.installationId);
+    const staleSession = await seedAgentSession(fixture);
+    const payload: GitHubIssuesPayload = {
+      installationId: installation.id,
+      repo: "test-org/test-repo",
+      issueNumber: 42,
+      agentId: fixture.composeId,
+      sessionContinuityEnabled: false,
+    };
+    await seedIssueSession({
+      userId: fixture.userId,
+      installationId: installation.id,
+      repo: payload.repo,
+      issueNumber: payload.issueNumber,
+      agentSessionId: staleSession.id,
+      lastCommentId: "old-comment-id",
+    });
+    const { runId, callbackId } = await seedRunAndCallback({
+      fixture,
+      payload,
+    });
+    completedOutput();
+
+    const response = await postSignedCallback({
+      callbackId,
+      runId,
+      status: "completed",
+      payload,
+    });
+
+    expect(response.status).toBe(200);
+    const issueSession = await findIssueSession({
+      installationId: installation.id,
+      repo: payload.repo,
+      issueNumber: payload.issueNumber,
+    });
+    expect(issueSession).not.toBeNull();
+    expect(issueSession!.agentSessionId).toBe(staleSession.id);
+    expect(issueSession!.lastCommentId).toBe("old-comment-id");
   });
 
   it("updates lastCommentId for an existing issue session on completed runs", async () => {

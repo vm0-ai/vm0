@@ -33,6 +33,18 @@ const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
+function makeThread(id: string, title: string, updatedAt: string) {
+  return {
+    id,
+    title,
+    agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+    createdAt: updatedAt,
+    updatedAt,
+    isRead: true,
+    running: false,
+  };
+}
+
 function mockBaseAPIs(
   overrides: {
     threads?: {
@@ -117,6 +129,91 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
       ).toBeInTheDocument();
       expect(within(sidebar).getByText("Fix the bug")).toBeInTheDocument();
     });
+  });
+});
+
+describe("zero sidebar - chat thread pagination", () => {
+  it("loads additional chat threads from the sidebar", async () => {
+    const observedQueries: { agentId?: string; cursor?: string }[] = [];
+
+    setMockTeam([
+      {
+        id: DEFAULT_AGENT_ID,
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    server.use(
+      mockApi(chatThreadsContract.list, ({ query, respond }) => {
+        observedQueries.push({
+          agentId: query.agentId,
+          cursor: query.cursor,
+        });
+        if (query.cursor === "cursor-1") {
+          return respond(200, {
+            pinned: [],
+            threads: [
+              makeThread(
+                "thread-2",
+                "Second loaded chat",
+                "2026-03-09T00:00:00Z",
+              ),
+            ],
+            hasMore: false,
+            nextCursor: null,
+            totalCount: 2,
+          });
+        }
+        return respond(200, {
+          pinned: [],
+          threads: [
+            makeThread(
+              "thread-1",
+              "First visible chat",
+              "2026-03-10T00:00:00Z",
+            ),
+          ],
+          hasMore: true,
+          nextCursor: "cursor-1",
+          totalCount: 2,
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      expect(
+        within(sidebar).getByText("First visible chat"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByTestId("sidebar-chat-threads-load-more"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(getSidebar()).getByTestId("sidebar-chat-threads-load-more"));
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      expect(
+        within(sidebar).getByText("Second loaded chat"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).queryByTestId("sidebar-chat-threads-load-more"),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      observedQueries.some((query) => {
+        return (
+          query.agentId === DEFAULT_AGENT_ID && query.cursor === "cursor-1"
+        );
+      }),
+    ).toBeTruthy();
   });
 });
 

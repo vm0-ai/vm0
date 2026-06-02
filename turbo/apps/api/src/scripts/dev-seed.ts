@@ -117,6 +117,12 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.26), 1_000_000],
     ["tokens.cache_creation", usd(1.4), 1_000_000],
   ]),
+  ...usageGroup("model", "MiniMax-M3", [
+    ["tokens.input", usd(0.6), 1_000_000],
+    ["tokens.output", usd(2.4), 1_000_000],
+    ["tokens.cache_read", usd(0.12), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
   ...usageGroup("model", "MiniMax-M2.7", [
     ["tokens.input", usd(0.3), 1_000_000],
     ["tokens.output", usd(1.2), 1_000_000],

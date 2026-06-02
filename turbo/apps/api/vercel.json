@@ -5,6 +5,10 @@
   "installCommand": "cd ../.. && pnpm install",
   "crons": [
     {
+      "path": "/api/cron/computer-use-screenshot-cleanup",
+      "schedule": "30 2 * * *"
+    },
+    {
       "path": "/api/internal/cron/aggregate-model-stats",
       "schedule": "12 * * * *"
     }

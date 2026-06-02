@@ -20,6 +20,7 @@ export const mailchimpProvider: AuthCodeConnectorAuthProvider<"mailchimp"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMailchimpCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,

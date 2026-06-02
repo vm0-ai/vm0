@@ -31,7 +31,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     const client = setupApp({ context })(chatThreadMessagesContract);
     const response = await accept(
       client.list({
-        params: { threadId: "some-thread-id" },
+        params: { threadId: randomUUID() },
         query: {},
         headers: {},
       }),

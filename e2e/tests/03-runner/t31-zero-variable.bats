@@ -51,7 +51,6 @@ agents:
   ${AGENT_EXPAND}:
     description: "E2E test agent for variable expansion"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       MY_VAR: "\${{ vars.${VAR_NAME_EXPAND} }}"
     volumes:
@@ -71,7 +70,6 @@ agents:
   ${AGENT_OVERRIDE}:
     description: "E2E test agent for variable override"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       MY_VAR: "\${{ vars.${VAR_NAME_OVERRIDE} }}"
     volumes:

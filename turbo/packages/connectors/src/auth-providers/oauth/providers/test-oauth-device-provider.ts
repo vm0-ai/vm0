@@ -13,6 +13,7 @@ export const testOauthDeviceProvider: DeviceAuthConnectorAuthProvider<"test-oaut
         const { clientId } = args;
         return await startTestOAuthDeviceAuth({
           clientId,
+          deviceAuthGrant: args.deviceAuthGrant,
           scopes: args.scopes,
         });
       },
@@ -20,6 +21,7 @@ export const testOauthDeviceProvider: DeviceAuthConnectorAuthProvider<"test-oaut
         const { clientId } = args;
         return await pollTestOAuthDeviceAuth({
           clientId,
+          deviceAuthGrant: args.deviceAuthGrant,
           deviceCode: args.deviceCode,
         });
       },

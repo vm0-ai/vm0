@@ -21,6 +21,7 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeNotionCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -43,7 +44,13 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshNotionToken(clientId, clientSecret, args.refreshToken);
+      return refreshNotionToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

@@ -51,7 +51,7 @@ function CustomConnectorPermissionRow({
         </div>
         <div className="truncate text-xs text-muted-foreground font-mono">
           {connector.prefixes[0]}
-          {!connector.hasSecret && " — no credential set"}
+          {!connector.hasSecret && " — no secret set"}
         </div>
       </div>
       <LoadingSwitch
@@ -60,9 +60,7 @@ function CustomConnectorPermissionRow({
         onCheckedChange={onToggle}
         ariaLabel={`Authorize ${connector.displayName} for this agent`}
       />
-      {!connector.hasSecret && (
-        <span className="sr-only">No credential set</span>
-      )}
+      {!connector.hasSecret && <span className="sr-only">No secret set</span>}
     </div>
   );
 }
@@ -103,7 +101,7 @@ export function JobCustomConnectorsSection() {
     <div className="zero-card">
       <div className="px-5 pt-4 pb-3 text-sm text-muted-foreground border-b border-border/50">
         Custom connectors registered by your org. Only connectors you have
-        supplied a credential for can be toggled on.
+        supplied a secret for can be toggled on.
       </div>
       {connectors.map((c, i) => {
         return (

@@ -52,7 +52,6 @@ agents:
   ${AGENT_NAME}-placeholder:
     description: "SerpApi auth.query placeholder test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       SERPAPI_TOKEN: \${{ secrets.SERPAPI_TOKEN }}
 EOF
@@ -81,7 +80,6 @@ agents:
   ${AGENT_NAME}-proxy:
     description: "SerpApi auth.query proxy test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       SERPAPI_TOKEN: \${{ secrets.SERPAPI_TOKEN }}
 EOF

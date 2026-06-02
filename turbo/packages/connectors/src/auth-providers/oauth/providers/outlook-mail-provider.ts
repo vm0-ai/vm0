@@ -13,6 +13,7 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildMicrosoftAuthorizationUrl(
+          args.authCodeGrant,
           "outlook-mail",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeMicrosoftOAuthCode(
+          args.authCodeGrant,
           "outlook-mail",
           clientId,
           clientSecret,
@@ -55,10 +57,12 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshMicrosoftToken(
+          args.tokenUrl,
           "outlook-mail",
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

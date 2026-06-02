@@ -17,7 +17,6 @@ import { cliAuthRoutes } from "./routes/cli-auth";
 import { cliAuthTestRoutes } from "./routes/cli-auth-test";
 import type { SignalRouteHandler } from "./context/route";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
-import { connectorsTypeAuthorizeRoutes } from "./routes/connectors-type-authorize";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "./routes/cron-aggregate-usage";
@@ -26,6 +25,7 @@ import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteSchedulesRoutes } from "./routes/cron-execute-schedules";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
+import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
 import { cronSyncSkillsRoutes } from "./routes/cron-sync-skills";
 import { cronTelegramCleanupRoutes } from "./routes/cron-telegram-cleanup";
 import { deviceTokenRoutes } from "./routes/device-token";
@@ -46,6 +46,7 @@ import { internalEventConsumerAgentPhoneTypingRoutes } from "./routes/internal-e
 import { internalEventConsumerAxiomRoutes } from "./routes/internal-event-consumers-axiom";
 import { internalEventConsumerChatAssistantRoutes } from "./routes/internal-event-consumers-chat-assistant";
 import { internalEventConsumerTelegramTypingRoutes } from "./routes/internal-event-consumers-telegram-typing";
+import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { runnersRoutes } from "./routes/runners";
@@ -64,6 +65,7 @@ import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
 import { zeroAgentsRoutes } from "./routes/zero-agents";
 import { zeroApiKeysRoutes } from "./routes/zero-api-keys";
+import { zeroAttributionRoutes } from "./routes/zero-attribution";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 import { zeroBillingCheckoutRoutes } from "./routes/zero-billing-checkout";
 import { zeroBillingCreditCheckoutRoutes } from "./routes/zero-billing-credit-checkout";
@@ -149,6 +151,7 @@ import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRunsRoutes } from "./routes/zero-usage-runs";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
+import { zeroUserPermissionGrantsRoutes } from "./routes/zero-user-permission-grants";
 import { zeroUserModelPreferenceRoutes } from "./routes/zero-user-model-preference";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "./routes/zero-voice-io-speech";
@@ -201,6 +204,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...internalEventConsumerAxiomRoutes,
   ...internalEventConsumerChatAssistantRoutes,
   ...internalEventConsumerTelegramTypingRoutes,
+  ...legacyFileRoutes,
   ...logsSearchRoutes,
   ...usageRoutes,
   ...userExportRoutes,
@@ -224,7 +228,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentRunsReadRoutes,
   ...agentRunTelemetryRoutes,
   ...agentSessionsRoutes,
-  ...connectorsTypeAuthorizeRoutes,
   ...connectorsTypeCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
@@ -233,6 +236,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronExecuteSchedulesRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
+  ...cronComputerUseScreenshotCleanupRoutes,
   ...cronSyncSkillsRoutes,
   ...cronTelegramCleanupRoutes,
   ...deviceTokenRoutes,
@@ -241,6 +245,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroAgentInstructionsRoutes,
   ...zeroAgentsRoutes,
   ...zeroApiKeysRoutes,
+  ...zeroAttributionRoutes,
   ...zeroBillingAutoRechargeRoutes,
   ...zeroBillingCheckoutRoutes,
   ...zeroBillingCreditCheckoutRoutes,
@@ -298,6 +303,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroPermissionAccessRequestsRoutes,
   ...zeroPermissionPoliciesRoutes,
   ...zeroPushSubscriptionsRoutes,
+  ...zeroUserPermissionGrantsRoutes,
   ...zeroUserPreferencesRoutes,
   ...zeroUserModelPreferenceRoutes,
   ...zeroSecretsRoutes,

@@ -17,6 +17,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { Cron } from "croner";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
@@ -28,6 +29,10 @@ import { now, nowDate } from "../external/time";
 import { isValidTimeZone, settle } from "../utils";
 import { decryptStoredSecretsMap } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import {
+  resolveDefaultModelFirstPin,
+  resolveModelFirstProviderAdmission,
+} from "./zero-model-selection.service";
 import { visibleJoinedZeroAgentCondition } from "./zero-agent-data.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 
@@ -70,9 +75,6 @@ async function scheduleResponse(
     consecutiveFailures: schedule.consecutiveFailures,
     createdAt: schedule.createdAt.toISOString(),
     updatedAt: schedule.updatedAt.toISOString(),
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
 }
 
@@ -441,9 +443,6 @@ async function updateExistingSchedule(
       nextRunAt: args.nextRunAt,
       consecutiveFailures: 0,
       updatedAt: args.currentTime,
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
     })
     .where(eq(zeroAgentSchedules.id, args.existingId))
     .returning();
@@ -488,9 +487,6 @@ async function insertNewSchedule(
       consecutiveFailures: 0,
       createdAt: args.currentTime,
       updatedAt: args.currentTime,
-      modelProviderId: null,
-      selectedModel: null,
-      preferPersonalProvider: false,
     })
     .returning();
 
@@ -1071,6 +1067,24 @@ export const runScheduleNow$ = command(
       }
     }
 
+    const modelPin = await resolveDefaultModelFirstPin(
+      db,
+      schedule.orgId,
+      schedule.userId,
+    );
+    signal.throwIfAborted();
+    const providerAdmission = await resolveModelFirstProviderAdmission({
+      db,
+      orgId: schedule.orgId,
+      userId: schedule.userId,
+      modelPin,
+      requestedModelProvider: undefined,
+    });
+    signal.throwIfAborted();
+    if (providerAdmission.error) {
+      return { kind: "run_error", response: providerAdmission.error };
+    }
+
     const result = await set(
       createZeroRun$,
       {
@@ -1083,9 +1097,16 @@ export const runScheduleNow$ = command(
         body: {
           prompt: schedule.prompt,
           agentId: schedule.agentId,
+          ...(providerAdmission.effectiveModelProvider
+            ? { modelProvider: providerAdmission.effectiveModelProvider }
+            : {}),
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "schedule",
+        modelProviderId: modelPin.modelProviderId ?? undefined,
+        modelProviderCredentialScope:
+          modelPin.modelProviderCredentialScope ?? undefined,
+        selectedModelOverride: modelPin.selectedModel ?? undefined,
         appendSystemPrompt: buildScheduleAppendSystemPrompt(schedule),
         callbacks: buildScheduleCallbacks(schedule),
         zeroRunMetadata: { scheduleId: schedule.id },
@@ -1097,6 +1118,17 @@ export const runScheduleNow$ = command(
     if (result.status !== 201) {
       return { kind: "run_error", response: result };
     }
+
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: providerAdmission.effectiveModelProvider,
+        modelProviderId: modelPin.modelProviderId,
+        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+        selectedModel: modelPin.selectedModel,
+      })
+      .where(eq(zeroRuns.id, result.body.runId));
+    signal.throwIfAborted();
 
     await db
       .update(zeroAgentSchedules)

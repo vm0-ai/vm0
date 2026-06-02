@@ -4,8 +4,8 @@
 //! Route constants under [`generated::routes`] are generated from the
 //! TypeScript supported-route registry. Request/response DTOs under
 //! [`generated::types`] are generated from the selected Rust DTO registry.
-//! Narrow cross-language contract constants are generated into focused modules
-//! such as [`generated::model_providers`]. Regenerate all bindings with:
+//! Narrow cross-language contract constants are generated under
+//! [`generated::constants`]. Regenerate all bindings with:
 //!
 //! ```bash
 //! cd turbo && pnpm -F @vm0/api-contracts generate:rust

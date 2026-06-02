@@ -56,11 +56,12 @@ export {
   type ComposesMetadataContract,
   type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
-  MOUNT_PATH_TEMPLATE,
   agentNameSchema,
   volumeConfigSchema,
   artifactConfigSchema,
   artifactsArraySchema,
+  MOUNT_PATH_TEMPLATE,
+  expandMountPath,
   agentDefinitionSchema,
   agentComposeContentSchema,
   agentComposeApiContentSchema,
@@ -285,10 +286,6 @@ export {
   type EmailUnsubscribeQuery,
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
-export {
-  connectorsTypeAuthorizeContract,
-  type ConnectorsTypeAuthorizeContract,
-} from "./connectors-type-authorize";
 export {
   connectorsTypeCallbackContract,
   type ConnectorsTypeCallbackContract,
@@ -645,6 +642,8 @@ export {
   secretConnectorMetadataSchema,
   secretConnectorMetadataMapSchema,
   storageEntrySchema,
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_WORKING_DIR,
   DEFAULT_PROFILE,
   artifactEntrySchema,
   storageManifestSchema,
@@ -700,7 +699,7 @@ export {
   CONNECTOR_DISPLAY_CATEGORY_META,
   CONNECTOR_DISPLAY_CATEGORY_ORDER,
   type ConnectorType,
-  type OAuthGrantConnectorType,
+  type ConnectorAuthProviderType,
   type ConnectorConfig,
   type ConnectorDisplayCategory,
   type ConnectorDisplayCategoryGroup,
@@ -709,28 +708,19 @@ export {
   type ConnectorEnvBindings,
 } from "@vm0/connectors/connectors";
 export {
-  getConnectorSecretNames,
-  getConnectorEnvBindings,
+  getConnectorOwnedSecretNames,
+  getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
-  isGoogleOAuthConnector,
-  hasRequiredScopes,
-  getScopeDiff,
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
-  connectorSessionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,
-  connectorSessionResponseSchema,
-  connectorSessionStatusResponseSchema,
   scopeDiffResponseSchema,
   type ScopeDiffResponse,
-  type ConnectorSessionStatus,
   type ConnectorResponse,
   type ConnectorListResponse,
-  type ConnectorSessionResponse,
-  type ConnectorSessionStatusResponse,
 } from "./connector-schemas";
 
 export {
@@ -891,23 +881,33 @@ export {
   type ZeroUserConnectorsContract,
 } from "./user-connectors";
 export {
+  zeroUserPermissionGrantsContract,
+  userPermissionGrantActionSchema,
+  userPermissionGrantTtlSecondsSchema,
+  userPermissionGrantResponseSchema,
+  listUserPermissionGrantsQuerySchema,
+  upsertUserPermissionGrantRequestSchema,
+  type UserPermissionGrantAction,
+  type UserPermissionGrantTtlSeconds,
+  type UserPermissionGrantResponse,
+  type ListUserPermissionGrantsQuery,
+  type UpsertUserPermissionGrantRequest,
+  type ZeroUserPermissionGrantsContract,
+} from "./zero-user-permission-grants";
+export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
-  zeroConnectorApiTokenContract,
+  zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
-  zeroConnectorSessionsContract,
-  zeroConnectorSessionByIdContract,
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
-  type ZeroConnectorApiTokenContract,
+  type ZeroConnectorManualGrantContract,
   type ZeroConnectorOauthDeviceAuthSessionContract,
   type ZeroConnectorsSearchContract,
-  type ZeroConnectorSessionsContract,
-  type ZeroConnectorSessionByIdContract,
 } from "./zero-connectors";
 export {
   codexDeviceAuthScopeSchema,
@@ -1113,6 +1113,14 @@ export {
   type GithubOauthInstallQuery,
 } from "./github-oauth";
 export {
+  adAttributionMetadataSchema,
+  zeroAttributionContract,
+  type AdAttributionMetadata,
+  type RecordSignupAttributionRequest,
+  type RecordSignupAttributionResponse,
+  type ZeroAttributionContract,
+} from "./zero-attribution";
+export {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
@@ -1244,6 +1252,10 @@ export {
   computerUseCommandKindSchema,
   computerUseCommandResponseSchema,
   computerUseHostSchema,
+  isStoredScreenshotPointer,
+  isExpiredScreenshotPointer,
+  type StoredScreenshotPointer,
+  type ClientScreenshotPointer,
   type ComputerUseAuditEvent,
   type ComputerUseAuditEventListResponse,
   type ComputerUseCommandCreateResponse,

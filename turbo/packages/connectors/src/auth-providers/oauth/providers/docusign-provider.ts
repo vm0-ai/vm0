@@ -11,6 +11,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildDocuSignAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -27,6 +28,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
         );
       }
       const result = await exchangeDocuSignCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -54,7 +56,13 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshDocuSignToken(clientId, clientSecret, args.refreshToken);
+      return refreshDocuSignToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

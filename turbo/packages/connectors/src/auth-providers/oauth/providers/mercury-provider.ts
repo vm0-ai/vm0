@@ -11,6 +11,7 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildMercuryAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMercuryCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -47,7 +49,13 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshMercuryToken(clientId, clientSecret, args.refreshToken);
+      return refreshMercuryToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

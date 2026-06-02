@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
+
 export const supabase = {
   supabase: {
     label: "Supabase",
@@ -12,15 +14,15 @@ export const supabase = {
         featureFlag: FeatureSwitchKey.SupabaseConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Supabase to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.supabase.com/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "organizations:read",
             "projects:read",
@@ -38,6 +40,7 @@ export const supabase = {
         },
         access: {
           kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           accessToken: "SUPABASE_ACCESS_TOKEN",
           refreshToken: "SUPABASE_REFRESH_TOKEN",
           envBindings: {

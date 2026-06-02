@@ -8,10 +8,17 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { connectors } from "@vm0/db/schema/connector";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { secrets } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
+import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -33,9 +40,6 @@ export interface ScheduleSeed {
   readonly timezone?: string;
   readonly retryStartedAt?: Date | null;
   readonly consecutiveFailures?: number;
-  readonly modelProviderId?: string | null;
-  readonly selectedModel?: string | null;
-  readonly preferPersonalProvider?: boolean;
 }
 
 export interface SchedulesScenarioValues {
@@ -104,9 +108,6 @@ async function seedSchedule(
     enabled: args.seed.enabled ?? true,
     retryStartedAt: args.seed.retryStartedAt ?? null,
     consecutiveFailures: args.seed.consecutiveFailures ?? 0,
-    modelProviderId: args.seed.modelProviderId ?? null,
-    selectedModel: args.seed.selectedModel ?? null,
-    preferPersonalProvider: args.seed.preferPersonalProvider ?? false,
   });
   return scheduleId;
 }
@@ -260,14 +261,53 @@ export const deleteSchedulesScenario$ = command(
       .where(eq(agentComposeVersions.composeId, fixture.composeId));
     signal.throwIfAborted();
     await writeDb
+      .delete(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.orgId, fixture.orgId),
+          eq(userPermissionGrants.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    await writeDb
+      .delete(userConnectors)
+      .where(
+        and(
+          eq(userConnectors.orgId, fixture.orgId),
+          eq(userConnectors.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    await writeDb
       .delete(zeroAgents)
       .where(eq(zeroAgents.id, fixture.composeId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(modelProviders)
+      .where(eq(modelProviders.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.orgId, fixture.orgId),
+          eq(userFeatureSwitches.userId, fixture.userId),
+        ),
+      );
     signal.throwIfAborted();
     await writeDb
       .delete(agentComposes)
       .where(eq(agentComposes.id, fixture.composeId));
     signal.throwIfAborted();
     await writeDb.delete(userCache).where(eq(userCache.userId, fixture.userId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(orgModelPolicies)
+      .where(eq(orgModelPolicies.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb
       .delete(orgMetadata)

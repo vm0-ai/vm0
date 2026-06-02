@@ -12,15 +12,15 @@ export const testOauthDevice = {
         featureFlag: FeatureSwitchKey.TestOauthConnector,
         label: "OAuth Device Authorization",
         helpText: "Test-only OAuth device provider.",
+        client: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "test-oauth-device-client",
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: "/api/test/oauth-provider/device/code",
           tokenUrl: "/api/test/oauth-provider/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "public",
-            clientId: "test-oauth-device-client",
-          },
           scopes: ["read"],
         },
         access: {

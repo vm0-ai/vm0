@@ -52,7 +52,6 @@ agents:
   ${AGENT_NAME}:
     description: "ChatGPT OAuth refresh rotation test"
     framework: codex
-    working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
 }

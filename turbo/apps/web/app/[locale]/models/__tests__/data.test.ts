@@ -26,4 +26,12 @@ describe("models page data", () => {
       }),
     ).toBe(true);
   });
+
+  it("keeps both official MiniMax M3 and retained M2 entries documented", () => {
+    const reasoningIds = MODELS.filter(isReasoningModel).map((m) => {
+      return m.modelId;
+    });
+    expect(reasoningIds).toContain("MiniMax-M3");
+    expect(reasoningIds).toContain("MiniMax-M2.7");
+  });
 });

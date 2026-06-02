@@ -87,6 +87,7 @@ impl FirecrackerRuntime {
             memory_path: output.memory(),
             cow_path: output.cow(),
             drive_bind_path: work.cow_device_bind(),
+            workspace_drive_bind_path: work.workspace_device_bind(),
             vsock_bind_dir: sock.vsock_dir(),
         }
     }

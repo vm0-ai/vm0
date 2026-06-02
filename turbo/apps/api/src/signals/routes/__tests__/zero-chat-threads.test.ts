@@ -1,5 +1,6 @@
 import { createStore } from "ccstate";
 import { randomUUID } from "node:crypto";
+import { createApp } from "../../../app-factory";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
@@ -29,6 +30,60 @@ import { seedRun$ } from "./helpers/zero-usage-insight";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+const malformedChatThreadIdCases = [
+  { method: "GET", path: "/api/zero/chat-threads/:id", paramName: "id" },
+  { method: "PATCH", path: "/api/zero/chat-threads/:id", paramName: "id" },
+  { method: "DELETE", path: "/api/zero/chat-threads/:id", paramName: "id" },
+  {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/mark-read",
+    paramName: "id",
+  },
+  { method: "POST", path: "/api/zero/chat-threads/:id/pin", paramName: "id" },
+  {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/unpin",
+    paramName: "id",
+  },
+  {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/rename",
+    paramName: "id",
+  },
+  {
+    method: "GET",
+    path: "/api/zero/chat-threads/:id/messages",
+    paramName: "threadId",
+  },
+  {
+    method: "GET",
+    path: "/api/zero/chat-threads/:id/artifacts",
+    paramName: "threadId",
+  },
+  {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/artifacts",
+    paramName: "threadId",
+  },
+] as const;
+
+describe("chat thread id path validation", () => {
+  it.each(malformedChatThreadIdCases)(
+    "$method $path returns 400 before auth or DB access",
+    async ({ method, path, paramName }) => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request(path, { method });
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as {
+        readonly error: { readonly code: string; readonly message: string };
+      };
+      expect(body.error.code).toBe("BAD_REQUEST");
+      expect(body.error.message).toContain(paramName);
+    },
+  );
+});
 
 describe("GET /api/zero/chat-threads/:id", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
@@ -140,7 +195,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
     });
   });
 
-  it("returns 404 for malformed thread id", async () => {
+  it("returns 400 for malformed thread id", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const client = setupApp({ context })(chatThreadByIdContract);
     const response = await accept(
@@ -148,11 +203,10 @@ describe("GET /api/zero/chat-threads/:id", () => {
         params: { id: "123" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [404],
+      [400],
     );
-    expect(response.body).toStrictEqual({
-      error: { message: "Chat thread not found", code: "NOT_FOUND" },
-    });
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("id");
   });
 
   it("returns thread detail metadata only", async () => {

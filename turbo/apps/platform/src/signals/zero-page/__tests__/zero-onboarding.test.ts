@@ -5,8 +5,10 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
   setZeroAgentName$,
+  setZeroRole$,
   setZeroWorkspaceName$,
   toggleZeroConnector$,
+  zeroSelectedRole$,
 } from "../zero-onboarding.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
@@ -20,6 +22,7 @@ interface SetupPayload {
   sound?: string;
   avatarUrl?: string;
   selectedConnectors?: string[];
+  role?: string;
 }
 
 function setupHandler(capturePayload?: (payload: SetupPayload) => void) {
@@ -49,6 +52,8 @@ describe("completeZeroOnboarding$", () => {
     expect(capturedPayload!.displayName).toBe("My Assistant");
     expect(capturedPayload!.sound).toBe("professional");
     expect(capturedPayload!.avatarUrl).toBe("preset:0");
+    expect(capturedPayload!.role).toBe("founder");
+    expect(context.store.get(zeroSelectedRole$)).toBe("founder");
   });
 
   it("should send selectedConnectors when user selects connectors", async () => {
@@ -87,6 +92,25 @@ describe("completeZeroOnboarding$", () => {
 
     expect(capturedPayload).toBeTruthy();
     expect(capturedPayload!.workspaceName).toBe("My Workspace");
+  });
+
+  it("should send role when user selects a different role", async () => {
+    let capturedPayload: SetupPayload | null = null;
+
+    server.use(
+      setupHandler((payload) => {
+        capturedPayload = payload;
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+
+    context.store.set(setZeroRole$, "engineer");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload!.role).toBe("engineer");
   });
 
   it("should not send workspaceName when empty", async () => {

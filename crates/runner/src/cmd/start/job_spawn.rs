@@ -41,6 +41,7 @@ pub(super) struct JobProfile {
     pub(super) profile_name: String,
     pub(super) vcpu: u32,
     pub(super) memory_mb: u32,
+    pub(super) workspace_disk_mb: u32,
     pub(super) budget_lease: BudgetLease,
     pub(super) restore_guest_state: bool,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
@@ -105,6 +106,7 @@ pub(super) fn spawn_job(
     let params = executor::JobParams {
         vcpu,
         memory_mb,
+        workspace_disk_mb: job_profile.workspace_disk_mb,
         restore_guest_state: job_profile.restore_guest_state,
         device_rate_limits: job_profile.device_rate_limits.clone(),
     };

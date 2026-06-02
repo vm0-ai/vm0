@@ -124,13 +124,10 @@ export interface ChatThread {
 
 /**
  * First-page sidebar fetch: pinned (full) + up to 25 non-pinned. Returns the
- * raw page so derived signals (chatThreads$, hasMore, totalCount) can share a
+ * raw page so derived signals (chatThreads$, hasMore, nextCursor) can share a
  * single network round-trip.
- *
- * The /chats All Threads page does its own cursor-paginated state separately
- * so loading more there never re-renders the sidebar.
  */
-export const chatThreadsFirstPage$ = computed(async (get) => {
+const chatThreadsFirstPage$ = computed(async (get) => {
   get(reloadChatThreadsCounter$);
 
   const agentId = await get(currentChatAgentId$);
@@ -158,20 +155,16 @@ export const chatThreads$ = computed(
 
 /**
  * True when more non-pinned threads exist beyond the sidebar's 25-row cap.
- * Drives the "All Threads" link rendered at the bottom of the sidebar list.
+ * Drives the "Load more" button rendered at the bottom of the sidebar list.
  */
 export const chatThreadsHasMore$ = computed(async (get) => {
   const page = await get(chatThreadsFirstPage$);
   return page?.hasMore ?? false;
 });
 
-/**
- * Total count of non-pinned threads in scope. Used to label the "All Threads
- * (N)" entry so users know the size of the full list before clicking.
- */
-export const chatThreadsTotalCount$ = computed(async (get) => {
+export const chatThreadsNextCursor$ = computed(async (get) => {
   const page = await get(chatThreadsFirstPage$);
-  return page?.totalCount ?? 0;
+  return page?.nextCursor ?? null;
 });
 
 /**

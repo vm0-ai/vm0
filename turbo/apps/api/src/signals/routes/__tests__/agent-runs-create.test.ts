@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import {
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+  CANONICAL_WORKING_DIR,
+} from "@vm0/api-contracts/contracts/runners";
+import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
+import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -34,7 +39,6 @@ import { createApp } from "../../../app-factory";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { decryptSecretsMap } from "../../services/crypto.utils";
 import { now, nowDate } from "../../external/time";
 import {
   createFixtureTracker,
@@ -49,7 +53,10 @@ import {
   deleteOrgModelProviders$,
   seedOrgModelProvider$,
 } from "./helpers/zero-model-providers";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import {
+  decryptSecretsMapForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -575,7 +582,9 @@ describe("POST /api/agent/runs", () => {
       MY_VAR: "value",
       API_KEY: "secret-value",
     });
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toStrictEqual({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toStrictEqual({
       API_KEY: "secret-value",
     });
     expect(executionContext.storageManifest.storages).toMatchObject([
@@ -640,7 +649,9 @@ describe("POST /api/agent/runs", () => {
       readonly encryptedSecrets: string | null;
     };
     expect(executionContext.environment.API_KEY).toBe("persisted-secret-value");
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toStrictEqual({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toStrictEqual({
       API_KEY: "persisted-secret-value",
     });
   });
@@ -820,7 +831,7 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment.MERCURY_TOKEN).toBe(
       "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
     );
-    const decryptedSecrets = decryptSecretsMap(
+    const decryptedSecrets = decryptSecretsMapForTests(
       executionContext.encryptedSecrets,
     );
     expect(decryptedSecrets).toMatchObject({
@@ -987,7 +998,9 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment.USER_ZENDESK_SUBDOMAIN).toBe(
       "user-subdomain",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       ZENDESK_API_TOKEN: "connector-zendesk-token",
     });
     const zendesk = executionContext.firewalls.find((firewall) => {
@@ -1124,7 +1137,9 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job?.executionContext as {
       readonly encryptedSecrets: string | null;
     };
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       WEREAD_TOKEN: "weread-real-token",
       DECLARED_SECRET: "declared-value",
     });
@@ -1180,7 +1195,9 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment.WEREAD_TOKEN).toBe(
       "wrk-CoffeeSafeLocalCoffeeSafeLocalCoffee",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toStrictEqual({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toStrictEqual({
       WEREAD_TOKEN: "weread-real-token",
     });
     expect(
@@ -1190,7 +1207,7 @@ describe("POST /api/agent/runs", () => {
     ).toBeTruthy();
   });
 
-  it("accepts OAuth connector-provided env secrets during compose validation", async () => {
+  it("accepts connector-provided env secrets during compose validation", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     await db.insert(connectors).values({
@@ -1238,7 +1255,9 @@ describe("POST /api/agent/runs", () => {
     expect(executionContext.environment.GITHUB_TOKEN).toBe(
       "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",
     );
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       GITHUB_TOKEN: "github-real-token",
     });
   });
@@ -1291,7 +1310,9 @@ describe("POST /api/agent/runs", () => {
       ),
       ANTHROPIC_MODEL: "claude-sonnet-4-6",
     });
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       ANTHROPIC_API_KEY: "test-secret-value",
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
@@ -1346,7 +1367,9 @@ describe("POST /api/agent/runs", () => {
       OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
       OPENAI_MODEL: "openai/gpt-5.5",
     });
-    expect(decryptSecretsMap(executionContext.encryptedSecrets)).toMatchObject({
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
       OPENROUTER_API_KEY: "test-secret-value",
     });
   });
@@ -1412,7 +1435,7 @@ describe("POST /api/agent/runs", () => {
       { name: "artifact", mountPath: "/mnt/work" },
       {
         name: "memory",
-        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
       },
     ]);
     expect(
@@ -1438,7 +1461,9 @@ describe("POST /api/agent/runs", () => {
       fixture: fx,
       overrides: { volumes: ["kb:/mnt/kb"] },
       volumes: { kb: { name: "knowledge-base", version: "latest" } },
-      artifacts: [{ name: "compose-artifact", mount_path: "/mnt/artifact" }],
+      artifacts: [
+        { name: "compose-artifact", mount_path: MOUNT_PATH_TEMPLATE },
+      ],
     });
 
     const response = await accept(
@@ -1490,12 +1515,12 @@ describe("POST /api/agent/runs", () => {
         }),
     ).toStrictEqual([
       {
-        mountPath: "/mnt/artifact",
+        mountPath: CANONICAL_WORKING_DIR,
         name: "compose-artifact",
         version: artifactVersion,
       },
       {
-        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
         name: "memory",
         version: expect.any(String),
       },

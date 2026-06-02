@@ -788,6 +788,17 @@
   margin: 32px 0;
 }
 
+/* Videos in content */
+.blog-post-content video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 32px 0;
+  background: var(--code-input-bg);
+}
+
 /* Task lists (GFM support) */
 .blog-post-content input[type="checkbox"] {
   margin-right: 8px;

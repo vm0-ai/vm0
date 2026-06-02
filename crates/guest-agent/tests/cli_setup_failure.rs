@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` and
 //! `guest_agent::paths` cache values in process-wide `LazyLock`s.
 
+mod common;
+
 use guest_agent::error::AgentError;
 use std::io::ErrorKind;
 use std::time::Duration;
@@ -17,7 +19,6 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
 
     unsafe {
         std::env::set_var("VM0_RUN_ID", format!("{run_prefix}/child"));
-        std::env::set_var("VM0_WORKING_DIR", tmp.path());
         std::env::set_var("VM0_PROMPT", "@exit-after-result");
         std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
         std::env::set_var("VM0_API_TOKEN", "");
@@ -28,6 +29,7 @@ async fn agent_log_open_failure_happens_before_cli_spawn() -> Result<(), Box<dyn
         );
         std::env::set_var("HOME", tmp.path());
     }
+    common::ensure_canonical_workspace_for_test()?;
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = tokio::spawn(async { Ok(()) });

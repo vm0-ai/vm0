@@ -42,6 +42,7 @@ const setupInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       avatarUrl: body.data.avatarUrl,
       selectedConnectors: body.data.selectedConnectors ?? [],
       timezone: body.data.timezone,
+      onboardingRole: body.data.role,
       onboardingPaymentPending: true,
     },
     signal,

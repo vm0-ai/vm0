@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -57,6 +58,20 @@ function zeroToken(args: {
   });
 }
 
+async function seedOrgTier(
+  orgId: string,
+  tier: "free" | "pro-suspend",
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(orgMetadata)
+    .values({ orgId, tier, credits: 10_000 })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { tier, credits: 10_000 },
+    });
+}
+
 describe("POST /api/zero/uploads/complete", () => {
   const trackThread = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
     return store.set(deleteZeroChatThread$, fixture, context.signal);
@@ -106,6 +121,7 @@ describe("POST /api/zero/uploads/complete", () => {
         { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
         context.signal,
       );
+      await seedOrgTier(fixture.orgId, "free");
       const { runId } = await store.set(
         seedRun$,
         {
@@ -133,6 +149,7 @@ describe("POST /api/zero/uploads/complete", () => {
       { orgId, userId, role: "admin" },
       context.signal,
     );
+    await seedOrgTier(orgId, "free");
     const { composeId } = await store.set(
       seedCompose$,
       { orgId, userId },
@@ -339,6 +356,24 @@ describe("POST /api/zero/uploads/complete", () => {
     expect(response.body).toStrictEqual({
       error: { message: "Uploaded file not found", code: "NOT_FOUND" },
     });
+    await expect(findUploadedFiles(fileId)).resolves.toHaveLength(0);
+  });
+
+  it("rejects suspended orgs before completing the upload", async () => {
+    const fixture = await seedRunFixture({});
+    await seedOrgTier(fixture.orgId, "pro-suspend");
+    const fileId = randomUUID();
+    const token = zeroToken(fixture);
+
+    const response = await accept(
+      apiClient().complete({
+        headers: authHeaders(token),
+        body: { id: fileId },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
     await expect(findUploadedFiles(fileId)).resolves.toHaveLength(0);
   });
 

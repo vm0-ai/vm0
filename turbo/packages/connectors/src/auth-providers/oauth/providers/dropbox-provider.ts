@@ -11,6 +11,7 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildDropboxAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeDropboxCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -47,7 +49,13 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshDropboxToken(clientId, clientSecret, args.refreshToken);
+      return refreshDropboxToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

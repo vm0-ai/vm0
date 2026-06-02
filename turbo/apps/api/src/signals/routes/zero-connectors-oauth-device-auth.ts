@@ -21,6 +21,13 @@ const startConnectorOauthDeviceAuthSessionInner$ = command(
     const params = get(
       pathParamsOf(zeroConnectorOauthDeviceAuthSessionContract.create),
     );
+    const body = await get(
+      bodyResultOf(zeroConnectorOauthDeviceAuthSessionContract.create),
+    );
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
 
     return await set(
       startConnectorOauthDeviceAuthSession$,
@@ -28,6 +35,7 @@ const startConnectorOauthDeviceAuthSessionInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         type: params.type,
+        authMethod: body.data.authMethod,
       },
       signal,
     );

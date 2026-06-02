@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const INTERVALS_ICU_AUTHORIZATION_URL = "https://intervals.icu/oauth/authorize";
@@ -20,11 +20,11 @@ interface IntervalsIcuTokenResult {
  * Scopes are comma-separated per the Intervals.icu API.
  */
 export function buildIntervalsIcuAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("intervals-icu");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -42,11 +42,11 @@ export function buildIntervalsIcuAuthorizationUrl(
  * Tokens are long-lived — no refresh token is returned.
  */
 export async function exchangeIntervalsIcuCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
 ): Promise<IntervalsIcuTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("intervals-icu");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {

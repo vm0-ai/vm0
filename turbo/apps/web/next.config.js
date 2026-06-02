@@ -104,6 +104,9 @@ const nextConfig = {
     // App URLs
     NEXT_PUBLIC_APP_URL: process.env.APP_URL,
 
+    // Paid-onboarding origin (so.vm0.ai) allowed as a post-auth redirect target
+    NEXT_PUBLIC_PAID_ONBOARDING_URL: process.env.PAID_ONBOARDING_URL,
+
     // Blog configuration
     NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,
     NEXT_PUBLIC_STRAPI_URL: process.env.STRAPI_URL,
@@ -152,8 +155,6 @@ const nextConfig = {
     optimizePackageImports: [
       "next-intl",
       "@tabler/icons-react",
-      "@aws-sdk/client-s3",
-      "@aws-sdk/s3-request-presigner",
       "@radix-ui/react-dialog",
       "@radix-ui/react-popover",
       "@radix-ui/react-select",

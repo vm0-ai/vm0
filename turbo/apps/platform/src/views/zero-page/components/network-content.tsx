@@ -351,6 +351,12 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     entry.response_size,
     formatSize(entry.response_size),
   );
+  addField(
+    out,
+    "Browser User-Agent",
+    entry.browser_user_agent,
+    entry.browser_user_agent ? "Yes" : "No",
+  );
   addField(out, "DNS Event", entry.dns_event, formatValue(entry.dns_event));
   addField(
     out,
@@ -515,8 +521,19 @@ function NetworkLogRow({
         >
           {formatLatency(entry.latency_ms)}
         </TableCell>
-        <TableCell className="text-xs text-cyan-600 dark:text-cyan-400 truncate max-w-[120px]">
-          {entry.firewall_name ?? ""}
+        <TableCell className="w-[160px] max-w-[160px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 text-xs">
+            {entry.firewall_name ? (
+              <span className="min-w-0 max-w-full truncate text-cyan-600 dark:text-cyan-400">
+                {entry.firewall_name}
+              </span>
+            ) : null}
+            {entry.browser_user_agent ? (
+              <span className="shrink-0 font-mono text-muted-foreground">
+                browser
+              </span>
+            ) : null}
+          </div>
         </TableCell>
       </TableRow>
       {expanded && <NetworkLogRowDetail entry={entry} />}
@@ -569,7 +586,7 @@ export function NetworkContent({
             <TableHead>URL / Host</TableHead>
             <TableHead className="w-[60px]">Status</TableHead>
             <TableHead className="w-[80px]">Latency</TableHead>
-            <TableHead className="w-[100px]">Permission</TableHead>
+            <TableHead className="w-[160px]">Permission</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

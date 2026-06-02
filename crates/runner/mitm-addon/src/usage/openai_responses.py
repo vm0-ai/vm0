@@ -197,6 +197,8 @@ def create_openai_responses_sse_usage_extractor(
     usage: dict = {}
     parser = SseUsageScanner(
         _OpenAIResponsesSseUsageHandler(usage, on_parse_error=on_parse_error),
+        # Some compatible streams omit SSE event names and carry the terminal
+        # response type in the JSON payload.
         capture_data_without_event=True,
     )
     return parser, usage

@@ -11,6 +11,7 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildSupabaseAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -27,6 +28,7 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
         );
       }
       const result = await exchangeSupabaseCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -54,7 +56,13 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshSupabaseToken(clientId, clientSecret, args.refreshToken);
+      return refreshSupabaseToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

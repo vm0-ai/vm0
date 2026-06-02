@@ -7,11 +7,7 @@ import { z } from "zod";
 
 import {
   decryptPersistentSecretsMap,
-  decryptPersistentSecretsMapWithMode,
   encryptPersistentSecretsMap,
-  encryptPersistentSecretsMapWithMode,
-  type StoredSecretReadMode,
-  type StoredSecretWriteMode,
 } from "./crypto.utils";
 
 const QUEUED_RUNNER_JOB_PAYLOAD_KEY = "__api_runner_job_payload__";
@@ -42,22 +38,6 @@ export async function encryptQueuedRunnerJobPayload(
   return encrypted;
 }
 
-export async function encryptQueuedRunnerJobPayloadWithMode(
-  payload: QueuedRunnerJobPayload,
-  mode: StoredSecretWriteMode,
-): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMapWithMode(
-    {
-      [QUEUED_RUNNER_JOB_PAYLOAD_KEY]: JSON.stringify(payload),
-    },
-    mode,
-  );
-  if (!encrypted) {
-    throw new Error("Failed to encrypt queued runner job payload");
-  }
-  return encrypted;
-}
-
 export async function decryptQueuedRunnerJobPayload(
   encryptedParams: string | null,
   ctx: FeatureSwitchContext = {},
@@ -67,27 +47,6 @@ export async function decryptQueuedRunnerJobPayload(
   }
 
   const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
-  const rawPayload = decrypted?.[QUEUED_RUNNER_JOB_PAYLOAD_KEY];
-  if (!rawPayload) {
-    return null;
-  }
-
-  const parsedJson: unknown = JSON.parse(rawPayload);
-  return queuedRunnerJobPayloadSchema.parse(parsedJson);
-}
-
-export async function decryptQueuedRunnerJobPayloadWithMode(
-  encryptedParams: string | null,
-  mode: StoredSecretReadMode,
-): Promise<QueuedRunnerJobPayload | null> {
-  if (!encryptedParams) {
-    return null;
-  }
-
-  const decrypted = await decryptPersistentSecretsMapWithMode(
-    encryptedParams,
-    mode,
-  );
   const rawPayload = decrypted?.[QUEUED_RUNNER_JOB_PAYLOAD_KEY];
   if (!rawPayload) {
     return null;

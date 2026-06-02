@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
 import { generateCommand } from "../index";
+import { websiteCommand } from "../website";
 
 describe("zero generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -40,13 +41,9 @@ describe("zero generate website command", () => {
       "website",
       "--prompt",
       "observability launch site",
-      "--template-direction",
-      "launch",
       "--title",
       "Clearpath",
-      "--audience",
-      "small engineering teams",
-      "--site",
+      "--site-slug",
       "clearpath-demo",
     ]);
 
@@ -57,14 +54,13 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain("template:web-prototype-taste-editorial");
+    expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(
       "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
     );
-    expect(stdout).toContain("Template direction: launch");
-    expect(stdout).toContain("Audience: small engineering teams");
   });
 
   it("should accept --template and --design-system from the registry", async () => {
@@ -78,7 +74,7 @@ describe("zero generate website command", () => {
       "saas-landing",
       "--design-system",
       "stripe",
-      "--site",
+      "--site-slug",
       "saas-pricing-demo",
     ]);
 
@@ -125,44 +121,28 @@ describe("zero generate website command", () => {
     expect(stderr).toContain("Unknown design system");
   });
 
-  it("should print JSON resource selection metadata when --json is provided", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "website",
-      "--prompt",
-      "observability launch site",
-      "--site",
-      "clearpath-demo",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      type: "generation-source-selection",
-      kind: "website",
-      prompt: "observability launch site",
-      outputDir: "./generated/mockups/clearpath-demo",
-      site: "clearpath-demo",
-      hostCommand:
-        "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
+  it("should expose the shared HTML artifact flags in help", () => {
+    let helpOutput = "";
+    websiteCommand.configureOutput({
+      writeOut: (str: string) => {
+        helpOutput += str;
+      },
     });
-    expect(parsed.selection).toEqual(
-      expect.objectContaining({
-        candidates: expect.objectContaining({
-          skills: expect.any(Array),
-          templates: expect.arrayContaining([
-            expect.objectContaining({
-              id: "template:web-prototype-taste-editorial",
-            }),
-          ]),
-          designSystems: expect.any(Array),
-        }),
-      }),
-    );
-    expect(parsed.instructions).toEqual(
-      expect.stringContaining("## Stage 3: Author Artifact"),
-    );
+
+    websiteCommand.outputHelp();
+
+    expect(helpOutput).toContain("--prompt <text>");
+    expect(helpOutput).toContain("--site-slug <slug>");
+    expect(helpOutput).toContain("--title <text>");
+    expect(helpOutput).toContain("--design-system <id>");
+    expect(helpOutput).toContain("--template <id>");
+    expect(helpOutput).not.toContain("--json");
+    expect(helpOutput).not.toContain("--provider");
+    expect(helpOutput).not.toContain("--all");
+    expect(helpOutput).not.toContain("--images");
+    expect(helpOutput).not.toContain("--image-model");
+    expect(helpOutput).not.toContain("--template-direction");
+    expect(helpOutput).not.toContain("--audience");
+    expect(helpOutput).not.toContain("--site <slug>");
   });
 });

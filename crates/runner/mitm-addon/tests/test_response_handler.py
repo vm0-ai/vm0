@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+import pytest
 from mitmproxy import http
 from mitmproxy.test import tutils
 
@@ -51,13 +52,13 @@ class TestResponseHandler:
         )
 
         # Simulate tracked start time
-        mitm_addon._request_start_times[flow.id] = time.time() - 0.1
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic() - 0.1
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
         # Start time should be cleaned up
-        assert flow.id not in mitm_addon._request_start_times
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
         # Network log should be written
         lines = Path(log_path).read_text().splitlines()
@@ -92,6 +93,54 @@ class TestResponseHandler:
         assert entry["port"] == 9443
         assert entry["url"] == "https://target.example.com:9443/path"
 
+    @pytest.mark.parametrize(
+        ("raw_url", "expected_url"),
+        [
+            (
+                "https://target.example.com:9443/path?access_token=secret#fragment",
+                "https://target.example.com:9443/path",
+            ),
+            (
+                "https://[invalid.example.com/path?access_token=secret#fragment",
+                "https://[invalid.example.com/path",
+            ),
+            (
+                "https://user:pass@[invalid.example.com/path?access_token=secret#fragment",
+                "https://[invalid.example.com/path",
+            ),
+            (
+                "https://user:pass@target.example.com:9443/path?access_token=secret#fragment",
+                "https://target.example.com:9443/path",
+            ),
+        ],
+    )
+    def test_network_log_target_url_strips_query_and_fragment(
+        self, tmp_path, real_flow, mitm_ctx, raw_url, expected_url
+    ):
+        flow = real_flow(with_response=False, host="request.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = raw_url
+        flow.metadata[metadata_keys.NETWORK_LOG_TARGET] = {
+            "url": raw_url,
+            "host": "target.example.com",
+            "port": 9443,
+        }
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["host"] == "target.example.com"
+        assert entry["port"] == 9443
+        assert entry["url"] == expected_url
+        assert flow.metadata["original_url"] == raw_url
+        assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
+
     def test_logs_legacy_target_when_original_url_port_is_invalid(
         self, tmp_path, real_flow, mitm_ctx
     ):
@@ -101,7 +150,7 @@ class TestResponseHandler:
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
-        flow.metadata["original_url"] = "https://invalid.example.com:bad/path"
+        flow.metadata["original_url"] = "https://invalid.example.com:bad/path?secret=value#frag"
         flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
 
         with mitm_ctx():
@@ -130,7 +179,6 @@ class TestResponseHandler:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b"x" * 40)
         response_stream(flow)(b"y" * 60)
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -162,7 +210,6 @@ class TestResponseHandler:
         response_stream(flow)(body[123:])
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -187,8 +234,6 @@ class TestResponseHandler:
             status_code=200, headers=header_map({"content-length": "50000"})
         )
 
-        mitm_addon._request_start_times[flow.id] = time.time()
-
         with mitm_ctx():
             mitm_addon.response(flow)
 
@@ -211,8 +256,6 @@ class TestResponseHandler:
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
-
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -237,7 +280,6 @@ class TestResponseHandler:
         )
 
         mitm_addon.responseheaders(flow)
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -266,7 +308,6 @@ class TestResponseHandler:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(body[:123])
         response_stream(flow)(body[123:])
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -390,29 +431,29 @@ class TestResponseHandler:
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["firewall_rule"] = "domain:*.example.com"
-        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata["original_url"] = "https://api.example.com/fail?api_key=secret#frag"
 
         flow.response = tutils.tresp(status_code=500, headers=http.Headers())
 
         mitm_addon.response(flow)
 
         assert proxy_log.exists()
-        content = proxy_log.read_text()
-        assert "500" in content
-        assert "api.example.com" in content
+        entry = json.loads(proxy_log.read_text().strip())
+        assert entry["message"] == "Response 500: https://api.example.com/fail"
+        assert "api_key=secret" not in entry["message"]
+        assert "#frag" not in entry["message"]
 
     def test_pops_start_time_even_when_run_id_absent(self, real_flow, mitm_ctx):
         # If the request handler tracked this flow's start time but the
         # metadata ended up without vm_run_id (registry missing runId),
-        # response() must still pop the entry to avoid leaking into
-        # ``_request_start_times``.
+        # response() must still pop the timing state.
         flow = real_flow(with_response=False)
-        mitm_addon._request_start_times[flow.id] = 12345.0
+        flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
-        assert flow.id not in mitm_addon._request_start_times
+        assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
 
     def test_response_releases_streaming_state(self, tmp_path, real_flow, mitm_ctx):
         """The completed response hook must not retain parser/buffer closures."""
@@ -431,7 +472,6 @@ class TestResponseHandler:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"model":"claude-sonnet-4-6"}')
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -454,14 +494,14 @@ class TestResponseHandler:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}]}')
-        assert "x_json_response_finish" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         mitm_addon.response(flow)
 
         assert flow.response.stream is False
         assert "stream_buffer" not in flow.metadata
         assert "stream_buffer_state" not in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
         """Early-returning SSE flows should not retain parser closures."""
@@ -531,7 +571,6 @@ class TestResponseHandler:
         vm0_stream = response_stream(flow)
         vm0_stream(b'{"model":"claude-sonnet-4-6"}')
         flow.response.stream = external_stream
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         with mitm_ctx():
             mitm_addon.response(flow)

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const GUMROAD_AUTHORIZATION_URL = "https://gumroad.com/oauth/authorize";
@@ -28,11 +28,11 @@ interface GumroadRefreshResult {
 }
 
 export function buildGumroadAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("gumroad");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -45,12 +45,12 @@ export function buildGumroadAuthorizationUrl(
 }
 
 export async function exchangeGumroadCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<GumroadTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("gumroad");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -100,12 +100,14 @@ export async function exchangeGumroadCode(
 }
 
 export async function refreshGumroadToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<GumroadRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("gumroad");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

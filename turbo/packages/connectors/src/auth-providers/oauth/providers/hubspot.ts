@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const HUBSPOT_AUTHORIZATION_URL = "https://app.hubspot.com/oauth/authorize";
@@ -31,11 +31,11 @@ interface HubSpotRefreshResult {
  * Build HubSpot OAuth authorization URL.
  */
 export function buildHubSpotAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("hubspot");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -50,12 +50,12 @@ export function buildHubSpotAuthorizationUrl(
  * Exchange authorization code for access token and user info.
  */
 export async function exchangeHubSpotCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<HubSpotTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("hubspot");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -108,12 +108,14 @@ export async function exchangeHubSpotCode(
  * Access token expires_in: 1800s (30 min). Ref: https://developers.hubspot.com/docs/api-reference/auth-oauth-v1/guide
  */
 export async function refreshHubSpotToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<HubSpotRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("hubspot");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

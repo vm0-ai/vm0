@@ -16,13 +16,14 @@ import {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets } from "@vm0/db/schema/secret";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db$, writeDb$, type Db } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../external/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
+import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
 const L = logger("zero-model-provider.service");
@@ -129,9 +130,8 @@ type NotFoundResponse = ReturnType<typeof notFound>;
  *   - Multi-auth providers: deletes the per-auth-method secrets by name,
  *     then deletes the model_provider row explicitly.
  *
- * Non-transactional. A partial failure (secret-delete succeeds,
- * provider-delete fails) would leave an orphan provider row; transactional
- * rewrite is a separate follow-up.
+ * Uses the same auth-state advisory lock as runtime OAuth refresh so a refresh
+ * cannot recreate secrets after a delete.
  */
 export const deleteUserModelProvider$ = command(
   async (
@@ -145,57 +145,66 @@ export const deleteUserModelProvider$ = command(
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
 
-    const [provider] = await writeDb
-      .select({
-        id: modelProviders.id,
-        isDefault: modelProviders.isDefault,
-        secretId: modelProviders.secretId,
-        authMethod: modelProviders.authMethod,
-      })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, args.userId),
-          eq(modelProviders.type, args.type),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!provider) {
-      return notFound("Resource not found");
-    }
-
-    if (provider.secretId) {
-      await writeDb.delete(secrets).where(eq(secrets.id, provider.secretId));
+    return await writeDb.transaction(async (tx) => {
+      await lockModelProviderState(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+      });
       signal.throwIfAborted();
-    } else {
-      if (provider.authMethod) {
-        const secretNames = getSecretNamesForAuthMethod(
-          args.type,
-          provider.authMethod,
-        );
-        if (secretNames && secretNames.length > 0) {
-          await writeDb
-            .delete(secrets)
-            .where(
-              and(
-                eq(secrets.orgId, args.orgId),
-                eq(secrets.userId, args.userId),
-                inArray(secrets.name, [...secretNames]),
-              ),
-            );
-          signal.throwIfAborted();
-        }
+
+      const [provider] = await tx
+        .select({
+          id: modelProviders.id,
+          isDefault: modelProviders.isDefault,
+          secretId: modelProviders.secretId,
+          authMethod: modelProviders.authMethod,
+        })
+        .from(modelProviders)
+        .where(
+          and(
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, args.userId),
+            eq(modelProviders.type, args.type),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+
+      if (!provider) {
+        return notFound("Resource not found");
       }
-      await writeDb
-        .delete(modelProviders)
-        .where(eq(modelProviders.id, provider.id));
-      signal.throwIfAborted();
-    }
 
-    return undefined;
+      if (provider.secretId) {
+        await tx.delete(secrets).where(eq(secrets.id, provider.secretId));
+        signal.throwIfAborted();
+      } else {
+        if (provider.authMethod) {
+          const secretNames = getSecretNamesForAuthMethod(
+            args.type,
+            provider.authMethod,
+          );
+          if (secretNames && secretNames.length > 0) {
+            await tx
+              .delete(secrets)
+              .where(
+                and(
+                  eq(secrets.orgId, args.orgId),
+                  eq(secrets.userId, args.userId),
+                  inArray(secrets.name, [...secretNames]),
+                ),
+              );
+            signal.throwIfAborted();
+          }
+        }
+        await tx
+          .delete(modelProviders)
+          .where(eq(modelProviders.id, provider.id));
+        signal.throwIfAborted();
+      }
+
+      return undefined;
+    });
   },
 );
 
@@ -319,7 +328,14 @@ interface MultiAuthMetadata {
   readonly planType?: string | null;
 }
 
+interface EncryptedMultiAuthSecret {
+  readonly name: string;
+  readonly encryptedValue: string;
+  readonly description: string;
+}
+
 type MultiAuthInsertValues = typeof modelProviders.$inferInsert;
+type ModelProviderRow = typeof modelProviders.$inferSelect;
 
 function buildMultiAuthInsertValues(args: {
   type: ModelProviderType;
@@ -350,7 +366,7 @@ function buildMultiAuthConflictSet(
   const base: Record<string, unknown> = {
     authMethod,
     selectedModel: selectedModel ?? null,
-    updatedAt: nowDate(),
+    updatedAt: sql`clock_timestamp()`,
   };
   if (!metadata) {
     return base;
@@ -401,25 +417,17 @@ async function cleanupOldAuthMethodSecrets(
 
 async function upsertMultiAuthSecret(
   writeDb: Db,
-  args: {
+  args: EncryptedMultiAuthSecret & {
     readonly orgId: string;
     readonly userId: string;
-    readonly name: string;
-    readonly value: string;
-    readonly description: string;
-    readonly featureSwitchContext: FeatureSwitchContext;
   },
 ): Promise<void> {
-  const encryptedValue = await encryptStoredSecretValue(
-    args.value,
-    args.featureSwitchContext,
-  );
   await writeDb
     .insert(secrets)
     .values({
       userId: args.userId,
       name: args.name,
-      encryptedValue,
+      encryptedValue: args.encryptedValue,
       type: "model-provider",
       description: args.description,
       orgId: args.orgId,
@@ -427,7 +435,7 @@ async function upsertMultiAuthSecret(
     .onConflictDoUpdate({
       target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
       set: {
-        encryptedValue,
+        encryptedValue: args.encryptedValue,
         description: args.description,
         updatedAt: nowDate(),
       },
@@ -577,8 +585,30 @@ export const upsertUserModelProvider$ = command(
   },
 );
 
+async function encryptMultiAuthSecrets(
+  args: {
+    readonly type: ModelProviderType;
+    readonly authMethod: string;
+    readonly secretValues: Record<string, string>;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  signal: AbortSignal,
+): Promise<readonly EncryptedMultiAuthSecret[]> {
+  const description = `${MODEL_PROVIDER_TYPES[args.type].label} secret (${args.authMethod})`;
+  const encryptedSecrets: EncryptedMultiAuthSecret[] = [];
+  for (const [name, value] of Object.entries(args.secretValues)) {
+    const encryptedValue = await encryptStoredSecretValue(
+      value,
+      args.featureSwitchContext,
+    );
+    signal.throwIfAborted();
+    encryptedSecrets.push({ name, encryptedValue, description });
+  }
+  return encryptedSecrets;
+}
+
 /**
- * Loop over `secretValues` and persist each via `upsertMultiAuthSecret`.
+ * Loop over encrypted secrets and persist each via `upsertMultiAuthSecret`.
  * Extracted so the Command body stays under the per-function lint ceiling.
  */
 async function persistMultiAuthSecrets(
@@ -586,25 +616,120 @@ async function persistMultiAuthSecrets(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly type: ModelProviderType;
-    readonly authMethod: string;
-    readonly secretValues: Record<string, string>;
-    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly encryptedSecrets: readonly EncryptedMultiAuthSecret[];
   },
   signal: AbortSignal,
 ): Promise<void> {
-  const description = `${MODEL_PROVIDER_TYPES[args.type].label} secret (${args.authMethod})`;
-  for (const [name, value] of Object.entries(args.secretValues)) {
+  for (const secret of args.encryptedSecrets) {
     await upsertMultiAuthSecret(writeDb, {
       orgId: args.orgId,
       userId: args.userId,
-      name,
-      value,
-      description,
-      featureSwitchContext: args.featureSwitchContext,
+      ...secret,
     });
     signal.throwIfAborted();
   }
+}
+
+async function persistMultiAuthModelProvider(
+  writeDb: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly type: ModelProviderType;
+    readonly authMethod: string;
+    readonly selectedModel?: string;
+    readonly metadata?: MultiAuthMetadata;
+    readonly secretNames: readonly string[];
+    readonly encryptedSecrets: readonly EncryptedMultiAuthSecret[];
+  },
+  signal: AbortSignal,
+): Promise<{
+  readonly provider: ModelProviderRow;
+  readonly wasCreated: boolean;
+}> {
+  const result = await writeDb.transaction(async (tx) => {
+    await lockModelProviderState(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      type: args.type,
+    });
+    signal.throwIfAborted();
+
+    // Check if model provider already exists (needed for auth method switch cleanup).
+    const [existingProvider] = await tx
+      .select()
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.type),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+
+    // If switching auth methods, clean up old secrets that are no longer used.
+    if (existingProvider && existingProvider.authMethod !== args.authMethod) {
+      await cleanupOldAuthMethodSecrets(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        type: args.type,
+        oldAuthMethod: existingProvider.authMethod ?? "",
+        newSecretNames: args.secretNames,
+      });
+      signal.throwIfAborted();
+    }
+
+    // Store/update all secrets atomically with the provider row.
+    await persistMultiAuthSecrets(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        encryptedSecrets: args.encryptedSecrets,
+      },
+      signal,
+    );
+
+    // Atomic model provider upsert; metadata-aware conflict set clears stale flags.
+    const conflictSet = buildMultiAuthConflictSet(
+      args.authMethod,
+      args.selectedModel,
+      args.metadata,
+    );
+    const insertValues = buildMultiAuthInsertValues({
+      type: args.type,
+      userId: args.userId,
+      authMethod: args.authMethod,
+      selectedModel: args.selectedModel,
+      orgId: args.orgId,
+      metadata: args.metadata,
+    });
+    const [provider] = await tx
+      .insert(modelProviders)
+      .values(insertValues)
+      .onConflictDoUpdate({
+        target: [
+          modelProviders.orgId,
+          modelProviders.userId,
+          modelProviders.type,
+        ],
+        set: conflictSet,
+      })
+      .returning();
+    signal.throwIfAborted();
+
+    if (!provider) {
+      throw new Error(
+        "Expected multi-auth model provider upsert to return a row",
+      );
+    }
+
+    return { provider, wasCreated: !existingProvider };
+  });
+  signal.throwIfAborted();
+  return result;
 }
 
 /**
@@ -690,82 +815,31 @@ export const upsertUserMultiAuthModelProvider$ = command(
     );
     signal.throwIfAborted();
 
-    L.debug("upserting multi-auth model provider", {
-      orgId: args.orgId,
-      type: args.type,
-      authMethod: args.authMethod,
-      secretNames: Object.keys(args.secretValues),
-    });
-
-    // Check if model provider already exists (needed for auth method switch cleanup).
-    const [existingProvider] = await writeDb
-      .select()
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, args.orgId),
-          eq(modelProviders.userId, args.userId),
-          eq(modelProviders.type, args.type),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    // If switching auth methods, clean up old secrets that are no longer used.
-    if (existingProvider && existingProvider.authMethod !== args.authMethod) {
-      await cleanupOldAuthMethodSecrets(writeDb, {
-        orgId: args.orgId,
-        userId: args.userId,
-        type: args.type,
-        oldAuthMethod: existingProvider.authMethod ?? "",
-        newSecretNames: Object.keys(args.secretValues),
-      });
-      signal.throwIfAborted();
-    }
-
-    // Store/update all secrets atomically.
     const secretNames = Object.keys(args.secretValues);
-    await persistMultiAuthSecrets(
-      writeDb,
+    const encryptedSecrets = await encryptMultiAuthSecrets(
       { ...args, featureSwitchContext },
       signal,
     );
 
-    // Atomic model provider upsert; metadata-aware conflict set clears stale flags.
-    const insertValues = buildMultiAuthInsertValues({
-      type: args.type,
-      userId: args.userId,
-      authMethod: args.authMethod,
-      selectedModel: args.selectedModel,
+    L.debug("upserting multi-auth model provider", {
       orgId: args.orgId,
-      metadata: args.metadata,
+      type: args.type,
+      authMethod: args.authMethod,
+      secretNames,
     });
-    const conflictSet = buildMultiAuthConflictSet(
-      args.authMethod,
-      args.selectedModel,
-      args.metadata,
+
+    const result = await persistMultiAuthModelProvider(
+      writeDb,
+      {
+        ...args,
+        secretNames,
+        encryptedSecrets,
+      },
+      signal,
     );
-    const [provider] = await writeDb
-      .insert(modelProviders)
-      .values(insertValues)
-      .onConflictDoUpdate({
-        target: [
-          modelProviders.orgId,
-          modelProviders.userId,
-          modelProviders.type,
-        ],
-        set: conflictSet,
-      })
-      .returning();
     signal.throwIfAborted();
 
-    if (!provider) {
-      throw new Error(
-        "Expected multi-auth model provider upsert to return a row",
-      );
-    }
-
-    const wasCreated = !existingProvider;
+    const { provider } = result;
 
     return {
       provider: toModelProviderInfo({
@@ -784,7 +858,7 @@ export const upsertUserMultiAuthModelProvider$ = command(
         createdAt: provider.createdAt,
         updatedAt: provider.updatedAt,
       }),
-      created: wasCreated,
+      created: result.wasCreated,
     };
   },
 );

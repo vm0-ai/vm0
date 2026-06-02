@@ -59,6 +59,7 @@ export const SUPPORTED_RUN_MODELS = [
   "deepseek-v4-flash",
   "kimi-k2.6",
   "kimi-k2.5",
+  "MiniMax-M3",
   "MiniMax-M2.7",
   "glm-5.1",
   "gpt-5.5",
@@ -87,6 +88,7 @@ export const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<
   "deepseek-v4-flash": 0.02,
   "kimi-k2.6": 0.3,
   "kimi-k2.5": 0.2,
+  "MiniMax-M3": 0.2,
   "MiniMax-M2.7": 0.1,
   "glm-5.1": 0.4,
   "gpt-5.5": 2,
@@ -130,6 +132,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "kimi-k2.6": "Kimi K2.6",
   "kimi-k2.5": "Kimi K2.5",
+  "MiniMax-M3": "MiniMax M3",
   "MiniMax-M2.7": "MiniMax M2.7",
   "glm-5.1": "GLM-5.1",
   "gpt-5.5": "GPT-5.5",
@@ -223,6 +226,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "moonshot-api-key",
     vendor: "moonshot",
   },
+  "MiniMax-M3": {
+    concreteType: "minimax-api-key",
+    vendor: "minimax",
+  },
   "MiniMax-M2.7": {
     concreteType: "minimax-api-key",
     vendor: "minimax",
@@ -289,6 +296,7 @@ const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
   "kimi-k2.5",
   "moonshotai/kimi-k2.6",
   "moonshotai/kimi-k2.5",
+  "MiniMax-M3",
 ]);
 
 const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
@@ -471,8 +479,8 @@ export const MODEL_PROVIDER_TYPES = {
       API_TIMEOUT_MS: "3000000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     } satisfies ModelProviderEnvBindings,
-    models: ["MiniMax-M2.7", "MiniMax-M2.1"] as string[],
-    defaultModel: "MiniMax-M2.7",
+    models: ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.1"] as string[],
+    defaultModel: "MiniMax-M3",
   },
   "deepseek-api-key": {
     framework: "claude-code" as const,
@@ -851,6 +859,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
+  "MiniMax-M3": ["vm0", "minimax-api-key"],
   "MiniMax-M2.7": ["vm0", "minimax-api-key", "openrouter-api-key"],
   "glm-5.1": ["vm0", "zai-api-key", "openrouter-api-key"],
 } as const satisfies Record<SupportedRunModel, readonly ModelProviderType[]>;

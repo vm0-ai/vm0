@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://gumroad.com/oauth/token";
+
 export const gumroad = {
   gumroad: {
     label: "Gumroad",
@@ -11,15 +13,15 @@ export const gumroad = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Gumroad to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://gumroad.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "view_profile",
             "edit_products",
@@ -29,7 +31,10 @@ export const gumroad = {
           ],
         },
         access: {
-          kind: "static",
+          kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
+          accessToken: "GUMROAD_ACCESS_TOKEN",
+          refreshToken: "GUMROAD_REFRESH_TOKEN",
           envBindings: {
             GUMROAD_TOKEN: "$secrets.GUMROAD_ACCESS_TOKEN",
           },

@@ -14,6 +14,10 @@ import { server } from "./test-server";
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 function getCodexRefreshAccess() {
   const access = codexOauthProvider.access;
   if (access.kind !== "refresh-token") {
@@ -39,7 +43,12 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const result = await refreshChatgptToken("x", "x", "old-rt");
+      const result = await refreshChatgptToken(
+        "x",
+        "x",
+        "old-rt",
+        testRefreshSignal(),
+      );
       expect(result.accessToken).toBe("new-at");
       expect(result.refreshToken).toBe("new-rt");
       expect(result.expiresIn).toBe(600000);
@@ -51,7 +60,12 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const result = await refreshChatgptToken("x", "x", "old-rt");
+      const result = await refreshChatgptToken(
+        "x",
+        "x",
+        "old-rt",
+        testRefreshSignal(),
+      );
       expect(result.accessToken).toBe("new-at");
       expect(result.refreshToken).toBeNull();
     });
@@ -71,7 +85,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt"),
+        refreshChatgptToken("x", "x", "old-rt", testRefreshSignal()),
       ).rejects.toMatchObject({
         name: "ChatgptRefreshError",
         code: "refresh_token_expired",
@@ -88,7 +102,7 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt"),
+        refreshChatgptToken("x", "x", "old-rt", testRefreshSignal()),
       ).rejects.toMatchObject({
         name: "ChatgptRefreshError",
         code: "refresh_token_reused",
@@ -109,11 +123,14 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
+      const error = await refreshChatgptToken(
+        "x",
+        "x",
+        "old-rt",
+        testRefreshSignal(),
+      ).catch((e: unknown) => {
+        return e;
+      });
       expect(isChatgptRefreshError(error)).toBe(true);
       expect((error as ChatgptRefreshError).code).toBe(
         "refresh_token_invalidated",
@@ -129,11 +146,14 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
+      const error = await refreshChatgptToken(
+        "x",
+        "x",
+        "old-rt",
+        testRefreshSignal(),
+      ).catch((e: unknown) => {
+        return e;
+      });
       expect(isChatgptRefreshError(error)).toBe(true);
       expect((error as ChatgptRefreshError).code).toBe("refresh_token_other");
     });
@@ -144,11 +164,14 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
+      const error = await refreshChatgptToken(
+        "x",
+        "x",
+        "old-rt",
+        testRefreshSignal(),
+      ).catch((e: unknown) => {
+        return e;
+      });
       expect(error).toBeInstanceOf(Error);
       expect(isChatgptRefreshError(error)).toBe(false);
     });
@@ -159,9 +182,9 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      await expect(refreshChatgptToken("x", "x", "old-rt")).rejects.toThrow(
-        /No access token in ChatGPT refresh response/,
-      );
+      await expect(
+        refreshChatgptToken("x", "x", "old-rt", testRefreshSignal()),
+      ).rejects.toThrow(/No access token in ChatGPT refresh response/);
     });
   });
 

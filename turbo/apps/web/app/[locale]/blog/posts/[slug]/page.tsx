@@ -26,6 +26,12 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
+const VIDEO_SOURCE_REGEX = /\.(mp4|webm|mov)(?:[?#].*)?$/i;
+
+function isVideoSource(src: unknown): src is string {
+  return typeof src === "string" && VIDEO_SOURCE_REGEX.test(src);
+}
+
 export async function generateMetadata({
   params,
   searchParams,
@@ -260,6 +266,30 @@ export default async function BlogPostPage({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight]}
+            components={{
+              img({ src, alt }) {
+                if (isVideoSource(src)) {
+                  return (
+                    <video
+                      className="blog-post-video"
+                      src={src}
+                      controls
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      aria-label={alt || undefined}
+                    />
+                  );
+                }
+
+                return (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt={alt ?? ""} />
+                );
+              },
+            }}
           >
             {post.content}
           </ReactMarkdown>

@@ -65,10 +65,17 @@ fn check_architecture() -> RunnerResult<&'static str> {
 
 /// Returns names of missing required dependencies.
 fn check_system_dependencies() -> Vec<&'static str> {
-    // Required by `runner start` (sandbox networking)
-    let required = ["ip", "iptables", "iptables-save", "sysctl", "dnsmasq"];
+    // Required by `runner start` (sandbox networking and workspace images).
+    let required = [
+        "ip",
+        "iptables",
+        "iptables-save",
+        "sysctl",
+        "dnsmasq",
+        "mkfs.ext4",
+    ];
     // Only needed by specific commands (rootfs, build, etc.)
-    let optional = ["pgrep", "mkfs.ext4", "debootstrap", "flock", "openssl"];
+    let optional = ["pgrep", "debootstrap", "flock", "openssl"];
 
     let missing_required: Vec<&str> = required
         .iter()
@@ -579,7 +586,14 @@ mod tests {
     #[test]
     fn check_system_dependencies_only_returns_known_deps() {
         let missing = check_system_dependencies();
-        let known = ["ip", "iptables", "iptables-save", "sysctl", "dnsmasq"];
+        let known = [
+            "ip",
+            "iptables",
+            "iptables-save",
+            "sysctl",
+            "dnsmasq",
+            "mkfs.ext4",
+        ];
         for dep in &missing {
             assert!(
                 known.contains(dep),

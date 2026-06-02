@@ -243,6 +243,155 @@ describe("resolveFirewallSelections", () => {
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
 
+  it("collectAndValidatePermissions rejects malformed static auth.base URLs", () => {
+    const config = (authBase: string): FirewallConfig => {
+      return {
+        name: "rewrite",
+        apis: [
+          {
+            base: "https://placeholder.example.com/hook",
+            auth: { base: authBase },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(config("ftp://example.com/hook"));
+    }).toThrow("scheme must be http or https");
+    expect(() => {
+      return collectAndValidatePermissions(config("https:/example.com/hook"));
+    }).toThrow('URL must include "://" after the scheme');
+    expect(() => {
+      return collectAndValidatePermissions(config("https:///hook"));
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/hook#fragment"),
+      );
+    }).toThrow("must not contain fragment");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://user:pass@example.com/hook"),
+      );
+    }).toThrow("must not contain userinfo");
+    expect(() => {
+      return collectAndValidatePermissions(config("https://example.com\\hook"));
+    }).toThrow("must not contain backslash");
+    expect(() => {
+      return collectAndValidatePermissions(config("https://0177.0.0.1/hook"));
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://0177.0.0.1?token=static"),
+      );
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(config("https://127。0。0。1/hook"));
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://127。0。0。1?token=static"),
+      );
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/\x00hook"),
+      );
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/\uD800hook"),
+      );
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"),
+      );
+    }).toThrow('URL must include "://" after the scheme');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"),
+      );
+    }).toThrow("contains unsupported template reference");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }} /v1"),
+      );
+    }).toThrow("must not contain whitespace");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}\\v1"),
+      );
+    }).toThrow("must not contain backslash");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}/\x00v1"),
+      );
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}/\uD800v1"),
+      );
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}#fragment"),
+      );
+    }).toThrow("must not contain fragment");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}/${{ env.WEBHOOK_TOKEN }}"),
+      );
+    }).toThrow("contains unsupported template reference");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}@evil.com"),
+      );
+    }).toThrow('dynamic URL suffix must start with "/" or "?"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}:443"),
+      );
+    }).toThrow('dynamic URL suffix must start with "/" or "?"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("${{ secrets.WEBHOOK_URL }}&token=static"),
+      );
+    }).toThrow('dynamic URL suffix must start with "/" or "?"');
+  });
+
+  it("collectAndValidatePermissions accepts static and templated auth.base URLs", () => {
+    const validAuthBases = [
+      "https://example.com/hook?token=static",
+      "https://example.com?token=a@b",
+      "${{ secrets.WEBHOOK_URL }}",
+      "${{ secrets.WEBHOOK_BASE_URL }}/v1",
+      "https://example.com/hook/${{ secrets.WEBHOOK_TOKEN }}",
+      "https://${{ vars.WEBHOOK_HOST }}/hook/${{ secrets.WEBHOOK_TOKEN }}",
+      "${{ secrets.WEBHOOK_BASE_URL }}/${{ vars.WEBHOOK_PATH }}",
+      "${{ secrets.WEBHOOK_BASE_URL }}?token=static",
+    ];
+
+    for (const authBase of validAuthBases) {
+      const config: FirewallConfig = {
+        name: "rewrite",
+        apis: [
+          {
+            base: "https://placeholder.example.com/hook",
+            auth: { base: authBase },
+            permissions: [],
+          },
+        ],
+      };
+
+      expect(() => {
+        return collectAndValidatePermissions(config);
+      }).not.toThrow();
+    }
+  });
+
   it("should retain api entries with empty permissions when user picks all", async () => {
     // Regression for the filter bug: api entries configured as
     // `permissions: []` rely on base URL match + unknownPolicy fallback.
@@ -340,6 +489,15 @@ describe("validateRule", () => {
     expect(() => {
       return validateRule("GET /", "p", "fw");
     }).not.toThrow();
+    expect(() => {
+      return validateRule("GET /emoji/\u{1F600}", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept explicit empty path segments", () => {
+    expect(() => {
+      return validateRule("GET //repos", "p", "fw");
+    }).not.toThrow();
   });
 
   it("should reject missing path", () => {
@@ -384,6 +542,48 @@ describe("validateRule", () => {
     }).toThrow('path must start with "/"');
   });
 
+  it("should reject malformed rule separators", () => {
+    expect(() => {
+      return validateRule("GET  /foo", "read", "github");
+    }).toThrow('path must start with "/"');
+    expect(() => {
+      return validateRule("GET\t/foo", "read", "github");
+    }).toThrow('must be "METHOD /path"');
+    expect(() => {
+      return validateRule("GET /foo bar", "read", "github");
+    }).toThrow("path must not contain whitespace");
+  });
+
+  it("should reject path with raw whitespace", () => {
+    expect(() => {
+      return validateRule("GET /pa th", "read", "github");
+    }).toThrow("path must not contain whitespace");
+    expect(() => {
+      return validateRule("GET /pa\tth", "read", "github");
+    }).toThrow("path must not contain whitespace");
+  });
+
+  it("should reject path with raw control characters or invalid Unicode", () => {
+    expect(() => {
+      return validateRule("GET /pa\x00th", "read", "github");
+    }).toThrow("path must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateRule("GET /pa\x7fth", "read", "github");
+    }).toThrow("path must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateRule("GET /pa\uD800th", "read", "github");
+    }).toThrow("path must not contain control characters or invalid Unicode");
+  });
+
+  it("should reject path with raw backslash", () => {
+    expect(() => {
+      return validateRule("GET /foo\\bar", "read", "github");
+    }).toThrow("path must not contain backslash");
+    expect(() => {
+      return validateRule("GET /foo%5Cbar", "read", "github");
+    }).not.toThrow();
+  });
+
   it("should reject {param+} not in last segment", () => {
     expect(() => {
       return validateRule("GET /foo/{path+}/bar", "read", "github");
@@ -405,10 +605,29 @@ describe("validateRule", () => {
     }).not.toThrow();
   });
 
+  it("should accept hyphenated parameter names used by generated firewalls", () => {
+    expect(() => {
+      return validateRule("POST /v1/ingest/{dataset-id}", "p", "fw");
+    }).not.toThrow();
+  });
+
   it("should reject {param*} not in last segment", () => {
     expect(() => {
       return validateRule("GET /foo/{path*}/bar", "read", "github");
     }).toThrow("{path*} must be the last segment");
+  });
+
+  it("should reject greedy params mixed with path literals", () => {
+    expect(() => {
+      return validateRule("GET /files/file-{id+}", "read", "github");
+    }).toThrow(
+      'greedy parameter {id+} cannot be combined with a literal prefix or suffix in segment "file-{id+}"',
+    );
+    expect(() => {
+      return validateRule("GET /files/file-{id*}", "read", "github");
+    }).toThrow(
+      'greedy parameter {id*} cannot be combined with a literal prefix or suffix in segment "file-{id*}"',
+    );
   });
 
   it("should reject duplicate parameter names", () => {
@@ -442,10 +661,16 @@ describe("validateBaseUrl", () => {
       return validateBaseUrl("https://api.github.com", "github");
     }).not.toThrow();
     expect(() => {
+      return validateBaseUrl("http://api.github.com", "github");
+    }).not.toThrow();
+    expect(() => {
       return validateBaseUrl("https://slack.com/api", "slack");
     }).not.toThrow();
     expect(() => {
       return validateBaseUrl("https://us1.api.mailchimp.com/3.0", "mailchimp");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/emoji/\u{1F600}", "fw");
     }).not.toThrow();
   });
 
@@ -453,6 +678,30 @@ describe("validateBaseUrl", () => {
     expect(() => {
       return validateBaseUrl("not-a-url", "fw");
     }).toThrow('URL must include a scheme (e.g. "https://not-a-url")');
+  });
+
+  it("should reject unsupported URL schemes", () => {
+    expect(() => {
+      return validateBaseUrl("ftp://api.example.com/v1", "fw");
+    }).toThrow("scheme must be http or https");
+    expect(() => {
+      return validateBaseUrl("ssh://{sub}.example.com/v1", "fw");
+    }).toThrow("scheme must be http or https");
+  });
+
+  it("should reject URLs with missing authority", () => {
+    expect(() => {
+      return validateBaseUrl("https:///v1", "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
+  it("should reject URLs that omit // after the scheme", () => {
+    expect(() => {
+      return validateBaseUrl("https:/api.example.com/v1", "fw");
+    }).toThrow('URL must include "://" after the scheme');
+    expect(() => {
+      return validateBaseUrl("https:api.example.com/v1", "fw");
+    }).toThrow('URL must include "://" after the scheme');
   });
 
   it("suggests adding https:// when the scheme is missing", () => {
@@ -466,7 +715,7 @@ describe("validateBaseUrl", () => {
   it("falls back to the generic message when scheme is present but URL is malformed", () => {
     expect(() => {
       return validateBaseUrl("https://exa mple.com", "fw");
-    }).toThrow("not a valid URL");
+    }).toThrow("must not contain whitespace");
   });
 
   it("should reject URLs with query string", () => {
@@ -514,6 +763,30 @@ describe("validateBaseUrl", () => {
     }).not.toThrow();
   });
 
+  it("should reject parameterized base URL with bracketed host", () => {
+    expect(() => {
+      return validateBaseUrl("https://[2001:db8::1]/v1/{org}", "fw");
+    }).toThrow("host must have at least two segments");
+    expect(() => {
+      return validateBaseUrl("https://[::ffff:127.0.0.1]/v1/{org}", "fw");
+    }).toThrow("host must have at least two segments");
+  });
+
+  it("should reject parameterized base URL with IPv4-shaped host", () => {
+    expect(() => {
+      return validateBaseUrl("https://127.{octet}.0.1", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{a}.0.0.1", "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
+  it("should accept parameterized base URL with explicit empty path segments", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/v1//{org}", "fw");
+    }).not.toThrow();
+  });
+
   it("should accept base URL with host and path params", () => {
     expect(() => {
       return validateBaseUrl("https://{sub}.example.com/v1/{org}", "fw");
@@ -529,6 +802,19 @@ describe("validateBaseUrl", () => {
     }).toThrow("{sub*} must be the first host segment");
   });
 
+  it("should reject greedy host params mixed with host literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://api-{sub+}.example.com", "fw");
+    }).toThrow(
+      'greedy parameter {sub+} cannot be combined with a literal prefix or suffix in host segment "api-{sub+}"',
+    );
+    expect(() => {
+      return validateBaseUrl("https://api-{sub*}.example.com", "fw");
+    }).toThrow(
+      'greedy parameter {sub*} cannot be combined with a literal prefix or suffix in host segment "api-{sub*}"',
+    );
+  });
+
   it("should reject greedy path param in base URL", () => {
     expect(() => {
       return validateBaseUrl("https://api.example.com/{path+}", "fw");
@@ -538,9 +824,21 @@ describe("validateBaseUrl", () => {
     }).toThrow("greedy parameter {path*} is not allowed in base URL path");
   });
 
+  it("should reject greedy path params mixed with base path literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/files/file-{id+}", "fw");
+    }).toThrow("greedy parameter {id+} is not allowed in base URL path");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/files/file-{id*}", "fw");
+    }).toThrow("greedy parameter {id*} is not allowed in base URL path");
+  });
+
   it("should reject host with no static segments", () => {
     expect(() => {
       return validateBaseUrl("https://{a}.{b}", "fw");
+    }).toThrow("must have at least one static segment");
+    expect(() => {
+      return validateBaseUrl("https://api-{sub}.example-{env}", "fw");
     }).toThrow("must have at least one static segment");
   });
 
@@ -580,10 +878,369 @@ describe("validateBaseUrl", () => {
     }).toThrow("must not contain fragment");
   });
 
+  it("should reject raw whitespace before URL parser normalization", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa th", "fw");
+    }).toThrow("must not contain whitespace");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\tth", "fw");
+    }).toThrow("must not contain whitespace");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com/pa th", "fw");
+    }).toThrow("must not contain whitespace");
+  });
+
+  it("should reject raw control characters or invalid Unicode before URL parser normalization", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\x00th", "fw");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\x7fth", "fw");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/pa\uD800th", "fw");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com/pa\x00th", "fw");
+    }).toThrow("must not contain control characters or invalid Unicode");
+    expect(() => {
+      return validateBaseUrl("https://${{ vars.API_HOST }}/\x00v1", "fw");
+    }).toThrow("must not contain control characters or invalid Unicode");
+  });
+
+  it("should reject backslash before URL parser normalization", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com\\v1", "fw");
+    }).toThrow("must not contain backslash");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com\\v1", "fw");
+    }).toThrow("must not contain backslash");
+    expect(() => {
+      return validateBaseUrl("https://${{ vars.API_HOST }}\\v1", "fw");
+    }).toThrow("must not contain backslash");
+  });
+
+  it("should reject percent-encoded braces in parameterized host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.%7Benv%7D.example.com", "fw");
+    }).toThrow("host must not contain percent-encoded braces");
+  });
+
+  it("should reject percent-encoded braces in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://%7Benv%7D.example.com", "fw");
+    }).toThrow("host must not contain percent-encoded braces");
+  });
+
+  it("should reject percent-encoded dots in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}%2eexample.com", "fw");
+    }).toThrow("host must not contain percent-encoded dots");
+    expect(() => {
+      return validateBaseUrl("https://api%E3%80%82example.com", "fw");
+    }).toThrow("host must not contain percent-encoded dots");
+  });
+
+  it("should reject commas in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://api,example.com", "fw");
+    }).toThrow("host must not contain commas");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.api,example.com", "fw");
+    }).toThrow("host must not contain commas");
+    expect(() => {
+      return validateBaseUrl("https://api%2Cexample.com", "fw");
+    }).toThrow("host must not contain commas");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.api%2Cexample.com", "fw");
+    }).toThrow("host must not contain commas");
+  });
+
+  it("should reject empty labels in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://api..example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://.example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com..", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://api.example..com:8443", "fw");
+    }).toThrow("host must not contain empty labels");
+  });
+
+  it("should accept a trailing dot in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com.", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.example.com.:8443", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject unsafe IDNA compatibility mappings in static host", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u212a.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://\u1e9e.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://\u03f2.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://\uff21.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+  });
+
+  it("should reject percent-encoded unsafe IDNA compatibility mappings in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://%E2%84%AA.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.%EF%BC%A1.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+  });
+
+  it("should reject non-canonical IPv4 address syntax in host", () => {
+    expect(() => {
+      return validateBaseUrl("https://0177.0.0.1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://0x7f.0.0.1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://2130706433", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127.1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127。0。0。1", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127.0.0.1。", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://127.0.0.1.", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject host characters that normalize to forbidden syntax", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u4f8b\uff0c\u5b50.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl(
+        "https://%E4%BE%8B%EF%BC%8C%E5%AD%90.example",
+        "fw",
+      );
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\u4f8b\uff0c\u5b50.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://a\u00adb.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://a\u200bb.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+    expect(() => {
+      return validateBaseUrl("https://a%E2%80%8Bb.example", "fw");
+    }).toThrow("normalize to forbidden host syntax");
+  });
+
+  it("should reject host labels that start with a combining mark", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0898b.example", "fw");
+    }).toThrow("must not start with a combining mark");
+    expect(() => {
+      return validateBaseUrl("https://%E0%A2%98b.example", "fw");
+    }).toThrow("must not start with a combining mark");
+  });
+
+  it("should reject invalid bidirectional host labels", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0870b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://a\u0870b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.a\u0870b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://a%E0%A1%B0b.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://\u0870!.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://\u08701!.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://1a\u0870.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+    expect(() => {
+      return validateBaseUrl("https://1\u0870!.example", "fw");
+    }).toThrow("invalid bidirectional label text");
+  });
+
+  it("should accept valid bidirectional host label boundaries", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://a\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u08701.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://1\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u0870!\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u0870!1.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://a1\u0870.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://1\u0870\u0301.example", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept host labels that Python IDNA normalization keeps valid", () => {
+    expect(() => {
+      return validateBaseUrl("https://\u0345.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u226e.example", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u226f.example", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept canonical IDNA hosts", () => {
+    expect(() => {
+      return validateBaseUrl("https://xn--fa-hia.de", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}.xn--fa-hia.de", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://\u4f8b\u5b50.\u6d4b\u8bd5", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://%E2%98%83.example.com", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject malformed parameterized authorities", () => {
+    expect(() => {
+      return validateBaseUrl("https://user@{sub}.zendesk.com", "fw");
+    }).toThrow("must not contain userinfo");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.zendesk.com:bad", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.zendesk.com:99999", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.api%20example.com", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.exa%mple.com", "fw");
+    }).toThrow("host has invalid percent encoding");
+  });
+
+  it("should reject empty labels in parameterized host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com..", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://{sub}..example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://.{sub}.example.com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example..com", "fw");
+    }).toThrow("host must not contain empty labels");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com..:8443", "fw");
+    }).toThrow("host must not contain empty labels");
+  });
+
+  it("should accept a trailing dot in parameterized host", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com.", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com.:8443", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}\u3002example.com", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject non-ascii mixed host parameter literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://例-{sub}.example.com", "fw");
+    }).toThrow("must use ASCII literal prefix and suffix");
+    expect(() => {
+      return validateBaseUrl("https://{sub}-例.example.com", "fw");
+    }).toThrow("must use ASCII literal prefix and suffix");
+  });
+
+  it("should reject unsafe IDNA compatibility mappings in parameterized host literals", () => {
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\u212a.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\u1e9e.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.\uff21.example", "fw");
+    }).toThrow("host must not contain unsafe IDNA compatibility mappings");
+  });
+
+  it("should reject userinfo in static base URL", () => {
+    expect(() => {
+      return validateBaseUrl("https://user:pass@api.example.com", "fw");
+    }).toThrow("must not contain userinfo");
+  });
+
   it("should reject param in scheme", () => {
     expect(() => {
       return validateBaseUrl("{proto}://api.example.com", "fw");
     }).toThrow("scheme must not contain parameters");
+  });
+
+  it("should reject resolved template base URLs with raw whitespace", () => {
+    const firewalls = [
+      {
+        name: "fw",
+        apis: [
+          {
+            base: "https://${{ vars.API_HOST }}/pa th",
+            auth: { headers: {} },
+          },
+        ],
+      },
+    ];
+
+    expect(() => {
+      return resolveFirewallBaseUrlVars(firewalls, {
+        API_HOST: "api.example.com",
+      });
+    }).toThrow("must not contain whitespace");
   });
 
   it("should accept mixed {param}{literal} segment in host", () => {
@@ -614,6 +1271,16 @@ describe("expandHostWildcardsInBaseUrl", () => {
     expect(expandHostWildcardsInBaseUrl("https://*.*.example.com/")).toBe(
       "https://{hostWildcard1}.{hostWildcard2}.example.com/",
     );
+  });
+
+  it("preserves explicit ports when converting host wildcards", () => {
+    const expanded = expandHostWildcardsInBaseUrl(
+      "https://*.example.com:8443/v1/",
+    );
+    expect(expanded).toBe("https://{hostWildcard1}.example.com:8443/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).not.toThrow();
   });
 
   it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
@@ -737,7 +1404,7 @@ describe("resolveFirewallBaseUrlVars", () => {
       return resolveFirewallBaseUrlVars([zendeskFirewall], {
         ZENDESK_SUBDOMAIN: "bad value with spaces",
       });
-    }).toThrow("not a valid URL");
+    }).toThrow("must not contain whitespace");
   });
 
   it("preserves auth headers unchanged", () => {

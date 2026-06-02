@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Footer } from "../../components/Footer";
 import { ILLUSTRATION_STYLES, type IllustrationStyle } from "./data";
 
-const ASSET_BASE = "https://quiet-moments-gallery-min-715f6d07.sites.vm0.io";
+const ASSET_BASE = "https://quiet-moments-gallery-715f6d07.sites.vm0.io";
 
 interface LightboxState {
   style: IllustrationStyle;

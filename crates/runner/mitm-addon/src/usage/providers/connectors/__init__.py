@@ -1,4 +1,4 @@
-"""Per-connector billing dispatcher + module registry.
+"""Per-connector billing and response parser dispatch.
 
 One file per billable connector under this package owns the connector's
 domain-specific request / response parsing.  :func:`report_connector_usage`
@@ -8,8 +8,10 @@ billable by the web layer, firewall has a registered handler) and
 delegates to the matching per-connector ``report_usage`` function.
 
 Adding a new billable connector = add a new file here + register it in
-:data:`_HANDLERS`.  The dispatcher already enforces the cross-connector
-invariants.
+:data:`_HANDLERS`. Connectors that need incremental response-body usage
+extraction also register a parser factory in
+:data:`_RESPONSE_PARSER_FACTORIES`. The dispatcher already enforces the
+cross-connector invariants.
 """
 
 from collections.abc import Callable
@@ -20,6 +22,7 @@ import flow_metadata_keys as metadata_keys
 from logging_utils import log_proxy_entry
 
 from . import x
+from .response_parser import ConnectorResponseParser
 
 # Map firewall_name → per-connector report_usage handler.  A handler is only
 # invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, so the
@@ -29,6 +32,16 @@ from . import x
 # dropped billing record plus a missing handler in test coverage.)
 _HANDLERS: dict[str, Callable[[http.HTTPFlow, str], None]] = {
     "x": x.report_usage,
+}
+
+_ResponseParserFactory = Callable[[http.HTTPFlow], ConnectorResponseParser | None]
+
+# Response parser factories are consulted at response-header time for registered
+# connector firewall flows that may need streamed response-body state before
+# final usage reporting. A factory returns None when the specific flow needs no
+# parser.
+_RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
+    "x": x.create_response_parser,
 }
 
 # One-shot guard: first time we see a billable firewall_name with no
@@ -76,3 +89,19 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
             )
         return
     handler(flow, run_id)
+
+
+def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
+    """Create the connector-specific response parser for this flow, if registered.
+
+    The returned parser is wired into the response stream and may publish
+    connector-owned ``flow.metadata`` state for ``report_connector_usage``.
+    Non-billable flows never need connector billing parser state.
+    """
+    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+        return None
+    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    factory = _RESPONSE_PARSER_FACTORIES.get(firewall_name)
+    if factory is None:
+        return None
+    return factory(flow)

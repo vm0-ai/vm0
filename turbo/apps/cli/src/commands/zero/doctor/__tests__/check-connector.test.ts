@@ -115,6 +115,7 @@ describe("zero doctor check-connector command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("GH_TOKEN", "");
   });
@@ -763,6 +764,303 @@ describe("zero doctor check-connector command", () => {
       );
     });
 
+    it("should strip query and match permissions only on the resolved API base", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["xero"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/xero", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "xero",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["xero"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "xero",
+                apis: [
+                  { base: "https://api.xero.com", permissions: [] },
+                  {
+                    base: "https://api.xero.com/api.xro/2.0",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              xero: {
+                allow: ["accounting.settings", "accounting.settings.read"],
+                deny: ["connections"],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://API.XERO.COM.:443/api.xro/2.0/Accounts?where=Name#ignored",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Xero connector");
+      expect(output).toContain(
+        "Matched base URL: https://api.xero.com/api.xro/2.0",
+      );
+      expect(output).toContain("Relative path:    /Accounts");
+      expect(output).toContain(
+        "Matched permissions: [accounting.settings, accounting.settings.read]",
+      );
+      expect(output).not.toContain("Matched permissions: [connections");
+    });
+
+    it("should not resolve connector base paths without a segment boundary", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://slack.com/apix/chat.postMessage",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No connector found for URL"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should resolve parameterized connector base URLs", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "github",
+                apis: [
+                  {
+                    base: "https://raw.githubusercontent.com/{owner}/{repo}",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://raw.githubusercontent.com/owner/repo/main/README.md",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the GitHub connector");
+      expect(output).toContain(
+        "Matched base URL: https://raw.githubusercontent.com/{owner}/{repo}",
+      );
+      expect(output).toContain("Relative path:    /main/README.md");
+    });
+
+    it("should resolve parameterized connector host base URLs", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["alchemy"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/alchemy", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "alchemy",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["alchemy"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "alchemy",
+                apis: [
+                  {
+                    base: "https://{network}.g.alchemy.com",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://ETH.G.ALCHEMY.COM/v2/demo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Alchemy connector");
+      expect(output).toContain(
+        "Matched base URL: https://{network}.g.alchemy.com",
+      );
+      expect(output).toContain("Relative path:    /v2/demo");
+    });
+
+    it("should prefer static connector base URLs over wildcard host bases", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["alchemy"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/alchemy", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "alchemy",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["alchemy"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "alchemy",
+                apis: [
+                  {
+                    base: "https://{network}.g.alchemy.com",
+                    permissions: [],
+                  },
+                  {
+                    base: "https://api.g.alchemy.com",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://api.g.alchemy.com/v2/demo",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Alchemy connector");
+      expect(output).toContain("Matched base URL: https://api.g.alchemy.com");
+      expect(output).toContain("Relative path:    /v2/demo");
+    });
+
+    it("should match permissions after parameterized connector base URLs", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        stubAvailableConnectors(["test-oauth"]),
+        http.get("https://app.vm0.ai/api/zero/connectors/test-oauth", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            type: "test-oauth",
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["test-oauth"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                name: "test-oauth",
+                apis: [
+                  {
+                    base: "https://{pr}.vm6.ai/api/test/oauth-provider",
+                    permissions: [],
+                  },
+                ],
+              },
+            ],
+            networkPolicies: {
+              "test-oauth": {
+                allow: ["echo"],
+                deny: [],
+                ask: [],
+                unknownPolicy: "deny" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--url",
+        "https://pr-123.vm6.ai/api/test/oauth-provider/echo?debug=1#fragment",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("matches the Test OAuth (internal) connector");
+      expect(output).toContain(
+        "Matched base URL: https://{pr}.vm6.ai/api/test/oauth-provider",
+      );
+      expect(output).toContain("Relative path:    /echo");
+      expect(output).toContain("Matched permissions: [echo]");
+      expect(output).toContain('Result: "echo" is in the allow list');
+    });
+
     it("should fail for unrecognized URL", async () => {
       await expect(async () => {
         await checkConnectorCommand.parseAsync([
@@ -776,6 +1074,52 @@ describe("zero doctor check-connector command", () => {
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("No connector found for URL"),
       );
+    });
+
+    it.each([
+      ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
+      ["raw whitespace", "https://api.github.com/foo bar"],
+      ["authority backslash", "https://api.github.com\\repos/owner/repo"],
+      ["empty host label", "https://.g.alchemy.com/v2"],
+      ["raw host braces", "https://{eth}.g.alchemy.com/v2/demo"],
+      ["raw host comma", "https://eth,mainnet.g.alchemy.com/v2/demo"],
+      [
+        "non-default port without a matching connector base",
+        "https://api.github.com:8443/repos/owner/repo",
+      ],
+      [
+        "invalid authority percent escape",
+        "https://api%zz.github.com/repos/owner/repo",
+      ],
+      [
+        "percent-encoded host comma",
+        "https://eth%2Cmainnet.g.alchemy.com/v2/demo",
+      ],
+      [
+        "percent-encoded host braces",
+        "https://%7Beth%7D.g.alchemy.com/v2/demo",
+      ],
+      [
+        "percent-encoded authority colon",
+        "https://api.github.com%3A443/repos/owner/repo",
+      ],
+      [
+        "percent-encoded authority dot",
+        "https://api%2egithub.com/repos/owner/repo",
+      ],
+      [
+        "multiple trailing host dots",
+        "https://api.github.com../repos/owner/repo",
+      ],
+    ])("should fail for URL with %s", async (_label, url) => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync(["node", "cli", "--url", url]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("No connector found for URL"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should include --method in re-diagnose hint when not GET", async () => {

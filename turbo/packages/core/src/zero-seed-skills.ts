@@ -33,6 +33,7 @@ export const SEED_SKILLS: readonly string[] = [
   "legal-risk-scoring",
   "marketing-analytics",
   "nda-screening",
+  "paid-ads-operator",
   "period-close",
   "prd-writing",
   "privacy-compliance",

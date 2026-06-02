@@ -13,6 +13,7 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-calendar",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-calendar",
           clientId,
           clientSecret,
@@ -55,10 +57,12 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
+          args.tokenUrl,
           "google-calendar",
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

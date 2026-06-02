@@ -13,52 +13,62 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { generatePresignedPutUrl } from "../external/s3";
+import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route";
 
 const PUT_URL_TTL_SECONDS = 3600;
 
-const prepareUploadInner$ = command(async ({ get }, signal: AbortSignal) => {
-  const auth = get(authContext$);
+const prepareUploadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(authContext$);
 
-  const bodyResult = await get(bodyResultOf(zeroUploadsContract.prepare));
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
+    const bodyResult = await get(bodyResultOf(zeroUploadsContract.prepare));
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
 
-  const { filename, size } = bodyResult.data;
-  const contentType =
-    bodyResult.data.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+    const { filename, size } = bodyResult.data;
+    const contentType =
+      bodyResult.data.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
 
-  if (size > MAX_UPLOAD_SIZE_BYTES) {
-    return badRequestMessage(`File too large (max ${MAX_UPLOAD_SIZE_LABEL})`);
-  }
-  if (!isAllowedUploadType(contentType)) {
-    return badRequestMessage(`Unsupported file type: ${contentType}`);
-  }
+    if (size > MAX_UPLOAD_SIZE_BYTES) {
+      return badRequestMessage(`File too large (max ${MAX_UPLOAD_SIZE_LABEL})`);
+    }
+    if (!isAllowedUploadType(contentType)) {
+      return badRequestMessage(`Unsupported file type: ${contentType}`);
+    }
 
-  const id = crypto.randomUUID();
-  const sanitizedName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const s3Key = buildArtifactKey(auth.userId, id, sanitizedName);
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    if (auth.orgId) {
+      const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+      if (suspended) {
+        return suspended;
+      }
+    }
 
-  const uploadUrl = await get(
-    generatePresignedPutUrl(
-      bucket,
-      s3Key,
-      contentType,
-      PUT_URL_TTL_SECONDS,
-      true,
-    ),
-  );
-  signal.throwIfAborted();
-  const url = buildFileUrl(auth.userId, id, sanitizedName);
+    const id = crypto.randomUUID();
+    const sanitizedName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const s3Key = buildArtifactKey(auth.userId, id, sanitizedName);
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
 
-  return {
-    status: 200 as const,
-    body: { id, filename, contentType, size, uploadUrl, url },
-  };
-});
+    const uploadUrl = await get(
+      generatePresignedPutUrl(
+        bucket,
+        s3Key,
+        contentType,
+        PUT_URL_TTL_SECONDS,
+        true,
+      ),
+    );
+    signal.throwIfAborted();
+    const url = buildFileUrl(auth.userId, id, sanitizedName);
+
+    return {
+      status: 200 as const,
+      body: { id, filename, contentType, size, uploadUrl, url },
+    };
+  },
+);
 
 export const zeroUploadsPrepareRoutes: readonly RouteEntry[] = [
   {

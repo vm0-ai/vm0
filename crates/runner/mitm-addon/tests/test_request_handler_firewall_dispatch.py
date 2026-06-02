@@ -2,11 +2,18 @@
 
 import json
 
+import pytest
+
 import mitm_addon
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _write_github_firewall_registry,
     _write_registry,
+)
+
+_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
 
 
@@ -100,6 +107,54 @@ async def test_firewall_malformed_config_block_reports_reason(
                     {
                         "name": "read-repos",
                         "rules": ["GET /repos/{a}literal{b}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/org/repo",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["permissions"] == []
+    assert body["reason"] == "malformed_firewall_config"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["reason"] == "malformed_firewall_config"
+
+
+async def test_firewall_malformed_auth_config_block_reports_reason(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    """Malformed auth config blocks before the auth handler runs."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": None},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
                     },
                 ],
             },
@@ -376,3 +431,241 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
     assert flow.metadata["firewall_rule_match"] == ""
     assert flow.metadata["firewall_params"] == {"region": "us"}
     assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_browser_firewall_match_skips_auth_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Browser-originated firewall allows pass through without connector auth mutation."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="stripe",
+            billable_firewalls=["stripe"],
+            api_entry={
+                "base": "https://api.stripe.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.STRIPE_TOKEN }}"}},
+                "permissions": [],
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.stripe.com",
+        method="POST",
+        path="/v1/payment_pages/cs_test_123/init",
+        request_headers=headers(
+            ("Host", "api.stripe.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is None
+    assert "Authorization" not in flow.request.headers
+    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
+    assert flow.metadata["firewall_name"] == "stripe"
+    assert flow.metadata["firewall_permission"] == ""
+    assert flow.metadata["firewall_rule_match"] == ""
+    assert flow.metadata["firewall_params"] == {}
+    assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata["browser_user_agent"] is True
+    assert "firewall_api_id" not in flow.metadata
+    assert "auth_resolved_secrets" not in flow.metadata
+    assert "auth_url_rewrite" not in flow.metadata
+    assert "_usage_flow_tracked" not in flow.metadata
+
+    flow.response = mitm_addon.http.Response.make(200)
+    mitm_addon.response(flow)
+    network_log_entry = json.loads((tmp_path / "net.jsonl").read_text().splitlines()[0])
+    assert network_log_entry["browser_user_agent"] is True
+
+
+async def test_non_browser_firewall_match_still_injects_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Non-browser firewall allows keep the existing connector auth behavior."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="stripe",
+            api_entry={
+                "base": "https://api.stripe.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.STRIPE_TOKEN }}"}},
+                "permissions": [],
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.stripe.com",
+        method="POST",
+        path="/v1/payment_pages/cs_test_123/init",
+        request_headers=headers(
+            ("Host", "api.stripe.com"),
+            ("User-Agent", "curl/8.5.0"),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert flow.metadata["firewall_action"] == "ALLOW"
+    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
+    assert flow.metadata["firewall_name"] == "stripe"
+
+
+async def test_browser_firewall_match_does_not_bypass_denied_unknown_policy(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    """Browser UA only skips auth mutation after the firewall has allowed the request."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="stripe",
+            api_entry={
+                "base": "https://api.stripe.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.STRIPE_TOKEN }}"}},
+                "permissions": [],
+            },
+            network_policy={
+                "allow": [],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.stripe.com",
+        method="POST",
+        path="/v1/payment_pages/cs_test_123/init",
+        request_headers=headers(
+            ("Host", "api.stripe.com"),
+            ("User-Agent", _BROWSER_USER_AGENT),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert "Authorization" not in flow.request.headers
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_base"] == "https://api.stripe.com"
+    assert flow.metadata["firewall_name"] == "stripe"
+    assert flow.metadata["browser_user_agent"] is True
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["reason"] == "unknown_endpoint"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repos/%2e%2e/admin",
+        "/repos\\admin",
+        "/repos/%5cadmin",
+        "/repos/%5C..%5Cadmin",
+    ],
+)
+async def test_firewall_unsafe_path_blocks_before_auth_injection(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, path
+):
+    """Unsafe paths block before trusted auth is injected."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "full-access",
+                        "rules": ["ANY /{path+}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path=path,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as mock_headers,
+    ):
+        await mitm_addon.request(flow)
+
+    mock_headers.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata["firewall_action"] == "DENY"
+    assert flow.metadata["firewall_base"] == "https://api.github.com"
+    assert flow.metadata["firewall_name"] == "github"
+    assert "Authorization" not in flow.request.headers
+    body = json.loads(flow.response.content)
+    assert body["error"] == "permission_denied"
+    assert body["message"] == "Request blocked: unsafe path"
+    assert body["method"] == "GET"
+    assert body["path"] == path
+    assert body["name"] == "github"
+    assert body["permissions"] == []
+    assert body["reason"] == "unsafe_path"
+    assert body["base"] == "https://api.github.com"
+    proxy_log_entry = json.loads((tmp_path / "proxy.jsonl").read_text().splitlines()[0])
+    assert proxy_log_entry["type"] == "firewall_block"
+    assert proxy_log_entry["name"] == "github"
+    assert proxy_log_entry["reason"] == "unsafe_path"

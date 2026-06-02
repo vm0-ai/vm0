@@ -179,39 +179,6 @@ describe("zero generate video command", () => {
     );
   });
 
-  it("should print JSON metadata when --json is provided", async () => {
-    server.use(
-      http.post(VIDEO_URL, () => {
-        return HttpResponse.json(VIDEO_RESULT);
-      }),
-    );
-
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "video",
-      "--prompt",
-      "JSON please",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      id: VIDEO_RESULT.id,
-      filename: VIDEO_RESULT.filename,
-      contentType: "video/mp4",
-      size: VIDEO_RESULT.size,
-      url: VIDEO_RESULT.url,
-      creditsCharged: 720,
-      model: "dreamina-seedance-2-0-fast-260128",
-      duration: "6s",
-      resolution: "1080p",
-      aspectRatio: "9:16",
-      generateAudio: false,
-    });
-  });
-
   it("should describe video generation models in help", () => {
     let helpOutput = "";
     videoCommand.configureOutput({
@@ -234,6 +201,7 @@ describe("zero generate video command", () => {
     expect(helpOutput).toContain("--image-url");
     expect(helpOutput).toContain("--first-frame-image-url");
     expect(helpOutput).toContain("--last-frame-image-url");
+    expect(helpOutput).not.toContain("--json");
   });
 
   it("should surface API errors", async () => {

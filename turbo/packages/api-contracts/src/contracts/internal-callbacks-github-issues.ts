@@ -17,6 +17,7 @@ export const githubIssuesCallbackPayloadSchema = z
     issueNumber: z.number(),
     agentId: z.string(),
     existingSessionId: z.string().optional(),
+    sessionContinuityEnabled: z.boolean().optional(),
     triggerCommentId: z.string().optional(),
     triggerReactionId: z.string().optional(),
     triggerCommentBody: z.string().optional(),
