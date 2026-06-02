@@ -157,15 +157,21 @@ def _create_zlib_stream_decode_feed(
     obj = zlib.decompressobj(wbits)
 
     def decode(chunk: bytes) -> None:
+        nonlocal obj
         data = chunk
         while data:
             decoded = obj.decompress(data, max_length=max_decoded_chunk)
             if decoded:
                 feed(decoded)
-            next_data = obj.unconsumed_tail
-            if not next_data:
-                return
-            data = next_data
+            if obj.unconsumed_tail:
+                data = obj.unconsumed_tail
+                continue
+            if obj.eof:
+                data = obj.unused_data
+                obj = zlib.decompressobj(wbits)
+                if data:
+                    continue
+            return
 
     return _make_streaming_decode_guard(decode, zlib.error, encoding)
 

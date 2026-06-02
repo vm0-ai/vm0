@@ -1481,6 +1481,39 @@ class TestStreamDecodeFeed:
                 parse(compressed[idx : idx + 3])
             assert b"".join(chunks) == plaintext, encoding
 
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_same_callback(self, headers, encoding):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        if encoding == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(plaintext)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(plaintext)
+        chunks: list[bytes] = []
+        parse = create_stream_decode_feed(headers(("Content-Encoding", encoding)), chunks.append)
+        assert parse is not None
+
+        parse(compressed)
+
+        assert b"".join(chunks) == plaintext
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_concatenated_zlib_members_across_callbacks(self, headers, encoding):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        if encoding == "gzip":
+            empty_member = gzip.compress(b"")
+            payload_member = gzip.compress(plaintext)
+        else:
+            empty_member = zlib.compress(b"")
+            payload_member = zlib.compress(plaintext)
+        chunks: list[bytes] = []
+        parse = create_stream_decode_feed(headers(("Content-Encoding", encoding)), chunks.append)
+        assert parse is not None
+
+        parse(empty_member)
+        parse(payload_member)
+
+        assert b"".join(chunks) == plaintext
+
     def test_no_encoding_feeds_original_chunks(self, headers):
         chunks: list[bytes] = []
         parse = create_stream_decode_feed(headers(), chunks.append)
@@ -1620,6 +1653,14 @@ class TestStreamDecodeFeed:
             @property
             def unconsumed_tail(self):
                 return self._real.unconsumed_tail
+
+            @property
+            def eof(self):
+                return self._real.eof
+
+            @property
+            def unused_data(self):
+                return self._real.unused_data
 
         proxies: list[CountingProxy] = []
 

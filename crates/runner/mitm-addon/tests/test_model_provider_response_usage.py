@@ -858,6 +858,44 @@ class TestModelProviderResponseUsage:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == _expected_event_quantities(provider_case)
 
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_full_pipeline_concatenated_zlib_model_json_reports_usage(
+        self, tmp_path, real_flow, encoding_case
+    ):
+        """Streaming decompression should feed later zlib members into JSON usage parsing."""
+        provider_case = ANTHROPIC_JSON_CASE
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        payload = _standard_success_payload(provider_case)
+        if encoding_case == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(payload)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(payload)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {"content-type": "application/json", "content-encoding": encoding_case}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+
+        webhook = self._run_response(flow)
+
+        extracted = flow.metadata["model_provider_usage"]
+        expected_usage = _expected_usage(provider_case)
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == _expected_event_quantities(provider_case)
+
     @pytest.mark.parametrize(
         "provider_case",
         MODEL_PROVIDER_JSON_CASES,

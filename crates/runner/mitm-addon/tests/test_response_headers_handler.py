@@ -2,6 +2,7 @@
 
 import gzip
 import json
+import zlib
 
 import brotli
 import pytest
@@ -428,6 +429,40 @@ class TestResponseHeadersHandler:
         response_stream(flow)(gzip.compress(body))
         response_streaming.finalize_connector_response_state(flow)
         json_state = flow.metadata["x_json_state"]
+        assert json_state["response_data_count"] == 2
+        assert json_state["response_includes"] == {"users": 1}
+        assert json_state["response_result_count"] == 2
+        assert json_state["response_total_tweet_count"] == 3
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_x_non_stream_concatenated_zlib_json_extractor(self, real_flow, headers, encoding):
+        """X JSON parsing should consume payloads from later zlib members."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}],
+                "includes": {"users": [{"id": "u1"}]},
+                "meta": {"result_count": 2, "total_tweet_count": 3},
+            }
+        ).encode()
+        if encoding == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(body)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(body)
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": encoding}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+        response_streaming.finalize_connector_response_state(flow)
+
+        json_state = flow.metadata["x_json_state"]
+        assert json_state["body_parsed"] is True
         assert json_state["response_data_count"] == 2
         assert json_state["response_includes"] == {"users": 1}
         assert json_state["response_result_count"] == 2
