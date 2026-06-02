@@ -190,6 +190,10 @@ const listChatThreadGithubPrsInner$ = command(
     }
 
     const params = get(pathParamsOf(chatThreadGithubPrsContract.list));
+    if (!isValidChatThreadId(params.threadId)) {
+      return chatThreadNotFound();
+    }
+
     const result = await set(
       zeroChatThreadGithubPrs$,
       {

@@ -406,4 +406,23 @@ describe("GET /api/zero/chat-threads/:threadId/github-prs", () => {
       "GitHub PR tracking is not enabled",
     );
   });
+
+  it("returns 404 for malformed thread IDs", async () => {
+    const fixture = await trackThread(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await trackGithubConnector(seedGithubConnector({ fixture }));
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(chatThreadGithubPrsContract);
+    const response = await accept(
+      client.list({
+        params: { threadId: "not-a-uuid" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.message).toBe("Chat thread not found");
+  });
 });
