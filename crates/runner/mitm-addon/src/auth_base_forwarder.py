@@ -30,6 +30,7 @@ HOP_BY_HOP: frozenset[str] = frozenset(
 DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
+NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 
 _forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semaphore] | None = None
 
@@ -202,6 +203,13 @@ def _read_response_body(resp) -> bytes:
 
 
 def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(address, ipaddress.IPv6Address) and (
+        address.ipv4_mapped is not None
+        or address.sixtofour is not None
+        or address.teredo is not None
+        or address in NAT64_WELL_KNOWN_PREFIX
+    ):
+        return False
     return address.is_global and not address.is_multicast and not address.is_reserved
 
 

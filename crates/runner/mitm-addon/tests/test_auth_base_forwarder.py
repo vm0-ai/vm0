@@ -80,6 +80,11 @@ class TestAuthBaseForwarderSecurity:
             pytest.param("https://[2001:db8::1]/", id="ipv6-documentation"),
             pytest.param("https://[::ffff:100.64.0.1]/", id="ipv6-mapped-cgnat"),
             pytest.param("https://[::ffff:8.8.8.8]/", id="ipv6-mapped-reserved"),
+            pytest.param("https://[2002:0808:0808::1]/", id="ipv6-6to4"),
+            pytest.param(
+                "https://[2001:0000:4136:e378:8000:63bf:3fff:fdd2]/",
+                id="ipv6-teredo",
+            ),
             pytest.param("https://[64:ff9b::169.254.169.254]/", id="ipv6-nat64-metadata"),
             pytest.param("https://[64:ff9b::8.8.8.8]/", id="ipv6-nat64-reserved"),
         ],
