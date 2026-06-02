@@ -182,7 +182,7 @@ pub(crate) struct CacheBudget {
 
 impl CacheBudget {
     pub(crate) fn from_fs_stats(stats: FsStats) -> Self {
-        let max_cache_bytes = stats.total_bytes.saturating_mul(20) / 100;
+        let max_cache_bytes = stats.total_bytes.saturating_mul(50) / 100;
         let max_cache_bytes = max_cache_bytes.min(MAX_CACHE_BYTES_CAP);
         let target_after_gc_bytes = max_cache_bytes.saturating_mul(75) / 100;
         let min_free_bytes = (stats.total_bytes.saturating_mul(10) / 100).max(MIN_FREE_BYTES_FLOOR);
@@ -2014,6 +2014,18 @@ mod tests {
         assert_eq!(budget.target_after_gc_bytes, 225 * GIB);
         assert_eq!(budget.min_free_bytes, 200 * GIB);
         assert_eq!(budget.max_entry_bytes, 32 * GIB);
+    }
+
+    #[test]
+    fn budget_uses_half_of_filesystem_before_cap() {
+        let budget = CacheBudget::from_fs_stats(FsStats {
+            total_bytes: 400 * GIB,
+            available_bytes: 300 * GIB,
+        });
+        assert_eq!(budget.max_cache_bytes, 200 * GIB);
+        assert_eq!(budget.target_after_gc_bytes, 150 * GIB);
+        assert_eq!(budget.min_free_bytes, 50 * GIB);
+        assert_eq!(budget.max_entry_bytes, 20 * GIB);
     }
 
     #[test]
