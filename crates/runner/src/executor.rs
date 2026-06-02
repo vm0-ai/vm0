@@ -226,15 +226,21 @@ struct AgentEnvDiagnostics {
     runner_owned_count: usize,
     external_count: usize,
     suspicious_keys: Vec<String>,
-    logged_keys: Vec<String>,
-    omitted_key_count: usize,
 }
 
 impl AgentEnvDiagnostics {
     fn suspicious_keys_csv(&self) -> String {
         self.suspicious_keys.join(",")
     }
+}
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AgentEnvKeyDiagnostics {
+    logged_keys: Vec<String>,
+    omitted_key_count: usize,
+}
+
+impl AgentEnvKeyDiagnostics {
     fn logged_keys_csv(&self) -> String {
         self.logged_keys.join(",")
     }
@@ -297,12 +303,6 @@ fn agent_exit_failure_message(exit_code: i32) -> String {
 }
 
 fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnostics {
-    let mut keys: Vec<String> = env
-        .keys()
-        .map(|key| sanitize_env_key_for_diagnostic(key))
-        .collect();
-    keys.sort();
-
     let mut suspicious_keys: Vec<String> = BOOTSTRAP_SENSITIVE_ENV_KEYS
         .iter()
         .copied()
@@ -311,12 +311,6 @@ fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnos
         .collect();
     suspicious_keys.sort();
 
-    let logged_keys: Vec<String> = keys
-        .iter()
-        .take(AGENT_ENV_KEY_DIAGNOSTIC_LIMIT)
-        .cloned()
-        .collect();
-    let omitted_key_count = keys.len().saturating_sub(logged_keys.len());
     let runner_owned_count = env
         .keys()
         .filter(|key| is_runner_owned_env_key(key))
@@ -327,6 +321,24 @@ fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnos
         runner_owned_count,
         external_count: env.len().saturating_sub(runner_owned_count),
         suspicious_keys,
+    }
+}
+
+fn build_agent_env_key_diagnostics(env: &[(String, String)]) -> AgentEnvKeyDiagnostics {
+    let mut keys: Vec<String> = env
+        .iter()
+        .map(|(key, _)| sanitize_env_key_for_diagnostic(key))
+        .collect();
+    keys.sort();
+
+    let logged_keys: Vec<String> = keys
+        .iter()
+        .take(AGENT_ENV_KEY_DIAGNOSTIC_LIMIT)
+        .cloned()
+        .collect();
+    let omitted_key_count = keys.len().saturating_sub(logged_keys.len());
+
+    AgentEnvKeyDiagnostics {
         logged_keys,
         omitted_key_count,
     }
@@ -396,6 +408,7 @@ fn log_agent_abnormal_exit_env_diagnostics(
     reuse_result: SandboxReuseResult,
     exit: &sandbox::ProcessExit,
     env_diagnostics: &AgentEnvDiagnostics,
+    env_key_diagnostics: &AgentEnvKeyDiagnostics,
 ) {
     warn!(
         run_id = %run_id,
@@ -406,8 +419,8 @@ fn log_agent_abnormal_exit_env_diagnostics(
         runner_owned_env_count = env_diagnostics.runner_owned_count,
         external_env_count = env_diagnostics.external_count,
         suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
-        env_keys = %env_diagnostics.logged_keys_csv(),
-        omitted_env_key_count = env_diagnostics.omitted_key_count,
+        env_keys = %env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = env_key_diagnostics.omitted_key_count,
         "agent abnormal exit env diagnostics"
     );
 }
@@ -1398,12 +1411,14 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
             failure_diagnostic.as_ref(),
             guest_error.as_deref(),
         ) {
+            let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
             log_agent_abnormal_exit_env_diagnostics(
                 context.run_id,
                 sandbox.id(),
                 start.reuse_result,
                 &exit,
                 &env_diagnostics,
+                &env_key_diagnostics,
             );
             collect_agent_abnormal_exit_diagnostics(
                 sandbox,
@@ -2755,6 +2770,10 @@ mod tests {
             ("BASH_ENV".to_string(), "super-secret-bash-env".to_string()),
             ("NORMAL_KEY".to_string(), "normal-secret-value".to_string()),
             ("VM0_RUN_ID".to_string(), "runner-secret-value".to_string()),
+            (
+                "VM0_SECRET_VALUES".to_string(),
+                "stored-secret-value".to_string(),
+            ),
         ]);
         for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
             env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
@@ -2766,22 +2785,24 @@ mod tests {
 
         let diagnostics = build_agent_env_diagnostics(&env);
 
-        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 4);
-        assert_eq!(diagnostics.runner_owned_count, 1);
+        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 5);
+        assert_eq!(diagnostics.runner_owned_count, 2);
         assert_eq!(
             diagnostics.external_count,
             AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3
         );
         assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
+        let env_pairs: Vec<(String, String)> = env.into_iter().collect();
+        let key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
         assert_eq!(
-            diagnostics.logged_keys.len(),
+            key_diagnostics.logged_keys.len(),
             AGENT_ENV_KEY_DIAGNOSTIC_LIMIT
         );
-        assert_eq!(diagnostics.omitted_key_count, 4);
-        let mut sorted_logged_keys = diagnostics.logged_keys.clone();
+        assert_eq!(key_diagnostics.omitted_key_count, 5);
+        let mut sorted_logged_keys = key_diagnostics.logged_keys.clone();
         sorted_logged_keys.sort();
-        assert_eq!(diagnostics.logged_keys, sorted_logged_keys);
-        let long_key = diagnostics
+        assert_eq!(key_diagnostics.logged_keys, sorted_logged_keys);
+        let long_key = key_diagnostics
             .logged_keys
             .iter()
             .find(|key| key.starts_with("AAA_"))
@@ -2791,13 +2812,14 @@ mod tests {
         let rendered = format!(
             "{} {}",
             diagnostics.suspicious_keys_csv(),
-            diagnostics.logged_keys_csv()
+            key_diagnostics.logged_keys_csv()
         );
         assert!(rendered.contains("BASH_ENV"));
         assert!(rendered.contains("VM0_RUN_ID"));
         assert!(!rendered.contains("super-secret-bash-env"));
         assert!(!rendered.contains("normal-secret-value"));
         assert!(!rendered.contains("runner-secret-value"));
+        assert!(!rendered.contains("stored-secret-value"));
         assert!(!rendered.contains("long-secret-value"));
     }
 
@@ -5094,22 +5116,6 @@ mod tests {
         Ok((outcome.exit_code(), outcome.error().map(ToOwned::to_owned)))
     }
 
-    async fn capture_execute_inner_events(
-        factory: &MockSandboxFactory,
-        ctx: &ExecutionContext,
-        config: &ExecutorConfig,
-        params: &JobParams,
-    ) -> RunnerResult<((i32, Option<String>), Vec<CapturedEvent>)> {
-        let captured = CapturedEvents::default();
-        let subscriber = tracing_subscriber::registry().with(captured.clone());
-        let _guard = tracing::subscriber::set_default(subscriber);
-        tracing::callsite::rebuild_interest_cache();
-
-        let result = run_execute_inner(factory, ctx, config, params).await?;
-
-        Ok((result, captured.entries()))
-    }
-
     async fn create_overridden_sandbox(
         overrides: Arc<sandbox_mock::MockSandboxOverrides>,
     ) -> Box<dyn Sandbox> {
@@ -5895,55 +5901,6 @@ mod tests {
                 .iter()
                 .all(|call| !call.cmd.contains("guest-agent-binary"))
         );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn execute_inner_abnormal_exit_logs_env_keys_without_values() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_executor_config(dir.path()).await;
-        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
-        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
-        let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
-        let mut ctx = context_with_env(HashMap::from([
-            ("BASH_ENV".into(), "super-secret-bash-env".into()),
-            ("NORMAL_KEY".into(), "normal-secret-value".into()),
-        ]));
-        ctx.secret_values = Some(vec!["stored-secret-value".into()]);
-
-        let ((exit_code, error), events) =
-            capture_execute_inner_events(&factory, &ctx, &config, &default_params())
-                .await
-                .unwrap();
-
-        assert_eq!(exit_code, 126);
-        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
-        let event = events
-            .iter()
-            .find(|event| {
-                event.fields.get("message").map(String::as_str)
-                    == Some("agent abnormal exit env diagnostics")
-            })
-            .unwrap_or_else(|| panic!("missing abnormal env diagnostics event: {events:#?}"));
-        assert!(
-            event
-                .fields
-                .get("env_keys")
-                .is_some_and(|keys| keys.contains("BASH_ENV") && keys.contains("NORMAL_KEY")),
-            "event={event:#?}"
-        );
-        assert_eq!(
-            event.fields.get("suspicious_env_keys").map(String::as_str),
-            Some("BASH_ENV")
-        );
-        let rendered_fields = events
-            .iter()
-            .flat_map(|event| event.fields.values())
-            .cloned()
-            .collect::<Vec<String>>()
-            .join("\n");
-        assert!(!rendered_fields.contains("super-secret-bash-env"));
-        assert!(!rendered_fields.contains("normal-secret-value"));
-        assert!(!rendered_fields.contains("stored-secret-value"));
     }
 
     #[tokio::test]

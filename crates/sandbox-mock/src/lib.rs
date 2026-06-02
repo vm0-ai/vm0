@@ -947,15 +947,17 @@ impl Sandbox for MockSandbox {
         }
 
         let result = self
-            .overrides
-            .as_ref()
-            .and_then(|overrides| {
-                overrides
-                    .read_file_results
-                    .lock_ignoring_poison()
-                    .pop_front()
+            .read_file_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .read_file_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
             })
-            .or_else(|| self.read_file_results.lock_ignoring_poison().pop_front())
             .unwrap_or(Ok(None))?;
         if let Some(bytes) = &result
             && bytes.len() as u64 > max_bytes
@@ -2279,6 +2281,23 @@ mod tests {
             Some(b"second".to_vec())
         );
         assert_eq!(first.read_file("/tmp/empty", 1024).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn sandbox_local_read_file_result_takes_precedence_over_shared_overrides() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_read_file_result(Ok(Some(b"shared".to_vec())));
+        let sandbox = MockSandbox::with_overrides("sandbox", Arc::clone(&overrides));
+        sandbox.push_read_file_result(Ok(Some(b"local".to_vec())));
+
+        assert_eq!(
+            sandbox.read_file("/tmp/local", 1024).await.unwrap(),
+            Some(b"local".to_vec())
+        );
+        assert_eq!(
+            sandbox.read_file("/tmp/shared", 1024).await.unwrap(),
+            Some(b"shared".to_vec())
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
