@@ -99,7 +99,6 @@ import {
 import {
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
-  userPermissionGrantsToFirewallPolicies,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import {
   allConnectorTypes$,
@@ -122,7 +121,10 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
-import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
+import {
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallPolicies,
+} from "@vm0/connectors/firewalls";
 import type { UserPermissionGrantAction } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 
 type UpsertUserPermissionGrant = (
@@ -800,7 +802,7 @@ function JobPermissionsTab({
   );
   const userGrantPolicies =
     userPermissionGrantsEnabled && userGrantsLoadable.state === "hasData"
-      ? userPermissionGrantsToFirewallPolicies(userGrantsLoadable.data)
+      ? permissionGrantsToFirewallPolicies(userGrantsLoadable.data)
       : null;
   const drawerInitialPolicies = userPermissionGrantsEnabled
     ? (userGrantPolicies ?? {})
