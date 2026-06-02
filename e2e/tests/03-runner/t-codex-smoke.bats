@@ -5,8 +5,7 @@
 # Activated via USE_MOCK_CODEX=true in CI (see turbo.yml + crates.yml).
 # The mock-codex binary emits a synthetic 3-event sequence
 # (thread.started -> item.completed agent_message -> turn.completed)
-# and persists a zstd-compressed session file, mirroring the real
-# codex CLI's protocol.
+# and persists a JSONL session file, mirroring the real codex CLI's protocol.
 #
 # Verifies:
 #   - Codex framework markers render (▷ Codex Started / ◆ Codex Completed)
