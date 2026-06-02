@@ -89,6 +89,7 @@ enum WorkspaceTrust {
 pub(crate) struct WorkspaceImagePrepareRequest<'a> {
     pub(crate) run_id: RunId,
     pub(crate) sandbox_id: sandbox::SandboxId,
+    pub(crate) profile_name: &'a str,
     pub(crate) session_id: Option<&'a str>,
     pub(crate) working_dir: &'a str,
     pub(crate) image_size_bytes: u64,
@@ -99,14 +100,17 @@ pub(crate) struct WorkspaceImagePrepareRequest<'a> {
 pub(crate) struct WorkspaceImageActiveLeaseRequest<'a> {
     pub(crate) run_id: RunId,
     pub(crate) sandbox_id: sandbox::SandboxId,
+    pub(crate) profile_name: &'a str,
     pub(crate) session_id: Option<&'a str>,
     pub(crate) working_dir: &'a str,
+    pub(crate) image_size_bytes: u64,
     pub(crate) workspace_drive_available: bool,
 }
 
 pub(crate) struct WorkspaceImageLease {
     cache: SessionWorkspaceCache,
     cache_key: Option<String>,
+    profile_name: String,
     session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
@@ -124,6 +128,7 @@ struct WorkspaceCacheMetadata {
     format_version: u32,
     key_version: u32,
     cache_scope: String,
+    profile_name: String,
     session_id: String,
     working_dir: String,
     last_completed_at: String,
@@ -276,8 +281,20 @@ impl SessionWorkspaceCache {
             .join(format!("current.ext4.tmp.{run_id}"))
     }
 
-    fn cache_key(&self, session_id: &str, working_dir: &str) -> String {
-        scoped_session_workspace_cache_key(&self.inner.cache_scope, session_id, working_dir)
+    fn scoped_cache_key(
+        &self,
+        profile_name: &str,
+        session_id: &str,
+        working_dir: &str,
+        image_size_bytes: u64,
+    ) -> String {
+        scoped_session_workspace_cache_key(
+            &self.inner.cache_scope,
+            profile_name,
+            session_id,
+            working_dir,
+            image_size_bytes,
+        )
     }
 
     fn metadata_matches_cache_key(
@@ -287,8 +304,10 @@ impl SessionWorkspaceCache {
     ) -> bool {
         scoped_session_workspace_cache_key(
             &metadata.cache_scope,
+            &metadata.profile_name,
             &metadata.session_id,
             &metadata.working_dir,
+            metadata.logical_image_size_bytes,
         ) == cache_key
     }
 
@@ -304,11 +323,12 @@ impl SessionWorkspaceCache {
         let active_lease = |result, lock, cache_key| WorkspaceImageLease {
             cache: self.clone(),
             cache_key,
+            profile_name: request.profile_name.to_owned(),
             session_id: request.session_id.map(str::to_owned),
             working_dir: lease_working_dir.to_owned(),
             active_image: active_image.clone(),
             source_image: None,
-            image_size_bytes: 0,
+            image_size_bytes: request.image_size_bytes,
             workspace_drive_enabled: request.workspace_drive_available,
             result,
             previous_storage: None,
@@ -327,7 +347,12 @@ impl SessionWorkspaceCache {
             return active_lease(WorkspaceCacheCheckoutResult::NoSession, None, None);
         };
 
-        let cache_key = self.cache_key(session_id, working_dir);
+        let cache_key = self.scoped_cache_key(
+            request.profile_name,
+            session_id,
+            working_dir,
+            request.image_size_bytes,
+        );
         match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
             Ok(lock) => active_lease(
                 WorkspaceCacheCheckoutResult::Miss,
@@ -360,6 +385,7 @@ impl SessionWorkspaceCache {
                 WorkspaceImageLease {
                     cache: self.clone(),
                     cache_key,
+                    profile_name: request.profile_name.to_owned(),
                     session_id: request.session_id.map(str::to_owned),
                     working_dir: lease_working_dir.to_owned(),
                     active_image: active_image.clone(),
@@ -450,7 +476,12 @@ impl SessionWorkspaceCache {
             );
         }
 
-        let cache_key = self.cache_key(session_id, working_dir);
+        let cache_key = self.scoped_cache_key(
+            request.profile_name,
+            session_id,
+            working_dir,
+            request.image_size_bytes,
+        );
         let lock_path = self.entry_lock_path(&cache_key);
         let lock = match crate::lock::try_acquire(lock_path).await {
             Ok(lock) => lock,
@@ -477,6 +508,7 @@ impl SessionWorkspaceCache {
         let hit = match self
             .read_valid_metadata(
                 &metadata_path,
+                request.profile_name,
                 session_id,
                 working_dir,
                 request.image_size_bytes,
@@ -1067,6 +1099,7 @@ impl SessionWorkspaceCache {
     async fn read_valid_metadata(
         &self,
         metadata_path: &Path,
+        profile_name: &str,
         session_id: &str,
         working_dir: &str,
         image_size_bytes: u64,
@@ -1078,8 +1111,12 @@ impl SessionWorkspaceCache {
             }
             Err(e) => return Err(e),
         };
-        let current_path =
-            self.session_workspace_cache_current_image(&self.cache_key(session_id, working_dir));
+        let current_path = self.session_workspace_cache_current_image(&self.scoped_cache_key(
+            profile_name,
+            session_id,
+            working_dir,
+            image_size_bytes,
+        ));
         let current_metadata = match fs::metadata(&current_path).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -1088,6 +1125,7 @@ impl SessionWorkspaceCache {
         validate_metadata(
             &metadata,
             &self.inner.cache_scope,
+            profile_name,
             session_id,
             working_dir,
             image_size_bytes,
@@ -1194,6 +1232,25 @@ impl WorkspaceImageLease {
         self.workspace_drive_enabled
     }
 
+    pub(crate) fn can_attempt_promotion(&self, session_id_override: Option<&str>) -> bool {
+        if !self.workspace_drive_enabled || !is_safe_guest_working_dir(&self.working_dir) {
+            return false;
+        }
+
+        match self.result {
+            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
+                self.cache_key.is_some() && self.entry_lock.is_some() && self.session_id.is_some()
+            }
+            WorkspaceCacheCheckoutResult::NoSession => {
+                self.session_id.is_none() && session_id_override.is_some()
+            }
+            WorkspaceCacheCheckoutResult::InvalidWorkingDir
+            | WorkspaceCacheCheckoutResult::LockBusy
+            | WorkspaceCacheCheckoutResult::InvalidMetadata
+            | WorkspaceCacheCheckoutResult::DiskPressure => false,
+        }
+    }
+
     pub(crate) async fn invalidate(&self, run_id: RunId, reason: &str) -> RunnerResult<bool> {
         let Some(cache_key) = self.cache_key.as_deref() else {
             return Ok(false);
@@ -1227,6 +1284,14 @@ impl WorkspaceImageLease {
             );
             return Ok(false);
         }
+        if !self.can_attempt_promotion(session_id_override) {
+            debug!(
+                run_id = %run_id,
+                checkout_result = ?self.result,
+                "workspace image cache promotion skipped: checkout result is not promotable"
+            );
+            return Ok(false);
+        }
 
         let mut _late_entry_lock_guard = None;
         let late_cache_key;
@@ -1249,7 +1314,12 @@ impl WorkspaceImageLease {
                 debug!(run_id = %run_id, "workspace image cache promotion skipped: no session id");
                 return Ok(false);
             };
-            late_cache_key = self.cache.cache_key(session_id, &self.working_dir);
+            late_cache_key = self.cache.scoped_cache_key(
+                &self.profile_name,
+                session_id,
+                &self.working_dir,
+                self.image_size_bytes,
+            );
             _late_entry_lock_guard = Some(
                 match crate::lock::try_acquire(self.cache.entry_lock_path(&late_cache_key)).await {
                     Ok(lock) => lock,
@@ -1373,6 +1443,7 @@ impl WorkspaceImageLease {
             format_version: CACHE_FORMAT_VERSION,
             key_version: CACHE_KEY_VERSION,
             cache_scope: self.cache.inner.cache_scope.clone(),
+            profile_name: self.profile_name.clone(),
             session_id: session_id.to_owned(),
             working_dir: self.working_dir.clone(),
             last_completed_at: completed_at,
@@ -1526,6 +1597,7 @@ fn is_workspace_scoped_path(mount_path: &str, working_dir: &str) -> bool {
 fn validate_metadata(
     metadata: &WorkspaceCacheMetadata,
     cache_scope: &str,
+    profile_name: &str,
     session_id: &str,
     working_dir: &str,
     image_size_bytes: u64,
@@ -1545,6 +1617,11 @@ fn validate_metadata(
     if metadata.cache_scope != cache_scope {
         return Err(RunnerError::Internal(
             "workspace metadata cache scope mismatch".into(),
+        ));
+    }
+    if metadata.profile_name != profile_name {
+        return Err(RunnerError::Internal(
+            "workspace metadata profile mismatch".into(),
         ));
     }
     if metadata.session_id != session_id {
@@ -1780,6 +1857,8 @@ mod tests {
 
     use super::*;
 
+    const TEST_PROFILE_NAME: &str = "vm0/default";
+
     fn timestamp_for_index(index: usize) -> String {
         format!("2026-05-01T00:{:02}:{:02}.000Z", index / 60, index % 60)
     }
@@ -1793,14 +1872,18 @@ mod tests {
         last_completed_at: &str,
         last_used_at: &str,
     ) -> String {
-        let key = cache.cache_key(session_id, working_dir);
+        let image = format!("image-{session_id}");
+        let key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            session_id,
+            working_dir,
+            image.len() as u64,
+        );
         fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
             .await
             .unwrap();
         let current = paths.session_workspace_cache_current_image(&key);
-        fs::write(&current, format!("image-{session_id}"))
-            .await
-            .unwrap();
+        fs::write(&current, image).await.unwrap();
         let current_metadata = fs::metadata(&current).await.unwrap();
         cache
             .write_metadata(
@@ -1810,6 +1893,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: cache.inner.cache_scope.clone(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: session_id.into(),
                     working_dir: working_dir.into(),
                     last_completed_at: last_completed_at.into(),
@@ -1839,6 +1923,38 @@ mod tests {
         assert_eq!(budget.target_after_gc_bytes, 225 * GIB);
         assert_eq!(budget.min_free_bytes, 200 * GIB);
         assert_eq!(budget.max_entry_bytes, 32 * GIB);
+    }
+
+    #[test]
+    fn cache_key_separates_profile_and_image_size() {
+        let base = scoped_session_workspace_cache_key(
+            "vm0/test",
+            "vm0/default",
+            "sess-1",
+            "/workspace",
+            5,
+        );
+
+        assert_ne!(
+            base,
+            scoped_session_workspace_cache_key(
+                "vm0/test",
+                "vm0/browser",
+                "sess-1",
+                "/workspace",
+                5,
+            )
+        );
+        assert_ne!(
+            base,
+            scoped_session_workspace_cache_key(
+                "vm0/test",
+                "vm0/default",
+                "sess-1",
+                "/workspace",
+                6,
+            )
+        );
     }
 
     #[test]
@@ -1943,6 +2059,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
@@ -1960,6 +2077,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: None,
                 working_dir: "/",
                 image_size_bytes: 1024,
@@ -1977,6 +2095,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/",
                 image_size_bytes: 1024,
@@ -2017,6 +2136,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace//repo/",
                 image_size_bytes: 1024,
@@ -2025,7 +2145,8 @@ mod tests {
             .await;
 
         assert_eq!(lease.working_dir(), "/workspace/repo");
-        let expected_key = session_workspace_cache_key("sess-1", "/workspace/repo");
+        let expected_key =
+            cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace/repo", 1024);
         assert_eq!(lease.cache_key.as_deref(), Some(expected_key.as_str()));
     }
 
@@ -2053,6 +2174,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2083,6 +2205,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2122,6 +2245,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2134,6 +2258,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2157,6 +2282,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2194,6 +2320,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2224,6 +2351,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2263,6 +2391,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -2299,7 +2428,7 @@ mod tests {
         let paths = RunnerPaths::new(dir.path().to_path_buf());
         let cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
-        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 1024);
         fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
             .await
             .unwrap();
@@ -2314,6 +2443,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "other".into(),
                     working_dir: "/workspace".into(),
                     last_completed_at: local_timestamp(),
@@ -2334,6 +2464,7 @@ mod tests {
         let err = cache
             .read_valid_metadata(
                 &paths.session_workspace_cache_metadata(&key),
+                TEST_PROFILE_NAME,
                 "sess-1",
                 "/workspace",
                 1024,
@@ -2349,7 +2480,12 @@ mod tests {
         let paths = RunnerPaths::new(dir.path().to_path_buf());
         let cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
-        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "sess-1",
+            "/workspace",
+            b"old image".len() as u64,
+        );
         fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
             .await
             .unwrap();
@@ -2364,6 +2500,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "sess-other".into(),
                     working_dir: "/workspace".into(),
                     last_completed_at: local_timestamp(),
@@ -2408,6 +2545,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "sess-1".into(),
                     working_dir: "/".into(),
                     last_completed_at: local_timestamp(),
@@ -2437,7 +2575,12 @@ mod tests {
         let paths = RunnerPaths::new(dir.path().to_path_buf());
         let cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
-        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "sess-1",
+            "/workspace",
+            b"old image".len() as u64,
+        );
         fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
             .await
             .unwrap();
@@ -2452,6 +2595,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "sess-1".into(),
                     working_dir: "/workspace".into(),
                     last_completed_at: local_timestamp(),
@@ -2477,6 +2621,7 @@ mod tests {
         let err = cache
             .read_valid_metadata(
                 &paths.session_workspace_cache_metadata(&key),
+                TEST_PROFILE_NAME,
                 "sess-1",
                 "/workspace",
                 current_metadata.len(),
@@ -2579,7 +2724,12 @@ mod tests {
         let cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
         let sandbox_id = sandbox::SandboxId::new_v4();
-        let cache_key = session_workspace_cache_key("sess-1", "/workspace");
+        let cache_key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "sess-1",
+            "/workspace",
+            b"old image".len() as u64,
+        );
         tokio::fs::create_dir_all(paths.session_workspace_cache_entry_dir(&cache_key))
             .await
             .unwrap();
@@ -2594,6 +2744,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "sess-1".into(),
                     working_dir: "/workspace".into(),
                     last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -2615,6 +2766,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: current_metadata.len(),
@@ -2623,6 +2775,7 @@ mod tests {
             .await;
 
         assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::DiskPressure);
+        assert!(!lease.can_attempt_promotion(Some("sess-1")));
         assert!(
             !tokio::fs::try_exists(&current).await.unwrap(),
             "old current image must not remain reusable after a cache hit is skipped"
@@ -2635,7 +2788,7 @@ mod tests {
             .unwrap();
 
         assert!(
-            lease
+            !lease
                 .promote(
                     run_id,
                     None,
@@ -2644,14 +2797,10 @@ mod tests {
                     &StorageFingerprints::default(),
                 )
                 .await
-                .unwrap()
+                .unwrap(),
+            "disk-pressure checkout should not promote a fresh image into the cache"
         );
-        let metadata = cache
-            .read_metadata_file(&paths.session_workspace_cache_metadata(&cache_key))
-            .await
-            .unwrap();
-        assert_eq!(metadata.last_completed_at, "2026-05-02T00:00:00.000Z");
-        assert_eq!(metadata.logical_image_size_bytes, b"new image".len() as u64);
+        assert!(cache.held_session_states().await.is_empty());
     }
 
     #[tokio::test]
@@ -2661,7 +2810,7 @@ mod tests {
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
-        let cache_key = session_workspace_cache_key("sess-1", "/workspace");
+        let cache_key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 1024);
         let _held_lock = crate::lock::acquire(cache.entry_lock_path(&cache_key))
             .await
             .unwrap();
@@ -2670,6 +2819,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 1024,
@@ -2678,6 +2828,7 @@ mod tests {
             .await;
 
         assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::LockBusy);
+        assert!(!lease.can_attempt_promotion(Some("sess-1")));
         assert!(
             !lease
                 .promote(
@@ -2719,6 +2870,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "sess-1".into(),
                     working_dir: "/workspace".into(),
                     last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -2742,8 +2894,10 @@ mod tests {
             .lease_active(WorkspaceImageActiveLeaseRequest {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
                 session_id: Some("sess-1"),
                 working_dir: "/workspace",
+                image_size_bytes: 5,
                 workspace_drive_available: true,
             })
             .await;
@@ -2774,6 +2928,7 @@ mod tests {
                     format_version: CACHE_FORMAT_VERSION,
                     key_version: CACHE_KEY_VERSION,
                     cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
                     session_id: "sess-1".into(),
                     working_dir: "/workspace".into(),
                     last_completed_at: "2026-05-01T00:00:00.000Z".into(),
@@ -2833,10 +2988,12 @@ mod tests {
         let cache = SessionWorkspaceCache::new(paths.clone());
         let run_id = RunId::new_v4();
 
+        let mut oldest_key = String::new();
+        let mut newest_key = String::new();
         for index in 0..=MAX_HELD_SESSION_STATES {
             let session_id = format!("sess-{index:04}");
             let timestamp = timestamp_for_index(index);
-            write_current_cache_entry(
+            let key = write_current_cache_entry(
                 &cache,
                 &paths,
                 run_id,
@@ -2846,12 +3003,13 @@ mod tests {
                 &timestamp,
             )
             .await;
+            if index == 0 {
+                oldest_key = key.clone();
+            }
+            if index == MAX_HELD_SESSION_STATES {
+                newest_key = key;
+            }
         }
-        let oldest_key = session_workspace_cache_key("sess-0000", "/workspace");
-        let newest_key = session_workspace_cache_key(
-            &format!("sess-{MAX_HELD_SESSION_STATES:04}"),
-            "/workspace",
-        );
 
         let freed = cache.gc(false).await.unwrap();
 
@@ -3089,6 +3247,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -3147,6 +3306,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
                 session_id: None,
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -3161,6 +3321,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+        assert!(!lease.can_attempt_promotion(None));
+        assert!(lease.can_attempt_promotion(Some("sess-1")));
         assert!(
             lease
                 .promote(

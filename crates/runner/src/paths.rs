@@ -52,20 +52,28 @@ pub(crate) fn short_digest(s: &str) -> String {
 ///
 /// The raw CLI session id is untrusted and must not be embedded directly in
 /// host paths. The working-dir argument is intentionally ignored: workspace
-/// image cache identity is based on canonical workspace semantics.
+/// image cache identity is based on canonical workspace semantics. The key
+/// includes the cache scope, profile, drive layout version, and logical image
+/// size so incompatible workspace images never share a host entry.
 #[cfg(test)]
 pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
-    scoped_session_workspace_cache_key("", session_id, working_dir)
+    scoped_session_workspace_cache_key("", "vm0/default", session_id, working_dir, 5)
 }
 
 pub(crate) fn scoped_session_workspace_cache_key(
     cache_scope: &str,
+    profile_name: &str,
     session_id: &str,
     _working_dir: &str,
+    image_size_bytes: u64,
 ) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"session-workspace-cache:v2\0");
+    hasher.update(b"session-workspace-cache:v3\0");
     hasher.update(cache_scope.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(profile_name.as_bytes());
+    hasher.update(b"\0workspace-drive-v1\0");
+    hasher.update(image_size_bytes.to_le_bytes());
     hasher.update(b"\0");
     hasher.update(session_id.as_bytes());
     hex::encode(hasher.finalize())

@@ -108,6 +108,7 @@ pub(super) fn spawn_job(
     let factory = job_profile.factory;
     let job_cancel = job_profile.cancel;
     let params = executor::JobParams {
+        profile_name: profile_name.clone(),
         vcpu,
         memory_mb,
         workspace_disk_mb: job_profile.workspace_disk_mb,
@@ -163,7 +164,8 @@ pub(super) fn spawn_job(
 
             let inner = tokio::spawn(async move {
                 if let Some(idle_entry) = reuse_entry {
-                    executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
+                    executor::execute_job_reuse(idle_entry, context, &exec_config, &params, cancel)
+                        .await
                 } else {
                     executor::execute_job(
                         &**factory,

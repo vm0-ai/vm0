@@ -119,6 +119,7 @@ pub struct ExecutorConfig {
 
 /// Per-job VM parameters resolved from the profile config.
 pub struct JobParams {
+    pub profile_name: String,
     pub vcpu: u32,
     pub memory_mb: u32,
     pub workspace_disk_mb: u32,
@@ -534,6 +535,7 @@ pub async fn execute_job_reuse(
     idle_sandbox: ReusableIdleSandbox,
     context: ExecutionContext,
     config: &ExecutorConfig,
+    params: &JobParams,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
@@ -571,8 +573,10 @@ pub async fn execute_job_reuse(
                     .lease_active(WorkspaceImageActiveLeaseRequest {
                         run_id,
                         sandbox_id,
+                        profile_name: &params.profile_name,
                         session_id: context.session_id(),
                         working_dir: CANONICAL_WORKING_DIR,
+                        image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
                         workspace_drive_available: true,
                     })
                     .await,
@@ -589,7 +593,11 @@ pub async fn execute_job_reuse(
             cancel,
         )
         .await;
-        outcome.workspace_promotable = workspace_image.is_some();
+        outcome.workspace_promotable = workspace_image_promotable(
+            workspace_image.as_ref(),
+            &context,
+            outcome.guest_session_id.as_deref(),
+        );
         outcome.workspace_image = workspace_image;
         outcome
     };
@@ -804,6 +812,7 @@ async fn execute_new_sandbox(
         context,
         sandbox_id,
         config,
+        &params.profile_name,
         params.workspace_disk_mb,
         telemetry,
     )
@@ -861,7 +870,11 @@ async fn execute_new_sandbox(
         cancel,
     )
     .await;
-    outcome.workspace_promotable = workspace_image.is_some();
+    outcome.workspace_promotable = workspace_image_promotable(
+        workspace_image.as_ref(),
+        context,
+        outcome.guest_session_id.as_deref(),
+    );
     outcome.workspace_image = workspace_image;
     Ok(outcome)
 }
@@ -876,6 +889,7 @@ async fn prepare_workspace_image(
     context: &ExecutionContext,
     sandbox_id: SandboxId,
     config: &ExecutorConfig,
+    profile_name: &str,
     workspace_disk_mb: u32,
     telemetry: &mut JobTelemetry,
 ) -> Option<WorkspaceImageLease> {
@@ -890,6 +904,7 @@ async fn prepare_workspace_image(
         .prepare(WorkspaceImagePrepareRequest {
             run_id: context.run_id,
             sandbox_id,
+            profile_name,
             session_id: context.session_id(),
             working_dir: CANONICAL_WORKING_DIR,
             image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
@@ -898,6 +913,15 @@ async fn prepare_workspace_image(
         .await;
     record_workspace_cache_result(telemetry, lease.result());
     Some(lease)
+}
+
+fn workspace_image_promotable(
+    workspace_image: Option<&WorkspaceImageLease>,
+    context: &ExecutionContext,
+    guest_session_id: Option<&str>,
+) -> bool {
+    workspace_image
+        .is_some_and(|image| image.can_attempt_promotion(context.session_id().or(guest_session_id)))
 }
 
 async fn create_started_sandbox(
@@ -4963,6 +4987,7 @@ mod tests {
 
     fn default_params() -> JobParams {
         JobParams {
+            profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
             workspace_disk_mb: 16_384,
@@ -5296,6 +5321,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id,
                 sandbox_id,
+                profile_name: "vm0/default",
                 session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
@@ -5332,6 +5358,7 @@ mod tests {
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
                 session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
@@ -6491,8 +6518,14 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (reuse_outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
@@ -6513,7 +6546,7 @@ mod tests {
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(reuse_outcome.exit_code(), 1);
         let error = reuse_outcome.error().unwrap();
@@ -6541,7 +6574,7 @@ mod tests {
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(reuse_outcome.exit_code(), 1);
         let error = reuse_outcome.error().unwrap();
@@ -6573,7 +6606,7 @@ mod tests {
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
@@ -6630,7 +6663,7 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx2, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx2, &config, &default_params(), cancel).await;
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -6703,8 +6736,14 @@ mod tests {
                 panic!("test idle entry should unpark: {error}");
             }
         };
-        let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (reuse_outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -6758,8 +6797,14 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
-        let (outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         assert_eq!(outcome.exit_code(), 1);
         assert!(outcome.error().unwrap().contains("vsock broken"));
@@ -6789,8 +6834,14 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
-        let (outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         assert_eq!(outcome.exit_code(), 1);
         assert!(outcome.error().unwrap().contains("reseed timeout"));
@@ -6815,8 +6866,14 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
-        let (outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         assert_eq!(outcome.exit_code(), 1);
         let error = outcome.error().unwrap();
@@ -6856,7 +6913,8 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-abc").await;
-        let (outcome, _telemetry) = execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(outcome.exit_code(), 1);
         assert!(outcome.error().unwrap().contains("disk full"));
@@ -7345,8 +7403,14 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
-        let (_outcome, telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (_outcome, telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         let ops = telemetry.pending_ops_snapshot();
         let reuse_events: Vec<_> = ops

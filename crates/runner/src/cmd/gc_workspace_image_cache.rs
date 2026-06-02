@@ -90,7 +90,13 @@ mod tests {
     async fn gc_workspace_image_cache_preserves_valid_group_scoped_entry() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().join("home"));
-        let cache_key = scoped_session_workspace_cache_key("vm0/test", "sess-1", "/workspace");
+        let cache_key = scoped_session_workspace_cache_key(
+            "vm0/test",
+            "vm0/default",
+            "sess-1",
+            "/workspace",
+            b"image".len() as u64,
+        );
         let entry_dir = home.workspace_image_cache_dir().join(&cache_key);
         tokio::fs::create_dir_all(&entry_dir).await.unwrap();
         let current = entry_dir.join("current.ext4");
@@ -100,6 +106,7 @@ mod tests {
             "formatVersion": 1,
             "keyVersion": 1,
             "cacheScope": "vm0/test",
+            "profileName": "vm0/default",
             "sessionId": "sess-1",
             "workingDir": "/workspace",
             "lastCompletedAt": "2026-05-28T00:00:00.000Z",
