@@ -42,7 +42,7 @@ export const testOauthDeviceProvider: DeviceAuthConnectorAuthProvider<
   access: {
     kind: "none",
     getAccessSecretName: () => {
-      return TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME;
+      return TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME;
     },
   },
   revoke: { kind: "none" },
@@ -56,7 +56,7 @@ export const testOauthDeviceApiProvider: DeviceAuthConnectorAuthProvider<
   access: {
     kind: "none",
     getAccessSecretName: () => {
-      return TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME;
+      return TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME;
     },
   },
   revoke: { kind: "none" },

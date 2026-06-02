@@ -72,6 +72,14 @@ import {
   startConnectorDeviceAuthorization,
 } from "../auth-providers/connector-auth";
 import {
+  testOauthDeviceApiProvider,
+  testOauthDeviceProvider,
+} from "../auth-providers/oauth/providers/test-oauth-device-provider";
+import {
+  TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
+  TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
+} from "../auth-providers/oauth/providers/test-oauth-device";
+import {
   GOOGLE_OAUTH_CONNECTOR_TYPES,
   isGoogleOAuthConnector,
 } from "../auth-providers/oauth/google-connectors";
@@ -1076,6 +1084,15 @@ describe("connector selected auth method capability checks", () => {
         },
       },
     });
+  });
+
+  it("keeps test OAuth device provider access secrets method-specific", () => {
+    expect(testOauthDeviceProvider.access.getAccessSecretName()).toBe(
+      TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
+    );
+    expect(testOauthDeviceApiProvider.access.getAccessSecretName()).toBe(
+      TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
+    );
   });
 
   it("starts, polls, and refreshes the Base44 OAuth device provider", async () => {
