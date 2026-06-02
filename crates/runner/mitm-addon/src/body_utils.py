@@ -4,7 +4,8 @@ Exports:
 
 - ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the responseheaders streaming
   buffer and by the decompression safety cap.
-- Streaming usage decoding and one-shot decompression for gzip, deflate, br, zstd.
+- Bounded streaming usage decoding for gzip, deflate, zstd; one-shot
+  decompression for gzip, deflate, br, zstd.
 - Conservative request-body decoding for billing inspection.
 - UTF-8-safe truncation, text/binary content detection and encoding.
 - Header sanitization for sensitive names and URL-bearing values.
@@ -118,10 +119,10 @@ def _make_streaming_decode_guard(
 ) -> _StreamDecodeFeed:
     """Wrap a streaming decoder with log-once + short-circuit on failure.
 
-    ``zlib`` / ``brotli`` / ``zstd`` streaming decompressors have internal
-    state that becomes undefined after a decompression error — subsequent
-    ``decode_fn(chunk)`` calls may keep raising or silently produce garbage
-    plaintext.  On first error we log once (at debug, mirroring the
+    ``zlib`` / ``zstd`` streaming decompressors have internal state that becomes
+    undefined after a decompression error — subsequent ``decode_fn(chunk)``
+    calls may keep raising or silently produce garbage plaintext. On first
+    error we log once (at debug, mirroring the
     non-streaming ``decompress_body`` pattern), latch a broken flag, and
     ignore every subsequent chunk so downstream parsers don't
     consume corrupt output.
@@ -200,6 +201,26 @@ def _create_zstd_stream_decode_feed(
     return _make_streaming_decode_guard(decode, zstandard.ZstdError, "zstd")
 
 
+def _stream_decode_skip_reason(encoding: str) -> str | None:
+    if not encoding or encoding == "identity":
+        return None
+    if encoding in ("gzip", "deflate", "zstd"):
+        return None
+    if encoding == "br":
+        return "brotli streaming output cannot be bounded"
+    return "unsupported content encoding"
+
+
+def can_stream_decode_usage(headers: http.Headers) -> bool:
+    """Return whether usage parsers can safely consume this response stream."""
+    encoding = headers.get("content-encoding", "").strip().lower()
+    reason = _stream_decode_skip_reason(encoding)
+    if reason is None:
+        return True
+    _log_streaming_decode_skipped(encoding, reason)
+    return False
+
+
 def create_stream_decode_feed(
     headers: http.Headers,
     feed: _StreamDecodeFeed,
@@ -217,6 +238,8 @@ def create_stream_decode_feed(
     if max_decoded_chunk <= 0:
         raise ValueError("max_decoded_chunk must be positive")
     encoding = headers.get("content-encoding", "").strip().lower()
+    if not can_stream_decode_usage(headers):
+        return None
     if not encoding or encoding == "identity":
         return feed
     if encoding in ("gzip", "deflate"):
@@ -225,12 +248,8 @@ def create_stream_decode_feed(
             encoding=encoding,
             max_decoded_chunk=max_decoded_chunk,
         )
-    if encoding == "br":
-        _log_streaming_decode_skipped("br", "brotli streaming output cannot be bounded")
-        return None
     if encoding == "zstd":
         return _create_zstd_stream_decode_feed(feed, max_decoded_chunk=max_decoded_chunk)
-    _log_streaming_decode_skipped(encoding, "unsupported content encoding")
     return None
 
 

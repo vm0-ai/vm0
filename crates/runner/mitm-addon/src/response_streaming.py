@@ -80,6 +80,8 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return None
     if is_billable_model_provider:
+        if not body_utils.can_stream_decode_usage(flow.response.headers):
+            return None
         content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
             if uses_openai_responses_usage_protocol(flow):
@@ -113,6 +115,10 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
         flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
         return parser
 
+    if not is_billable_flow:
+        return None
+    if not body_utils.can_stream_decode_usage(flow.response.headers):
+        return None
     connector_parser = usage.create_connector_response_parser(flow)
     if connector_parser is not None:
         parser = _make_response_chunk_parser(connector_parser.feed, flow.response.headers)
