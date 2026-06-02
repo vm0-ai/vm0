@@ -486,13 +486,21 @@ async fn promote_workspace_image_from_active_sandbox(
         }
     }
 
+    let empty_storage_fingerprints = StorageFingerprints::default();
+    let promotion_storage_fingerprints = match terminal_status {
+        WorkspaceCacheTerminalStatus::Success => storage_fingerprints,
+        WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
+            &empty_storage_fingerprints
+        }
+    };
+
     match workspace_image
         .promote(
             run_id,
             log.session_id,
             terminal_status,
             local_completed_at(),
-            storage_fingerprints,
+            promotion_storage_fingerprints,
         )
         .await
     {
@@ -795,6 +803,70 @@ mod tests {
         assert_eq!(exec_calls.len(), 1);
         assert!(exec_calls[0].sudo);
         assert!(exec_calls[0].cmd.contains("umount -- \"$workspace_dir\""));
+    }
+
+    #[tokio::test]
+    async fn non_success_workspace_promotion_does_not_mark_storages_reusable() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease =
+            prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, "sess-nonzero")
+                .await;
+        let sandbox = MockSandbox::new("workspace-promotion-nonzero");
+        let storage_fingerprints = crate::idle_pool::StorageFingerprints {
+            storages: std::collections::HashMap::from([(
+                CANONICAL_WORKING_DIR.to_owned(),
+                ("repo".to_owned(), "v1".to_owned()),
+            )]),
+            artifacts: std::collections::HashMap::from([(
+                format!("{CANONICAL_WORKING_DIR}/artifact"),
+                ("artifact".to_owned(), "v1".to_owned()),
+            )]),
+        };
+
+        let promoted = promote_workspace_image_from_active_sandbox(
+            &sandbox,
+            run_id,
+            Some(&lease),
+            true,
+            WorkspaceCacheTerminalStatus::NonzeroExit,
+            &storage_fingerprints,
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some("sess-nonzero"),
+                reason: "test",
+            },
+        )
+        .await;
+
+        assert!(promoted);
+        drop(lease);
+        let checkout = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                session_id: Some("sess-nonzero"),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: b"image".len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+
+        assert!(checkout.is_cache_hit());
+        let previous_storage = checkout
+            .previous_storage()
+            .expect("cache hit should expose previous storage fingerprints");
+        assert!(
+            previous_storage.storages.is_empty(),
+            "non-success promotion must not let future runs skip storage downloads"
+        );
+        assert!(previous_storage.artifacts.is_empty());
     }
 
     #[tokio::test]
