@@ -41,7 +41,7 @@ pub struct ConfigArgs {
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
-    /// vm0 API URL
+    /// vm0 API URL (HTTPS, or HTTP loopback for local development)
     #[arg(long, env = "VM0_API_URL")]
     api_url: String,
     /// Runner authentication token

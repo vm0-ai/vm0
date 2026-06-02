@@ -152,8 +152,8 @@ impl Default for SandboxConfig {
 /// CLI flag or env var at `start` time and override what's in the YAML.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerConfig {
-    /// Base URL of the vm0 API (e.g. `https://api.example.com`). Overridable
-    /// via `--api-url` / `VM0_API_URL`.
+    /// Base URL of the vm0 API. Must use HTTPS, except HTTP loopback URLs for local development.
+    /// Overridable via `--api-url` / `VM0_API_URL`.
     pub url: String,
     /// Runner auth token. Overridable via `--token` / `VM0_RUNNER_TOKEN`.
     pub token: String,

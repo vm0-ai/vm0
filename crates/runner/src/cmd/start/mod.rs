@@ -145,7 +145,7 @@ pub struct StartArgs {
     /// Path to runner.yaml config file
     #[arg(long, short)]
     pub(crate) config: PathBuf,
-    /// vm0 API URL (overrides config)
+    /// vm0 API URL (HTTPS, or HTTP loopback for local development; overrides config)
     #[arg(long, env = "VM0_API_URL")]
     api_url: Option<String>,
     /// Runner authentication token (overrides config)

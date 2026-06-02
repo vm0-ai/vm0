@@ -94,7 +94,7 @@ def load(loader: Loader) -> None:
         name="vm0_api_url",
         typespec=str,
         default="https://www.vm0.ai",
-        help="VM0 API URL for proxy endpoint",
+        help="VM0 API URL for proxy endpoint (HTTPS, or HTTP loopback for local development)",
     )
     loader.add_option(
         name="vm0_proxy_registry_path",
