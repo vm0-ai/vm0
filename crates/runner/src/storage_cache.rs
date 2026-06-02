@@ -8,9 +8,9 @@
 //! entry's `archive_url` is rewritten to
 //! `file:///tmp/vm0-storage-cache/<hash(name)>-<hash(version)>.tar.gz`
 //! so `guest-download` reads from the local stage instead of re-fetching.
-//! Keying on both name and version keeps the guest file injective in the
-//! `(vasStorageName, vasVersionId)` pair — two entries that only differ in
-//! storage name cannot clobber each other on the guest tmpfs.
+//! Keying on both name and version gives same-version entries with different
+//! storage names separate collision-resistant staged filenames in normal
+//! operation, so they do not clobber each other on the guest tmpfs.
 //!
 //! Entries above [`CACHE_MAX_SIZE`], entries without a content key, and
 //! entries already marked `cached = true` (reuse-in-place from
@@ -55,11 +55,11 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Guest-side filename for a cached archive.
 ///
-/// Must be injective in `(name, version)`: two manifest entries that differ
-/// only in `vas_storage_name` but share `vas_version_id` end up at distinct
-/// `file://` URLs so the second `sandbox.write_file` does not clobber the
-/// first. Uses the same `short_digest` helper that `HomePaths` uses for
-/// the host cache dir, so the two keys always map 1:1.
+/// Includes both hashed components so two manifest entries that differ only in
+/// `vas_storage_name` but share `vas_version_id` derive their staged filenames
+/// from both values under the same truncated-hash collision model as the host
+/// cache. Uses the same `short_digest` helper that `HomePaths` uses for the host
+/// cache dir, so host writes and guest reads use one shared keying scheme.
 fn guest_archive_path(name: &str, version: &str) -> String {
     let name_hash = short_digest(name);
     let version_hash = short_digest(version);

@@ -24,19 +24,19 @@ use sha2::{Digest, Sha256};
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 
-/// Short hex digests (16 chars = 8 bytes) of a `(name, version)` pair, used
+/// Short hex digests (16 chars = 64 bits) of a `(name, version)` pair, used
 /// when building filesystem paths from untrusted manifest fields.
 ///
-/// Prefix-length of 16 is ample collision resistance for a runner-local
-/// cache (~10^10 pairs before birthday collision) while keeping directory
-/// names compact.
+/// The 64-bit prefix keeps directory names compact and is intended for this
+/// bounded runner-local cache, not as a mathematical uniqueness guarantee or
+/// unbounded global key.
 fn storage_key_hashes(name: &str, version: &str) -> (String, String) {
     (short_digest(name), short_digest(version))
 }
 
 /// Hex-encode the first 8 bytes of `SHA-256(s)` — 16 characters, collision
-/// resistant enough for runner-local bookkeeping and always a valid path
-/// segment.
+/// resistant enough for bounded runner-local bookkeeping and always a valid
+/// path segment.
 ///
 /// Exposed `pub(crate)` so the host-side cache dir (built here) and the
 /// guest-side `file://` URL (built in `storage_cache`) share one source of
@@ -207,9 +207,9 @@ impl HomePaths {
     ///
     /// `name` and `version` come from untrusted manifest fields
     /// (`vas_storage_name` / `vas_version_id`) so they are hashed before use.
-    /// Hashing also makes the key pair injective — two distinct `(name,
-    /// version)` pairs cannot collide on a single directory regardless of
-    /// hyphen placement in either component.
+    /// Hashing also avoids separator ambiguity between the two path components
+    /// and provides compact collision-resistant cache keys under the truncated
+    /// hash model.
     pub fn storage_cache_dir(&self, name: &str, version: &str) -> PathBuf {
         let (name_hash, version_hash) = storage_key_hashes(name, version);
         self.storages_dir().join(name_hash).join(version_hash)
@@ -218,7 +218,8 @@ impl HomePaths {
     /// Per-version flock path guarding `storage_cache_dir(name, version)`.
     ///
     /// Same hashing rationale as `storage_cache_dir`: the lock filename must
-    /// be injective in `(name, version)` and safe to embed in a path segment.
+    /// use the same compact cache key components and be safe to embed in a
+    /// path segment.
     pub fn storage_lock(&self, name: &str, version: &str) -> PathBuf {
         let (name_hash, version_hash) = storage_key_hashes(name, version);
         self.storage_lock_for_cache_key(&name_hash, &version_hash)
@@ -739,16 +740,19 @@ mod tests {
     }
 
     #[test]
-    fn storage_lock_is_injective_and_inside_locks_dir() {
+    fn storage_lock_avoids_separator_ambiguity_and_stays_inside_locks_dir() {
         // Distinct (name, version) pairs that would collide under naive
         // `format!("storage-{name}-{version}.lock")` templating must produce
-        // distinct lock paths after hashing.
+        // distinct lock paths for these examples after hashing.
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let locks = home.locks_dir();
 
         let a = home.storage_lock("foo", "bar-v1");
         let b = home.storage_lock("foo-bar", "v1");
-        assert_ne!(a, b, "hashed lock paths must not collide: {a:?} vs {b:?}");
+        assert_ne!(
+            a, b,
+            "naive-ambiguous examples should not share a lock path: {a:?} vs {b:?}"
+        );
         assert!(a.starts_with(&locks));
         assert!(b.starts_with(&locks));
         assert!(a.to_string_lossy().ends_with(".lock"));
