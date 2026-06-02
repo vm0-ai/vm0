@@ -17,6 +17,8 @@ export const TEST_OAUTH_DEVICE_VERIFICATION_URI =
   "https://oauth-device.test/device";
 export const TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME =
   "TEST_OAUTH_DEVICE_ACCESS_TOKEN";
+export const TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME =
+  "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN";
 
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 

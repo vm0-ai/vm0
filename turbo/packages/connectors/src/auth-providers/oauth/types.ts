@@ -1,17 +1,18 @@
 import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthCodeGrantConfig,
-  ConnectorAuthClientConfig,
+  ConnectorAuthMethodIds,
   ConnectorAuthCodeGrantAuthMethodId,
   ConnectorDeviceAuthGrantConfig,
   ConnectorDeviceAuthGrantAuthMethodId,
-  ConnectorAuthMethodClientConfig,
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
   ConnectorAuthProviderType,
+  ConnectorType,
   DeviceAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
+import type { ConnectorAuthClientForMethod } from "@vm0/connectors/connector-utils";
 
 export interface OAuthTokenResult {
   accessToken: string;
@@ -137,42 +138,19 @@ export type OAuthDeviceAuthPollResult =
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
-type ConnectorAccessProviderClientFor<
-  T extends RefreshTokenAccessConnectorType,
-  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = ConnectorAuthMethodClientConfig<T, Method> & ConnectorAuthClientConfig;
-
-type ConnectorRevokeProviderClientFor<
-  T extends ConnectorAuthProviderType,
-  Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
-> = ConnectorAuthMethodClientConfig<T, Method> & ConnectorAuthClientConfig;
-
-type NoClientCredentialArgs = Record<never, never>;
-
-type StaticClientIdArgs<Client extends ConnectorAuthClientConfig> =
-  Client extends { readonly clientRegistration: "static" }
-    ? { readonly clientId: string }
-    : NoClientCredentialArgs;
-
-type TokenCredentialArgs<Client extends ConnectorAuthClientConfig> =
-  Client extends {
-    readonly clientRegistration: "static";
-    readonly clientType: "confidential";
-  }
-    ? { readonly clientId: string; readonly clientSecret: string }
-    : Client extends {
-          readonly clientRegistration: "static";
-          readonly clientType: "public";
-        }
-      ? { readonly clientId: string }
-      : NoClientCredentialArgs;
+type ConnectorAuthMethodClientArgs<
+  T extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<T>,
+> = {
+  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+};
 
 export type ConnectorAuthCodeAuthorizeArgs<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
     ConnectorAuthCodeGrantAuthMethodId<T>,
 > = OAuthAuthorizeFlowArgs &
-  StaticClientIdArgs<ConnectorAuthMethodClientConfig<T, Method>> & {
+  ConnectorAuthMethodClientArgs<T, Method> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
@@ -181,7 +159,7 @@ export type ConnectorAuthCodeExchangeArgs<
   Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
     ConnectorAuthCodeGrantAuthMethodId<T>,
 > = OAuthExchangeFlowArgs &
-  TokenCredentialArgs<ConnectorAuthMethodClientConfig<T, Method>> & {
+  ConnectorAuthMethodClientArgs<T, Method> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
@@ -190,7 +168,7 @@ export type ConnectorAuthProviderRefreshArgs<
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
 > = OAuthRefreshFlowArgs &
-  TokenCredentialArgs<ConnectorAccessProviderClientFor<T, Method>> & {
+  ConnectorAuthMethodClientArgs<T, Method> & {
     readonly tokenUrl: string;
   };
 
@@ -198,15 +176,14 @@ export type ConnectorAuthProviderRevokeArgs<
   T extends ConnectorAuthProviderType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =
     ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
-> = OAuthRevokeFlowArgs &
-  TokenCredentialArgs<ConnectorRevokeProviderClientFor<T, Method>>;
+> = OAuthRevokeFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;
 
 export type ConnectorDeviceAuthorizationStartArgs<
   T extends DeviceAuthGrantConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
     ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = OAuthDeviceAuthStartFlowArgs &
-  StaticClientIdArgs<ConnectorAuthMethodClientConfig<T, Method>> & {
+  ConnectorAuthMethodClientArgs<T, Method> & {
     readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   };
 
@@ -215,6 +192,6 @@ export type ConnectorDeviceAuthorizationPollArgs<
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
     ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = OAuthDeviceAuthPollFlowArgs &
-  TokenCredentialArgs<ConnectorAuthMethodClientConfig<T, Method>> & {
+  ConnectorAuthMethodClientArgs<T, Method> & {
     readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   };

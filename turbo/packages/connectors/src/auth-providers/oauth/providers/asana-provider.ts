@@ -9,11 +9,11 @@ export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildAsanaAuthorizationUrl(clientId, args.redirectUri, args.state);
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeAsanaCode(
@@ -43,7 +43,7 @@ export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
       return "ASANA_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshAsanaToken(
         args.tokenUrl,
         clientId,

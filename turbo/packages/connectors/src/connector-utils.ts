@@ -10,7 +10,9 @@ import {
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByGrantKind,
   type ConnectorAuthMethodIdsByRevokeKind,
+  type ConnectorTypesByAccessKind,
   type ConnectorTypesByGrantKind,
+  type ConnectorTypesByRevokeKind,
   type ConnectorAuthMethodClientConfig,
   type ConnectorAccessConfig,
   type ConnectorAccessKind,
@@ -494,6 +496,24 @@ export type ConnectorAuthMethodRefByGrantKind<Kind extends ConnectorGrantKind> =
     };
   }[ConnectorTypesByGrantKind<Kind>];
 
+export type ConnectorAuthMethodRefByAccessKind<
+  Kind extends ConnectorAccessKind,
+> = {
+  readonly [Type in ConnectorTypesByAccessKind<Kind>]: {
+    readonly type: Type;
+    readonly authMethod: ConnectorAuthMethodIdsByAccessKind<Type, Kind>;
+  };
+}[ConnectorTypesByAccessKind<Kind>];
+
+export type ConnectorAuthMethodRefByRevokeKind<
+  Kind extends ConnectorRevokeKind,
+> = {
+  readonly [Type in ConnectorTypesByRevokeKind<Kind>]: {
+    readonly type: Type;
+    readonly authMethod: ConnectorAuthMethodIdsByRevokeKind<Type, Kind>;
+  };
+}[ConnectorTypesByRevokeKind<Kind>];
+
 export function connectorAuthMethodRefHasGrantKind<
   Kind extends ConnectorGrantKind,
 >(
@@ -503,6 +523,30 @@ export function connectorAuthMethodRefHasGrantKind<
   return (
     getConnectorAuthMethod(authMethodRef.type, authMethodRef.authMethod)?.grant
       .kind === grantKind
+  );
+}
+
+export function connectorAuthMethodRefHasAccessKind<
+  Kind extends ConnectorAccessKind,
+>(
+  authMethodRef: ConnectorAuthMethodRef,
+  accessKind: Kind,
+): authMethodRef is ConnectorAuthMethodRefByAccessKind<Kind> {
+  return (
+    getConnectorAuthMethod(authMethodRef.type, authMethodRef.authMethod)?.access
+      .kind === accessKind
+  );
+}
+
+export function connectorAuthMethodRefHasRevokeKind<
+  Kind extends ConnectorRevokeKind,
+>(
+  authMethodRef: ConnectorAuthMethodRef,
+  revokeKind: Kind,
+): authMethodRef is ConnectorAuthMethodRefByRevokeKind<Kind> {
+  return (
+    getConnectorAuthMethod(authMethodRef.type, authMethodRef.authMethod)?.revoke
+      .kind === revokeKind
   );
 }
 

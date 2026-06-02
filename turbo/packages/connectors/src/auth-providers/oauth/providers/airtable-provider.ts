@@ -9,7 +9,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildAirtableAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const codeVerifier = args.codeVerifier;
@@ -50,7 +50,7 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
       return "AIRTABLE_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshAirtableToken(
         args.tokenUrl,
         clientId,

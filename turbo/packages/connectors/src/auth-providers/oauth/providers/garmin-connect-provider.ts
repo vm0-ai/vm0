@@ -10,7 +10,7 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         return buildGarminConnectAuthorizationUrl(
           clientId,
           args.redirectUri,
@@ -18,7 +18,7 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const state = args.state;
         if (!state) {
@@ -53,7 +53,7 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
         return "GARMIN_CONNECT_REFRESH_TOKEN";
       },
       refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         return refreshGarminConnectToken(
           args.tokenUrl,
           clientId,

@@ -8,7 +8,7 @@ export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildTodoistAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -17,7 +17,7 @@ export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeTodoistCode(

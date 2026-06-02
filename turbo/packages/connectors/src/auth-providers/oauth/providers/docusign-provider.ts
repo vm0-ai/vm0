@@ -9,7 +9,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildDocuSignAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -55,7 +55,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
       return "DOCUSIGN_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshDocuSignToken(
         args.tokenUrl,
         clientId,

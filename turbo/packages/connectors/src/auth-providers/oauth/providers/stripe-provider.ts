@@ -9,7 +9,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildStripeAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const result = await exchangeStripeCode(
         args.authCodeGrant,
@@ -45,7 +45,7 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
       return "STRIPE_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshStripeToken(
         args.tokenUrl,
         clientId,

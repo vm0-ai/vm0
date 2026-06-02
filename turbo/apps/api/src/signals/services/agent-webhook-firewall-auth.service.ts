@@ -10,12 +10,16 @@ import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodStorageMetadata,
   resolveConnectorAuthClientForMethod,
-  connectorAuthMethodSupportsRefreshTokenAccess,
+  connectorAuthMethodRefHasAccessKind,
+  type ConnectorAuthClientForMethod,
+  type ConnectorAuthMethodRef,
   type ConnectorAuthMethodAccessMetadata,
   type ConnectorAuthMethodStorageMetadata,
 } from "@vm0/connectors/connector-utils";
 import {
+  connectorAuthMethodIdSchema,
   connectorTypeSchema,
+  type ConnectorAuthMethodIdsByAccessKind,
   type RefreshTokenAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -26,9 +30,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
-  getConnectorAuthProviderClientArgs,
   refreshConnectorAuthProviderAccessToken,
-  type ConnectorAuthProviderClientArgs,
   type ProviderEnv,
 } from "@vm0/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
@@ -305,19 +307,57 @@ interface RefreshStateRow {
 }
 
 type PreparedRefreshTokenContext =
-  | {
-      readonly sourceType: "connector";
-      readonly connectorType: RefreshTokenAccessConnectorType;
-      readonly authMethod: string;
-      readonly clientArgs: ConnectorAuthProviderClientArgs;
-      readonly context: RefreshTokenContext;
-    }
+  | ConnectorPreparedRefreshTokenContext
   | {
       readonly sourceType: "model-provider";
       readonly providerKey: ModelProviderOAuthProviderKey;
       readonly currentEnv: ProviderEnv;
       readonly context: RefreshTokenContext;
     };
+
+type ConnectorRefreshTokenAccessClientRef = {
+  readonly [Type in RefreshTokenAccessConnectorType]: {
+    readonly [Method in ConnectorAuthMethodIdsByAccessKind<
+      Type,
+      "refresh-token"
+    >]: {
+      readonly type: Type;
+      readonly authMethod: Method;
+      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
+    };
+  }[ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">];
+}[RefreshTokenAccessConnectorType];
+
+type ConnectorPreparedRefreshTokenContext =
+  ConnectorRefreshTokenAccessClientRef & {
+    readonly sourceType: "connector";
+    readonly context: RefreshTokenContext;
+  };
+
+function resolveRefreshTokenAccessClientRef<
+  Type extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<Type, "refresh-token">,
+>(authMethodRef: {
+  readonly type: Type;
+  readonly authMethod: Method;
+}): ConnectorRefreshTokenAccessClientRef | undefined {
+  const authClient = resolveConnectorAuthClientForMethod(
+    authMethodRef.type,
+    authMethodRef.authMethod,
+    (name) => {
+      return optionalEnv(name);
+    },
+  );
+  if (!authClient) {
+    return undefined;
+  }
+
+  return {
+    type: authMethodRef.type,
+    authMethod: authMethodRef.authMethod,
+    authClient,
+  } as ConnectorRefreshTokenAccessClientRef;
+}
 
 type PrepareRefreshTokenContextResult =
   | {
@@ -1024,22 +1064,21 @@ function prepareRefreshTokenContext(
   if (!parsedConnectorType.success) {
     return { ok: false, reason: "not-refreshable" };
   }
-  if (
-    !connectorAuthMethodSupportsRefreshTokenAccess(
-      parsedConnectorType.data,
-      connectorAccess.authMethod,
-    )
-  ) {
+  const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
+    connectorAccess.authMethod,
+  );
+  if (!parsedAuthMethod.success) {
     return { ok: false, reason: "not-refreshable" };
   }
-  const authClient = resolveConnectorAuthClientForMethod(
-    parsedConnectorType.data,
-    connectorAccess.authMethod,
-    (name) => {
-      return optionalEnv(name);
-    },
-  );
-  if (!authClient) {
+  const authMethodRef: ConnectorAuthMethodRef = {
+    type: parsedConnectorType.data,
+    authMethod: parsedAuthMethod.data,
+  };
+  if (!connectorAuthMethodRefHasAccessKind(authMethodRef, "refresh-token")) {
+    return { ok: false, reason: "not-refreshable" };
+  }
+  const authClientRef = resolveRefreshTokenAccessClientRef(authMethodRef);
+  if (!authClientRef) {
     L.debug(
       `${args.connectorType} connector client not configured, skipping token refresh`,
     );
@@ -1060,9 +1099,7 @@ function prepareRefreshTokenContext(
     ok: true,
     prepared: {
       sourceType: "connector",
-      connectorType: parsedConnectorType.data,
-      authMethod: connectorAccess.authMethod,
-      clientArgs: getConnectorAuthProviderClientArgs(authClient),
+      ...authClientRef,
       context,
     },
   };
@@ -1496,10 +1533,8 @@ function refreshPreparedAccessToken(args: {
   readonly signal: AbortSignal;
 }) {
   return args.prepared.sourceType === "connector"
-    ? refreshConnectorAuthProviderAccessToken({
-        type: args.prepared.connectorType,
-        authMethod: args.prepared.authMethod,
-        clientArgs: args.prepared.clientArgs,
+    ? refreshPreparedConnectorAccessToken({
+        prepared: args.prepared,
         refreshToken: args.refreshToken,
         signal: args.signal,
       })
@@ -1509,6 +1544,18 @@ function refreshPreparedAccessToken(args: {
         refreshToken: args.refreshToken,
         signal: args.signal,
       });
+}
+
+function refreshPreparedConnectorAccessToken(args: {
+  readonly prepared: ConnectorPreparedRefreshTokenContext;
+  readonly refreshToken: string;
+  readonly signal: AbortSignal;
+}) {
+  return refreshConnectorAuthProviderAccessToken({
+    ...args.prepared,
+    refreshToken: args.refreshToken,
+    signal: args.signal,
+  });
 }
 
 async function refreshAccessTokenForSource(
@@ -1530,7 +1577,7 @@ async function refreshAccessTokenForSource(
       await lockConnectorState(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        type: prepared.connectorType,
+        type: prepared.type,
       });
     } else {
       await lockModelProviderState(tx, {

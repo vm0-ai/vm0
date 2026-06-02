@@ -11,7 +11,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
   grant: {
     kind: "device-auth",
     startDeviceAuth: async (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return await startBase44DeviceAuth({
         clientId,
         deviceAuthGrant: args.deviceAuthGrant,
@@ -19,7 +19,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       });
     },
     pollDeviceAuth: async (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return await pollBase44DeviceAuth({
         clientId,
         deviceAuthGrant: args.deviceAuthGrant,
@@ -36,7 +36,7 @@ export const base44Provider: DeviceAuthConnectorAuthProvider<"base44"> = {
       return BASE44_REFRESH_SECRET_NAME;
     },
     refreshToken: async (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return await refreshBase44Token({
         clientId,
         tokenUrl: args.tokenUrl,

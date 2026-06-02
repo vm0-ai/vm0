@@ -9,7 +9,7 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildFigmaAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeFigmaCode(
@@ -48,7 +48,7 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
       return "FIGMA_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshFigmaToken(
         args.tokenUrl,
         clientId,

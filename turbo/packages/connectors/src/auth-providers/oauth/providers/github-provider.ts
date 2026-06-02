@@ -10,7 +10,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildGitHubAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -19,7 +19,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const { accessToken, scopes } = await exchangeGitHubCode(
@@ -40,7 +40,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
   revoke: {
     kind: "token-revoke",
     revokeToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return revokeGitHubGrant(clientId, clientSecret, args.accessToken);
     },
   },

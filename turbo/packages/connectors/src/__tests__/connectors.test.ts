@@ -16,6 +16,7 @@ import {
   connectorTypeSchema,
   type ConnectorAuthMethodConfig,
   type ConnectorAuthMethodId,
+  type ConnectorAuthMethodIds,
   type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorAuthCodeGrantConfig,
   type ConnectorConfig,
@@ -59,12 +60,12 @@ import {
   hasConnectorDeviceAuthGrant,
   isStaticConfidentialConnectorAuthClient,
   isStaticConnectorAuthClient,
+  type ConnectorAuthClientForMethod,
   type ConnectorEnvReader,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
 import {
   buildConnectorAuthCodeAuthorizationUrl,
-  getConnectorAuthProviderClientArgs,
   pollConnectorDeviceAuthorization,
   refreshConnectorAuthProviderAccessToken,
   revokeConnectorAuthMethodAccessToken,
@@ -98,8 +99,23 @@ function hasConnectorAuthorizationGrant(type: ConnectorType): boolean {
 const server = setupServer();
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
 
-function getOauthAuthClient(type: ConnectorType, readEnv: ConnectorEnvReader) {
-  return resolveConnectorAuthClientForMethod(type, "oauth", readEnv);
+type OAuthAuthMethodConnectorType = {
+  readonly [Type in ConnectorType]: "oauth" extends ConnectorAuthMethodIds<Type>
+    ? Type
+    : never;
+}[ConnectorType];
+
+function getOauthAuthClient<Type extends OAuthAuthMethodConnectorType>(
+  type: Type,
+  readEnv: ConnectorEnvReader,
+):
+  | ConnectorAuthClientForMethod<Type, ConnectorAuthMethodIds<Type> & "oauth">
+  | undefined {
+  const authMethod = "oauth" as ConnectorAuthMethodIds<Type> & "oauth";
+  return resolveConnectorAuthClientForMethod<
+    Type,
+    ConnectorAuthMethodIds<Type> & "oauth"
+  >(type, authMethod, readEnv);
 }
 
 beforeAll(() => {
@@ -737,20 +753,6 @@ describe("connector selected auth method capability checks", () => {
     expect(url.searchParams.get("scope")).toBe("read");
   });
 
-  it("rejects refresh when the selected auth method is not refreshable", async () => {
-    await expect(
-      refreshConnectorAuthProviderAccessToken({
-        type: "stripe",
-        authMethod: "api-token",
-        clientArgs: {},
-        refreshToken: "stripe-refresh-token",
-        signal: testRefreshSignal(),
-      }),
-    ).rejects.toThrow(
-      "stripe connector auth method api-token does not support token refresh",
-    );
-  });
-
   it("revokes OAuth tokens through the provider registry", async () => {
     const readEnv: ConnectorEnvReader = (name) => {
       if (name === "GH_OAUTH_CLIENT_ID") {
@@ -1278,7 +1280,7 @@ describe("connector selected auth method capability checks", () => {
       refreshConnectorAuthProviderAccessToken({
         type: "base44",
         authMethod: "oauth",
-        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
+        authClient: oauthClient,
         refreshToken: "base44-refresh-rotation",
         signal: testRefreshSignal(),
       }),
@@ -1291,7 +1293,7 @@ describe("connector selected auth method capability checks", () => {
       refreshConnectorAuthProviderAccessToken({
         type: "base44",
         authMethod: "oauth",
-        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
+        authClient: oauthClient,
         refreshToken: "base44-refresh-without-rotation",
         signal: testRefreshSignal(),
       }),
@@ -1624,7 +1626,7 @@ describe("connector selected auth method capability checks", () => {
     const refreshResult = await refreshConnectorAuthProviderAccessToken({
       type: "slock",
       authMethod: "oauth",
-      clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
+      authClient: oauthClient,
       refreshToken: "slock-refresh-token",
       signal: testRefreshSignal(),
     });
@@ -1645,7 +1647,7 @@ describe("connector selected auth method capability checks", () => {
       refreshConnectorAuthProviderAccessToken({
         type: "slock",
         authMethod: "oauth",
-        clientArgs: getConnectorAuthProviderClientArgs(oauthClient),
+        authClient: oauthClient,
         refreshToken: "slock-refresh-malformed",
         signal: testRefreshSignal(),
       }),

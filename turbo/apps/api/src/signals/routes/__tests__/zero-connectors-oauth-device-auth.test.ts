@@ -1299,7 +1299,11 @@ describe("OAuth device authorization connector routes", () => {
     testOauthDeviceProvider.grant.pollDeviceAuth = () => {
       pollCount += 1;
       return originalPollDeviceAuth({
-        clientId: "test-oauth-device-client",
+        authClient: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "test-oauth-device-client",
+        },
         deviceAuthGrant: getConnectorAuthMethodDeviceAuthGrantConfig(
           "test-oauth-device",
           "oauth",

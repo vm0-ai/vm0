@@ -51,9 +51,11 @@ type CallbackIdentity = {
 
 type AuthCodeCallbackMethodRef<
   Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type> =
+    ConnectorAuthCodeGrantAuthMethodId<Type>,
 > = {
   readonly connectorType: Type;
-  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>;
+  readonly authMethod: Method;
 };
 
 type CompleteOAuthCallbackInput = AuthCodeCallbackMethodRef & {
@@ -144,8 +146,11 @@ function missingStateRedirectResponse(origin: string, type: string): Response {
   return redirectWithError(origin, type, "Missing state parameter", true);
 }
 
-async function exchangeTokenForConnector(
-  args: AuthCodeCallbackMethodRef & {
+async function exchangeTokenForConnector<
+  Type extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
+>(
+  args: AuthCodeCallbackMethodRef<Type, Method> & {
     readonly code: string;
     readonly redirectUri: string;
     readonly state: string | undefined;
@@ -174,9 +179,10 @@ async function exchangeTokenForConnector(
   });
 }
 
-function getRequestedScopes(
-  args: AuthCodeCallbackMethodRef,
-): readonly string[] {
+function getRequestedScopes<
+  Type extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
+>(args: AuthCodeCallbackMethodRef<Type, Method>): readonly string[] {
   return getConnectorAuthMethodGrantScopes(args.connectorType, args.authMethod);
 }
 

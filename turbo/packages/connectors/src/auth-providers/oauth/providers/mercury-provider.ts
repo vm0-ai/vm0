@@ -9,7 +9,7 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildMercuryAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMercuryCode(
@@ -48,7 +48,7 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
       return "MERCURY_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshMercuryToken(
         args.tokenUrl,
         clientId,

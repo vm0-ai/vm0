@@ -1,7 +1,9 @@
 import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthCodeGrantAuthMethodId,
+  ConnectorAuthMethodIds,
   ConnectorAuthMethodIdsByAccessKind,
+  ConnectorAuthMethodIdsByRevokeKind,
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorAuthProviderType,
   ConnectorType,
@@ -74,23 +76,53 @@ export interface RefreshTokenAccessProvider<
   ): Promise<OAuthRefreshResult>;
 }
 
-export type ConnectorAuthProviderAccess<T extends ConnectorType> =
-  T extends RefreshTokenAccessConnectorType
-    ? RefreshTokenAccessProvider<T>
+export type ConnectorAuthProviderAccess<
+  T extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<T> = ConnectorAuthMethodIds<T>,
+> =
+  Method extends ConnectorAuthMethodIdsByAccessKind<
+    T & RefreshTokenAccessConnectorType,
+    "refresh-token"
+  >
+    ? RefreshTokenAccessProvider<
+        T & RefreshTokenAccessConnectorType,
+        Method &
+          ConnectorAuthMethodIdsByAccessKind<
+            T & RefreshTokenAccessConnectorType,
+            "refresh-token"
+          >
+      >
     : NoneAccessProvider;
 
 interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-interface TokenRevokeProvider<T extends ConnectorAuthProviderType> {
+interface TokenRevokeProvider<
+  T extends TokenRevokeConnectorType,
+  Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =
+    ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
+> {
   readonly kind: "token-revoke";
-  revokeToken(args: ConnectorAuthProviderRevokeArgs<T>): Promise<void>;
+  revokeToken(args: ConnectorAuthProviderRevokeArgs<T, Method>): Promise<void>;
 }
 
-export type ConnectorAuthProviderRevoke<T extends ConnectorAuthProviderType> =
-  T extends TokenRevokeConnectorType
-    ? TokenRevokeProvider<T>
+export type ConnectorAuthProviderRevoke<
+  T extends ConnectorAuthProviderType,
+  Method extends ConnectorAuthMethodIds<T> = ConnectorAuthMethodIds<T>,
+> =
+  Method extends ConnectorAuthMethodIdsByRevokeKind<
+    T & TokenRevokeConnectorType,
+    "token-revoke"
+  >
+    ? TokenRevokeProvider<
+        T & TokenRevokeConnectorType,
+        Method &
+          ConnectorAuthMethodIdsByRevokeKind<
+            T & TokenRevokeConnectorType,
+            "token-revoke"
+          >
+      >
     : NoneRevokeProvider;
 
 export interface AuthProvider<TGrant, TAccess, TRevoke> {
@@ -105,8 +137,8 @@ export type AuthCodeConnectorAuthProvider<
     ConnectorAuthCodeGrantAuthMethodId<T>,
 > = AuthProvider<
   AuthCodeGrantProvider<T, Method>,
-  ConnectorAuthProviderAccess<T>,
-  ConnectorAuthProviderRevoke<T>
+  ConnectorAuthProviderAccess<T, Method>,
+  ConnectorAuthProviderRevoke<T, Method>
 >;
 
 export type DeviceAuthConnectorAuthProvider<
@@ -115,8 +147,8 @@ export type DeviceAuthConnectorAuthProvider<
     ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = AuthProvider<
   DeviceAuthGrantProvider<T, Method>,
-  ConnectorAuthProviderAccess<T>,
-  ConnectorAuthProviderRevoke<T>
+  ConnectorAuthProviderAccess<T, Method>,
+  ConnectorAuthProviderRevoke<T, Method>
 >;
 
 export type ModelProviderGrantProvider = NoneGrantProvider;

@@ -9,7 +9,7 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildNotionAuthorizationUrl(
         clientId,
         args.redirectUri,
@@ -17,7 +17,7 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeNotionCode(
@@ -43,7 +43,7 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
       return "NOTION_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshNotionToken(
         args.tokenUrl,
         clientId,

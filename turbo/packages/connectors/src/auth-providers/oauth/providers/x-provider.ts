@@ -9,7 +9,7 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildXAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -53,7 +53,7 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
       return "X_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshXToken(
         args.tokenUrl,
         clientId,

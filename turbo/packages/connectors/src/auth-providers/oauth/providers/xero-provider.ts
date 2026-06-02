@@ -9,7 +9,7 @@ export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildXeroAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeXeroCode(
@@ -48,7 +48,7 @@ export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
       return "XERO_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshXeroToken(
         args.tokenUrl,
         clientId,

@@ -9,7 +9,7 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildRedditAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeRedditCode(
@@ -48,7 +48,7 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
       return "REDDIT_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshRedditToken(
         args.tokenUrl,
         clientId,

@@ -8,7 +8,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       const redirectUri = args.redirectUri;
       const state = args.state;
       return buildGoogleAuthorizationUrl(
@@ -20,7 +20,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGoogleOAuthCode(
@@ -53,7 +53,7 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       return "GOOGLE_ADS_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const refreshToken = args.refreshToken;
       return refreshGoogleToken(
         args.tokenUrl,

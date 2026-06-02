@@ -9,7 +9,7 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildMicrosoftAuthorizationUrl(
@@ -21,7 +21,7 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeMicrosoftOAuthCode(
@@ -54,7 +54,7 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         return "OUTLOOK_MAIL_REFRESH_TOKEN";
       },
       refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.refreshToken;
         return refreshMicrosoftToken(
           args.tokenUrl,

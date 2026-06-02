@@ -9,7 +9,7 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildAhrefsAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeAhrefsCode(
@@ -48,7 +48,7 @@ export const ahrefsProvider: AuthCodeConnectorAuthProvider<"ahrefs"> = {
       return "AHREFS_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshAhrefsToken(
         args.tokenUrl,
         clientId,

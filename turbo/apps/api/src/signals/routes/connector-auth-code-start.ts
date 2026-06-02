@@ -2,9 +2,9 @@ import {
   connectorAuthMethodRefHasGrantKind,
   getConnectorAuthMethod,
   resolveConnectorAuthClientForMethod,
-  type ConnectorAuthClient,
   type ConnectorEnvReader,
   type ConnectorAuthMethodRefByGrantKind,
+  type ConnectorAuthClientForMethod,
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeGrantConnectorType,
@@ -19,12 +19,15 @@ import {
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 
-type PrepareResolvedConnectorAuthCodeStartResult =
+type PrepareResolvedConnectorAuthCodeStartResult<
+  Type extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
+> =
   | {
       readonly ok: true;
       readonly state: string;
       readonly redirectUri: string;
-      readonly authClient: ConnectorAuthClient;
+      readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
     }
   | {
       readonly ok: false;
@@ -62,12 +65,13 @@ export function resolveConnectorAuthCodeStartMethod(
 // the selected auth method for this auth-code flow.
 export function prepareResolvedConnectorAuthCodeStart<
   Type extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
 >(args: {
   readonly type: Type;
-  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>;
+  readonly authMethod: Method;
   readonly origin: string;
   readonly readEnv: ConnectorEnvReader;
-}): PrepareResolvedConnectorAuthCodeStartResult {
+}): PrepareResolvedConnectorAuthCodeStartResult<Type, Method> {
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/${args.type}/callback`;
   const authClient = resolveConnectorAuthClientForMethod(
@@ -89,10 +93,11 @@ export function prepareResolvedConnectorAuthCodeStart<
 
 export async function buildResolvedConnectorAuthCodeAuthUrl<
   Type extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
 >(args: {
   readonly type: Type;
-  readonly authMethod: ConnectorAuthCodeGrantAuthMethodId<Type>;
-  readonly authClient: ConnectorAuthClient;
+  readonly authMethod: Method;
+  readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
   readonly redirectUri: string;
   readonly state: string;
 }): Promise<AuthUrlResult> {

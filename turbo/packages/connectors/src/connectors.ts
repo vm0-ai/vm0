@@ -1040,6 +1040,10 @@ export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   keyof ConnectorAuthMethodsOf<Type>,
   ConnectorAuthMethodId
 >;
+export type ConnectorAuthMethodConfigFor<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = ConnectorAuthMethodsOf<Type>[Method] & ConnectorAuthMethodConfig;
 export type ConnectorAuthMethodClientConfig<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,

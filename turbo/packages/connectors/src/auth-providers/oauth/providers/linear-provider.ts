@@ -10,7 +10,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildLinearAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -19,7 +19,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeLinearCode(
@@ -49,7 +49,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
       return "LINEAR_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshLinearToken(
         args.tokenUrl,
         clientId,
@@ -62,7 +62,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
   revoke: {
     kind: "token-revoke",
     revokeToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return revokeLinearToken(clientId, clientSecret, args.accessToken);
     },
   },

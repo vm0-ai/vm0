@@ -9,7 +9,7 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildDropboxAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeDropboxCode(
@@ -48,7 +48,7 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
       return "DROPBOX_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshDropboxToken(
         args.tokenUrl,
         clientId,

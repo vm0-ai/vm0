@@ -9,7 +9,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
@@ -21,7 +21,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
@@ -54,7 +54,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
         return "GOOGLE_MEET_REFRESH_TOKEN";
       },
       refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
           args.tokenUrl,

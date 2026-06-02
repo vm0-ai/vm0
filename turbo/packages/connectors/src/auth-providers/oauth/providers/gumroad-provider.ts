@@ -9,7 +9,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildGumroadAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGumroadCode(
@@ -48,7 +48,7 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
       return "GUMROAD_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshGumroadToken(
         args.tokenUrl,
         clientId,

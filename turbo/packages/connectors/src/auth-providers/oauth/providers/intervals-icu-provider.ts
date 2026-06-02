@@ -9,7 +9,7 @@ export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         return buildIntervalsIcuAuthorizationUrl(
           args.authCodeGrant,
           clientId,
@@ -18,7 +18,7 @@ export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const result = await exchangeIntervalsIcuCode(
           args.authCodeGrant,

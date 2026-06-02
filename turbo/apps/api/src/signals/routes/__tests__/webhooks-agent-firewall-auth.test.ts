@@ -529,8 +529,15 @@ function configureDynamicTestOAuthRefresh(
   mutableMethod.client = dynamicPublicClient;
   access.refreshToken = (args) => {
     refreshes.push({
-      clientId: args.clientId,
-      clientSecret: args.clientSecret,
+      clientId:
+        args.authClient.clientRegistration === "static"
+          ? args.authClient.clientId
+          : undefined,
+      clientSecret:
+        args.authClient.clientRegistration === "static" &&
+        args.authClient.clientType === "confidential"
+          ? args.authClient.clientSecret
+          : undefined,
       refreshToken: args.refreshToken,
     });
     return Promise.resolve({

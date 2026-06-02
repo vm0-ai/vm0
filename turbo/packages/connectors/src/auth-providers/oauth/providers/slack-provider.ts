@@ -10,7 +10,7 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildSlackAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -19,7 +19,7 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const slackResult = await exchangeSlackCode(
@@ -51,7 +51,7 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
   revoke: {
     kind: "token-revoke",
     revokeToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return revokeSlackToken(clientId, clientSecret, args.accessToken);
     },
   },

@@ -8,7 +8,7 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildVercelAuthorizationUrl(
         clientId,
         args.redirectUri,
@@ -16,7 +16,7 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeVercelCode(

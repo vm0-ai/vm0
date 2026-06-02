@@ -9,7 +9,7 @@ export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildZoomAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeZoomCode(
@@ -48,7 +48,7 @@ export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
       return "ZOOM_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshZoomToken(
         args.tokenUrl,
         clientId,

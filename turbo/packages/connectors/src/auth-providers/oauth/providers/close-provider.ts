@@ -9,11 +9,11 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildCloseAuthorizationUrl(clientId, args.redirectUri, args.state);
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeCloseCode(
@@ -43,7 +43,7 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
       return "CLOSE_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshCloseToken(
         args.tokenUrl,
         clientId,

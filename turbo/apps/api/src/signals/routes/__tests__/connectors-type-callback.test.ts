@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   CONNECTOR_TYPES,
   type AuthCodeGrantConnectorType,
+  type ConnectorAuthCodeGrantAuthMethodId,
   type ConnectorAuthMethodId,
   type ConnectorAuthClientConfig,
   type ConnectorAuthMethodConfig,
@@ -16,6 +17,7 @@ import {
   testOauthApiProvider,
   testOauthProvider,
 } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+import type { AuthCodeConnectorAuthProvider } from "@vm0/connectors/auth-providers/types";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -217,16 +219,34 @@ type CapturedOAuthExchange = {
   readonly oauthContext: string | undefined;
 };
 
-type DynamicTestOAuthExchangeOptions = {
-  readonly authMethod: "oauth" | "api";
-  readonly provider: typeof testOauthProvider;
+type DynamicTestOAuthExchangeOptions<
+  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
+> = {
+  readonly authMethod: Method;
+  readonly provider: AuthCodeConnectorAuthProvider<"test-oauth", Method>;
 };
 
-function useDynamicTestOAuthExchange(
-  args: DynamicTestOAuthExchangeOptions = {
-    authMethod: "oauth",
-    provider: testOauthProvider,
-  },
+const defaultDynamicTestOAuthExchangeOptions = {
+  authMethod: "oauth",
+  provider: testOauthProvider,
+} satisfies DynamicTestOAuthExchangeOptions<"oauth">;
+
+function useDynamicTestOAuthExchange(): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+};
+function useDynamicTestOAuthExchange<
+  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
+>(
+  args: DynamicTestOAuthExchangeOptions<Method>,
+): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+};
+function useDynamicTestOAuthExchange<
+  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
+>(
+  args?: DynamicTestOAuthExchangeOptions<Method>,
 ): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
@@ -235,13 +255,20 @@ function useDynamicTestOAuthExchange(
 
   return {
     exchanges,
-    restore: configureDynamicTestOAuthExchange(exchanges, args),
+    restore: args
+      ? configureDynamicTestOAuthExchange(exchanges, args)
+      : configureDynamicTestOAuthExchange(
+          exchanges,
+          defaultDynamicTestOAuthExchangeOptions,
+        ),
   };
 }
 
-function configureDynamicTestOAuthExchange(
+function configureDynamicTestOAuthExchange<
+  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
+>(
   exchanges: CapturedOAuthExchange[],
-  args: DynamicTestOAuthExchangeOptions,
+  args: DynamicTestOAuthExchangeOptions<Method>,
 ): () => void {
   const method = getConnectorAuthMethod("test-oauth", args.authMethod);
   if (method?.grant.kind !== "auth-code") {
@@ -256,8 +283,15 @@ function configureDynamicTestOAuthExchange(
   mutableMethod.client = dynamicPublicClient;
   provider.grant.exchangeCode = (args) => {
     exchanges.push({
-      clientId: args.clientId,
-      clientSecret: args.clientSecret,
+      clientId:
+        args.authClient.clientRegistration === "static"
+          ? args.authClient.clientId
+          : undefined,
+      clientSecret:
+        args.authClient.clientRegistration === "static" &&
+        args.authClient.clientType === "confidential"
+          ? args.authClient.clientSecret
+          : undefined,
       code: args.code,
       redirectUri: args.redirectUri,
       state: args.state,

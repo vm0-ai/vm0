@@ -9,7 +9,7 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildSpotifyAuthorizationUrl(
         args.authCodeGrant,
         clientId,
@@ -18,7 +18,7 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeSpotifyCode(
@@ -48,7 +48,7 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
       return "SPOTIFY_REFRESH_TOKEN";
     },
     refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       return refreshSpotifyToken(
         args.tokenUrl,
         clientId,
