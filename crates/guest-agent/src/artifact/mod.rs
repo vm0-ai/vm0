@@ -28,7 +28,7 @@ use std::path::PathBuf;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct FileEntry {
     pub(crate) path: String,
     pub(crate) hash: String,
@@ -57,9 +57,34 @@ pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, Agent
     log_info!(LOG_TAG, "Computing file hashes...");
     let hash_start = std::time::Instant::now();
     let mount = mount_path.to_string();
-    let files = tokio::task::spawn_blocking(move || collect_file_metadata(&mount))
-        .await
-        .map_err(|e| AgentError::Execution(format!("hash task panicked: {e}")))?;
+    let files_result =
+        match tokio::task::spawn_blocking(move || collect_file_metadata(&mount)).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("hash task panicked: {e}");
+                record_sandbox_op(
+                    "artifact_hash_compute",
+                    hash_start.elapsed(),
+                    false,
+                    Some(&message),
+                );
+                return Err(AgentError::Execution(message));
+            }
+        };
+    let files = match files_result {
+        Ok(files) => files,
+        Err(e) => {
+            let message = format!("Failed to walk artifact files: {e}");
+            log_error!(LOG_TAG, "{message}");
+            record_sandbox_op(
+                "artifact_hash_compute",
+                hash_start.elapsed(),
+                false,
+                Some(&message),
+            );
+            return Err(AgentError::Checkpoint(message));
+        }
+    };
     record_sandbox_op("artifact_hash_compute", hash_start.elapsed(), true, None);
     log_info!(LOG_TAG, "Found {} files", files.len());
     Ok(files)
@@ -407,7 +432,7 @@ mod tests {
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
         std::fs::write(root.join("target.txt"), "content").unwrap();
-        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let expected_files = file_json_values(&files);
         let total_size: u64 = files.iter().map(|file| file.size).sum();
@@ -528,7 +553,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
-        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let expected_files = file_json_values(&files);
         let archive_url = format!("{}/test/artifact-archive-upload", server.base_url());
@@ -626,7 +651,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
-        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let expected_files = file_json_values(&files);
 

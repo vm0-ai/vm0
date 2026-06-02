@@ -71,6 +71,11 @@ fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) ->
     })
 }
 
+struct ArtifactSnapshotPlan<'a> {
+    entry: &'a env::ArtifactEnv,
+    files: Vec<artifact::FileEntry>,
+}
+
 /// Prepare + upload the session history to S3 via a presigned URL. If the
 /// prepare endpoint reports `existing=true`, skip the upload (content-addressed
 /// dedup). Telemetry is recorded under `session_history_prepare` and
@@ -158,12 +163,14 @@ async fn upload_session_history(
     Ok(())
 }
 
-/// Snapshot all configured artifacts. Memory rides in env::artifacts()
-/// post-#10602, so there is no longer a separate memory arm. Payload shape is
+/// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
+/// there is no longer a separate memory arm. Payload shape is
 /// `Array<{name, version, mountPath}>` per #10911 — the receiver tolerates the
 /// legacy `Record<name, version>` form too (#10919).
-async fn snapshot_artifacts(http: &HttpClient) -> Result<Option<serde_json::Value>, AgentError> {
-    let entries = env::artifacts();
+async fn snapshot_artifact_entries(
+    http: &HttpClient,
+    entries: &[env::ArtifactEnv],
+) -> Result<Option<serde_json::Value>, AgentError> {
     if entries.is_empty() {
         log_info!(
             LOG_TAG,
@@ -171,7 +178,8 @@ async fn snapshot_artifacts(http: &HttpClient) -> Result<Option<serde_json::Valu
         );
         return Ok(None);
     }
-    let mut results = Vec::with_capacity(entries.len());
+
+    let mut plans = Vec::with_capacity(entries.len());
     for entry in entries {
         log_info!(
             LOG_TAG,
@@ -180,7 +188,11 @@ async fn snapshot_artifacts(http: &HttpClient) -> Result<Option<serde_json::Valu
             entry.mount_path
         );
         let files = artifact::walk_files(&entry.mount_path).await?;
+        plans.push(ArtifactSnapshotPlan { entry, files });
+    }
 
+    let mut results = Vec::with_capacity(plans.len());
+    for ArtifactSnapshotPlan { entry, files } in plans {
         // Skip the VAS round-trips when the mount is byte-identical to what
         // was originally mounted. `version_id` in VAS *is* the content hash
         // (same SHA-256 the web producer emits), so an equality check on the
@@ -273,6 +285,14 @@ pub async fn create_recovery_checkpoint(http: &HttpClient) -> Result<(), AgentEr
 }
 
 async fn create_checkpoint_impl(http: &HttpClient, mode: CheckpointMode) -> Result<(), AgentError> {
+    create_checkpoint_impl_with_artifacts(http, mode, env::artifacts()).await
+}
+
+async fn create_checkpoint_impl_with_artifacts(
+    http: &HttpClient,
+    mode: CheckpointMode,
+    artifact_entries: &[env::ArtifactEnv],
+) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating {}...", mode.log_label());
 
     // Read session ID. Let `read_to_string` surface `NotFound` directly — an
@@ -382,7 +402,7 @@ async fn create_checkpoint_impl(http: &HttpClient, mode: CheckpointMode) -> Resu
             history_size,
             session_history.into_bytes()
         ),
-        snapshot_artifacts(http),
+        snapshot_artifact_entries(http, artifact_entries),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
@@ -462,6 +482,28 @@ fn validate_recoverable_session_history(session_history: &str) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::prelude::*;
+    use std::time::Duration;
+
+    struct CheckpointFilesGuard;
+
+    impl CheckpointFilesGuard {
+        fn new() -> Self {
+            cleanup_checkpoint_files();
+            Self
+        }
+    }
+
+    impl Drop for CheckpointFilesGuard {
+        fn drop(&mut self) {
+            cleanup_checkpoint_files();
+        }
+    }
+
+    fn cleanup_checkpoint_files() {
+        let _ = std::fs::remove_file(paths::session_id_file());
+        let _ = std::fs::remove_file(paths::session_history_path_file());
+    }
 
     #[test]
     fn artifact_snapshot_entry_shape_matches_receiver_schema() {
@@ -487,6 +529,146 @@ mod tests {
         assert!(obj.contains_key("version"));
         assert!(obj.contains_key("mountPath"));
         assert!(!obj.contains_key("mount_path"));
+    }
+
+    #[tokio::test]
+    async fn artifact_snapshot_missing_mount_fails_before_storage_api_calls() {
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let missing_mount = dir.path().join("missing");
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: missing_mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+        }];
+
+        let err = snapshot_artifact_entries(&http, &entries)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("Failed to walk artifact files"),
+            "got: {err}"
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn artifact_snapshot_later_missing_mount_fails_before_any_storage_api_calls() {
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let valid_mount = dir.path().join("valid");
+        std::fs::create_dir(&valid_mount).unwrap();
+        std::fs::write(valid_mount.join("changed.txt"), "changed").unwrap();
+        let missing_mount = dir.path().join("missing");
+        let entries = vec![
+            env::ArtifactEnv {
+                name: "workspace".to_string(),
+                mount_path: valid_mount.to_string_lossy().into_owned(),
+                storage_id: "workspace-storage-id".to_string(),
+                version_id: "old-workspace-version".to_string(),
+            },
+            env::ArtifactEnv {
+                name: "memory".to_string(),
+                mount_path: missing_mount.to_string_lossy().into_owned(),
+                storage_id: "memory-storage-id".to_string(),
+                version_id: "old-memory-version".to_string(),
+            },
+        ];
+
+        let err = snapshot_artifact_entries(&http, &entries)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("Failed to walk artifact files"),
+            "got: {err}"
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn checkpoint_missing_mount_fails_before_final_checkpoint_api_call() {
+        let _files_guard = CheckpointFilesGuard::new();
+        let server = MockServer::start();
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
+        std::fs::write(paths::session_id_file(), "session-with-missing-artifact").unwrap();
+        std::fs::write(
+            paths::session_history_path_file(),
+            history_path.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        let _history_prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history");
+            then.status(200).json_body(json!({"existing": true}));
+        });
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let checkpoint = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/checkpoints");
+            then.status(200)
+                .json_body(json!({"checkpointId": "unreachable"}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let missing_mount = dir.path().join("missing");
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: missing_mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+        }];
+
+        let err = create_checkpoint_impl_with_artifacts(&http, CheckpointMode::Success, &entries)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("Failed to walk artifact files"),
+            "got: {err}"
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+        checkpoint.assert_calls(0);
     }
 
     #[test]
