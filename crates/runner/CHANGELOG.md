@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.107.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.7...runner-rs-v0.107.0) (2026-06-02)
+
+
+### Features
+
+* add session workspace image cache rollout ([#15780](https://github.com/vm0-ai/vm0/issues/15780)) ([3fb331b](https://github.com/vm0-ai/vm0/commit/3fb331ba6457c9d3247e0eac03f2629ab5102d89))
+
+
+### Documentation
+
+* **runner:** correct storage cache hash guidance ([#15887](https://github.com/vm0-ai/vm0/issues/15887)) ([57b4b5d](https://github.com/vm0-ai/vm0/commit/57b4b5da234afaca78aec909463bfb9d28dc8b1b))
+
 ## [0.106.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.6...runner-rs-v0.106.7) (2026-06-02)
 
 

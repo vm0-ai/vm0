@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.94.0](https://github.com/vm0-ai/vm0/compare/api-v1.93.0...api-v1.94.0) (2026-06-02)
+
+
+### Features
+
+* add zero banking gateway ([#15698](https://github.com/vm0-ai/vm0/issues/15698)) ([c24743c](https://github.com/vm0-ai/vm0/commit/c24743c8eea487201545458c9d8f3400d772473f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.55.0
+    * @vm0/connectors bumped to 1.43.0
+    * @vm0/core bumped to 8.307.0
+    * @vm0/db bumped to 1.25.0
+
 ## [1.93.0](https://github.com/vm0-ai/vm0/compare/api-v1.92.0...api-v1.93.0) (2026-06-02)
 
 

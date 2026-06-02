@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.401.0](https://github.com/vm0-ai/vm0/compare/app-v0.400.0...app-v0.401.0) (2026-06-02)
+
+
+### Features
+
+* add platform api target policy ([#15880](https://github.com/vm0-ai/vm0/issues/15880)) ([497fc3d](https://github.com/vm0-ai/vm0/commit/497fc3db6a4329ccfe5bb67364f28ae655c66c79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.55.0
+    * @vm0/connectors bumped to 1.43.0
+    * @vm0/core bumped to 8.307.0
+
 ## [0.400.0](https://github.com/vm0-ai/vm0/compare/app-v0.399.15...app-v0.400.0) (2026-06-02)
 
 

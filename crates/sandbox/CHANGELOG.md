@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.18.0...sandbox-v0.19.0) (2026-06-02)
+
+
+### Features
+
+* add session workspace image cache rollout ([#15780](https://github.com/vm0-ai/vm0/issues/15780)) ([3fb331b](https://github.com/vm0-ai/vm0/commit/3fb331ba6457c9d3247e0eac03f2629ab5102d89))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.17.5...sandbox-v0.18.0) (2026-06-01)
 
 

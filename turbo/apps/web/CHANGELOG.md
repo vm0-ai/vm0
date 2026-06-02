@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.407.0](https://github.com/vm0-ai/vm0/compare/web-v12.406.5...web-v12.407.0) (2026-06-02)
+
+
+### Features
+
+* add zero banking gateway ([#15698](https://github.com/vm0-ai/vm0/issues/15698)) ([c24743c](https://github.com/vm0-ai/vm0/commit/c24743c8eea487201545458c9d8f3400d772473f))
+* **web:** add posthog tracking on marketing site ([#15761](https://github.com/vm0-ai/vm0/issues/15761)) ([a9a9a64](https://github.com/vm0-ai/vm0/commit/a9a9a64eef16b95c84eeb392465a1438ed2862bf))
+* **web:** surface 7-day free trial on landing CTAs ([#15881](https://github.com/vm0-ai/vm0/issues/15881)) ([05bb112](https://github.com/vm0-ai/vm0/commit/05bb1123cb288dfd8e562f711361d032cf427ccb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.55.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.43.0
+
 ## [12.406.5](https://github.com/vm0-ai/vm0/compare/web-v12.406.4...web-v12.406.5) (2026-06-02)
 
 

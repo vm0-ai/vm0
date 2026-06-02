@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.307.0](https://github.com/vm0-ai/vm0/compare/core-v8.306.0...core-v8.307.0) (2026-06-02)
+
+
+### Features
+
+* add session workspace image cache rollout ([#15780](https://github.com/vm0-ai/vm0/issues/15780)) ([3fb331b](https://github.com/vm0-ai/vm0/commit/3fb331ba6457c9d3247e0eac03f2629ab5102d89))
+* add zero banking gateway ([#15698](https://github.com/vm0-ai/vm0/issues/15698)) ([c24743c](https://github.com/vm0-ai/vm0/commit/c24743c8eea487201545458c9d8f3400d772473f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.55.0
+    * @vm0/connectors bumped to 1.43.0
+
 ## [8.306.0](https://github.com/vm0-ai/vm0/compare/core-v8.305.6...core-v8.306.0) (2026-06-02)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.179.0](https://github.com/vm0-ai/vm0/compare/cli-v9.178.1...cli-v9.179.0) (2026-06-02)
+
+
+### Features
+
+* add zero banking gateway ([#15698](https://github.com/vm0-ai/vm0/issues/15698)) ([c24743c](https://github.com/vm0-ai/vm0/commit/c24743c8eea487201545458c9d8f3400d772473f))
+* register cozy-parlor styled template resource ([#15262](https://github.com/vm0-ai/vm0/issues/15262)) ([8b71280](https://github.com/vm0-ai/vm0/commit/8b71280defdf599a320c9fac853f3a94132ca676))
+* register vm0:image-style:crowd-ink in open design registry ([#15269](https://github.com/vm0-ai/vm0/issues/15269)) ([90bf7da](https://github.com/vm0-ai/vm0/commit/90bf7daab8bef08b707b11d0007d8faccd0c5caf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.55.0
+    * @vm0/connectors bumped to 1.43.0
+    * @vm0/core bumped to 8.307.0
+
 ## [9.178.1](https://github.com/vm0-ai/vm0/compare/cli-v9.178.0...cli-v9.178.1) (2026-06-02)
 
 
