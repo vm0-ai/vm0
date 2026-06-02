@@ -3685,6 +3685,8 @@ class TestCompiledFirewallMatching:
             {"base": None},
             {"base": 123},
             {"base": "ftp://example.com/hook"},
+            {"base": "http://example.com/hook"},
+            {"base": "http://${{ vars.WEBHOOK_HOST }}/hook"},
             {"base": "https:/example.com/hook"},
             {"base": "https:///hook"},
             {"base": "https://example.com/hook#fragment"},

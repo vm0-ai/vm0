@@ -104,6 +104,7 @@ class TestBuildRewriteUrl:
             ("https://example.com/\x7fhook", "control characters or invalid Unicode"),
             ("https://example.com/\ud800hook", "control characters or invalid Unicode"),
             ("ftp://example.com/hook", "scheme"),
+            ("http://example.com/hook", "scheme must be https"),
             ("https:///hook", "missing host"),
             ("https://user:pass@example.com/hook", "userinfo"),
             ("https://exa mple.com/hook", "whitespace"),

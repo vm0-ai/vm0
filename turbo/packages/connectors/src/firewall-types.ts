@@ -756,6 +756,7 @@ const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
 const FORBIDDEN_NORMALIZED_LABEL_CHARS = new Set("#%,/:<>?@[\\]^|[]".split(""));
 const ALLOWED_BASE_URL_SCHEMES = new Set(["http", "https"]);
+const REQUIRED_AUTH_BASE_URL_SCHEME = "https";
 const WHITESPACE_PATTERN = /\s/u;
 const UNICODE_CONTROL_PATTERN = /\p{C}/u;
 const UNICODE_MARK_PATTERN = /\p{M}/u;
@@ -839,9 +840,17 @@ function validateUrlSchemeDelimiter(
   const colonIndex = value.indexOf(":");
   if (colonIndex !== -1) {
     const scheme = value.slice(0, colonIndex);
-    if (!ALLOWED_BASE_URL_SCHEMES.has(scheme.toLowerCase())) {
+    const schemeDetail =
+      label === "auth.base URL"
+        ? "scheme must be https"
+        : "scheme must be http or https";
+    const allowedScheme =
+      label === "auth.base URL"
+        ? scheme.toLowerCase() === REQUIRED_AUTH_BASE_URL_SCHEME
+        : ALLOWED_BASE_URL_SCHEMES.has(scheme.toLowerCase());
+    if (!allowedScheme) {
       throw new Error(
-        `Invalid ${label} "${displayValue}" in firewall "${serviceName}": scheme must be http or https`,
+        `Invalid ${label} "${displayValue}" in firewall "${serviceName}": ${schemeDetail}`,
       );
     }
     throw new Error(
@@ -1715,9 +1724,11 @@ export function validateAuthBaseUrl(
       `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL`,
     );
   }
-  if (!ALLOWED_BASE_URL_SCHEMES.has(url.protocol.slice(0, -1).toLowerCase())) {
+  if (
+    url.protocol.slice(0, -1).toLowerCase() !== REQUIRED_AUTH_BASE_URL_SCHEME
+  ) {
     throw new Error(
-      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": scheme must be http or https`,
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": scheme must be https`,
     );
   }
   if (url.hash) {

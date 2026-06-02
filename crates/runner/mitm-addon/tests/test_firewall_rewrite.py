@@ -723,6 +723,50 @@ class TestAuthBaseUrlRewriteEdgeCases:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
+    async def test_resolved_base_http_fails_closed_without_forwarding(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Secret-backed auth.base upstream URLs must not use cleartext HTTP."""
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
+            resolved_base="http://real.example.com/webhook/super-secret-token",
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+            },
+        )
+        mock_forward = AsyncMock()
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert mock_forward.call_count == 0
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "super-secret-token" not in flow.response.text
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
+
     async def test_resolved_base_fragment_fails_closed_without_forwarding(
         self, real_flow, mitm_ctx, tmp_path
     ):

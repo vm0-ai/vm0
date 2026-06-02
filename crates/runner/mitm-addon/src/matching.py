@@ -59,6 +59,7 @@ _VALID_RULE_METHODS = frozenset(
     )
 )
 _VALID_BASE_SCHEMES = frozenset(("http", "https"))
+_VALID_AUTH_BASE_SCHEME = "https"
 _DEFAULT_SCHEME_PORTS = MappingProxyType({"http": 80, "https": 443})
 _AUTH_TEMPLATE_START = "${{"
 _AUTH_REFERENCE_PATTERN = re.compile(r"\$\{\{\s*(?:secrets|vars)\.[a-zA-Z_][a-zA-Z0-9_]*\s*\}\}")
@@ -775,7 +776,7 @@ def _static_auth_base_is_valid(auth_base: str) -> bool:
         parts = urlsplit(validation_url)
     except ValueError:
         return False
-    if parts.scheme.lower() not in _VALID_BASE_SCHEMES:
+    if parts.scheme.lower() != _VALID_AUTH_BASE_SCHEME:
         return False
     if parts.fragment:
         return False
