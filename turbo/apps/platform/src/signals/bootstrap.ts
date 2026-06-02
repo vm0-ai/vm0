@@ -28,6 +28,7 @@ import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-s
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
+import { setupSkillsPage$ } from "./skills-page/skills-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
@@ -145,6 +146,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agents,
     setup: setupAuthPageWrapper(setupAgentsPage$),
+  },
+  {
+    path: ROUTES.skills,
+    setup: setupAuthPageWrapper(setupSkillsPage$),
   },
   {
     path: ROUTES.settingsSlack,

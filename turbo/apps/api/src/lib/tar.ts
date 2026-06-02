@@ -6,8 +6,24 @@ export function extractFileFromTarGz(
   gzBuffer: Buffer,
   targetPath: string,
 ): string | null {
+  return (
+    extractFilesFromTarGz(gzBuffer, [targetPath]).get(
+      targetPath.replace(/^\.\//, ""),
+    ) ?? null
+  );
+}
+
+export function extractFilesFromTarGz(
+  gzBuffer: Buffer,
+  targetPaths: readonly string[],
+): Map<string, string> {
   const tarBuffer = gunzipSync(gzBuffer);
-  const normalized = targetPath.replace(/^\.\//, "");
+  const normalizedTargets = new Set(
+    targetPaths.map((targetPath) => {
+      return targetPath.replace(/^\.\//, "");
+    }),
+  );
+  const result = new Map<string, string>();
 
   let offset = 0;
   while (offset + BLOCK_SIZE <= tarBuffer.length) {
@@ -32,11 +48,18 @@ export function extractFileFromTarGz(
     offset += BLOCK_SIZE;
 
     const entryName = name.replace(/^\.\//, "");
-    if (entryName === normalized) {
-      return tarBuffer.subarray(offset, offset + size).toString("utf8");
+    if (normalizedTargets.has(entryName)) {
+      result.set(
+        entryName,
+        tarBuffer.subarray(offset, offset + size).toString("utf8"),
+      );
+      if (result.size === normalizedTargets.size) {
+        break;
+      }
     }
 
     offset += Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
   }
-  return null;
+
+  return result;
 }

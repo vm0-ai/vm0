@@ -12,6 +12,7 @@ const teamComposeItemSchema = z.object({
   description: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
+  customSkills: z.array(z.string()).optional(),
   visibility: zeroAgentVisibilitySchema.optional(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),

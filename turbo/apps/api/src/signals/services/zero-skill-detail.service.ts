@@ -10,7 +10,7 @@ import { and, eq } from "drizzle-orm";
 import { db$ } from "../external/db";
 import { downloadS3Buffer, downloadManifest } from "../external/s3";
 import { env } from "../../lib/env";
-import { extractFileFromTarGz } from "../../lib/tar";
+import { extractFilesFromTarGz } from "../../lib/tar";
 
 const SKILL_FILENAME = "SKILL.md";
 
@@ -21,6 +21,9 @@ interface SkillDetailResult {
   readonly content: string | null;
   readonly files:
     | readonly { readonly path: string; readonly size: number }[]
+    | null;
+  readonly fileContents:
+    | readonly { readonly path: string; readonly content: string }[]
     | null;
 }
 
@@ -65,6 +68,7 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: null,
+        fileContents: null,
       };
     }
 
@@ -81,6 +85,7 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: null,
+        fileContents: null,
       };
     }
 
@@ -92,6 +97,7 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: null,
+        fileContents: null,
       };
     }
 
@@ -118,12 +124,26 @@ export function zeroSkillDetail(
         description: skill.description ?? null,
         content: null,
         files: filesList,
+        fileContents: null,
       };
     }
 
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
     const archiveBuffer = await get(downloadS3Buffer(bucket, archiveKey));
-    const content = extractFileFromTarGz(archiveBuffer, skillFile.path);
+    const extractedFiles = extractFilesFromTarGz(
+      archiveBuffer,
+      manifest.files.map((file) => {
+        return file.path;
+      }),
+    );
+    const content = extractedFiles.get(SKILL_FILENAME) ?? null;
+    const fileContents = filesList.flatMap((file) => {
+      const fileContent = extractedFiles.get(file.path);
+      if (fileContent === undefined) {
+        return [];
+      }
+      return [{ path: file.path, content: fileContent }];
+    });
 
     return {
       name: skill.name,
@@ -131,6 +151,7 @@ export function zeroSkillDetail(
       description: skill.description ?? null,
       content,
       files: filesList,
+      fileContents,
     };
   });
 }

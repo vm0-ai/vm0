@@ -55,6 +55,7 @@ function mockAPIs({
           description: null,
           sound: null,
           avatarUrl: null,
+          customSkills: [],
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -127,5 +128,33 @@ describe("zero sidebar", () => {
       expect(screen.getByText("Agents")).toBeInTheDocument();
     });
     expect(screen.getByText("Activity logs")).toBeInTheDocument();
+  });
+
+  it("should hide Skills when OrgSkills switch is off", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.OrgSkills]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+  });
+
+  it("should show Skills when OrgSkills switch is on", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.OrgSkills]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Skills")).toBeInTheDocument();
   });
 });

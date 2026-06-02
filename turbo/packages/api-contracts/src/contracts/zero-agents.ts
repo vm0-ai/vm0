@@ -333,6 +333,7 @@ export const zeroAgentSkillContentResponseSchema = z.object({
   description: z.string().nullable(),
   content: z.string().nullable(),
   files: z.array(skillFileMetadataSchema).nullable(),
+  fileContents: z.array(skillFileEntrySchema).nullable(),
 });
 
 /**

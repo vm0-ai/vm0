@@ -205,6 +205,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
   },
+  [FeatureSwitchKey.OrgSkills]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the organization custom skills library in the Zero sidebar and page UI",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:

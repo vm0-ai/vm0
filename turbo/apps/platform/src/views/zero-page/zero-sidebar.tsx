@@ -11,6 +11,7 @@ import {
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
+  IconFileText,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -82,6 +83,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
+  },
+  {
+    id: "skills",
+    activeKeys: ["skills"],
+    pathname: "/skills",
+    label: "Skills",
+    icon: IconFileText as NavIcon,
+    featureGate: FeatureSwitchKey.OrgSkills,
   },
   {
     id: "connectors",
