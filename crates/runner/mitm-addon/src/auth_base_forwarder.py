@@ -6,11 +6,9 @@ the low-level HTTP details for that forward path.
 """
 
 import asyncio
-import errno
 import http.client as http_client
 import ipaddress
 import socket
-import sys
 import urllib.parse
 from typing import NamedTuple
 
@@ -49,26 +47,15 @@ class _ValidatedAddress(NamedTuple):
     port: int
 
 
-class _ValidatedHTTPSConnection(http_client.HTTPSConnection):
-    def __init__(
-        self,
-        host: str,
-        port: int | None,
-        *,
-        timeout,
-        validated_addresses: tuple[_ValidatedAddress, ...],
-    ) -> None:
-        super().__init__(host, port=port, timeout=timeout)
-        self._validated_addresses = validated_addresses
-
-    def _connect_to_validated_address(self):
+def _connect_to_validated_addresses(validated_addresses: tuple[_ValidatedAddress, ...]):
+    def create_connection(_address, timeout, source_address):
         last_error: OSError | None = None
-        for address in self._validated_addresses:
+        for address in validated_addresses:
             try:
-                return self._create_connection(
+                return socket.create_connection(
                     (address.host, address.port),
-                    self.timeout,
-                    self.source_address,
+                    timeout,
+                    source_address,
                 )
             except OSError as exc:
                 last_error = exc
@@ -76,22 +63,19 @@ class _ValidatedHTTPSConnection(http_client.HTTPSConnection):
             raise last_error
         raise OSError("getaddrinfo returns an empty list")
 
-    def connect(self) -> None:
-        sys.audit("http.client.connect", self, self.host, self.port)
-        self.sock = self._connect_to_validated_address()
-        try:
-            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        except OSError as e:
-            if e.errno != errno.ENOPROTOOPT:
-                raise
+    return create_connection
 
-        if self._tunnel_host:
-            self._tunnel()
-            server_hostname = self._tunnel_host
-        else:
-            server_hostname = self.host
 
-        self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
+def _make_validated_https_connection(
+    host: str,
+    port: int | None,
+    *,
+    timeout,
+    validated_addresses: tuple[_ValidatedAddress, ...],
+) -> http_client.HTTPSConnection:
+    conn = http_client.HTTPSConnection(host, port=port, timeout=timeout)
+    vars(conn)["_create_connection"] = _connect_to_validated_addresses(validated_addresses)
+    return conn
 
 
 def header_pairs(headers) -> list[tuple[str, str]]:
@@ -186,9 +170,9 @@ def _request_target(parsed: urllib.parse.SplitResult) -> str:
     return path
 
 
-def _connection_cls(scheme: str):
+def _connection_factory(scheme: str):
     if scheme == "https":
-        return _ValidatedHTTPSConnection
+        return _make_validated_https_connection
     raise ValueError(f"Unsupported URL scheme: {scheme}")
 
 
@@ -254,7 +238,7 @@ def _forward_request_sync(
     to the sandbox client instead of being followed inside the addon.
     """
     parsed = urllib.parse.urlsplit(url)
-    conn_cls = _connection_cls(parsed.scheme.lower())
+    conn_factory = _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
     host = parsed.hostname
     if not host:
@@ -265,7 +249,7 @@ def _forward_request_sync(
         raise ValueError("Invalid upstream URL: invalid port") from exc
     effective_port = port if port is not None else DEFAULT_HTTPS_PORT
     validated_addresses = _resolve_validated_addresses(host, effective_port)
-    conn = conn_cls(host, port=port, timeout=30, validated_addresses=validated_addresses)
+    conn = conn_factory(host, port=port, timeout=30, validated_addresses=validated_addresses)
     resp = None
     try:
         conn.putrequest(

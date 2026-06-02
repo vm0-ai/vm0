@@ -15,7 +15,7 @@ import auth_base_forwarder as forwarder
 class ForwarderConnectionPatch(NamedTuple):
     conn: MagicMock
     resp: MagicMock
-    connection_cls: MagicMock
+    connection_factory: MagicMock
     resolver: MagicMock
 
 
@@ -52,12 +52,12 @@ def _patched_forwarder_connection(
         patch.object(
             forwarder, "_resolve_validated_addresses", side_effect=resolve_public_addresses
         ) as resolver,
-        patch.object(forwarder, "_ValidatedHTTPSConnection", return_value=conn) as cls,
+        patch.object(forwarder, "_make_validated_https_connection", return_value=conn) as factory,
     ):
         yield ForwarderConnectionPatch(
             conn=conn,
             resp=resp,
-            connection_cls=cls,
+            connection_factory=factory,
             resolver=resolver,
         )
 
@@ -86,7 +86,7 @@ class TestAuthBaseForwarderSecurity:
     )
     def test_rejects_non_public_literal_destinations_without_opening_connection(self, url):
         with (
-            patch.object(forwarder, "_ValidatedHTTPSConnection") as connection_cls,
+            patch.object(forwarder, "_make_validated_https_connection") as connection_factory,
             pytest.raises(
                 forwarder.UnsafeAuthBaseDestinationError,
                 match=r"Unsafe auth\.base upstream destination",
@@ -94,7 +94,7 @@ class TestAuthBaseForwarderSecurity:
         ):
             forwarder._forward_request_sync(url, "GET", [], None)
 
-        connection_cls.assert_not_called()
+        connection_factory.assert_not_called()
 
     def test_rejects_dns_private_destination_without_opening_connection(self):
         with (
@@ -111,12 +111,12 @@ class TestAuthBaseForwarderSecurity:
                     )
                 ],
             ),
-            patch.object(forwarder, "_ValidatedHTTPSConnection") as connection_cls,
+            patch.object(forwarder, "_make_validated_https_connection") as connection_factory,
             pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
         ):
             forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
 
-        connection_cls.assert_not_called()
+        connection_factory.assert_not_called()
 
     def test_rejects_mixed_dns_answers_without_opening_connection(self):
         with (
@@ -140,12 +140,12 @@ class TestAuthBaseForwarderSecurity:
                     ),
                 ],
             ),
-            patch.object(forwarder, "_ValidatedHTTPSConnection") as connection_cls,
+            patch.object(forwarder, "_make_validated_https_connection") as connection_factory,
             pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
         ):
             forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
 
-        connection_cls.assert_not_called()
+        connection_factory.assert_not_called()
 
     def test_allows_public_dns_destination_with_validated_addresses(self):
         resp = MagicMock()
@@ -177,12 +177,12 @@ class TestAuthBaseForwarderSecurity:
                 ],
             ),
             patch.object(
-                forwarder, "_ValidatedHTTPSConnection", return_value=conn
-            ) as connection_cls,
+                forwarder, "_make_validated_https_connection", return_value=conn
+            ) as connection_factory,
         ):
             forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
 
-        connection_cls.assert_called_once_with(
+        connection_factory.assert_called_once_with(
             "hooks.example.com",
             port=None,
             timeout=30,
@@ -198,19 +198,18 @@ class TestAuthBaseForwarderSecurity:
         wrapped_sock = MagicMock()
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
-        create_connection = MagicMock(return_value=raw_sock)
-        conn = forwarder._ValidatedHTTPSConnection(
+        conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             timeout=30,
             validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
         )
-        conn._context = context
-        conn._create_connection = create_connection
+        vars(conn)["_context"] = context
 
-        conn.connect()
+        with patch.object(forwarder.socket, "create_connection", return_value=raw_sock) as connect:
+            conn.connect()
 
-        create_connection.assert_called_once_with(("93.184.216.34", 443), 30, None)
+        connect.assert_called_once_with(("93.184.216.34", 443), 30, None)
         raw_sock.setsockopt.assert_called_once_with(
             forwarder.socket.IPPROTO_TCP,
             forwarder.socket.TCP_NODELAY,
@@ -224,8 +223,7 @@ class TestAuthBaseForwarderSecurity:
         wrapped_sock = MagicMock()
         context = MagicMock()
         context.wrap_socket.return_value = wrapped_sock
-        create_connection = MagicMock(side_effect=[OSError("no route"), raw_sock])
-        conn = forwarder._ValidatedHTTPSConnection(
+        conn = forwarder._make_validated_https_connection(
             "hooks.example.com",
             port=None,
             timeout=30,
@@ -234,12 +232,16 @@ class TestAuthBaseForwarderSecurity:
                 forwarder._ValidatedAddress("93.184.216.34", 443),
             ),
         )
-        conn._context = context
-        conn._create_connection = create_connection
+        vars(conn)["_context"] = context
 
-        conn.connect()
+        with patch.object(
+            forwarder.socket,
+            "create_connection",
+            side_effect=[OSError("no route"), raw_sock],
+        ) as connect:
+            conn.connect()
 
-        create_connection.assert_has_calls(
+        connect.assert_has_calls(
             [
                 call(("2001:4860:4860::8888", 443), 30, None),
                 call(("93.184.216.34", 443), 30, None),
@@ -495,7 +497,7 @@ class TestAuthBaseForwarderSecurity:
                 None,
             )
 
-        upstream.connection_cls.assert_called_once_with(
+        upstream.connection_factory.assert_called_once_with(
             expected_connection_host,
             port=expected_connection_port,
             timeout=30,
@@ -810,7 +812,7 @@ class TestForwardRequestAsyncWrapper:
                 record_forwarding_thread()
 
         with (
-            patch.object(forwarder, "_ValidatedHTTPSConnection", FakeConnection),
+            patch.object(forwarder, "_make_validated_https_connection", FakeConnection),
             patch.object(
                 forwarder,
                 "_resolve_validated_addresses",
@@ -852,7 +854,7 @@ class TestForwardRequestAsyncWrapper:
         conn.putrequest.side_effect = ConnectionError("connect failed")
         conn.close.side_effect = record_close_thread
         with (
-            patch.object(forwarder, "_ValidatedHTTPSConnection", return_value=conn),
+            patch.object(forwarder, "_make_validated_https_connection", return_value=conn),
             patch.object(
                 forwarder,
                 "_resolve_validated_addresses",
@@ -882,7 +884,7 @@ class TestForwardRequestAsyncWrapper:
         conn.close.side_effect = record_close_thread
 
         with (
-            patch.object(forwarder, "_ValidatedHTTPSConnection", return_value=conn),
+            patch.object(forwarder, "_make_validated_https_connection", return_value=conn),
             patch.object(
                 forwarder,
                 "_resolve_validated_addresses",
