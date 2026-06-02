@@ -3,7 +3,8 @@ import { zeroBillingCheckoutContract } from "@vm0/api-contracts/contracts/zero-b
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -45,10 +46,9 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const { tier, successUrl, cancelUrl, trialDays, adAttribution } =
     bodyResult.data;
 
-  const appOrigin = new URL(env("APP_URL")).origin;
   if (
-    new URL(successUrl).origin !== appOrigin ||
-    new URL(cancelUrl).origin !== appOrigin
+    !billingRedirectAllowed(successUrl) ||
+    !billingRedirectAllowed(cancelUrl)
   ) {
     return badRequestMessage(
       "successUrl and cancelUrl must match the platform origin",

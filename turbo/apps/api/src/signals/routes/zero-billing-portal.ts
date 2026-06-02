@@ -4,7 +4,8 @@ import { zeroBillingPortalContract } from "@vm0/api-contracts/contracts/zero-bil
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage, providerUnavailable } from "../../lib/error";
 import { createBillingPortalSession$ } from "../services/billing.service";
 import type { RouteEntry } from "../route";
@@ -36,8 +37,7 @@ const portalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const { returnUrl } = bodyResult.data;
 
-  const appOrigin = new URL(env("APP_URL")).origin;
-  if (new URL(returnUrl).origin !== appOrigin) {
+  if (!billingRedirectAllowed(returnUrl)) {
     return badRequestMessage("returnUrl must match the platform origin");
   }
 
