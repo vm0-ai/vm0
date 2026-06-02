@@ -112,12 +112,6 @@ import {
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 
-type SavePermissionPolicies = (
-  agentId: string,
-  policies: FirewallPolicies,
-  signal: AbortSignal,
-) => Promise<FirewallPolicies | null | undefined>;
-
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
 // ---------------------------------------------------------------------------
@@ -470,7 +464,7 @@ function ConnectedConnectorPermissions({
   searchActive,
   setSearchActive,
   savingType,
-  isAdmin,
+  canManagePermissions,
   onToggle,
   onManage,
 }: {
@@ -481,7 +475,7 @@ function ConnectedConnectorPermissions({
   searchActive: boolean;
   setSearchActive: (active: boolean) => void;
   savingType: string | null;
-  isAdmin: boolean;
+  canManagePermissions: boolean;
   onToggle: (type: ConnectorType, checked: boolean) => Promise<void>;
   onManage: (type: ConnectorType) => void;
 }) {
@@ -561,7 +555,9 @@ function ConnectedConnectorPermissions({
                   await onToggle(c.type, checked);
                 })}
                 loading={savingType === c.type}
-                showManage={isAdmin && hasConnectorPermissions(c.type)}
+                showManage={
+                  canManagePermissions && hasConnectorPermissions(c.type)
+                }
                 onManage={() => {
                   return onManage(c.type);
                 }}
@@ -585,21 +581,17 @@ function AgentPermissionsDrawer({
   agentId,
   connectorType,
   displayName,
-  permissionPolicies,
-  isAdmin,
-  pageSignal,
-  savePermPol,
-  reloadDetail,
+  initialPolicies,
+  readOnly,
+  onApply,
   onClose,
 }: {
   agentId: string;
   connectorType: ConnectorType | null;
   displayName: string;
-  permissionPolicies: FirewallPolicies | null;
-  isAdmin: boolean;
-  pageSignal: AbortSignal;
-  savePermPol: SavePermissionPolicies;
-  reloadDetail: () => void;
+  initialPolicies: FirewallPolicies;
+  readOnly: boolean;
+  onApply: (policies: FirewallPolicies) => Promise<void>;
   onClose: () => void;
 }) {
   if (!connectorType) {
@@ -610,15 +602,9 @@ function AgentPermissionsDrawer({
       agentId={agentId}
       connectorType={connectorType}
       displayName={displayName}
-      initialPolicies={permissionPolicies ?? {}}
-      readOnly={!isAdmin}
-      onApply={async (policies) => {
-        const saved = await savePermPol(agentId, policies, pageSignal);
-        if (saved !== undefined) {
-          reloadDetail();
-        }
-        toast.success("Permissions updated");
-      }}
+      initialPolicies={initialPolicies}
+      readOnly={readOnly}
+      onApply={onApply}
       onClose={onClose}
     />
   );
@@ -665,6 +651,7 @@ function JobPermissionsTab({
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const adminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+  const canManagePermissions = isAdmin;
 
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
@@ -710,7 +697,7 @@ function JobPermissionsTab({
             searchActive={searchActive}
             setSearchActive={setSearchActive}
             savingType={savingType}
-            isAdmin={isAdmin}
+            canManagePermissions={canManagePermissions}
             onToggle={handleToggle}
             onManage={setConnectorType}
           />
@@ -718,11 +705,15 @@ function JobPermissionsTab({
             agentId={agentId}
             connectorType={connectorType}
             displayName={displayName}
-            permissionPolicies={permissionPolicies}
-            isAdmin={isAdmin}
-            pageSignal={pageSignal}
-            savePermPol={savePermPol}
-            reloadDetail={reloadDetail}
+            initialPolicies={permissionPolicies ?? {}}
+            readOnly={!canManagePermissions}
+            onApply={async (policies) => {
+              const saved = await savePermPol(agentId, policies, pageSignal);
+              if (saved !== undefined) {
+                reloadDetail();
+              }
+              toast.success("Permissions updated");
+            }}
             onClose={() => {
               return setConnectorType(null);
             }}
