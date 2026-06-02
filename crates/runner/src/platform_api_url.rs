@@ -116,6 +116,7 @@ mod tests {
             "http://0.0.0.0",
             "http://[::ffff:10.0.0.1]",
             "http://localhost.",
+            "http://localhost@api.vm0.ai",
         ] {
             let err = validate_platform_api_url(url).unwrap_err();
             assert!(
@@ -132,6 +133,7 @@ mod tests {
             "file:///etc/passwd",
             "//api.vm0.ai",
             "https:path-without-host",
+            "http://[::1]@api.vm0.ai",
             "http://",
             "http://api.vm0.ai:99999",
         ] {

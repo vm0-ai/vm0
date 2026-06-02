@@ -1263,6 +1263,7 @@ class TestMakeApiRequest:
             pytest.param("http://169.254.1.1/api", id="link-local"),
             pytest.param("http://0.0.0.0/api", id="wildcard"),
             pytest.param("http://localhost.evil.com/api", id="localhost-suffix"),
+            pytest.param("http://localhost@api.vm0.ai/api", id="localhost-userinfo"),
             pytest.param("http://[::ffff:10.0.0.1]/api", id="ipv4-mapped-private"),
         ],
     )
@@ -1280,6 +1281,7 @@ class TestMakeApiRequest:
                 id="scheme-relative",
             ),
             pytest.param("https:path-without-host", id="https-without-host"),
+            pytest.param("http://[::1]@api.vm0.ai/api", id="invalid-bracketed-host"),
         ],
     )
     def test_rejects_non_absolute_http_urls(self, url: str):

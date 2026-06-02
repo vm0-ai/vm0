@@ -72,9 +72,7 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     }
 )
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
-_HTTPS_OR_LOOPBACK_HTTP_MESSAGE = (
-    "Platform API URL must use https unless the http host is loopback"
-)
+_HTTPS_OR_LOOPBACK_HTTP_MESSAGE = "Platform API URL must use https unless the http host is loopback"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -279,7 +277,11 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
         raise ValueError("Platform API URL must be an absolute http(s) URL") from exc
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
         raise ValueError("Platform API URL must be an absolute http(s) URL")
-    if parsed_url.scheme == "http" and not _is_loopback_http_host(parsed_url.hostname):
+    try:
+        host = parsed_url.hostname
+    except ValueError as exc:
+        raise ValueError("Platform API URL must be an absolute http(s) URL") from exc
+    if parsed_url.scheme == "http" and not _is_loopback_http_host(host):
         raise ValueError(_HTTPS_OR_LOOPBACK_HTTP_MESSAGE)
 
     # S310 (suspicious-url-open-usage): callers build `url` from the
