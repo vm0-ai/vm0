@@ -15,7 +15,7 @@ function readTarString(buffer: Buffer, start: number, end: number): string {
   const slice = buffer.subarray(start, end);
   const nullIndex = slice.indexOf(0);
   return slice
-    .subarray(0, nullIndex >= 0 ? nullIndex : slice.length)
+    .subarray(0, nullIndex !== -1 ? nullIndex : slice.length)
     .toString("utf8");
 }
 
