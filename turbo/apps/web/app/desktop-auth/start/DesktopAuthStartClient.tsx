@@ -5,6 +5,7 @@ import { SignIn, useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { useTheme } from "../../components/ThemeProvider";
 import { AuthLayout } from "../../components/auth/AuthLayout";
+import { BannedAccountNotice } from "../../components/auth/BannedAccountNotice";
 import { getClerkAppearance } from "../../components/auth/clerk-appearance";
 
 const DESKTOP_AUTH_CALLBACK_PATH = "/desktop-auth/callback";
@@ -51,16 +52,19 @@ export function DesktopAuthStartClient() {
 
   return (
     <AuthLayout>
-      <SignIn
-        appearance={getClerkAppearance(theme)}
-        fallbackRedirectUrl={callbackPath}
-        forceRedirectUrl={callbackPath}
-        oauthFlow="redirect"
-        path="/desktop-auth/start"
-        routing="path"
-        signUpFallbackRedirectUrl={callbackPath}
-        signUpForceRedirectUrl={callbackPath}
-      />
+      <div className="relative z-10 flex w-full max-w-md flex-col gap-3">
+        <SignIn
+          appearance={getClerkAppearance(theme)}
+          fallbackRedirectUrl={callbackPath}
+          forceRedirectUrl={callbackPath}
+          oauthFlow="redirect"
+          path="/desktop-auth/start"
+          routing="path"
+          signUpFallbackRedirectUrl={callbackPath}
+          signUpForceRedirectUrl={callbackPath}
+        />
+        <BannedAccountNotice />
+      </div>
     </AuthLayout>
   );
 }
