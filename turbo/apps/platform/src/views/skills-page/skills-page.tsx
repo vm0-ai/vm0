@@ -34,6 +34,7 @@ import {
   skillUsages$,
 } from "../../signals/skills-page/skills-signals.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { Markdown } from "../components/markdown.tsx";
 import { Link } from "../router/link.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
@@ -51,6 +52,10 @@ function skillTitle(skill: {
 
 function agentTitle(agent: TeamComposeItem): string {
   return agent.displayName ?? agent.id;
+}
+
+function isMarkdownPath(path: string): boolean {
+  return /\.(md|markdown|mdx)$/i.test(path);
 }
 
 export function SkillsPage() {
@@ -370,12 +375,21 @@ function SkillEditor({
             </span>
           </div>
           {selectedFilePath && selectedContent !== null ? (
-            <pre
-              aria-label="Skill content"
-              className="min-h-[420px] flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
-            >
-              {selectedContent}
-            </pre>
+            isMarkdownPath(selectedFilePath) ? (
+              <div
+                aria-label="Skill content"
+                className="min-h-[420px] flex-1 overflow-auto bg-background px-4 py-3"
+              >
+                <Markdown source={selectedContent} />
+              </div>
+            ) : (
+              <pre
+                aria-label="Skill content"
+                className="min-h-[420px] flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
+              >
+                {selectedContent}
+              </pre>
+            )
           ) : (
             <div className="flex min-h-[420px] flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
               {selectedFilePath

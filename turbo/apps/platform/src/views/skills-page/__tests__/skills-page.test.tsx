@@ -116,6 +116,7 @@ function setupSkillsPage(): void {
       files: [
         { path: "SKILL.md", size: 37 },
         { path: "templates/prompt.md", size: 12 },
+        { path: "scripts/run.sh", size: 18 },
       ],
       fileContents: [
         {
@@ -123,6 +124,7 @@ function setupSkillsPage(): void {
           content: "# Research Notes\n\nStart with sources.",
         },
         { path: "templates/prompt.md", content: "Use the tool" },
+        { path: "scripts/run.sh", content: "#!/bin/sh\necho hi" },
       ],
     },
     {
@@ -189,7 +191,7 @@ describe("skills page", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Skill content")).toHaveTextContent(
-        "# Research Notes",
+        "Research Notes",
       );
     });
 
@@ -216,5 +218,34 @@ describe("skills page", () => {
         return button.textContent === "Save";
       }),
     ).toBeFalsy();
+  });
+
+  it("renders markdown files as formatted markdown and keeps non-markdown files raw", async () => {
+    setupSkillsPage();
+
+    click(await screen.findByText("Research Notes"));
+
+    // SKILL.md is markdown: rendered as a heading element, not raw "# ..." text.
+    await waitFor(() => {
+      expect(
+        within(screen.getByLabelText("Skill content")).getByRole("heading", {
+          name: "Research Notes",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    const dialog = screen.getByRole("dialog");
+    const scriptButton = queryAllByRoleFast("button", dialog).find((button) => {
+      return button.textContent?.includes("scripts/run.sh");
+    });
+    expect(scriptButton).toBeDefined();
+    click(scriptButton!);
+
+    // Non-markdown file stays raw: rendered in a <pre> with "#" preserved.
+    await waitFor(() => {
+      const content = screen.getByLabelText("Skill content");
+      expect(content.tagName).toBe("PRE");
+      expect(content).toHaveTextContent("#!/bin/sh");
+    });
   });
 });
