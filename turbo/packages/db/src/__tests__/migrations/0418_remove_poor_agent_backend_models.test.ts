@@ -109,6 +109,7 @@ describe("migration 0418 remove poor agent backend models", () => {
       "org-openrouter-deepseek-canonical",
     );
     const canonicalVercelHaikuOrgId = uniqueId("org-vercel-haiku-canonical");
+    const aliasPlainHaikuOrgId = uniqueId("org-haiku-plain-alias");
     const aliasAnthropicHaikuOrgId = uniqueId("org-anthropic-haiku-alias");
     const aliasDeepSeekOrgId = uniqueId("org-deepseek-alias");
     const aliasMiniMaxOrgId = uniqueId("org-minimax-alias");
@@ -182,6 +183,13 @@ describe("migration 0418 remove poor agent backend models", () => {
         type: "vercel-ai-gateway",
         authMethod: "api-key",
         selectedModel: "claude-haiku-4-5",
+      },
+      {
+        orgId: aliasPlainHaikuOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "openrouter-api-key",
+        authMethod: "api-key",
+        selectedModel: "claude-haiku-4.5",
       },
       {
         orgId: aliasAnthropicHaikuOrgId,
@@ -316,6 +324,30 @@ describe("migration 0418 remove poor agent backend models", () => {
       INSERT INTO org_members_metadata (org_id, user_id, selected_model)
       VALUES (${activeOrgId}, ${aliasPreferenceUserId}, 'anthropic/claude-haiku-4.5')
     `);
+    const plainAliasComposeId = await seedCompose({
+      orgId: activeOrgId,
+      userId,
+    });
+    await db.insert(zeroAgents).values({
+      id: plainAliasComposeId,
+      orgId: activeOrgId,
+      owner: userId,
+      name: uniqueId("agent-plain-alias"),
+      selectedModel: "claude-haiku-4.5",
+    });
+    const [plainAliasThread] = await db
+      .insert(chatThreads)
+      .values({
+        userId,
+        agentComposeId: plainAliasComposeId,
+        selectedModel: "claude-haiku-4.5",
+      })
+      .returning({ id: chatThreads.id });
+    const plainAliasPreferenceUserId = uniqueId("user-plain-alias-preference");
+    await db.execute(sql`
+      INSERT INTO org_members_metadata (org_id, user_id, selected_model)
+      VALUES (${activeOrgId}, ${plainAliasPreferenceUserId}, 'claude-haiku-4.5')
+    `);
 
     await runMigration0418();
     await runMigration0418();
@@ -409,6 +441,7 @@ describe("migration 0418 remove poor agent backend models", () => {
           canonicalOpenRouterMiniMaxOrgId,
           canonicalOpenRouterDeepSeekOrgId,
           canonicalVercelHaikuOrgId,
+          aliasPlainHaikuOrgId,
           aliasAnthropicHaikuOrgId,
           aliasDeepSeekOrgId,
           aliasMiniMaxOrgId,
@@ -455,6 +488,11 @@ describe("migration 0418 remove poor agent backend models", () => {
           selectedModel: "anthropic/claude-sonnet-4.6",
         },
         {
+          orgId: aliasPlainHaikuOrgId,
+          type: "openrouter-api-key",
+          selectedModel: "anthropic/claude-sonnet-4.6",
+        },
+        {
           orgId: aliasAnthropicHaikuOrgId,
           type: "anthropic-api-key",
           selectedModel: "claude-sonnet-4-6",
@@ -480,10 +518,18 @@ describe("migration 0418 remove poor agent backend models", () => {
       .select({ selectedModel: zeroAgents.selectedModel })
       .from(zeroAgents)
       .where(eq(zeroAgents.id, aliasComposeId));
+    const [plainAliasAgent] = await db
+      .select({ selectedModel: zeroAgents.selectedModel })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, plainAliasComposeId));
     const [updatedThread] = await db
       .select({ selectedModel: chatThreads.selectedModel })
       .from(chatThreads)
       .where(eq(chatThreads.id, thread!.id));
+    const [updatedPlainAliasThread] = await db
+      .select({ selectedModel: chatThreads.selectedModel })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, plainAliasThread!.id));
     const [memberMetadata] = await db
       .select({ selectedModel: orgMembersMetadata.selectedModel })
       .from(orgMembersMetadata)
@@ -502,6 +548,15 @@ describe("migration 0418 remove poor agent backend models", () => {
           eq(orgMembersMetadata.userId, aliasPreferenceUserId),
         ),
       );
+    const [plainAliasMemberMetadata] = await db
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, activeOrgId),
+          eq(orgMembersMetadata.userId, plainAliasPreferenceUserId),
+        ),
+      );
     const [historicalRun] = await db
       .select({ selectedModel: zeroRuns.selectedModel })
       .from(zeroRuns)
@@ -509,9 +564,12 @@ describe("migration 0418 remove poor agent backend models", () => {
 
     expect(agent?.selectedModel).toBe("MiniMax-M3");
     expect(aliasAgent?.selectedModel).toBe("MiniMax-M3");
+    expect(plainAliasAgent?.selectedModel).toBe("claude-sonnet-4-6");
     expect(updatedThread?.selectedModel).toBe("deepseek-v4-pro");
+    expect(updatedPlainAliasThread?.selectedModel).toBe("claude-sonnet-4-6");
     expect(memberMetadata?.selectedModel).toBe("claude-sonnet-4-6");
     expect(aliasMemberMetadata?.selectedModel).toBe("claude-sonnet-4-6");
+    expect(plainAliasMemberMetadata?.selectedModel).toBe("claude-sonnet-4-6");
     expect(historicalRun?.selectedModel).toBe("MiniMax-M2.7");
   });
 });
