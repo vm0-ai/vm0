@@ -897,6 +897,55 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });
 
+  it("completes a session with the stored non-default auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain("test-device-access");
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
+    ).resolves.toBe(
+      "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read",
+    );
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        oauthScopes: connectors.oauthScopes,
+      })
+      .from(connectors)
+      .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
+    expect(stored).toStrictEqual([
+      { authMethod: "api", oauthScopes: JSON.stringify(["read"]) },
+    ]);
+    expect((await onlySession(start.body.sessionId)).status).toBe("complete");
+  });
+
   it.each<{
     readonly caseName: string;
     readonly extraConnectorSecrets: Readonly<Record<string, string>>;
