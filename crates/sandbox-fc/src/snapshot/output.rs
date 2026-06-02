@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::paths::SnapshotOutputPaths;
@@ -6,6 +6,55 @@ use crate::paths::SnapshotOutputPaths;
 use super::SnapshotError;
 
 pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
+
+pub(super) fn snapshot_artifact_paths(output: &SnapshotOutputPaths) -> [PathBuf; 4] {
+    [
+        output.snapshot(),
+        output.memory(),
+        output.cow(),
+        output.cow_bitmap(),
+    ]
+}
+
+fn io_error_with_path(action: &str, path: &Path, error: io::Error) -> io::Error {
+    io::Error::new(
+        error.kind(),
+        format!("{action} {}: {error}", path.display()),
+    )
+}
+
+fn non_file_snapshot_artifact_error(path: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!(
+            "snapshot artifact is not a regular file: {}",
+            path.display()
+        ),
+    )
+}
+
+fn require_snapshot_artifact_regular_file_sync(path: &Path) -> io::Result<()> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|e| io_error_with_path("stat snapshot artifact", path, e))?;
+    if !metadata.file_type().is_file() {
+        return Err(non_file_snapshot_artifact_error(path));
+    }
+    Ok(())
+}
+
+pub(super) async fn snapshot_artifacts_are_regular_files(
+    output: &SnapshotOutputPaths,
+) -> Result<bool, sandbox::SnapshotError> {
+    for artifact in snapshot_artifact_paths(output) {
+        match tokio::fs::symlink_metadata(&artifact).await {
+            Ok(metadata) if metadata.file_type().is_file() => {}
+            Ok(_) => return Ok(false),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(io_error_with_path("stat snapshot artifact", &artifact, e).into()),
+        }
+    }
+    Ok(true)
+}
 
 pub(super) fn remove_file_if_exists_sync(path: &Path) -> std::io::Result<()> {
     match std::fs::remove_file(path) {
@@ -78,14 +127,9 @@ pub(super) async fn prepare_snapshot_output(
     // running on the blocking pool after the lock is dropped.
     let work = output.work_dir();
     remove_file_if_exists_sync(&output.complete_marker())?;
-    let _ = remove_dir_all_if_exists_sync(&work);
-    for stale in [
-        output.snapshot(),
-        output.memory(),
-        output.cow(),
-        output.cow_bitmap(),
-    ] {
-        let _ = remove_file_if_exists_sync(&stale);
+    remove_dir_all_if_exists_sync(&work)?;
+    for stale in snapshot_artifact_paths(output) {
+        remove_file_if_exists_sync(&stale)?;
     }
     std::fs::create_dir_all(&work)?;
     Ok(work)
@@ -103,13 +147,8 @@ pub(super) fn publish_snapshot_complete_marker(
     let mut marker_created = false;
 
     let result = (|| -> std::io::Result<()> {
-        for artifact in [
-            output.snapshot(),
-            output.memory(),
-            output.cow(),
-            output.cow_bitmap(),
-        ] {
-            std::fs::metadata(artifact)?;
+        for artifact in snapshot_artifact_paths(output) {
+            require_snapshot_artifact_regular_file_sync(&artifact)?;
         }
 
         let mut file = std::fs::OpenOptions::new()
@@ -231,6 +270,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prepare_snapshot_output_propagates_stale_artifact_cleanup_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.snapshot())
+            .await
+            .expect("create blocking snapshot directory");
+
+        let err = prepare_snapshot_output(&output)
+            .await
+            .expect_err("prepare must fail when an artifact path cannot be removed as a file");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            tokio::fs::metadata(output.snapshot())
+                .await
+                .expect("blocking directory should remain")
+                .is_dir(),
+            "failed cleanup should leave the blocking artifact path for operator inspection"
+        );
+    }
+
+    #[tokio::test]
     async fn publish_snapshot_complete_marker_writes_expected_content() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
@@ -266,6 +327,57 @@ mod tests {
                 .await
                 .unwrap(),
             "missing artifact must not publish complete marker"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_rejects_directory_artifact_without_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        tokio::fs::remove_file(output.snapshot())
+            .await
+            .expect("remove snapshot file");
+        tokio::fs::create_dir(output.snapshot())
+            .await
+            .expect("replace snapshot file with directory");
+
+        let err = publish_snapshot_complete_marker(&output)
+            .expect_err("publish should reject non-file artifact paths");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "non-file artifact must not publish complete marker"
+        );
+    }
+
+    #[tokio::test]
+    async fn publish_snapshot_complete_marker_rejects_symlink_artifact_without_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        write_required_snapshot_artifacts(&output).await;
+        let target = dir.path().join("target-snapshot.bin");
+        tokio::fs::write(&target, b"target snapshot")
+            .await
+            .expect("write symlink target");
+        tokio::fs::remove_file(output.snapshot())
+            .await
+            .expect("remove snapshot file");
+        std::os::unix::fs::symlink(&target, output.snapshot())
+            .expect("replace snapshot file with symlink");
+
+        let err = publish_snapshot_complete_marker(&output)
+            .expect_err("publish should reject symlink artifact paths");
+
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "symlink artifact must not publish complete marker"
         );
     }
 
