@@ -3,6 +3,7 @@
 //! `run()` owns the provider discovery future and reactor scheduling. This
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
+use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -19,7 +20,7 @@ use super::job_spawn::{JobProfile, SpawnContext, spawn_job};
 use crate::config::ProfileConfig;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
-use crate::provider::JobCandidate;
+use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, SandboxReuseResult};
@@ -41,6 +42,41 @@ pub(super) struct DiscoveredJobContext<'a> {
     pub(super) jobs: &'a mut JoinSet<Option<RunId>>,
 }
 
+struct LocalAdmission {
+    run_id: RunId,
+    budget_lease: BudgetLease,
+    cancel: CancellationToken,
+}
+
+struct AdmittedClaim {
+    claimed: ClaimedJob,
+    budget_lease: BudgetLease,
+    cancel: CancellationToken,
+}
+
+impl LocalAdmission {
+    async fn rollback(
+        self,
+        cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    ) {
+        let Self {
+            run_id,
+            budget_lease,
+            cancel: _,
+        } = self;
+        cancel_tokens.lock().await.remove(&run_id);
+        drop(budget_lease);
+    }
+
+    fn into_admitted(self, claimed: ClaimedJob) -> AdmittedClaim {
+        AdmittedClaim {
+            claimed,
+            budget_lease: self.budget_lease,
+            cancel: self.cancel,
+        }
+    }
+}
+
 pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext<'_>) {
     let DiscoveredJob { candidate } = job;
     let run_id = candidate.run_id();
@@ -58,65 +94,18 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
         return;
     };
-    // Reserve resources before claiming so we don't waste a job that another
-    // runner could handle.
-    let Some(job_lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+
+    let Some(admission) =
+        claim_with_local_admission(candidate, run_id, job_vcpu, job_memory, &ctx).await
     else {
         return;
     };
-    // Insert cancel token before claiming so provider-side cancel channels
-    // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
-    // find the active job. Skip duplicate discoveries; overwriting would break
-    // cancel delivery for the executor.
-    let job_cancel = CancellationToken::new();
-    {
-        let mut tokens = ctx.cancel_tokens.lock().await;
-        if tokens.contains_key(&run_id) {
-            drop(job_lease);
-            return;
-        }
-        tokens.insert(run_id, job_cancel.clone());
-    }
-    // This is the last reversible point before provider-side ownership.
-    // Soft drain must stop new claims, while hard stop still claims and
-    // cancels so provider state is completed deterministically.
-    let mode = *ctx.mode_rx.borrow();
-    match mode {
-        RunnerMode::Running => {}
-        RunnerMode::Draining => {
-            ctx.cancel_tokens.lock().await.remove(&run_id);
-            drop(job_lease);
-            return;
-        }
-        RunnerMode::Stopping => {
-            job_cancel.cancel();
-        }
-        RunnerMode::Stopped => {
-            ctx.cancel_tokens.lock().await.remove(&run_id);
-            drop(job_lease);
-            return;
-        }
-    }
-    // claim() runs in the branch handler: non-interruptible, so a valid
-    // successful claim is always paired with complete().
-    let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
-        // None means the job won't run here: either lost the race to another
-        // runner, or the provider rejected the job. Release the reservation and
-        // cancel token so the runner can continue.
-        ctx.cancel_tokens.lock().await.remove(&run_id);
-        drop(job_lease);
-        return;
-    };
-    if claimed.context().run_id != run_id {
-        warn!(
-            run_id = %run_id,
-            context_run_id = %claimed.context().run_id,
-            "provider returned claimed job with mismatched run_id"
-        );
-        ctx.cancel_tokens.lock().await.remove(&run_id);
-        drop(job_lease);
-        return;
-    }
+    let AdmittedClaim {
+        claimed,
+        budget_lease: job_lease,
+        cancel: job_cancel,
+    } = admission;
+
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
         ctx.spawn_ctx.device_rate_limits.as_ref(),
@@ -166,6 +155,78 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         ctx.spawn_ctx,
         ctx.jobs,
     );
+}
+
+async fn claim_with_local_admission(
+    candidate: JobCandidate,
+    run_id: RunId,
+    job_vcpu: u32,
+    job_memory: u32,
+    ctx: &DiscoveredJobContext<'_>,
+) -> Option<AdmittedClaim> {
+    // Reserve resources before claiming so we don't waste a job that another
+    // runner could handle.
+    let job_lease = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)?;
+
+    // Insert cancel token before claiming so provider-side cancel channels
+    // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
+    // find the active job. Skip duplicate discoveries; overwriting would break
+    // cancel delivery for the executor.
+    let job_cancel = CancellationToken::new();
+    {
+        let mut tokens = ctx.cancel_tokens.lock().await;
+        match tokens.entry(run_id) {
+            Entry::Occupied(_) => return None,
+            Entry::Vacant(entry) => {
+                entry.insert(job_cancel.clone());
+            }
+        }
+    }
+
+    let admission = LocalAdmission {
+        run_id,
+        budget_lease: job_lease,
+        cancel: job_cancel,
+    };
+
+    // This is the last reversible point before provider-side ownership.
+    // Soft drain must stop new claims, while hard stop still claims and
+    // cancels so provider state is completed deterministically.
+    let mode = *ctx.mode_rx.borrow();
+    match mode {
+        RunnerMode::Running => {}
+        RunnerMode::Draining => {
+            admission.rollback(ctx.cancel_tokens).await;
+            return None;
+        }
+        RunnerMode::Stopping => {
+            admission.cancel.cancel();
+        }
+        RunnerMode::Stopped => {
+            admission.rollback(ctx.cancel_tokens).await;
+            return None;
+        }
+    }
+    // claim() runs in the branch handler: non-interruptible, so a valid
+    // successful claim is always paired with complete().
+    let Some(claimed) = ctx.spawn_ctx.provider.claim(candidate).await else {
+        // None means the job won't run here: either lost the race to another
+        // runner, or the provider rejected the job. Release the reservation and
+        // cancel token so the runner can continue.
+        admission.rollback(ctx.cancel_tokens).await;
+        return None;
+    };
+    if claimed.context().run_id != run_id {
+        warn!(
+            run_id = %run_id,
+            context_run_id = %claimed.context().run_id,
+            "provider returned claimed job with mismatched run_id"
+        );
+        admission.rollback(ctx.cancel_tokens).await;
+        return None;
+    }
+
+    Some(admission.into_admitted(claimed))
 }
 
 async fn try_reuse_from_pool(
