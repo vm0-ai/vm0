@@ -4,6 +4,11 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const ORG_SLUG_HASH_LENGTH = 8;
+const RANDOM_SLUG_SUFFIX_LENGTH = 8;
+const PUBLIC_SLUG_SEPARATOR_LENGTH = 2;
+const MAX_HOSTED_SITE_PUBLIC_SLUG_LENGTH = 96;
+
 export const hostedSiteSlugSchema = z
   .string()
   .trim()
@@ -32,12 +37,30 @@ export const hostedSiteFileSchema = z.object({
   immutable: z.boolean().optional(),
 });
 
-export const hostedSitePrepareRequestSchema = z.object({
-  site: hostedSiteSlugSchema,
-  slugSuffix: hostedSiteSlugSuffixSchema.optional(),
-  spaFallback: z.boolean().default(false),
-  files: z.array(hostedSiteFileSchema).min(1).max(5000),
-});
+export const hostedSitePrepareRequestSchema = z
+  .object({
+    site: hostedSiteSlugSchema,
+    slugSuffix: hostedSiteSlugSuffixSchema.optional(),
+    spaFallback: z.boolean().default(false),
+    files: z.array(hostedSiteFileSchema).min(1).max(5000),
+  })
+  .superRefine((value, ctx) => {
+    const suffixLength = value.slugSuffix?.length ?? RANDOM_SLUG_SUFFIX_LENGTH;
+    const publicSlugLength =
+      value.site.length +
+      ORG_SLUG_HASH_LENGTH +
+      suffixLength +
+      PUBLIC_SLUG_SEPARATOR_LENGTH;
+
+    if (publicSlugLength > MAX_HOSTED_SITE_PUBLIC_SLUG_LENGTH) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: value.slugSuffix ? ["slugSuffix"] : ["site"],
+        message:
+          "Hosted site public slug must be 96 characters or fewer; shorten site or slug suffix",
+      });
+    }
+  });
 
 export const hostedSiteUploadSchema = z.object({
   path: z.string(),

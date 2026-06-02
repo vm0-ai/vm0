@@ -251,6 +251,28 @@ describe("POST /api/zero/host/deployments/prepare", () => {
     expect(second.body.siteId).toBe(first.body.siteId);
   });
 
+  it("rejects slug suffixes that would exceed the stored public slug length", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "a".repeat(63),
+          slugSuffix: "b".repeat(32),
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("96");
+  });
+
   it("rejects suspended orgs with insufficient credits", async () => {
     const fixture = await seedHostedSiteFixture("pro-suspend");
     mocks.clerk.session(fixture.userId, fixture.orgId);
