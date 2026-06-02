@@ -50,13 +50,6 @@ describe("zero generate presentation command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate presentation");
     expect(stdout).toContain("federated generation source-selection packet");
-    expect(stdout).toContain("## Stage 0: Source-Grounded Deck Planning");
-    expect(stdout).toContain(
-      "Use this stage when the user supplies files, links, transcripts, notes, or asks for a source-based deck.",
-    );
-    expect(stdout).toContain(
-      "Do not fabricate unsupported facts, metrics, quotes, examples, or conclusions. Mark gaps or assumptions explicitly.",
-    );
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
@@ -71,6 +64,9 @@ describe("zero generate presentation command", () => {
     );
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
+    expect(stdout).toContain("establish the deck's arc");
+    expect(stdout).toContain("Vary slide forms across the deck");
+    expect(stdout).toContain("Each slide carries one idea");
   });
 
   it("should expose only base artifact flags plus slides in help", () => {

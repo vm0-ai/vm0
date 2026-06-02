@@ -178,20 +178,15 @@ ${formatRegistryListing(templates, "presentation templates")}`;
                 : "agent decides"
             }`,
           ],
-          contentPlanningRules: [
-            "Use this stage when the user supplies files, links, transcripts, notes, or asks for a source-based deck.",
-            "Read the sources before drafting slide content. The prompt defines objective, audience, and tone; the sources define facts.",
-            "Extract the source structure, key claims, evidence, metrics, dates, named entities, tables, charts, and reusable visuals.",
-            "Draft an internal slide plan before authoring: slide purpose, sourced claims, key bullets, visual treatment, source anchors, and gaps.",
-            "Do not fabricate unsupported facts, metrics, quotes, examples, or conclusions. Mark gaps or assumptions explicitly.",
-            "For prompt-only decks, avoid fake specificity and do not imply source grounding.",
-          ],
           artifactRules: [
             "Think like a presentation designer, not a web page designer.",
             "Use a fixed 1920x1080 slide canvas and scale it uniformly for smaller viewports.",
             "Use one section per slide and keep repeated elements in consistent positions.",
             "Make keyboard navigation work with ArrowLeft, ArrowRight, Home, and End.",
             "Keep slide text readable from across a room; avoid memo-like walls of text.",
+            "Before laying out slides, establish the deck's arc: the opening problem or question, how it develops, and what conclusion lands; every slide should serve a clear narrative role in that arc.",
+            "Vary slide forms across the deck — full-bleed statement, evidence with data, pull quote, section break, summary — and avoid defaulting every slide to title-plus-bullets.",
+            "Each slide carries one idea; prefer a single strong statement over a list, and never exceed three bullets on any slide.",
           ],
         });
 
