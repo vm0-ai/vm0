@@ -298,10 +298,9 @@ function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
 >(type: T, authMethod: Method): RefreshTokenAccessProvider<T, Method> {
-  const entry = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][
-    authMethod
-  ] as ConnectorRefreshTokenAccessProviderEntry<T, Method>;
-  return entry.access;
+  const entries: ConnectorRefreshTokenAccessProviderEntries<T> =
+    CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type];
+  return entries[authMethod].access;
 }
 
 function connectorAuthCodeGrantProviderFor<
@@ -349,10 +348,9 @@ function connectorTokenRevokeProviderFor<
   T extends TokenRevokeConnectorType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
 >(type: T, authMethod: Method): TokenRevokeProvider<T, Method> {
-  const entry = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][
-    authMethod
-  ] as unknown as ConnectorTokenRevokeProviderEntry<T, Method>;
-  return entry.revoke;
+  const entries: ConnectorTokenRevokeProviderEntries<T> =
+    CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type];
+  return entries[authMethod].revoke;
 }
 
 const CONNECTOR_AUTH_METHOD_PROVIDERS = {
