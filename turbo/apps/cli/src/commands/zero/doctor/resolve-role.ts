@@ -3,8 +3,27 @@ import { getZeroAgent } from "../../../lib/api/domains/zero-agents";
 import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
 import { decodeCliTokenPayload } from "../../../lib/api/cli-token";
 import { getToken } from "../../../lib/api/config";
+import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 
 type AgentRole = "admin" | "owner" | "member" | "unknown";
+type PermissionGrantMode = NonNullable<OrgResponse["permissionGrantMode"]>;
+
+interface PermissionChangeContext {
+  readonly role: AgentRole;
+  readonly permissionGrantMode: PermissionGrantMode;
+}
+
+const LEGACY_PERMISSION_GRANT_MODE: PermissionGrantMode = "legacy";
+
+function roleFromOrg(org: OrgResponse): AgentRole {
+  if (org.role === "admin") return "admin";
+  if (org.role === "member") return "member";
+  return "unknown";
+}
+
+function permissionGrantModeFromOrg(org: OrgResponse): PermissionGrantMode {
+  return org.permissionGrantMode ?? LEGACY_PERMISSION_GRANT_MODE;
+}
 
 /**
  * Resolve the current user's userId from the available token.
@@ -19,32 +38,57 @@ async function resolveUserId(): Promise<string | undefined> {
   return cliPayload?.userId;
 }
 
-/**
- * Best-effort role detection that also considers agent ownership.
- *
- * Returns "admin" if the user is an org admin (can manage any agent).
- * Returns "owner" if the user is a non-admin but owns the specified agent.
- * Returns "member" if the user is a non-admin, non-owner member.
- * Returns "unknown" on any API failure.
- */
-export async function resolveAgentRole(agentId: string): Promise<AgentRole> {
+export async function resolvePermissionGrantMode(): Promise<PermissionGrantMode> {
   try {
     const org = await getZeroOrg();
-    if (org.role === "admin") return "admin";
+    return permissionGrantModeFromOrg(org);
+  } catch (error: unknown) {
+    console.debug(
+      "resolvePermissionGrantMode failed, falling back to legacy:",
+      error,
+    );
+    return LEGACY_PERMISSION_GRANT_MODE;
+  }
+}
+
+export async function resolvePermissionChangeContext(
+  agentId: string | undefined,
+): Promise<PermissionChangeContext> {
+  try {
+    const org = await getZeroOrg();
+    const permissionGrantMode = permissionGrantModeFromOrg(org);
+
+    if (!agentId || permissionGrantMode === "user-grants") {
+      return {
+        role: roleFromOrg(org),
+        permissionGrantMode,
+      };
+    }
+
+    if (org.role === "admin") {
+      return { role: "admin", permissionGrantMode };
+    }
 
     if (org.role === "member") {
-      // Check if the member owns this agent
       const userId = await resolveUserId();
       if (userId) {
         const agent = await getZeroAgent(agentId);
-        if (agent.ownerId === userId) return "owner";
+        if (agent.ownerId === userId) {
+          return { role: "owner", permissionGrantMode };
+        }
       }
-      return "member";
+      return { role: "member", permissionGrantMode };
     }
 
-    return "unknown";
+    return { role: "unknown", permissionGrantMode };
   } catch (error: unknown) {
-    console.debug("resolveAgentRole failed, falling back to unknown:", error);
-    return "unknown";
+    console.debug(
+      "resolvePermissionChangeContext failed, falling back to unknown legacy:",
+      error,
+    );
+    return {
+      role: "unknown",
+      permissionGrantMode: LEGACY_PERMISSION_GRANT_MODE,
+    };
   }
 }
