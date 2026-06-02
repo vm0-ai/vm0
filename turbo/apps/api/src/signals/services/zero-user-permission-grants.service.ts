@@ -3,10 +3,7 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import {
-  type FirewallPolicies,
-  UNKNOWN_PERMISSION_GRANT,
-} from "@vm0/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
@@ -181,31 +178,6 @@ export async function loadActiveUserPermissionGrants(
       asc(userPermissionGrants.connectorRef),
       asc(userPermissionGrants.permission),
     );
-}
-
-export function foldUserPermissionGrantsToFirewallPolicies(
-  grants: readonly Pick<
-    UserPermissionGrantRow,
-    "connectorRef" | "permission" | "action"
-  >[],
-): FirewallPolicies | null {
-  const policies: FirewallPolicies = {};
-
-  for (const grant of grants) {
-    const existing = policies[grant.connectorRef] ?? { policies: {} };
-    if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
-      policies[grant.connectorRef] = {
-        ...existing,
-        unknownPolicy: grant.action,
-      };
-      continue;
-    }
-
-    existing.policies[grant.permission] = grant.action;
-    policies[grant.connectorRef] = existing;
-  }
-
-  return Object.keys(policies).length > 0 ? policies : null;
 }
 
 async function visibleAgentOrNotFound(

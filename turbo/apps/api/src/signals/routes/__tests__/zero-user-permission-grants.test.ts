@@ -7,16 +7,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewalls";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { writeDb$ } from "../../external/db";
-import {
-  foldUserPermissionGrantsToFirewallPolicies,
-  loadActiveUserPermissionGrants,
-} from "../../services/zero-user-permission-grants.service";
+import { loadActiveUserPermissionGrants } from "../../services/zero-user-permission-grants.service";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -530,13 +528,13 @@ describe("zero user permission grants", () => {
       }),
     ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION]);
 
-    expect(foldUserPermissionGrantsToFirewallPolicies(active)).toStrictEqual({
+    expect(permissionGrantsToFirewallPolicies(active)).toStrictEqual({
       slack: {
         policies: { [SLACK_WRITE_PERMISSION]: "deny" },
         unknownPolicy: "deny",
       },
     });
-    expect(foldUserPermissionGrantsToFirewallPolicies([])).toBeNull();
+    expect(permissionGrantsToFirewallPolicies([])).toBeNull();
   });
 
   it("updates action, expiresAt, and updatedAt without changing createdAt", async () => {

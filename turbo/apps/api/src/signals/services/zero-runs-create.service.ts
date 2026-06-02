@@ -8,7 +8,10 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
+import {
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallPolicies,
+} from "@vm0/connectors/firewalls";
 import {
   toFirewallPolicies,
   type FirewallPolicyValue,
@@ -36,10 +39,7 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import {
-  foldUserPermissionGrantsToFirewallPolicies,
-  loadActiveUserPermissionGrants,
-} from "./zero-user-permission-grants.service";
+import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -452,10 +452,9 @@ async function resolveZeroRunPermissionPolicies(
   );
   signal.throwIfAborted();
 
-  return resolveFirewallPolicies(
-    foldUserPermissionGrantsToFirewallPolicies(grants),
-    [...args.allowedConnectorTypes],
-  );
+  return resolveFirewallPolicies(permissionGrantsToFirewallPolicies(grants), [
+    ...args.allowedConnectorTypes,
+  ]);
 }
 
 async function loadUserInfo(
