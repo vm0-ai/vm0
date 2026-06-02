@@ -14,7 +14,7 @@
 //!                          [-C <dir>] [-m <model>] [-c <config>]
 //!                          [--append-system-prompt <s>] [--last]
 //!                          [-- <prompt>]
-//!   guest-mock-codex exec resume <thread_id> [-- <prompt>]
+//!   guest-mock-codex exec resume <canonical-uuid-thread-id> [-- <prompt>]
 //! ```
 //!
 //! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
@@ -93,7 +93,7 @@ struct ExecArgs {
 
 #[derive(Subcommand, Debug)]
 enum ExecSub {
-    /// Mirrors `codex exec resume <thread_id>`.
+    /// Mirrors `codex exec resume <thread_id>`. The id must be a canonical UUID.
     Resume {
         thread_id: String,
 
@@ -104,10 +104,10 @@ enum ExecSub {
 
 /// Embedded JSONL fixtures selectable via `MOCK_CODEX_FIXTURE=<name>`.
 ///
-/// Each fixture's first event must be `thread.started{thread_id}`; the
-/// thread id is used to compute the on-disk session path so the
-/// guest-agent's checkpoint scan finds the same payload that was emitted
-/// to stdout. Adding a new fixture: drop a `*.jsonl` file under
+/// Each fixture's first event must be `thread.started{thread_id}` with a
+/// canonical UUID thread id; that id is used to compute the on-disk session
+/// path so the guest-agent's checkpoint scan finds the same payload that was
+/// emitted to stdout. Adding a new fixture: drop a `*.jsonl` file under
 /// `fixtures/`, append a `(name, include_str!(...))` row here, and refer
 /// to it from the bats test by `MOCK_CODEX_FIXTURE=<name>`.
 const FIXTURES: &[(&str, &str)] = &[
@@ -411,6 +411,11 @@ mod tests {
     #[test]
     fn build_session_path_rejects_non_canonical_uuid_thread_id() {
         assert_invalid_thread_id("0199A213-81C0-7800-8AA1-BBAB2A035A53");
+    }
+
+    #[test]
+    fn build_session_path_rejects_simple_uuid_thread_id() {
+        assert_invalid_thread_id("0199a21381c078008aa1bbab2a035a53");
     }
 
     fn assert_invalid_thread_id(thread_id: &str) {
