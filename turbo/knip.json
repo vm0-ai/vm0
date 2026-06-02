@@ -20,9 +20,7 @@
         "!src/lib/test-endpoints/**!",
         "!src/mocks/**!"
       ],
-      "ignoreDependencies": [
-        "@vm0/ui"
-      ],
+      "ignoreDependencies": ["@vm0/ui"],
       "next": {
         "entry": ["next.config.{js,ts,mjs}"]
       }
