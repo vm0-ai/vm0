@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import type {
   ZeroAgentCustomSkill,
@@ -25,8 +24,10 @@ import {
   filteredOrgSkills$,
   selectedSkillAgentId$,
   selectedSkillDetail$,
+  selectedSkillFilePath$,
   selectedSkillName$,
   setSelectedSkillAgentId$,
+  setSelectedSkillFilePath$,
   setSelectedSkillName$,
   setSkillSearch$,
   skillSearch$,
@@ -306,6 +307,8 @@ function SkillEditor({
   readonly detail: ZeroAgentSkillDetailResponse;
   readonly agents: readonly TeamComposeItem[];
 }) {
+  const explicitSelectedFilePath = useGet(selectedSkillFilePath$);
+  const setSelectedFilePath = useSet(setSelectedSkillFilePath$);
   const files = detail.files ?? [];
   const preferredFilePath =
     files.find((file) => {
@@ -313,25 +316,16 @@ function SkillEditor({
     })?.path ??
     files[0]?.path ??
     (detail.content !== null ? "SKILL.md" : null);
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
-    preferredFilePath,
-  );
-  const fileContentMap = useMemo(() => {
-    const contents = new Map<string, string>();
-    for (const file of detail.fileContents ?? []) {
-      contents.set(file.path, file.content);
-    }
-    if (detail.content !== null && !contents.has("SKILL.md")) {
-      contents.set("SKILL.md", detail.content);
-    }
-    return contents;
-  }, [detail.content, detail.fileContents]);
-  const selectedContent = selectedFilePath
-    ? (fileContentMap.get(selectedFilePath) ?? null)
+  const selectedFilePath = explicitSelectedFilePath ?? preferredFilePath;
+  const selectedFile = selectedFilePath
+    ? (detail.fileContents ?? []).find((file) => {
+        return file.path === selectedFilePath;
+      })
     : null;
-  useEffect(() => {
-    setSelectedFilePath(preferredFilePath);
-  }, [detail.name, preferredFilePath]);
+  const selectedContent = selectedFilePath
+    ? (selectedFile?.content ??
+      (selectedFilePath === "SKILL.md" ? detail.content : null))
+    : null;
 
   return (
     <div className="flex max-h-[88vh] min-w-0 flex-col overflow-hidden">

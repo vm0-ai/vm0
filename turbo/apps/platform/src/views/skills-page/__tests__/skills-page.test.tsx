@@ -3,7 +3,11 @@ import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { setMockSkills } from "../../../mocks/handlers/api-skills.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -160,11 +164,14 @@ describe("skills page", () => {
     });
 
     expect(screen.getByText("Used by")).toBeInTheDocument();
-    const researchRow = screen.getByRole("button", { name: /Research Notes/ });
+    const researchRow = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes("Research Notes");
+    });
+    expect(researchRow).toBeDefined();
     expect(
-      within(researchRow).getByAltText("Research Agent"),
+      within(researchRow!).getByAltText("Research Agent"),
     ).toBeInTheDocument();
-    expect(within(researchRow).getByText("+1")).toBeInTheDocument();
+    expect(within(researchRow!).getByText("+1")).toBeInTheDocument();
 
     click(screen.getByRole("combobox", { name: "Agent filter" }));
     click(await screen.findByRole("option", { name: "Writer Agent" }));
@@ -190,9 +197,13 @@ describe("skills page", () => {
     expect(within(dialog).getByText("Used by")).toBeInTheDocument();
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByAltText("Research Agent")).toBeInTheDocument();
-    click(
-      within(dialog).getByRole("button", { name: /templates\/prompt\.md/ }),
+    const promptFileButton = queryAllByRoleFast("button", dialog).find(
+      (button) => {
+        return button.textContent?.includes("templates/prompt.md");
+      },
     );
+    expect(promptFileButton).toBeDefined();
+    click(promptFileButton!);
 
     await waitFor(() => {
       expect(screen.getByLabelText("Skill content")).toHaveTextContent(
@@ -201,7 +212,9 @@ describe("skills page", () => {
     });
 
     expect(
-      within(dialog).queryByRole("button", { name: "Save" }),
-    ).not.toBeInTheDocument();
+      queryAllByRoleFast("button", dialog).some((button) => {
+        return button.textContent === "Save";
+      }),
+    ).toBeFalsy();
   });
 });

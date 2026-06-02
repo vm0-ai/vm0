@@ -12,6 +12,7 @@ import { agents$ } from "../agent.ts";
 import { zeroClient$ } from "../api-client.ts";
 
 const internalSelectedSkillName$ = state<string | null>(null);
+const internalSelectedSkillFilePath$ = state<string | null>(null);
 const internalSkillSearch$ = state("");
 const internalSelectedAgentId$ = state<string | null>(null);
 
@@ -21,6 +22,10 @@ export const skillSearch$ = computed((get) => {
 
 export const selectedSkillAgentId$ = computed((get) => {
   return get(internalSelectedAgentId$);
+});
+
+export const selectedSkillFilePath$ = computed((get) => {
+  return get(internalSelectedSkillFilePath$);
 });
 
 export const setSkillSearch$ = command(({ set }, value: string) => {
@@ -36,6 +41,13 @@ export const setSelectedSkillAgentId$ = command(
 export const setSelectedSkillName$ = command(
   ({ set }, skillName: string | null) => {
     set(internalSelectedSkillName$, skillName);
+    set(internalSelectedSkillFilePath$, null);
+  },
+);
+
+export const setSelectedSkillFilePath$ = command(
+  ({ set }, filePath: string | null) => {
+    set(internalSelectedSkillFilePath$, filePath);
   },
 );
 
