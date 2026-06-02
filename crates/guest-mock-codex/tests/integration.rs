@@ -75,11 +75,16 @@ fn find_session_file(codex_home: &Path) -> Option<PathBuf> {
 }
 
 fn session_files(codex_home: &Path) -> Vec<PathBuf> {
+    session_artifacts(codex_home)
+        .into_iter()
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("jsonl"))
+        .collect()
+}
+
+fn session_artifacts(codex_home: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     walk(&codex_home.join("sessions"), &mut |p| {
-        if p.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-            found.push(p.to_path_buf());
-        }
+        found.push(p.to_path_buf());
     });
     found.sort();
     found
@@ -97,8 +102,8 @@ fn assert_invalid_resume_rejected(codex_home: &Path, out: &RunOutput) {
         "invalid resume id should report an error on stderr"
     );
     assert!(
-        session_files(codex_home).is_empty(),
-        "invalid resume id should not write session files"
+        session_artifacts(codex_home).is_empty(),
+        "invalid resume id should not write session artifacts"
     );
 }
 
