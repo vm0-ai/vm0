@@ -5,7 +5,6 @@ import { SignIn, useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { useTheme } from "../../components/ThemeProvider";
 import { AuthLayout } from "../../components/auth/AuthLayout";
-import { BannedAccountNotice } from "../../components/auth/BannedAccountNotice";
 import { getClerkAppearance } from "../../components/auth/clerk-appearance";
 
 const DESKTOP_AUTH_CALLBACK_PATH = "/desktop-auth/callback";
@@ -63,7 +62,6 @@ export function DesktopAuthStartClient() {
           signUpFallbackRedirectUrl={callbackPath}
           signUpForceRedirectUrl={callbackPath}
         />
-        <BannedAccountNotice />
       </div>
     </AuthLayout>
   );

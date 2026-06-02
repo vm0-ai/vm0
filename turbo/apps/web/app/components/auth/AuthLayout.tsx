@@ -207,63 +207,30 @@ button[class*="socialButtonsBlockButton"]:hover,
   background-color: var(--color-muted) !important;
 }
 
-/* Force remove all backgrounds from inner elements at all times */
-button[class*="socialButtonsBlockButton"] *,
-.cl-socialButtonsBlockButton *,
-button[class*="socialButtonsBlockButton"] > *,
-button[class*="socialButtonsBlockButton"] span,
-button[class*="socialButtonsBlockButton"] div,
-.cl-socialButtonsBlockButton > *,
-.cl-socialButtonsBlockButton span,
-.cl-socialButtonsBlockButton div,
-[class*="socialButtonsBlockButton"] [class*="internal"],
-[class*="socialButtonsBlockButton"] [class*="text"],
-[class*="socialButtonsBlockButton"] [class*="icon"],
-[class*="socialButtonsBlockButton"] [class*="cl-internal"],
-button[class*="socialButtonsBlockButton"] [class*="cl-internal"],
-.cl-internal-2iusy0 {
-  background: none !important;
-  background-color: transparent !important;
-  background-image: none !important;
-  border: none !important;
-}
-
-/* Force remove all backgrounds from inner elements on hover */
-button[class*="socialButtonsBlockButton"]:hover *,
-.cl-socialButtonsBlockButton:hover *,
-button[class*="socialButtonsBlockButton"] *:hover,
-.cl-socialButtonsBlockButton *:hover,
-button[class*="socialButtonsBlockButton"]:hover > *,
-button[class*="socialButtonsBlockButton"]:hover span,
-button[class*="socialButtonsBlockButton"]:hover div,
-button[class*="socialButtonsBlockButton"] span:hover,
-button[class*="socialButtonsBlockButton"] div:hover,
-[class*="socialButtonsBlockButton"]:hover [class*="internal"],
-[class*="socialButtonsBlockButton"]:hover [class*="text"],
-[class*="socialButtonsBlockButton"]:hover [class*="icon"],
-[class*="socialButtonsBlockButton"] [class*="internal"]:hover,
-[class*="socialButtonsBlockButton"] [class*="text"]:hover,
-[class*="socialButtonsBlockButton"] [class*="icon"]:hover,
-[class*="socialButtonsBlockButton"]:hover [class*="cl-internal"],
-[class*="socialButtonsBlockButton"] [class*="cl-internal"]:hover,
-button[class*="socialButtonsBlockButton"]:hover [class*="cl-internal"],
-button[class*="socialButtonsBlockButton"] [class*="cl-internal"]:hover,
-.cl-internal-2iusy0:hover,
-button:hover .cl-internal-2iusy0 {
-  background: none !important;
-  background-color: transparent !important;
-  background-image: none !important;
-}
-
 /* Social button text color */
-button[class*="socialButtonsBlockButton"] *,
-.cl-socialButtonsBlockButton *,
-.cl-socialButtonsBlockButton span,
-button[class*="socialButtons"] span {
+button[class*="socialButtonsBlockButton"] [class*="text" i],
+.cl-socialButtonsBlockButton [class*="text" i],
+button[class*="socialButtons"] [class*="text" i],
+button[class*="socialButtonsBlockButton"] [class*="label" i],
+.cl-socialButtonsBlockButton [class*="label" i] {
   color: var(--color-foreground) !important;
-  background: none !important;
-  background-color: transparent !important;
-  background-image: none !important;
+}
+
+/* Preserve OAuth provider icons, which Clerk may render with svg/img or background images. */
+button[class*="socialButtonsBlockButton"] [class*="icon" i],
+.cl-socialButtonsBlockButton [class*="icon" i],
+button[class*="socialButtonsBlockButton"] svg,
+.cl-socialButtonsBlockButton svg,
+button[class*="socialButtonsBlockButton"] img,
+.cl-socialButtonsBlockButton img {
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  height: 16px !important;
+  opacity: 1 !important;
+  width: 16px !important;
 }
 
 /* Footer background - use card color */
