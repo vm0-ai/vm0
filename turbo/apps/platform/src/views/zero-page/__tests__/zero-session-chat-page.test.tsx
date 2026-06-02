@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
+  chatThreadRecommendedFollowupsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
@@ -92,6 +97,58 @@ describe("userMessage line break rendering", () => {
     await waitFor(() => {
       expect(screen.getByText("Hello World")).toBeInTheDocument();
     });
+  });
+});
+
+describe("recommended follow-ups", () => {
+  it("should render follow-ups and fill the composer when selected", async () => {
+    makeThreadMocks("thread-followups", [
+      {
+        id: "msg-1",
+        role: "user",
+        content: "Help me plan a launch",
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: "Here is a launch outline with milestones and owners.",
+        runId: MOCK_RUN_ID,
+        status: "completed",
+        runLifecycleEvent: "completed",
+        createdAt: "2026-03-10T00:00:01Z",
+      },
+    ]);
+    server.use(
+      mockApi(chatThreadRecommendedFollowupsContract.list, ({ respond }) => {
+        return respond(200, {
+          suggestions: [
+            "Turn this into a week-by-week checklist",
+            "Identify the highest-risk launch tasks",
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-followups",
+    });
+
+    await screen.findByText("Recommended follow-ups");
+    const followupButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes(
+        "Turn this into a week-by-week checklist",
+      );
+    });
+    if (!followupButton) {
+      throw new Error("Expected recommended follow-up button");
+    }
+    await userEvent.click(followupButton);
+
+    expect(screen.getByRole("textbox")).toHaveValue(
+      "Turn this into a week-by-week checklist",
+    );
   });
 });
 

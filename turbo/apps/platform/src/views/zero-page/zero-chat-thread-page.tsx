@@ -27,6 +27,7 @@ import {
   IconDots,
   IconVolume2,
   IconArrowDown,
+  IconArrowRight,
   IconBrandGoogleDrive,
   IconChevronRight,
   IconDownload,
@@ -34,6 +35,7 @@ import {
   IconGitBranch,
   IconLink,
   IconLoader2,
+  IconMessageCircle,
   IconPackage,
   IconTag,
   IconX,
@@ -2593,6 +2595,7 @@ function ChatThreadMessagesMain({
           );
         })}
         <ThinkingIndicator thread={thread} groups={activeGroups} />
+        <RecommendedFollowups thread={thread} />
       </div>
     </main>
   );
@@ -2764,6 +2767,61 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         {githubPrTrackingOpen && <GithubPrTrackingDock thread={thread} />}
       </div>
     </>
+  );
+}
+
+function RecommendedFollowups({ thread }: { thread: ChatThreadSignals }) {
+  const followupsLoadable = useLastLoadable(thread.recommendedFollowups$);
+  const setInput = useSet(thread.draft.setInput$);
+  const focusInput = useSet(thread.focusInput$);
+  const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
+  const pageSignal = useGet(pageSignal$);
+
+  if (
+    followupsLoadable.state !== "hasData" ||
+    followupsLoadable.data.length === 0
+  ) {
+    return null;
+  }
+
+  const handleSelect = (suggestion: string) => {
+    setInput(suggestion);
+    detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
+    focusInput();
+  };
+
+  return (
+    <section className="pt-1">
+      <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+        Recommended follow-ups
+      </h2>
+      <div className="divide-y divide-border/70 border-y border-border/70">
+        {followupsLoadable.data.map((suggestion) => {
+          return (
+            <button
+              key={suggestion}
+              type="button"
+              className="group flex min-h-12 w-full items-center gap-3 py-3 text-left transition-colors hover:bg-muted/30"
+              onClick={() => {
+                handleSelect(suggestion);
+              }}
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground">
+                <IconMessageCircle size={18} stroke={1.8} />
+              </span>
+              <span className="min-w-0 flex-1 break-words text-base font-medium leading-snug text-muted-foreground group-hover:text-foreground">
+                {suggestion}
+              </span>
+              <IconArrowRight
+                size={20}
+                stroke={1.8}
+                className="mr-1 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+              />
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

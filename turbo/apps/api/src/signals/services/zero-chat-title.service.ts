@@ -7,15 +7,18 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
-import { settle } from "../utils";
+import { safeJsonParse, settle } from "../utils";
 import { visibleChatMessageCondition } from "./zero-chat-thread.service";
 
 const log = logger("api:zero:chat-title");
 const OPENROUTER_CHAT_COMPLETIONS_URL =
   "https://openrouter.ai/api/v1/chat/completions";
-const TITLE_MODEL = "google/gemini-3.1-flash-lite-preview";
+const FAST_CHAT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
+const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
+const FOLLOWUP_CONTEXT_MESSAGE_CAP = 8;
+const FOLLOWUP_LIMIT = 4;
 
 interface TitleContextMessage {
   readonly role: "user" | "assistant";
@@ -41,6 +44,8 @@ interface ChatMessageForGeneration {
   readonly content: string;
 }
 
+type SelectDb = Pick<Db, "select">;
+
 export function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
@@ -59,6 +64,7 @@ function stripMarkdown(text: string): string {
 async function generateText(
   messages: readonly ChatMessageForGeneration[],
   maxTokens = 30,
+  options?: { readonly stripMarkdown?: boolean },
 ): Promise<string | null> {
   const apiKey = optionalEnv("OPENROUTER_API_KEY");
   if (!apiKey) {
@@ -72,7 +78,7 @@ async function generateText(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: TITLE_MODEL,
+      model: FAST_CHAT_MODEL,
       messages,
       max_tokens: maxTokens,
       temperature: 0.3,
@@ -91,7 +97,7 @@ async function generateText(
     throw new Error("OpenRouter returned empty content");
   }
 
-  return stripMarkdown(content);
+  return options?.stripMarkdown === false ? content : stripMarkdown(content);
 }
 
 function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
@@ -277,4 +283,139 @@ export function generateChatNotificationSummary(
     ],
     35,
   );
+}
+
+function sanitizeFollowup(raw: string): string | null {
+  const text = raw
+    .replace(/^\s*(?:[-*]|\d+[.)])\s+/, "")
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+    .trim();
+  if (text.length === 0) {
+    return null;
+  }
+  return text.length > 120 ? `${text.slice(0, 117).trim()}...` : text;
+}
+
+function parseRecommendedFollowups(text: string): string[] {
+  const unfenced = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const fromJson = (() => {
+    const parsed = safeJsonParse(unfenced);
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item) => {
+        return typeof item === "string" ? [item] : [];
+      });
+    }
+    return null;
+  })();
+
+  const candidates = fromJson ?? unfenced.split("\n");
+  const seen = new Set<string>();
+  const suggestions: string[] = [];
+  for (const candidate of candidates) {
+    const suggestion = sanitizeFollowup(candidate);
+    if (suggestion === null || seen.has(suggestion)) {
+      continue;
+    }
+    seen.add(suggestion);
+    suggestions.push(suggestion);
+    if (suggestions.length >= FOLLOWUP_LIMIT) {
+      break;
+    }
+  }
+  return suggestions;
+}
+
+async function getLatestFollowupContextMessages(
+  db: SelectDb,
+  threadId: string,
+): Promise<TitleContextMessage[]> {
+  const rows = await db
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      createdAt: chatMessages.createdAt,
+      sequenceNumber: chatMessages.sequenceNumber,
+    })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, threadId),
+        isNotNull(chatMessages.content),
+        inArray(chatMessages.role, ["user", "assistant"]),
+        visibleChatMessageCondition(),
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
+    .limit(FOLLOWUP_CONTEXT_MESSAGE_CAP);
+
+  return rows.reverse().flatMap((row) => {
+    if (
+      row.content === null ||
+      (row.role !== "user" && row.role !== "assistant")
+    ) {
+      return [];
+    }
+    return [{ role: row.role, content: row.content }];
+  });
+}
+
+async function generateRecommendedFollowups(
+  messages: readonly TitleContextMessage[],
+): Promise<string[]> {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant" || last.content.trim().length === 0) {
+    return [];
+  }
+
+  const context = messages
+    .map((message) => {
+      return `${message.role}: ${message.content.slice(0, FOLLOWUP_CONTEXT_CHAR_CAP)}`;
+    })
+    .join("\n\n");
+
+  const text = await generateText(
+    [
+      {
+        role: "system",
+        content:
+          "Generate exactly four concise follow-up prompts the user may ask next in this chat. Make them specific to the latest assistant reply, actionable, and useful. Match the user's language. Return only a JSON array of strings, with no markdown or extra text.",
+      },
+      {
+        role: "user",
+        content: `Recent conversation:\n${context}`,
+      },
+    ],
+    180,
+    { stripMarkdown: false },
+  );
+
+  return text === null ? [] : parseRecommendedFollowups(text);
+}
+
+export async function generateChatThreadRecommendedFollowups(args: {
+  readonly db: SelectDb;
+  readonly threadId: string;
+}): Promise<string[]> {
+  const result = await settle(
+    (async () => {
+      const messages = await getLatestFollowupContextMessages(
+        args.db,
+        args.threadId,
+      );
+      return generateRecommendedFollowups(messages);
+    })(),
+  );
+  if (!result.ok) {
+    log.warn("Recommended follow-up generation failed", {
+      threadId: args.threadId,
+      err: result.error,
+    });
+    return [];
+  }
+  return result.value;
 }

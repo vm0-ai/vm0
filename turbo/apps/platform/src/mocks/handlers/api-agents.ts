@@ -16,6 +16,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
+  chatThreadRecommendedFollowupsContract,
   chatThreadArtifactsContract,
   chatThreadGithubPrsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -151,6 +152,11 @@ export const apiAgentsHandlers = [
   // GET /api/zero/chat-threads/:threadId/messages (paged messages)
   mockApi(chatThreadMessagesContract.list, ({ respond }) => {
     return respond(200, { messages: [] });
+  }),
+
+  // GET /api/zero/chat-threads/:threadId/recommended-followups
+  mockApi(chatThreadRecommendedFollowupsContract.list, ({ respond }) => {
+    return respond(200, { suggestions: [] });
   }),
 
   // GET /api/zero/chat-threads/:threadId/artifacts

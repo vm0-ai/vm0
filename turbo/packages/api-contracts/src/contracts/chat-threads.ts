@@ -683,6 +683,24 @@ export const chatThreadMessagesContract = c.router({
   },
 });
 
+export const chatThreadRecommendedFollowupsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/recommended-followups",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    responses: {
+      200: z.object({
+        suggestions: z.array(z.string()),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Generate recommended follow-up prompts for a chat thread",
+  },
+});
+
 export const chatThreadArtifactsContract = c.router({
   list: {
     method: "GET",
@@ -753,6 +771,8 @@ export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
+export type ChatThreadRecommendedFollowupsContract =
+  typeof chatThreadRecommendedFollowupsContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
 export type ChatThreadGithubPrsContract = typeof chatThreadGithubPrsContract;
 export type ChatSearchContract = typeof chatSearchContract;

@@ -34,6 +34,7 @@ import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
+  chatThreadRecommendedFollowupsContract,
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PagedChatMessage,
@@ -448,6 +449,7 @@ export interface ChatThreadSignals {
   hasOlderHistory$: Computed<Promise<boolean>>;
   latestRunStatus$: Computed<Promise<string | null>>;
   allFinished$: Computed<Promise<boolean>>;
+  recommendedFollowups$: Computed<Promise<readonly string[]>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<void>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
@@ -1303,6 +1305,52 @@ function createArtifacts(
   };
 }
 
+function getLatestAssistantMessageForFollowups(
+  groups: readonly GroupedChatMessageGroup[],
+): EnrichedChatMessage | null {
+  const lastGroup = groups[groups.length - 1];
+  if (lastGroup?.role !== "assistant") {
+    return null;
+  }
+  return lastGroup.messages[lastGroup.messages.length - 1] ?? null;
+}
+
+function createRecommendedFollowups(
+  threadId: string,
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+  allFinished$: Computed<Promise<boolean>>,
+) {
+  const recommendedFollowups$ = computed(
+    async (get): Promise<readonly string[]> => {
+      const groups = await get(groupedChatMessages$);
+      const latestAssistant = getLatestAssistantMessageForFollowups(groups);
+      if (
+        latestAssistant === null ||
+        (latestAssistant.content ?? "").trim().length === 0 ||
+        latestAssistant.error !== undefined ||
+        isCancelledAssistantMessage(latestAssistant)
+      ) {
+        return [];
+      }
+
+      const allFinished = await get(allFinished$);
+      if (!allFinished) {
+        return [];
+      }
+
+      const client = get(zeroClient$)(chatThreadRecommendedFollowupsContract);
+      const result = await accept(
+        client.list({ params: { threadId } }),
+        [200],
+        { toast: false },
+      );
+      return result.body.suggestions;
+    },
+  );
+
+  return { recommendedFollowups$ };
+}
+
 // ---------------------------------------------------------------------------
 // Draft cache
 // ---------------------------------------------------------------------------
@@ -2110,6 +2158,11 @@ export function createChatThreadSignals(
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
     createPhraseLoop(groupedChatMessages$, runTracking.allFinished$);
+  const { recommendedFollowups$ } = createRecommendedFollowups(
+    threadId,
+    groupedChatMessages$,
+    runTracking.allFinished$,
+  );
   const {
     artifacts$,
     artifactsDrawerOpen$,
@@ -2137,10 +2190,7 @@ export function createChatThreadSignals(
     agentDisplayName$,
     defaultModelSelection$,
     agentPinned$,
-    timelineExpandedIds$: threadUi.timelineExpandedIds$,
-    toggleTimelineExpanded$: threadUi.toggleTimelineExpanded$,
-    copiedMessageId$: threadUi.copiedMessageId$,
-    copyMessage$: threadUi.copyMessage$,
+    ...threadUi,
     setInputRef$,
     focusInput$,
     scheduleDraftSync$,
@@ -2150,6 +2200,7 @@ export function createChatThreadSignals(
     hasOlderHistory$,
     latestRunStatus$,
     allFinished$: runTracking.allFinished$,
+    recommendedFollowups$,
     fetchNextPage$,
     loadHistory$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
