@@ -203,7 +203,7 @@ export const permissionChangeCommand = new Command()
   .addOption(
     new Option(
       "--reason <text>",
-      "Brief reason why the permission is needed (max 500 chars)",
+      "Brief reason for admin approval requests (max 500 chars)",
     ),
   )
   .addHelpText(
