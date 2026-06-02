@@ -8,10 +8,14 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { connectors } from "@vm0/db/schema/connector";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -157,6 +161,31 @@ export const deleteUsageInsightFixture$ = command(
           eq(userFeatureSwitches.userId, userId),
         ),
       );
+    signal.throwIfAborted();
+
+    await db
+      .delete(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.orgId, orgId),
+          eq(userPermissionGrants.userId, userId),
+        ),
+      );
+    signal.throwIfAborted();
+
+    await db
+      .delete(userConnectors)
+      .where(
+        and(eq(userConnectors.orgId, orgId), eq(userConnectors.userId, userId)),
+      );
+    signal.throwIfAborted();
+
+    await db
+      .delete(connectors)
+      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
+    signal.throwIfAborted();
+
+    await db.delete(secrets).where(eq(secrets.orgId, orgId));
     signal.throwIfAborted();
 
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));

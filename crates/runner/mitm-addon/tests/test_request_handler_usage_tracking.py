@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy.flow import Error
 
 import auth
 import flow_metadata_keys as metadata_keys
@@ -136,6 +137,69 @@ async def test_billable_flow_is_tracked_before_responseheaders(
     assert_pending(
         usage_pending_path,
         flows=1,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
+
+
+async def test_billable_flow_error_releases_tracking_after_request(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    """Connection errors release billable tracking created by request()."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="x",
+            api_entry={
+                "base": "https://api.x.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
+            },
+            network_policy={
+                "allow": ["read-posts"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=["x"],
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+        assert flow.metadata["_usage_flow_tracked"] is True
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
+
+        flow.error = Error("connection reset")
+        mitm_addon.error(flow)
+
+    assert "_usage_flow_tracked" not in flow.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
         buffered=0,
         reports=0,
         flush_request_id="request-1",

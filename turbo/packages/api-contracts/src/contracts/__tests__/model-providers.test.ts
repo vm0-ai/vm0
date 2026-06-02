@@ -69,6 +69,7 @@ describe("model-first canonical catalog", () => {
       "deepseek-v4-flash",
       "kimi-k2.6",
       "kimi-k2.5",
+      "MiniMax-M3",
       "MiniMax-M2.7",
       "glm-5.1",
       "gpt-5.5",
@@ -130,6 +131,10 @@ describe("model-first canonical catalog", () => {
       "minimax-api-key",
       "openrouter-api-key",
     ]);
+    expect(getProvidersForModel("MiniMax-M3")).toEqual([
+      "vm0",
+      "minimax-api-key",
+    ]);
     expect(getProvidersForModel("custom/model")).toEqual([]);
   });
 
@@ -140,6 +145,12 @@ describe("model-first canonical catalog", () => {
     );
     expect(isModelSupportedByProvider("anthropic/claude-opus-4.8", "vm0")).toBe(
       true,
+    );
+    expect(isModelSupportedByProvider("MiniMax-M3", "minimax-api-key")).toBe(
+      true,
+    );
+    expect(isModelSupportedByProvider("MiniMax-M3", "openrouter-api-key")).toBe(
+      false,
     );
   });
 
@@ -152,6 +163,12 @@ describe("model-first canonical catalog", () => {
     );
     expect(getProviderRuntimeModel("openrouter-api-key", "MiniMax-M2.7")).toBe(
       "minimax/minimax-m2.7",
+    );
+    expect(getProviderRuntimeModel("minimax-api-key", "MiniMax-M3")).toBe(
+      "MiniMax-M3",
+    );
+    expect(getProviderRuntimeModel("openrouter-api-key", "MiniMax-M3")).toBe(
+      "MiniMax-M3",
     );
     expect(
       getProviderRuntimeModel("anthropic-api-key", "claude-opus-4-8"),
@@ -318,6 +335,7 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("claude-opus-4-8");
     expect(models).toContain("kimi-k2.5");
+    expect(models).toContain("MiniMax-M3");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
@@ -352,6 +370,7 @@ describe("model image input support", () => {
     "kimi-k2.6",
     "kimi-k2.5",
     "moonshotai/kimi-k2.5",
+    "MiniMax-M3",
   ])("marks %s as image-input capable", (model) => {
     expect(modelSupportsImageInput(model)).toBe(true);
     expect(getModelImageInputSupport(model)).toBe("supported");
@@ -370,6 +389,17 @@ describe("model image input support", () => {
   it("treats unknown model ids as unknown rather than unsupported", () => {
     expect(modelSupportsImageInput("custom/model")).toBe(false);
     expect(getModelImageInputSupport("custom/model")).toBe("unknown");
+  });
+});
+
+describe("minimax-api-key provider", () => {
+  it("uses M3 by default while keeping M2 models available", () => {
+    expect(getModels("minimax-api-key")).toEqual([
+      "MiniMax-M3",
+      "MiniMax-M2.7",
+      "MiniMax-M2.1",
+    ]);
+    expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
   });
 });
 

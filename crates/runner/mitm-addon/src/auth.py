@@ -73,15 +73,32 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
 
 
+@dataclass(frozen=True)
+class _FirewallAuthPayload:
+    """Cacheable /firewall/auth data applied to outbound requests."""
+
+    headers: dict[str, str]
+    resolved_secrets: list[str] = field(default_factory=list)
+    base: str | None = None
+    query: dict[str, str] | None = None
+
+
 @dataclass
 class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
-    headers: dict
+    payload: _FirewallAuthPayload
     expires_at: object = None
-    resolved_secrets: list = field(default_factory=list)
-    base: str | None = None
-    query: dict | None = None
+
+
+@dataclass(frozen=True)
+class _FirewallAuthSuccess:
+    """Validated /firewall/auth success response consumed by the auth cache."""
+
+    payload: _FirewallAuthPayload
+    expires_at: object = None
+    refreshed_connectors: list[str] = field(default_factory=list)
+    refreshed_secrets: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -285,11 +302,83 @@ def _firewall_auth_api_error_from_envelope(
     )
 
 
+_MALFORMED_FIREWALL_AUTH_SUCCESS = "Firewall auth endpoint returned malformed success response"
+
+
+def _malformed_firewall_auth_success(message: str) -> ValueError:
+    return ValueError(f"{_MALFORMED_FIREWALL_AUTH_SUCCESS}: {message}")
+
+
+def _parse_string_map(value: object, field_name: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise _malformed_firewall_auth_success(f"{field_name} must be an object")
+
+    parsed: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise _malformed_firewall_auth_success(f"{field_name} keys must be strings")
+        if not isinstance(item, str):
+            raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
+        parsed[key] = item
+    return parsed
+
+
+def _parse_optional_string_map(
+    decoded: dict[object, object], field_name: str
+) -> dict[str, str] | None:
+    value = decoded.get(field_name)
+    if value is None:
+        return None
+    return _parse_string_map(value, field_name)
+
+
+def _parse_optional_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
+    value = decoded.get(field_name)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise _malformed_firewall_auth_success(f"{field_name} must be an array")
+    if not all(isinstance(item, str) for item in value):
+        raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
+    return list(value)
+
+
+def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
+    if not isinstance(decoded, dict):
+        raise _malformed_firewall_auth_success("response must be an object")
+    decoded_map: dict[object, object] = decoded
+    if "headers" not in decoded_map:
+        raise _malformed_firewall_auth_success("headers is required")
+
+    base = decoded_map.get("base")
+    if base is not None and not isinstance(base, str):
+        raise _malformed_firewall_auth_success("base must be a string")
+
+    headers = _parse_string_map(decoded_map["headers"], "headers")
+    resolved_secrets = _parse_optional_string_list(decoded_map, "resolvedSecrets")
+    refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
+    refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
+    query = _parse_optional_string_map(decoded_map, "query")
+    payload = _FirewallAuthPayload(
+        headers=headers,
+        resolved_secrets=resolved_secrets,
+        base=base,
+        query=query,
+    )
+    return _FirewallAuthSuccess(
+        payload=payload,
+        expires_at=decoded_map.get("expiresAt"),
+        refreshed_connectors=refreshed_connectors,
+        refreshed_secrets=refreshed_secrets,
+    )
+
+
 def _fetch_firewall_headers_sync(
     encrypted_secrets: str,
     auth_headers: dict,
     sandbox_token: str,
     api_url: str,
+    *,
     secret_connector_map: dict | None = None,
     secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
@@ -297,7 +386,7 @@ def _fetch_firewall_headers_sync(
     auth_query: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> dict:
+) -> _FirewallAuthSuccess:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
 
     api_url is resolved by the async caller (fetch_firewall_headers) while
@@ -324,7 +413,8 @@ def _fetch_firewall_headers_sync(
     try:
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            return json.loads(resp.read())
+            decoded: object = json.loads(resp.read())
+            return _parse_firewall_auth_success(decoded)
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; `with e` closes on every exit
         # path to avoid FD exhaustion under sustained cache-miss load (#10475).
@@ -357,6 +447,7 @@ async def fetch_firewall_headers(
     encrypted_secrets: str,
     auth_headers: dict,
     sandbox_token: str,
+    *,
     secret_connector_map: dict | None = None,
     secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
@@ -364,7 +455,7 @@ async def fetch_firewall_headers(
     auth_query: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> dict:
+) -> _FirewallAuthSuccess:
     """Resolve auth headers via server-side decryption.
 
     encrypted_secrets is the encrypted runtime secret namespace. After API-side
@@ -394,13 +485,13 @@ async def fetch_firewall_headers(
         auth_headers,
         sandbox_token,
         api_url,
-        secret_connector_map,
-        secret_connector_metadata_map,
-        vars_map,
-        auth_base,
-        auth_query,
-        firewall_billable,
-        force_refresh,
+        secret_connector_map=secret_connector_map,
+        secret_connector_metadata_map=secret_connector_metadata_map,
+        vars_map=vars_map,
+        auth_base=auth_base,
+        auth_query=auth_query,
+        firewall_billable=firewall_billable,
+        force_refresh=force_refresh,
     )
 
 
@@ -424,6 +515,29 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
     return (time.time() if now is None else now) < value
 
 
+def _build_token_meta(
+    payload: _FirewallAuthPayload,
+    *,
+    cache_hit: bool,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+) -> dict:
+    token_meta: dict = {
+        "headers": payload.headers,
+        "resolved_secrets": payload.resolved_secrets,
+        "cache_hit": cache_hit,
+    }
+    if refreshed_connectors is not None:
+        token_meta["refreshed_connectors"] = refreshed_connectors
+    if refreshed_secrets is not None:
+        token_meta["refreshed_secrets"] = refreshed_secrets
+    if payload.base is not None:
+        token_meta["base"] = payload.base
+    if payload.query is not None:
+        token_meta["query"] = payload.query
+    return token_meta
+
+
 def _build_cache_hit(
     cached: _FirewallHeaderCacheEntry, firewall_billable: bool = False
 ) -> dict | None:
@@ -435,16 +549,7 @@ def _build_cache_hit(
             return None
     elif not _has_valid_expiry(expires_at, now):
         return None
-    hit = {
-        "headers": cached.headers,
-        "resolved_secrets": cached.resolved_secrets,
-        "cache_hit": True,
-    }
-    if cached.base is not None:
-        hit["base"] = cached.base
-    if cached.query is not None:
-        hit["query"] = cached.query
-    return hit
+    return _build_token_meta(cached.payload, cache_hit=True)
 
 
 async def get_firewall_headers(
@@ -453,6 +558,7 @@ async def get_firewall_headers(
     encrypted_secrets: str,
     auth_headers: dict,
     sandbox_token: str,
+    *,
     secret_connector_map: dict | None = None,
     secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
@@ -502,29 +608,22 @@ async def get_firewall_headers(
             encrypted_secrets,
             auth_headers,
             sandbox_token,
-            secret_connector_map,
-            secret_connector_metadata_map,
-            vars_map,
-            auth_base,
-            auth_query,
-            firewall_billable,
+            secret_connector_map=secret_connector_map,
+            secret_connector_metadata_map=secret_connector_metadata_map,
+            vars_map=vars_map,
+            auth_base=auth_base,
+            auth_query=auth_query,
+            firewall_billable=firewall_billable,
             force_refresh=force_refresh,
         )
-        if firewall_billable and not _has_valid_expiry(result.get("expiresAt")):
+        if firewall_billable and not _has_valid_expiry(result.expires_at):
             raise InvalidBillableAuthExpiryError(
                 "Billable firewall auth response did not include a valid cache expiry"
             )
-        headers = result["headers"]
-        resolved_secrets = result.get("resolvedSecrets", [])
         cache_entry = _FirewallHeaderCacheEntry(
-            headers=headers,
-            expires_at=result.get("expiresAt"),
-            resolved_secrets=resolved_secrets,
+            payload=result.payload,
+            expires_at=result.expires_at,
         )
-        if result.get("base"):
-            cache_entry.base = result["base"]
-        if result.get("query"):
-            cache_entry.query = result["query"]
 
         # A 401 can request a forced refresh while this non-forced fetch is
         # in flight. Return the current result to this request, but do not let
@@ -533,18 +632,12 @@ async def get_firewall_headers(
         if not marker_appeared_during_non_forced_fetch:
             state.cache = cache_entry
 
-        ret: dict = {
-            "headers": headers,
-            "resolved_secrets": resolved_secrets,
-            "refreshed_connectors": result.get("refreshedConnectors", []),
-            "refreshed_secrets": result.get("refreshedSecrets", []),
-            "cache_hit": False,
-        }
-        if result.get("base"):
-            ret["base"] = result["base"]
-        if result.get("query"):
-            ret["query"] = result["query"]
-        return ret
+        return _build_token_meta(
+            result.payload,
+            cache_hit=False,
+            refreshed_connectors=result.refreshed_connectors,
+            refreshed_secrets=result.refreshed_secrets,
+        )
 
 
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
@@ -741,12 +834,12 @@ async def handle_firewall_request(
             encrypted_secrets,
             auth_headers,
             sandbox_token,
-            secret_connector_map,
-            secret_connector_metadata_map,
-            vars_map,
-            auth_base,
-            auth_query,
-            firewall_billable,
+            secret_connector_map=secret_connector_map,
+            secret_connector_metadata_map=secret_connector_metadata_map,
+            vars_map=vars_map,
+            auth_base=auth_base,
+            auth_query=auth_query,
+            firewall_billable=firewall_billable,
         )
     except ConnectorNotConfiguredError as e:
         log_proxy_entry(

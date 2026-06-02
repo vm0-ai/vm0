@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.36.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.23...sandbox-fc-v0.36.0) (2026-06-01)
+
+
+### Features
+
+* add canonical workspace drive foundation ([#15688](https://github.com/vm0-ai/vm0/issues/15688)) ([593460a](https://github.com/vm0-ai/vm0/commit/593460ab818768ae75d1fd658a7211a2120a956b))
+
+
+### Bug Fixes
+
+* **sandbox-fc:** guard control exec timeout overflow ([#15748](https://github.com/vm0-ai/vm0/issues/15748)) ([b633b6a](https://github.com/vm0-ai/vm0/commit/b633b6a0d07c472b9ebaf6025863e4a21b92acd4))
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot cleanup resources ([#15752](https://github.com/vm0-ai/vm0/issues/15752)) ([7240b03](https://github.com/vm0-ai/vm0/commit/7240b030fe0f02b3350bc48fd7c6fefafca7474a))
+
 ## [0.35.23](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.22...sandbox-fc-v0.35.23) (2026-05-31)
 
 

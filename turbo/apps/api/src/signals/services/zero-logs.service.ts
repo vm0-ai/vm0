@@ -1,4 +1,4 @@
-import { computed, type Computed, type Getter } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import {
   triggerSourceSchema,
   type LogDetail,
@@ -40,7 +40,6 @@ import { escapeAplString } from "../../lib/axiom-apl";
 import { now } from "../../lib/time";
 
 type ServiceDb = Pick<Db, "select" | "selectDistinct">;
-type ComputedGetter = Getter;
 
 const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 
@@ -601,83 +600,81 @@ function compareAxiomSearchEventsDesc(
   return left.sequenceNumber - right.sequenceNumber;
 }
 
-async function queryMatchingEvents(
-  get: ComputedGetter,
-  params: {
-    readonly dataset: string;
-    readonly sinceISO: string;
-    readonly targetRunIds: readonly string[];
-    readonly keyword: string;
-    readonly limit: number;
-  },
-): Promise<AxiomAgentEvent[]> {
-  const matchedEvents: AxiomAgentEvent[] = [];
-  const runIdChunks = chunkRunIds(params.targetRunIds);
-  for (
-    let index = 0;
-    index < runIdChunks.length;
-    index += AXIOM_SEARCH_QUERY_CONCURRENCY
-  ) {
-    const batch = runIdChunks.slice(
-      index,
-      index + AXIOM_SEARCH_QUERY_CONCURRENCY,
-    );
-    const batchEvents = await Promise.all(
-      batch.map(async (runIdChunk) => {
-        const searchApl = buildSearchApl({
-          dataset: params.dataset,
-          sinceISO: params.sinceISO,
-          runIds: runIdChunk,
-          keyword: params.keyword,
-          limit: params.limit + 1,
-        });
-        return (
-          await get(queryAxiom(searchApl))
-        ).slice() as unknown as AxiomAgentEvent[];
-      }),
-    );
+function queryMatchingEvents(params: {
+  readonly dataset: string;
+  readonly sinceISO: string;
+  readonly targetRunIds: readonly string[];
+  readonly keyword: string;
+  readonly limit: number;
+}): Computed<Promise<AxiomAgentEvent[]>> {
+  return computed(async (get): Promise<AxiomAgentEvent[]> => {
+    const matchedEvents: AxiomAgentEvent[] = [];
+    const runIdChunks = chunkRunIds(params.targetRunIds);
+    for (
+      let index = 0;
+      index < runIdChunks.length;
+      index += AXIOM_SEARCH_QUERY_CONCURRENCY
+    ) {
+      const batch = runIdChunks.slice(
+        index,
+        index + AXIOM_SEARCH_QUERY_CONCURRENCY,
+      );
+      const batchEvents = await Promise.all(
+        batch.map(async (runIdChunk) => {
+          const searchApl = buildSearchApl({
+            dataset: params.dataset,
+            sinceISO: params.sinceISO,
+            runIds: runIdChunk,
+            keyword: params.keyword,
+            limit: params.limit + 1,
+          });
+          return (
+            await get(queryAxiom(searchApl))
+          ).slice() as unknown as AxiomAgentEvent[];
+        }),
+      );
 
-    for (const events of batchEvents) {
-      matchedEvents.push(...events);
+      for (const events of batchEvents) {
+        matchedEvents.push(...events);
+      }
     }
-  }
 
-  return matchedEvents.sort(compareAxiomSearchEventsDesc);
+    return matchedEvents.sort(compareAxiomSearchEventsDesc);
+  });
 }
 
-async function getSearchContextMap(
-  get: ComputedGetter,
-  params: {
-    readonly dataset: string;
-    readonly matches: readonly AxiomAgentEvent[];
-    readonly before: number;
-    readonly after: number;
-  },
-): Promise<Map<string, AxiomAgentEvent>> {
-  const contextMap = new Map<string, AxiomAgentEvent>();
-  if (params.before === 0 && params.after === 0) {
-    return contextMap;
-  }
+function getSearchContextMap(params: {
+  readonly dataset: string;
+  readonly matches: readonly AxiomAgentEvent[];
+  readonly before: number;
+  readonly after: number;
+}): Computed<Promise<Map<string, AxiomAgentEvent>>> {
+  return computed(async (get): Promise<Map<string, AxiomAgentEvent>> => {
+    const contextMap = new Map<string, AxiomAgentEvent>();
+    if (params.before === 0 && params.after === 0) {
+      return contextMap;
+    }
 
-  const contextConditions = params.matches.map((match) => {
-    const seqMin = Math.max(0, match.sequenceNumber - params.before);
-    const seqMax = match.sequenceNumber + params.after;
-    return `(runId == "${escapeAplString(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
-  });
+    const contextConditions = params.matches.map((match) => {
+      const seqMin = Math.max(0, match.sequenceNumber - params.before);
+      const seqMax = match.sequenceNumber + params.after;
+      return `(runId == "${escapeAplString(match.runId)}" and sequenceNumber >= ${seqMin} and sequenceNumber <= ${seqMax})`;
+    });
 
-  const contextApl = `['${params.dataset}']
+    const contextApl = `['${params.dataset}']
 | where ${contextConditions.join("\n  or ")}
 | order by runId asc, sequenceNumber asc`;
 
-  const contextEvents = (
-    await get(queryAxiom(contextApl))
-  ).slice() as unknown as AxiomAgentEvent[];
+    const contextEvents = (
+      await get(queryAxiom(contextApl))
+    ).slice() as unknown as AxiomAgentEvent[];
 
-  for (const event of contextEvents) {
-    contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
-  }
+    for (const event of contextEvents) {
+      contextMap.set(`${event.runId}:${event.sequenceNumber}`, event);
+    }
 
-  return contextMap;
+    return contextMap;
+  });
 }
 
 function buildSearchResults(params: {
@@ -808,13 +805,15 @@ export function zeroLogSearch(
       }
     }
 
-    const matchedEvents = await queryMatchingEvents(get, {
-      dataset,
-      sinceISO,
-      targetRunIds,
-      keyword,
-      limit,
-    });
+    const matchedEvents = await get(
+      queryMatchingEvents({
+        dataset,
+        sinceISO,
+        targetRunIds,
+        keyword,
+        limit,
+      }),
+    );
     if (matchedEvents.length === 0) {
       return { results: [], hasMore: false };
     }
@@ -822,12 +821,14 @@ export function zeroLogSearch(
     const hasMore = matchedEvents.length > limit;
     const matches = hasMore ? matchedEvents.slice(0, limit) : matchedEvents;
 
-    const contextMap = await getSearchContextMap(get, {
-      dataset,
-      matches,
-      before,
-      after,
-    });
+    const contextMap = await get(
+      getSearchContextMap({
+        dataset,
+        matches,
+        before,
+        after,
+      }),
+    );
     const matchedRunIds = [
       ...new Set(
         matches.map((e) => {

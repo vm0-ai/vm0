@@ -6,6 +6,7 @@ import {
   connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveFirewallPolicies } from "@vm0/connectors/firewalls";
 import {
@@ -13,6 +14,7 @@ import {
   type FirewallPolicyValue,
   type RawPermissionPolicies,
 } from "@vm0/connectors/firewall-types";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -33,6 +35,11 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import {
+  foldUserPermissionGrantsToFirewallPolicies,
+  loadActiveUserPermissionGrants,
+} from "./zero-user-permission-grants.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 
@@ -401,6 +408,56 @@ async function loadAllowedCustomConnectorIds(
   });
 }
 
+async function resolveZeroRunPermissionPolicies(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agent: ZeroAgentRunRecord;
+    readonly allowedConnectorTypes: readonly ConnectorType[];
+    readonly checkedAt: Date;
+  },
+  signal: AbortSignal,
+): Promise<ReturnType<typeof resolveFirewallPolicies>> {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    args.orgId,
+    args.userId,
+  );
+  signal.throwIfAborted();
+
+  if (
+    !isFeatureEnabled(
+      FeatureSwitchKey.UserPermissionGrants,
+      featureSwitchContext,
+    )
+  ) {
+    return resolveFirewallPolicies(
+      toFirewallPolicies(
+        args.agent.permissionPolicies,
+        args.agent.unknownPermissionPolicies,
+      ),
+      [...args.allowedConnectorTypes],
+    );
+  }
+
+  const grants = await loadActiveUserPermissionGrants(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agent.id,
+    },
+    args.checkedAt,
+  );
+  signal.throwIfAborted();
+
+  return resolveFirewallPolicies(
+    foldUserPermissionGrantsToFirewallPolicies(grants),
+    [...args.allowedConnectorTypes],
+  );
+}
+
 async function loadUserInfo(
   db: Db,
   args: {
@@ -594,12 +651,16 @@ export const createZeroIntegrationRun$ = command(
     });
     signal.throwIfAborted();
 
-    const agentPermissionPolicies = resolveFirewallPolicies(
-      toFirewallPolicies(
-        agent.permissionPolicies,
-        agent.unknownPermissionPolicies,
-      ),
-      [...allowedConnectorTypes],
+    const agentPermissionPolicies = await resolveZeroRunPermissionPolicies(
+      db,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        agent,
+        allowedConnectorTypes,
+        checkedAt: new Date(args.apiStartTime),
+      },
+      signal,
     );
 
     return await set(
@@ -710,12 +771,16 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
-    const agentPermissionPolicies = resolveFirewallPolicies(
-      toFirewallPolicies(
-        agent.permissionPolicies,
-        agent.unknownPermissionPolicies,
-      ),
-      [...allowedConnectorTypes],
+    const agentPermissionPolicies = await resolveZeroRunPermissionPolicies(
+      db,
+      {
+        orgId: args.auth.orgId,
+        userId: args.auth.userId,
+        agent,
+        allowedConnectorTypes,
+        checkedAt: new Date(args.apiStartTime),
+      },
+      signal,
     );
 
     return await set(

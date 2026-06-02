@@ -15,9 +15,9 @@ import {
   getConfiguredConnectorAuthMethods,
   getConnectorTags,
   hasRequiredConnectorAuthMethodScopes,
-  isGoogleOAuthConnector,
   hasConnectorDeviceAuthGrant,
 } from "@vm0/connectors/connector-utils";
+import { shouldShowGoogleSecurityWarningNotice } from "../../../lib/google-security-warning.ts";
 import {
   zeroConnectorScopeDiffContract,
   zeroConnectorOauthDeviceAuthSessionContract,
@@ -118,11 +118,11 @@ function getAvailableConnectorConnectAuthMethods(
 export function getConnectorConnectLaunchMode({
   type,
   availableAuthMethods,
-  preferModalForGoogleOAuth = false,
+  preferModalForGoogleSecurityWarning = false,
 }: {
   readonly type: ConnectorType;
   readonly availableAuthMethods: readonly ConnectorAuthMethodId[];
-  readonly preferModalForGoogleOAuth?: boolean;
+  readonly preferModalForGoogleSecurityWarning?: boolean;
 }): ConnectorConnectLaunchMode {
   const [authMethod] = availableAuthMethods;
   if (availableAuthMethods.length !== 1 || !authMethod) {
@@ -131,7 +131,10 @@ export function getConnectorConnectLaunchMode({
   if (getConnectorAuthMethod(type, authMethod)?.grant.kind !== "auth-code") {
     return "modal";
   }
-  if (preferModalForGoogleOAuth && isGoogleOAuthConnector(type)) {
+  if (
+    preferModalForGoogleSecurityWarning &&
+    shouldShowGoogleSecurityWarningNotice(type)
+  ) {
     return "modal";
   }
   return "oauth-auth-code";
@@ -1279,6 +1282,14 @@ function assertConnectorUsesDeviceAuthMethod(
   }
 }
 
+function connectorMatchesAuthMethod(
+  connector: ConnectorResponse,
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): boolean {
+  return connector.type === type && connector.authMethod === authMethod;
+}
+
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
@@ -1364,7 +1375,7 @@ export const connectConnectorOAuthAuthCode$ = command(
             );
             const polled = (result.body as ConnectorListResponse).connectors;
             const current = polled.find((c) => {
-              return c.type === type;
+              return connectorMatchesAuthMethod(c, type, authMethod);
             });
 
             if (initialUpdatedAt === undefined) {
@@ -1449,7 +1460,7 @@ export const connectConnectorOAuthAuthCode$ = command(
         // Mark as optimistically connected before clearing polling so the UI
         // transitions directly from "Connecting…" to "Connected" without flash.
         const isConnected = connectors.some((c) => {
-          return c.type === type;
+          return connectorMatchesAuthMethod(c, type, authMethod);
         });
         if (isConnected) {
           set(finishConnectorConnection$, type, {

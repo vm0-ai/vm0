@@ -117,4 +117,37 @@ struct WindowVisibilityPolicyTests {
 
         #expect(!shouldShowVisualPointer(target: target, point: point, windowStack: stack))
     }
+
+    @Test
+    func treatsVisibleWindowsOnAnotherDisplayAsReachable() {
+        #expect(
+            isWindowCandidateReachableFromCurrentDisplayContext(
+                currentSpaceId: 1,
+                windowSpaceIds: [2],
+                isOnScreen: true
+            )
+        )
+    }
+
+    @Test
+    func rejectsOffscreenWindowsOnAnotherSpace() {
+        #expect(
+            !isWindowCandidateReachableFromCurrentDisplayContext(
+                currentSpaceId: 1,
+                windowSpaceIds: [2],
+                isOnScreen: false
+            )
+        )
+    }
+
+    @Test
+    func acceptsWindowsOnTheCurrentSpaceEvenWithoutOnscreenMetadata() {
+        #expect(
+            isWindowCandidateReachableFromCurrentDisplayContext(
+                currentSpaceId: 1,
+                windowSpaceIds: [1],
+                isOnScreen: false
+            )
+        )
+    }
 }

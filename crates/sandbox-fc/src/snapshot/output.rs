@@ -42,6 +42,10 @@ pub(super) fn cleanup_remove_file_result(
     }
 }
 
+pub(super) fn cleanup_workspace_image_file_sync(path: &Path, warning: &'static str) -> bool {
+    cleanup_remove_file_result(std::fs::remove_file(path), path, warning)
+}
+
 pub(super) fn cleanup_remove_dir_result(
     result: std::io::Result<()>,
     dir: &Path,

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  GALLERY_CATEGORIES,
-  GALLERY_CATEGORY_LABELS,
   GALLERY_ITEMS,
   buildGalleryRemixHref,
   type GalleryCategory,
@@ -19,16 +17,11 @@ describe("generation gallery data", () => {
         return item.category;
       }),
     );
-    const visibleCategories = GALLERY_CATEGORIES.filter((category) => {
-      return category !== "all";
-    });
 
-    expect([...itemCategories].sort()).toEqual([...visibleCategories].sort());
+    expect([...itemCategories].sort()).toEqual(["website"]);
   });
 
   it("only shows the website design gallery for now", () => {
-    expect(GALLERY_CATEGORIES).toEqual(["all", "website"]);
-    expect(GALLERY_CATEGORY_LABELS.website).toBe("Website Design");
     expect(GALLERY_ITEMS.length).toBe(159);
     expect(
       GALLERY_ITEMS.every((item) => {

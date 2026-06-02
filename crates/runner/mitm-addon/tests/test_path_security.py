@@ -17,8 +17,23 @@ import path_security
         "/api/foo%2F..",
     ],
 )
-def test_has_unsafe_dot_segment_blocks_dot_segments(path):
-    assert path_security.has_unsafe_dot_segment(path) is True
+def test_has_unsafe_path_blocks_dot_segments(path):
+    assert path_security.has_unsafe_path(path) is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api\\admin",
+        "/api/%5cadmin",
+        "/api/%5Cadmin",
+        "/api/%5c..%5cadmin",
+        "/api/%5C..%5Cadmin",
+        "/api/foo%5cbar",
+    ],
+)
+def test_has_unsafe_path_blocks_backslashes(path):
+    assert path_security.has_unsafe_path(path) is True
 
 
 @pytest.mark.parametrize(
@@ -32,5 +47,5 @@ def test_has_unsafe_dot_segment_blocks_dot_segments(path):
         "/api/%2e%2ehidden",
     ],
 )
-def test_has_unsafe_dot_segment_allows_regular_segments(path):
-    assert path_security.has_unsafe_dot_segment(path) is False
+def test_has_unsafe_path_allows_regular_segments(path):
+    assert path_security.has_unsafe_path(path) is False

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  acquisitionAttributionParams,
-  readAttributionCookie,
-  sourceType,
+  buildSignupHref,
+  buildSignupRedirectUrl,
   writeAcquisitionAttributionCookie,
-  type CookieJar,
 } from "../lib/adAttribution";
+import { ACQUISITION_ATTRIBUTION_COOKIE } from "@vm0/api-contracts/contracts/zero-attribution";
 
-function params(search: string): URLSearchParams {
-  return new URLSearchParams(search);
+interface CookieJar {
+  get(): string;
+  set(value: string): void;
 }
 
 // Emulates document.cookie: set() stores only the name=value pair (as a browser
@@ -37,76 +37,49 @@ function fakeJar(): { jar: CookieJar; writes: string[] } {
   };
 }
 
-describe("sourceType", () => {
-  it("classifies Google click ids as paid", () => {
-    expect(sourceType(params("gclid=abc"), "google.com")).toBe("paid");
-    expect(sourceType(params("gbraid=abc"), undefined)).toBe("paid");
-    expect(sourceType(params("wbraid=abc"), undefined)).toBe("paid");
-  });
+function attributionParams(jar: CookieJar): URLSearchParams {
+  const cookie = jar
+    .get()
+    .split(";")
+    .map((part) => {
+      return part.trim();
+    })
+    .find((part) => {
+      return part.startsWith(`${ACQUISITION_ATTRIBUTION_COOKIE}=`);
+    });
 
-  it("classifies paid utm mediums as paid", () => {
-    expect(sourceType(params("utm_medium=cpc"), undefined)).toBe("paid");
-    expect(sourceType(params("utm_medium=paid_social"), undefined)).toBe(
-      "paid",
-    );
-  });
-
-  it("classifies organic mediums and search referrers as organic_search", () => {
-    expect(sourceType(params("utm_medium=organic"), undefined)).toBe(
-      "organic_search",
-    );
-    expect(sourceType(params(""), "www.google.com")).toBe("organic_search");
-    expect(sourceType(params(""), "bing.com")).toBe("organic_search");
-  });
-
-  it("classifies utm-tagged non-paid traffic as referral", () => {
-    expect(sourceType(params("utm_source=newsletter"), undefined)).toBe(
-      "referral",
-    );
-  });
-
-  it("classifies no-param, no-referrer traffic as direct", () => {
-    expect(sourceType(params(""), undefined)).toBe("direct");
-  });
-
-  it("classifies vm0.ai referrers as internal", () => {
-    expect(sourceType(params(""), "app.vm0.ai")).toBe("internal");
-  });
-
-  it("falls back to referral for unknown external referrers", () => {
-    expect(sourceType(params(""), "news.ycombinator.com")).toBe("referral");
-  });
-});
-
-describe("acquisitionAttributionParams", () => {
-  it("stamps source, classification, landing context, and forwarded ad params", () => {
-    const result = acquisitionAttributionParams(
-      "?gclid=abc&utm_source=google",
-      {
-        referrer: "https://www.google.com/",
-        hostname: "www.vm0.ai",
-        pathname: "/pricing",
-      },
-    );
-
-    expect(result.get("vm0_source")).toBe("homepage");
-    expect(result.get("source_type")).toBe("paid");
-    expect(result.get("referrer_domain")).toBe("google.com");
-    expect(result.get("landing_host")).toBe("vm0.ai");
-    expect(result.get("landing_path")).toBe("/pricing");
-    expect(result.get("gclid")).toBe("abc");
-    expect(result.get("utm_source")).toBe("google");
-  });
-
-  it("omits absent optional fields", () => {
-    const result = acquisitionAttributionParams("", {});
-    expect(result.get("source_type")).toBe("direct");
-    expect(result.has("referrer_domain")).toBe(false);
-    expect(result.has("landing_host")).toBe(false);
-  });
-});
+  expect(cookie).toBeDefined();
+  return new URLSearchParams(
+    decodeURIComponent(cookie?.split("=").slice(1).join("=") ?? ""),
+  );
+}
 
 describe("writeAcquisitionAttributionCookie", () => {
+  it.each([
+    ["?gclid=abc", "https://www.google.com/", "paid"],
+    ["?gbraid=abc", "", "paid"],
+    ["?wbraid=abc", "", "paid"],
+    ["?utm_medium=cpc", "", "paid"],
+    ["?utm_medium=paid_social", "", "paid"],
+    ["?utm_medium=organic", "", "organic_search"],
+    ["", "https://www.google.com/", "organic_search"],
+    ["", "https://bing.com/", "organic_search"],
+    ["?utm_source=newsletter", "", "referral"],
+    ["", "", "direct"],
+    ["", "https://app.vm0.ai/", "internal"],
+    ["", "https://news.ycombinator.com/", "referral"],
+  ])("classifies %s / %s as %s", (landingSearch, referrer, sourceType) => {
+    const { jar } = fakeJar();
+
+    writeAcquisitionAttributionCookie(
+      { hostname: "www.vm0.ai", referrer },
+      landingSearch,
+      jar,
+    );
+
+    expect(attributionParams(jar).get("source_type")).toBe(sourceType);
+  });
+
   it("writes a first-touch .vm0.ai cookie with the expected attributes", () => {
     const { jar, writes } = fakeJar();
 
@@ -124,10 +97,12 @@ describe("writeAcquisitionAttributionCookie", () => {
     expect(raw).toContain("SameSite=Lax");
     expect(raw).toContain("Secure");
 
-    const value = readAttributionCookie(jar.get());
-    expect(value).not.toBeNull();
-    const parsed = new URLSearchParams(value ?? "");
+    const parsed = attributionParams(jar);
+    expect(parsed.get("vm0_source")).toBe("homepage");
     expect(parsed.get("source_type")).toBe("paid");
+    expect(parsed.get("referrer_domain")).toBeNull();
+    expect(parsed.get("landing_host")).toBe("vm0.ai");
+    expect(parsed.get("landing_path")).toBe("/");
     expect(parsed.get("gclid")).toBe("abc");
   });
 
@@ -150,7 +125,7 @@ describe("writeAcquisitionAttributionCookie", () => {
     ).toBe(false);
 
     expect(writes).toHaveLength(1);
-    const parsed = new URLSearchParams(readAttributionCookie(jar.get()) ?? "");
+    const parsed = attributionParams(jar);
     expect(parsed.get("utm_source")).toBe("first");
   });
 
@@ -164,5 +139,77 @@ describe("writeAcquisitionAttributionCookie", () => {
     );
 
     expect(writes[0]).not.toContain("Domain=");
+  });
+});
+
+describe("buildSignupHref", () => {
+  it("keeps organic signed-out CTA traffic on the web signup route", () => {
+    expect(buildSignupHref("")).toBe("/sign-up");
+    expect(buildSignupHref("?unused=value")).toBe("/sign-up");
+  });
+
+  it("keeps ad traffic on signup with attribution params", () => {
+    const href = buildSignupHref(
+      "?gclid=test-click&utm_source=google&utm_medium=cpc&utm_campaign=homepage_search&unused=value",
+    );
+    const url = new URL(href, "https://www.vm0.ai");
+
+    expect(url.pathname).toBe("/sign-up");
+    expect(url.searchParams.get("vm0_source")).toBe("homepage");
+    expect(url.searchParams.get("gclid")).toBe("test-click");
+    expect(url.searchParams.get("utm_source")).toBe("google");
+    expect(url.searchParams.get("utm_medium")).toBe("cpc");
+    expect(url.searchParams.get("utm_campaign")).toBe("homepage_search");
+    expect(url.searchParams.get("unused")).toBeNull();
+  });
+});
+
+describe("buildSignupRedirectUrl", () => {
+  it("keeps organic signup completion on the default app URL", () => {
+    expect(buildSignupRedirectUrl("https://app.vm0.ai", "")).toBe(
+      "https://app.vm0.ai",
+    );
+  });
+
+  it("routes attributed signup completion into app onboarding", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://app.vm0.ai",
+      "vm0_source=homepage&gclid=test-click&utm_source=google&utm_campaign=homepage_search",
+    );
+    const url = new URL(redirectUrl);
+
+    expect(url.origin).toBe("https://app.vm0.ai");
+    expect(url.pathname).toBe("/onboarding");
+    expect(url.searchParams.get("vm0_source")).toBe("homepage");
+    expect(url.searchParams.get("gclid")).toBe("test-click");
+    expect(url.searchParams.get("utm_source")).toBe("google");
+    expect(url.searchParams.get("utm_campaign")).toBe("homepage_search");
+  });
+
+  it("honors an allowed redirect_url over the attributed app fallback", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://staging-app.vm6.ai",
+      "redirect_url=https%3A%2F%2Fpreview.vm6.ai%2Fonboarding%3Fgclid%3Dtest-click%26vm0_source%3Dpresentation&gclid=test-click&utm_source=google&utm_campaign=paid_onboarding",
+      ["https://staging-app.vm6.ai", "https://*.vm6.ai"],
+    );
+    const url = new URL(redirectUrl);
+
+    expect(url.origin).toBe("https://preview.vm6.ai");
+    expect(url.pathname).toBe("/onboarding");
+    expect(url.searchParams.get("gclid")).toBe("test-click");
+    expect(url.searchParams.get("vm0_source")).toBe("presentation");
+  });
+
+  it("ignores a disallowed redirect_url and keeps the attributed app fallback", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://app.vm0.ai",
+      "redirect_url=https%3A%2F%2Fevil.example%2Fonboarding&gclid=test-click&utm_source=google&utm_campaign=homepage_search",
+      ["https://app.vm0.ai", "https://so.vm0.ai"],
+    );
+    const url = new URL(redirectUrl);
+
+    expect(url.origin).toBe("https://app.vm0.ai");
+    expect(url.pathname).toBe("/onboarding");
+    expect(url.searchParams.get("gclid")).toBe("test-click");
   });
 });

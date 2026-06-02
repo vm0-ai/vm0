@@ -142,7 +142,7 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-write-file binary (required)")
     )]
     guest_write_file: Option<PathBuf>,
-    /// Profile to build (determines VM resources and disk size)
+    /// Profile to build (determines VM resources and disk sizes)
     #[arg(long)]
     pub profile: String,
     /// Compute and print the image hash without building
@@ -264,7 +264,7 @@ struct TemplateInput<'a> {
     paths: &'a HomePaths,
     template_hash: &'a str,
     cache: TemplateCache<'a>,
-    disk_mb: u32,
+    rootfs_disk_mb: u32,
 }
 
 struct RootfsBuildInput<'a> {
@@ -483,7 +483,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
         BuildMode::WarmRootfsCache => None,
     };
 
-    let template_hash = compute_template_hash(def.disk_mb);
+    let template_hash = compute_template_hash(def.rootfs_disk_mb);
     let hashes = match mode {
         BuildMode::WarmRootfsCache => BuildHashes {
             template_hash,
@@ -503,13 +503,14 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 &template_hash,
                 &guests.hash_inputs(),
                 &ca_fingerprint,
-                def.disk_mb,
+                def.rootfs_disk_mb,
             )
             .await?;
             let snapshot_hash = compute_snapshot_hash(
                 &rootfs_hash,
                 def.vcpu,
                 def.memory_mb,
+                def.workspace_disk_mb,
                 FIRECRACKER_VERSION,
                 KERNEL_VERSION,
                 &provider.config_hash(),
@@ -598,7 +599,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
         paths: &paths,
         template_hash: &hashes.template_hash,
         cache: template_cache,
-        disk_mb: def.disk_mb,
+        rootfs_disk_mb: def.rootfs_disk_mb,
     };
 
     match mode {
@@ -713,6 +714,7 @@ async fn build_snapshot(
         output_dir: snapshot_dir.to_path_buf(),
         vcpu_count: def.vcpu,
         memory_mb: def.memory_mb,
+        workspace_disk_mb: def.workspace_disk_mb,
     };
 
     let pending = provider.create_uncommitted_snapshot(create_config).await?;
@@ -1294,7 +1296,7 @@ async fn build_template_locally(
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
     let debootstrap_lock_path = input.paths.debootstrap_lock();
     drop(lock::open_lock_file(&debootstrap_lock_path)?);
-    let disk_mb_str = input.disk_mb.to_string();
+    let rootfs_disk_mb_str = input.rootfs_disk_mb.to_string();
 
     let mut cmd = rootfs_script_command(&work_dir.join("build-template.sh"));
     cmd.arg("--output-dir")
@@ -1305,8 +1307,8 @@ async fn build_template_locally(
         .arg(&debootstrap_lock_path)
         .arg("--hash")
         .arg(input.template_hash)
-        .arg("--disk-mb")
-        .arg(&disk_mb_str);
+        .arg("--rootfs-disk-mb")
+        .arg(&rootfs_disk_mb_str);
     let status = run_rootfs_script(cmd, "build-template.sh").await?;
 
     if !status.success() {
@@ -1560,13 +1562,13 @@ fn remove_file_if_exists_sync(path: &Path, label: &str) -> RunnerResult<()> {
 /// Inputs:
 ///   - `TEMPLATE_CACHE_VERSION` — bump to force invalidation
 ///   - `TEMPLATE_BUILD_SCRIPT` — template build script content
-///   - `disk_mb` — disk size from profile
+///   - `rootfs_disk_mb` — rootfs disk size from profile
 ///
 /// Guest binaries and host-local CA are deliberately excluded; those belong
 /// to the local rootfs hash.
 ///
 /// **Changing this function invalidates all shared template images.**
-fn compute_template_hash(disk_mb: u32) -> String {
+fn compute_template_hash(rootfs_disk_mb: u32) -> String {
     let mut hasher = Sha256::new();
 
     hasher.update(b"template_version:");
@@ -1575,8 +1577,8 @@ fn compute_template_hash(disk_mb: u32) -> String {
     hasher.update(TEMPLATE_BUILD_SCRIPT.as_bytes());
     hasher.update(b"arch:");
     hasher.update(std::env::consts::ARCH.as_bytes());
-    hasher.update(b"disk_mb:");
-    hasher.update(disk_mb.to_le_bytes());
+    hasher.update(b"rootfs_disk_mb:");
+    hasher.update(rootfs_disk_mb.to_le_bytes());
 
     hex::encode(hasher.finalize())
 }
@@ -1589,7 +1591,7 @@ async fn compute_rootfs_hash(
     template_hash: &str,
     guest_bins: &[(&Path, &str)],
     ca_fingerprint: &str,
-    disk_mb: u32,
+    rootfs_disk_mb: u32,
 ) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
 
@@ -1599,8 +1601,8 @@ async fn compute_rootfs_hash(
     hasher.update(template_hash.as_bytes());
     hasher.update(b"customize_script:");
     hasher.update(CUSTOMIZE_SCRIPT.as_bytes());
-    hasher.update(b"disk_mb:");
-    hasher.update(disk_mb.to_le_bytes());
+    hasher.update(b"rootfs_disk_mb:");
+    hasher.update(rootfs_disk_mb.to_le_bytes());
     hasher.update(b"ca_fingerprint:");
     hasher.update(ca_fingerprint.as_bytes());
     hasher.update(b"dns_nameserver:");
@@ -1631,13 +1633,14 @@ async fn compute_ca_cert_fingerprint(paths: &HomePaths) -> RunnerResult<String> 
 /// This hash is local-only (R2 stores only the shared template). It covers:
 ///   - `SNAPSHOT_CACHE_VERSION` — manual bump counter
 ///   - `rootfs_hash` — the rootfs this snapshot is built from
-///   - `vcpu`, `memory_mb` — VM resource config
+///   - `vcpu`, `memory_mb`, `workspace_disk_mb` — VM resource config
 ///   - `fc_version`, `kernel_version` — Firecracker and guest kernel versions
 ///   - `provider_config_hash` — sandbox-fc internal config (boot args, prewarm, etc.)
 fn compute_snapshot_hash(
     rootfs_hash: &str,
     vcpu: u32,
     memory_mb: u32,
+    workspace_disk_mb: u32,
     fc_version: &str,
     kernel_version: &str,
     provider_config_hash: &str,
@@ -1652,6 +1655,8 @@ fn compute_snapshot_hash(
     hasher.update(vcpu.to_le_bytes());
     hasher.update(b"memory_mb:");
     hasher.update(memory_mb.to_le_bytes());
+    hasher.update(b"workspace_disk_mb:");
+    hasher.update(workspace_disk_mb.to_le_bytes());
     hasher.update(b"fc_version:");
     hasher.update(fc_version.as_bytes());
     hasher.update(b"kernel_version:");
@@ -1701,7 +1706,7 @@ mod tests {
     use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
     use std::sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     };
 
     #[derive(clap::Parser)]
@@ -1769,7 +1774,7 @@ mod tests {
                 paths: home,
                 template_hash: "test-template-hash",
                 cache,
-                disk_mb: 16384,
+                rootfs_disk_mb: 8192,
             },
             rootfs_paths: rootfs,
             guests,
@@ -1798,7 +1803,7 @@ mod tests {
             paths: home,
             template_hash: "test-template-hash",
             cache,
-            disk_mb: 128,
+            rootfs_disk_mb: 128,
         }
     }
 
@@ -2003,6 +2008,7 @@ printf called >> "$script_dir/verify-rootfs-called"
         create_uncommitted_called: Arc<AtomicBool>,
         create_snapshot_called: Arc<AtomicBool>,
         committed: Arc<AtomicBool>,
+        workspace_disk_mb: Arc<AtomicU32>,
     }
 
     #[async_trait::async_trait]
@@ -2012,6 +2018,8 @@ printf called >> "$script_dir/verify-rootfs-called"
             config: sandbox::SnapshotCreateConfig,
         ) -> Result<Box<dyn sandbox::PendingSnapshotPublish>, sandbox::SnapshotError> {
             self.create_uncommitted_called.store(true, Ordering::SeqCst);
+            self.workspace_disk_mb
+                .store(config.workspace_disk_mb, Ordering::SeqCst);
             Ok(Box::new(RecordingPendingSnapshotPublish {
                 output_dir: config.output_dir,
                 committed: Arc::clone(&self.committed),
@@ -2408,15 +2416,18 @@ exit 1
         let create_uncommitted_called = Arc::new(AtomicBool::new(false));
         let create_snapshot_called = Arc::new(AtomicBool::new(false));
         let committed = Arc::new(AtomicBool::new(false));
+        let workspace_disk_mb = Arc::new(AtomicU32::new(0));
         let provider = RecordingSnapshotProvider {
             create_uncommitted_called: Arc::clone(&create_uncommitted_called),
             create_snapshot_called: Arc::clone(&create_snapshot_called),
             committed: Arc::clone(&committed),
+            workspace_disk_mb: Arc::clone(&workspace_disk_mb),
         };
         let def = profile::ProfileDef {
             vcpu: 1,
             memory_mb: 128,
-            disk_mb: 16,
+            rootfs_disk_mb: 8,
+            workspace_disk_mb: 16,
         };
 
         build_snapshot(
@@ -2433,6 +2444,11 @@ exit 1
 
         assert!(create_uncommitted_called.load(Ordering::SeqCst));
         assert!(committed.load(Ordering::SeqCst));
+        assert_eq!(
+            workspace_disk_mb.load(Ordering::SeqCst),
+            16,
+            "snapshot workspace disk size must use workspace_disk_mb, not rootfs_disk_mb"
+        );
         assert!(
             !create_snapshot_called.load(Ordering::SeqCst),
             "build_snapshot should not use the compatibility create_snapshot path"
@@ -2460,7 +2476,8 @@ exit 1
         let def = profile::ProfileDef {
             vcpu: 1,
             memory_mb: 128,
-            disk_mb: 16,
+            rootfs_disk_mb: 8,
+            workspace_disk_mb: 16,
         };
 
         let err = build_snapshot(
@@ -2503,7 +2520,8 @@ exit 1
         let def = profile::ProfileDef {
             vcpu: 1,
             memory_mb: 128,
-            disk_mb: 16,
+            rootfs_disk_mb: 8,
+            workspace_disk_mb: 16,
         };
 
         let err = build_snapshot(
@@ -2694,7 +2712,7 @@ exit 1
             paths: &home,
             template_hash: "best-effort-hash",
             cache: TemplateCache::Disabled,
-            disk_mb: 16384,
+            rootfs_disk_mb: 8192,
         };
 
         upload_template_to_r2(&input, &template, false)
@@ -3428,7 +3446,7 @@ exit 1
         )
         .await
         .unwrap();
-        assert_ne!(base, different_disk, "hash must change with disk_mb");
+        assert_ne!(base, different_disk, "hash must change with rootfs_disk_mb");
 
         let different_dest = compute_rootfs_hash(
             "template-a",
@@ -3463,44 +3481,66 @@ exit 1
 
     #[test]
     fn compute_snapshot_hash_deterministic() {
-        let h1 = compute_snapshot_hash("rootfs_aaa", 2, 4096, "v1.14.1", "6.1.155", "config_xxx");
-        let h2 = compute_snapshot_hash("rootfs_aaa", 2, 4096, "v1.14.1", "6.1.155", "config_xxx");
+        let h1 = compute_snapshot_hash(
+            "rootfs_aaa",
+            2,
+            4096,
+            16_384,
+            "v1.14.1",
+            "6.1.155",
+            "config_xxx",
+        );
+        let h2 = compute_snapshot_hash(
+            "rootfs_aaa",
+            2,
+            4096,
+            16_384,
+            "v1.14.1",
+            "6.1.155",
+            "config_xxx",
+        );
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64);
     }
 
     #[test]
     fn compute_snapshot_hash_sensitive_to_each_field() {
-        let base = compute_snapshot_hash("rootfs_aaa", 2, 4096, "v1.14.1", "6.1.155", "cfg");
+        let base =
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.14.1", "6.1.155", "cfg");
 
         assert_ne!(
             base,
-            compute_snapshot_hash("rootfs_bbb", 2, 4096, "v1.14.1", "6.1.155", "cfg"),
+            compute_snapshot_hash("rootfs_bbb", 2, 4096, 16_384, "v1.14.1", "6.1.155", "cfg"),
             "must change with rootfs_hash"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash("rootfs_aaa", 4, 4096, "v1.14.1", "6.1.155", "cfg"),
+            compute_snapshot_hash("rootfs_aaa", 4, 4096, 16_384, "v1.14.1", "6.1.155", "cfg"),
             "must change with vcpu"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash("rootfs_aaa", 2, 8192, "v1.14.1", "6.1.155", "cfg"),
+            compute_snapshot_hash("rootfs_aaa", 2, 8192, 16_384, "v1.14.1", "6.1.155", "cfg"),
             "must change with memory_mb"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash("rootfs_aaa", 2, 4096, "v1.15.0", "6.1.155", "cfg"),
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 32_768, "v1.14.1", "6.1.155", "cfg"),
+            "must change with workspace_disk_mb"
+        );
+        assert_ne!(
+            base,
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.15.0", "6.1.155", "cfg"),
             "must change with fc_version"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash("rootfs_aaa", 2, 4096, "v1.14.1", "6.2.0", "cfg"),
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.14.1", "6.2.0", "cfg"),
             "must change with kernel_version"
         );
         assert_ne!(
             base,
-            compute_snapshot_hash("rootfs_aaa", 2, 4096, "v1.14.1", "6.1.155", "cfg2"),
+            compute_snapshot_hash("rootfs_aaa", 2, 4096, 16_384, "v1.14.1", "6.1.155", "cfg2"),
             "must change with provider_config_hash"
         );
     }

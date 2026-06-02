@@ -287,10 +287,6 @@ export {
   type EmailUnsubscribeResponse,
 } from "./email-unsubscribe";
 export {
-  connectorsTypeAuthorizeContract,
-  type ConnectorsTypeAuthorizeContract,
-} from "./connectors-type-authorize";
-export {
   connectorsTypeCallbackContract,
   type ConnectorsTypeCallbackContract,
 } from "./connectors-type-callback";
@@ -712,26 +708,19 @@ export {
   type ConnectorEnvBindings,
 } from "@vm0/connectors/connectors";
 export {
-  getConnectorSecretNames,
+  getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
   getConnectorEnvNamesForSecret,
   getConnectorTypeForSecretName,
-  isGoogleOAuthConnector,
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
-  connectorSessionStatusSchema,
   connectorResponseSchema,
   connectorListResponseSchema,
-  connectorSessionResponseSchema,
-  connectorSessionStatusResponseSchema,
   scopeDiffResponseSchema,
   type ScopeDiffResponse,
-  type ConnectorSessionStatus,
   type ConnectorResponse,
   type ConnectorListResponse,
-  type ConnectorSessionResponse,
-  type ConnectorSessionStatusResponse,
 } from "./connector-schemas";
 
 export {
@@ -892,14 +881,26 @@ export {
   type ZeroUserConnectorsContract,
 } from "./user-connectors";
 export {
+  zeroUserPermissionGrantsContract,
+  userPermissionGrantActionSchema,
+  userPermissionGrantTtlSecondsSchema,
+  userPermissionGrantResponseSchema,
+  listUserPermissionGrantsQuerySchema,
+  upsertUserPermissionGrantRequestSchema,
+  type UserPermissionGrantAction,
+  type UserPermissionGrantTtlSeconds,
+  type UserPermissionGrantResponse,
+  type ListUserPermissionGrantsQuery,
+  type UpsertUserPermissionGrantRequest,
+  type ZeroUserPermissionGrantsContract,
+} from "./zero-user-permission-grants";
+export {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorsSearchContract,
-  zeroConnectorSessionsContract,
-  zeroConnectorSessionByIdContract,
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
@@ -907,8 +908,6 @@ export {
   type ZeroConnectorManualGrantContract,
   type ZeroConnectorOauthDeviceAuthSessionContract,
   type ZeroConnectorsSearchContract,
-  type ZeroConnectorSessionsContract,
-  type ZeroConnectorSessionByIdContract,
 } from "./zero-connectors";
 export {
   codexDeviceAuthScopeSchema,

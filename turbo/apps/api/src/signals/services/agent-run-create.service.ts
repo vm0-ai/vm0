@@ -1,4 +1,4 @@
-import { command, type Getter } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
@@ -27,6 +27,8 @@ import {
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodEnvBindings,
+  getConnectorOwnedAccessSecretBindingEntries,
+  type ConnectorOwnedAccessSecretBindingEntry,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -153,13 +155,11 @@ function getEffectiveConcurrencyLimit(tier: keyof typeof TIER_LIMITS): number {
 
 const ORG_SENTINEL_USER_ID = "__org__";
 const CUSTOM_CONNECTOR_SECRET_PLACEHOLDER = "{{secret}}";
-const PLATFORM_ENV_SECRET_NAMES = ["GOOGLE_ADS_DEVELOPER_TOKEN"] as const;
 const L = logger("AgentRunCreate");
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
-type ComputedGetter = Getter;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 function withZeroTokenSecret(
@@ -1554,6 +1554,8 @@ interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
   readonly envBindings: Record<string, string>;
+  readonly ownedSecretBindings: readonly ConnectorOwnedAccessSecretBindingEntry[];
+  readonly platformSecretNames: ReadonlySet<string>;
   readonly optionalSecretNames: ReadonlySet<string>;
   readonly optionalVariableNames: ReadonlySet<string>;
 }
@@ -1603,6 +1605,10 @@ function connectorEnvBindingSets(
 ): readonly ConnectorEnvBindingSet[] {
   return rows.map((row) => {
     const method = getConnectorAuthMethod(row.connectorType, row.authMethod);
+    const accessMetadata = getConnectorAuthMethodAccessMetadata(
+      row.connectorType,
+      row.authMethod,
+    );
     if (!method) {
       throw new Error(
         `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
@@ -1629,6 +1635,10 @@ function connectorEnvBindingSets(
         row.connectorType,
         row.authMethod,
       ),
+      ownedSecretBindings: accessMetadata
+        ? getConnectorOwnedAccessSecretBindingEntries(accessMetadata)
+        : [],
+      platformSecretNames: new Set(accessMetadata?.platformSecrets ?? []),
       optionalSecretNames,
       optionalVariableNames,
     };
@@ -1641,11 +1651,12 @@ function collectStoredConnectorRequirements(
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
 
-  for (const { envBindings } of bindingSets) {
+  for (const { envBindings, ownedSecretBindings } of bindingSets) {
+    for (const { secretName } of ownedSecretBindings) {
+      secretNames.add(secretName);
+    }
     for (const valueRef of Object.values(envBindings)) {
-      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-        secretNames.add(valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length));
-      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
+      if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
         variableNames.add(valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length));
       }
     }
@@ -1724,6 +1735,23 @@ async function loadStoredConnectorVariables(
   );
 }
 
+function handlePlatformSecretBinding(args: {
+  readonly secrets: Record<string, string>;
+  readonly envName: string;
+  readonly secretName: string;
+  readonly platformSecretNames: ReadonlySet<string>;
+}): boolean {
+  if (!args.platformSecretNames.has(args.secretName)) {
+    return false;
+  }
+
+  const secretValue = optionalEnv(args.secretName);
+  if (secretValue) {
+    args.secrets[args.envName] = secretValue;
+  }
+  return true;
+}
+
 function resolveStoredConnectorState(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
@@ -1738,12 +1766,24 @@ function resolveStoredConnectorState(
     connectorType,
     authMethod,
     envBindings,
+    ownedSecretBindings,
+    platformSecretNames,
     optionalSecretNames,
     optionalVariableNames,
   } of bindingSets) {
     for (const [envName, valueRef] of Object.entries(envBindings)) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+        if (
+          handlePlatformSecretBinding({
+            secrets,
+            envName,
+            secretName,
+            platformSecretNames,
+          })
+        ) {
+          continue;
+        }
         const secretValue = connectorSecrets[secretName];
         if (secretValue !== undefined) {
           secrets[envName] = secretValue;
@@ -1773,18 +1813,17 @@ function resolveStoredConnectorState(
     // store the alias that points at the access secret, not the backing secret name.
     if (accessMetadata?.kind === "refresh-token") {
       const secretName = accessMetadata.accessToken;
-      for (const [envName, valueRef] of Object.entries(envBindings)) {
-        if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
+      for (const {
+        envName,
+        secretName: boundSecretName,
+      } of ownedSecretBindings) {
+        if (boundSecretName === secretName) {
           secretConnectorMap[envName] = connectorType;
         }
       }
     } else if (accessMetadata?.kind === "static") {
-      for (const [envName, valueRef] of Object.entries(
-        accessMetadata.envBindings,
-      )) {
-        if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-          secretConnectorMap[envName] = connectorType;
-        }
+      for (const { envName } of ownedSecretBindings) {
+        secretConnectorMap[envName] = connectorType;
       }
     }
   }
@@ -1860,23 +1899,6 @@ async function loadStoredConnectorContext(
       storedEnvironment: compactRecord(resolved.environment),
     };
   });
-}
-
-function injectPlatformEnvSecrets(
-  connectorTypes: readonly ConnectorType[],
-): Record<string, string> | undefined {
-  if (!connectorTypes.includes("google-ads")) {
-    return undefined;
-  }
-
-  const result: Record<string, string> = {};
-  for (const name of PLATFORM_ENV_SECRET_NAMES) {
-    const value = optionalEnv(name);
-    if (value) {
-      result[name] = value;
-    }
-  }
-  return compactRecord(result);
 }
 
 function customConnectorSecretKey(connectorId: string): string {
@@ -2342,218 +2364,232 @@ async function resolveByComposeId(
   };
 }
 
-async function resolveBySessionId(
-  get: ComputedGetter,
+function resolveBySessionId(
   db: Db,
   sessionId: string,
   userId: string,
   orgId: string,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [session] = await db
-    .select({
-      id: agentSessions.id,
-      agentComposeId: agentSessions.agentComposeId,
-      conversationId: agentSessions.conversationId,
-      artifacts: agentSessions.artifacts,
-      conversationRunId: conversations.runId,
-    })
-    .from(agentSessions)
-    .leftJoin(conversations, eq(agentSessions.conversationId, conversations.id))
-    .where(
-      and(
-        eq(agentSessions.id, sessionId),
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.orgId, orgId),
-      ),
-    )
-    .limit(1);
+): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+  return computed(
+    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
+      const [session] = await db
+        .select({
+          id: agentSessions.id,
+          agentComposeId: agentSessions.agentComposeId,
+          conversationId: agentSessions.conversationId,
+          artifacts: agentSessions.artifacts,
+          conversationRunId: conversations.runId,
+        })
+        .from(agentSessions)
+        .leftJoin(
+          conversations,
+          eq(agentSessions.conversationId, conversations.id),
+        )
+        .where(
+          and(
+            eq(agentSessions.id, sessionId),
+            eq(agentSessions.userId, userId),
+            eq(agentSessions.orgId, orgId),
+          ),
+        )
+        .limit(1);
 
-  if (!session) {
-    return notFound("Agent session not found");
-  }
+      if (!session) {
+        return notFound("Agent session not found");
+      }
 
-  const resolved = await resolveByComposeId(db, session.agentComposeId);
-  if (isRouteError(resolved)) {
-    return resolved;
-  }
+      const resolved = await resolveByComposeId(db, session.agentComposeId);
+      if (isRouteError(resolved)) {
+        return resolved;
+      }
 
-  const resumeSession =
-    session.conversationId === null
-      ? undefined
-      : await loadResumeSession(get, db, session.conversationId);
-  const [lastRun] = session.conversationRunId
-    ? await db
-        .select({ vars: agentRuns.vars })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, session.conversationRunId))
-        .limit(1)
-    : [];
+      const resumeSession =
+        session.conversationId === null
+          ? undefined
+          : await get(loadResumeSession(db, session.conversationId));
+      const [lastRun] = session.conversationRunId
+        ? await db
+            .select({ vars: agentRuns.vars })
+            .from(agentRuns)
+            .where(eq(agentRuns.id, session.conversationRunId))
+            .limit(1)
+        : [];
 
-  return {
-    ...resolved,
-    artifacts: session.artifacts ?? [],
-    vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
-    sessionId: session.id,
-    continuedFromSessionId: session.id,
-    resumeSession,
-  };
+      return {
+        ...resolved,
+        artifacts: session.artifacts ?? [],
+        vars: (lastRun?.vars as Record<string, string> | null) ?? undefined,
+        sessionId: session.id,
+        continuedFromSessionId: session.id,
+        resumeSession,
+      };
+    },
+  );
 }
 
-async function resolveByCheckpointId(
-  get: ComputedGetter,
+function resolveByCheckpointId(
   db: Db,
   checkpointId: string,
   userId: string,
   orgId: string,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
-  const [row] = await db
-    .select({
-      snapshot: checkpoints.agentComposeSnapshot,
-      artifacts: checkpoints.artifactSnapshots,
-      volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
-      conversationId: checkpoints.conversationId,
-      runUserId: agentRuns.userId,
-      runOrgId: agentRuns.orgId,
-    })
-    .from(checkpoints)
-    .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
-    .where(eq(checkpoints.id, checkpointId))
-    .limit(1);
+): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+  return computed(
+    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
+      const [row] = await db
+        .select({
+          snapshot: checkpoints.agentComposeSnapshot,
+          artifacts: checkpoints.artifactSnapshots,
+          volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
+          conversationId: checkpoints.conversationId,
+          runUserId: agentRuns.userId,
+          runOrgId: agentRuns.orgId,
+        })
+        .from(checkpoints)
+        .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
+        .where(eq(checkpoints.id, checkpointId))
+        .limit(1);
 
-  if (!row || row.runUserId !== userId || row.runOrgId !== orgId) {
-    return notFound("Checkpoint not found");
-  }
+      if (!row || row.runUserId !== userId || row.runOrgId !== orgId) {
+        return notFound("Checkpoint not found");
+      }
 
-  const snapshot = row.snapshot as {
-    readonly agentComposeVersionId?: string;
-    readonly vars?: Record<string, string>;
-  };
-  if (!snapshot.agentComposeVersionId) {
-    return badRequestMessage(
-      "Invalid checkpoint: missing agentComposeVersionId",
-    );
-  }
+      const snapshot = row.snapshot as {
+        readonly agentComposeVersionId?: string;
+        readonly vars?: Record<string, string>;
+      };
+      if (!snapshot.agentComposeVersionId) {
+        return badRequestMessage(
+          "Invalid checkpoint: missing agentComposeVersionId",
+        );
+      }
 
-  const resolved = await lookupComposeByVersion(
-    db,
-    snapshot.agentComposeVersionId,
+      const resolved = await lookupComposeByVersion(
+        db,
+        snapshot.agentComposeVersionId,
+      );
+      if (isRouteError(resolved)) {
+        return resolved;
+      }
+
+      return {
+        ...resolved,
+        artifacts: row.artifacts ?? [],
+        vars: snapshot.vars ?? {},
+        volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
+        additionalVolumes: parseAdditionalVolumesSnapshot(
+          row.volumeVersionsSnapshot,
+        ),
+        resumedFromCheckpointId: checkpointId,
+        resumeSession: await get(loadResumeSession(db, row.conversationId)),
+      };
+    },
   );
-  if (isRouteError(resolved)) {
-    return resolved;
-  }
-
-  return {
-    ...resolved,
-    artifacts: row.artifacts ?? [],
-    vars: snapshot.vars ?? {},
-    volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
-    additionalVolumes: parseAdditionalVolumesSnapshot(
-      row.volumeVersionsSnapshot,
-    ),
-    resumedFromCheckpointId: checkpointId,
-    resumeSession: await loadResumeSession(get, db, row.conversationId),
-  };
 }
 
-async function loadResumeSession(
-  get: ComputedGetter,
+function loadResumeSession(
   db: Db,
   conversationId: string,
-): Promise<StoredExecutionContext["resumeSession"] | undefined> {
-  const [conversation] = await db
-    .select({
-      cliAgentSessionId: conversations.cliAgentSessionId,
-      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-    })
-    .from(conversations)
-    .where(eq(conversations.id, conversationId))
-    .limit(1);
+): Computed<Promise<StoredExecutionContext["resumeSession"] | undefined>> {
+  return computed(
+    async (
+      get,
+    ): Promise<StoredExecutionContext["resumeSession"] | undefined> => {
+      const [conversation] = await db
+        .select({
+          cliAgentSessionId: conversations.cliAgentSessionId,
+          cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+          cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+        })
+        .from(conversations)
+        .where(eq(conversations.id, conversationId))
+        .limit(1);
 
-  if (!conversation) {
-    return undefined;
-  }
+      if (!conversation) {
+        return undefined;
+      }
 
-  const sessionHistory = await resolveConversationSessionHistory(get, {
-    hash: conversation.cliAgentSessionHistoryHash,
-    legacyText: conversation.cliAgentSessionHistory,
-  });
+      const sessionHistory = await get(
+        resolveConversationSessionHistory({
+          hash: conversation.cliAgentSessionHistoryHash,
+          legacyText: conversation.cliAgentSessionHistory,
+        }),
+      );
 
-  if (sessionHistory === null) {
-    return undefined;
-  }
+      if (sessionHistory === null) {
+        return undefined;
+      }
 
-  return {
-    sessionId: conversation.cliAgentSessionId,
-    sessionHistory,
-  };
+      return {
+        sessionId: conversation.cliAgentSessionId,
+        sessionHistory,
+      };
+    },
+  );
 }
 
-async function resolveConversationSessionHistory(
-  get: ComputedGetter,
-  args: {
-    readonly hash: string | null;
-    readonly legacyText: string | null;
-  },
-): Promise<string | null> {
-  const { hash, legacyText } = args;
-  if (hash) {
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const result = await settle(
-      get(downloadS3Buffer(bucket, `blobs/${hash}.blob`)),
-    );
-    if (result.ok) {
-      return result.value.toString("utf8");
+function resolveConversationSessionHistory(args: {
+  readonly hash: string | null;
+  readonly legacyText: string | null;
+}): Computed<Promise<string | null>> {
+  return computed(async (get): Promise<string | null> => {
+    const { hash, legacyText } = args;
+    if (hash) {
+      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+      const result = await settle(
+        get(downloadS3Buffer(bucket, `blobs/${hash}.blob`)),
+      );
+      if (result.ok) {
+        return result.value.toString("utf8");
+      }
+      if (legacyText) {
+        L.warn(
+          "session history R2 retrieval failed; falling back to legacy TEXT",
+          { hash, error: result.error },
+        );
+        return legacyText;
+      }
+      throw result.error;
     }
     if (legacyText) {
-      L.warn(
-        "session history R2 retrieval failed; falling back to legacy TEXT",
-        { hash, error: result.error },
-      );
       return legacyText;
     }
-    throw result.error;
-  }
-  if (legacyText) {
-    return legacyText;
-  }
-  return null;
+    return null;
+  });
 }
 
-async function resolveCompose(
-  get: ComputedGetter,
+function resolveCompose(
   db: Db,
   body: CreateRunBody,
   userId: string,
   orgId: string,
-): Promise<ResolvedCompose | CreateRunErrorResult> {
-  if (body.checkpointId && body.sessionId) {
-    return badRequestMessage(
-      "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
-    );
-  }
+): Computed<Promise<ResolvedCompose | CreateRunErrorResult>> {
+  return computed(
+    async (get): Promise<ResolvedCompose | CreateRunErrorResult> => {
+      if (body.checkpointId && body.sessionId) {
+        return badRequestMessage(
+          "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
+        );
+      }
 
-  if (body.checkpointId) {
-    return await resolveByCheckpointId(
-      get,
-      db,
-      body.checkpointId,
-      userId,
-      orgId,
-    );
-  }
-  if (body.sessionId) {
-    return await resolveBySessionId(get, db, body.sessionId, userId, orgId);
-  }
-  if (body.agentComposeVersionId) {
-    return await lookupComposeByVersion(db, body.agentComposeVersionId);
-  }
-  if (!body.agentComposeId) {
-    return badRequestMessage(
-      "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
-    );
-  }
-  return await resolveByComposeId(db, body.agentComposeId);
+      if (body.checkpointId) {
+        return await get(
+          resolveByCheckpointId(db, body.checkpointId, userId, orgId),
+        );
+      }
+      if (body.sessionId) {
+        return await get(resolveBySessionId(db, body.sessionId, userId, orgId));
+      }
+      if (body.agentComposeVersionId) {
+        return await lookupComposeByVersion(db, body.agentComposeVersionId);
+      }
+      if (!body.agentComposeId) {
+        return badRequestMessage(
+          "Missing agentComposeId or agentComposeVersionId. Provide composeId, agentComposeVersionId, checkpointId, or sessionId.",
+        );
+      }
+      return await resolveByComposeId(db, body.agentComposeId);
+    },
+  );
 }
 
 async function enforceCaptureNetworkBodiesGate(
@@ -2993,16 +3029,12 @@ function buildStoredExecutionSecrets(args: {
   readonly bodySecrets: Record<string, string> | undefined;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
 }): StoredExecutionSecrets {
-  const platformSecrets = injectPlatformEnvSecrets(
-    args.connectorContext.connectorTypes,
-  );
   const filteredConnectorMap = filterSecretConnectorMap({
     secretConnectorMap: args.connectorContext.secretConnectorMap,
     overriddenSecrets: [
       args.modelProvider?.secrets,
       args.bodySecrets,
       args.customConnectorContext.secrets,
-      platformSecrets,
     ],
   });
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
@@ -3015,7 +3047,6 @@ function buildStoredExecutionSecrets(args: {
       args.modelProvider?.secrets,
       args.bodySecrets,
       args.customConnectorContext.secrets,
-      platformSecrets,
     ),
     secretConnectorMap:
       mergeRecords(
@@ -3099,8 +3130,7 @@ async function markRunFailed(
   return true;
 }
 
-async function buildRunnerJobPayload(
-  get: ComputedGetter,
+function buildRunnerJobPayload(
   db: Db,
   args: {
     readonly run: RunRecord;
@@ -3120,66 +3150,72 @@ async function buildRunnerJobPayload(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
-): Promise<ReturnType<typeof queuedRunnerJobPayload>> {
-  const group =
-    runnerGroup(args.resolved.content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
-  if (!group) {
-    throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
-  }
-  if (!isOfficialRunnerGroup(group)) {
-    throw new Error("Only vm0/* runner groups are supported");
-  }
+): Computed<Promise<ReturnType<typeof queuedRunnerJobPayload>>> {
+  return computed(
+    async (get): Promise<ReturnType<typeof queuedRunnerJobPayload>> => {
+      const group =
+        runnerGroup(args.resolved.content) ??
+        optionalEnv("RUNNER_DEFAULT_GROUP");
+      if (!group) {
+        throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
+      }
+      if (!isOfficialRunnerGroup(group)) {
+        throw new Error("Only vm0/* runner groups are supported");
+      }
 
-  const profile = runnerProfile(args.resolved.content);
-  const featureSwitchOverrides = args.includeZeroTokenSecret
-    ? args.featureSwitchContext.overrides
-    : undefined;
-  const body = args.includeZeroTokenSecret
-    ? withZeroTokenSecret(
-        args.body,
-        generateZeroToken(
-          args.userId,
-          args.run.id,
-          args.orgId,
-          featureSwitchOverrides,
-        ),
-      )
-    : args.body;
-  const storageManifest = await prepareAgentRunStorageManifest({
-    get,
-    db,
-    content: args.resolved.content,
-    vars: body.vars,
-    agentOrgId: args.resolved.orgId,
-    runtimeOrgId: args.orgId,
-    userId: args.userId,
-    artifacts: args.artifacts,
-    volumeVersionOverrides: body.volumeVersions,
-    additionalVolumes: args.additionalVolumes,
-    framework: args.framework,
-  });
-  const builtContext = await buildStoredExecutionContext({
-    ...args,
-    body,
-    runId: args.run.id,
-    storageManifest,
-    userTimezone: args.userTimezone,
-    featureSwitchContext: args.featureSwitchContext,
-  });
-  ingestRunContextSnapshot({
-    runId: args.run.id,
-    userId: args.userId,
-    body,
-    builtContext,
-  });
-  const storedContext = builtContext.context;
-  const sessionId = storedContext.resumeSession?.sessionId ?? null;
-  return queuedRunnerJobPayload({
-    runnerGroup: group,
-    profile,
-    sessionId,
-    executionContext: storedContext,
-  });
+      const profile = runnerProfile(args.resolved.content);
+      const featureSwitchOverrides = args.includeZeroTokenSecret
+        ? args.featureSwitchContext.overrides
+        : undefined;
+      const body = args.includeZeroTokenSecret
+        ? withZeroTokenSecret(
+            args.body,
+            generateZeroToken(
+              args.userId,
+              args.run.id,
+              args.orgId,
+              featureSwitchOverrides,
+            ),
+          )
+        : args.body;
+      const storageManifest = await get(
+        prepareAgentRunStorageManifest({
+          db,
+          content: args.resolved.content,
+          vars: body.vars,
+          agentOrgId: args.resolved.orgId,
+          runtimeOrgId: args.orgId,
+          userId: args.userId,
+          artifacts: args.artifacts,
+          volumeVersionOverrides: body.volumeVersions,
+          additionalVolumes: args.additionalVolumes,
+          framework: args.framework,
+        }),
+      );
+      const builtContext = await buildStoredExecutionContext({
+        ...args,
+        body,
+        runId: args.run.id,
+        storageManifest,
+        userTimezone: args.userTimezone,
+        featureSwitchContext: args.featureSwitchContext,
+      });
+      ingestRunContextSnapshot({
+        runId: args.run.id,
+        userId: args.userId,
+        body,
+        builtContext,
+      });
+      const storedContext = builtContext.context;
+      const sessionId = storedContext.resumeSession?.sessionId ?? null;
+      return queuedRunnerJobPayload({
+        runnerGroup: group,
+        profile,
+        sessionId,
+        executionContext: storedContext,
+      });
+    },
+  );
 }
 
 async function lockRunForDerivedPersistence(
@@ -3202,8 +3238,7 @@ async function lockRunForDerivedPersistence(
   return row.sandboxId ? { status, sandboxId: row.sandboxId } : { status };
 }
 
-async function dispatchRun(
-  get: ComputedGetter,
+function dispatchRun(
   db: Db,
   args: {
     readonly run: RunRecord;
@@ -3223,56 +3258,59 @@ async function dispatchRun(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
-): Promise<DerivedPersistenceResult> {
-  await db
-    .update(agentRuns)
-    .set({ lastHeartbeatAt: nowDate() })
-    .where(and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")));
-
-  const payload = await buildRunnerJobPayload(get, db, args);
-
-  const persisted = await db.transaction(async (tx) => {
-    const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
-    if (!currentRun) {
-      throw new Error("Run disappeared before runner job persistence");
-    }
-    if (currentRun.status !== "pending") {
-      return currentRun;
-    }
-
-    await tx.insert(runnerJobQueue).values({
-      runId: args.run.id,
-      runnerGroup: payload.runnerGroup,
-      profile: payload.profile,
-      sessionId: payload.sessionId,
-      executionContext: payload.executionContext,
-      expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
-    });
-
-    await tx
+): Computed<Promise<DerivedPersistenceResult>> {
+  return computed(async (get): Promise<DerivedPersistenceResult> => {
+    await db
       .update(agentRuns)
-      .set({ runnerGroup: payload.runnerGroup })
+      .set({ lastHeartbeatAt: nowDate() })
       .where(
         and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
       );
 
-    return { status: "pending" as const };
-  });
+    const payload = await get(buildRunnerJobPayload(db, args));
 
-  if (persisted.status === "pending") {
-    await notifyRunnerJob(db, {
-      runnerGroup: payload.runnerGroup,
-      runId: args.run.id,
-      profile: payload.profile,
-      sessionId: payload.sessionId,
+    const persisted = await db.transaction(async (tx) => {
+      const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
+      if (!currentRun) {
+        throw new Error("Run disappeared before runner job persistence");
+      }
+      if (currentRun.status !== "pending") {
+        return currentRun;
+      }
+
+      await tx.insert(runnerJobQueue).values({
+        runId: args.run.id,
+        runnerGroup: payload.runnerGroup,
+        profile: payload.profile,
+        sessionId: payload.sessionId,
+        executionContext: payload.executionContext,
+        expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+      });
+
+      await tx
+        .update(agentRuns)
+        .set({ runnerGroup: payload.runnerGroup })
+        .where(
+          and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
+        );
+
+      return { status: "pending" as const };
     });
-  }
 
-  return persisted;
+    if (persisted.status === "pending") {
+      await notifyRunnerJob(db, {
+        runnerGroup: payload.runnerGroup,
+        runId: args.run.id,
+        profile: payload.profile,
+        sessionId: payload.sessionId,
+      });
+    }
+
+    return persisted;
+  });
 }
 
-async function enqueueRunForConcurrency(
-  get: ComputedGetter,
+function enqueueRunForConcurrency(
   db: Db,
   args: {
     readonly run: RunRecord;
@@ -3292,59 +3330,61 @@ async function enqueueRunForConcurrency(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
   },
-): Promise<DerivedPersistenceResult> {
-  const payload = await buildRunnerJobPayload(get, db, args);
-  const encryptedParams = await encryptQueuedRunnerJobPayload(
-    payload,
-    args.featureSwitchContext,
-  );
+): Computed<Promise<DerivedPersistenceResult>> {
+  return computed(async (get): Promise<DerivedPersistenceResult> => {
+    const payload = await get(buildRunnerJobPayload(db, args));
+    const encryptedParams = await encryptQueuedRunnerJobPayload(
+      payload,
+      args.featureSwitchContext,
+    );
 
-  const persisted = await db.transaction(async (tx) => {
-    const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
-    if (!currentRun) {
-      throw new Error("Run disappeared before queue persistence");
-    }
-    if (currentRun.status !== "queued") {
-      return currentRun;
-    }
+    const persisted = await db.transaction(async (tx) => {
+      const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
+      if (!currentRun) {
+        throw new Error("Run disappeared before queue persistence");
+      }
+      if (currentRun.status !== "queued") {
+        return currentRun;
+      }
 
-    await tx.insert(agentRunQueue).values({
-      runId: args.run.id,
-      userId: args.userId,
-      orgId: args.orgId,
-      encryptedParams,
-      createdAt: args.run.createdAt,
-      expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+      await tx.insert(agentRunQueue).values({
+        runId: args.run.id,
+        userId: args.userId,
+        orgId: args.orgId,
+        encryptedParams,
+        createdAt: args.run.createdAt,
+        expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+      });
+      const [depthRow] = await tx
+        .select({ depth: count() })
+        .from(agentRunQueue)
+        .where(eq(agentRunQueue.orgId, args.orgId));
+      recordSandboxOperation({
+        sandboxType: "runner",
+        actionType: "enqueue_zero_run",
+        durationMs: 0,
+        success: true,
+        runId: args.run.id,
+        dimensions: {
+          queue_depth: Number(depthRow?.depth ?? 0),
+        },
+      });
+      await tx
+        .update(agentRuns)
+        .set({ runnerGroup: payload.runnerGroup })
+        .where(
+          and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
+        );
+
+      return { status: "queued" as const };
     });
-    const [depthRow] = await tx
-      .select({ depth: count() })
-      .from(agentRunQueue)
-      .where(eq(agentRunQueue.orgId, args.orgId));
-    recordSandboxOperation({
-      sandboxType: "runner",
-      actionType: "enqueue_zero_run",
-      durationMs: 0,
-      success: true,
-      runId: args.run.id,
-      dimensions: {
-        queue_depth: Number(depthRow?.depth ?? 0),
-      },
-    });
-    await tx
-      .update(agentRuns)
-      .set({ runnerGroup: payload.runnerGroup })
-      .where(
-        and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
-      );
 
-    return { status: "queued" as const };
+    if (persisted.status === "queued") {
+      await publishOrgSignal(args.orgId, "queue:changed");
+    }
+
+    return persisted;
   });
-
-  if (persisted.status === "queued") {
-    await publishOrgSignal(args.orgId, "queue:changed");
-  }
-
-  return persisted;
 }
 
 function createdRunResponse(
@@ -3442,19 +3482,20 @@ async function resolveRunModelProvider(
   );
 }
 
-async function loadRunFeatureSwitchContext(
-  get: ComputedGetter,
+function loadRunFeatureSwitchContext(
   args: {
     readonly orgId: string;
     readonly userId: string;
   },
   signal: AbortSignal,
-): Promise<FeatureSwitchContext> {
-  const overrides = await get(
-    userFeatureSwitchOverrides(args.orgId, args.userId),
-  );
-  signal.throwIfAborted();
-  return { orgId: args.orgId, userId: args.userId, overrides };
+): Computed<Promise<FeatureSwitchContext>> {
+  return computed(async (get): Promise<FeatureSwitchContext> => {
+    const overrides = await get(
+      userFeatureSwitchOverrides(args.orgId, args.userId),
+    );
+    signal.throwIfAborted();
+    return { orgId: args.orgId, userId: args.userId, overrides };
+  });
 }
 
 async function loadUserTimezone(
@@ -3585,134 +3626,134 @@ function validateRunEnvironmentReferences(args: {
   return isRouteError(validation) ? validation : null;
 }
 
-async function prepareRunContext(
-  get: ComputedGetter,
+function prepareRunContext(
   db: Db,
   args: CreateAgentRunArgs,
   signal: AbortSignal,
-): Promise<PreparedRunContext | CreateRunErrorResult> {
-  const initialBody = args.includeZeroTokenSecret
-    ? withPendingZeroTokenSecret(args.body)
-    : args.body;
+): Computed<Promise<PreparedRunContext | CreateRunErrorResult>> {
+  return computed(
+    async (get): Promise<PreparedRunContext | CreateRunErrorResult> => {
+      const initialBody = args.includeZeroTokenSecret
+        ? withPendingZeroTokenSecret(args.body)
+        : args.body;
 
-  const captureGate = await enforceCaptureNetworkBodiesGate(
-    db,
-    args.userId,
-    initialBody.captureNetworkBodies,
+      const captureGate = await enforceCaptureNetworkBodiesGate(
+        db,
+        args.userId,
+        initialBody.captureNetworkBodies,
+      );
+      signal.throwIfAborted();
+      if (captureGate) {
+        return captureGate;
+      }
+
+      const featureSwitchContext = await get(
+        loadRunFeatureSwitchContext(args, signal),
+      );
+
+      const resolved = await get(
+        resolveCompose(db, initialBody, args.userId, args.orgId),
+      );
+      signal.throwIfAborted();
+      if (isRouteError(resolved)) {
+        return resolved;
+      }
+
+      if (resolved.orgId !== args.orgId) {
+        return notFound("Resource not found");
+      }
+
+      const persistedEnvironment = await loadPersistedRunEnvironmentSnapshot(
+        db,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          content: resolved.content,
+        },
+      );
+      signal.throwIfAborted();
+
+      const body = await buildResolvedRunBody({
+        initialBody,
+        resolved,
+        persistedEnvironment,
+        featureSwitchContext,
+        signal,
+      });
+
+      const frameworkValidation = validateCompose(
+        resolved.content,
+        body.vars,
+        body.secrets,
+        { validateEnvironmentReferences: false },
+      );
+      if (isRouteError(frameworkValidation)) {
+        return frameworkValidation;
+      }
+
+      const requestedFramework = await resolveRequestedRunFramework(
+        db,
+        args,
+        frameworkValidation.framework,
+      );
+      signal.throwIfAborted();
+
+      const modelProvider = await resolveRunModelProvider(db, args, {
+        content: resolved.content,
+        framework: requestedFramework,
+        featureSwitchContext,
+        signal,
+      });
+      if (isRouteError(modelProvider)) {
+        return modelProvider;
+      }
+      const framework = modelProvider
+        ? modelProviderFramework(modelProvider)
+        : requestedFramework;
+
+      const { connectorContext, customConnectorContext } =
+        await loadRunConnectorContexts(db, args, featureSwitchContext);
+      signal.throwIfAborted();
+
+      const validation = validateRunEnvironmentReferences({
+        resolved,
+        body,
+        modelProvider,
+        connectorContext,
+        customConnectorContext,
+        validateEnvironmentReferences: args.validateEnvironmentReferences,
+      });
+      if (validation) {
+        return validation;
+      }
+
+      const userTimezone = await loadUserTimezone(db, args);
+      signal.throwIfAborted();
+
+      const artifacts = artifactsForRun({
+        resolved,
+        framework,
+        bodyArtifacts: body.artifacts,
+      });
+      const additionalVolumes = mergeAdditionalVolumes({
+        prepend: buildInjectedSkillVolumes(args, framework),
+        base: body.additionalVolumes ?? resolved.additionalVolumes,
+      });
+
+      return {
+        body,
+        resolved,
+        framework,
+        modelProvider,
+        connectorContext,
+        customConnectorContext,
+        artifacts,
+        additionalVolumes,
+        userTimezone,
+        featureSwitchContext,
+      };
+    },
   );
-  signal.throwIfAborted();
-  if (captureGate) {
-    return captureGate;
-  }
-
-  const featureSwitchContext = await loadRunFeatureSwitchContext(
-    get,
-    args,
-    signal,
-  );
-
-  const resolved = await resolveCompose(
-    get,
-    db,
-    initialBody,
-    args.userId,
-    args.orgId,
-  );
-  signal.throwIfAborted();
-  if (isRouteError(resolved)) {
-    return resolved;
-  }
-
-  if (resolved.orgId !== args.orgId) {
-    return notFound("Resource not found");
-  }
-
-  const persistedEnvironment = await loadPersistedRunEnvironmentSnapshot(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    content: resolved.content,
-  });
-  signal.throwIfAborted();
-
-  const body = await buildResolvedRunBody({
-    initialBody,
-    resolved,
-    persistedEnvironment,
-    featureSwitchContext,
-    signal,
-  });
-
-  const frameworkValidation = validateCompose(
-    resolved.content,
-    body.vars,
-    body.secrets,
-    { validateEnvironmentReferences: false },
-  );
-  if (isRouteError(frameworkValidation)) {
-    return frameworkValidation;
-  }
-
-  const requestedFramework = await resolveRequestedRunFramework(
-    db,
-    args,
-    frameworkValidation.framework,
-  );
-  signal.throwIfAborted();
-
-  const modelProvider = await resolveRunModelProvider(db, args, {
-    content: resolved.content,
-    framework: requestedFramework,
-    featureSwitchContext,
-    signal,
-  });
-  if (isRouteError(modelProvider)) {
-    return modelProvider;
-  }
-  const framework = modelProvider
-    ? modelProviderFramework(modelProvider)
-    : requestedFramework;
-
-  const { connectorContext, customConnectorContext } =
-    await loadRunConnectorContexts(db, args, featureSwitchContext);
-  signal.throwIfAborted();
-
-  const validation = validateRunEnvironmentReferences({
-    resolved,
-    body,
-    modelProvider,
-    connectorContext,
-    customConnectorContext,
-    validateEnvironmentReferences: args.validateEnvironmentReferences,
-  });
-  if (validation) {
-    return validation;
-  }
-
-  const userTimezone = await loadUserTimezone(db, args);
-  signal.throwIfAborted();
-
-  const artifacts = artifactsForRun({
-    resolved,
-    framework,
-    bodyArtifacts: body.artifacts,
-  });
-  const additionalVolumes = mergeAdditionalVolumes({
-    prepend: buildInjectedSkillVolumes(args, framework),
-    base: body.additionalVolumes ?? resolved.additionalVolumes,
-  });
-
-  return {
-    body,
-    resolved,
-    framework,
-    modelProvider,
-    connectorContext,
-    customConnectorContext,
-    artifacts,
-    additionalVolumes,
-    userTimezone,
-    featureSwitchContext,
-  };
 }
 
 async function insertRunWithConcurrency(
@@ -3759,94 +3800,108 @@ async function insertRunWithConcurrency(
   });
 }
 
-async function completeQueuedRun(input: {
-  readonly get: ComputedGetter;
+function completeQueuedRun(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
   readonly run: RunRecord;
   readonly signal: AbortSignal;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
-  const enqueueResult = await settle(
-    enqueueRunForConcurrency(input.get, input.db, {
-      run: input.run,
-      userId: input.args.userId,
-      orgId: input.args.orgId,
-      resolved: input.context.resolved,
-      body: input.context.body,
-      artifacts: input.context.artifacts,
-      framework: input.context.framework,
-      modelProvider: input.context.modelProvider,
-      connectorContext: input.context.connectorContext,
-      customConnectorContext: input.context.customConnectorContext,
-      apiStartTime: input.args.apiStartTime,
-      additionalVolumes: input.context.additionalVolumes,
-      includeZeroTokenSecret: input.args.includeZeroTokenSecret,
-      extraEnvironment: input.args.extraEnvironment,
-      userTimezone: input.context.userTimezone,
-      featureSwitchContext: input.context.featureSwitchContext,
-    }),
+}): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
+  return computed(
+    async (
+      get,
+    ): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> => {
+      const enqueueResult = await settle(
+        get(
+          enqueueRunForConcurrency(input.db, {
+            run: input.run,
+            userId: input.args.userId,
+            orgId: input.args.orgId,
+            resolved: input.context.resolved,
+            body: input.context.body,
+            artifacts: input.context.artifacts,
+            framework: input.context.framework,
+            modelProvider: input.context.modelProvider,
+            connectorContext: input.context.connectorContext,
+            customConnectorContext: input.context.customConnectorContext,
+            apiStartTime: input.args.apiStartTime,
+            additionalVolumes: input.context.additionalVolumes,
+            includeZeroTokenSecret: input.args.includeZeroTokenSecret,
+            extraEnvironment: input.args.extraEnvironment,
+            userTimezone: input.context.userTimezone,
+            featureSwitchContext: input.context.featureSwitchContext,
+          }),
+        ),
+      );
+      input.signal.throwIfAborted();
+      if (!enqueueResult.ok) {
+        await markRunFailed(input.db, input.run.id, enqueueResult.error);
+        input.signal.throwIfAborted();
+        return failedRunResponse(input.run, enqueueResult.error);
+      }
+      return createdRunResponse(input.run, enqueueResult.value);
+    },
   );
-  input.signal.throwIfAborted();
-  if (!enqueueResult.ok) {
-    await markRunFailed(input.db, input.run.id, enqueueResult.error);
-    input.signal.throwIfAborted();
-    return failedRunResponse(input.run, enqueueResult.error);
-  }
-  return createdRunResponse(input.run, enqueueResult.value);
 }
 
-async function completePendingRun(input: {
-  readonly get: ComputedGetter;
+function completePendingRun(input: {
   readonly db: Db;
   readonly args: CreateAgentRunArgs;
   readonly context: PreparedRunContext;
   readonly run: RunRecord;
   readonly drainOrgQueue: () => Promise<void>;
   readonly signal: AbortSignal;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
-  const dispatchResult = await settle(
-    dispatchRun(input.get, input.db, {
-      run: input.run,
-      userId: input.args.userId,
-      orgId: input.args.orgId,
-      resolved: input.context.resolved,
-      body: input.context.body,
-      artifacts: input.context.artifacts,
-      framework: input.context.framework,
-      modelProvider: input.context.modelProvider,
-      connectorContext: input.context.connectorContext,
-      customConnectorContext: input.context.customConnectorContext,
-      apiStartTime: input.args.apiStartTime,
-      additionalVolumes: input.context.additionalVolumes,
-      includeZeroTokenSecret: input.args.includeZeroTokenSecret,
-      extraEnvironment: input.args.extraEnvironment,
-      userTimezone: input.context.userTimezone,
-      featureSwitchContext: input.context.featureSwitchContext,
-    }),
-  );
-  input.signal.throwIfAborted();
+}): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
+  return computed(
+    async (
+      get,
+    ): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> => {
+      const dispatchResult = await settle(
+        get(
+          dispatchRun(input.db, {
+            run: input.run,
+            userId: input.args.userId,
+            orgId: input.args.orgId,
+            resolved: input.context.resolved,
+            body: input.context.body,
+            artifacts: input.context.artifacts,
+            framework: input.context.framework,
+            modelProvider: input.context.modelProvider,
+            connectorContext: input.context.connectorContext,
+            customConnectorContext: input.context.customConnectorContext,
+            apiStartTime: input.args.apiStartTime,
+            additionalVolumes: input.context.additionalVolumes,
+            includeZeroTokenSecret: input.args.includeZeroTokenSecret,
+            extraEnvironment: input.args.extraEnvironment,
+            userTimezone: input.context.userTimezone,
+            featureSwitchContext: input.context.featureSwitchContext,
+          }),
+        ),
+      );
+      input.signal.throwIfAborted();
 
-  if (dispatchResult.ok) {
-    return createdRunResponse(input.run, dispatchResult.value);
-  }
+      if (dispatchResult.ok) {
+        return createdRunResponse(input.run, dispatchResult.value);
+      }
 
-  const transitioned = await markRunFailed(
-    input.db,
-    input.run.id,
-    dispatchResult.error,
+      const transitioned = await markRunFailed(
+        input.db,
+        input.run.id,
+        dispatchResult.error,
+      );
+      input.signal.throwIfAborted();
+      if (transitioned) {
+        await tapError(input.drainOrgQueue(), (error) => {
+          L.error("Failed to drain org queue after run dispatch failure", {
+            runId: input.run.id,
+            error,
+          });
+        });
+        input.signal.throwIfAborted();
+      }
+      return failedRunResponse(input.run, dispatchResult.error);
+    },
   );
-  input.signal.throwIfAborted();
-  if (transitioned) {
-    await tapError(input.drainOrgQueue(), (error) => {
-      L.error("Failed to drain org queue after run dispatch failure", {
-        runId: input.run.id,
-        error,
-      });
-    });
-    input.signal.throwIfAborted();
-  }
-  return failedRunResponse(input.run, dispatchResult.error);
 }
 
 export const createAgentRun$ = command(
@@ -3862,7 +3917,8 @@ export const createAgentRun$ = command(
       return tierGate;
     }
 
-    const context = await prepareRunContext(get, db, args, signal);
+    const context = await get(prepareRunContext(db, args, signal));
+    signal.throwIfAborted();
     if (isRouteError(context)) {
       return context;
     }
@@ -3883,26 +3939,28 @@ export const createAgentRun$ = command(
     }
 
     if (transactionResult.status === "queued") {
-      return await completeQueuedRun({
-        get,
+      return await get(
+        completeQueuedRun({
+          db,
+          args,
+          context,
+          run: transactionResult,
+          signal,
+        }),
+      );
+    }
+
+    return await get(
+      completePendingRun({
         db,
         args,
         context,
         run: transactionResult,
+        drainOrgQueue: async () => {
+          await set(drainOrgQueue$, { orgId: args.orgId }, signal);
+        },
         signal,
-      });
-    }
-
-    return await completePendingRun({
-      get,
-      db,
-      args,
-      context,
-      run: transactionResult,
-      drainOrgQueue: async () => {
-        await set(drainOrgQueue$, { orgId: args.orgId }, signal);
-      },
-      signal,
-    });
+      }),
+    );
   },
 );

@@ -1786,7 +1786,8 @@ mod tests {
                     "snapshot_hash": "snapshot",
                     "vcpu": 1,
                     "memory_mb": 512,
-                    "disk_mb": 1024,
+                    "rootfs_disk_mb": 512,
+                    "workspace_disk_mb": 1024,
                 },
             },
         });

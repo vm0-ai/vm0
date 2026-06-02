@@ -100,6 +100,7 @@ setComputerUsePermissionNativeBackend(computerUseNativeBackend);
 async function runAuthWindow(request: {
   readonly url: string;
   readonly visible: boolean;
+  readonly allowInteractiveFallbacks: boolean;
 }): Promise<void> {
   const authWindow = new BrowserWindow({
     ...browserWindowOptions(),
@@ -109,7 +110,9 @@ async function runAuthWindow(request: {
     skipTaskbar: !request.visible,
   });
   installAuthConsumeWindowPolicy(authWindow);
-  const pending = waitForAuthConsumeWindow(authWindow);
+  const pending = waitForAuthConsumeWindow(authWindow, {
+    allowInteractiveFallbacks: request.allowInteractiveFallbacks,
+  });
   await loadAuthUrl(authWindow, request.url);
   await pending;
 }
@@ -236,6 +239,7 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       sessionFetch: createDesktopComputerUseSessionFetch({
         platformUrl: config.platformUrl,
         session: desktopSession,
+        getCachedAuthToken: () => getAuthSession().getCachedToken(),
         getAuthToken: (options) => getAuthSession().getToken(options),
       }),
       hostFetch: (input, init) => {
@@ -542,7 +546,10 @@ function installAuthConsumeWindowPolicy(window: BrowserWindow): void {
   });
 }
 
-function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
+function waitForAuthConsumeWindow(
+  window: BrowserWindow,
+  options: { readonly allowInteractiveFallbacks: boolean },
+): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => {
@@ -581,8 +588,19 @@ function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
     };
 
     const handleNavigation = (_event: Electron.Event, url: string): void => {
+      if (
+        !options.allowInteractiveFallbacks &&
+        isDesktopAuthStartNavigation(url, config.allowedAppOrigins)
+      ) {
+        resolveAuth();
+        return;
+      }
       if (isDesktopAuthSelectOrgNavigation(url, config.allowedAppOrigins)) {
-        showAndFocusWindow(window);
+        if (options.allowInteractiveFallbacks) {
+          showAndFocusWindow(window);
+          return;
+        }
+        resolveAuth();
         return;
       }
       if (isDesktopAuthCompletionNavigation(url, config.allowedAppOrigins)) {

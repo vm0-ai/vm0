@@ -139,6 +139,19 @@ async function withRewriteProxy<T>(
 }
 
 describe("API backend rewrite proxy behavior", () => {
+  it("matches only the legacy file rewrite path", () => {
+    expect(matchesApiBackendRewritePath("/f/user_alice/file-id/doc.pdf")).toBe(
+      true,
+    );
+    expect(matchesApiBackendRewritePath("/f/user_alice/file-id")).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/f/user_alice/file-id/doc.pdf/extra"),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath("/api/f/user_alice/file-id/doc.pdf"),
+    ).toBe(false);
+  });
+
   it("matches only one segment for agent checkpoint rewrites", () => {
     expect(
       matchesApiBackendRewritePath("/api/agent/checkpoints/checkpoint_123"),
@@ -663,10 +676,10 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/internal/callbacks")).toBe(false);
   });
 
-  it("matches the connector authorize rewrite path exactly", () => {
+  it("does not match removed connector authorize rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath("/api/connectors/github/authorize/extra"),
     ).toBe(false);
@@ -693,18 +706,15 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero connector authorize rewrite path exactly", () => {
+  it("does not match removed zero connector authorize rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/authorize"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/connectors/github/authorize/extra",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/connectors/authorize")).toBe(
-      true,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/callback"),
     ).toBe(false);
@@ -849,29 +859,26 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
-  it("matches the zero connector sessions rewrite path exactly", () => {
+  it("does not match removed zero connector session rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/sessions"),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/connectors/github/sessions/not-a-uuid",
       ),
     ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/connectors/sessions")).toBe(
-      true,
-    );
     expect(
       matchesApiBackendRewritePath("/api/zero/connectors/github/session"),
     ).toBe(false);
   });
 
-  it("matches the zero connector session polling rewrite path only for UUID session IDs", () => {
+  it("does not match removed zero connector session polling rewrite paths", () => {
     expect(
       matchesApiBackendRewritePath(
         `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/connectors/github/sessions/not-a-uuid",

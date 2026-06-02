@@ -17,7 +17,8 @@ pub(in super::super) fn test_profiles() -> BTreeMap<String, config::ProfileConfi
             snapshot_hash: "snap".into(),
             vcpu: 2,
             memory_mb: 4096,
-            disk_mb: 10240,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 10240,
         },
     );
     m
@@ -286,7 +287,8 @@ pub(in super::super) fn two_profiles() -> BTreeMap<String, config::ProfileConfig
             snapshot_hash: "snap".into(),
             vcpu: 2,
             memory_mb: 4096,
-            disk_mb: 10240,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 10240,
         },
     );
     m.insert(
@@ -296,7 +298,8 @@ pub(in super::super) fn two_profiles() -> BTreeMap<String, config::ProfileConfig
             snapshot_hash: "snap2".into(),
             vcpu: 4,
             memory_mb: 8192,
-            disk_mb: 20480,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 20480,
         },
     );
     m

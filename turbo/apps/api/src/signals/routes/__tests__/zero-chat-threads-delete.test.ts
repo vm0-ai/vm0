@@ -157,7 +157,7 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
     );
   });
 
-  it("returns 404 for a malformed UUID without touching the DB", async () => {
+  it("returns 400 for a malformed UUID without touching the DB", async () => {
     const fixture = await track(
       store.set(seedZeroChatThread$, {}, context.signal),
     );
@@ -169,14 +169,13 @@ describe("DELETE /api/zero/chat-threads/:id", () => {
         params: { id: "not-a-uuid" },
         headers: { authorization: "Bearer clerk-session" },
       }),
-      [404],
+      [400],
     );
 
-    expect(response.body).toMatchObject({
-      error: { code: "NOT_FOUND", message: "Chat thread not found" },
-    });
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("id");
 
-    // Seeded thread untouched (the malformed-id branch short-circuits before DB).
+    // Seeded thread untouched (path validation short-circuits before DB).
     await expect(getThreadRowExists(fixture.threadId)).resolves.toBeTruthy();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
   });

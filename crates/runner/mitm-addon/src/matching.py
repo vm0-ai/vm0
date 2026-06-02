@@ -11,7 +11,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import unquote_to_bytes, urlsplit
 
 from host_normalization import normalize_idna_hostname
-from path_security import has_unsafe_dot_segment
+from path_security import has_unsafe_path
 from url_syntax import (
     ASCII_CONTROL_MAX,
     ASCII_DELETE,
@@ -741,13 +741,18 @@ def _auth_base_for_static_url_validation(auth_base: str) -> _AuthBaseStaticValid
 
 
 def _dynamic_auth_base_suffix_is_valid(suffix: str) -> bool:
-    return (
-        _AUTH_TEMPLATE_START not in suffix
-        and not has_unsafe_url_codepoint(suffix)
-        and not has_raw_whitespace(suffix)
-        and "#" not in suffix
-        and (suffix == "" or suffix.startswith(("/", "?")))
-    )
+    if (
+        _AUTH_TEMPLATE_START in suffix
+        or has_unsafe_url_codepoint(suffix)
+        or has_raw_whitespace(suffix)
+        or "#" in suffix
+        or (suffix != "" and not suffix.startswith(("/", "?")))
+    ):
+        return False
+    if not suffix.startswith("/"):
+        return True
+    suffix_path = suffix.partition("?")[0]
+    return not has_unsafe_path(suffix_path)
 
 
 def _static_auth_base_is_valid(auth_base: str) -> bool:
@@ -773,6 +778,8 @@ def _static_auth_base_is_valid(auth_base: str) -> bool:
     if parts.scheme.lower() not in _VALID_BASE_SCHEMES:
         return False
     if parts.fragment:
+        return False
+    if has_unsafe_path(parts.path):
         return False
     return (
         _split_base_match_url(
@@ -1547,7 +1554,7 @@ def match_compiled_firewall_request(
 
             rel_path, base_params = base_result
 
-            if url_has_backslash or has_unsafe_dot_segment(url_parts.path):
+            if url_has_backslash or has_unsafe_path(url_parts.path):
                 return FirewallBlock(
                     api_entry.base.raw,
                     fw_entry.name,

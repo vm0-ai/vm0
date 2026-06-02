@@ -88,7 +88,7 @@ export function Vm0LogoLink() {
   );
 }
 
-export function GoogleOAuthNotice() {
+export function GoogleSecurityWarningNotice() {
   return (
     <div className="w-full mt-2 flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-4 text-left">
       <AvatarSvgPreview

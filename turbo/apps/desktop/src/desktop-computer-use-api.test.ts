@@ -39,7 +39,7 @@ describe("createDesktopComputerUseSessionFetch", () => {
     const sessionFetch = createDesktopComputerUseSessionFetch({
       platformUrl: new URL("https://app.vm0.ai"),
       session,
-      getAuthToken: () => {
+      getCachedAuthToken: () => {
         return "desktop-token";
       },
     });
@@ -76,7 +76,13 @@ describe("createDesktopComputerUseSessionFetch", () => {
         },
       },
     };
-    const tokens: (string | null)[] = ["stale-token", "fresh-token"];
+    const cachedToken = "stale-token";
+    const refreshAuthToken = vi.fn(
+      (options?: { readonly forceRefresh?: boolean }) => {
+        expect(options?.forceRefresh).toBe(true);
+        return "fresh-token";
+      },
+    );
     const fetchMock = vi.fn(
       async (
         _input: string | URL | Request,
@@ -92,20 +98,85 @@ describe("createDesktopComputerUseSessionFetch", () => {
     const sessionFetch = createDesktopComputerUseSessionFetch({
       platformUrl: new URL("https://app.vm0.ai"),
       session,
-      getAuthToken: ({ forceRefresh } = {}) => {
-        expect(forceRefresh).toBe(fetchMock.mock.calls.length > 0);
-        return tokens.shift() ?? null;
+      getCachedAuthToken: () => {
+        return cachedToken;
       },
+      getAuthToken: refreshAuthToken,
     });
     await sessionFetch("https://api.vm0.ai/api/auth/me");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(refreshAuthToken).toHaveBeenCalledOnce();
     expect(
       new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization"),
     ).toBe("Bearer stale-token");
     expect(
       new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization"),
     ).toBe("Bearer fresh-token");
+  });
+
+  it("uses cookies without refreshing auth when the first request succeeds", async () => {
+    const session: DesktopSessionCookieSource = {
+      cookies: {
+        async get() {
+          return [{ name: "session", value: "cookie-session" }];
+        },
+      },
+    };
+    const fetchMock = vi.fn(
+      async (
+        _input: string | URL | Request,
+        _init?: RequestInit,
+      ): Promise<Response> => {
+        return jsonResponse({});
+      },
+    );
+    const refreshAuthToken = vi.fn(async () => "fresh-token");
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sessionFetch = createDesktopComputerUseSessionFetch({
+      platformUrl: new URL("https://app.vm0.ai"),
+      session,
+      getCachedAuthToken: () => null,
+      getAuthToken: refreshAuthToken,
+    });
+    await sessionFetch("https://api.vm0.ai/api/auth/me");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(refreshAuthToken).not.toHaveBeenCalled();
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("cookie")).toBe("session=cookie-session");
+    expect(headers.has("authorization")).toBe(false);
+  });
+
+  it("returns the first 401 when token refresh cannot produce a token", async () => {
+    const session: DesktopSessionCookieSource = {
+      cookies: {
+        async get() {
+          return [];
+        },
+      },
+    };
+    const fetchMock = vi.fn(
+      async (
+        _input: string | URL | Request,
+        _init?: RequestInit,
+      ): Promise<Response> => {
+        return new Response(null, { status: 401 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const sessionFetch = createDesktopComputerUseSessionFetch({
+      platformUrl: new URL("https://app.vm0.ai"),
+      session,
+      getCachedAuthToken: () => null,
+      getAuthToken: () => null,
+    });
+    const response = await sessionFetch("https://api.vm0.ai/api/auth/me");
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 

@@ -112,6 +112,9 @@ class TestBuildRewriteUrl:
             ("https://example%2ecom/hook", "unsafe percent encoding"),
             ("https://example%2ccom/hook", "unsafe percent encoding"),
             ("https://example%3a443.com/hook", "invalid host"),
+            ("https://example.com/hook/%2e%2e/admin", "unsafe path"),
+            ("https://example.com/hook/%5csecret", "unsafe path"),
+            ("https://example.com/hook/%5Csecret", "unsafe path"),
             ("https://%7bparam%7d.example/hook", "unsafe percent encoding"),
             ("https://example%zz.com/hook", "invalid percent encoding"),
             ("https://0177.0.0.1/hook", "invalid host"),
@@ -148,6 +151,14 @@ class TestBuildRewriteUrl:
             "",
         )
         assert url == "https://example.com/hook?token=a@b"
+
+    def test_base_query_allows_encoded_backslash(self):
+        url = url_utils.build_rewrite_url(
+            "https://example.com/hook?next=%5csecret",
+            "/",
+            "",
+        )
+        assert url == "https://example.com/hook?next=%5csecret"
 
     def test_rel_path_with_both_queries_merged(self):
         url = url_utils.build_rewrite_url(
@@ -411,11 +422,16 @@ class TestBuildRewriteUrl:
     @pytest.mark.parametrize(
         "rel_path",
         [
+            "/admin\\settings",
             "/./admin",
             "/../admin",
             "/%2e/admin",
             "/%2e%2e/admin",
             "/%2e%2e%2fadmin",
+            "/%5cadmin",
+            "/%5Cadmin",
+            "/%5c..%5cadmin",
+            "/%5C..%5Cadmin",
         ],
     )
     def test_unsafe_rel_path_is_rejected(self, rel_path):

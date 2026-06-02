@@ -17,10 +17,7 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ReactElement } from "react";
-import {
-  getConnectorAuthMethod,
-  isGoogleOAuthConnector,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import {
   allConnectorTypes$,
   connectFlowType$,
@@ -44,7 +41,8 @@ import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
-import { GoogleOAuthNotice } from "../../zero-directed-shared.tsx";
+import { shouldShowGoogleSecurityWarningNotice } from "../../../../lib/google-security-warning.ts";
+import { GoogleSecurityWarningNotice } from "../../zero-directed-shared.tsx";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
 
 // ---------------------------------------------------------------------------
@@ -614,17 +612,17 @@ function StandardConnectMethodsContent({
   signal: AbortSignal;
   entries: readonly ConnectMethodContentEntry[];
 }) {
-  const isGoogleOAuth =
+  const showGoogleSecurityWarningNotice =
     hasAuthCodeGrant(
       item.type,
       entries.map((entry) => {
         return entry.authMethod;
       }),
-    ) && isGoogleOAuthConnector(item.type);
+    ) && shouldShowGoogleSecurityWarningNotice(item.type);
 
   return (
     <div className="flex flex-col gap-4">
-      {isGoogleOAuth && <GoogleOAuthNotice />}
+      {showGoogleSecurityWarningNotice && <GoogleSecurityWarningNotice />}
 
       <ConnectMethodsContent
         entries={entries}

@@ -10,12 +10,13 @@ import {
   getAvailableConnectorAuthMethods,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodScopeDiff,
-  getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
   getConnectorManualGrantFieldNames,
-  getConnectorSecretNames,
+  getConnectorOwnedAccessSecretBindingEntries,
+  getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
+  type ConnectorAuthMethodAccessMetadata,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
 import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
@@ -27,7 +28,6 @@ import {
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type ConnectorAuthProviderType,
-  type ConnectorEnvBindings,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -73,7 +73,6 @@ interface ConnectorScopedSecretNames {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
-const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ExternalUserInfo {
@@ -410,15 +409,17 @@ function connectorProvidedEnvNamesForStoredConnectors(
 ): Set<string> {
   const provided = new Set<string>();
   for (const connector of connectorList) {
-    const envBindings = getConnectorAuthMethodEnvBindings(
+    const accessMetadata = getConnectorAuthMethodAccessMetadata(
       connector.type,
       connector.authMethod,
     );
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-        continue;
-      }
-      const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+    if (!accessMetadata) {
+      continue;
+    }
+    for (const {
+      envName,
+      secretName,
+    } of getConnectorOwnedAccessSecretBindingEntries(accessMetadata)) {
       if (!connectorScopedSecretNames.secretNames.has(secretName)) {
         continue;
       }
@@ -676,7 +677,7 @@ export const deleteZeroConnectorLocalState$ = command(
       await deleteConnectorScopedSecretNames(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        names: getConnectorSecretNames(args.type, existing.authMethod),
+        names: getConnectorOwnedSecretNames(args.type, existing.authMethod),
         signal,
       });
       await deleteConnectorScopedVariableNames(tx, {
@@ -968,7 +969,7 @@ async function cleanupExistingStoredConnectorForManualGrantConnect(
   await deleteConnectorScopedSecretNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: getConnectorSecretNames(args.type, existing.authMethod),
+    names: getConnectorOwnedSecretNames(args.type, existing.authMethod),
     signal: args.signal,
   });
   await deleteConnectorScopedVariableNames(db, {
@@ -1174,21 +1175,17 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
-function connectorSecretNameFromRef(valueRef: string): string | undefined {
-  return valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)
-    ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
-    : undefined;
-}
-
-function staticAccessSecretName(
-  envBindings: ConnectorEnvBindings,
+function staticConnectorOwnedAccessSecretName(
+  accessMetadata: Extract<
+    ConnectorAuthMethodAccessMetadata,
+    { readonly kind: "static" }
+  >,
 ): string | undefined {
   const secretNames = new Set<string>();
-  for (const valueRef of Object.values(envBindings)) {
-    const secretName = connectorSecretNameFromRef(valueRef);
-    if (secretName) {
-      secretNames.add(secretName);
-    }
+  for (const { secretName } of getConnectorOwnedAccessSecretBindingEntries(
+    accessMetadata,
+  )) {
+    secretNames.add(secretName);
   }
   if (secretNames.size !== 1) {
     return undefined;
@@ -1215,9 +1212,8 @@ function connectorTokenSecretMetadataForAuthMethod(args: {
     }
 
     case "static": {
-      const accessSecretName = staticAccessSecretName(
-        accessMetadata.envBindings,
-      );
+      const accessSecretName =
+        staticConnectorOwnedAccessSecretName(accessMetadata);
       return accessSecretName
         ? {
             accessSecretName,
@@ -1238,7 +1234,7 @@ function allowedConnectorTokenSecretNames(
   type: ConnectorAuthProviderType,
   authMethod: ConnectorAuthMethodId,
 ): Set<string> {
-  return new Set(getConnectorSecretNames(type, authMethod));
+  return new Set(getConnectorOwnedSecretNames(type, authMethod));
 }
 
 function isPrimaryConnectorTokenSecret(args: {
@@ -1476,9 +1472,9 @@ async function deleteObsoleteConnectorScopedStateForTokenConnect(
   }
 
   const targetSecretNames = new Set(
-    getConnectorSecretNames(args.type, args.authMethod),
+    getConnectorOwnedSecretNames(args.type, args.authMethod),
   );
-  const obsoleteSecretNames = getConnectorSecretNames(
+  const obsoleteSecretNames = getConnectorOwnedSecretNames(
     args.type,
     args.existingAuthMethod,
   ).filter((name) => {

@@ -11,6 +11,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use super::CONTROL_SOCKET_OVERHEAD_MS;
 use super::protocol::{ExecRequest, ExecResponse, read_frame, write_frame};
 use crate::guest_operations::{GuestOperationStartError, GuestOperationStartGate};
 
@@ -337,7 +338,7 @@ async fn execute(request: ExecRequest, guest_operations: &GuestOperationStartGat
             stderr_limit_bytes: RUNNER_EXEC_CAPTURE_LIMIT_BYTES,
             expected_exit_codes: &[],
             stdin_bytes: None,
-            wait_timeout: Duration::from_millis(timeout_ms as u64 + 5000),
+            wait_timeout: Duration::from_millis(timeout_ms as u64 + CONTROL_SOCKET_OVERHEAD_MS),
         })
         .await;
 

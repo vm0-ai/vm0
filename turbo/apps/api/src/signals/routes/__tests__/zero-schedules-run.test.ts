@@ -1,11 +1,18 @@
 import { randomUUID } from "node:crypto";
 
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
+import { connectors } from "@vm0/db/schema/connector";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
+import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { secrets } from "@vm0/db/schema/secret";
+import { userConnectors } from "@vm0/db/schema/user-connector";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -14,6 +21,7 @@ import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
+import { nowDate } from "../../external/time";
 import {
   type SchedulesFixture,
   deleteSchedulesScenario$,
@@ -24,11 +32,21 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { seedOrgModelProvider$ } from "./helpers/zero-model-providers";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const runResponseSchema = z.object({ runId: z.string() });
+const SLACK_CONNECTOR = "slack";
+const SLACK_WRITE_PERMISSION = "chat:write";
+
+interface QueuedNetworkPolicy {
+  readonly allow: readonly string[];
+  readonly deny: readonly string[];
+  readonly ask: readonly string[];
+  readonly unknownPolicy: string;
+}
 
 const track = createFixtureTracker<SchedulesFixture>((fixture) => {
   return store.set(deleteSchedulesScenario$, fixture, context.signal);
@@ -61,6 +79,81 @@ async function seedFixture(): Promise<SchedulesFixture> {
   );
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
+}
+
+async function enableUserPermissionGrants(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: {
+        switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+        updatedAt: nowDate(),
+      },
+    });
+}
+
+async function seedSlackGrantForScheduleOwner(
+  fixture: SchedulesFixture,
+): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userConnectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    agentId: fixture.composeId,
+    connectorType: SLACK_CONNECTOR,
+  });
+  await db.insert(connectors).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    type: SLACK_CONNECTOR,
+    authMethod: "oauth",
+  });
+  await db.insert(secrets).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "SLACK_ACCESS_TOKEN",
+    encryptedValue: encryptSecretForTests("xoxb-schedule-token"),
+    type: "connector",
+  });
+  await db.insert(userPermissionGrants).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    agentId: fixture.composeId,
+    connectorRef: SLACK_CONNECTOR,
+    permission: SLACK_WRITE_PERMISSION,
+    action: "allow",
+  });
+}
+
+async function networkPolicyForRun(
+  runId: string,
+  connectorRef: string,
+): Promise<QueuedNetworkPolicy> {
+  const db = store.set(writeDb$);
+  const [job] = await db
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId));
+  const executionContext = job?.executionContext as
+    | {
+        readonly networkPolicies?: Record<string, QueuedNetworkPolicy>;
+      }
+    | undefined;
+  const policy = executionContext?.networkPolicies?.[connectorRef];
+  if (!policy) {
+    throw new Error(`Expected network policy for ${connectorRef}`);
+  }
+  return policy;
 }
 
 async function rawPostRun(body: unknown): Promise<{
@@ -161,6 +254,25 @@ describe("POST /api/zero/schedules/run", () => {
       /\/api\/internal\/callbacks\/schedule\/cron$/,
     );
     expect(callback?.payload).toMatchObject({ scheduleId });
+  });
+
+  it("resolves user grants for the schedule owner", async () => {
+    const fixture = await seedFixture();
+    const scheduleId = fixture.scheduleIds[0];
+    if (!scheduleId) {
+      throw new Error("Expected schedule fixture");
+    }
+    await enableUserPermissionGrants(fixture.orgId, fixture.userId);
+    await seedSlackGrantForScheduleOwner(fixture);
+    mocks.clerk.session(`trigger-${fixture.userId}`, fixture.orgId);
+
+    const response = await rawPostRun({ scheduleId });
+
+    expect(response.status).toBe(201);
+    const body = runResponseSchema.parse(response.body);
+    const policy = await networkPolicyForRun(body.runId, SLACK_CONNECTOR);
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
   });
 
   it("resolves the runtime model from the model-first default route", async () => {

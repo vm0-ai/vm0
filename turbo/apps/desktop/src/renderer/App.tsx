@@ -433,6 +433,7 @@ function RuntimePanel({
     !state.permissions.accessibility || !state.permissions.screenRecording;
   const signedOut =
     !authLoading && (!authState || authState.status === "signed_out");
+  const signingIn = authState?.status === "signing_in";
   const needsOrganization =
     !authLoading &&
     authState?.status === "signed_in" &&
@@ -500,9 +501,9 @@ function RuntimePanel({
               onClick={() => {
                 void signIn();
               }}
-              disabled={signInLoadable.state === "loading"}
+              disabled={signingIn || signInLoadable.state === "loading"}
             >
-              Sign in
+              {signingIn ? "Signing in..." : "Sign in"}
             </IconButton>
           )}
         {(needsOrganization || state.host.status === "needs_organization") &&
@@ -952,14 +953,20 @@ function AccountMenu({
   readonly orgSelectionLoading: boolean;
   readonly signInLoading: boolean;
 }) {
-  if (!authState || authState.status === "signed_out") {
+  if (
+    !authState ||
+    authState.status === "signed_out" ||
+    authState.status === "signing_in"
+  ) {
+    const signingIn =
+      authState?.status === "signing_in" || signInLoading === true;
     return (
       <IconButton
         icon={<IconExternalLink size={15} />}
         onClick={onSignIn}
-        disabled={loading || signInLoading}
+        disabled={loading || signingIn}
       >
-        {loading ? "Checking" : "Sign in"}
+        {signingIn ? "Signing in..." : loading ? "Checking" : "Sign in"}
       </IconButton>
     );
   }

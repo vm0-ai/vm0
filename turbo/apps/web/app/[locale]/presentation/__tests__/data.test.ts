@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  PRESENTATION_ATTRIBUTION_PARAM,
-  PRESENTATION_ATTRIBUTION_VALUE,
-  buildPresentationRemixHref,
-  type PresentationItem,
-} from "../data";
+import { buildPresentationRemixHref, type PresentationItem } from "../data";
 
 const item: PresentationItem = {
   slug: "test-deck",
@@ -24,9 +19,7 @@ describe("presentation remix links", () => {
     expect(url.pathname).toBe("/onboarding");
     expect(url.searchParams.get("prompt")).toBe(item.prompt);
     expect(url.searchParams.get("showcase")).toBe(item.embedUrl);
-    expect(url.searchParams.get(PRESENTATION_ATTRIBUTION_PARAM)).toBe(
-      PRESENTATION_ATTRIBUTION_VALUE,
-    );
+    expect(url.searchParams.get("vm0_source")).toBe("presentation");
   });
 
   it("carries paid search attribution to the app", () => {

@@ -32,13 +32,12 @@ sync_with_1password() {
   echo "✓ All environment variables synced successfully"
 }
 
-WEB_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/web/.env.local"
 API_ENV_LOCAL="$PROJECT_ROOT/turbo/apps/api/.env.local"
 SCRIPTS_ENV_LOCAL="$PROJECT_ROOT/scripts/.env.local"
 
 # --- Computed variables ---
 # RUNNER_DEFAULT_GROUP is auto-derived from git email + hostname.
-# Written to both turbo/apps/web/.env.local (web app) and scripts/.env.local (dev-runner.sh).
+# Written to both turbo/apps/api/.env.local (api app) and scripts/.env.local (dev-runner.sh).
 append_runner_group() {
   local env_file="$1" group_name="$2"
   [[ -f "$env_file" ]] || return 0
@@ -71,7 +70,7 @@ configure_runner_group() {
 
   local group_name="vm0/local-${username}-${hostname_short}"
 
-  append_runner_group "$WEB_ENV_LOCAL" "$group_name"
+  append_runner_group "$API_ENV_LOCAL" "$group_name"
   append_runner_group "$SCRIPTS_ENV_LOCAL" "$group_name"
   echo "  ✓ RUNNER_DEFAULT_GROUP=${group_name}"
 }
@@ -89,19 +88,7 @@ provision_ssh_key() {
   echo "  ✓ SSH key written to ${key_path}"
 }
 
-# Mirror web/.env.local into api/. The api app reuses the same env values
-# but does not maintain a separate template.
-mirror_api_env() {
-  if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
-    echo "  ✗ API env mirror skipped (web/.env.local not found)"
-    return 0
-  fi
-  cp "$WEB_ENV_LOCAL" "$API_ENV_LOCAL"
-  echo "  ✓ Mirrored web/.env.local to api/.env.local"
-}
-
 # --- Main ---
 sync_with_1password
 configure_runner_group
-mirror_api_env
 provision_ssh_key

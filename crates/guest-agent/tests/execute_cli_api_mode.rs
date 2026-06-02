@@ -60,6 +60,7 @@ unsafe fn setup_api_env(mock_path: &Path, workdir: &Path, api_url: &str) -> Resu
         std::env::set_var("HOME", workdir);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
+    common::ensure_canonical_workspace_for_test()?;
     std::env::set_current_dir(workdir).map_err(|e| format!("set_current_dir: {e}"))?;
     Ok(())
 }

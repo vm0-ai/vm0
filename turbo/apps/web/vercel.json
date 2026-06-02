@@ -38,10 +38,6 @@
     {
       "path": "/api/cron/reconcile-billing-entitlements",
       "schedule": "0 0,12 * * *"
-    },
-    {
-      "path": "/api/cron/phone-cleanup",
-      "schedule": "0 2 * * *"
     }
   ]
 }

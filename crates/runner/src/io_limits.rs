@@ -332,7 +332,8 @@ mod tests {
                         snapshot_hash: format!("{name}-snapshot"),
                         vcpu: *vcpu,
                         memory_mb: *memory_mb,
-                        disk_mb: 16_384,
+                        rootfs_disk_mb: 8192,
+                        workspace_disk_mb: 16_384,
                     },
                 )
             })

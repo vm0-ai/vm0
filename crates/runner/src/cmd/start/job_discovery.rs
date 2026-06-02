@@ -52,6 +52,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     };
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
+    let job_workspace_disk_mb = profile_config.workspace_disk_mb;
     // Look up factory for this profile.
     let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
@@ -76,11 +77,25 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         }
         tokens.insert(run_id, job_cancel.clone());
     }
-    // Close a TOCTOU race against hard shutdown: the signal handler sends
-    // Stopping before locking cancel_tokens. Re-read mode after inserting so a
-    // newly claimed job sees the stop and self-cancels.
-    if matches!(*ctx.mode_rx.borrow(), RunnerMode::Stopping) {
-        job_cancel.cancel();
+    // This is the last reversible point before provider-side ownership.
+    // Soft drain must stop new claims, while hard stop still claims and
+    // cancels so provider state is completed deterministically.
+    let mode = *ctx.mode_rx.borrow();
+    match mode {
+        RunnerMode::Running => {}
+        RunnerMode::Draining => {
+            ctx.cancel_tokens.lock().await.remove(&run_id);
+            drop(job_lease);
+            return;
+        }
+        RunnerMode::Stopping => {
+            job_cancel.cancel();
+        }
+        RunnerMode::Stopped => {
+            ctx.cancel_tokens.lock().await.remove(&run_id);
+            drop(job_lease);
+            return;
+        }
     }
     // claim() runs in the branch handler: non-interruptible, so a valid
     // successful claim is always paired with complete().
@@ -135,6 +150,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         profile_name,
         vcpu: job_vcpu,
         memory_mb: job_memory,
+        workspace_disk_mb: job_workspace_disk_mb,
         budget_lease: active_lease,
         restore_guest_state: *restore_guest_state,
         device_rate_limits,

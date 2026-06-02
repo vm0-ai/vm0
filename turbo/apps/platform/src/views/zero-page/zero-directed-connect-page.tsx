@@ -7,10 +7,7 @@ import {
   type ConnectorManualGrantConfig,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  getConnectorAuthMethod,
-  isGoogleOAuthConnector,
-} from "@vm0/connectors/connector-utils";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -53,7 +50,11 @@ import {
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
-import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
+import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
+import {
+  Vm0LogoLink,
+  GoogleSecurityWarningNotice,
+} from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 
 type ManualGrantMethod = {
@@ -532,9 +533,10 @@ function DirectedConnectCard() {
                   <p className="w-60 text-sm text-muted-foreground">
                     {config.helpText}
                   </p>
-                  {!isConnected && isGoogleOAuthConnector(connectorType) && (
-                    <GoogleOAuthNotice />
-                  )}
+                  {!isConnected &&
+                    shouldShowGoogleSecurityWarningNotice(connectorType) && (
+                      <GoogleSecurityWarningNotice />
+                    )}
                 </>
               )}
             </div>

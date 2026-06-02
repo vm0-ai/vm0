@@ -355,17 +355,30 @@ export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
 export type ConnectorEnvBindings = Record<string, string>;
 
-export interface ConnectorStaticAccessConfig {
-  readonly kind: "static";
+export const CONNECTOR_PLATFORM_SECRET_NAMES = [
+  "GOOGLE_ADS_DEVELOPER_TOKEN",
+] as const;
+export type ConnectorPlatformSecretName =
+  (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
+
+interface ConnectorEnvBindingAccessConfigBase {
   readonly envBindings: ConnectorEnvBindings;
+  /**
+   * `$secrets.NAME` backing sources read from platform env instead of connector
+   * DB storage. Runtime aliases must still be declared in `envBindings`.
+   */
+  readonly platformSecrets?: readonly ConnectorPlatformSecretName[];
 }
 
-export interface ConnectorRefreshTokenAccessConfig {
+export interface ConnectorStaticAccessConfig extends ConnectorEnvBindingAccessConfigBase {
+  readonly kind: "static";
+}
+
+export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
   readonly kind: "refresh-token";
   readonly tokenUrl: string;
   readonly accessToken: string;
   readonly refreshToken: string;
-  readonly envBindings: ConnectorEnvBindings;
 }
 
 export interface ConnectorNoAccessConfig {

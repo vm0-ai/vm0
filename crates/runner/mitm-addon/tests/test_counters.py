@@ -132,7 +132,7 @@ class TestUsagePendingCounter:
         usage.write_pending_snapshot(flush_request_id="request-2")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2")
 
-    def test_enqueue_logs_payload_collisions_under_payload(self, tmp_path):
+    def test_enqueue_logs_body_free_payload_summary(self, tmp_path):
         proxy_log = tmp_path / "proxy.jsonl"
         payload = {
             "url": "payload-url",
@@ -159,10 +159,12 @@ class TestUsagePendingCounter:
         entry = json.loads(proxy_log.read_text())
         assert entry["url"] == "https://api.vm0.ai/api/webhooks/agent/usage-event"
         assert entry["type"] == "usage_event"
-        assert entry["payload"]["url"] == "payload-url"
-        assert entry["payload"]["type"] == "payload-type"
-        assert entry["payload"]["attempt"] == 99
-        assert entry["payload"]["error"] == "payload-error"
+        assert entry["payload_run_id"] == "run-1"
+        assert entry["payload_event_count"] == 0
+        assert "payload" not in entry
+        assert "payload_bytes" not in entry
+        assert "events" not in entry
+        assert "idempotencyKey" not in json.dumps(entry)
 
     def test_submit_failure_rolls_back_pending_report(self, tmp_path):
         pending_path = tmp_path / "usage-pending"

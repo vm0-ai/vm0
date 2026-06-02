@@ -23,12 +23,12 @@ import pytest
 import matching
 from usage.providers.connectors import _HANDLERS as CONNECTOR_USAGE_HANDLERS
 from usage.providers.connectors.x_billing import (
+    _BODY_REFINEMENT_RULES,
     _INCLUDES_TO_BUCKET,
     _PATH_OVERRIDES,
     _PERMISSION_TO_BUCKET,
     _build_override_index,
     classify_bucket,
-    refine_bucket_with_body,
 )
 
 
@@ -1040,16 +1040,7 @@ class TestSeedConsistency:
         emitted = set(_PERMISSION_TO_BUCKET.values())
         emitted.update(bucket for _, _, _, bucket in _PATH_OVERRIDES)
         emitted.update(_INCLUDES_TO_BUCKET.values())
-        # refine_bucket_with_body may downgrade the with-url bucket —
-        # derive the target by invoking it on a no-URL body rather than
-        # hardcoding the bucket name.
-        downgraded = refine_bucket_with_body(
-            "content.create_with_url",
-            "POST",
-            "/2/tweets",
-            json.dumps({"text": "plain text without any link"}).encode(),
-        )
-        emitted.add(downgraded)
+        emitted.update(rule.target_bucket for rule in _BODY_REFINEMENT_RULES)
         # Unknown ``includes.<key>`` categories are synthetic per-request
         # strings; they intentionally have no seed row — the billing
         # processor applies a server-side fallback price.  Not included

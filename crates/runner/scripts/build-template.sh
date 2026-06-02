@@ -30,7 +30,7 @@
 #     --debootstrap-dir /path/to/cache \
 #     --debootstrap-lock /path/to/cache/.lock \
 #     --hash <input-hash> \
-#     --disk-mb 16384 \
+#     --rootfs-disk-mb 8192 \
 #     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail
@@ -63,7 +63,7 @@ OUTPUT_DIR=""
 DEBOOTSTRAP_DIR=""
 DEBOOTSTRAP_LOCK=""
 INPUT_HASH=""
-DISK_MB=""
+ROOTFS_DISK_MB=""
 # Default mirror: archive.ubuntu.com only hosts amd64/i386;
 # arm64 and other ports use ports.ubuntu.com.
 if [[ "$(dpkg --print-architecture 2>/dev/null)" == "arm64" ]]; then
@@ -78,13 +78,13 @@ while [[ $# -gt 0 ]]; do
     --debootstrap-dir)   DEBOOTSTRAP_DIR="$2";   shift 2 ;;
     --debootstrap-lock)  DEBOOTSTRAP_LOCK="$2";  shift 2 ;;
     --hash)              INPUT_HASH="$2";        shift 2 ;;
-    --disk-mb)           DISK_MB="$2";           shift 2 ;;
+    --rootfs-disk-mb)    ROOTFS_DISK_MB="$2";    shift 2 ;;
     --mirror)            MIRROR="$2";            shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in OUTPUT_DIR DEBOOTSTRAP_DIR DEBOOTSTRAP_LOCK INPUT_HASH DISK_MB; do
+for var in OUTPUT_DIR DEBOOTSTRAP_DIR DEBOOTSTRAP_LOCK INPUT_HASH ROOTFS_DISK_MB; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -466,11 +466,11 @@ create_ext4() {
 
   local content_bytes
   content_bytes=$(sudo du -sb "$ROOTFS_DIR" | cut -f1)
-  local image_bytes=$(( DISK_MB * 1024 * 1024 ))
+  local image_bytes=$(( ROOTFS_DISK_MB * 1024 * 1024 ))
 
   if (( image_bytes < content_bytes )); then
     local content_mb=$(( content_bytes / 1024 / 1024 ))
-    echo "error: disk_mb (${DISK_MB} MiB) is smaller than rootfs content (${content_mb} MiB)" >&2
+    echo "error: rootfs_disk_mb (${ROOTFS_DISK_MB} MiB) is smaller than rootfs content (${content_mb} MiB)" >&2
     exit 1
   fi
 

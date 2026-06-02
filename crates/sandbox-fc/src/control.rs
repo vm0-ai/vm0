@@ -19,6 +19,8 @@ mod provider;
 mod resolver;
 mod server;
 
+const CONTROL_SOCKET_OVERHEAD_MS: u64 = 5000;
+
 pub use client::send_exec;
 pub use protocol::{ExecRequest, ExecResponse};
 pub use provider::FirecrackerControl;

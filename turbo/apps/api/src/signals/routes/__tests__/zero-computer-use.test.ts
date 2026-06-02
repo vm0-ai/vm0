@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
@@ -151,6 +151,7 @@ describe("desktop computer-use runtime", () => {
   }
 
   afterEach(async () => {
+    clearMockNow();
     const writeDb = store.set(writeDb$);
     if (trackedOrgIds.length > 0) {
       await writeDb
@@ -475,6 +476,88 @@ describe("desktop computer-use runtime", () => {
       status: "succeeded",
       result: { snapshotId: "snap_1" },
     });
+  });
+
+  it("times out stale running commands before claiming new work", async () => {
+    const baseTime = new Date("2026-06-01T00:00:00.000Z");
+    mockNow(baseTime);
+    const fixture = await createOrgFixture();
+    const hostToken = "host-token";
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken,
+      lastSeenAt: baseTime,
+    });
+    const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
+    const hostClient = setupApp({ context })(
+      zeroComputerUseHostCommandsContract,
+    );
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+
+    const first = await accept(
+      commandClient.create({
+        body: { kind: "app.state", app: "Safari", timeoutMs: 1000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    mockNow(new Date(baseTime.getTime() + 1));
+    const second = await accept(
+      commandClient.create({
+        body: { kind: "apps.list", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    const claimedFirst = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+    expect(claimedFirst.body.status).toBe("command");
+    if (claimedFirst.body.status !== "command") {
+      throw new Error("expected command");
+    }
+    expect(claimedFirst.body.command.id).toBe(first.body.commandId);
+
+    mockNow(new Date(baseTime.getTime() + 1002));
+    const claimedSecond = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+
+    expect(claimedSecond.body.status).toBe("command");
+    if (claimedSecond.body.status !== "command") {
+      throw new Error("expected command");
+    }
+    expect(claimedSecond.body.command.id).toBe(second.body.commandId);
+
+    const timedOut = await accept(
+      commandClient.get({
+        params: { commandId: first.body.commandId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(timedOut.body).toMatchObject({
+      status: "failed",
+      error: {
+        code: "timeout",
+        message: "Computer-use command timed out after 1000ms",
+      },
+    });
+    expect(timedOut.body.completedAt).toBe("2026-06-01T00:00:01.002Z");
   });
 
   it("queues write commands without approval and audits completion", async () => {

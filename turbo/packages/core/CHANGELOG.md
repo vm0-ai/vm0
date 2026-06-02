@@ -1,5 +1,50 @@
 # Changelog
 
+## [8.305.2](https://github.com/vm0-ai/vm0/compare/core-v8.305.1...core-v8.305.2) (2026-06-01)
+
+
+### Refactoring
+
+* derive platform secrets from access config ([#15739](https://github.com/vm0-ai/vm0/issues/15739)) ([45d6def](https://github.com/vm0-ai/vm0/commit/45d6def9bec9822671272fd4ebb3b5379b50f5af))
+* move google security warning helper to platform ([#15730](https://github.com/vm0-ai/vm0/issues/15730)) ([7289928](https://github.com/vm0-ai/vm0/commit/728992840fd0700d14afaed5fa3d92b860538c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.51.0
+    * @vm0/connectors bumped to 1.40.1
+
+## [8.305.1](https://github.com/vm0-ai/vm0/compare/core-v8.305.0...core-v8.305.1) (2026-06-01)
+
+
+### Refactoring
+
+* remove connector session handoff ([#15689](https://github.com/vm0-ai/vm0/issues/15689)) ([1ea6d2a](https://github.com/vm0-ai/vm0/commit/1ea6d2a3aa5a0db8d8b6118cba818210a5a49df6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.9
+
+## [8.305.0](https://github.com/vm0-ai/vm0/compare/core-v8.304.9...core-v8.305.0) (2026-06-01)
+
+
+### Features
+
+* add user permission grant foundation ([#15633](https://github.com/vm0-ai/vm0/issues/15633)) ([b27e76d](https://github.com/vm0-ai/vm0/commit/b27e76d5b9cfe13a72900976c16ebbd1a65fac80))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.8
+    * @vm0/connectors bumped to 1.40.0
+
 ## [8.304.9](https://github.com/vm0-ai/vm0/compare/core-v8.304.8...core-v8.304.9) (2026-06-01)
 
 

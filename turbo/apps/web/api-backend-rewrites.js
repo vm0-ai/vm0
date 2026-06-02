@@ -1,6 +1,8 @@
 const UUID_PATH_SEGMENT_PATTERN =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
+const LEGACY_FILE_REWRITE_SOURCE = "/f/:userId/:id/:filename";
+const LEGACY_FILE_PATH_RE = /^\/f\/[^/]+\/[^/]+\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/me/model-providers/:type";
 const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
@@ -126,8 +128,6 @@ const AGENT_RUN_TELEMETRY_NETWORK_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_P
 const AGENT_RUN_TELEMETRY_NETWORK_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/network$`,
 );
-const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
-const CONNECTORS_AUTHORIZE_PATH_RE = /^\/api\/connectors\/[^/]+\/authorize$/;
 const AGENT_RUN_TELEMETRY_SYSTEM_LOG_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry/system-log`;
 const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/system-log$`,
@@ -265,10 +265,6 @@ const ZERO_COMPUTER_USE_HOSTS_START_REWRITE_SOURCE =
   "/api/zero/computer-use/hosts/start";
 const ZERO_COMPUTER_USE_WRITE_COMMANDS_REWRITE_SOURCE =
   "/api/zero/computer-use/write-commands";
-const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/authorize";
-const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
-  /^\/api\/zero\/connectors\/[^/]+\/authorize$/;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE = "/api/zero/connectors/search";
 const ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE =
@@ -283,14 +279,6 @@ const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
   "/api/zero/connectors/:type/scope-diff";
 const ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE =
   /^\/api\/zero\/connectors\/[^/]+\/scope-diff$/;
-const ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/sessions";
-const ZERO_CONNECTORS_SESSIONS_PATH_RE =
-  /^\/api\/zero\/connectors\/[^/]+\/sessions$/;
-const ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE = `/api/zero/connectors/:type/sessions/:sessionId(${UUID_PATH_SEGMENT_PATTERN})`;
-const ZERO_CONNECTORS_SESSION_BY_ID_PATH_RE = new RegExp(
-  `^/api/zero/connectors/[^/]+/sessions/${UUID_PATH_SEGMENT_PATTERN}$`,
-);
 const ZERO_CONNECTORS_OAUTH_START_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/start";
 const ZERO_CONNECTORS_OAUTH_START_PATH_RE =
@@ -363,6 +351,7 @@ const ZERO_DEFAULT_AGENT_REWRITE_SOURCE = "/api/zero/default-agent";
 const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
 
 export const API_BACKEND_REWRITES = [
+  [LEGACY_FILE_REWRITE_SOURCE, "/f/:userId/:id/:filename", LEGACY_FILE_PATH_RE],
   [
     AGENT_CHECKPOINT_REWRITE_SOURCE,
     "/api/agent/checkpoints/:id",
@@ -464,11 +453,6 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/cron/sync-skills", "/api/cron/sync-skills"],
   ["/api/cron/telegram-cleanup", "/api/cron/telegram-cleanup"],
-  [
-    CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-    "/api/connectors/:type/authorize",
-    CONNECTORS_AUTHORIZE_PATH_RE,
-  ],
   [
     CONNECTORS_CALLBACK_REWRITE_SOURCE,
     "/api/connectors/:type/callback",
@@ -724,21 +708,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE,
     "/api/zero/connectors/:type/scope-diff",
     ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE,
-  ],
-  [
-    ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/sessions",
-    ZERO_CONNECTORS_SESSIONS_PATH_RE,
-  ],
-  [
-    ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/sessions/:sessionId",
-    ZERO_CONNECTORS_SESSION_BY_ID_PATH_RE,
-  ],
-  [
-    ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/authorize",
-    ZERO_CONNECTORS_AUTHORIZE_PATH_RE,
   ],
   [
     ZERO_CONNECTORS_OAUTH_START_REWRITE_SOURCE,
@@ -1049,6 +1018,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/permission-access-requests",
     "/api/zero/permission-access-requests",
   ],
+  ["/api/zero/user-permission-grants", "/api/zero/user-permission-grants"],
   ["/api/zero/permission-policies", "/api/zero/permission-policies"],
   ["/api/zero/push-subscriptions", "/api/zero/push-subscriptions"],
   ["/api/zero/queue-position", "/api/zero/queue-position"],
@@ -1156,9 +1126,7 @@ export function matchesApiBackendRewritePath(pathname) {
 
 export function matchesConnectorOAuthRewritePath(pathname) {
   return (
-    CONNECTORS_AUTHORIZE_PATH_RE.test(pathname) ||
     CONNECTORS_CALLBACK_PATH_RE.test(pathname) ||
-    ZERO_CONNECTORS_AUTHORIZE_PATH_RE.test(pathname) ||
     ZERO_CONNECTORS_OAUTH_START_PATH_RE.test(pathname)
   );
 }

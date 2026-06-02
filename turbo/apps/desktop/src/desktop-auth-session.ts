@@ -29,6 +29,7 @@ interface ZeroOrgResponse {
 type RunAuthWindow = (request: {
   readonly url: string;
   readonly visible: boolean;
+  readonly allowInteractiveFallbacks: boolean;
 }) => Promise<void>;
 
 interface DesktopAuthSessionOptions {
@@ -66,6 +67,14 @@ function signedOutDesktopAuthState(): DesktopAuthState {
   };
 }
 
+function signingInDesktopAuthState(): DesktopAuthState {
+  return {
+    status: "signing_in",
+    user: null,
+    organization: null,
+  };
+}
+
 /**
  * Owns the desktop auth token state machine, extracted from `main.ts` and kept
  * free of Electron imports so it can be integration-tested by injecting fakes,
@@ -85,6 +94,7 @@ export class DesktopAuthSession {
   private token: string | null = null;
   private tokenRefresh: Promise<string | null> | null = null;
   private pendingCode: string | null = null;
+  private signingIn = false;
 
   constructor(options: DesktopAuthSessionOptions) {
     this.apiBaseUrl = options.apiBaseUrl;
@@ -107,13 +117,32 @@ export class DesktopAuthSession {
     return await this.refresh();
   }
 
+  getCachedToken(): string | null {
+    return this.token;
+  }
+
   async getAuthState(): Promise<DesktopAuthState> {
+    if (this.signingIn) {
+      return signingInDesktopAuthState();
+    }
+
+    const state = await this.fetchAuthState();
+    if (state.status !== "signed_out") {
+      return state;
+    }
+
+    const restoredToken = await this.getToken({ forceRefresh: true });
+    if (!restoredToken) {
+      return state;
+    }
+
+    return await this.fetchAuthState();
+  }
+
+  private async fetchAuthState(): Promise<DesktopAuthState> {
     const meUrl = new URL(AUTH_ME_PATH, this.apiBaseUrl);
-    const meResponse = await fetch(meUrl, {
-      headers: await this.headersFor(meUrl),
-    });
+    const meResponse = await this.fetchWithSessionAuth(meUrl);
     if (meResponse.status === 401) {
-      this.token = null;
       return signedOutDesktopAuthState();
     }
     if (!meResponse.ok) {
@@ -122,11 +151,8 @@ export class DesktopAuthSession {
 
     const user = (await meResponse.json()) as AuthMeResponse;
     const orgUrl = new URL(ZERO_ORG_PATH, this.apiBaseUrl);
-    const orgResponse = await fetch(orgUrl, {
-      headers: await this.headersFor(orgUrl),
-    });
+    const orgResponse = await this.fetchWithSessionAuth(orgUrl);
     if (orgResponse.status === 401) {
-      this.token = null;
       return signedOutDesktopAuthState();
     }
     if (orgResponse.status === 404) {
@@ -156,12 +182,26 @@ export class DesktopAuthSession {
   }
 
   async consumeCode(code: string): Promise<void> {
-    await this.runAuthWindow({ url: this.consumeUrl(code), visible: false });
+    this.setSigningIn(true);
+    try {
+      await this.runAuthWindow({
+        url: this.consumeUrl(code),
+        visible: false,
+        allowInteractiveFallbacks: true,
+      });
+    } finally {
+      this.setSigningIn(false);
+    }
+
     await this.onAuthCompleted();
   }
 
   async selectOrganization(): Promise<void> {
-    await this.runAuthWindow({ url: this.selectOrgUrl, visible: true });
+    await this.runAuthWindow({
+      url: this.selectOrgUrl,
+      visible: true,
+      allowInteractiveFallbacks: true,
+    });
     await this.onAuthCompleted();
   }
 
@@ -182,7 +222,11 @@ export class DesktopAuthSession {
 
     this.tokenRefresh = (async () => {
       const before = this.token;
-      await this.runAuthWindow({ url: this.tokenUrl, visible: false });
+      await this.runAuthWindow({
+        url: this.tokenUrl,
+        visible: false,
+        allowInteractiveFallbacks: false,
+      });
       const after = this.token;
       // completeSignIn() is the token's only write path. If the refresh window
       // reached a completion navigation without ever delivering a token, the
@@ -196,6 +240,28 @@ export class DesktopAuthSession {
     } finally {
       this.tokenRefresh = null;
     }
+  }
+
+  private setSigningIn(value: boolean): void {
+    if (this.signingIn === value) {
+      return;
+    }
+    this.signingIn = value;
+    this.onChange();
+  }
+
+  private async fetchWithSessionAuth(requestUrl: URL): Promise<Response> {
+    const response = await fetch(requestUrl, {
+      headers: await this.headersFor(requestUrl),
+    });
+    if (response.status !== 401 || !this.token) {
+      return response;
+    }
+
+    this.token = null;
+    return await fetch(requestUrl, {
+      headers: await this.headersFor(requestUrl),
+    });
   }
 
   private async headersFor(requestUrl: URL): Promise<Headers> {

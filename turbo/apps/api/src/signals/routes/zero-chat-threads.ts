@@ -6,7 +6,6 @@ import {
   chatThreadMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -34,23 +33,13 @@ import { zeroChatThreadPinRoutes } from "./zero-chat-threads-pin";
 import { zeroChatThreadRenameRoutes } from "./zero-chat-threads-rename";
 import { zeroChatThreadUnpinRoutes } from "./zero-chat-threads-unpin";
 
-const chatThreadIdSchema = z.string().uuid();
-
 function chatThreadNotFound() {
   return notFound("Chat thread not found");
-}
-
-function isValidChatThreadId(id: string): boolean {
-  return chatThreadIdSchema.safeParse(id).success;
 }
 
 const getChatThreadInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadByIdContract.get));
-
-  if (!isValidChatThreadId(params.id)) {
-    return chatThreadNotFound();
-  }
 
   const thread = await get(
     zeroChatThreadDetail({ threadId: params.id, userId: auth.userId }),

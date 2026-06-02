@@ -3,6 +3,7 @@
 import gzip
 import json
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,125 @@ import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.usage_helpers import set_stream_buffer
+
+
+@dataclass(frozen=True)
+class ModelProviderJsonCase:
+    id: str
+    host: str
+    original_url: str
+    firewall_name: str
+    cli_agent_type: str | None
+    message_id: str
+    model: str
+    uses_openai_responses: bool
+    input_tokens: int = 50
+    output_tokens: int = 200
+    cached_tokens: int | None = None
+
+
+ANTHROPIC_JSON_CASE = ModelProviderJsonCase(
+    id="anthropic",
+    host="api.anthropic.com",
+    original_url="https://api.anthropic.com/v1/messages",
+    firewall_name="model-provider:anthropic-api-key",
+    cli_agent_type=None,
+    message_id="msg_1",
+    model="claude-sonnet-4-6",
+    uses_openai_responses=False,
+)
+
+OPENAI_RESPONSES_CASE = ModelProviderJsonCase(
+    id="openai",
+    host="api.openai.com",
+    original_url="https://api.openai.com/v1/responses",
+    firewall_name="model-provider:openai-api-key",
+    cli_agent_type="codex",
+    message_id="resp_1",
+    model="gpt-5.5",
+    uses_openai_responses=True,
+    cached_tokens=10,
+)
+
+CODEX_OAUTH_RESPONSES_CASE = ModelProviderJsonCase(
+    id="codex-oauth",
+    host="chatgpt.com",
+    original_url="https://chatgpt.com/backend-api/codex/responses",
+    firewall_name="model-provider:codex-oauth-token",
+    cli_agent_type="codex",
+    message_id="resp_1",
+    model="gpt-5.5",
+    uses_openai_responses=True,
+    cached_tokens=10,
+)
+
+MODEL_PROVIDER_JSON_CASES = (ANTHROPIC_JSON_CASE, OPENAI_RESPONSES_CASE)
+
+
+def _model_provider_json_case_id(provider_case: ModelProviderJsonCase) -> str:
+    return provider_case.id
+
+
+def _standard_success_payload(
+    provider_case: ModelProviderJsonCase,
+    *,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cached_tokens: int | None = None,
+) -> bytes:
+    resolved_input_tokens = provider_case.input_tokens if input_tokens is None else input_tokens
+    resolved_output_tokens = provider_case.output_tokens if output_tokens is None else output_tokens
+    resolved_cached_tokens = provider_case.cached_tokens if cached_tokens is None else cached_tokens
+    usage_payload: dict[str, object] = {
+        "input_tokens": resolved_input_tokens,
+        "output_tokens": resolved_output_tokens,
+    }
+    if provider_case.uses_openai_responses and resolved_cached_tokens is not None:
+        usage_payload["input_tokens_details"] = {
+            "cached_tokens": resolved_cached_tokens,
+        }
+    payload: dict[str, object] = {
+        "id": provider_case.message_id,
+        "model": provider_case.model,
+        "usage": usage_payload,
+    }
+    if not provider_case.uses_openai_responses:
+        payload["content"] = [{"type": "text", "text": "Hello"}]
+    return json.dumps(payload).encode()
+
+
+def _expected_usage(
+    provider_case: ModelProviderJsonCase,
+    *,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cached_tokens: int | None = None,
+) -> dict[str, object]:
+    resolved_input_tokens = provider_case.input_tokens if input_tokens is None else input_tokens
+    resolved_output_tokens = provider_case.output_tokens if output_tokens is None else output_tokens
+    resolved_cached_tokens = provider_case.cached_tokens if cached_tokens is None else cached_tokens
+    expected = {
+        "message_id": provider_case.message_id,
+        "model": provider_case.model,
+        "tokens.input": resolved_input_tokens,
+        "tokens.output": resolved_output_tokens,
+    }
+    if provider_case.uses_openai_responses and resolved_cached_tokens is not None:
+        assert resolved_cached_tokens <= resolved_input_tokens
+        expected["tokens.input"] = resolved_input_tokens - resolved_cached_tokens
+        expected["tokens.cache_read"] = resolved_cached_tokens
+    return expected
+
+
+def _expected_event_quantities(provider_case: ModelProviderJsonCase) -> dict[str, int]:
+    return {
+        category: quantity
+        for category, quantity in _expected_usage(provider_case).items()
+        if category.startswith("tokens.")
+        and isinstance(quantity, int)
+        and not isinstance(quantity, bool)
+        and quantity > 0
+    }
 
 
 class TestModelProviderResponseUsage:
@@ -49,10 +169,11 @@ class TestModelProviderResponseUsage:
         flow.metadata["firewall_billable"] = billable
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
 
-    def _set_anthropic_metadata(
+    def _set_model_provider_metadata(
         self,
         flow,
         tmp_path: Path,
+        provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
         client_ip: str | None = "10.200.0.1",
@@ -67,66 +188,40 @@ class TestModelProviderResponseUsage:
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
-        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
-        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["original_url"] = provider_case.original_url
+        flow.metadata["firewall_name"] = provider_case.firewall_name
+        if provider_case.cli_agent_type is not None:
+            flow.metadata["cli_agent_type"] = provider_case.cli_agent_type
 
-    def _set_openai_metadata(
+    def _model_provider_flow(
         self,
-        flow,
+        real_flow,
         tmp_path: Path,
+        provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
         client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
-    ) -> None:
-        self._set_common_model_metadata(
+    ):
+        flow = real_flow(with_response=False, host=provider_case.host)
+        self._set_model_provider_metadata(
             flow,
             tmp_path,
+            provider_case,
             billable=billable,
             client_ip=client_ip,
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
-        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
-        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
-        flow.metadata["cli_agent_type"] = "codex"
-
-    def _set_codex_metadata(
-        self,
-        flow,
-        tmp_path: Path,
-        *,
-        billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
-        proxy_log_path: Path | None = None,
-        run_id: str = "run-abc-123",
-    ) -> None:
-        self._set_common_model_metadata(
-            flow,
-            tmp_path,
-            billable=billable,
-            client_ip=client_ip,
-            proxy_log_path=proxy_log_path,
-            run_id=run_id,
-        )
-        flow.metadata["original_url"] = "https://chatgpt.com/backend-api/codex/responses"
-        flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
-        flow.metadata["cli_agent_type"] = "codex"
+        return flow
 
     def test_non_streaming_json_fallback(self, tmp_path, real_flow):
         """Non-streaming JSON response should extract usage from buffer."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        self._set_anthropic_metadata(flow, tmp_path)
+        provider_case = ANTHROPIC_JSON_CASE
+        flow = self._model_provider_flow(real_flow, tmp_path, provider_case)
         # No model_provider_usage set (no SSE parser) — JSON body in buffer
-        body = json.dumps(
-            {
-                "id": "msg_1",
-                "model": "claude-sonnet-4-6",
-                "content": [{"type": "text", "text": "Hello"}],
-                "usage": {"input_tokens": 50, "output_tokens": 200},
-            }
-        ).encode()
+        body = _standard_success_payload(provider_case)
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -139,25 +234,16 @@ class TestModelProviderResponseUsage:
 
         # JSON fallback should populate model_provider_usage in metadata
         extracted = flow.metadata["model_provider_usage"]
-        assert extracted["model"] == "claude-sonnet-4-6"
-        assert extracted["tokens.input"] == 50
-        assert extracted["tokens.output"] == 200
+        expected = _expected_usage(provider_case)
+        assert extracted["model"] == expected["model"]
+        assert extracted["tokens.input"] == expected["tokens.input"]
+        assert extracted["tokens.output"] == expected["tokens.output"]
 
     def test_openai_non_streaming_json_fallback(self, tmp_path, real_flow):
         """Legacy JSON fallback should use OpenAI Responses mapping."""
-        flow = real_flow(with_response=False, host="api.openai.com")
-        self._set_openai_metadata(flow, tmp_path)
-        body = json.dumps(
-            {
-                "id": "resp_1",
-                "model": "gpt-5.5",
-                "usage": {
-                    "input_tokens": 50,
-                    "output_tokens": 200,
-                    "input_tokens_details": {"cached_tokens": 10},
-                },
-            }
-        ).encode()
+        provider_case = OPENAI_RESPONSES_CASE
+        flow = self._model_provider_flow(real_flow, tmp_path, provider_case)
+        body = _standard_success_payload(provider_case)
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -169,25 +255,26 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         extracted = flow.metadata["model_provider_usage"]
-        assert extracted["message_id"] == "resp_1"
-        assert extracted["model"] == "gpt-5.5"
-        assert extracted["tokens.input"] == 40
-        assert extracted["tokens.output"] == 200
-        assert extracted["tokens.cache_read"] == 10
+        expected = _expected_usage(provider_case)
+        assert extracted["message_id"] == expected["message_id"]
+        assert extracted["model"] == expected["model"]
+        assert extracted["tokens.input"] == expected["tokens.input"]
+        assert extracted["tokens.output"] == expected["tokens.output"]
+        assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == {
-            "tokens.input": 40,
-            "tokens.output": 200,
-            "tokens.cache_read": 10,
-        }
+        assert by_category == _expected_event_quantities(provider_case)
 
     def test_anthropic_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """Legacy JSON fallback parse failures should be observable."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
         body = b'{"id":"msg_1","model":"claude-sonnet-4-6","usage":{"input_tokens":50'
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -207,8 +294,13 @@ class TestModelProviderResponseUsage:
 
     def test_json_fallback_parser_bound_error_logs_proxy_warning(self, tmp_path, real_flow):
         """Bounded parser failures should be observable without logging body content."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
         oversized_model = "x" * 1025
         body = json.dumps(
             {
@@ -217,7 +309,6 @@ class TestModelProviderResponseUsage:
                 "usage": {"input_tokens": 50},
             }
         ).encode()
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -238,10 +329,14 @@ class TestModelProviderResponseUsage:
 
     def test_openai_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """OpenAI fallback parse failures should use the same proxy warning."""
-        flow = real_flow(with_response=False, host="api.openai.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            OPENAI_RESPONSES_CASE,
+            proxy_log_path=proxy_log_path,
+        )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
-        self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -275,7 +370,11 @@ class TestModelProviderResponseUsage:
             "truncated-zstd-prefix",
         ],
     )
-    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
     def test_json_fallback_compressed_body_parse_failure_logs_proxy_warning(
         self,
         tmp_path,
@@ -284,22 +383,14 @@ class TestModelProviderResponseUsage:
         provider_case,
     ):
         """One-shot decompression failures leave compressed bytes and log parse failure."""
-        if provider_case == "openai":
-            flow = real_flow(with_response=False, host="api.openai.com")
-            payload = (
-                b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50,"output_tokens":200}}'
-            )
-        else:
-            flow = real_flow(with_response=False, host="api.anthropic.com")
-            payload = (
-                b'{"id":"msg_1","model":"claude-sonnet-4-6",'
-                b'"usage":{"input_tokens":50,"output_tokens":200}}'
-            )
         proxy_log_path = tmp_path / "proxy.jsonl"
-        if provider_case == "openai":
-            self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-        else:
-            self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = _standard_success_payload(provider_case)
         if encoding_case == "chained-gzip":
             body = gzip.compress(payload)
             content_encoding = "gzip, identity"
@@ -369,7 +460,11 @@ class TestModelProviderResponseUsage:
         assert entries[0]["error"] == expected_error
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
-    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
     def test_json_fallback_concatenated_zlib_member_reports_usage(
         self,
         tmp_path,
@@ -379,21 +474,13 @@ class TestModelProviderResponseUsage:
     ):
         """Zlib stream concatenation should not let an empty first member hide usage."""
         proxy_log_path = tmp_path / "proxy.jsonl"
-        if provider_case == "openai":
-            flow = real_flow(with_response=False, host="api.openai.com")
-            self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-            payload = (
-                b'{"id":"resp_1","model":"gpt-5.5",'
-                b'"usage":{"input_tokens":50,"output_tokens":200,'
-                b'"input_tokens_details":{"cached_tokens":10}}}'
-            )
-        else:
-            flow = real_flow(with_response=False, host="api.anthropic.com")
-            self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-            payload = (
-                b'{"id":"msg_1","model":"claude-sonnet-4-6",'
-                b'"usage":{"input_tokens":50,"output_tokens":200}}'
-            )
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = _standard_success_payload(provider_case)
         if encoding_case == "gzip":
             body = gzip.compress(b"") + gzip.compress(payload)
         else:
@@ -412,13 +499,12 @@ class TestModelProviderResponseUsage:
         self._run_response(flow)
 
         extracted = flow.metadata["model_provider_usage"]
-        assert extracted["model"] == (
-            "gpt-5.5" if provider_case == "openai" else "claude-sonnet-4-6"
-        )
-        assert extracted["tokens.input"] == (40 if provider_case == "openai" else 50)
-        assert extracted["tokens.output"] == 200
-        if provider_case == "openai":
-            assert extracted["tokens.cache_read"] == 10
+        expected = _expected_usage(provider_case)
+        assert extracted["model"] == expected["model"]
+        assert extracted["tokens.input"] == expected["tokens.input"]
+        assert extracted["tokens.output"] == expected["tokens.output"]
+        if provider_case.uses_openai_responses:
+            assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
         if proxy_log_path.exists():
             entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
             assert not any(
@@ -427,7 +513,11 @@ class TestModelProviderResponseUsage:
             )
 
     @pytest.mark.parametrize("encoding_case", ["br", "zstd"])
-    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
     def test_json_fallback_brotli_and_zstd_report_usage(
         self,
         tmp_path,
@@ -437,30 +527,13 @@ class TestModelProviderResponseUsage:
     ):
         """Diagnostic fallback should handle complete br/zstd JSON bodies."""
         proxy_log_path = tmp_path / "proxy.jsonl"
-        if provider_case == "openai":
-            flow = real_flow(with_response=False, host="api.openai.com")
-            self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-            payload = json.dumps(
-                {
-                    "id": "resp_1",
-                    "model": "gpt-5.5",
-                    "usage": {
-                        "input_tokens": 50,
-                        "output_tokens": 200,
-                        "input_tokens_details": {"cached_tokens": 10},
-                    },
-                }
-            ).encode()
-        else:
-            flow = real_flow(with_response=False, host="api.anthropic.com")
-            self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-            payload = json.dumps(
-                {
-                    "id": "msg_1",
-                    "model": "claude-sonnet-4-6",
-                    "usage": {"input_tokens": 50, "output_tokens": 200},
-                }
-            ).encode()
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = _standard_success_payload(provider_case)
 
         if encoding_case == "br":
             body = body_utils.brotli.compress(payload)
@@ -481,22 +554,15 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         extracted = flow.metadata["model_provider_usage"]
-        assert extracted["model"] == (
-            "gpt-5.5" if provider_case == "openai" else "claude-sonnet-4-6"
-        )
-        assert extracted["tokens.input"] == (40 if provider_case == "openai" else 50)
-        assert extracted["tokens.output"] == 200
-        if provider_case == "openai":
-            assert extracted["tokens.cache_read"] == 10
+        expected_usage = _expected_usage(provider_case)
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
+        if provider_case.uses_openai_responses:
+            assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        expected = {
-            "tokens.input": 40 if provider_case == "openai" else 50,
-            "tokens.output": 200,
-        }
-        if provider_case == "openai":
-            expected["tokens.cache_read"] = 10
-        assert by_category == expected
+        assert by_category == _expected_event_quantities(provider_case)
         if proxy_log_path.exists():
             entries = [json.loads(line) for line in proxy_log_path.read_text().splitlines()]
             assert not any(
@@ -506,10 +572,14 @@ class TestModelProviderResponseUsage:
 
     def test_json_fallback_valid_body_without_usage_stays_quiet(self, tmp_path, real_flow):
         """Valid JSON without usage is not a parser failure."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
         body = b'{"id":"msg_1"}'
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -524,10 +594,14 @@ class TestModelProviderResponseUsage:
 
     def test_openai_json_fallback_valid_body_without_usage_stays_quiet(self, tmp_path, real_flow):
         """OpenAI fallback should also keep valid no-usage JSON quiet."""
-        flow = real_flow(with_response=False, host="api.openai.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            OPENAI_RESPONSES_CASE,
+            proxy_log_path=proxy_log_path,
+        )
         body = b'{"id":"resp_1","model":"gpt-5.5"}'
-        self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -543,7 +617,11 @@ class TestModelProviderResponseUsage:
     @pytest.mark.parametrize(
         "encoding_case", ["identity", "gzip", "deflate", "br", "zstd", "zstd-no-size"]
     )
-    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
     def test_json_fallback_empty_body_stays_quiet(
         self,
         tmp_path,
@@ -553,12 +631,12 @@ class TestModelProviderResponseUsage:
     ):
         """Empty model-provider bodies are not JSON parser failures."""
         proxy_log_path = tmp_path / "proxy.jsonl"
-        if provider_case == "openai":
-            flow = real_flow(with_response=False, host="api.openai.com")
-            self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-        else:
-            flow = real_flow(with_response=False, host="api.anthropic.com")
-            self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
         if encoding_case == "gzip":
             body = gzip.compress(b"")
         elif encoding_case == "deflate":
@@ -590,10 +668,14 @@ class TestModelProviderResponseUsage:
 
     def test_anthropic_json_fallback_metadata_only_usage_stays_quiet(self, tmp_path, real_flow):
         """Anthropic metadata without positive token usage is not a parser failure."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
         body = b'{"id":"msg_1","model":"claude-sonnet-4-6"}'
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -609,38 +691,32 @@ class TestModelProviderResponseUsage:
         }
         assert not proxy_log_path.exists()
 
-    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
     def test_json_fallback_zero_token_usage_stays_quiet(self, tmp_path, real_flow, provider_case):
         """Valid zero-token usage is not a parser failure and does not bill."""
         proxy_log_path = tmp_path / "proxy.jsonl"
-        if provider_case == "anthropic":
-            flow = real_flow(with_response=False, host="api.anthropic.com")
-            self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-            body = (
-                b'{"id":"msg_1","model":"claude-sonnet-4-6",'
-                b'"usage":{"input_tokens":0,"output_tokens":0}}'
-            )
-            expected_usage = {
-                "message_id": "msg_1",
-                "model": "claude-sonnet-4-6",
-                "tokens.input": 0,
-                "tokens.output": 0,
-            }
-        else:
-            flow = real_flow(with_response=False, host="api.openai.com")
-            self._set_openai_metadata(flow, tmp_path, proxy_log_path=proxy_log_path)
-            body = (
-                b'{"id":"resp_1","model":"gpt-5.5","usage":'
-                b'{"input_tokens":0,"output_tokens":0,'
-                b'"input_tokens_details":{"cached_tokens":0}}}'
-            )
-            expected_usage = {
-                "message_id": "resp_1",
-                "model": "gpt-5.5",
-                "tokens.input": 0,
-                "tokens.output": 0,
-                "tokens.cache_read": 0,
-            }
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=proxy_log_path,
+        )
+        body = _standard_success_payload(
+            provider_case,
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+        )
+        expected_usage = _expected_usage(
+            provider_case,
+            input_tokens=0,
+            output_tokens=0,
+            cached_tokens=0,
+        )
 
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
@@ -656,19 +732,9 @@ class TestModelProviderResponseUsage:
 
     def test_codex_oauth_non_streaming_json_fallback(self, tmp_path, real_flow):
         """Codex OAuth model-provider fallback uses OpenAI Responses mapping."""
-        flow = real_flow(with_response=False, host="chatgpt.com")
-        self._set_codex_metadata(flow, tmp_path)
-        body = json.dumps(
-            {
-                "id": "resp_1",
-                "model": "gpt-5.5",
-                "usage": {
-                    "input_tokens": 50,
-                    "output_tokens": 200,
-                    "input_tokens_details": {"cached_tokens": 10},
-                },
-            }
-        ).encode()
+        provider_case = CODEX_OAUTH_RESPONSES_CASE
+        flow = self._model_provider_flow(real_flow, tmp_path, provider_case)
+        body = _standard_success_payload(provider_case)
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -680,29 +746,25 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         extracted = flow.metadata["model_provider_usage"]
-        assert extracted["message_id"] == "resp_1"
-        assert extracted["model"] == "gpt-5.5"
-        assert extracted["tokens.input"] == 40
-        assert extracted["tokens.output"] == 200
-        assert extracted["tokens.cache_read"] == 10
+        expected = _expected_usage(provider_case)
+        assert extracted["message_id"] == expected["message_id"]
+        assert extracted["model"] == expected["model"]
+        assert extracted["tokens.input"] == expected["tokens.input"]
+        assert extracted["tokens.output"] == expected["tokens.output"]
+        assert extracted["tokens.cache_read"] == expected["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        assert by_category == {
-            "tokens.input": 40,
-            "tokens.output": 200,
-            "tokens.cache_read": 10,
-        }
+        assert by_category == _expected_event_quantities(provider_case)
 
     def test_non_billable_openai_json_does_not_report_usage(self, tmp_path, real_flow):
-        flow = real_flow(with_response=False, host="api.openai.com")
-        body = json.dumps(
-            {
-                "id": "resp_1",
-                "model": "gpt-5.5",
-                "usage": {"input_tokens": 50, "output_tokens": 200},
-            }
-        ).encode()
-        self._set_openai_metadata(flow, tmp_path, billable=False, client_ip=None)
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            OPENAI_RESPONSES_CASE,
+            billable=False,
+            client_ip=None,
+        )
+        body = _standard_success_payload(OPENAI_RESPONSES_CASE)
         flow.metadata["stream_buffer"] = bytearray(body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -716,12 +778,16 @@ class TestModelProviderResponseUsage:
 
     def test_non_billable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
         """Non-billable model-provider fallback must not emit usage warnings."""
-        flow = real_flow(with_response=False, host="api.openai.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
-        body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
-        self._set_openai_metadata(
-            flow, tmp_path, billable=False, client_ip=None, proxy_log_path=proxy_log_path
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            OPENAI_RESPONSES_CASE,
+            billable=False,
+            client_ip=None,
+            proxy_log_path=proxy_log_path,
         )
+        body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
         set_stream_buffer(flow, body)
         flow.response = tutils.tresp(
             status_code=200,
@@ -736,8 +802,12 @@ class TestModelProviderResponseUsage:
 
     def test_full_pipeline_large_model_json_uses_bounded_buffer(self, tmp_path, real_flow):
         """responseheaders + response report model usage without full-body buffering."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=tmp_path / "proxy.jsonl")
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -757,35 +827,22 @@ class TestModelProviderResponseUsage:
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"tokens.input": 50, "tokens.output": 200}
 
-    @pytest.mark.parametrize("provider_case", ["anthropic", "openai"])
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
     def test_full_pipeline_compressed_model_json_reports_usage(
         self, tmp_path, real_flow, provider_case
     ):
         """responseheaders parser should decompress non-SSE model JSON before extraction."""
-        if provider_case == "openai":
-            flow = real_flow(with_response=False, host="api.openai.com")
-            self._set_openai_metadata(flow, tmp_path, proxy_log_path=tmp_path / "proxy.jsonl")
-            payload = json.dumps(
-                {
-                    "id": "resp_1",
-                    "model": "gpt-5.5",
-                    "usage": {
-                        "input_tokens": 50,
-                        "output_tokens": 200,
-                        "input_tokens_details": {"cached_tokens": 10},
-                    },
-                }
-            ).encode()
-        else:
-            flow = real_flow(with_response=False, host="api.anthropic.com")
-            self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=tmp_path / "proxy.jsonl")
-            payload = json.dumps(
-                {
-                    "id": "msg_1",
-                    "model": "claude-sonnet-4-6",
-                    "usage": {"input_tokens": 50, "output_tokens": 200},
-                }
-            ).encode()
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        payload = _standard_success_payload(provider_case)
         compressed = gzip.compress(payload)
         flow.response = tutils.tresp(
             status_code=200,
@@ -800,29 +857,26 @@ class TestModelProviderResponseUsage:
         webhook = self._run_response(flow)
 
         extracted = flow.metadata["model_provider_usage"]
-        assert extracted["model"] == (
-            "gpt-5.5" if provider_case == "openai" else "claude-sonnet-4-6"
-        )
-        assert extracted["tokens.input"] == (40 if provider_case == "openai" else 50)
-        assert extracted["tokens.output"] == 200
-        if provider_case == "openai":
-            assert extracted["tokens.cache_read"] == 10
+        expected_usage = _expected_usage(provider_case)
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
+        if provider_case.uses_openai_responses:
+            assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
-        expected = {
-            "tokens.input": 40 if provider_case == "openai" else 50,
-            "tokens.output": 200,
-        }
-        if provider_case == "openai":
-            expected["tokens.cache_read"] = 10
-        assert by_category == expected
+        assert by_category == _expected_event_quantities(provider_case)
 
     def test_full_pipeline_incomplete_model_json_does_not_report_partial_usage(
         self, tmp_path, real_flow
     ):
         """Fields seen before EOF are ignored unless the JSON document completes."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=tmp_path / "proxy.jsonl")
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json"}),
@@ -858,8 +912,12 @@ class TestModelProviderResponseUsage:
                 "usage": {"input_tokens": 50, "output_tokens": 200},
             }
         ).encode()
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        self._set_anthropic_metadata(flow, tmp_path, proxy_log_path=tmp_path / "proxy.jsonl")
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json", "content-encoding": "gzip"}),
@@ -883,9 +941,12 @@ class TestModelProviderResponseUsage:
                 "usage": [{"input_tokens": 50, "output_tokens": 200}],
             }
         ).encode()
-        flow = real_flow(with_response=False, host="api.anthropic.com")
-        self._set_anthropic_metadata(
-            flow, tmp_path, client_ip=None, proxy_log_path=tmp_path / "proxy.jsonl"
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            client_ip=None,
+            proxy_log_path=tmp_path / "proxy.jsonl",
         )
         flow.response = tutils.tresp(
             status_code=200,

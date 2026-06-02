@@ -7,6 +7,8 @@ This addon runs on the runner HOST (not inside VMs) and:
 2. Looks up the source VM's runId from the proxy registry
 3. Injects auth headers for configured firewall rules (proxy-side token replacement)
 4. Logs network activity per-run to JSONL files
+5. Reports model-provider and connector usage
+6. Participates in runner-triggered usage drain before proxy shutdown
 """
 
 import functools
@@ -34,6 +36,7 @@ from mitmproxy.addonmanager import Loader
 import body_utils
 import flow_metadata_keys as metadata_keys
 import matching
+import network_log_sanitization
 import registry
 import response_streaming
 import usage
@@ -64,6 +67,17 @@ _BROWSER_USER_AGENT_MARKERS = (
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
+
+# Runner-triggered usage drain protocol:
+# - Rust writes `usage-flush-request` with the active usageStateId and a fresh
+#   flushRequestId, then sends SIGUSR1 to this addon process.
+# - This addon flushes buffered usage and writes `usage-pending` with the
+#   matching flushRequestId so the runner can observe a fresh snapshot.
+# - Rust performs a bounded wait for the acknowledged snapshot to have zero
+#   flows, buffered events, and reports before stopping the proxy.
+#
+# Keep this in sync with usage/counters.py and the Rust wait path in
+# crates/runner/src/proxy.rs plus crates/runner/src/cmd/start/mod.rs.
 _RUNNER_USAGE_FLUSH_SIGNAL = signal.SIGUSR1
 _usage_flush_requested = threading.Event()
 _usage_flush_signal_lock = threading.Lock()
@@ -122,12 +136,19 @@ def configure(updated: set[str]) -> None:
 
 
 def _handle_runner_usage_flush_signal(signum: int, _frame: object) -> None:
+    """Schedule runner-requested usage drain from the SIGUSR1 handler.
+
+    Keep this handler minimal: it may interrupt mitmproxy's event loop, so it
+    only records that work is needed and lets the background worker perform
+    file I/O and usage flushing.
+    """
     del signum
     _usage_flush_requested.set()
     _start_usage_flush_worker()
 
 
 def _start_usage_flush_worker() -> None:
+    """Start one usage-flush worker, coalescing repeated signals while active."""
     if not _usage_flush_signal_lock.acquire(blocking=False):
         return
 
@@ -146,6 +167,12 @@ def _start_usage_flush_worker() -> None:
 
 
 def _run_usage_flush_worker() -> None:
+    """Drain coalesced runner flush requests under the worker lock.
+
+    The event can be set again while a flush is running. Loop until no request
+    is pending, and restart after releasing the lock if a signal arrives during
+    the worker exit path.
+    """
     try:
         while True:
             _usage_flush_requested.clear()
@@ -159,6 +186,11 @@ def _run_usage_flush_worker() -> None:
 
 
 def _flush_usage_for_runner_request() -> None:
+    """Flush buffered usage and acknowledge the runner's current request.
+
+    The pending snapshot is written in ``finally`` so the runner can observe
+    fresh counters and the current flushRequestId even if usage flushing fails.
+    """
     flush_request_id = usage.read_usage_flush_request_id()
     try:
         usage.flush_usage_events(trigger="runner")
@@ -239,22 +271,6 @@ def _record_browser_firewall_passthrough(
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
 
 
-def _sanitize_url_for_log(url: str) -> str:
-    """Return a URL string safe for persistent logs.
-
-    Runtime metadata keeps the raw URL because firewall/auth and connector
-    billing can need query parameters. Persistent logs do not.
-    """
-    try:
-        parts = urllib.parse.urlsplit(url)
-    except ValueError:
-        cut_points = [index for marker in ("?", "#") if (index := url.find(marker)) != -1]
-        if not cut_points:
-            return url
-        return url[: min(cut_points)]
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-
-
 def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
     target = flow.metadata.get(metadata_keys.NETWORK_LOG_TARGET)
     if target is not None:
@@ -281,7 +297,7 @@ def _http_network_log_entry(
         "host": host,
         "port": port,
         "method": flow.request.method,
-        "url": _sanitize_url_for_log(url),
+        "url": network_log_sanitization.sanitize_url_for_network_log(url),
         "status": status_code,
         "latency_ms": latency_ms,
         "request_size": request_size,
@@ -517,8 +533,9 @@ def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> Non
 
     This closes the shutdown drain gap before standard upstream dispatch and
     before auth.base URL rewrites, where the addon itself forwards upstream.
-    The response/error decorator pops the metadata flag so decrement runs
-    exactly once.
+    Normal HTTP flows release from response/error.  Model-provider WebSocket
+    upgrades release from websocket_end/error because the 101 response does not
+    complete the billable usage lifecycle.
     """
     if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
@@ -574,12 +591,17 @@ def _response_size(flow: http.HTTPFlow) -> int:
     return int(flow.response.headers.get("content-length", 0))
 
 
-def _track_usage_flow(fn):
-    """Decorator ensuring decrement_in_flight_flows runs after response/error handlers.
+def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
+    response_streaming.release_response_stream_state(flow)
+    if release_tracking:
+        _release_tracked_usage_flow(flow)
 
-    Pairs with ``increment_in_flight_flows()`` in ``request()``.  Uses ``pop`` so
-    that even if both ``response()`` and ``error()`` fire for the same
-    flow, the decrement only happens once.
+
+def _track_usage_flow(fn):
+    """Decorator ensuring tracked usage flows release after terminal hooks.
+
+    Pairs with ``increment_in_flight_flows()`` in ``request()``. Uses ``pop`` so
+    duplicate terminal hooks decrement at most once.
     """
 
     @functools.wraps(fn)
@@ -587,8 +609,23 @@ def _track_usage_flow(fn):
         try:
             return fn(flow, *args, **kwargs)
         finally:
-            response_streaming.release_response_stream_state(flow)
-            _release_tracked_usage_flow(flow)
+            _release_usage_hook_state(flow, release_tracking=True)
+
+    return wrapper
+
+
+def _track_response_usage_flow(fn):
+    """Decorator for response() where a 101 WebSocket upgrade is not terminal."""
+
+    @functools.wraps(fn)
+    def wrapper(flow: http.HTTPFlow, *args, **kwargs):
+        release_tracking = True
+        try:
+            result = fn(flow, *args, **kwargs)
+            release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+            return result
+        finally:
+            _release_usage_hook_state(flow, release_tracking=release_tracking)
 
     return wrapper
 
@@ -601,7 +638,7 @@ def websocket_end(flow: http.HTTPFlow) -> None:
         _report_model_provider_usage_once(flow, run_id)
 
 
-@_track_usage_flow
+@_track_response_usage_flow
 def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
@@ -714,7 +751,7 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Log errors to per-job proxy log and mitmproxy console
     if flow.response and flow.response.status_code >= _HTTP_STATUS_ERROR_MIN:
-        safe_url = _sanitize_url_for_log(original_url)
+        safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
         log_proxy_entry(
             proxy_log_path,
             "warn",
@@ -780,10 +817,11 @@ def error(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
         usage.report_connector_usage(flow, run_id)
 
+    safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)
     log_proxy_entry(
         proxy_log_path,
         "warn",
-        f"Error: {error_msg}: {_sanitize_url_for_log(original_url)}",
+        f"Error: {error_msg}: {safe_url}",
         type="connection_error",
         error=error_msg,
     )
@@ -797,13 +835,15 @@ def error(flow: http.HTTPFlow) -> None:
 def done():
     """Flush pending usage reports before mitmproxy exits.
 
-    The runner requests fresh pending snapshots before stopping the proxy.
-    Buffered usage is converted into webhook reports before
-    ``shutdown(wait=True)`` drains already-submitted futures during graceful stop.
+    Runner-triggered flush workers and shutdown flush share
+    ``_usage_flush_signal_lock``. Waiting here keeps shutdown from closing the
+    executor while a SIGUSR1 worker is still converting buffered usage into
+    webhook reports. After that, ``shutdown(wait=True)`` drains submitted
+    webhook futures during graceful stop.
     """
     try:
-        # A SIGUSR1 flush can already have snapshotted buffered events but not
-        # yet enqueued them; wait before closing the executor.
+        # Wait for any in-flight runner-triggered flush before closing the
+        # executor used by webhook report delivery.
         with _usage_flush_signal_lock:
             usage.flush_usage_events(trigger="shutdown")
     finally:

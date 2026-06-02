@@ -1149,6 +1149,10 @@ class TestCompiledFirewallMatching:
             "https://api.example.com/items/../admin",
             "https://api.example.com/items/%2e%2e/admin",
             "https://api.example.com/items\\admin",
+            "https://api.example.com/items/%5cadmin",
+            "https://api.example.com/items/%5Cadmin",
+            "https://api.example.com/items/%5c..%5cadmin",
+            "https://api.example.com/items/%5C..%5Cadmin",
         ],
     )
     def test_compiled_blocks_unsafe_path(self, url):
@@ -1176,6 +1180,31 @@ class TestCompiledFirewallMatching:
         assert isinstance(compiled, matching.FirewallBlock)
         assert compiled.reason == "unsafe_path"
         assert compiled.permissions == ()
+
+    def test_compiled_allows_encoded_backslash_in_query(self):
+        fws = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {"name": "read", "rules": ["GET /items/{id}"]},
+                    ],
+                }
+            ],
+            name="example",
+        )
+        policies = {"example": {"allow": ["read"], "deny": [], "unknownPolicy": "deny"}}
+
+        compiled = matching.match_compiled_firewall_request(
+            "https://api.example.com/items/123?next=%5csecret",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(compiled, matching.FirewallAllow)
+        assert compiled.permission == "read"
 
     def test_compiled_blocks_unsafe_path_consumed_by_parameterized_base(self):
         fws = wrap_firewalls(
@@ -3663,11 +3692,20 @@ class TestCompiledFirewallMatching:
             {"base": "https://0177.0.0.1?token=static"},
             {"base": "https://127。0。0。1?token=static"},
             {"base": "https://example.com\\hook"},
+            {"base": "https://example.com/hook/%2e%2e/admin"},
+            {"base": "https://example.com/hook/%5csecret"},
+            {"base": "https://example.com/hook/%5Csecret"},
             {"base": "https://example.com/\x00hook"},
             {"base": "https:/example.com/hook/${{ secrets.WEBHOOK_TOKEN }}"},
             {"base": "https://example.com/hook/${{ env.WEBHOOK_TOKEN }}"},
             {"base": "${{ secrets.WEBHOOK_URL }} /v1"},
             {"base": "${{ secrets.WEBHOOK_URL }}\\v1"},
+            {"base": "${{ secrets.WEBHOOK_URL }}/%2e%2e/admin"},
+            {"base": "${{ secrets.WEBHOOK_URL }}/%5csecret"},
+            {"base": "${{ secrets.WEBHOOK_URL }}/%5Csecret"},
+            {"base": "${{ secrets.WEBHOOK_URL }}//%2e%2e/admin"},
+            {"base": "${{ secrets.WEBHOOK_URL }}//%5csecret"},
+            {"base": "${{ secrets.WEBHOOK_URL }}//%5Csecret"},
             {"base": "${{ secrets.WEBHOOK_URL }}/\x00v1"},
             {"base": "${{ secrets.WEBHOOK_URL }}#fragment"},
             {"base": "${{ secrets.WEBHOOK_URL }}/${{ env.WEBHOOK_TOKEN }}"},
