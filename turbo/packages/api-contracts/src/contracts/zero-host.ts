@@ -14,6 +14,16 @@ export const hostedSiteSlugSchema = z
     "Site slug must use lowercase letters, numbers, and hyphens, and must start and end with a letter or number",
   );
 
+export const hostedSiteSlugSuffixSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(32)
+  .regex(
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+    "Site slug suffix must use lowercase letters, numbers, and hyphens, and must start and end with a letter or number",
+  );
+
 export const hostedSiteFileSchema = z.object({
   path: z.string().min(1).max(1024).regex(/^\//, "File path must start with /"),
   size: z.number().int().nonnegative(),
@@ -24,6 +34,7 @@ export const hostedSiteFileSchema = z.object({
 
 export const hostedSitePrepareRequestSchema = z.object({
   site: hostedSiteSlugSchema,
+  slugSuffix: hostedSiteSlugSuffixSchema.optional(),
   spaFallback: z.boolean().default(false),
   files: z.array(hostedSiteFileSchema).min(1).max(5000),
 });

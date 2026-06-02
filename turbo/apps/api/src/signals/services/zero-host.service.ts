@@ -23,6 +23,7 @@ import { recordHostedSiteArtifact$ } from "./run-uploaded-files.service";
 const PUT_URL_TTL_SECONDS = 3600;
 const MAX_HOSTED_SITE_TOTAL_BYTES = 512 * 1024 * 1024;
 const MAX_HOSTED_SITE_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_PUBLIC_SLUG_ATTEMPTS = 5;
 
 interface PrepareDeploymentArgs {
   readonly orgId: string;
@@ -91,6 +92,17 @@ type SiteDeploymentCreationResult =
       readonly deployment: HostedDeploymentRow;
     }
   | { readonly kind: "slug_conflict" };
+type CreatedSiteDeployment = Extract<
+  SiteDeploymentCreationResult,
+  { readonly kind: "ok" }
+>;
+
+interface CreateHostedSiteDeploymentContext {
+  readonly now: Date;
+  readonly publicSlug: string;
+  readonly url: string;
+  readonly allowExistingPublicSlug: boolean;
+}
 
 interface HostedR2Config {
   readonly bucket: string;
@@ -133,6 +145,22 @@ function activePointerKey(publicSlug: string): string {
 
 function deploymentPrefix(publicSlug: string, deploymentId: string): string {
   return `sites/${publicSlug}/deployments/${deploymentId}`;
+}
+
+function orgSlugHash(orgId: string): string {
+  return createHash("sha256").update(orgId).digest("hex").substring(0, 8);
+}
+
+function randomSlugSuffix(): string {
+  return crypto.randomUUID().replaceAll("-", "").substring(0, 8);
+}
+
+function publicSlugForSite(
+  site: string,
+  orgId: string,
+  slugSuffix: string,
+): string {
+  return `${site}-${orgSlugHash(orgId)}-${slugSuffix}`;
 }
 
 function fileKey(prefix: string, path: string): string {
@@ -248,9 +276,7 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
 function createHostedSiteDeployment(
   writeDb: Db,
   args: PrepareDeploymentArgs,
-  now: Date,
-  publicSlug: string,
-  url: string,
+  context: CreateHostedSiteDeploymentContext,
 ): Promise<SiteDeploymentCreationResult> {
   return writeDb.transaction(async (tx) => {
     const [existingPublicSite] = await tx
@@ -258,7 +284,7 @@ function createHostedSiteDeployment(
       .from(hostedSites)
       .where(
         and(
-          eq(hostedSites.publicSlug, publicSlug),
+          eq(hostedSites.publicSlug, context.publicSlug),
           isNull(hostedSites.deletedAt),
         ),
       )
@@ -266,45 +292,41 @@ function createHostedSiteDeployment(
 
     if (
       existingPublicSite &&
-      (existingPublicSite.orgId !== args.orgId ||
+      (!context.allowExistingPublicSlug ||
+        existingPublicSite.orgId !== args.orgId ||
         existingPublicSite.slug !== args.body.site)
     ) {
       return { kind: "slug_conflict" };
     }
 
-    let site = existingPublicSite ?? null;
+    const [site] = await tx
+      .insert(hostedSites)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        slug: args.body.site,
+        publicSlug: context.publicSlug,
+        createdFromRunId: args.runId,
+        updatedAt: context.now,
+      })
+      .onConflictDoUpdate({
+        target: [hostedSites.orgId, hostedSites.slug],
+        set: { publicSlug: context.publicSlug, updatedAt: context.now },
+      })
+      .returning();
     if (!site) {
-      const [insertedSite] = await tx
-        .insert(hostedSites)
-        .values({
-          orgId: args.orgId,
-          userId: args.userId,
-          slug: args.body.site,
-          publicSlug,
-          createdFromRunId: args.runId,
-          updatedAt: now,
-        })
-        .returning();
-      if (!insertedSite) {
-        throw new Error("Failed to create hosted site");
-      }
-      site = insertedSite;
-    } else {
-      await tx
-        .update(hostedSites)
-        .set({ updatedAt: now })
-        .where(eq(hostedSites.id, site.id));
+      throw new Error("Failed to create hosted site");
     }
 
     const deploymentId = crypto.randomUUID();
-    const prefix = deploymentPrefix(publicSlug, deploymentId);
+    const prefix = deploymentPrefix(context.publicSlug, deploymentId);
     const manifest = buildManifest({
       deploymentId,
       siteId: site.id,
-      publicSlug,
+      publicSlug: context.publicSlug,
       spaFallback: args.body.spaFallback,
       files: args.body.files,
-      createdAt: now,
+      createdAt: context.now,
     });
     const files = Object.values(manifest.files);
     const [deployment] = await tx
@@ -326,8 +348,8 @@ function createHostedSiteDeployment(
         sizeBytes: files.reduce((sum, file) => {
           return sum + file.size;
         }, 0),
-        url,
-        updatedAt: now,
+        url: context.url,
+        updatedAt: context.now,
       })
       .returning();
     if (!deployment) {
@@ -356,26 +378,57 @@ export const prepareHostedSiteDeployment$ = command(
 
     const writeDb = set(writeDb$);
     const now = nowDate();
-    const orgHash = createHash("sha256")
-      .update(args.orgId)
-      .digest("hex")
-      .substring(0, 8);
-    const publicSlug = `${args.body.site}-${orgHash}`;
-    const url = publicUrl(publicSlug);
+    let siteAndDeployment: CreatedSiteDeployment | null = null;
+    let publicSlug = "";
+    let url = "";
 
-    const siteAndDeployment = await createHostedSiteDeployment(
-      writeDb,
-      args,
-      now,
-      publicSlug,
-      url,
-    );
-    signal.throwIfAborted();
+    if (args.body.slugSuffix) {
+      publicSlug = publicSlugForSite(
+        args.body.site,
+        args.orgId,
+        args.body.slugSuffix,
+      );
+      url = publicUrl(publicSlug);
+      const result = await createHostedSiteDeployment(writeDb, args, {
+        now,
+        publicSlug,
+        url,
+        allowExistingPublicSlug: true,
+      });
+      signal.throwIfAborted();
+      if (result.kind === "slug_conflict") {
+        return {
+          status: "conflict",
+          message: `Hosted site slug is already in use: ${publicSlug}`,
+        };
+      }
+      siteAndDeployment = result;
+    } else {
+      for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
+        publicSlug = publicSlugForSite(
+          args.body.site,
+          args.orgId,
+          randomSlugSuffix(),
+        );
+        url = publicUrl(publicSlug);
+        const result = await createHostedSiteDeployment(writeDb, args, {
+          now,
+          publicSlug,
+          url,
+          allowExistingPublicSlug: false,
+        });
+        signal.throwIfAborted();
+        if (result.kind === "ok") {
+          siteAndDeployment = result;
+          break;
+        }
+      }
+    }
 
-    if (siteAndDeployment.kind === "slug_conflict") {
+    if (!siteAndDeployment) {
       return {
         status: "conflict",
-        message: `Hosted site slug is already in use: ${publicSlug}`,
+        message: "Unable to allocate a unique hosted site slug",
       };
     }
 

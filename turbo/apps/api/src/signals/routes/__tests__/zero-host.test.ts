@@ -138,9 +138,11 @@ describe("POST /api/zero/host/deployments/prepare", () => {
       [200],
     );
 
-    expect(response.body.publicSlug).toMatch(/^demo-site-[a-f0-9]{8}$/);
+    expect(response.body.publicSlug).toMatch(
+      /^demo-site-[a-f0-9]{8}-[a-f0-9]{8}$/,
+    );
     expect(response.body.url).toMatch(
-      /^https:\/\/demo-site-[a-f0-9]{8}\.sites\.example\.com$/,
+      /^https:\/\/demo-site-[a-f0-9]{8}-[a-f0-9]{8}\.sites\.example\.com$/,
     );
     expect(response.body.uploads).toHaveLength(2);
     expect(
@@ -169,6 +171,84 @@ describe("POST /api/zero/host/deployments/prepare", () => {
       sizeBytes: 540,
       spaFallback: true,
     });
+  });
+
+  it("generates a unique public slug by default for the same site slug", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const first = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [200],
+    );
+
+    expect(first.body.publicSlug).toMatch(
+      /^demo-site-[a-f0-9]{8}-[a-f0-9]{8}$/,
+    );
+    expect(second.body.publicSlug).toMatch(
+      /^demo-site-[a-f0-9]{8}-[a-f0-9]{8}$/,
+    );
+    expect(second.body.publicSlug).not.toBe(first.body.publicSlug);
+    expect(second.body.url).not.toBe(first.body.url);
+    expect(second.body.siteId).toBe(first.body.siteId);
+
+    const [site] = await store
+      .set(writeDb$)
+      .select()
+      .from(hostedSites)
+      .where(eq(hostedSites.id, first.body.siteId));
+    expect(site).toMatchObject({
+      orgId: fixture.orgId,
+      slug: "demo-site",
+      publicSlug: second.body.publicSlug,
+    });
+  });
+
+  it("reuses the public slug when a slug suffix is provided", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const first = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "demo-site",
+          slugSuffix: "release-01",
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "demo-site",
+          slugSuffix: "release-01",
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    expect(first.body.publicSlug).toMatch(/^demo-site-[a-f0-9]{8}-release-01$/);
+    expect(second.body.publicSlug).toBe(first.body.publicSlug);
+    expect(second.body.url).toBe(first.body.url);
+    expect(second.body.siteId).toBe(first.body.siteId);
   });
 
   it("rejects suspended orgs with insufficient credits", async () => {
@@ -241,7 +321,7 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
       status: "ready",
     });
     expect(completed.body.url).toMatch(
-      /^https:\/\/demo-site-[a-f0-9]{8}\.sites\.example\.com$/,
+      /^https:\/\/demo-site-[a-f0-9]{8}-[a-f0-9]{8}\.sites\.example\.com$/,
     );
     expect(puts).toStrictEqual([
       `${prefix}/manifest.json`,

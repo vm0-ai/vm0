@@ -5,6 +5,7 @@ import { publishStaticSite } from "../../../lib/host/publish-static-site";
 
 interface HostOptions {
   readonly site: string;
+  readonly slugSuffix?: string;
   readonly spa?: boolean;
   readonly json?: boolean;
 }
@@ -20,6 +21,7 @@ export const zeroHostCommand = new Command()
   .description("Publish a built static site and print its public URL")
   .argument("<dir>", "Static build directory, for example ./dist")
   .requiredOption("--site <slug>", "Public site slug, e.g. my-product-demo")
+  .option("--slug-suffix <suffix>", "Reuse a generated site URL suffix")
   .option("--spa", "Serve unknown HTML navigation paths from index.html")
   .option("--json", "Output only the final result as JSON")
   .addHelpText(
@@ -27,10 +29,12 @@ export const zeroHostCommand = new Command()
     `
 Examples:
   Publish a Vite build:  zero host ./dist --site my-product-demo --spa
+  Redeploy a URL:       zero host ./dist --site my-product-demo --slug-suffix a1b2c3d4 --spa
   Machine readable:     zero host ./dist --site my-product-demo --spa --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires host:write capability)
+  - Reusing both --site and --slug-suffix keeps the same URL
   - The directory must include index.html
   - Local HTML/CSS asset references must point at files inside the directory`,
   )
@@ -39,6 +43,7 @@ Notes:
       const result = await publishStaticSite({
         dir,
         site: options.site,
+        slugSuffix: options.slugSuffix,
         spaFallback: Boolean(options.spa),
         onProgress: options.json
           ? undefined

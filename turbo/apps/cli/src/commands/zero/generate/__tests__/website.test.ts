@@ -63,6 +63,23 @@ describe("zero generate website command", () => {
     );
   });
 
+  it("should use the generated base slug when no stable site slug is provided", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "observability launch site",
+      "--title",
+      "Clearpath",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "zero host ./generated/mockups/clearpath --site clearpath --spa",
+    );
+  });
+
   it("should accept --template and --design-system from the registry", async () => {
     await generateCommand.parseAsync([
       "node",

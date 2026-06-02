@@ -78,7 +78,7 @@ Examples:
   Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
   Pick template:         zero generate website --template saas-landing --prompt "Launch site for a billing API"
   Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
-  Stable hosted slug:    zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
+  Custom site slug:      zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
   Pipe prompt:           cat brief.txt | zero generate website
   Show choices:          zero generate website
 
