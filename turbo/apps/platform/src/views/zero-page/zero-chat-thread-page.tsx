@@ -2811,6 +2811,24 @@ function permissionActionButtonDisabled(
   );
 }
 
+function permissionActionStatusText(
+  state: PermissionActionButtonState,
+  action: "allow" | "deny",
+): { label: string; className: string } | null {
+  if (state.saveDone || state.alreadyApplied) {
+    return action === "allow"
+      ? { label: "Permissions updated", className: "text-green-600" }
+      : { label: "Permission denied", className: "text-destructive" };
+  }
+  if (state.existingRequestStatus === "approved") {
+    return { label: "Permissions updated", className: "text-green-600" };
+  }
+  if (state.existingRequestStatus === "pending" || state.submitDone) {
+    return { label: "Request sent", className: "text-green-600" };
+  }
+  return null;
+}
+
 function canManageAgentPermissions(
   agent: PermissionActionAgent | null,
   user: { id?: string } | undefined,
@@ -2883,6 +2901,15 @@ function PermissionActionButton({
   action: "allow" | "deny";
   onClick: () => void;
 }) {
+  const status = permissionActionStatusText(state, action);
+  if (status) {
+    return (
+      <span className={`shrink-0 text-sm font-medium ${status.className}`}>
+        {status.label}
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -2916,7 +2943,7 @@ function PermissionActionCardLayout({
   return (
     <div
       data-testid="permission-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
+      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 px-4 py-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">

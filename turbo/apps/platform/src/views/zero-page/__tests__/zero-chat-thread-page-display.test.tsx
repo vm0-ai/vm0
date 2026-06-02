@@ -145,7 +145,9 @@ describe("zero chat thread page display - permission action card", () => {
         vercel: { policies: { "projects:write": "allow" } },
       });
     });
-    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    const status = within(card).getByText("Permissions updated");
+    expect(status).toBeInTheDocument();
+    expect(status.closest("button")).toBeNull();
   });
 
   it("lets org admins confirm permission actions for agents they do not own", async () => {
@@ -417,19 +419,14 @@ describe("zero chat thread page display - permission action card", () => {
       return screen.getByTestId("permission-action-card");
     });
     await waitFor(() => {
-      expect(
-        queryAllByRoleFast("button", card).some((element) => {
-          return element.textContent === "Request sent";
-        }),
-      ).toBeTruthy();
+      expect(within(card).getByText("Request sent")).toBeInTheDocument();
     });
-    const button = queryAllByRoleFast("button", card).find((element) => {
-      return element.textContent === "Request sent";
-    });
-    expect(button).toBeDefined();
-    expect(button).toBeDisabled();
-
-    click(button!);
+    expect(within(card).getByText("Request sent").closest("button")).toBeNull();
+    expect(
+      queryAllByRoleFast("button", card).some((element) => {
+        return element.textContent === "Request sent";
+      }),
+    ).toBeFalsy();
 
     expect(createCalled).toBeFalsy();
   });
@@ -503,6 +500,7 @@ describe("zero chat thread page display - permission action card", () => {
     await waitFor(() => {
       expect(within(card).getByText("Request sent")).toBeInTheDocument();
     });
+    expect(within(card).getByText("Request sent").closest("button")).toBeNull();
     await waitFor(() => {
       expect(hasSubscription("permissionAccessRequestsChanged")).toBeTruthy();
     });
