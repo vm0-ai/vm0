@@ -1297,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.16"
+version = "0.20.17"
 dependencies = [
  "flate2",
  "guest-common",
@@ -2057,7 +2057,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.27"
+version = "0.4.28"
 dependencies = [
  "bitvec",
  "libc",
@@ -2548,7 +2548,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.106.1"
+version = "0.106.2"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2763,7 +2763,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "async-trait",
  "base64",

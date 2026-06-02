@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.28](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.27...nbd-cow-v0.4.28) (2026-06-02)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid linear scan exclusions ([#15810](https://github.com/vm0-ai/vm0/issues/15810)) ([e914e4a](https://github.com/vm0-ai/vm0/commit/e914e4a1d6a4ac278cf9e99cef888b384462a620))
+
 ## [0.4.27](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.26...nbd-cow-v0.4.27) (2026-05-31)
 
 
