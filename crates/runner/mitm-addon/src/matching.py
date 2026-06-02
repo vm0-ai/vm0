@@ -923,10 +923,10 @@ def _base_specificity(
     )
 
 
-def _match_compiled_path_segments(
+def _match_compiled_path_traversal(
     path_segs: list[str],
     pattern_segs: tuple[ParsedSegment, ...],
-) -> dict | None:
+) -> tuple[dict[str, str], int] | None:
     params: dict[str, str] = {}
     pi = 0
 
@@ -941,70 +941,6 @@ def _match_compiled_path_segments(
         if isinstance(parsed, SegmentError):
             return None
 
-        if parsed.greedy == "+":
-            if _is_invalid_greedy_param(
-                pattern_index,
-                last_pattern_index,
-                parsed.prefix,
-                parsed.suffix,
-            ):
-                return None
-            if pi >= len(path_segs) or not _has_non_empty_segment(path_segs, pi):
-                return None
-            params[parsed.name] = "/".join(path_segs[pi:])
-            return params
-        if parsed.greedy == "*":
-            if _is_invalid_greedy_param(
-                pattern_index,
-                last_pattern_index,
-                parsed.prefix,
-                parsed.suffix,
-            ):
-                return None
-            params[parsed.name] = "/".join(path_segs[pi:])
-            return params
-        if pi >= len(path_segs):
-            return None
-
-        runtime = path_segs[pi]
-        if parsed.prefix == "" and parsed.suffix == "":
-            if runtime == "":
-                return None
-            params[parsed.name] = runtime
-        else:
-            captured = _match_segment_literal(runtime, parsed.prefix, parsed.suffix)
-            if captured is None:
-                return None
-            params[parsed.name] = captured
-        pi += 1
-
-    if pi != len(path_segs):
-        return None
-    return params
-
-
-def match_compiled_path(path: str, pattern: CompiledPathPattern) -> dict | None:
-    """Match a URL path against a compiled rule path pattern."""
-    return _match_compiled_path_segments(_split_path_segments(path), pattern.segments)
-
-
-def _match_compiled_path_prefix(
-    path_segs: list[str],
-    pattern_segs: tuple[ParsedSegment, ...],
-) -> tuple[dict, int] | None:
-    params: dict[str, str] = {}
-    pi = 0
-
-    last_pattern_index = len(pattern_segs) - 1
-    for pattern_index, parsed in enumerate(pattern_segs):
-        if isinstance(parsed, SegmentLiteral):
-            if pi >= len(path_segs) or path_segs[pi] != parsed.value:
-                return None
-            pi += 1
-            continue
-
-        if isinstance(parsed, SegmentError):
-            return None
         if parsed.greedy == "+":
             if _is_invalid_greedy_param(
                 pattern_index,
@@ -1043,6 +979,32 @@ def _match_compiled_path_prefix(
         pi += 1
 
     return params, pi
+
+
+def _match_compiled_path_segments(
+    path_segs: list[str],
+    pattern_segs: tuple[ParsedSegment, ...],
+) -> dict[str, str] | None:
+    result = _match_compiled_path_traversal(path_segs, pattern_segs)
+    if result is None:
+        return None
+
+    params, consumed = result
+    if consumed != len(path_segs):
+        return None
+    return params
+
+
+def match_compiled_path(path: str, pattern: CompiledPathPattern) -> dict | None:
+    """Match a URL path against a compiled rule path pattern."""
+    return _match_compiled_path_segments(_split_path_segments(path), pattern.segments)
+
+
+def _match_compiled_path_prefix(
+    path_segs: list[str],
+    pattern_segs: tuple[ParsedSegment, ...],
+) -> tuple[dict[str, str], int] | None:
+    return _match_compiled_path_traversal(path_segs, pattern_segs)
 
 
 def _match_compiled_host(
