@@ -107,6 +107,16 @@ fn assert_invalid_resume_rejected(codex_home: &Path, out: &RunOutput) {
         "invalid resume id should report an error on stderr"
     );
     assert!(
+        out.stderr.contains("invalid thread id"),
+        "invalid resume id should report the validation failure: {:?}",
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("expected canonical UUID"),
+        "invalid resume id should describe the expected format: {:?}",
+        out.stderr
+    );
+    assert!(
         session_artifacts(codex_home).is_empty(),
         "invalid resume id should not write session artifacts"
     );
