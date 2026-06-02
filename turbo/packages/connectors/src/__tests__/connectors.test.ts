@@ -29,8 +29,8 @@ import {
   type TokenRevokeConnectorType,
 } from "../connectors";
 import {
-  connectorAuthMethodHasAccessKind,
   connectorAuthMethodHasGrantKind,
+  connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
   connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethods,
@@ -661,7 +661,10 @@ describe("connector selected auth method capability checks", () => {
           getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
           "refresh-token";
         expect(
-          connectorAuthMethodHasAccessKind(type, authMethod, "refresh-token"),
+          connectorAuthMethodRefHasAccessKind(
+            { type, authMethod },
+            "refresh-token",
+          ),
         ).toBe(hasRefreshTokenAccess);
       }
     }
@@ -710,7 +713,10 @@ describe("connector selected auth method capability checks", () => {
   });
   it("does not mark non-refreshable auth methods as refresh-token access", () => {
     expect(
-      connectorAuthMethodHasAccessKind("github", "oauth", "refresh-token"),
+      connectorAuthMethodRefHasAccessKind(
+        { type: "github", authMethod: "oauth" },
+        "refresh-token",
+      ),
     ).toBe(false);
     expect(
       getConnectorAuthMethodAccessMetadata("github", "oauth")?.kind,
@@ -731,18 +737,20 @@ describe("connector selected auth method capability checks", () => {
       connectorAuthMethodHasGrantKind("test-oauth", "api", "device-auth"),
     ).toBe(false);
     expect(
-      connectorAuthMethodHasAccessKind("test-oauth", "oauth", "refresh-token"),
-    ).toBe(true);
-    expect(
-      connectorAuthMethodHasAccessKind("test-oauth", "api", "refresh-token"),
-    ).toBe(true);
-    expect(
-      connectorAuthMethodHasAccessKind(
-        "test-oauth",
-        "missing",
+      connectorAuthMethodRefHasAccessKind(
+        { type: "test-oauth", authMethod: "oauth" },
         "refresh-token",
       ),
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      connectorAuthMethodRefHasAccessKind(
+        { type: "test-oauth", authMethod: "api" },
+        "refresh-token",
+      ),
+    ).toBe(true);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("test-oauth", "refresh-token"),
+    ).toStrictEqual(["oauth", "api"]);
     expect(
       getConnectorAuthMethodEnvBindings("test-oauth", "api"),
     ).toStrictEqual({

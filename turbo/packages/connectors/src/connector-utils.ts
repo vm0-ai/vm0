@@ -109,7 +109,7 @@ export function getConnectorAuthMethodIdsForGrantKind<
   );
 }
 
-export function connectorAuthMethodHasAccessKind<
+function connectorAuthMethodHasAccessKind<
   Type extends ConnectorType,
   Kind extends ConnectorAccessKind,
 >(

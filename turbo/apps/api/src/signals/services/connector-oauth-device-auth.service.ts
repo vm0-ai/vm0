@@ -252,7 +252,7 @@ function resolveRequiredAuthClient(
     optionalEnv,
   );
   if (!clientRef) {
-    return internalServerError(`${method.type} OAuth is not configured`);
+    return internalServerError(`${method.type} auth client not configured`);
   }
   return clientRef;
 }
