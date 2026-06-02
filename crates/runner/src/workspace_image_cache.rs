@@ -28,7 +28,6 @@ const CACHE_FORMAT_VERSION: u32 = 1;
 const CACHE_KEY_VERSION: u32 = 1;
 const WORKSPACE_DRIVE_LAYOUT: &str = "workspace-drive-v1";
 const GIB: u64 = 1024 * 1024 * 1024;
-const MAX_CACHE_BYTES_CAP: u64 = 300 * GIB;
 const MIN_FREE_BYTES_FLOOR: u64 = 50 * GIB;
 const MAX_ENTRY_BYTES_CAP: u64 = 32 * GIB;
 const WORKSPACE_IMAGE_COPY_TIMEOUT: Duration = Duration::from_secs(300);
@@ -183,7 +182,6 @@ pub(crate) struct CacheBudget {
 impl CacheBudget {
     pub(crate) fn from_fs_stats(stats: FsStats) -> Self {
         let max_cache_bytes = stats.total_bytes.saturating_mul(50) / 100;
-        let max_cache_bytes = max_cache_bytes.min(MAX_CACHE_BYTES_CAP);
         let target_after_gc_bytes = max_cache_bytes.saturating_mul(75) / 100;
         let min_free_bytes = (stats.total_bytes.saturating_mul(10) / 100).max(MIN_FREE_BYTES_FLOOR);
         let max_entry_bytes = (stats.total_bytes.saturating_mul(5) / 100).min(MAX_ENTRY_BYTES_CAP);
@@ -2010,14 +2008,14 @@ mod tests {
             total_bytes: 2_000 * GIB,
             available_bytes: 1_000 * GIB,
         });
-        assert_eq!(budget.max_cache_bytes, 300 * GIB);
-        assert_eq!(budget.target_after_gc_bytes, 225 * GIB);
+        assert_eq!(budget.max_cache_bytes, 1_000 * GIB);
+        assert_eq!(budget.target_after_gc_bytes, 750 * GIB);
         assert_eq!(budget.min_free_bytes, 200 * GIB);
         assert_eq!(budget.max_entry_bytes, 32 * GIB);
     }
 
     #[test]
-    fn budget_uses_half_of_filesystem_before_cap() {
+    fn budget_uses_half_of_filesystem_for_smaller_hosts() {
         let budget = CacheBudget::from_fs_stats(FsStats {
             total_bytes: 400 * GIB,
             available_bytes: 300 * GIB,
