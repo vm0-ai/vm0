@@ -7,9 +7,9 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, shared lifecycle behavior queues, custom `wait_process` exits,
-//! and durable [`MockLifecycleGate`] gates for lifecycle and cancellation
-//! testing.
+//! results, shared read-file results, shared lifecycle behavior queues, custom
+//! `wait_process` exits, and durable [`MockLifecycleGate`] gates for lifecycle
+//! and cancellation testing.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -325,6 +325,8 @@ pub struct MockSandboxOverrides {
     exec_matchers: Mutex<Vec<ExecMatcher>>,
     /// Recorded exec calls across all sandboxes built from this override set.
     exec_calls: Mutex<Vec<ExecCall>>,
+    /// FIFO queue of read_file results consumed by factory-created sandboxes.
+    read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
     wait_process_code: Option<i32>,
     /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
@@ -395,6 +397,7 @@ impl MockSandboxOverrides {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
             exec_calls: Mutex::new(Vec::new()),
+            read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
             wait_process_gate: None,
             wait_process_error: None,
@@ -465,6 +468,14 @@ impl MockSandboxOverrides {
     /// in call order.
     pub fn exec_calls(&self) -> Vec<ExecCall> {
         self.exec_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a read_file result applied to the next read made through any
+    /// sandbox built from these overrides.
+    pub fn push_read_file_result(&self, result: Result<Option<Vec<u8>>>) {
+        self.read_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
     }
 
     /// Queue a factory `create()` result applied to the next factory create
@@ -936,9 +947,15 @@ impl Sandbox for MockSandbox {
         }
 
         let result = self
-            .read_file_results
-            .lock_ignoring_poison()
-            .pop_front()
+            .overrides
+            .as_ref()
+            .and_then(|overrides| {
+                overrides
+                    .read_file_results
+                    .lock_ignoring_poison()
+                    .pop_front()
+            })
+            .or_else(|| self.read_file_results.lock_ignoring_poison().pop_front())
             .unwrap_or(Ok(None))?;
         if let Some(bytes) = &result
             && bytes.len() as u64 > max_bytes
@@ -2241,6 +2258,27 @@ mod tests {
 
         let second_factory = runtime.create_factory(test_factory_config()).await.unwrap();
         second_factory.create(test_sandbox_config()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn overrides_share_read_file_results_across_factory_sandboxes() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_read_file_result(Ok(Some(b"first".to_vec())));
+        overrides.push_read_file_result(Ok(Some(b"second".to_vec())));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let first = factory.create(test_sandbox_config()).await.unwrap();
+        let second = factory.create(test_sandbox_config()).await.unwrap();
+
+        assert_eq!(
+            first.read_file("/tmp/one", 1024).await.unwrap(),
+            Some(b"first".to_vec())
+        );
+        assert_eq!(
+            second.read_file("/tmp/two", 1024).await.unwrap(),
+            Some(b"second".to_vec())
+        );
+        assert_eq!(first.read_file("/tmp/empty", 1024).await.unwrap(), None);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

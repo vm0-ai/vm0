@@ -333,14 +333,9 @@ fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnos
 }
 
 fn sanitize_env_key_for_diagnostic(key: &str) -> String {
-    let escaped = key.escape_debug().to_string();
-    truncate_chars(&escaped, AGENT_ENV_KEY_MAX_CHARS)
-}
-
-fn truncate_chars(value: &str, max_chars: usize) -> String {
-    let mut chars = value.chars();
+    let mut chars = key.escape_debug();
     let mut truncated = String::new();
-    for _ in 0..max_chars {
+    for _ in 0..AGENT_ENV_KEY_MAX_CHARS {
         let Some(ch) = chars.next() else {
             return truncated;
         };
@@ -2764,24 +2759,35 @@ mod tests {
         for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
             env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
         }
+        env.insert(
+            format!("AAA_{}", "x".repeat(AGENT_ENV_KEY_MAX_CHARS * 4)),
+            "long-secret-value".to_string(),
+        );
 
         let diagnostics = build_agent_env_diagnostics(&env);
 
-        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3);
+        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 4);
         assert_eq!(diagnostics.runner_owned_count, 1);
         assert_eq!(
             diagnostics.external_count,
-            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 2
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3
         );
         assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
         assert_eq!(
             diagnostics.logged_keys.len(),
             AGENT_ENV_KEY_DIAGNOSTIC_LIMIT
         );
-        assert_eq!(diagnostics.omitted_key_count, 3);
+        assert_eq!(diagnostics.omitted_key_count, 4);
         let mut sorted_logged_keys = diagnostics.logged_keys.clone();
         sorted_logged_keys.sort();
         assert_eq!(diagnostics.logged_keys, sorted_logged_keys);
+        let long_key = diagnostics
+            .logged_keys
+            .iter()
+            .find(|key| key.starts_with("AAA_"))
+            .expect("long key should be logged before the ZZZ keys");
+        assert_eq!(long_key.chars().count(), AGENT_ENV_KEY_MAX_CHARS + 3);
+        assert!(long_key.ends_with("..."));
         let rendered = format!(
             "{} {}",
             diagnostics.suspicious_keys_csv(),
@@ -2792,6 +2798,7 @@ mod tests {
         assert!(!rendered.contains("super-secret-bash-env"));
         assert!(!rendered.contains("normal-secret-value"));
         assert!(!rendered.contains("runner-secret-value"));
+        assert!(!rendered.contains("long-secret-value"));
     }
 
     #[test]
@@ -5794,8 +5801,12 @@ mod tests {
         assert_eq!(exit_code, 126);
         assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
         let calls = overrides.exec_calls();
-        assert_eq!(calls.len(), 1);
-        let call = &calls[0];
+        let diagnostic_calls: Vec<&sandbox_mock::ExecCall> = calls
+            .iter()
+            .filter(|call| call.cmd.contains("guest-agent-binary"))
+            .collect();
+        assert_eq!(diagnostic_calls.len(), 1);
+        let call = diagnostic_calls[0];
         assert!(call.cmd.contains("guest-agent-binary"));
         assert!(!call.cmd.contains("ps aux"));
         assert!(!call.cmd.contains("printenv"));
@@ -5820,7 +5831,12 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error.is_none());
-        assert!(overrides.exec_calls().is_empty());
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
     }
 
     #[tokio::test]
@@ -5843,7 +5859,42 @@ mod tests {
 
         assert_eq!(exit_code, 7);
         assert_eq!(error.as_deref(), Some("guest stderr"));
-        assert!(overrides.exec_calls().is_empty());
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let diagnostic = FailureDiagnostic::new(
+            agent_diagnostics::FailureClass::CliNonzero,
+            agent_diagnostics::AgentFramework::ClaudeCode,
+            agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        );
+        overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+        overrides.push_read_file_result(Ok(None));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
