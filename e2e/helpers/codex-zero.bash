@@ -154,8 +154,8 @@ send_chat_run_message() {
     # debugNoMockCodex=true bypasses USE_MOCK_CODEX in the runner so the real
     # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
     # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
-    # verbatim — see crates/runner/src/executor.rs:1307-1313 and
-    # crates/guest-mock-codex/src/main.rs:233-245. The chat/messages contract
+    # verbatim — see crates/runner/src/executor.rs (insert_codex_env) and
+    # crates/guest-mock-codex/src/main.rs (build_events). The chat/messages contract
     # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
     # the same passthrough on /api/zero/runs.
     # Model-first selection can carry either the sentinel provider id for an org

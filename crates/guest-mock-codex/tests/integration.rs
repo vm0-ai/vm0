@@ -77,13 +77,18 @@ fn find_session_file(codex_home: &Path) -> Option<PathBuf> {
 fn session_files(codex_home: &Path) -> Vec<PathBuf> {
     session_artifacts(codex_home)
         .into_iter()
-        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("jsonl"))
+        .filter(|p| p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("jsonl"))
         .collect()
 }
 
 fn session_artifacts(codex_home: &Path) -> Vec<PathBuf> {
+    let root = codex_home.join("sessions");
     let mut found = Vec::new();
-    walk(&codex_home.join("sessions"), &mut |p| {
+    if !root.exists() {
+        return found;
+    }
+    found.push(root.clone());
+    walk(&root, &mut |p| {
         found.push(p.to_path_buf());
     });
     found.sort();
@@ -113,10 +118,9 @@ fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        f(&path);
         if path.is_dir() {
             walk(&path, f);
-        } else {
-            f(&path);
         }
     }
 }
