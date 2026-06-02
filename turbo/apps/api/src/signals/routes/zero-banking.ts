@@ -1,4 +1,6 @@
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -10,6 +12,7 @@ import {
   zeroBankingBalances$,
   zeroBankingTransactions$,
 } from "../services/zero-banking.service";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
 function zeroTokenRequired() {
   return {
@@ -23,6 +26,28 @@ function zeroTokenRequired() {
   };
 }
 
+const zeroBankingDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Zero Banking is not enabled",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
+const zeroBankingEnabled$ = command(async ({ get }) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  return isFeatureEnabled(FeatureSwitchKey.Banking, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
+});
+
 const accountsBody$ = bodyResultOf(zeroBankingContract.accounts);
 const balancesBody$ = bodyResultOf(zeroBankingContract.balances);
 const transactionsBody$ = bodyResultOf(zeroBankingContract.transactions);
@@ -32,6 +57,10 @@ const accountsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.tokenType !== "zero") {
     return zeroTokenRequired();
   }
+  if (!(await set(zeroBankingEnabled$))) {
+    return zeroBankingDisabled;
+  }
+  signal.throwIfAborted();
 
   const bodyResult = await get(accountsBody$);
   signal.throwIfAborted();
@@ -51,6 +80,10 @@ const balancesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (auth.tokenType !== "zero") {
     return zeroTokenRequired();
   }
+  if (!(await set(zeroBankingEnabled$))) {
+    return zeroBankingDisabled;
+  }
+  signal.throwIfAborted();
 
   const bodyResult = await get(balancesBody$);
   signal.throwIfAborted();
@@ -71,6 +104,10 @@ const transactionsInner$ = command(
     if (auth.tokenType !== "zero") {
       return zeroTokenRequired();
     }
+    if (!(await set(zeroBankingEnabled$))) {
+      return zeroBankingDisabled;
+    }
+    signal.throwIfAborted();
 
     const bodyResult = await get(transactionsBody$);
     signal.throwIfAborted();

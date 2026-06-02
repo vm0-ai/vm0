@@ -32,6 +32,7 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   UserPermissionGrants = "userPermissionGrants",
   ComputerUse = "computerUse",
+  Banking = "banking",
   LarkConnector = "larkConnector",
   Lab = "lab",
   AuditLink = "auditLink",

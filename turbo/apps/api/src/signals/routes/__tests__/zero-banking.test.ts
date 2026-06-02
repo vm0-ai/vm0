@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   bankingAccessAuditEvents,
   bankingAccounts,
@@ -10,6 +11,7 @@ import {
   type BankingConnectionStatus,
   type BankingOperationScope,
 } from "@vm0/db/schema/banking";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -20,7 +22,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { now } from "../../external/time";
+import { now, nowDate } from "../../external/time";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -55,6 +57,7 @@ interface SeedBankingFixtureArgs {
   readonly allowScheduledRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
   readonly accountProviderIds?: readonly string[];
+  readonly featureSwitchEnabled?: boolean;
 }
 
 function currentSecond(): number {
@@ -115,6 +118,15 @@ async function seedBankingFixture(
   const enabledAccountId = randomProviderId("acct-enabled");
   const disabledAccountId = randomProviderId("acct-disabled");
   const db = store.set(writeDb$);
+  if (args.featureSwitchEnabled ?? true) {
+    await db.insert(userFeatureSwitches).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.Banking]: true },
+      updatedAt: nowDate(),
+    });
+  }
+
   const [connection] = await db
     .insert(bankingConnections)
     .values({
@@ -258,6 +270,36 @@ describe("POST /api/zero/banking/*", () => {
     mockEnv("FINICITY_APP_KEY", "test-app-key");
     mockEnv("FINICITY_PARTNER_ID", "test-partner");
     mockEnv("FINICITY_PARTNER_SECRET", "test-secret");
+  });
+
+  it("rejects banking requests when the banking feature switch is disabled", async () => {
+    const fixture = await track(
+      seedBankingFixture({ featureSwitchEnabled: false }),
+    );
+    let authRequestCount = 0;
+    server.use(
+      http.post(FINICITY_AUTH_URL, () => {
+        authRequestCount += 1;
+        return HttpResponse.json({ token: "test-app-token" });
+      }),
+    );
+
+    const client = setupApp({ context })(zeroBankingContract);
+    const response = await accept(
+      client.accounts({
+        headers: { authorization: `Bearer ${zeroToken(fixture)}` },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        message: "Zero Banking is not enabled",
+        code: "FORBIDDEN",
+      },
+    });
+    expect(authRequestCount).toBe(0);
   });
 
   it("lists only accounts enabled for the current agent", async () => {
