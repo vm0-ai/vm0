@@ -11,6 +11,10 @@ export const shortio = {
         label: "API Key",
         helpText:
           "1. Log in to the [Short.io](https://short.io) Dashboard\n2. Navigate to **Integrations and API**\n3. Click on **Create API key**\n4. Leave the **Public key** option disabled to create a private (secret) key\n5. Restrict the scope of the key to a specific team or domain\n6. Click **Create**\n7. Copy the key and store it in a safe place — secret keys cannot be recovered",
+        storage: {
+          secrets: ["SHORTIO_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

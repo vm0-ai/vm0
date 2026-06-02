@@ -6,7 +6,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorEnvBindingEntries,
-  getConnectorTypeForSecretName,
+  getDiagnosticConnectorTypeForRuntimeEnvName,
 } from "@vm0/connectors/connector-utils";
 import {
   type FirewallBaseUrlMatch,
@@ -516,14 +516,15 @@ How connectors work:
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
         console.log(`  Environment name:  ${envName}`);
       } else {
-        connectorType = getConnectorTypeForSecretName(
-          (envName = opts.envName!),
-        )!;
-        if (!connectorType) {
+        envName = opts.envName!;
+        const resolvedConnectorType =
+          getDiagnosticConnectorTypeForRuntimeEnvName(envName);
+        if (!resolvedConnectorType) {
           throw new Error(
             `Unknown environment name: ${envName} — not managed by any connector`,
           );
         }
+        connectorType = resolvedConnectorType;
         console.log(
           `${envName} is managed by the ${CONNECTOR_TYPES[connectorType as ConnectorType].label} connector (type: ${connectorType}).`,
         );

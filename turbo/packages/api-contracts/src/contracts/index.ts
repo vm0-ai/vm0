@@ -28,7 +28,6 @@ export {
   ApiError,
   CHAT_RUN_TRANSIENT_ERROR_MESSAGE,
   createErrorResponse,
-  formatChatgptCodexUsageLimitError,
   formatRunErrorForExternalSurface,
   isActionableRunError,
   isGenericRunErrorForDisplay,
@@ -710,8 +709,6 @@ export {
 export {
   getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
-  getConnectorEnvNamesForSecret,
-  getConnectorTypeForSecretName,
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
@@ -842,6 +839,7 @@ export {
   skillFileMetadataSchema,
   zeroAgentSkillFilesRequestSchema,
   zeroAgentSkillContentResponseSchema,
+  zeroAgentSkillDetailResponseSchema,
   zeroAgentSkillListResponseSchema,
   type ZeroAgentsMainContract,
   type ZeroAgentsByIdContract,
@@ -858,6 +856,7 @@ export {
   type SkillFileMetadata,
   type ZeroAgentSkillFilesRequest,
   type ZeroAgentSkillContentResponse,
+  type ZeroAgentSkillDetailResponse,
   type ZeroSkillsCollectionContract,
   type ZeroSkillsDetailContract,
   permissionAccessRequestStatusSchema,
@@ -883,12 +882,10 @@ export {
 export {
   zeroUserPermissionGrantsContract,
   userPermissionGrantActionSchema,
-  userPermissionGrantTtlSecondsSchema,
   userPermissionGrantResponseSchema,
   listUserPermissionGrantsQuerySchema,
   upsertUserPermissionGrantRequestSchema,
   type UserPermissionGrantAction,
-  type UserPermissionGrantTtlSeconds,
   type UserPermissionGrantResponse,
   type ListUserPermissionGrantsQuery,
   type UpsertUserPermissionGrantRequest,

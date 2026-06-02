@@ -169,8 +169,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.UserPermissionGrants]: {
     maintainer: "liangyou@vm0.ai",
     description:
-      "Gate the per-user Zero firewall permission grant rollout. Disabled by default while storage, API, runtime, and UI changes land separately.",
+      "Gate the per-user Zero firewall permission grant rollout. Staff-only while the grant backfill and rollout verification complete.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
@@ -204,6 +205,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
+  },
+  [FeatureSwitchKey.OrgSkills]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the organization custom skills library in the Zero sidebar and page UI",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",

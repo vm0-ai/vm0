@@ -1,5 +1,86 @@
 # Changelog
 
+## [0.399.15](https://github.com/vm0-ai/vm0/compare/app-v0.399.14...app-v0.399.15) (2026-06-02)
+
+
+### Bug Fixes
+
+* avoid implicit permission updated state ([#15751](https://github.com/vm0-ai/vm0/issues/15751)) ([32f6a32](https://github.com/vm0-ai/vm0/commit/32f6a329150082a43b37b7605fdd60407d062d49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.53.0
+    * @vm0/connectors bumped to 1.41.2
+    * @vm0/core bumped to 8.305.6
+
+## [0.399.14](https://github.com/vm0-ai/vm0/compare/app-v0.399.13...app-v0.399.14) (2026-06-02)
+
+
+### Bug Fixes
+
+* remove poor agent backend models ([#15807](https://github.com/vm0-ai/vm0/issues/15807)) ([e73e675](https://github.com/vm0-ai/vm0/commit/e73e675f6fa38e199634b37734f2f73a56437a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.2
+    * @vm0/core bumped to 8.305.5
+
+## [0.399.13](https://github.com/vm0-ai/vm0/compare/app-v0.399.12...app-v0.399.13) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.1
+    * @vm0/connectors bumped to 1.41.1
+    * @vm0/core bumped to 8.305.4
+
+## [0.399.12](https://github.com/vm0-ai/vm0/compare/app-v0.399.11...app-v0.399.12) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.0
+    * @vm0/connectors bumped to 1.41.0
+    * @vm0/core bumped to 8.305.3
+
+## [0.399.11](https://github.com/vm0-ai/vm0/compare/app-v0.399.10...app-v0.399.11) (2026-06-02)
+
+
+### Refactoring
+
+* split agent permission tab components ([#15776](https://github.com/vm0-ai/vm0/issues/15776)) ([33cfd1b](https://github.com/vm0-ai/vm0/commit/33cfd1b5464f1a069c1aea6477b40b43fcc65ed5))
+
+## [0.399.10](https://github.com/vm0-ai/vm0/compare/app-v0.399.9...app-v0.399.10) (2026-06-01)
+
+
+### Bug Fixes
+
+* match auth method when auth-code connect completes ([#15768](https://github.com/vm0-ai/vm0/issues/15768)) ([b0306a7](https://github.com/vm0-ai/vm0/commit/b0306a7737f2f8dee08cfb09584eaf4750ebaea1))
+
+
+### Refactoring
+
+* move google security warning helper to platform ([#15730](https://github.com/vm0-ai/vm0/issues/15730)) ([7289928](https://github.com/vm0-ai/vm0/commit/728992840fd0700d14afaed5fa3d92b860538c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.51.0
+    * @vm0/connectors bumped to 1.40.1
+    * @vm0/core bumped to 8.305.2
+
 ## [0.399.9](https://github.com/vm0-ai/vm0/compare/app-v0.399.8...app-v0.399.9) (2026-06-01)
 
 

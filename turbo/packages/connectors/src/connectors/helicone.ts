@@ -10,6 +10,10 @@ export const helicone = {
       "api-token": {
         label: "API Key",
         helpText: "Go to helicone.ai → Settings → API Keys → create a new key.",
+        storage: {
+          secrets: ["HELICONE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

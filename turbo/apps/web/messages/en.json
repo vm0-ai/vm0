@@ -4084,7 +4084,7 @@
             "body": "Fast mode at 2.5× speed used to cost three times what it does now ($10/$50 per 1M vs the prior tier). For interactive copilots, on-call summarisers, or any step where wall-clock latency dominates the experience, fast-mode 4.8 is now the default choice in the Claude family."
           }
         ],
-        "avoidFor": "Skip Opus 4.8 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-critical chat replies where Haiku 4.5 is much faster, on agentic terminal coding where GPT-5.5 still leads Terminal-Bench 2.1 (78.2% vs 4.8's 74.6%), and on pipelines that ingest untrusted input without sandboxing — 4.8's prompt-injection robustness is slightly weaker than 4.7's.",
+        "avoidFor": "Skip Opus 4.8 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-critical chat replies where Kimi K2.6 is much faster, on agentic terminal coding where GPT-5.5 still leads Terminal-Bench 2.1 (78.2% vs 4.8's 74.6%), and on pipelines that ingest untrusted input without sandboxing — 4.8's prompt-injection robustness is slightly weaker than 4.7's.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -4092,7 +4092,7 @@
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 (×1) is still the workhorse default for most agent loops. Promote to Opus 4.8 when Sonnet visibly fails on hard reasoning, long-context recall, or first-attempt code edits — usually as the planner that delegates to Sonnet- or Haiku-tier sub-agents. With dynamic workflows, Opus 4.8 as orchestrator + Sonnet 4.6 as workers is the new recommended pattern."
+            "body": "Sonnet 4.6 (×1) is still the workhorse default for most agent loops. Promote to Opus 4.8 when Sonnet visibly fails on hard reasoning, long-context recall, or first-attempt code edits — usually as the planner that delegates to Sonnet- or cost-saving sub-agents. With dynamic workflows, Opus 4.8 as orchestrator + Sonnet 4.6 as workers is the new recommended pattern."
           },
           {
             "vs": "GPT-5.5",
@@ -4274,7 +4274,7 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and noticeably slower than Haiku 4.5. Anthropic publishes ~41 tokens/sec at max effort for Opus 4.6, and 4.7 is in a similar range. Reserve it for the steps that actually need the extra reasoning depth and run lighter tiers in parallel."
+            "body": "Slower than Sonnet 4.6 and noticeably slower than Kimi K2.6. Anthropic publishes ~41 tokens/sec at max effort for Opus 4.6, and 4.7 is in a similar range. Reserve it for the steps that actually need the extra reasoning depth and run lighter tiers in parallel."
           },
           {
             "title": "Hallucination behaviour",
@@ -4292,18 +4292,18 @@
           },
           {
             "title": "The orchestrator running a multi-tool plan",
-            "body": "Use Opus 4.7 as the planner that breaks a customer's request into ten steps, dispatches each step to a Sonnet- or Haiku-tier sub-agent, and stitches the results back together. Running Opus only at the planner layer (and the cheaper tiers everywhere else) costs a fraction of running Opus end-to-end, with most of the quality preserved."
+            "body": "Use Opus 4.7 as the planner that breaks a customer's request into ten steps, dispatches each step to a Sonnet- or cost-saving sub-agent, and stitches the results back together. Running Opus only at the planner layer (and the cheaper tiers everywhere else) costs a fraction of running Opus end-to-end, with most of the quality preserved."
           },
           {
             "title": "The first-try code edits that don't waste a CI run",
             "body": "Ask Opus 4.7 to migrate a 50-file codebase from one ORM to another, refactor a tangled module, or apply a security fix across the repo. The patch applies cleanly on the first attempt more often than any other model in the family, which is what vendor-reported Terminal-Bench 2.0 reflects, and what your CI bill will reflect too."
           }
         ],
-        "avoidFor": "Skip Opus 4.7 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-sensitive chat replies where Haiku 4.5 is much faster, and on bulk classification or extraction jobs where DeepSeek V4 Flash is roughly 80× cheaper at the vendor level.",
+        "avoidFor": "Skip Opus 4.7 on high-volume routine work where Sonnet 4.6 hits the same quality bar at a fraction of the cost, on latency-sensitive chat replies where Kimi K2.6 is much faster, and on bulk classification or extraction jobs where GPT-5.4 Mini is the cheaper supported bulk option.",
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 is the workhorse default in the Claude family and the right pick for most agents. Promote to Opus 4.7 only when Sonnet visibly fails on hard reasoning, long context, or first-attempt code edits, usually as the orchestrator that delegates downward to Sonnet- or Haiku-tier sub-agents."
+            "body": "Sonnet 4.6 is the workhorse default in the Claude family and the right pick for most agents. Promote to Opus 4.7 only when Sonnet visibly fails on hard reasoning, long context, or first-attempt code edits, usually as the orchestrator that delegates downward to Sonnet- or cost-saving sub-agents."
           },
           {
             "vs": "Claude Opus 4.6",
@@ -4455,7 +4455,7 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and Haiku 4.5; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
+            "body": "Slower than Sonnet 4.6 and Kimi K2.6; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
           }
         ],
         "bestForExamples": [
@@ -4499,7 +4499,7 @@
           },
           {
             "q": "Why is Opus 4.6 the default on the Anthropic API key provider?",
-            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Haiku 4.5 in VM0 Settings → Model Providers without changing the API key."
+            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Kimi K2.6 in VM0 Settings → Model Providers without changing the API key."
           },
           {
             "q": "What's adaptive thinking?",
@@ -4540,12 +4540,30 @@
         ],
         "architecture": "GPT-5.5 keeps the 400K-token context window from GPT-5.4, billed at standard input pricing across the entire window. It supports the `reasoning_effort` parameter at four levels (minimal, low, medium, high), prompt caching where cached input bills at one-tenth the input rate, and the Responses API surface that codex CLI uses by default. Tool-use, structured outputs and computer-use are unchanged from 5.4. Inputs are multimodal across text, vision and code; the model has no native image generation (use the Images API for that).",
         "specs": [
-          { "label": "Family", "value": "GPT-5 generation" },
-          { "label": "Modalities", "value": "Text, vision, code" },
-          { "label": "Languages", "value": "English-first, multilingual" },
-          { "label": "Prompt caching", "value": "Supported (OpenAI)" },
-          { "label": "Context window", "value": "400K tokens" },
-          { "label": "Max output", "value": "Up to 128K tokens" },
+          {
+            "label": "Family",
+            "value": "GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "English-first, multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported (OpenAI)"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "Max output",
+            "value": "Up to 128K tokens"
+          },
           {
             "label": "Reasoning effort",
             "value": "Minimal / Low / Medium / High"
@@ -4633,7 +4651,7 @@
             "body": "Drop a competition-grade math problem set or a graduate physics derivation in and 5.5 will work through it without the off-by-one slips you see in 5.4. AIME 2025 and GPQA Diamond pick up exactly this kind of behaviour."
           }
         ],
-        "avoidFor": "Skip GPT-5.5 on high-volume routine work where GPT-5.4 hits the same quality bar at half the credit cost, on latency-sensitive chat replies where GPT-5.4 Mini is much faster, and on bulk classification or extraction jobs where DeepSeek V4 Flash is roughly 35× cheaper at the vendor level.",
+        "avoidFor": "Skip GPT-5.5 on high-volume routine work where GPT-5.4 hits the same quality bar at half the credit cost, on latency-sensitive chat replies where GPT-5.4 Mini is much faster, and on bulk classification or extraction jobs where GPT-5.4 Mini is the cheaper supported bulk option.",
         "comparisons": [
           {
             "vs": "GPT-5.4",
@@ -4672,7 +4690,10 @@
           }
         ],
         "alternatives": [
-          { "slug": "gpt-5-4", "reason": "Half the credits, same family" },
+          {
+            "slug": "gpt-5-4",
+            "reason": "Half the credits, same family"
+          },
           {
             "slug": "claude-opus-4-7",
             "reason": "Peer flagship on the Claude side"
@@ -4692,9 +4713,9 @@
         "cardIntro": "The default for most VM0 agents. Strong tool-routing accuracy, good long-context behaviour, and the credit baseline. Every other model is priced relative to Sonnet 4.6.",
         "metaTitle": "Claude Sonnet 4.6 on VM0: Benchmarks, Pricing & Use Cases",
         "metaDescription": "Claude Sonnet 4.6 is the default model on VM0. ×1 credit baseline, 1M context, $3/$15 pricing, SWE-bench Verified 77%. The agent tasks it handles best.",
-        "summary": "Claude Sonnet 4.6 is the workhorse of the Claude 4 family and the default Built-in model on VM0. It picks the right tool with the right arguments more reliably than anything cheaper, stays coherent across hundred-thousand-token conversations, and most production agents — Slack triage, GitHub PR review, customer support — never need to be promoted past it.\n\nVendor list price is $3 / $15 per 1M tokens, with cached input dropping to $0.30 / 1M. Reach for Opus only when Sonnet visibly fails on the hardest reasoning, and for Haiku or DeepSeek V4 Flash when unit cost dominates.",
+        "summary": "Claude Sonnet 4.6 is the workhorse of the Claude 4 family and the default Built-in model on VM0. It picks the right tool with the right arguments more reliably than anything cheaper, stays coherent across hundred-thousand-token conversations, and most production agents — Slack triage, GitHub PR review, customer support — never need to be promoted past it.\n\nVendor list price is $3 / $15 per 1M tokens, with cached input dropping to $0.30 / 1M. Reach for Opus only when Sonnet visibly fails on the hardest reasoning, and for Kimi K2.6 or GPT-5.4 Mini when unit cost dominates.",
         "releaseDate": "February 2026 (Claude 4.6 generation)",
-        "familyPosition": "Mid-tier of the Claude 4 family. Anthropic's workhorse model, sitting between Haiku and Opus.",
+        "familyPosition": "Mid-tier of the Claude 4 family. Anthropic's workhorse model, sitting between cost-saving models and Opus.",
         "background": [
           "Claude Sonnet 4.6 sits in the middle of Anthropic's Claude 4 family. It is the workhorse model designed to handle the full breadth of typical agent work. Multi-tool routing, code edits, long-running conversations, and structured-output tasks. Without the cost premium of Opus.",
           "Across VM0's Built-in lineup, every other model's credit multiplier is normalised against Sonnet 4.6 (×1). That makes Sonnet the right pick when you want predictable budget conversations: “this agent runs at roughly 2× a Sonnet step” is a more useful sentence than absolute dollar quotes that move every quarter.",
@@ -4760,7 +4781,7 @@
           },
           {
             "title": "Speed",
-            "body": "Faster than Opus and slower than Haiku. The right speed/quality balance for production agents."
+            "body": "Faster than Opus and slower than Kimi K2.6. The right speed/quality balance for production agents."
           },
           {
             "title": "Cost predictability",
@@ -4785,22 +4806,18 @@
             "body": "Long conversation histories, frequent tool calls into the CRM, the same hefty system prompt and tool schema on every turn. Sonnet's prompt caching turns that fixed prefix into a fraction of the input cost after the first call, which is what keeps per-conversation cost flat as volume grows."
           }
         ],
-        "avoidFor": "Skip Sonnet 4.6 on the hardest reasoning steps where it visibly drops instructions and you should escalate to Opus 4.7, on bulk classification at high volume where DeepSeek V4 Flash is roughly 50× cheaper, and on latency-critical micro-replies where Haiku 4.5 is meaningfully faster.",
+        "avoidFor": "Skip Sonnet 4.6 on the hardest reasoning steps where it visibly drops instructions and you should escalate to Opus 4.7, on bulk classification at high volume where GPT-5.4 Mini is the cheaper supported bulk option, and on latency-critical micro-replies where Kimi K2.6 is meaningfully faster.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
             "body": "Sonnet 4.6 is ×1; Opus 4.7 is ×1.7. Sonnet handles most agents; Opus is the upgrade when reasoning depth matters more than throughput. Many teams use Opus as the planner and Sonnet as the worker."
           },
           {
-            "vs": "Claude Haiku 4.5",
-            "body": "Haiku 4.5 is ×0.3. Three times cheaper than Sonnet. Sonnet leads on tool-routing accuracy and long-context coherence; Haiku wins on speed and cost. Use Haiku as a sub-agent or for high-volume simple flows."
-          },
-          {
             "vs": "DeepSeek V4 Pro",
             "body": "DeepSeek V4 Pro (×0.3) matches Sonnet on coding benchmarks (vendor-reported SWE-bench Verified) at much lower cost. The trade is some tool-routing reliability and a less-mature safety profile."
           }
         ],
-        "verdict": "Start here. Migrate up to Opus 4.7 or down to Haiku 4.5 / DeepSeek V4 Pro once you've seen real production behaviour and know which direction makes sense.",
+        "verdict": "Start here. Migrate up to Opus 4.7 or down to Kimi K2.6 / DeepSeek V4 Pro once you've seen real production behaviour and know which direction makes sense.",
         "faqs": [
           {
             "q": "Why is Sonnet 4.6 the default model on VM0 Managed?",
@@ -4816,7 +4833,7 @@
           },
           {
             "q": "When should I switch off Sonnet 4.6?",
-            "a": "Switch to Opus 4.7 if Sonnet visibly drops the goal on long agent loops or fails on hard code edits. Switch to Haiku 4.5 or DeepSeek V4 Flash for high-volume simple flows where cost dominates."
+            "a": "Switch to Opus 4.7 if Sonnet visibly drops the goal on long agent loops or fails on hard code edits. Switch to Kimi K2.6 or GPT-5.4 Mini for high-volume simple flows where cost dominates."
           },
           {
             "q": "Is Sonnet 4.6 the same as Sonnet 4.5?",
@@ -4827,10 +4844,6 @@
           {
             "slug": "claude-opus-4-7",
             "reason": "Use when Sonnet hits its reasoning ceiling"
-          },
-          {
-            "slug": "claude-haiku-4-5",
-            "reason": "Cheaper sibling for routing and triage"
           },
           {
             "slug": "deepseek-v4-pro",
@@ -4857,12 +4870,30 @@
         ],
         "architecture": "GPT-5.4 uses the same architecture as the rest of the GPT-5 family: 400K-token context window, `reasoning_effort` parameter at four levels (minimal, low, medium, high), prompt caching where cached input bills at one-tenth the input rate, and the Responses API surface that codex CLI uses by default. Tool-use, structured outputs and computer-use are supported. Inputs are multimodal across text, vision and code.",
         "specs": [
-          { "label": "Family", "value": "GPT-5 generation" },
-          { "label": "Modalities", "value": "Text, vision, code" },
-          { "label": "Languages", "value": "English-first, multilingual" },
-          { "label": "Prompt caching", "value": "Supported (OpenAI)" },
-          { "label": "Context window", "value": "400K tokens" },
-          { "label": "Max output", "value": "Up to 128K tokens" },
+          {
+            "label": "Family",
+            "value": "GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "English-first, multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported (OpenAI)"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "Max output",
+            "value": "Up to 128K tokens"
+          },
           {
             "label": "Reasoning effort",
             "value": "Minimal / Low / Medium / High"
@@ -4984,7 +5015,10 @@
             "slug": "gpt-5-5",
             "reason": "Escalation tier for the hardest steps"
           },
-          { "slug": "gpt-5-4-mini", "reason": "Cheaper option for bulk work" },
+          {
+            "slug": "gpt-5-4-mini",
+            "reason": "Cheaper option for bulk work"
+          },
           {
             "slug": "claude-sonnet-4-6",
             "reason": "×1 peer on the Claude Code framework"
@@ -5000,7 +5034,7 @@
         "cardIntro": "Z.AI's flagship. Up to a 1M-token context window. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
         "metaTitle": "GLM-5.1 on VM0: 1M Context, Pricing & Best Agent Tasks",
         "metaDescription": "GLM-5.1 review on VM0. Z.AI's flagship with up to 1M-token context, ×0.4 credit cost. Specs, pricing, performance and recommended agent tasks.",
-        "summary": "GLM-5.1 is the long-context specialist in the lineup, with up to 1M tokens of input. Reach for it when the prompt is genuinely huge: a whole repository at once, several hundred documents in a single research run. Independent leaderboards consistently rank it in the top tier of open-weight models for long-context work.\n\nVendor list price is $1.40 / $4.40 per 1M tokens, well under half of Sonnet 4.6 at the vendor level, and the API is Anthropic-compatible so Claude-style agents drop in without a rewrite. Reach for Sonnet or Opus when English reasoning depth matters more than context size, and for Haiku when latency dominates.",
+        "summary": "GLM-5.1 is the long-context specialist in the lineup, with up to 1M tokens of input. Reach for it when the prompt is genuinely huge: a whole repository at once, several hundred documents in a single research run. Independent leaderboards consistently rank it in the top tier of open-weight models for long-context work.\n\nVendor list price is $1.40 / $4.40 per 1M tokens, well under half of Sonnet 4.6 at the vendor level, and the API is Anthropic-compatible so Claude-style agents drop in without a rewrite. Reach for Sonnet or Opus when English reasoning depth matters more than context size, and for Kimi K2.6 when latency dominates.",
         "releaseDate": "Early 2026; full GA on VM0 April 2026",
         "familyPosition": "Z.AI / Zhipu AI's flagship general-purpose model.",
         "background": [
@@ -5076,7 +5110,7 @@
             "body": "Some agent steps genuinely take five to thirty minutes — deep research, multi-document analysis, long planning passes. VM0 sets a 50-minute API timeout for the Z.AI provider so those long thinking steps don't get cut off mid-thought, which makes GLM-5.1 the safe pick over models routed through providers with shorter default timeouts."
           }
         ],
-        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Haiku 4.5 is much faster.",
+        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Kimi K2.6 is much faster.",
         "comparisons": [
           {
             "vs": "Kimi K2.6",
@@ -5127,26 +5161,26 @@
         "routingNotes": "On VM0 Managed, GLM-5.1 is routed through OpenRouter with the upstream id `z-ai/glm-5.1`. With a Z.AI API key it talks to `api.z.ai`'s Anthropic-compatible endpoint directly. Default model on the Z.AI provider.",
         "vm0Notes": "VM0 sets a 50-minute API timeout for the Z.AI provider so long thinking steps complete reliably without dropping, and pairs the model's 1M-token context with high-volume document agents that need the room."
       },
-      "claude-haiku-4-5": {
-        "name": "Claude Haiku 4.5",
-        "pageTitle": "Claude Haiku 4.5 on VM0. Fast, cheap routing",
-        "tagline": "The fast, cheap Claude. Good enough for routing, short summarisation, and simple tool calls at a fraction of Sonnet's cost.",
-        "cardIntro": "The fast, cheap Claude. Good enough for routing, short summarisation, and simple tool calls at a fraction of Sonnet's cost.",
-        "metaTitle": "Claude Haiku 4.5 on VM0: SWE-bench, Pricing & Use Cases",
-        "metaDescription": "Claude Haiku 4.5 review on VM0. Fast, cheap Claude with SWE-bench Verified 73.3%. ×0.3 multiplier, $1/$5 pricing, 97 tok/sec, ideal for triage and routing.",
-        "summary": "Claude Haiku 4.5 is the small, fast Claude — replies run at roughly 97 output tokens per second (four to five times faster than Sonnet 4.5) and you can run it across a lot of traffic without watching the bill spiral.\n\nIt's still a real Claude: vendor-reported SWE-bench Verified hits 73.3%, only a few points behind Sonnet 4.5 at a third of the cost, and Augment's agentic-coding evaluation reportedly puts it at 90% of Sonnet 4.5's performance.\n\nVendor list price is $1 / $5 per 1M tokens with cached input at $0.10 / 1M. Reach for it as the high-throughput worker or sub-agent under a Sonnet- or Opus-led system; skip it when the loop is long and multi-step.",
-        "releaseDate": "Late 2025 (Claude 4.5 generation)",
-        "familyPosition": "Smallest tier of the Claude 4 family. Anthropic's high-throughput, low-latency option.",
+      "gpt-5-4-mini": {
+        "name": "GPT-5.4 Mini",
+        "pageTitle": "GPT-5.4 Mini on VM0. The cost-saving GPT-5",
+        "tagline": "OpenAI's cost-optimised member of the GPT-5 family. ×0.3 credits, multimodal vision, and fast enough for high-volume routing, classification and pre-filter work.",
+        "cardIntro": "OpenAI's cost-saving GPT-5. ×0.3 credits, fast and multimodal — the right pick for bulk pre-filter work on the Codex framework.",
+        "metaTitle": "GPT-5.4 Mini on VM0: Benchmarks, Pricing & Comparison",
+        "metaDescription": "GPT-5.4 Mini review on VM0. The cost-saving OpenAI GPT-5 model at $0.75/$4.5 vendor pricing, ×0.3 credits, 400K context and multimodal vision. Specs, behaviour and comparison to Kimi K2.6.",
+        "summary": "GPT-5.4 Mini is the cost-saving member of OpenAI's GPT-5 family — the one you reach for when unit cost matters more than peak reasoning quality. It keeps the 400K context window and multimodal inputs of the rest of the family but trims compute per token, which translates to lower price ($0.75 / $4.5 per 1M) and noticeably higher speed.\n\nOn VM0 it sits at ×0.3 credits, the same multiplier as Kimi K2.6, which makes it the natural OpenAI-side pick for bulk classification, fan-out routing, pre-filters, and any agent step where dropping to a third of GPT-5.4's cost is the deciding factor.",
+        "releaseDate": "April 2026",
+        "familyPosition": "Cost-saving variant of the GPT-5 family. The OpenAI-side peer of Kimi K2.6.",
         "background": [
-          "Claude Haiku 4.5 is the small, fast member of the Claude 4 family. It is built for latency-sensitive and high-volume work where Sonnet would be overkill. Single-tool calls, fast classifications, short summarisations, and simple Slack replies.",
-          "Haiku 4.5 is remarkably capable for its tier. Anthropic's vendor-reported SWE-bench Verified score is 73.3%. Only ~4 points behind Sonnet 4.5 at one-third the cost. In Augment's agentic coding evaluation it reportedly hits 90% of Sonnet 4.5's performance, which puts it in genuine sub-agent territory.",
-          "Despite being the small Claude, Haiku 4.5 is multimodal (vision-capable), supports prompt caching, and runs at ~97 tokens/sec. Comfortably the fastest model in our Built-in lineup."
+          "GPT-5.4 Mini is the cost-optimised member of OpenAI's GPT-5 generation, released in April 2026 alongside GPT-5.5 and GPT-5.4. OpenAI positions it as the high-throughput tier — the model you keep running on classification, routing and pre-filter steps where the bigger 5.4 or 5.5 would be wasted on routine decisions.",
+          "Architecturally it shares the GPT-5 family's 400K-token context window, the `reasoning_effort` parameter, prompt caching, and the Responses API surface that codex CLI uses by default. The trade-off versus 5.4 is reasoning depth: Mini handles standard tool calls, short summaries and structured-output workloads well, but starts to drift on the harder multi-step plans where 5.4 still holds up. The trade-off versus competitors at the same price point is ecosystem — if you're already on Codex, staying inside the OpenAI surface keeps tool definitions and structured-output schemas consistent.",
+          "On VM0 Mini sits at the ×0.3 credit multiplier, the same as Kimi K2.6 and DeepSeek V4 Pro. Within the cost-saving tier the choice depends mostly on framework and behaviour fit on your specific workload."
         ],
-        "architecture": "Haiku 4.5 ships with a 200K-token context window, multimodal input across text, vision, and code, and prompt caching that bills cached input at one-tenth the input rate. Output runs at roughly 97 tokens per second, four to five times faster than Sonnet 4.5.",
+        "architecture": "GPT-5.4 Mini uses the same architecture as the rest of the GPT-5 family: 400K-token context window, the `reasoning_effort` parameter at four levels, prompt caching where cached input bills at one-tenth the input rate, and the Responses API surface. Tool-use, structured outputs and multimodal vision inputs are supported. The model is a smaller, faster sibling — fewer parameters per token, more throughput per dollar.",
         "specs": [
           {
             "label": "Family",
-            "value": "Claude 4 generation"
+            "value": "GPT-5 generation"
           },
           {
             "label": "Modalities",
@@ -5158,158 +5192,16 @@
           },
           {
             "label": "Prompt caching",
-            "value": "Supported (Anthropic)"
+            "value": "Supported (OpenAI)"
           },
           {
             "label": "Context window",
-            "value": "200K tokens"
+            "value": "400K tokens"
           },
           {
             "label": "Max output",
-            "value": "Up to 64K tokens"
+            "value": "Up to 128K tokens"
           },
-          {
-            "label": "Best for",
-            "value": "High-volume / latency-sensitive flows"
-          }
-        ],
-        "benchmarksNote": "Vendor-reported numbers from Anthropic's Haiku 4.5 launch materials. Note that OpenAI flagged training-data contamination on SWE-bench Verified across all frontier models. Treat absolute numbers cautiously, but the relative ordering is robust.",
-        "benchmarks": [
-          {
-            "name": "SWE-bench Verified",
-            "score": "73.3%",
-            "note": "vendor-reported, 50-trial average"
-          },
-          {
-            "name": "SWE-bench Pro",
-            "score": "39.5%",
-            "note": "third-party (Scale AI)"
-          },
-          {
-            "name": "OSWorld (computer use)",
-            "score": "50.7%",
-            "note": "vendor-reported"
-          },
-          {
-            "name": "Speed",
-            "score": "~97 tokens/sec",
-            "note": "vendor-reported"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Speed",
-            "body": "Fastest model in the Built-in lineup at ~97 tokens/sec. Reply latency is short enough for interactive Slack agents."
-          },
-          {
-            "title": "Routing accuracy",
-            "body": "Good enough for single-tool flows; multi-tool routing is meaningfully behind Sonnet 4.6 on edge cases. Keep tool schemas tight."
-          },
-          {
-            "title": "Reasoning",
-            "body": "Holds up on short tasks; loses track on long multi-step loops. Use it as a worker, not a planner."
-          },
-          {
-            "title": "Cost",
-            "body": "Lowest cost in the Claude family on VM0. Prompt caching makes it the cheapest practical Anthropic option for repeated prompts."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "The Slack triage agent that feels instant",
-            "body": "Reads every incoming message, classifies it (\"bug report\", \"sales lead\", \"meeting request\"), routes it to the right channel, and posts an acknowledgment in under two seconds. At Sonnet's speed the same flow would feel laggy; at Haiku's ~97 tokens per second it feels like the bot is actually paying attention in real time."
-          },
-          {
-            "title": "The sub-agent under a Sonnet or Opus planner",
-            "body": "Sonnet (or Opus) picks the strategy and breaks the request into ten narrow steps; Haiku executes each one. \"Pull this CRM field, summarise this email, format this list\" — none of those steps need flagship reasoning, and routing them to Haiku instead of running the whole loop on Sonnet drops the per-conversation cost dramatically without changing the output quality."
-          },
-          {
-            "title": "The bulk classifier that runs on every record",
-            "body": "Tag a million tickets, extract the structured fields out of last quarter's email backlog, route a stream of inbound forms. Haiku's low per-token cost plus prompt caching on the (stable) system prompt means the unit cost per record is essentially noise on the budget, which is what makes \"classify everything\" workflows actually viable."
-          },
-          {
-            "title": "The vision micro-task that needs to be fast",
-            "body": "OCR a screenshot, identify what type of chart it is, pull a number out of a receipt image. Haiku 4.5 is multimodal and very fast, which means a UI agent that takes a screenshot every few seconds and asks \"what just changed?\" stays responsive instead of stuttering."
-          }
-        ],
-        "avoidFor": "Skip Haiku 4.5 on long multi-step agent loops where it drops instructions after several turns, and on hard reasoning or code edits where Sonnet 4.6 or Opus 4.7 is the right call.",
-        "comparisons": [
-          {
-            "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet (×1) is the default for full agents. Haiku (×0.3) is the right pick when speed and cost matter more than long-loop coherence. Typically as a worker under a Sonnet/Opus planner. Vendor benchmarks put Haiku within ~4 points of Sonnet 4.5 on SWE-bench Verified."
-          },
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "DeepSeek V4 Flash (×0.02) is much cheaper but with weaker tool-use and less reliable on multi-step loops. Use Flash for one-shot bulk work; use Haiku for short interactive Slack-style replies."
-          },
-          {
-            "vs": "MiniMax M2.7",
-            "body": "MiniMax M2.7 (×0.1) is cheaper and stronger on multilingual tasks. Haiku 4.5 leads on English-language tool-routing reliability and is multimodal."
-          }
-        ],
-        "verdict": "The Claude you put behind heavy load. Triage, classification, sub-agent under a Sonnet/Opus orchestrator — yes. Planner role — no, that's Sonnet's job.",
-        "faqs": [
-          {
-            "q": "Is Haiku 4.5 multimodal?",
-            "a": "Yes. Haiku 4.5 accepts image inputs alongside text and code, so vision-driven agents work natively."
-          },
-          {
-            "q": "How fast is Haiku 4.5?",
-            "a": "Anthropic reports ~97 tokens per second. 4 to 5 times faster than Sonnet 4.5. The fastest model in our Built-in lineup."
-          },
-          {
-            "q": "When should I pick Haiku over Sonnet?",
-            "a": "Pick Haiku when (a) the agent loop is short. Usually under 5 turns, (b) latency matters more than reasoning depth, or (c) you need a cheap sub-agent under a Sonnet/Opus orchestrator."
-          },
-          {
-            "q": "Can Haiku run multi-tool agents?",
-            "a": "It can, but accuracy drops on edge cases compared to Sonnet 4.6. Keep the tool surface narrow and the loop short, or fall back to Sonnet."
-          },
-          {
-            "q": "What's Haiku 4.5's SWE-bench score?",
-            "a": "Anthropic reports 73.3% on SWE-bench Verified. Within ~4 points of Sonnet 4.5 at one-third the cost. On the harder SWE-bench Pro it scores 39.5% (Scale AI)."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "claude-sonnet-4-6",
-            "reason": "Step up when routing fidelity matters"
-          },
-          {
-            "slug": "deepseek-v4-flash",
-            "reason": "Even cheaper for single-shot tasks"
-          },
-          {
-            "slug": "minimax-m2-7",
-            "reason": "Cheap multilingual alternative"
-          }
-        ],
-        "routingNotes": "Routed directly to Anthropic's Messages API. Available on VM0 Managed and the Anthropic / Claude Code OAuth providers.",
-        "vm0Notes": "Haiku 4.5 carries the lowest Claude multiplier (×0.3) and is the right pick for high-volume routing workloads, with prompt caching keeping the cost of repeated short prompts down. It doesn't carry Sonnet's multi-step agent quality, so design any Haiku-based agent to keep loops short and the tool surface narrow."
-      },
-      "gpt-5-4-mini": {
-        "name": "GPT-5.4 Mini",
-        "pageTitle": "GPT-5.4 Mini on VM0. The cost-saving GPT-5",
-        "tagline": "OpenAI's cost-optimised member of the GPT-5 family. ×0.3 credits, multimodal vision, and fast enough for high-volume routing, classification and pre-filter work.",
-        "cardIntro": "OpenAI's cost-saving GPT-5. ×0.3 credits, fast and multimodal — the right pick for bulk pre-filter work on the Codex framework.",
-        "metaTitle": "GPT-5.4 Mini on VM0: Benchmarks, Pricing & Comparison",
-        "metaDescription": "GPT-5.4 Mini review on VM0. The cost-saving OpenAI GPT-5 model at $0.75/$4.5 vendor pricing, ×0.3 credits, 400K context and multimodal vision. Specs, behaviour and comparison to Claude Haiku 4.5.",
-        "summary": "GPT-5.4 Mini is the cost-saving member of OpenAI's GPT-5 family — the one you reach for when unit cost matters more than peak reasoning quality. It keeps the 400K context window and multimodal inputs of the rest of the family but trims compute per token, which translates to lower price ($0.75 / $4.5 per 1M) and noticeably higher speed.\n\nOn VM0 it sits at ×0.3 credits, the same multiplier as Claude Haiku 4.5 and Kimi K2.6, which makes it the natural OpenAI-side pick for bulk classification, fan-out routing, pre-filters, and any agent step where dropping to a third of GPT-5.4's cost is the deciding factor.",
-        "releaseDate": "April 2026",
-        "familyPosition": "Cost-saving variant of the GPT-5 family. The OpenAI-side peer of Claude Haiku 4.5.",
-        "background": [
-          "GPT-5.4 Mini is the cost-optimised member of OpenAI's GPT-5 generation, released in April 2026 alongside GPT-5.5 and GPT-5.4. OpenAI positions it as the high-throughput tier — the model you keep running on classification, routing and pre-filter steps where the bigger 5.4 or 5.5 would be wasted on routine decisions.",
-          "Architecturally it shares the GPT-5 family's 400K-token context window, the `reasoning_effort` parameter, prompt caching, and the Responses API surface that codex CLI uses by default. The trade-off versus 5.4 is reasoning depth: Mini handles standard tool calls, short summaries and structured-output workloads well, but starts to drift on the harder multi-step plans where 5.4 still holds up. The trade-off versus competitors at the same price point is ecosystem — if you're already on Codex, staying inside the OpenAI surface keeps tool definitions and structured-output schemas consistent.",
-          "On VM0 Mini sits at the ×0.3 credit multiplier, the same as Claude Haiku 4.5, Kimi K2.6 and DeepSeek V4 Pro. Within the cost-saving tier the choice depends mostly on framework and behaviour fit on your specific workload."
-        ],
-        "architecture": "GPT-5.4 Mini uses the same architecture as the rest of the GPT-5 family: 400K-token context window, the `reasoning_effort` parameter at four levels, prompt caching where cached input bills at one-tenth the input rate, and the Responses API surface. Tool-use, structured outputs and multimodal vision inputs are supported. The model is a smaller, faster sibling — fewer parameters per token, more throughput per dollar.",
-        "specs": [
-          { "label": "Family", "value": "GPT-5 generation" },
-          { "label": "Modalities", "value": "Text, vision, code" },
-          { "label": "Languages", "value": "English-first, multilingual" },
-          { "label": "Prompt caching", "value": "Supported (OpenAI)" },
-          { "label": "Context window", "value": "400K tokens" },
-          { "label": "Max output", "value": "Up to 128K tokens" },
           {
             "label": "Reasoning effort",
             "value": "Minimal / Low / Medium / High"
@@ -5319,7 +5211,7 @@
             "value": "$0.75 input / $4.5 output per 1M"
           }
         ],
-        "benchmarksNote": "Vendor-reported scores from OpenAI's GPT-5 Mini release materials. Independent reviews place 5.4 Mini in the same cost-saving band as Claude Haiku 4.5 on most agent benchmarks. Treat absolute percentages as directional.",
+        "benchmarksNote": "Vendor-reported scores from OpenAI's GPT-5 Mini release materials. Independent reviews place 5.4 Mini in the same cost-saving band as Kimi K2.6 on most agent benchmarks. Treat absolute percentages as directional.",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -5362,7 +5254,7 @@
           },
           {
             "title": "Cost efficiency",
-            "body": "×0.3 credits with multimodal vision included. At this price point Mini, Claude Haiku 4.5 and Kimi K2.6 all sit in the same band — the choice usually comes down to framework fit and behaviour on your specific workload."
+            "body": "×0.3 credits with multimodal vision included. At this price point Mini, Kimi K2.6 and DeepSeek V4 Pro all sit in the same band — the choice usually comes down to framework fit and behaviour on your specific workload."
           },
           {
             "title": "When to escalate",
@@ -5388,14 +5280,6 @@
           {
             "vs": "GPT-5.4",
             "body": "Same family, different positioning. 5.4 Mini (×0.3) wins on cost and speed; 5.4 (×1) wins on reasoning quality and tool-routing accuracy on hard cases. The standard pattern is to pre-filter with Mini and escalate residual cases to 5.4."
-          },
-          {
-            "vs": "Claude Haiku 4.5",
-            "body": "Same multiplier (×0.3). Mini runs on the Codex framework; Haiku 4.5 runs on Claude Code. Both are multimodal and both target the same cost-saving slot. Pick by which framework your existing agents and tool definitions target."
-          },
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "DeepSeek V4 Flash (×0.02) is dramatically cheaper at the vendor level and is the right choice for pure bulk single-shot work. GPT-5.4 Mini (×0.3) carries more reasoning quality and stays inside the OpenAI ecosystem, which matters when your tool definitions and structured-output schemas are already tuned for Codex."
           }
         ],
         "verdict": "GPT-5.4 Mini is the cost-saving default on the OpenAI side. Pre-filter with Mini, escalate to GPT-5.4 for routine steps, escalate to GPT-5.5 only for the hardest reasoning.",
@@ -5409,7 +5293,7 @@
             "a": "Yes. Like the rest of the GPT-5 family it accepts image inputs alongside text and code."
           },
           {
-            "q": "When should I pick GPT-5.4 Mini over Claude Haiku 4.5?",
+            "q": "When should I pick GPT-5.4 Mini over Kimi K2.6?",
             "a": "When your agent is already built on the Codex framework or you need the OpenAI structured-output / tool-call ecosystem. Both sit at ×0.3 credits, so cost is identical and the choice comes down to framework and behaviour."
           },
           {
@@ -5425,18 +5309,10 @@
           {
             "slug": "gpt-5-4",
             "reason": "Step up for harder steps, same family"
-          },
-          {
-            "slug": "claude-haiku-4-5",
-            "reason": "×0.3 peer on the Claude Code framework"
-          },
-          {
-            "slug": "deepseek-v4-flash",
-            "reason": "Dramatically cheaper for pure bulk work"
           }
         ],
         "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
-        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Claude Haiku 4.5, Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
+        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
       },
       "kimi-k2-6": {
         "name": "Kimi K2.6",
@@ -5445,7 +5321,7 @@
         "cardIntro": "Moonshot's latest. Best-in-class long-context recall in our internal evaluation and a Claude-compatible interface.",
         "metaTitle": "Kimi K2.6 on VM0: SWE-bench, Pricing & Long-Context Use",
         "metaDescription": "Kimi K2.6 review on VM0. Moonshot's open-weight 1T-parameter MoE. SWE-bench Pro 58.6, ×0.3 credit cost, 256K context. Specs and recommended tasks.",
-        "summary": "Kimi K2.6 is Moonshot's open-weight flagship and currently the strongest open-source agentic model on several public benchmarks. It sustains very long runs without losing the thread (Moonshot has documented unattended sessions of 12+ hours and 4,000+ tool calls) and accepts image and video input natively. Vendor-reported SWE-bench Pro hits 58.6 (above Claude Opus 4.6 and GPT-5.4 on that benchmark), and the hallucination rate dropped from K2.5's ~65% to ~39%.\n\nVendor list price is $0.60 / $3 per 1M tokens, open weights ship under a Modified MIT license, and the API is Anthropic-compatible. Reach for Sonnet 4.6 when production tool-routing reliability matters more than benchmark scores, and for Haiku when latency dominates.",
+        "summary": "Kimi K2.6 is Moonshot's open-weight flagship and currently the strongest open-source agentic model on several public benchmarks. It sustains very long runs without losing the thread (Moonshot has documented unattended sessions of 12+ hours and 4,000+ tool calls) and accepts image and video input natively. Vendor-reported SWE-bench Pro hits 58.6 (above Claude Opus 4.6 and GPT-5.4 on that benchmark), and the hallucination rate dropped from K2.5's ~65% to ~39%.\n\nVendor list price is $0.60 / $3 per 1M tokens, open weights ship under a Modified MIT license, and the API is Anthropic-compatible. Reach for Sonnet 4.6 when production tool-routing reliability matters more than benchmark scores, and for Kimi K2.6 when latency dominates.",
         "releaseDate": "April 20, 2026",
         "familyPosition": "Top of Moonshot's open-weight Kimi K2 series. Successor to K2.5 and K2 Thinking.",
         "background": [
@@ -5554,7 +5430,7 @@
             "body": "K2.6 accepts both image and video input through MoonViT, which is unusual outside the Claude family. Useful for screenshot-driven QA agents, document-vision pipelines, and any deployment where you'd otherwise have to splice in a separate vision model just to read images."
           }
         ],
-        "avoidFor": "Skip K2.6 on the hardest tool-routing edge cases where Sonnet 4.6 still leads on production reliability, and on latency-critical chat replies where Haiku 4.5 is meaningfully faster.",
+        "avoidFor": "Skip K2.6 on the hardest tool-routing edge cases where Sonnet 4.6 still leads on production reliability, and on pinned legacy workflows where K2.5's lower multiplier is already sufficient.",
         "comparisons": [
           {
             "vs": "GLM-5.1",
@@ -5616,13 +5492,13 @@
         "cardIntro": "DeepSeek's flagship. Strong reasoning at one-third of Sonnet's credit cost, Claude-compatible API.",
         "metaTitle": "DeepSeek V4 Pro on VM0: Benchmarks, Pricing & Comparison",
         "metaDescription": "DeepSeek V4 Pro review on VM0. Open-weight 1.6T MoE with SWE-bench Verified 80.6%, ×0.3 credit cost, 1M context. Pricing, specs and Claude comparison.",
-        "summary": "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation — an open-weight 1.6T-parameter MoE under the MIT license. The headline is the price-to-quality ratio: vendor-reported SWE-bench Verified is 80.6%, within a fraction of a point of Claude Opus 4.6, at roughly one-seventh of Anthropic's vendor cost. That makes reasoning-heavy agents — bulk PR review, batch document analysis, scheduled summarisation — affordable at high volume.\n\nVendor list price is $1.74 / $3.48 per 1M tokens with cache reads at $0.028 / 1M and free cache writes (unique in the lineup). 1M-token context, Anthropic-compatible API. Reach for Sonnet 4.6 when production tool-routing reliability is the deciding factor, and for V4 Flash when single-shot bulk work justifies a 12× cheaper model.",
+        "summary": "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation — an open-weight 1.6T-parameter MoE under the MIT license. The headline is the price-to-quality ratio: vendor-reported SWE-bench Verified is 80.6%, within a fraction of a point of Claude Opus 4.6, at roughly one-seventh of Anthropic's vendor cost. That makes reasoning-heavy agents — bulk PR review, batch document analysis, scheduled summarisation — affordable at high volume.\n\nVendor list price is $1.74 / $3.48 per 1M tokens with cache reads at $0.028 / 1M and free cache writes (unique in the lineup). 1M-token context, Anthropic-compatible API. Reach for Sonnet 4.6 when production tool-routing reliability is the deciding factor, and for GPT-5.4 Mini or Kimi K2.6 when single-shot bulk work does not need V4 Pro's reasoning depth.",
         "releaseDate": "April 24, 2026",
-        "familyPosition": "Reasoning variant of the DeepSeek V4 family. Paired with V4 Flash for cost.",
+        "familyPosition": "Reasoning variant of the DeepSeek V4 family, focused on maximum reasoning quality.",
         "background": [
-          "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation, released April 24, 2026 under the MIT License. It's an open-weight Mixture-of-Experts model with 1.6T total parameters and 49B active per token, paired with V4 Flash (284B / 13B active) for cost-sensitive work.",
-          "Both V4 models share an identical feature set: 1M-token context window, 384K maximum output, three reasoning effort modes (standard, think, think-max), JSON output, tool calls, and FIM completion in non-think mode. The Pro model adds a hybrid attention architecture (Compressed Sparse Attention + Heavily Compressed Attention) for dramatically improved long-context efficiency. 27% of single-token inference FLOPs and 10% of KV cache vs DeepSeek V3.2 at 1M context.",
-          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.3. The same multiplier as Claude Haiku 4.5 but with substantially stronger reasoning behaviour."
+          "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation, released April 24, 2026 under the MIT License. It's an open-weight Mixture-of-Experts model with 1.6T total parameters and 49B active per token.",
+          "V4 Pro supports a 1M-token context window, 384K maximum output, three reasoning effort modes (standard, think, think-max), JSON output, tool calls, and FIM completion in non-think mode. The Pro model adds a hybrid attention architecture (Compressed Sparse Attention + Heavily Compressed Attention) for dramatically improved long-context efficiency. 27% of single-token inference FLOPs and 10% of KV cache vs DeepSeek V3.2 at 1M context.",
+          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.3. The same multiplier as Kimi K2.6 but with substantially stronger reasoning behaviour."
         ],
         "architecture": "V4 Pro is a Mixture-of-Experts model with 1.6T total parameters and 49B active per token, fronted by a hybrid attention stack (Compressed Sparse Attention plus Heavily Compressed Attention) that keeps long-context inference cheap. It supports a 1M-token context window with 384K of maximum output, three reasoning effort modes (standard, think, and think-max), and uses Manifold-Constrained Hyper-Connections for stable signal propagation. The model was trained on 32T+ tokens with the Muon optimizer and is released under the MIT License with open weights.",
         "specs": [
@@ -5716,7 +5592,7 @@
           },
           {
             "title": "Speed",
-            "body": "Around 36 tokens/sec at max effort per Artificial Analysis. Slower than Haiku, slightly slower than Opus 4.6."
+            "body": "Around 36 tokens/sec at max effort per Artificial Analysis. Slower than Kimi K2.6, slightly slower than Opus 4.6."
           }
         ],
         "bestForExamples": [
@@ -5733,12 +5609,8 @@
             "body": "1M-token context with hybrid attention (Compressed Sparse Attention plus Heavily Compressed Attention) means a mid-sized codebase fits in one prompt and inference cost stays manageable as the window fills up. For cross-file refactors and architecture-level reviews, this is where you get the Opus-style \"see everything at once\" workflow without the Opus-style invoice."
           }
         ],
-        "avoidFor": "Skip V4 Pro on the hardest tool-routing edge cases where Sonnet 4.6 still leads, and on bulk single-shot work where reasoning isn't required and V4 Flash is roughly 12× cheaper.",
+        "avoidFor": "Skip V4 Pro on the hardest tool-routing edge cases where Sonnet 4.6 still leads, and on bulk single-shot work where GPT-5.4 Mini or Kimi K2.6 is sufficient at lower cost.",
         "comparisons": [
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "Same vendor, different positioning. V4 Pro (×0.3) gives you reasoning; V4 Flash (×0.02) gives you the cheapest possible single-shot model. Vendor-reported SWE-bench Verified shows Flash within 1.6 points of Pro (79.0 vs 80.6). But Pro pulls ahead on Terminal-Bench (67.9 vs 56.9) on multi-step tool use."
-          },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 (×1) wins on tool-routing edge cases and English-language reasoning. V4 Pro (×0.3) wins on cost and is competitive on coding benchmarks (vendor-reported). Worth A/B-testing on a real agent before committing."
@@ -5748,11 +5620,11 @@
             "body": "Same multiplier (×0.3). Kimi has stronger long-context recall and a higher Intelligence Index (54 vs 52); V4 Pro has the better cache economics (free writes) and a 1M context window vs Kimi's 256K. Pick by which property matters more."
           }
         ],
-        "verdict": "Pre-filter with V4 Flash, escalate to V4 Pro for reasoning, escalate to Sonnet 4.6 only when V4 Pro stalls on tool-routing edge cases.",
+        "verdict": "Pre-filter with GPT-5.4 Mini or Kimi K2.6, escalate to V4 Pro for reasoning, escalate to Sonnet 4.6 only when V4 Pro stalls on tool-routing edge cases.",
         "faqs": [
           {
             "q": "When was DeepSeek V4 Pro released?",
-            "a": "DeepSeek released V4 Pro and V4 Flash together on April 24, 2026 under the MIT License with open weights."
+            "a": "DeepSeek released V4 Pro on April 24, 2026 under the MIT License with open weights."
           },
           {
             "q": "Why are cache writes free?",
@@ -5772,10 +5644,6 @@
           }
         ],
         "alternatives": [
-          {
-            "slug": "deepseek-v4-flash",
-            "reason": "12× cheaper, single-shot work"
-          },
           {
             "slug": "claude-sonnet-4-6",
             "reason": "Step up for hard tool routing"
@@ -5926,7 +5794,7 @@
         "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
         "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
         "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.7 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
+        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.1 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
         "releaseDate": "June 1, 2026",
         "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
         "background": [
@@ -5991,7 +5859,7 @@
         "bestForExamples": [
           {
             "title": "The coding agent that must stay on MiniMax",
-            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.7."
+            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.1."
           },
           {
             "title": "The long-context review run",
@@ -6002,12 +5870,8 @@
             "body": "Workflows that mix text with screenshots or diagrams. M3 is marked image-input capable on VM0, while the M2 entries stay text/code only."
           }
         ],
-        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.7 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
+        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
         "comparisons": [
-          {
-            "vs": "MiniMax M2.7",
-            "body": "M3 is the newer, stronger coding and multimodal model at ×0.2, and it is the direct MiniMax provider default. M2.7 remains cheaper at ×0.1 for lower-cost compatibility."
-          },
           {
             "vs": "Kimi K2.6",
             "body": "Both target coding and agentic work at low cost. Kimi has broader existing gateway support on VM0, while M3 uses the official MiniMax route and gives MiniMax users the newer model."
@@ -6017,11 +5881,11 @@
             "body": "Sonnet 4.6 remains the baseline for reliability on complex English tool-use. M3 is much cheaper and attractive for MiniMax-native coding agents, but should be validated on critical workflows."
           }
         ],
-        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.7 when cost and compatibility matter more.",
+        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
         "faqs": [
           {
-            "q": "Is MiniMax M2.7 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.7 and M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
+            "q": "Is MiniMax M2.1 still available?",
+            "a": "Yes. VM0 keeps MiniMax M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
           },
           {
             "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
@@ -6034,10 +5898,6 @@
         ],
         "alternatives": [
           {
-            "slug": "minimax-m2-7",
-            "reason": "Cheaper MiniMax option for text-only work"
-          },
-          {
             "slug": "kimi-k2-6",
             "reason": "Low-cost coding model with existing gateway coverage"
           },
@@ -6047,291 +5907,7 @@
           }
         ],
         "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.7 and M2.1 selectable."
-      },
-      "minimax-m2-7": {
-        "name": "MiniMax M2.7",
-        "pageTitle": "MiniMax M2.7 on VM0. Multilingual at ×0.1",
-        "tagline": "Strong multilingual reasoning at one-tenth of Sonnet's credit cost. Generous timeout for long thinking steps.",
-        "cardIntro": "Strong multilingual reasoning at one-tenth of Sonnet's credit cost. Generous timeout for long thinking steps.",
-        "metaTitle": "MiniMax M2.7 on VM0: Pricing, Specs & Multilingual Use",
-        "metaDescription": "MiniMax M2.7 review on VM0. Strong multilingual reasoning at ×0.1 credit cost, 50-min API timeout. Pricing and tasks.",
-        "summary": "MiniMax M2.7 is the cheap multilingual workhorse in the lineup. Reach for it when the agent's primary language isn't English and unit cost matters: multilingual reply drafting, mixed-language support triage, scheduled summarisation over non-English corpora. It's not trying to outscore Sonnet on English benchmarks; it's keeping multilingual production traffic affordable.\n\nVendor list price is $0.30 / $1.20 per 1M tokens, API is Anthropic-compatible. VM0 sets a 50-minute API timeout for the MiniMax provider so long thinking steps complete reliably. Reach for Sonnet 4.6 on English tool-use and Haiku 4.5 on latency-critical replies.",
-        "releaseDate": "Available since the M2 series launch",
-        "familyPosition": "Latest text reasoning model in MiniMax's M2 series.",
-        "background": [
-          "MiniMax M2.7 is from MiniMax, an AI lab with a multilingual and multimodal product line. The text reasoning side is what's exposed on VM0; MiniMax's image and voice products are separate offerings on the lab's platform.",
-          "On VM0, M2.7 remains selectable on the MiniMax API-key provider. The Built-in lineup carries it at ×0.1, one of the lowest multipliers in the catalogue, making it a cheap-but-credible reasoner for multilingual workloads.",
-          "VM0's MiniMax provider sets a 50-minute API timeout and disables non-essential traffic, so long thinking steps complete reliably without dropping connections."
-        ],
-        "architecture": "M2.7 exposes an Anthropic-compatible API surface with a 200K-token context window and multilingual coverage. It runs at `api.minimax.io`.",
-        "specs": [
-          {
-            "label": "Family",
-            "value": "MiniMax M2 series"
-          },
-          {
-            "label": "Modalities",
-            "value": "Text, code"
-          },
-          {
-            "label": "Languages",
-            "value": "Multilingual"
-          },
-          {
-            "label": "Context window",
-            "value": "200K tokens"
-          },
-          {
-            "label": "Prompt caching",
-            "value": "Supported (Anthropic-compatible)"
-          },
-          {
-            "label": "Available on VM0",
-            "value": "Available since launch"
-          }
-        ],
-        "benchmarksNote": "MiniMax publishes fewer head-to-head benchmark numbers than Anthropic, Moonshot, or DeepSeek. We've kept this section honest. Pick M2.7 based on language profile and cost positioning rather than chasing leaderboards.",
-        "benchmarks": [
-          {
-            "name": "English multi-tool routing",
-            "score": "Below Sonnet 4.6",
-            "note": "VM0 internal"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Multilingual",
-            "body": "Stronger on multilingual flows than the Anthropic family. The natural pick when the agent's primary language isn't English."
-          },
-          {
-            "title": "Reasoning",
-            "body": "Solid for general agent work; below Sonnet 4.6 and Kimi K2.6 on the hardest tool-routing edge cases."
-          },
-          {
-            "title": "Latency",
-            "body": "Slower than Haiku 4.5; the 50-minute VM0 timeout means very long thinking steps survive without dropping."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "The multilingual customer agent that sounds native",
-            "body": "Drafting replies, triaging tickets, holding multilingual chat threads where the conversation switches between languages mid-message. M2.7's training emphasised multilingual coverage, so the output reads more naturally for non-English-speaking customers than the same prompt routed through an English-first model would."
-          },
-          {
-            "title": "The overnight summariser running over multilingual content",
-            "body": "Last quarter's customer conversations, a year of bilingual support tickets, a stack of multilingual regulatory documents — bulk summarisation jobs where speed isn't critical but unit cost matters a lot. M2.7's vendor price keeps the cost of \"summarise everything\" workflows low enough that they can run on every batch instead of every other week."
-          },
-          {
-            "title": "The thinking job that needs a long fuse",
-            "body": "Multi-step reasoning passes that genuinely take ten minutes or more — deep research, document analysis, planning chains. VM0's MiniMax provider runs with a 50-minute API timeout (and disables non-essential traffic), so those long thinking steps complete cleanly instead of getting cut off and forcing a retry."
-          }
-        ],
-        "avoidFor": "Skip M2.7 on English-first multi-tool agents where Sonnet 4.6 is more reliable, and on latency-critical replies where Haiku 4.5 is faster.",
-        "comparisons": [
-          {
-            "vs": "Kimi K2.6",
-            "body": "Kimi K2.6 (×0.3) has stronger reasoning and tool-use. M2.7 (×0.1) is one-third the cost and has a stronger multilingual profile. Default to Kimi for general work; reach for MiniMax for cheap multilingual background jobs."
-          },
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "Both are sub-Haiku in cost. V4 Flash is faster and even cheaper (×0.02) but with weaker reasoning. M2.7 is the better pick when the work needs more than one-shot reasoning."
-          },
-          {
-            "vs": "GLM-5.1",
-            "body": "GLM-5.1 (×0.4) is more capable on long-context English-language work. M2.7 (×0.1) is much cheaper and the right pick when language profile and budget dominate."
-          }
-        ],
-        "verdict": "The cheap multilingual default. Use it when language profile and budget call for it; reach for Kimi K2.6 or Sonnet 4.6 when raw quality matters.",
-        "faqs": [
-          {
-            "q": "What's the API timeout?",
-            "a": "VM0 sets a 50-minute timeout for the MiniMax provider, plus a flag to suppress non-essential traffic. Long thinking steps complete reliably."
-          },
-          {
-            "q": "Does MiniMax M2.7 support image input?",
-            "a": "M2.7 on VM0 is the text reasoning model. MiniMax sells multimodal products separately; image and voice generation aren't part of the VM0 Built-in agent surface today."
-          },
-          {
-            "q": "Why is the multiplier so low (×0.1)?",
-            "a": "Vendor list price is genuinely low ($0.30/$1.20 per 1M) and VM0 prices the model accordingly. Use it as a cheap multilingual workhorse, not a reasoning replacement for Sonnet."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "kimi-k2-6",
-            "reason": "Stronger reasoning at a similar price"
-          },
-          {
-            "slug": "deepseek-v4-flash",
-            "reason": "Even cheaper if quality permits"
-          },
-          {
-            "slug": "claude-haiku-4-5",
-            "reason": "Anthropic alternative for fast triage"
-          }
-        ],
-        "routingNotes": "Routed through MiniMax's Anthropic-compatible endpoint at `api.minimax.io`. Available on the MiniMax provider and VM0 Managed.",
-        "vm0Notes": "VM0 sets a 50-minute API timeout for the MiniMax provider and disables non-essential traffic, so long thinking steps survive without dropping. The ×0.1 multiplier is the lowest non-Flash multiplier in the lineup, which is why M2.7 pairs naturally with high-volume multilingual workloads."
-      },
-      "deepseek-v4-flash": {
-        "name": "DeepSeek V4 Flash",
-        "pageTitle": "DeepSeek V4 Flash on VM0. The cheapest model",
-        "tagline": "The cheapest model in the lineup. 50× less than Sonnet 4.6. Surprisingly capable for its tier. Vendor-reported SWE-bench Verified within 1.6 points of V4 Pro.",
-        "cardIntro": "The cheapest model in the lineup. 50× less than Sonnet 4.6. Good for high-volume single-shot tasks where the prompt does most of the work.",
-        "metaTitle": "DeepSeek V4 Flash on VM0: Cheapest Model, Benchmarks & Price",
-        "metaDescription": "DeepSeek V4 Flash review on VM0. The cheapest Built-in model at ×0.02 credit cost ($0.14/$0.28). Vendor-reported SWE-bench Verified 79%, 1M context. Use cases.",
-        "summary": "DeepSeek V4 Flash is the cost-leader of the V4 generation, engineered for the absolute lowest unit cost in the lineup. It's good at single-shot work where the prompt does most of the lifting: tagging a million tickets, extracting structured fields from email backlogs, scoring reviews, pre-filtering records before the hard cases go to a stronger model. Vendor-reported SWE-bench Verified is 79.0% (within 1.6 points of V4 Pro), but Terminal-Bench 2.0 lags by 11 points — that's where Flash trails: long multi-step tool chains.\n\nVendor list price is $0.14 / $0.28 per 1M tokens with cache reads at $0.028 / 1M and free cache writes. Don't put Flash in a planner role; for that, V4 Pro or Sonnet 4.6. Everywhere else cost dominates, nothing competes.",
-        "releaseDate": "April 24, 2026",
-        "familyPosition": "Cost-leader of DeepSeek's V4 family. Paired with V4 Pro for reasoning.",
-        "background": [
-          "DeepSeek V4 Flash is the cost-leader in DeepSeek's V4 generation, released April 24, 2026 alongside V4 Pro. Where V4 Pro is positioned for reasoning, Flash is positioned for the absolute lowest unit cost. A model you can run at very high volumes without thinking about budget.",
-          "Flash is a 284B-parameter MoE with 13B active per token (vs Pro's 1.6T / 49B). Both share the V4 family's identical feature set: 1M-token context, 384K maximum output, three reasoning effort modes, JSON output, and tool calls.",
-          "On VM0 it carries a ×0.02 credit multiplier. The lowest in the entire Built-in catalogue. That makes it the default for bulk classification, tagging, extraction, and pre-filter workloads where the prompt does most of the work and the model just needs to follow instructions reliably. It shares the V4 family's free cache-write economics: only cache reads bill."
-        ],
-        "architecture": "V4 Flash is a Mixture-of-Experts model with 284B total parameters and 13B active per token, fronted by a 1M-token context window with 384K of maximum output. It exposes three reasoning effort modes (standard, think, and think-max), bills only cache reads (cache writes are free), and ships under the MIT License with open weights.",
-        "specs": [
-          {
-            "label": "Family",
-            "value": "DeepSeek V4 series"
-          },
-          {
-            "label": "Parameters",
-            "value": "284B total / 13B active (MoE)"
-          },
-          {
-            "label": "Modalities",
-            "value": "Text, code"
-          },
-          {
-            "label": "Languages",
-            "value": "Multilingual"
-          },
-          {
-            "label": "Context window",
-            "value": "1M tokens"
-          },
-          {
-            "label": "Max output",
-            "value": "384K tokens"
-          },
-          {
-            "label": "License",
-            "value": "MIT (open weights)"
-          },
-          {
-            "label": "Available on VM0",
-            "value": "April 24, 2026"
-          }
-        ],
-        "benchmarksNote": "Vendor-reported scores from DeepSeek's V4 release. Flash matches Pro on simpler benchmarks but loses ground on multi-step tool use (Terminal-Bench) and factual recall (SimpleQA). Exactly what you'd expect from the smaller MoE.",
-        "benchmarks": [
-          {
-            "name": "SWE-bench Verified",
-            "score": "79.0%",
-            "note": "vendor-reported; within 1.6pts of V4 Pro"
-          },
-          {
-            "name": "Terminal-Bench 2.0",
-            "score": "56.9%",
-            "note": "vendor-reported; trails V4 Pro by 11pts"
-          },
-          {
-            "name": "SimpleQA-Verified",
-            "score": "34.1%",
-            "note": "vendor-reported; trails V4 Pro"
-          }
-        ],
-        "performance": [
-          {
-            "title": "Cost",
-            "body": "By far the lowest cost in the Built-in lineup. The right pick whenever unit cost dominates the decision."
-          },
-          {
-            "title": "Single-shot accuracy",
-            "body": "Good when the prompt is explicit and the task fits in one or two turns. Drops noticeably when asked to plan, branch, and remember across many steps."
-          },
-          {
-            "title": "Multi-step tool use",
-            "body": "Vendor-reported Terminal-Bench 2.0 is 56.9% (vs V4 Pro's 67.9%). Meaningfully behind on complex multi-step tool flows. Don't put V4 Flash in a planner role."
-          },
-          {
-            "title": "Context window",
-            "body": "1M tokens. Same as V4 Pro and far larger than Anthropic Haiku (200K)."
-          }
-        ],
-        "bestForExamples": [
-          {
-            "title": "The classifier that runs on every record without flinching",
-            "body": "Tag a million tickets by category, route inbound forms to the right team, score every review on the dimensions that matter. Per-record cost on Flash is fractions of a cent, which is what makes \"classify everything as it arrives\" workflows actually sustainable instead of getting throttled to a sample."
-          },
-          {
-            "title": "The pre-filter in front of a stronger model",
-            "body": "Run V4 Flash on every record first, then route the top 5% (or the cases Flash isn't confident about) up to V4 Pro or Sonnet 4.6. Two-stage pipelines beat single-model pipelines on total cost almost every time — Flash handles the easy 95%, the stronger model only sees the hard 5%, and your bill scales with reasoning need rather than total volume."
-          },
-          {
-            "title": "The bulk-extraction job that pulls structured data from anywhere",
-            "body": "Email backlogs, PDFs, meeting transcripts, scanned invoices — anywhere there's a fixed system prompt asking for the same JSON shape. Flash bills cache reads but not cache writes, so the long fixed prefix that defines the output schema is paid for once and amortises across the entire batch, driving the marginal per-document cost close to zero."
-          },
-          {
-            "title": "The long-document one-shot Q&A",
-            "body": "Drop a whole book, a 200-page contract, or a codebase into the 1M-token context window and ask a single targeted question. Flash answers in one shot at fractions of a cent per call — more than fast enough for answering \"does this document mention X?\" across a long document at scale, which is one of the workflows agentic loops genuinely don't help with."
-          }
-        ],
-        "avoidFor": "Skip V4 Flash on multi-step agent loops where it drifts on long tool chains, and on hard reasoning, code edits, or planner roles where V4 Pro or Sonnet 4.6 is the right call.",
-        "comparisons": [
-          {
-            "vs": "DeepSeek V4 Pro",
-            "body": "Same vendor; V4 Pro (×0.3) does the reasoning, V4 Flash (×0.02) does the volume. The classic split: Flash as the pre-filter, Pro as the escalator. Vendor-reported SWE-bench Verified is within 1.6 points (79.0 vs 80.6); Terminal-Bench 2.0 favours Pro by 11 points (67.9 vs 56.9)."
-          },
-          {
-            "vs": "Claude Haiku 4.5",
-            "body": "Haiku 4.5 (×0.3) is more reliable on multi-tool routing and faster on interactive flows. V4 Flash (×0.02) wins on raw cost and context size. Pick Flash for batch jobs; pick Haiku for interactive Slack-style replies."
-          },
-          {
-            "vs": "MiniMax M2.7",
-            "body": "M2.7 (×0.1) is stronger on multilingual reasoning and has a 50-minute timeout for long thinking. V4 Flash (×0.02) is faster and far cheaper for single-shot work."
-          }
-        ],
-        "verdict": "The cheapest model in the catalogue. Right for bulk tagging, extraction, and pre-filtering; wrong for planner roles or long agent loops.",
-        "faqs": [
-          {
-            "q": "When was DeepSeek V4 Flash released?",
-            "a": "DeepSeek released V4 Flash and V4 Pro together on April 24, 2026 under the MIT License with open weights."
-          },
-          {
-            "q": "Should I run my entire agent on V4 Flash?",
-            "a": "Probably not. Flash is great at one-shot tasks but drifts on long multi-step loops (vendor-reported Terminal-Bench 2.0 is 11 points behind V4 Pro). The standard pattern is to use it as a pre-filter and escalate the hard cases to V4 Pro or Sonnet 4.6."
-          },
-          {
-            "q": "Are cache writes really free?",
-            "a": "Yes. DeepSeek doesn't bill the cache-write portion. Only cache reads bill, at $0.028 per 1M tokens."
-          },
-          {
-            "q": "Is V4 Flash open-source?",
-            "a": "Yes. Weights are published under the MIT License (284B total / 13B active MoE). The hosted DeepSeek API is the production path for VM0."
-          },
-          {
-            "q": "What's V4 Flash's context window?",
-            "a": "1 million tokens. Identical to V4 Pro. Useful for long-document one-shot Q&A even at the cheapest tier."
-          }
-        ],
-        "alternatives": [
-          {
-            "slug": "deepseek-v4-pro",
-            "reason": "Same vendor, much stronger reasoning"
-          },
-          {
-            "slug": "claude-haiku-4-5",
-            "reason": "Anthropic alternative for routing"
-          },
-          {
-            "slug": "minimax-m2-7",
-            "reason": "Cheap multilingual alternative"
-          }
-        ],
-        "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Default model on the DeepSeek provider; also available on VM0 Managed.",
-        "vm0Notes": "V4 Flash carries the lowest credit multiplier of any Built-in model (×0.02), roughly 50× less than Sonnet 4.6. Cache reads bill while cache writes are free, and VM0 sets a 10-minute API timeout for the DeepSeek provider that pairs naturally with Flash's short single-shot work."
+        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.1 selectable."
       },
       "gpt-image-2": {
         "name": "GPT Image 2",
@@ -6349,7 +5925,10 @@
         ],
         "architecture": "Text-to-image and image-edit model exposed through OpenAI's GPT Image 2 endpoint on fal. Supports quality tiers and flexible image sizes; transparent backgrounds are not supported on VM0 for this model.",
         "specs": [
-          { "label": "Family", "value": "OpenAI Images" },
+          {
+            "label": "Family",
+            "value": "OpenAI Images"
+          },
           {
             "label": "Modalities",
             "value": "Text-to-image, image-to-image edit"
@@ -6362,8 +5941,14 @@
             "label": "VM0 billed price",
             "value": "From $0.007 to $0.481 per image"
           },
-          { "label": "Languages", "value": "Multilingual prompts" },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Languages",
+            "value": "Multilingual prompts"
+          },
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6430,8 +6015,14 @@
           }
         ],
         "alternatives": [
-          { "slug": "gpt-image-1", "reason": "Cheaper OpenAI image default" },
-          { "slug": "seedream-4", "reason": "Cheaper photoreal alternative" }
+          {
+            "slug": "gpt-image-1",
+            "reason": "Cheaper OpenAI image default"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "Cheaper photoreal alternative"
+          }
         ],
         "routingNotes": "Routed to OpenAI's GPT Image 2 endpoint through VM0's built-in generation path and billed per output image tier.",
         "vm0Notes": "GPT Image 2 is available through VM0 Managed generation with quality and size controls. Use medium quality for normal agent work and high quality when the generated image is the deliverable."
@@ -6452,7 +6043,10 @@
         ],
         "architecture": "Diffusion-based text-to-image with native edit support. Tier pricing scales by output resolution (standard / large) and quality (low / medium / high), with the medium/standard tier as the typical default. Inputs accept text plus optional reference images for edits and masks.",
         "specs": [
-          { "label": "Family", "value": "OpenAI Images" },
+          {
+            "label": "Family",
+            "value": "OpenAI Images"
+          },
           {
             "label": "Modalities",
             "value": "Text-to-image, image-to-image edit"
@@ -6465,8 +6059,14 @@
             "label": "Vendor list price",
             "value": "From $0.011 to $0.25 per image"
           },
-          { "label": "Languages", "value": "Multilingual prompts" },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Languages",
+            "value": "Multilingual prompts"
+          },
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6533,7 +6133,10 @@
             "slug": "flux-pro-1-1-ultra",
             "reason": "Higher photoreal aesthetic ceiling"
           },
-          { "slug": "seedream-4", "reason": "Better photoreal default" }
+          {
+            "slug": "seedream-4",
+            "reason": "Better photoreal default"
+          }
         ],
         "routingNotes": "Routed to OpenAI's Images surface and billed per generated image at the selected tier.",
         "vm0Notes": "GPT Image 1 is the OpenAI-stack default for stylised illustration and edit-loop agent workflows. The medium/standard tier is the sensible everywhere-default; reserve the high/large tier for delivery-grade output."
@@ -6554,11 +6157,26 @@
         ],
         "architecture": "High-resolution diffusion model with prompt-following tuned for compositional fidelity. Billed per generated image. Inputs accept text prompts; produces high-resolution output suitable for delivery.",
         "specs": [
-          { "label": "Family", "value": "Flux 1.1 Pro" },
-          { "label": "Modalities", "value": "Text-to-image" },
-          { "label": "Vendor list price", "value": "$0.072 per image" },
-          { "label": "Languages", "value": "Multilingual prompts" },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Family",
+            "value": "Flux 1.1 Pro"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text-to-image"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$0.072 per image"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual prompts"
+          },
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6625,8 +6243,14 @@
           }
         ],
         "alternatives": [
-          { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" },
-          { "slug": "seedream-4", "reason": "Cheaper photoreal alternative" }
+          {
+            "slug": "gpt-image-1",
+            "reason": "Stronger stylised illustration"
+          },
+          {
+            "slug": "seedream-4",
+            "reason": "Cheaper photoreal alternative"
+          }
         ],
         "routingNotes": "Routed to Black Forest Labs' Flux Pro 1.1 Ultra endpoint and billed per generated image.",
         "vm0Notes": "Flux Pro 1.1 Ultra is the premium tier of the curated image lineup. Use it for the final-render step rather than for iteration; pair it with SeedDream 4 for the cheap pre-filter."
@@ -6647,14 +6271,26 @@
         ],
         "architecture": "Diffusion-based text-to-image model. Billed per generated image. Inputs accept text prompts; produces photoreal-leaning output suitable for portraits, products and lifestyle imagery.",
         "specs": [
-          { "label": "Family", "value": "Seedream V4" },
-          { "label": "Modalities", "value": "Text-to-image" },
-          { "label": "Vendor list price", "value": "$0.036 per image" },
+          {
+            "label": "Family",
+            "value": "Seedream V4"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text-to-image"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$0.036 per image"
+          },
           {
             "label": "Languages",
             "value": "Multilingual prompts (English + Chinese strong)"
           },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6725,7 +6361,10 @@
             "slug": "flux-pro-1-1-ultra",
             "reason": "Premium hero-shot quality"
           },
-          { "slug": "gpt-image-1", "reason": "Stronger stylised illustration" }
+          {
+            "slug": "gpt-image-1",
+            "reason": "Stronger stylised illustration"
+          }
         ],
         "routingNotes": "Routed to ByteDance's SeedDream V4 text-to-image endpoint and billed per generated image.",
         "vm0Notes": "SeedDream 4 is the photoreal-specific default in the curated image lineup. Pair it with Flux Pro 1.1 Ultra for hero shots and with GPT Image 1 for non-photo iteration."
@@ -6746,18 +6385,30 @@
         ],
         "architecture": "Text-to-video and image-to-video diffusion model with native audio synthesis in the same pass. Output durations are 4, 6 or 8 seconds at 720p, 1080p or 4K. Billed per generated video-second with quality-tier modifiers.",
         "specs": [
-          { "label": "Family", "value": "Google Veo 3" },
+          {
+            "label": "Family",
+            "value": "Google Veo 3"
+          },
           {
             "label": "Modalities",
             "value": "Text-to-video, image-to-video, native audio"
           },
-          { "label": "Clip durations", "value": "4s / 6s / 8s" },
-          { "label": "Output resolutions", "value": "720p / 1080p / 4K" },
+          {
+            "label": "Clip durations",
+            "value": "4s / 6s / 8s"
+          },
+          {
+            "label": "Output resolutions",
+            "value": "720p / 1080p / 4K"
+          },
           {
             "label": "Vendor list price",
             "value": "~$0.15 per second (720p + audio)"
           },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6828,7 +6479,10 @@
             "slug": "kling-v3-4k",
             "reason": "Stylised / anime ceiling, longer clips"
           },
-          { "slug": "dreamina-seedance-2-0", "reason": "Cheaper per second" }
+          {
+            "slug": "dreamina-seedance-2-0",
+            "reason": "Cheaper per second"
+          }
         ],
         "routingNotes": "Routed to Google's Veo 3.1 Fast video generation endpoint and billed per generated video-second with quality-tier modifiers.",
         "vm0Notes": "Veo 3.1 Fast is the cinematic / audio-bearing default in the curated video lineup on VM0. Pair it with Dreamina Seedance 2.0 for cheap iteration and with Kling V3 4K for stylised or longer-form clips."
@@ -6849,12 +6503,30 @@
         ],
         "architecture": "Text-to-video and image-to-video diffusion model. Standard tier renders at 4K with clip durations from 3 to 15 seconds. Billed per generated video-second.",
         "specs": [
-          { "label": "Family", "value": "Kling V3" },
-          { "label": "Modalities", "value": "Text-to-video, image-to-video" },
-          { "label": "Clip durations", "value": "3 to 15 seconds" },
-          { "label": "Output resolution", "value": "4K (standard tier)" },
-          { "label": "Vendor list price", "value": "~$0.28 per second (4K)" },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Family",
+            "value": "Kling V3"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text-to-video, image-to-video"
+          },
+          {
+            "label": "Clip durations",
+            "value": "3 to 15 seconds"
+          },
+          {
+            "label": "Output resolution",
+            "value": "4K (standard tier)"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "~$0.28 per second (4K)"
+          },
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -6921,7 +6593,10 @@
           }
         ],
         "alternatives": [
-          { "slug": "veo-3-1-fast", "reason": "Cinematic / native audio" },
+          {
+            "slug": "veo-3-1-fast",
+            "reason": "Cinematic / native audio"
+          },
           {
             "slug": "dreamina-seedance-2-0",
             "reason": "Cheaper bulk generation"
@@ -6946,15 +6621,30 @@
         ],
         "architecture": "Text-to-video and image-to-video diffusion model with three quality tiers (Fast, Standard, Pro). The curated entry covers the Standard 2.0 tier. Billed per generated video-second with modifiers for resolution and whether image conditioning is used.",
         "specs": [
-          { "label": "Family", "value": "Seedance 2.0" },
-          { "label": "Modalities", "value": "Text-to-video, image-to-video" },
-          { "label": "Clip durations", "value": "4 to 15 seconds" },
-          { "label": "Output resolutions", "value": "480p / 720p / 1080p" },
+          {
+            "label": "Family",
+            "value": "Seedance 2.0"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text-to-video, image-to-video"
+          },
+          {
+            "label": "Clip durations",
+            "value": "4 to 15 seconds"
+          },
+          {
+            "label": "Output resolutions",
+            "value": "480p / 720p / 1080p"
+          },
           {
             "label": "Vendor list price",
             "value": "~$0.05 per second (1080p + image)"
           },
-          { "label": "Available on VM0", "value": "April 2026" }
+          {
+            "label": "Available on VM0",
+            "value": "April 2026"
+          }
         ],
         "benchmarksNote": "",
         "benchmarks": [],
@@ -7025,7 +6715,10 @@
             "slug": "veo-3-1-fast",
             "reason": "Native audio, cinematic motion"
           },
-          { "slug": "kling-v3-4k", "reason": "Stylised, longer, 4K" }
+          {
+            "slug": "kling-v3-4k",
+            "reason": "Stylised, longer, 4K"
+          }
         ],
         "routingNotes": "Routed to ByteDance's Dreamina Seedance 2.0 endpoint and billed per generated video-second with resolution and image-conditioning modifiers.",
         "vm0Notes": "Dreamina Seedance 2.0 is the cost-optimised default in the curated video lineup on VM0. The standard pattern is to use it for iteration and fan-out, then escalate the chosen variant to Veo 3.1 Fast or Kling V3 4K only when the final render justifies the premium."

@@ -38,6 +38,8 @@ const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
   "http://localhost:3000/api/test/oauth-provider/token";
+const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
+const TEST_OAUTH_DEVICE_API_CLIENT_ID = "test-oauth-device-api-client";
 const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
@@ -183,7 +185,14 @@ function mockTestOAuthDeviceProvider(): void {
           { status: 400 },
         );
       }
-      if (!deviceCode?.startsWith("test-device:test-oauth-device-client:")) {
+      if (
+        !deviceCode?.startsWith(
+          `test-device:${TEST_OAUTH_DEVICE_CLIENT_ID}:`,
+        ) &&
+        !deviceCode?.startsWith(
+          `test-device:${TEST_OAUTH_DEVICE_API_CLIENT_ID}:`,
+        )
+      ) {
         return HttpResponse.json(
           {
             error: "invalid_grant",
@@ -534,6 +543,47 @@ describe("OAuth device authorization connector routes", () => {
     });
   });
 
+  it("does not supersede active sessions for a different auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const oauthSession = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const apiSession = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(
+      onlySession(oauthSession.body.sessionId),
+    ).resolves.toMatchObject({
+      orgId,
+      userId,
+      authMethod: "oauth",
+      status: "awaiting_user_authorization",
+    });
+    await expect(onlySession(apiSession.body.sessionId)).resolves.toMatchObject(
+      {
+        orgId,
+        userId,
+        authMethod: "api",
+        status: "awaiting_user_authorization",
+      },
+    );
+  });
+
   it("does not persist a superseded session that completes after a new session starts", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
@@ -843,6 +893,55 @@ describe("OAuth device authorization connector routes", () => {
       .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
     expect(stored).toStrictEqual([
       { authMethod: "oauth", oauthScopes: JSON.stringify(["read", "granted"]) },
+    ]);
+    expect((await onlySession(start.body.sessionId)).status).toBe("complete");
+  });
+
+  it("completes a session with the stored non-default auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain("test-device-access");
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
+    ).resolves.toBe(
+      "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read",
+    );
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        oauthScopes: connectors.oauthScopes,
+      })
+      .from(connectors)
+      .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
+    expect(stored).toStrictEqual([
+      { authMethod: "api", oauthScopes: JSON.stringify(["read"]) },
     ]);
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });

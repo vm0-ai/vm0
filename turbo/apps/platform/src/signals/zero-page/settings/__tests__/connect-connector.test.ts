@@ -60,6 +60,30 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
   };
 }
 
+function makeTestOauthConnectorResponse(
+  authMethod: "oauth" | "api",
+  updatedAt: string,
+): ConnectorListResponse {
+  return {
+    connectors: [
+      {
+        id: "00000000-0000-4000-8000-000000000125",
+        type: "test-oauth",
+        authMethod,
+        externalId: "test-oauth-user",
+        externalUsername: "test-oauth-user",
+        externalEmail: null,
+        oauthScopes: ["read"],
+        needsReconnect: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt,
+      },
+    ],
+    configuredTypes: ["test-oauth"],
+    connectorProvidedEnvNames: [],
+  };
+}
+
 function mockMatchMedia(standalone: boolean) {
   vi.spyOn(window, "matchMedia").mockReturnValue({
     matches: standalone,
@@ -155,6 +179,76 @@ describe("connectConnectorOAuthAuthCode$", () => {
 
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(2);
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
+  });
+
+  it("ignores same-type rows with a different auth method while waiting for auth-code completion", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+      featureSwitches: { [FeatureSwitchKey.TestOauthConnector]: true },
+    });
+
+    const mockWindow = createMockAuthWindow();
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+
+    let pollCount = 0;
+    server.use(
+      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
+        pollCount++;
+        if (pollCount <= 1) {
+          return respond(200, makeEmptyConnectorResponse());
+        }
+        if (pollCount === 2) {
+          return respond(
+            200,
+            makeTestOauthConnectorResponse("oauth", "2026-01-02T00:00:00.000Z"),
+          );
+        }
+        return respond(
+          200,
+          makeTestOauthConnectorResponse("api", "2026-01-03T00:00:00.000Z"),
+        );
+      }),
+    );
+
+    let completed = false;
+    const connectPromise = (async () => {
+      const result = await context.store.set(
+        connectConnectorOAuthAuthCode$,
+        "test-oauth",
+        "api",
+        {},
+        context.signal,
+      );
+      completed = true;
+      return result;
+    })();
+
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(1);
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+
+    triggerAblyEvent("connector:changed");
+    await vi.waitFor(() => {
+      expect(pollCount).toBeGreaterThanOrEqual(2);
+    });
+    await Promise.resolve();
+
+    expect(completed).toBeFalsy();
+    expect(hasSubscription("connector:changed")).toBeTruthy();
+    expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBe(
+      "test-oauth",
+    );
+
+    triggerAblyEvent("connector:changed");
+
+    const result = await connectPromise;
+
+    expect(result).toBeTruthy();
+    expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingOAuthAuthCodeConnectorType$)).toBeNull();
   });
 

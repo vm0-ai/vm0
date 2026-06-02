@@ -1290,6 +1290,32 @@ class TestCompiledFirewallMatching:
         assert result.rel_path == "/users"
         assert result.params == {"workspace": "acme", "tenant": "customer-1"}
 
+    def test_compiled_unknown_allow_uses_first_matching_best_base_api_entry(self):
+        first_api_entry = {
+            "base": "https://api.example.com",
+            "auth": {"headers": {"Authorization": "Bearer first"}},
+            "permissions": [],
+        }
+        second_api_entry = {
+            "base": "https://api.example.com",
+            "auth": {"headers": {"Authorization": "Bearer second"}},
+            "permissions": [],
+        }
+        fws = wrap_firewalls([first_api_entry, second_api_entry], name="example")
+        policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "allow"}}
+
+        result = matching.match_compiled_firewall_request(
+            "https://api.example.com/items",
+            "GET",
+            self._compiled(fws),
+            policies,
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.api_entry is first_api_entry
+        assert result.permission is None
+        assert result.rule is None
+
     def test_compiled_matches_ask_permission_block(self):
         fws = wrap_firewalls(
             [
@@ -3685,6 +3711,8 @@ class TestCompiledFirewallMatching:
             {"base": None},
             {"base": 123},
             {"base": "ftp://example.com/hook"},
+            {"base": "http://example.com/hook"},
+            {"base": "http://${{ vars.WEBHOOK_HOST }}/hook"},
             {"base": "https:/example.com/hook"},
             {"base": "https:///hook"},
             {"base": "https://example.com/hook#fragment"},

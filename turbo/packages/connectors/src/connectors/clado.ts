@@ -11,6 +11,10 @@ export const clado = {
         label: "API Key",
         helpText:
           "1. Sign in to [Clado](https://clado.ai)\n2. Open the **API keys** page in your account\n3. Click **Create Key**, name it, and copy the value\n4. Use it as a Bearer token on requests to `https://search.clado.ai`",
+        storage: {
+          secrets: ["CLADO_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

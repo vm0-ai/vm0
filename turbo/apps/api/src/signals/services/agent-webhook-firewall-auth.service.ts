@@ -7,9 +7,12 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
-  resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodStorageMetadata,
+  resolveConnectorAuthClientForMethod,
+  connectorAuthMethodSupportsRefreshTokenAccess,
   type ConnectorAuthMethodAccessMetadata,
+  type ConnectorAuthMethodStorageMetadata,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -24,7 +27,6 @@ import {
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
   getConnectorAuthProviderClientArgs,
-  hasConnectorRefreshTokenAccessProvider,
   refreshConnectorAuthProviderAccessToken,
   type ConnectorAuthProviderClientArgs,
   type ProviderEnv,
@@ -410,6 +412,7 @@ interface RefreshSourceState {
 interface ConnectorAccessState extends RefreshSourceState {
   readonly authMethod: string;
   readonly accessMetadata: ConnectorAuthMethodAccessMetadata;
+  readonly storageMetadata: ConnectorAuthMethodStorageMetadata;
 }
 
 interface BasicArgContext extends BasicAuthTemplateArg {
@@ -755,12 +758,17 @@ async function loadConnectorAccessStates(
       parsed.data,
       row.authMethod,
     );
-    if (!accessMetadata) {
+    const storageMetadata = getConnectorAuthMethodStorageMetadata(
+      parsed.data,
+      row.authMethod,
+    );
+    if (!accessMetadata || !storageMetadata) {
       continue;
     }
     result.set(row.type, {
       authMethod: row.authMethod,
       accessMetadata,
+      storageMetadata,
       ...refreshSourceStateFromRow(row),
     });
   }
@@ -1017,7 +1025,7 @@ function prepareRefreshTokenContext(
     return { ok: false, reason: "not-refreshable" };
   }
   if (
-    !hasConnectorRefreshTokenAccessProvider(
+    !connectorAuthMethodSupportsRefreshTokenAccess(
       parsedConnectorType.data,
       connectorAccess.authMethod,
     )
@@ -1712,35 +1720,45 @@ function getOwnConnectorOwner(
 
 function isSelectedAccessSecretKey(
   key: string,
-  accessMetadata: ConnectorAuthMethodAccessMetadata,
+  connectorAccess: ConnectorAccessState,
 ): boolean {
-  return connectorAccessSecretName(key, accessMetadata) !== undefined;
+  return connectorAccessSecretName(key, connectorAccess) !== undefined;
 }
 
 function connectorAccessSecretName(
   key: string,
-  accessMetadata: ConnectorAuthMethodAccessMetadata,
+  connectorAccess: ConnectorAccessState,
 ): string | undefined {
-  switch (accessMetadata.kind) {
+  switch (connectorAccess.accessMetadata.kind) {
     case "refresh-token": {
-      if (
-        accessMetadata.envBindings[key] ===
-        `${CONNECTOR_SECRET_REF_PREFIX}${accessMetadata.accessToken}`
-      ) {
-        return accessMetadata.accessToken;
-      }
-      return undefined;
+      const secretName = connectorRuntimeSecretName(
+        key,
+        connectorAccess.storageMetadata,
+      );
+      return secretName ===
+        connectorAccess.storageMetadata.secretRoles.accessToken
+        ? secretName
+        : undefined;
     }
     case "static": {
-      const valueRef = accessMetadata.envBindings[key];
-      return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX) === true
-        ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
-        : undefined;
+      return connectorRuntimeSecretName(key, connectorAccess.storageMetadata);
     }
     case "none": {
       return undefined;
     }
   }
+}
+
+function connectorRuntimeSecretName(
+  key: string,
+  storageMetadata: ConnectorAuthMethodStorageMetadata,
+): string | undefined {
+  const binding = storageMetadata.runtimeBindings.find((entry) => {
+    return entry.envName === key && entry.source.kind === "connector-secret";
+  });
+  return binding?.source.kind === "connector-secret"
+    ? binding.source.name
+    : undefined;
 }
 
 function modelProviderAccessSecretName(args: {
@@ -1837,12 +1855,11 @@ async function syncStaticConnectorAccessSecrets(args: {
     if (metadata.sourceType !== "connector") {
       return [];
     }
-    const accessMetadata =
-      args.connectorAccessByType.get(connectorType)?.accessMetadata;
-    if (accessMetadata?.kind !== "static") {
+    const connectorAccess = args.connectorAccessByType.get(connectorType);
+    if (connectorAccess?.accessMetadata.kind !== "static") {
       return [];
     }
-    const secretName = connectorAccessSecretName(key, accessMetadata);
+    const secretName = connectorAccessSecretName(key, connectorAccess);
     return secretName ? [{ key, secretName }] : [];
   });
   if (lookups.length === 0) {
@@ -1915,12 +1932,11 @@ function canResolveMissingAccessSecret(args: {
     );
   }
 
-  const accessMetadata =
-    args.connectorAccessByType.get(connectorType)?.accessMetadata;
-  if (accessMetadata?.kind !== "refresh-token") {
+  const connectorAccess = args.connectorAccessByType.get(connectorType);
+  if (connectorAccess?.accessMetadata.kind !== "refresh-token") {
     return false;
   }
-  return isSelectedAccessSecretKey(args.key, accessMetadata);
+  return isSelectedAccessSecretKey(args.key, connectorAccess);
 }
 
 function referencedConnectorTypes(args: {
@@ -1987,9 +2003,8 @@ function hasUnavailableAccessSource(args: {
       return !args.modelProviderSourceStateByConnector.has(connectorType);
     }
 
-    const accessMetadata =
-      args.connectorAccessByType.get(connectorType)?.accessMetadata;
-    return !accessMetadata || !isSelectedAccessSecretKey(key, accessMetadata);
+    const connectorAccess = args.connectorAccessByType.get(connectorType);
+    return !connectorAccess || !isSelectedAccessSecretKey(key, connectorAccess);
   });
 }
 

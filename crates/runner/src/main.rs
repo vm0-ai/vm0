@@ -28,12 +28,14 @@ mod proxy;
 mod r2_cache;
 mod resource_budget;
 mod retry;
+mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;
 mod status;
 mod storage_cache;
 mod telemetry;
 mod types;
+mod workspace_mount;
 
 use std::path::Path;
 use std::process::ExitCode;

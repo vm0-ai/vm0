@@ -20,6 +20,14 @@ export const deel = {
           clientIdEnv: "DEEL_OAUTH_CLIENT_ID",
           clientSecretEnv: "DEEL_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["DEEL_ACCESS_TOKEN", "DEEL_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "DEEL_ACCESS_TOKEN",
+            refreshToken: "DEEL_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -37,8 +45,6 @@ export const deel = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "DEEL_ACCESS_TOKEN",
-          refreshToken: "DEEL_REFRESH_TOKEN",
           envBindings: {
             DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
           },
@@ -49,6 +55,10 @@ export const deel = {
         label: "API Token",
         helpText:
           "1. Create a [Deel](https://app.deel.com) account and verify your email\n2. Navigate to the **Developer Center**\n3. Select the **API Sandbox** tab (or **Production** for live credentials)\n4. Click **Create Sandbox** and enter a unique email and password\n5. Click **Confirm** to finalize sandbox creation\n6. Locate your **API Key / Access Token** in the Developer Center\n7. Copy and store the token securely",
+        storage: {
+          secrets: ["DEEL_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

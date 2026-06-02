@@ -11,6 +11,10 @@ export const brevo = {
         label: "API Key",
         helpText:
           "1. Log in to [Brevo](https://app.brevo.com)\n2. Go to **Settings** → **SMTP & API** → **API Keys**\n3. Copy your API key",
+        storage: {
+          secrets: ["BREVO_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -10,6 +10,10 @@ export const slackWebhook = {
         label: "Webhook URL",
         helpText:
           "1. Create a [Slack app](https://api.slack.com/apps) (or use an existing one), choosing a workspace to associate it with\n2. From the app settings page, select **Incoming Webhooks**\n3. Toggle **Activate Incoming Webhooks** to on\n4. Click **Add New Webhook to Workspace**\n5. Pick a channel for the app to post to, then click **Authorize**\n6. Copy the webhook URL from the **Webhook URLs for Your Workspace** section (it will look like `https://hooks.slack.com/services/T.../B.../XXXX...`)",
+        storage: {
+          secrets: ["SLACK_WEBHOOK_URL"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

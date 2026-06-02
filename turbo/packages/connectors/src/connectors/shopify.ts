@@ -12,6 +12,10 @@ export const shopify = {
         label: "API Key",
         helpText:
           "1. In your Shopify admin, go to **Settings → Apps and sales channels → Develop apps**\n2. Click **Create an app**, name it (e.g. `vm0`), and open it\n3. Under **Configuration → Admin API integration**, grant the scopes you need (e.g. `read_products`, `read_orders`)\n4. Click **Install app** and then **Reveal token once** — copy the Admin API access token (starts with `shpat_`)\n5. For the **Store subdomain** below, enter only the subdomain of your `.myshopify.com` URL (for `acme.myshopify.com` enter `acme`)",
+        storage: {
+          secrets: ["SHOPIFY_TOKEN"],
+          variables: ["SHOPIFY_SHOP"],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -15,6 +15,10 @@ export const printful = {
           "2. Generate a **Private Token** with the scopes your workflow needs\n" +
           "3. Copy the token and use it as a Bearer token\n\n" +
           "For account-level Private Tokens, Printful requires an `X-PF-Store-Id` header on store-scoped requests.",
+        storage: {
+          secrets: ["PRINTFUL_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

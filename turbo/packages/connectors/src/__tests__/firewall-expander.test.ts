@@ -259,7 +259,15 @@ describe("resolveFirewallSelections", () => {
 
     expect(() => {
       return collectAndValidatePermissions(config("ftp://example.com/hook"));
-    }).toThrow("scheme must be http or https");
+    }).toThrow("scheme must be https");
+    expect(() => {
+      return collectAndValidatePermissions(config("http://example.com/hook"));
+    }).toThrow("scheme must be https");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("http://${{ vars.WEBHOOK_HOST }}/hook"),
+      );
+    }).toThrow("scheme must be https");
     expect(() => {
       return collectAndValidatePermissions(config("https:/example.com/hook"));
     }).toThrow('URL must include "://" after the scheme');

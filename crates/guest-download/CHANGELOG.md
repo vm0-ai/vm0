@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.16...guest-download-v0.20.17) (2026-06-02)
+
+
+### Bug Fixes
+
+* preserve workspace mountpoint during cleanup ([#15820](https://github.com/vm0-ai/vm0/issues/15820)) ([b7cb603](https://github.com/vm0-ai/vm0/commit/b7cb603b33a8ededdc02eb54eb4860f6db13e361))
+
 ## [0.20.16](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.15...guest-download-v0.20.16) (2026-05-22)
 
 

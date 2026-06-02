@@ -18,6 +18,14 @@ export const notion = {
           clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
           clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["NOTION_ACCESS_TOKEN", "NOTION_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "NOTION_ACCESS_TOKEN",
+            refreshToken: "NOTION_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -26,8 +34,6 @@ export const notion = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "NOTION_ACCESS_TOKEN",
-          refreshToken: "NOTION_REFRESH_TOKEN",
           envBindings: {
             NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
           },

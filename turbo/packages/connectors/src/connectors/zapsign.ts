@@ -11,6 +11,10 @@ export const zapsign = {
         label: "API Token",
         helpText:
           "1. Log in to your [ZapSign](https://app.zapsign.com) account\n2. Go to **Settings**\n3. Navigate to **Integrations**\n4. Select **ZAPSIGN API**\n5. Copy your API token",
+        storage: {
+          secrets: ["ZAPSIGN_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

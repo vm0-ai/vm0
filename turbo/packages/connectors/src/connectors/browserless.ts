@@ -12,6 +12,10 @@ export const browserless = {
         label: "API Token",
         helpText:
           "1. Sign up or log in at [Browserless](https://browserless.io/account/)\n2. Navigate to the account dashboard\n3. Copy your API token from the dashboard",
+        storage: {
+          secrets: ["BROWSERLESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -97,6 +97,17 @@ pub struct DeviceRateLimits {
     pub network: NetworkRateLimits,
 }
 
+/// Provider-neutral workspace block image configuration for one sandbox.
+///
+/// The image is mounted by runner-controlled guest setup at the canonical
+/// execution workspace. Providers only need to expose it as a writable non-root
+/// block device.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkspaceDriveConfig {
+    /// Logical size in MiB for newly initialized workspace images.
+    pub size_mb: u32,
+}
+
 /// Per-sandbox creation configuration passed to [`crate::SandboxFactory::create`].
 ///
 /// Factory-wide configuration belongs in [`FactoryConfig`]; these values are
@@ -112,6 +123,8 @@ pub struct SandboxConfig {
     pub resources: ResourceLimits,
     /// Optional provider-neutral I/O limits to apply to this sandbox.
     pub device_rate_limits: Option<DeviceRateLimits>,
+    /// Optional writable workspace block image.
+    pub workspace_drive: Option<WorkspaceDriveConfig>,
 }
 
 /// Reference to a pre-built snapshot for fast VM boot.

@@ -40,6 +40,8 @@ const CONNECTOR_AUTH_METHOD_PRIORITY = {
   "api-token": 1,
   api: 2,
 } as const satisfies Record<ConnectorAuthMethodId, number>;
+const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
+const CONNECTOR_VARIABLE_REF_PREFIX = "$vars.";
 
 function connectorAuthMethodPriority(
   authMethod: ConnectorAuthMethodId,
@@ -190,17 +192,27 @@ function manualGrantFieldNames(
   return { secrets: secretNames, variables: variableNames };
 }
 
+export function getConnectorManualGrantFieldNamesForAuthMethod(
+  type: ConnectorType,
+  authMethod: string,
+): ManualGrantFieldNames | null {
+  const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
+  return fields ? manualGrantFieldNames(fields) : null;
+}
+
 export function getConnectorManualGrantFieldNames(
   type: ConnectorType,
 ): ManualGrantFieldNames | null {
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
   for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-    const method = getConnectorAuthMethod(type, authMethod);
-    if (method?.grant.kind !== "manual") {
+    const fields = getConnectorManualGrantFieldNamesForAuthMethod(
+      type,
+      authMethod,
+    );
+    if (!fields) {
       continue;
     }
-    const fields = manualGrantFieldNames(method.grant.fields);
     fields.secrets.forEach((name) => {
       secretNames.add(name);
     });
@@ -242,6 +254,7 @@ function connectorAccessPlatformSecrets(
 export type ConnectorAuthMethodAccessMetadata =
   | {
       readonly kind: "static";
+      readonly accessToken?: string;
       readonly envBindings: ConnectorEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
@@ -258,6 +271,53 @@ export type ConnectorAuthMethodAccessMetadata =
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     };
 
+export type ConnectorRuntimeBindingSource =
+  | {
+      readonly kind: "connector-secret";
+      readonly name: string;
+    }
+  | {
+      readonly kind: "connector-variable";
+      readonly name: string;
+    }
+  | {
+      readonly kind: "platform-secret";
+      readonly name: ConnectorPlatformSecretName;
+    };
+
+export interface ConnectorRuntimeBindingEntry {
+  readonly envName: string;
+  readonly valueRef: string;
+  readonly source: ConnectorRuntimeBindingSource;
+}
+
+export interface ConnectorAuthMethodStorageMetadata {
+  readonly storage: {
+    readonly secrets: readonly string[];
+    readonly variables: readonly string[];
+  };
+  readonly secretRoles: {
+    readonly accessToken?: string;
+    readonly refreshToken?: string;
+  };
+  readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
+}
+
+function requireConnectorSecretRole(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly role: "accessToken" | "refreshToken";
+}): string {
+  const role = getConnectorAuthMethod(args.type, args.authMethod)?.storage
+    .secretRoles?.[args.role];
+  if (!role) {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} is missing ${args.role} secret role`,
+    );
+  }
+  return role;
+}
+
 export function getConnectorAuthMethodAccessMetadata(
   type: ConnectorType,
   authMethod: string,
@@ -268,17 +328,28 @@ export function getConnectorAuthMethodAccessMetadata(
   }
 
   switch (method.access.kind) {
-    case "static":
+    case "static": {
+      const accessToken = method.storage.secretRoles?.accessToken;
       return {
         kind: "static",
+        ...(accessToken ? { accessToken } : {}),
         envBindings: method.access.envBindings,
         platformSecrets: method.access.platformSecrets ?? [],
       };
+    }
     case "refresh-token":
       return {
         kind: "refresh-token",
-        accessToken: method.access.accessToken,
-        refreshToken: method.access.refreshToken,
+        accessToken: requireConnectorSecretRole({
+          type,
+          authMethod,
+          role: "accessToken",
+        }),
+        refreshToken: requireConnectorSecretRole({
+          type,
+          authMethod,
+          role: "refreshToken",
+        }),
         envBindings: method.access.envBindings,
         platformSecrets: method.access.platformSecrets ?? [],
       };
@@ -289,6 +360,78 @@ export function getConnectorAuthMethodAccessMetadata(
         platformSecrets: [],
       };
   }
+}
+
+function connectorPlatformSecretSource(
+  secretName: string,
+  platformSecrets: readonly ConnectorPlatformSecretName[],
+): ConnectorPlatformSecretName | undefined {
+  return platformSecrets.find((platformSecret) => {
+    return platformSecret === secretName;
+  });
+}
+
+function connectorRuntimeBindingEntries(args: {
+  readonly envBindings: ConnectorEnvBindings;
+  readonly platformSecrets: readonly ConnectorPlatformSecretName[];
+}): ConnectorRuntimeBindingEntry[] {
+  const entries: ConnectorRuntimeBindingEntry[] = [];
+  for (const [envName, valueRef] of Object.entries(args.envBindings)) {
+    if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+      const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+      const platformSecret = connectorPlatformSecretSource(
+        secretName,
+        args.platformSecrets,
+      );
+      entries.push({
+        envName,
+        valueRef,
+        source: platformSecret
+          ? { kind: "platform-secret", name: platformSecret }
+          : { kind: "connector-secret", name: secretName },
+      });
+      continue;
+    }
+
+    if (valueRef.startsWith(CONNECTOR_VARIABLE_REF_PREFIX)) {
+      entries.push({
+        envName,
+        valueRef,
+        source: {
+          kind: "connector-variable",
+          name: valueRef.slice(CONNECTOR_VARIABLE_REF_PREFIX.length),
+        },
+      });
+    }
+  }
+  return entries;
+}
+
+export function getConnectorAuthMethodStorageMetadata(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodStorageMetadata | undefined {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return undefined;
+  }
+  const platformSecrets = connectorAccessPlatformSecrets(method.access);
+  const accessToken = method.storage.secretRoles?.accessToken;
+  const refreshToken = method.storage.secretRoles?.refreshToken;
+  return {
+    storage: {
+      secrets: [...method.storage.secrets],
+      variables: [...method.storage.variables],
+    },
+    secretRoles: {
+      ...(accessToken ? { accessToken } : {}),
+      ...(refreshToken ? { refreshToken } : {}),
+    },
+    runtimeBindings: connectorRuntimeBindingEntries({
+      envBindings: connectorAccessEnvBindings(method.access),
+      platformSecrets,
+    }),
+  };
 }
 
 export function connectorAuthMethodHasGrantKind<
@@ -723,65 +866,13 @@ export function getConnectorVariableNames(
 function connectorMethodOwnedSecretNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
-  if (!method) {
-    return [];
-  }
-
-  const names = new Set<string>();
-  const fields = getManualGrantFields(method);
-  for (const [name, field] of Object.entries(fields ?? {})) {
-    if (field.storage !== "variable") {
-      names.add(name);
-    }
-  }
-
-  for (const valueRef of Object.values(
-    connectorAccessEnvBindings(method.access),
-  )) {
-    if (valueRef.startsWith("$secrets.")) {
-      names.add(valueRef.slice("$secrets.".length));
-    }
-  }
-
-  if (method.access.kind === "refresh-token") {
-    names.add(method.access.accessToken);
-    names.add(method.access.refreshToken);
-  }
-
-  const platformSecretNames: ReadonlySet<string> = new Set(
-    connectorAccessPlatformSecrets(method.access),
-  );
-  for (const secretName of platformSecretNames) {
-    names.delete(secretName);
-  }
-
-  return [...names];
+  return method ? [...method.storage.secrets] : [];
 }
 
 function connectorMethodVariableNames(
   method: ConnectorAuthMethodConfig | undefined,
 ): string[] {
-  if (!method) {
-    return [];
-  }
-
-  const names = new Set<string>();
-  const fields = getManualGrantFields(method);
-  for (const [name, field] of Object.entries(fields ?? {})) {
-    if (field.storage === "variable") {
-      names.add(name);
-    }
-  }
-
-  for (const valueRef of Object.values(
-    connectorAccessEnvBindings(method.access),
-  )) {
-    if (valueRef.startsWith("$vars.")) {
-      names.add(valueRef.slice("$vars.".length));
-    }
-  }
-
-  return [...names];
+  return method ? [...method.storage.variables] : [];
 }
 
 /**
@@ -820,17 +911,21 @@ export function getConnectorEnvBindingEntries(
   return entries;
 }
 
+export interface ConnectorStoredSecretDisplayInfo {
+  readonly connectorLabel: string;
+  readonly envNames: string[];
+}
+
 /**
- * Get connector label and derived environment names for a connector secret.
- * Performs a reverse lookup from secret name to the connector type and
- * env bindings that reference it.
+ * Diagnostic/display lookup for a stored connector secret name.
  *
- * Example: getConnectorEnvNamesForSecret("GITHUB_ACCESS_TOKEN")
- * → { connectorLabel: "GitHub", envNames: ["GH_TOKEN", "GITHUB_TOKEN"] }
+ * This reverse-searches registry metadata to explain which runtime env aliases
+ * can expose a stored secret. Runtime injection must use selected auth method
+ * storage metadata instead.
  */
-export function getConnectorEnvNamesForSecret(
+export function getConnectorStoredSecretDisplayInfo(
   secretName: string,
-): { connectorLabel: string; envNames: string[] } | null {
+): ConnectorStoredSecretDisplayInfo | null {
   const allTypes = CONNECTOR_TYPE_KEYS;
 
   for (const type of allTypes) {
@@ -860,6 +955,26 @@ export function getConnectorEnvNamesForSecret(
     }
   }
 
+  return null;
+}
+
+/**
+ * Diagnostic lookup for a runtime env alias declared by connector env bindings.
+ *
+ * This is for human-facing commands such as CLI doctor; runtime connector
+ * behavior must use selected auth method metadata.
+ */
+export function getDiagnosticConnectorTypeForRuntimeEnvName(
+  envName: string,
+): ConnectorType | null {
+  for (const type of CONNECTOR_TYPE_KEYS) {
+    const hasEnvName = getConnectorEnvBindingEntries(type).some((entry) => {
+      return entry.envName === envName;
+    });
+    if (hasEnvName) {
+      return type;
+    }
+  }
   return null;
 }
 
@@ -937,37 +1052,4 @@ export function getConnectorAuthMethodScopeDiff(
     getConnectorAuthMethodGrantScopes(connectorType, authMethod),
     storedScopes,
   );
-}
-
-/**
- * Reverse lookup: given a secret/environment name, find which connector type manages it.
- * Checks manual grant fields, access storage names, and env binding names.
- * Returns null if no connector manages this name.
- */
-export function getConnectorTypeForSecretName(
-  name: string,
-): ConnectorType | null {
-  const allTypes = CONNECTOR_TYPE_KEYS;
-  for (const type of allTypes) {
-    const config = CONNECTOR_TYPES[type];
-    for (const method of Object.values(config.authMethods)) {
-      if (name in (getManualGrantFields(method) ?? {})) {
-        return type;
-      }
-    }
-    for (const method of Object.values(config.authMethods)) {
-      if (connectorMethodOwnedSecretNames(method).includes(name)) {
-        return type;
-      }
-    }
-    const hasEnvName = getConnectorEnvBindingEntries(type).some(
-      ({ envName }) => {
-        return envName === name;
-      },
-    );
-    if (hasEnvName) {
-      return type;
-    }
-  }
-  return null;
 }

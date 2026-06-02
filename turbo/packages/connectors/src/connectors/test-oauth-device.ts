@@ -17,6 +17,13 @@ export const testOauthDevice = {
           clientType: "public",
           clientId: "test-oauth-device-client",
         },
+        storage: {
+          secrets: ["TEST_OAUTH_DEVICE_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "TEST_OAUTH_DEVICE_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: "/api/test/oauth-provider/device/code",
@@ -27,6 +34,38 @@ export const testOauthDevice = {
           kind: "static",
           envBindings: {
             TEST_OAUTH_DEVICE_TOKEN: "$secrets.TEST_OAUTH_DEVICE_ACCESS_TOKEN",
+          },
+        },
+        revoke: { kind: "none" },
+      },
+      api: {
+        featureFlag: FeatureSwitchKey.TestOauthConnector,
+        label: "API Device Authorization",
+        helpText:
+          "Secondary test-only OAuth device method used to exercise method-aware device authorization sessions.",
+        client: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "test-oauth-device-api-client",
+        },
+        storage: {
+          secrets: ["TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
+          },
+        },
+        grant: {
+          kind: "device-auth",
+          deviceAuthUrl: "/api/test/oauth-provider/device/code",
+          tokenUrl: "/api/test/oauth-provider/token",
+          scopes: ["read"],
+        },
+        access: {
+          kind: "static",
+          envBindings: {
+            TEST_OAUTH_DEVICE_API_TOKEN:
+              "$secrets.TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
           },
         },
         revoke: { kind: "none" },

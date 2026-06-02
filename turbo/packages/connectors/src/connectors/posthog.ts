@@ -20,6 +20,14 @@ export const posthog = {
           clientIdEnv: "POSTHOG_OAUTH_CLIENT_ID",
           clientSecretEnv: "POSTHOG_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["POSTHOG_ACCESS_TOKEN", "POSTHOG_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "POSTHOG_ACCESS_TOKEN",
+            refreshToken: "POSTHOG_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -53,8 +61,6 @@ export const posthog = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "POSTHOG_ACCESS_TOKEN",
-          refreshToken: "POSTHOG_REFRESH_TOKEN",
           envBindings: {
             POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
           },
@@ -65,6 +71,10 @@ export const posthog = {
         label: "Personal API Key",
         helpText:
           "1. Log in to [PostHog](https://app.posthog.com)\n2. Navigate to **Personal API keys** in your account settings\n3. Click **+ Create a personal API Key**\n4. Enter a descriptive label for the key\n5. Choose the scopes (permissions) required for your use case\n6. Copy the key immediately (it will not be shown again after refreshing the page)",
+        storage: {
+          secrets: ["POSTHOG_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

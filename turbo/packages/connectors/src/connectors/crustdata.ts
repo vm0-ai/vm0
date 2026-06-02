@@ -11,6 +11,10 @@ export const crustdata = {
         label: "API Key",
         helpText:
           "1. Request or open your Crustdata API key from the [Crustdata dashboard](https://crustdata.com)\n2. Copy your API key\n3. Crustdata authenticates requests with `Authorization: Bearer <key>` and requires the `x-api-version` header",
+        storage: {
+          secrets: ["CRUSTDATA_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

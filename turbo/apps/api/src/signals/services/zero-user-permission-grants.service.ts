@@ -3,10 +3,7 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import {
-  type FirewallPolicies,
-  UNKNOWN_PERMISSION_GRANT,
-} from "@vm0/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
@@ -183,31 +180,6 @@ export async function loadActiveUserPermissionGrants(
     );
 }
 
-export function foldUserPermissionGrantsToFirewallPolicies(
-  grants: readonly Pick<
-    UserPermissionGrantRow,
-    "connectorRef" | "permission" | "action"
-  >[],
-): FirewallPolicies | null {
-  const policies: FirewallPolicies = {};
-
-  for (const grant of grants) {
-    const existing = policies[grant.connectorRef] ?? { policies: {} };
-    if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
-      policies[grant.connectorRef] = {
-        ...existing,
-        unknownPolicy: grant.action,
-      };
-      continue;
-    }
-
-    existing.policies[grant.permission] = grant.action;
-    policies[grant.connectorRef] = existing;
-  }
-
-  return Object.keys(policies).length > 0 ? policies : null;
-}
-
 async function visibleAgentOrNotFound(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
@@ -236,10 +208,6 @@ async function lockVisibleAgentForUpdate(
   return agent ?? null;
 }
 
-function expiresAtFromTtl(now: Date, ttlSeconds: number): Date {
-  return new Date(now.getTime() + ttlSeconds * 1000);
-}
-
 async function upsertVisibleGrantRow(
   db: Db,
   args: UpsertUserPermissionGrantArgs,
@@ -255,7 +223,6 @@ async function upsertVisibleGrantRow(
     }
 
     const timestamp = nowDate();
-    const expiresAt = expiresAtFromTtl(timestamp, args.grant.ttlSeconds);
     const [row] = await tx
       .insert(userPermissionGrants)
       .values({
@@ -265,7 +232,7 @@ async function upsertVisibleGrantRow(
         connectorRef: args.grant.connectorRef,
         permission: args.grant.permission,
         action: args.grant.action,
-        expiresAt,
+        expiresAt: null,
         createdAt: timestamp,
         updatedAt: timestamp,
       })
@@ -279,7 +246,7 @@ async function upsertVisibleGrantRow(
         ],
         set: {
           action: args.grant.action,
-          expiresAt,
+          expiresAt: null,
           updatedAt: timestamp,
         },
       })

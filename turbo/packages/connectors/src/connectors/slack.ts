@@ -16,6 +16,13 @@ export const slack = {
           clientIdEnv: "SLACK_OAUTH_CLIENT_ID",
           clientSecretEnv: "SLACK_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SLACK_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "SLACK_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://slack.com/api/oauth.v2.access",

@@ -11,6 +11,10 @@ export const browserbase = {
         label: "API Token",
         helpText:
           "1. Sign up for a [Browserbase](https://www.browserbase.com/sign-up) account\n2. Log in and navigate to the **Overview** dashboard\n3. Your **Project ID** and **API key** are displayed on the right side of the Overview page\n4. Copy the API key",
+        storage: {
+          secrets: ["BROWSERBASE_TOKEN"],
+          variables: ["BROWSERBASE_PROJECT_ID"],
+        },
         grant: {
           kind: "manual",
           fields: {

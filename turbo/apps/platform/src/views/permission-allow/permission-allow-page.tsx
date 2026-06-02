@@ -12,12 +12,10 @@ import {
   IconLoader2,
   IconX,
 } from "@tabler/icons-react";
-import {
-  isFirewallConnectorType,
-  resolveFirewallPolicies,
-} from "@vm0/connectors/firewalls";
+import { isFirewallConnectorType } from "@vm0/connectors/firewalls";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -41,6 +39,10 @@ import {
   reason$,
   setReason$,
   submitAccessRequest$,
+  permissionAllowUserPermissionGrants$,
+  userPermissionGrantsEnabled$,
+  resolveUserPermissionGrantPolicy,
+  upsertUserPermissionGrant$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
@@ -554,7 +556,11 @@ function RequestModeView() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = isAdmin;
+  const canManagePermissions = canManageAgentPermissions(
+    agent,
+    currentUser,
+    isAdmin,
+  );
 
   return (
     <RequestStatusView
@@ -571,6 +577,148 @@ function RequestModeView() {
 // Doctor mode (no ?request param)
 // ---------------------------------------------------------------------------
 
+function DoctorAdminConfirmCard({
+  agentDisplayName,
+  agentAvatarUrl,
+  userName,
+  message,
+  ref,
+  permission,
+  action,
+  saving,
+  onSave,
+}: {
+  agentDisplayName: string;
+  agentAvatarUrl: string | null;
+  userName: string;
+  message?: string;
+  ref: string;
+  permission: { name: string; description?: string };
+  action: "allow" | "deny";
+  saving: boolean;
+  onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+        <VM0Logo />
+
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            {message ??
+              `Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
+          </p>
+
+          <AgentPill
+            avatarUrl={agentAvatarUrl}
+            displayName={agentDisplayName}
+          />
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">Would like to</p>
+            <ConnectorPermissionCard
+              connectorRef={ref}
+              permission={permission}
+              action={action}
+            />
+          </div>
+        </div>
+
+        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Confirm"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DoctorMemberRequestCard({
+  agentDisplayName,
+  agentAvatarUrl,
+  userName,
+  ref,
+  permission,
+  action,
+  reason,
+  submitting,
+  onSubmit,
+  onReasonChange,
+}: {
+  agentDisplayName: string;
+  agentAvatarUrl: string | null;
+  userName: string;
+  ref: string;
+  permission: { name: string; description?: string };
+  action: "allow" | "deny";
+  reason: string;
+  submitting: boolean;
+  onSubmit: () => void;
+  onReasonChange: (value: string) => void;
+}) {
+  if (submitting) {
+    return <LoadingCard />;
+  }
+
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+        <VM0Logo />
+
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            {`Hey ${userName}, you're requesting approval to update ${agentDisplayName}'s permissions.`}
+          </p>
+
+          <AgentPill
+            avatarUrl={agentAvatarUrl}
+            displayName={agentDisplayName}
+          />
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">Would like to</p>
+            <ConnectorPermissionCard
+              connectorRef={ref}
+              permission={permission}
+              action={action}
+            />
+          </div>
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">
+              Reasons for request
+            </p>
+            <textarea
+              placeholder="I need this permission to run the task with this agent as part of a required compliance project."
+              value={reason}
+              onChange={(e) => {
+                return onReasonChange(e.target.value);
+              }}
+              className="text-sm w-full h-[100px] rounded-lg border border-input bg-background px-3 py-2 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+            />
+          </div>
+        </div>
+
+        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
+          <button
+            type="button"
+            onClick={onSubmit}
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
+          >
+            Request approval
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DoctorModeView({
   agentId,
   ref,
@@ -579,6 +727,8 @@ function DoctorModeView({
   method,
   path,
   canManagePermissions,
+  userPermissionGrantsEnabled,
+  userPermissionGrants,
   agent,
   userName,
 }: {
@@ -589,6 +739,8 @@ function DoctorModeView({
   method: string | null;
   path: string | null;
   canManagePermissions: boolean;
+  userPermissionGrantsEnabled: boolean;
+  userPermissionGrants: readonly UserPermissionGrantResponse[];
   agent: {
     permissionPolicies: FirewallPolicies | null;
     displayName: string | null;
@@ -599,24 +751,81 @@ function DoctorModeView({
   const pageSignal = useGet(pageSignal$);
   const [saveLoadable, savePolicies] = useLoadableSet(saveAdminFocusedPolicy$);
   const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
+  const [grantLoadable, upsertGrant] = useLoadableSet(
+    upsertUserPermissionGrant$,
+  );
   const reason = useGet(reason$);
   const setReasonValue = useSet(setReason$);
 
   const saving = saveLoadable.state === "loading";
   const submitting = submitLoadable.state === "loading";
+  const grantSaving = grantLoadable.state === "loading";
   const agentDisplayName = agent.displayName ?? agentId;
+  const resultCard =
+    action === "allow" ? <PermissionsUpdatedCard /> : <PermissionsDeniedCard />;
 
-  // Check effective policy
-  const resolved = resolveFirewallPolicies(agent.permissionPolicies, [ref]);
-  const effectivePolicy = resolved?.[ref]?.policies[permission.name] ?? "allow";
+  const handleGrantSave = () => {
+    detach(
+      upsertGrant(
+        {
+          agentId,
+          connectorRef: ref,
+          permission: permission.name,
+          action,
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+  };
+
+  if (userPermissionGrantsEnabled) {
+    const effectivePolicy = resolveUserPermissionGrantPolicy(
+      userPermissionGrants,
+      ref,
+      permission.name,
+    );
+
+    if (effectivePolicy === action || grantLoadable.state === "hasData") {
+      return resultCard;
+    }
+
+    if (canManagePermissions) {
+      return (
+        <DoctorAdminConfirmCard
+          agentDisplayName={agentDisplayName}
+          agentAvatarUrl={agent.avatarUrl}
+          userName={userName}
+          ref={ref}
+          permission={permission}
+          action={action}
+          saving={grantSaving}
+          onSave={handleGrantSave}
+        />
+      );
+    }
+
+    return (
+      <DoctorAdminConfirmCard
+        agentDisplayName={agentDisplayName}
+        agentAvatarUrl={agent.avatarUrl}
+        userName={userName}
+        message={`Hey ${userName}, you're updating your permissions for ${agentDisplayName}.`}
+        ref={ref}
+        permission={permission}
+        action={action}
+        saving={grantSaving}
+        onSave={handleGrantSave}
+      />
+    );
+  }
+
+  const storedPolicy =
+    agent.permissionPolicies?.[ref]?.policies?.[permission.name];
 
   // Policy already matches — show result
-  if (effectivePolicy === action) {
-    return action === "allow" ? (
-      <PermissionsUpdatedCard />
-    ) : (
-      <PermissionsDeniedCard />
-    );
+  if (storedPolicy === action) {
+    return resultCard;
   }
 
   // Policy doesn't match — admin: confirm card
@@ -638,52 +847,20 @@ function DoctorModeView({
     };
 
     if (saveLoadable.state === "hasData") {
-      return action === "allow" ? (
-        <PermissionsUpdatedCard />
-      ) : (
-        <PermissionsDeniedCard />
-      );
+      return resultCard;
     }
 
     return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-          <VM0Logo />
-
-          <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              {`Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
-            </p>
-
-            <AgentPill
-              avatarUrl={agent.avatarUrl}
-              displayName={agentDisplayName}
-            />
-
-            <div className="w-full flex flex-col gap-3">
-              <p className="text-sm font-medium text-foreground">
-                Would like to
-              </p>
-              <ConnectorPermissionCard
-                connectorRef={ref}
-                permission={permission}
-                action={action}
-              />
-            </div>
-          </div>
-
-          <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Confirm"}
-            </button>
-          </div>
-        </div>
-      </div>
+      <DoctorAdminConfirmCard
+        agentDisplayName={agentDisplayName}
+        agentAvatarUrl={agent.avatarUrl}
+        userName={userName}
+        ref={ref}
+        permission={permission}
+        action={action}
+        saving={saving}
+        onSave={handleSave}
+      />
     );
   }
 
@@ -711,56 +888,18 @@ function DoctorModeView({
   };
 
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-        <VM0Logo />
-
-        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
-          <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {`Hey ${userName}, you're requesting approval to update ${agentDisplayName}'s permissions.`}
-          </p>
-
-          <AgentPill
-            avatarUrl={agent.avatarUrl}
-            displayName={agentDisplayName}
-          />
-
-          <div className="w-full flex flex-col gap-3">
-            <p className="text-sm font-medium text-foreground">Would like to</p>
-            <ConnectorPermissionCard
-              connectorRef={ref}
-              permission={permission}
-              action={action}
-            />
-          </div>
-
-          <div className="w-full flex flex-col gap-3">
-            <p className="text-sm font-medium text-foreground">
-              Reasons for request
-            </p>
-            <textarea
-              placeholder="I need this permission to run the task with this agent as part of a required compliance project."
-              value={reason}
-              onChange={(e) => {
-                return setReasonValue(e.target.value);
-              }}
-              className="text-sm w-full h-[100px] rounded-lg border border-input bg-background px-3 py-2 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-            />
-          </div>
-        </div>
-
-        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
-          >
-            {submitting ? "Submitting..." : "Request approval"}
-          </button>
-        </div>
-      </div>
-    </div>
+    <DoctorMemberRequestCard
+      agentDisplayName={agentDisplayName}
+      agentAvatarUrl={agent.avatarUrl}
+      userName={userName}
+      ref={ref}
+      permission={permission}
+      action={action}
+      reason={reason}
+      submitting={submitting}
+      onSubmit={handleSubmit}
+      onReasonChange={setReasonValue}
+    />
   );
 }
 
@@ -813,9 +952,108 @@ function findPermission(
   );
 }
 
+function canManageAgentPermissions(
+  agent: { ownerId: string },
+  user: { id?: string } | undefined,
+  isAdmin: boolean,
+): boolean {
+  return isAdmin || Boolean(user && user.id === agent.ownerId);
+}
+
 // ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
+
+function PermissionAllowDoctorPage({
+  agentId,
+  ref,
+  permission,
+  method,
+  path,
+  action,
+}: {
+  agentId: string;
+  ref: string;
+  permission: string;
+  method: string | null;
+  path: string | null;
+  action: "allow" | "deny";
+}) {
+  const agentLoadable = useLastLoadable(permissionAllowAgent$);
+  const userLoadable = useLastLoadable(user$);
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const existingRequestLoadable = useLoadable(permissionExistingRequest$);
+  const userPermissionGrantsEnabled = useGet(userPermissionGrantsEnabled$);
+  const userGrantsLoadable = useLoadable(permissionAllowUserPermissionGrants$);
+
+  if (
+    agentLoadable.state === "loading" ||
+    userLoadable.state === "loading" ||
+    adminLoadable.state === "loading" ||
+    (userPermissionGrantsEnabled && userGrantsLoadable.state === "loading")
+  ) {
+    return <LoadingCard />;
+  }
+
+  if (agentLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load agent" />;
+  }
+  if (userPermissionGrantsEnabled && userGrantsLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load permission grants" />;
+  }
+
+  const agent = agentLoadable.data;
+  if (!agent) {
+    return <ErrorMessage message="Agent not found" />;
+  }
+
+  const currentUser =
+    userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+  const canManagePermissions = canManageAgentPermissions(
+    agent,
+    currentUser,
+    isAdmin,
+  );
+  const userName = resolveUserName(currentUser);
+  const focusedPermission = findPermission(ref, permission);
+  const userPermissionGrants =
+    userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
+
+  if (!focusedPermission) {
+    return <ErrorMessage message={`Unknown permission: ${permission}`} />;
+  }
+
+  // Member doctor mode: wait for existing-request check so page-setup
+  // can redirect to request mode before we render anything.
+  if (
+    !userPermissionGrantsEnabled &&
+    !canManagePermissions &&
+    existingRequestLoadable.state === "loading"
+  ) {
+    return <LoadingCard />;
+  }
+
+  return (
+    <DoctorModeView
+      agentId={agentId}
+      ref={ref}
+      permission={focusedPermission}
+      action={action}
+      method={method}
+      path={path}
+      canManagePermissions={canManagePermissions}
+      userPermissionGrantsEnabled={userPermissionGrantsEnabled}
+      userPermissionGrants={userPermissionGrants}
+      agent={{
+        permissionPolicies: agent.permissionPolicies,
+        displayName: agent.displayName,
+        avatarUrl: agent.avatarUrl,
+      }}
+      userName={userName}
+    />
+  );
+}
 
 export function PermissionAllowPage() {
   const agentId = useGet(permissionAllowAgentId$);
@@ -825,11 +1063,6 @@ export function PermissionAllowPage() {
   const path = useGet(permissionAllowPath$);
   const action = useGet(permissionAllowAction$);
   const requestId = useGet(permissionAllowRequestId$);
-
-  const agentLoadable = useLastLoadable(permissionAllowAgent$);
-  const userLoadable = useLastLoadable(user$);
-  const adminLoadable = useLoadable(isOrgAdmin$);
-  const existingRequestLoadable = useLoadable(permissionExistingRequest$);
 
   if (!agentId) {
     return <ErrorMessage message="Missing agent ID in URL parameters" />;
@@ -849,55 +1082,14 @@ export function PermissionAllowPage() {
     return <ErrorMessage message={`Unknown permission: ${ref}`} />;
   }
 
-  if (
-    agentLoadable.state === "loading" ||
-    userLoadable.state === "loading" ||
-    adminLoadable.state === "loading"
-  ) {
-    return <LoadingCard />;
-  }
-
-  if (agentLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load agent" />;
-  }
-
-  const agent = agentLoadable.data;
-  if (!agent) {
-    return <ErrorMessage message="Agent not found" />;
-  }
-
-  const currentUser =
-    userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = isAdmin;
-  const userName = resolveUserName(currentUser);
-  const focusedPermission = findPermission(ref, permission);
-
-  if (!focusedPermission) {
-    return <ErrorMessage message={`Unknown permission: ${permission}`} />;
-  }
-
-  // Member doctor mode: wait for existing-request check so page-setup
-  // can redirect to request mode before we render anything.
-  if (!canManagePermissions && existingRequestLoadable.state === "loading") {
-    return <LoadingCard />;
-  }
-
   return (
-    <DoctorModeView
+    <PermissionAllowDoctorPage
       agentId={agentId}
       ref={ref}
-      permission={focusedPermission}
-      action={action ?? "allow"}
+      permission={permission}
       method={method}
       path={path}
-      canManagePermissions={canManagePermissions}
-      agent={{
-        permissionPolicies: agent.permissionPolicies,
-        displayName: agent.displayName,
-        avatarUrl: agent.avatarUrl,
-      }}
-      userName={userName}
+      action={action ?? "allow"}
     />
   );
 }

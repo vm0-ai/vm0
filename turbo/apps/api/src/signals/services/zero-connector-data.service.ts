@@ -8,11 +8,10 @@ import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zer
 import {
   connectorAuthMethodSupportsTokenRevoke,
   getAvailableConnectorAuthMethods,
-  getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodStorageMetadata,
   getConnectorAuthMethodScopeDiff,
-  getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
-  getConnectorManualGrantFieldNames,
+  getConnectorManualGrantFieldNamesForAuthMethod,
   getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
@@ -27,7 +26,6 @@ import {
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type ConnectorAuthProviderType,
-  type ConnectorEnvBindings,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -73,7 +71,6 @@ interface ConnectorScopedSecretNames {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
-const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ExternalUserInfo {
@@ -410,16 +407,18 @@ function connectorProvidedEnvNamesForStoredConnectors(
 ): Set<string> {
   const provided = new Set<string>();
   for (const connector of connectorList) {
-    const envBindings = getConnectorAuthMethodEnvBindings(
+    const metadata = getConnectorAuthMethodStorageMetadata(
       connector.type,
       connector.authMethod,
     );
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+    if (!metadata) {
+      continue;
+    }
+    for (const { envName, source } of metadata.runtimeBindings) {
+      if (source.kind !== "connector-secret") {
         continue;
       }
-      const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-      if (!connectorScopedSecretNames.secretNames.has(secretName)) {
+      if (!connectorScopedSecretNames.secretNames.has(source.name)) {
         continue;
       }
       provided.add(envName);
@@ -604,6 +603,36 @@ async function deleteManualGrantConnectorLocalState(args: {
   }
 
   return deleted;
+}
+
+async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: ConnectorType;
+  readonly authMethods: readonly (string | null)[];
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const cleanupAuthMethods = new Set<string>();
+  for (const authMethod of args.authMethods) {
+    if (authMethod) {
+      cleanupAuthMethods.add(authMethod);
+    }
+  }
+
+  for (const authMethod of cleanupAuthMethods) {
+    args.signal.throwIfAborted();
+    await deleteManualGrantConnectorLocalState({
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      fields: getConnectorManualGrantFieldNamesForAuthMethod(
+        args.type,
+        authMethod,
+      ),
+      signal: args.signal,
+    });
+  }
 }
 
 export const deleteZeroConnectorLocalState$ = command(
@@ -1174,52 +1203,37 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
-function connectorSecretNameFromRef(valueRef: string): string | undefined {
-  return valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)
-    ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
-    : undefined;
-}
-
-function staticConnectorOwnedAccessSecretName(
-  envBindings: ConnectorEnvBindings,
-  platformSecretNames: ReadonlySet<string>,
-): string | undefined {
-  const secretNames = new Set<string>();
-  for (const valueRef of Object.values(envBindings)) {
-    const secretName = connectorSecretNameFromRef(valueRef);
-    if (secretName && !platformSecretNames.has(secretName)) {
-      secretNames.add(secretName);
-    }
-  }
-  if (secretNames.size !== 1) {
-    return undefined;
-  }
-  return [...secretNames][0];
-}
-
 function connectorTokenSecretMetadataForAuthMethod(args: {
   readonly type: ConnectorType;
   readonly authMethod: string;
 }): ConnectorTokenSecretMetadata | undefined {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+  const method = getConnectorAuthMethod(args.type, args.authMethod);
+  const metadata = getConnectorAuthMethodStorageMetadata(
     args.type,
     args.authMethod,
   );
+  if (!method || !metadata) {
+    return undefined;
+  }
 
-  switch (accessMetadata?.kind) {
+  switch (method.access.kind) {
     case "refresh-token": {
+      const accessSecretName = metadata.secretRoles.accessToken;
+      const refreshSecretName = metadata.secretRoles.refreshToken;
+      if (!accessSecretName || !refreshSecretName) {
+        throw new Error(
+          `${args.type} connector auth method ${args.authMethod} is missing refresh token secret roles`,
+        );
+      }
       return {
-        accessSecretName: accessMetadata.accessToken,
-        refreshSecretName: accessMetadata.refreshToken,
+        accessSecretName,
+        refreshSecretName,
         isRefreshable: true,
       };
     }
 
     case "static": {
-      const accessSecretName = staticConnectorOwnedAccessSecretName(
-        accessMetadata.envBindings,
-        new Set(accessMetadata.platformSecrets),
-      );
+      const accessSecretName = metadata.secretRoles.accessToken;
       return accessSecretName
         ? {
             accessSecretName,
@@ -1569,7 +1583,6 @@ export const upsertConnectorTokenConnection$ = command(
     );
     signal.throwIfAborted();
 
-    const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
     let postCommitAbort: unknown = null;
     const connectorRow = await writeDb.transaction(async (tx) => {
       await lockConnectorState(tx, {
@@ -1615,11 +1628,12 @@ export const upsertConnectorTokenConnection$ = command(
         signal,
       });
 
-      await deleteManualGrantConnectorLocalState({
+      await deleteManualGrantConnectorLocalStateForAuthMethods({
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        fields: manualGrantFields,
+        type: args.type,
+        authMethods: [existingAuthMethod, args.authMethod],
         signal,
       });
 

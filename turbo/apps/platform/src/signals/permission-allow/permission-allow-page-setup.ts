@@ -6,10 +6,12 @@ import { updatePage$ } from "../react-router.ts";
 import { currentAgentId$, rememberLastUsedAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
+import { user$ } from "../auth.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import {
   resetFocusedState$,
   permissionAllowAgentId$,
+  permissionAllowAgent$,
   permissionAllowRef$,
   permissionAllowPermission$,
   permissionAllowRequestId$,
@@ -45,15 +47,19 @@ export const setupPermissionAllowPage$ = command(
       set(setReason$, urlReason);
     }
 
-    // Auto-redirect: member in doctor mode with existing request → request mode
+    // Auto-redirect: requester in doctor mode with existing request → request mode
     const permissionAgentId = get(permissionAllowAgentId$);
     const ref = get(permissionAllowRef$);
     const requestId = get(permissionAllowRequestId$);
     const permission = get(permissionAllowPermission$);
     if (!requestId && permission && permissionAgentId && ref) {
-      const isAdmin = await get(isOrgAdmin$);
+      const [isAdmin, currentUser, agent] = await Promise.all([
+        get(isOrgAdmin$),
+        get(user$),
+        get(permissionAllowAgent$),
+      ]);
       signal.throwIfAborted();
-      if (!isAdmin) {
+      if (!isAdmin && currentUser?.id !== agent?.ownerId) {
         const existing = await get(permissionExistingRequest$);
         signal.throwIfAborted();
         if (existing) {

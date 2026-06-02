@@ -25,6 +25,16 @@ describe("getAllowedRedirectOrigins", () => {
     ]);
   });
 
+  it("appends the *.vm6.ai wildcard for a staging app origin without paid onboarding env", () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://pr-15762-app.vm6.ai");
+    vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", undefined);
+    reloadEnv();
+    expect(getAllowedRedirectOrigins()).toEqual([
+      "https://pr-15762-app.vm6.ai",
+      "https://*.vm6.ai",
+    ]);
+  });
+
   it("returns the app URL only when no paid-onboarding origin is configured", () => {
     vi.stubEnv("NEXT_PUBLIC_PAID_ONBOARDING_URL", undefined);
     reloadEnv();

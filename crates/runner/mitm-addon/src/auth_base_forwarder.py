@@ -1,4 +1,4 @@
-"""HTTP forwarding for auth.base URL rewrites.
+"""HTTPS forwarding for auth.base URL rewrites.
 
 The addon forwards auth.base requests itself because mitmproxy's eager
 connection has already connected to the placeholder IP. This module owns
@@ -24,7 +24,6 @@ HOP_BY_HOP: frozenset[str] = frozenset(
         "upgrade",
     )
 )
-DEFAULT_HTTP_PORT = 80
 DEFAULT_HTTPS_PORT = 443
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
@@ -116,11 +115,7 @@ def _host_header(parsed: urllib.parse.SplitResult) -> str:
         port = parsed.port
     except ValueError as exc:
         raise ValueError("Invalid upstream URL: invalid port") from exc
-    if (
-        port is None
-        or (parsed.scheme == "https" and port == DEFAULT_HTTPS_PORT)
-        or (parsed.scheme == "http" and port == DEFAULT_HTTP_PORT)
-    ):
+    if port is None or port == DEFAULT_HTTPS_PORT:
         return host
     return f"{host}:{port}"
 
@@ -135,8 +130,6 @@ def _request_target(parsed: urllib.parse.SplitResult) -> str:
 def _connection_cls(scheme: str):
     if scheme == "https":
         return http_client.HTTPSConnection
-    if scheme == "http":
-        return http_client.HTTPConnection
     raise ValueError(f"Unsupported URL scheme: {scheme}")
 
 
@@ -170,13 +163,13 @@ def _forward_request_sync(
     headers: list[tuple[str, str]],
     body: bytes | None,
 ) -> tuple[int, bytes, http.Headers]:
-    """Forward an HTTP request to the real URL and return (status, body, headers).
+    """Forward an HTTPS request to the real URL and return (status, body, headers).
 
-    Security: only https/http schemes are allowed, and redirects are returned
+    Security: only https URLs are allowed, and redirects are returned
     to the sandbox client instead of being followed inside the addon.
     """
     parsed = urllib.parse.urlsplit(url)
-    conn_cls = _connection_cls(parsed.scheme)
+    conn_cls = _connection_cls(parsed.scheme.lower())
     _reject_userinfo(parsed)
     host = parsed.hostname
     if not host:

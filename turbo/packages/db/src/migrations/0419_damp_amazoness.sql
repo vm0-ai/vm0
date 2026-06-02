@@ -1,0 +1,2 @@
+CREATE INDEX "idx_user_permission_grants_user_id" ON "user_permission_grants" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "idx_user_permission_grants_agent_id" ON "user_permission_grants" USING btree ("agent_id");

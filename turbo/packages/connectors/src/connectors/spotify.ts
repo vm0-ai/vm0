@@ -20,6 +20,14 @@ export const spotify = {
           clientIdEnv: "SPOTIFY_OAUTH_CLIENT_ID",
           clientSecretEnv: "SPOTIFY_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SPOTIFY_ACCESS_TOKEN", "SPOTIFY_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "SPOTIFY_ACCESS_TOKEN",
+            refreshToken: "SPOTIFY_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -48,8 +56,6 @@ export const spotify = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "SPOTIFY_ACCESS_TOKEN",
-          refreshToken: "SPOTIFY_REFRESH_TOKEN",
           envBindings: {
             SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
           },

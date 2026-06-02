@@ -11,6 +11,10 @@ export const browserUse = {
         label: "API Key",
         helpText:
           "1. Sign in at [cloud.browser-use.com](https://cloud.browser-use.com)\n2. Go to **Settings → API Keys**\n3. Click **Create new key**\n4. Copy the generated API key",
+        storage: {
+          secrets: ["BROWSER_USE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

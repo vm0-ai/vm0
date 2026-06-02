@@ -232,6 +232,7 @@ export function zeroTeam(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
+        customSkills: zeroAgents.customSkills,
         visibility: zeroAgents.visibility,
       })
       .from(agentComposes)
@@ -249,6 +250,7 @@ export function zeroTeam(
         description: row.description,
         sound: row.sound,
         avatarUrl: row.avatarUrl,
+        customSkills: [...row.customSkills],
         visibility: row.visibility,
         headVersionId: row.headVersionId,
         updatedAt: row.updatedAt.toISOString(),

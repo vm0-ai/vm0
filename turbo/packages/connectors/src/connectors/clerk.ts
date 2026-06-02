@@ -11,6 +11,10 @@ export const clerk = {
         label: "Secret Key",
         helpText:
           "Go to Clerk Dashboard → API Keys → copy the **Secret key** (starts with `sk_test_` for development or `sk_live_` for production). The key grants full administrative access to the matching instance — vm0's firewall ships with write operations denied by default; enable `*:write` permissions per agent only when needed.",
+        storage: {
+          secrets: ["CLERK_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

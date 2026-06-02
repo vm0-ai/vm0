@@ -18,6 +18,14 @@ export const airtable = {
           clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["AIRTABLE_ACCESS_TOKEN", "AIRTABLE_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "AIRTABLE_ACCESS_TOKEN",
+            refreshToken: "AIRTABLE_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -34,8 +42,6 @@ export const airtable = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "AIRTABLE_ACCESS_TOKEN",
-          refreshToken: "AIRTABLE_REFRESH_TOKEN",
           envBindings: {
             AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
           },

@@ -150,7 +150,7 @@ export const seedSkillStorage$ = command(
 
 interface SkillContentMockExtra {
   readonly path: string;
-  readonly size: number;
+  readonly content: string;
 }
 
 interface SkillContentMockArgs {
@@ -180,9 +180,9 @@ function octal(value: number, length: number): string {
   return value.toString(8).padStart(length - 1, "0") + "\0";
 }
 
-function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
-  // POSIX tar header (USTAR-compatible) — sufficient for extractFileFromTarGz
-  // to parse the filename + size + payload.
+function createTarEntry(filename: string, content: Buffer): Buffer {
+  // POSIX tar header (USTAR-compatible) is sufficient for extractFileFromTarGz
+  // to parse the filename, size, and payload.
   const header = Buffer.alloc(TAR_BLOCK_SIZE);
   header.write(filename, 0, 100, "utf8");
   header.write("0000644\0", 100); // mode
@@ -190,7 +190,7 @@ function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
   header.write("0000000\0", 116); // gid
   header.write(octal(content.length, 12), 124); // size
   header.write(octal(0, 12), 136); // mtime
-  // Checksum placeholder — 8 spaces — required so the checksum sum is correct.
+  // Checksum placeholder: 8 spaces required so the checksum sum is correct.
   header.write("        ", 148);
   header.write("0", 156); // type flag (regular file)
 
@@ -201,14 +201,31 @@ function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
   // Final checksum: 6 octal digits, NUL, space.
   header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148);
 
-  const padding = TAR_BLOCK_SIZE - (content.length % TAR_BLOCK_SIZE);
+  const padding = content.length % TAR_BLOCK_SIZE;
   const dataBlocks =
-    padding < TAR_BLOCK_SIZE
-      ? Buffer.concat([content, Buffer.alloc(padding)])
-      : content;
-  const eofBlocks = Buffer.alloc(TAR_BLOCK_SIZE * 2);
+    padding === 0
+      ? content
+      : Buffer.concat([content, Buffer.alloc(TAR_BLOCK_SIZE - padding)]);
 
-  return gzipSync(Buffer.concat([header, dataBlocks, eofBlocks]));
+  return Buffer.concat([header, dataBlocks]);
+}
+
+function createTarGz(
+  files: readonly { readonly filename: string; readonly content: Buffer }[],
+): Buffer {
+  const eofBlocks = Buffer.alloc(TAR_BLOCK_SIZE * 2);
+  return gzipSync(
+    Buffer.concat([
+      ...files.map((file) => {
+        return createTarEntry(file.filename, file.content);
+      }),
+      eofBlocks,
+    ]),
+  );
+}
+
+function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
+  return createTarGz([{ filename, content }]);
 }
 
 function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
@@ -244,23 +261,38 @@ export function mockSkillContent(
   args: SkillContentMockArgs,
 ): void {
   const contentBuffer = Buffer.from(args.content, "utf8");
-  const archive = createSingleFileTarGz("SKILL.md", contentBuffer);
+  const extraFiles = (args.extraFiles ?? []).map((file) => {
+    return {
+      path: file.path,
+      content: Buffer.from(file.content, "utf8"),
+    };
+  });
+  const archive = createTarGz([
+    { filename: "SKILL.md", content: contentBuffer },
+    ...extraFiles.map((file) => {
+      return { filename: file.path, content: file.content };
+    }),
+  ]);
 
   const manifest = {
     version: "test-version",
     createdAt: new Date(0).toISOString(),
     files: [
       { path: "SKILL.md", hash: "test-hash-skill", size: contentBuffer.length },
-      ...(args.extraFiles ?? []).map((f) => {
-        return { path: f.path, hash: "test-hash-extra", size: f.size };
+      ...extraFiles.map((file) => {
+        return {
+          path: file.path,
+          hash: "test-hash-extra",
+          size: file.content.length,
+        };
       }),
     ],
     totalSize:
       contentBuffer.length +
-      (args.extraFiles ?? []).reduce((sum, f) => {
-        return sum + f.size;
+      extraFiles.reduce((sum, file) => {
+        return sum + file.content.length;
       }, 0),
-    fileCount: 1 + (args.extraFiles ?? []).length,
+    fileCount: 1 + extraFiles.length,
   };
   const manifestBuffer = Buffer.from(JSON.stringify(manifest), "utf8");
 

@@ -40,18 +40,12 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("MiniMax-M3")).toBe("MiniMax-M3");
     });
 
-    it("should resolve DeepSeek V4 models to deepseek-api-key", () => {
+    it("should resolve DeepSeek V4 Pro to deepseek-api-key", () => {
       expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe(
         "deepseek-api-key",
       );
       expect(getVm0Vendor("deepseek-v4-pro")).toBe("deepseek");
       expect(getVm0ApiModel("deepseek-v4-pro")).toBe("deepseek-v4-pro");
-
-      expect(getVm0ConcreteProviderType("deepseek-v4-flash")).toBe(
-        "deepseek-api-key",
-      );
-      expect(getVm0Vendor("deepseek-v4-flash")).toBe("deepseek");
-      expect(getVm0ApiModel("deepseek-v4-flash")).toBe("deepseek-v4-flash");
     });
 
     it("should fall back to display name when no apiModel override is set", () => {
@@ -77,13 +71,10 @@ describe("VM0 managed model provider", () => {
         "claude-opus-4-6",
         "claude-sonnet-4-6",
         "glm-5.1",
-        "claude-haiku-4-5",
         "kimi-k2.6",
         "kimi-k2.5",
         "MiniMax-M3",
-        "MiniMax-M2.7",
         "deepseek-v4-pro",
-        "deepseek-v4-flash",
         "gpt-5.5",
         "gpt-5.4",
         "gpt-5.4-mini",

@@ -12,6 +12,10 @@ export const recraft = {
         label: "API Token",
         helpText:
           "1. Sign in to [Recraft](https://app.recraft.ai)\n2. Open your profile\n3. Copy your API token\n4. Paste it here.",
+        storage: {
+          secrets: ["RECRAFT_API_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

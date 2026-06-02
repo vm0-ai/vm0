@@ -12,6 +12,10 @@ export const htmlcsstoimage = {
         label: "API Key",
         helpText:
           "1. Log in to [HTML/CSS to Image](https://htmlcsstoimage.com/dashboard)\n2. Go to your **Dashboard**\n3. Locate your **User ID** and **API Key** displayed on the dashboard\n4. Copy the **API Key** (used as the password in HTTP Basic authentication)",
+        storage: {
+          secrets: ["HCTI_API_KEY"],
+          variables: ["HCTI_USER_ID"],
+        },
         grant: {
           kind: "manual",
           fields: {

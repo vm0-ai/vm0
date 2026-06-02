@@ -20,6 +20,14 @@ export const googleAds = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
+            refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -31,8 +39,6 @@ export const googleAds = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
           platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
           envBindings: {
             GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",

@@ -738,7 +738,7 @@ impl DevicePool {
     /// Collect all indices currently tracked by the pool (cooldown + in-flight)
     /// to exclude from demand scans. Concurrent scans are still safe because the
     /// host-global per-index lock serializes claims across tasks and processes.
-    fn tracked_indices(&self) -> Vec<u32> {
+    fn tracked_indices(&self) -> HashSet<u32> {
         self.cooldown
             .iter()
             .map(CooldownSlot::index)
@@ -775,7 +775,7 @@ impl Drop for DevicePool {
 /// gate that prevents stale observations from becoming leases.
 fn scan_and_claim_with<F>(
     max_devices: u32,
-    exclude: &[u32],
+    exclude: &HashSet<u32>,
     lock_dir: &Path,
     device_appears_free: F,
 ) -> Result<NbdDeviceClaim>
@@ -900,11 +900,26 @@ mod tests {
     }
 
     #[test]
+    fn scan_and_claim_skips_excluded_index_before_free_check() {
+        fn panic_if_checked(_: u32) -> bool {
+            panic!("excluded index should not be checked");
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let exclude = HashSet::from([0]);
+
+        let result = scan_and_claim_with(1, &exclude, dir.path(), panic_if_checked);
+
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+    }
+
+    #[test]
     fn scan_and_claim_skips_held_lock() {
         let dir = tempfile::tempdir().expect("tempdir");
         let _held = claim(0, dir.path());
+        let exclude = HashSet::new();
 
-        let result = scan_and_claim_with(1, &[], dir.path(), always_free);
+        let result = scan_and_claim_with(1, &exclude, dir.path(), always_free);
 
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     }
@@ -913,8 +928,9 @@ mod tests {
     fn scan_and_claim_skips_unopenable_lock_path() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::create_dir(dir.path().join("vm0-nbd-0.lock")).expect("create lock path dir");
+        let exclude = HashSet::new();
 
-        let result = scan_and_claim_with(1, &[], dir.path(), always_free);
+        let result = scan_and_claim_with(1, &exclude, dir.path(), always_free);
 
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     }
@@ -927,7 +943,8 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().expect("tempdir");
-        let result = scan_and_claim_with(1, &[], dir.path(), free_once);
+        let exclude = HashSet::new();
+        let result = scan_and_claim_with(1, &exclude, dir.path(), free_once);
 
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
         assert!(claim(0, dir.path()).index() == 0);
@@ -1061,6 +1078,21 @@ mod tests {
         let snapshot = handle.snapshot().await;
         assert!(snapshot.in_flight.contains(&3));
         handle.cleanup().await;
+    }
+
+    #[test]
+    fn tracked_indices_include_cooldown_and_in_flight() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(2, Duration::from_secs(60), dir.path(), always_free);
+        pool.in_flight.insert(0);
+        pool.release(lease(0, dir.path()));
+        pool.in_flight.insert(1);
+
+        let tracked = pool.tracked_indices();
+
+        assert_eq!(tracked.len(), 2);
+        assert!(tracked.contains(&0));
+        assert!(tracked.contains(&1));
     }
 
     #[tokio::test]

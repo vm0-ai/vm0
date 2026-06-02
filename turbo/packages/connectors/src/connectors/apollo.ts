@@ -11,6 +11,10 @@ export const apollo = {
         label: "API Key",
         helpText:
           "1. Log in to [Apollo](https://app.apollo.io)\n2. Go to **Settings > Integrations**\n3. Click **Connect** beside Apollo API\n4. Select **API Keys > Create new key**\n5. Enter a name, select endpoint access (or toggle **Set as master key**)\n6. Copy the API key",
+        storage: {
+          secrets: ["APOLLO_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

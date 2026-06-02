@@ -16,6 +16,13 @@ export const intervalsIcu = {
           clientIdEnv: "INTERVALS_ICU_OAUTH_CLIENT_ID",
           clientSecretEnv: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["INTERVALS_ICU_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "INTERVALS_ICU_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://intervals.icu/api/oauth/token",

@@ -155,13 +155,10 @@ class TestModelProviderResponseUsage:
         tmp_path: Path,
         *,
         billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ) -> None:
         flow.metadata["vm_run_id"] = run_id
-        if client_ip is not None:
-            flow.metadata["vm_client_ip"] = client_ip
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         if proxy_log_path is not None:
             flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
@@ -176,7 +173,6 @@ class TestModelProviderResponseUsage:
         provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ) -> None:
@@ -184,7 +180,6 @@ class TestModelProviderResponseUsage:
             flow,
             tmp_path,
             billable=billable,
-            client_ip=client_ip,
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
@@ -200,7 +195,6 @@ class TestModelProviderResponseUsage:
         provider_case: ModelProviderJsonCase,
         *,
         billable: bool = True,
-        client_ip: str | None = "10.200.0.1",
         proxy_log_path: Path | None = None,
         run_id: str = "run-abc-123",
     ):
@@ -210,7 +204,6 @@ class TestModelProviderResponseUsage:
             tmp_path,
             provider_case,
             billable=billable,
-            client_ip=client_ip,
             proxy_log_path=proxy_log_path,
             run_id=run_id,
         )
@@ -762,7 +755,6 @@ class TestModelProviderResponseUsage:
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
-            client_ip=None,
         )
         body = _standard_success_payload(OPENAI_RESPONSES_CASE)
         flow.metadata["stream_buffer"] = bytearray(body)
@@ -784,7 +776,6 @@ class TestModelProviderResponseUsage:
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
-            client_ip=None,
             proxy_log_path=proxy_log_path,
         )
         body = b'{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":50'
@@ -853,6 +844,82 @@ class TestModelProviderResponseUsage:
         midpoint = len(compressed) // 2
         response_stream(flow)(compressed[:midpoint])
         response_stream(flow)(compressed[midpoint:])
+
+        webhook = self._run_response(flow)
+
+        extracted = flow.metadata["model_provider_usage"]
+        expected_usage = _expected_usage(provider_case)
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
+        if provider_case.uses_openai_responses:
+            assert extracted["tokens.cache_read"] == expected_usage["tokens.cache_read"]
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == _expected_event_quantities(provider_case)
+
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_full_pipeline_concatenated_zlib_model_json_reports_usage(
+        self, tmp_path, real_flow, encoding_case
+    ):
+        """Streaming decompression should feed later zlib members into JSON usage parsing."""
+        provider_case = ANTHROPIC_JSON_CASE
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        payload = _standard_success_payload(provider_case)
+        if encoding_case == "gzip":
+            compressed = gzip.compress(b"") + gzip.compress(payload)
+        else:
+            compressed = zlib.compress(b"") + zlib.compress(payload)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {"content-type": "application/json", "content-encoding": encoding_case}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+
+        webhook = self._run_response(flow)
+
+        extracted = flow.metadata["model_provider_usage"]
+        expected_usage = _expected_usage(provider_case)
+        assert extracted["model"] == expected_usage["model"]
+        assert extracted["tokens.input"] == expected_usage["tokens.input"]
+        assert extracted["tokens.output"] == expected_usage["tokens.output"]
+        events = webhook.usage_events()
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == _expected_event_quantities(provider_case)
+
+    @pytest.mark.parametrize(
+        "provider_case",
+        MODEL_PROVIDER_JSON_CASES,
+        ids=_model_provider_json_case_id,
+    )
+    def test_full_pipeline_brotli_model_json_uses_bounded_fallback(
+        self, tmp_path, real_flow, provider_case
+    ):
+        """Brotli streaming decode is skipped, but bounded JSON fallback remains active."""
+        flow = self._model_provider_flow(
+            real_flow,
+            tmp_path,
+            provider_case,
+            proxy_log_path=tmp_path / "proxy.jsonl",
+        )
+        payload = _standard_success_payload(provider_case)
+        compressed = body_utils.brotli.compress(payload)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
 
         webhook = self._run_response(flow)
 
@@ -945,7 +1012,6 @@ class TestModelProviderResponseUsage:
             real_flow,
             tmp_path,
             ANTHROPIC_JSON_CASE,
-            client_ip=None,
             proxy_log_path=tmp_path / "proxy.jsonl",
         )
         flow.response = tutils.tresp(
@@ -965,7 +1031,6 @@ class TestModelProviderResponseUsage:
         flow = real_flow(with_response=False, host="api.github.com")
         proxy_log_path = tmp_path / "proxy.jsonl"
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(proxy_log_path)
         flow.metadata["firewall_action"] = "ALLOW"
@@ -997,7 +1062,6 @@ class TestModelProviderResponseUsageWebhookDelivery:
         flow = real_flow(with_response=False, host="api.anthropic.com")
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-int-001"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = log_path
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"

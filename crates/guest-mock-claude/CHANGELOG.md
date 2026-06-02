@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.1...guest-mock-claude-v0.18.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* validate mock claude echo session ids ([#15862](https://github.com/vm0-ai/vm0/issues/15862)) ([1b9c2df](https://github.com/vm0-ai/vm0/commit/1b9c2dfaca34e649e656a3d96a007cdf1fe483f0))
+
 ## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.0...guest-mock-claude-v0.18.1) (2026-06-01)
 
 

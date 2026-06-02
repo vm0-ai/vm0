@@ -4,7 +4,6 @@ import {
   getConnectorAuthMethodAuthCodeGrantConfig,
   resolveConnectorAuthClientForMethod,
 } from "../../../../connector-utils";
-import { hasConnectorAuthCodeGrantProvider } from "../../../connector-auth";
 import { googleAdsProvider } from "../google-ads-provider";
 import { server } from "./test-server";
 
@@ -17,10 +16,6 @@ function testRefreshSignal(): AbortSignal {
 
 describe("connector/providers/google-ads", () => {
   describe("googleAdsProvider", () => {
-    it("registers google-ads as an auth-code grant provider", () => {
-      expect(hasConnectorAuthCodeGrantProvider("google-ads")).toBe(true);
-    });
-
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
       const url = googleAdsProvider.grant.buildAuthUrl({
         authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(

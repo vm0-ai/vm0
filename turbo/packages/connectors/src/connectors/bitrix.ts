@@ -11,6 +11,10 @@ export const bitrix = {
         label: "Webhook URL",
         helpText:
           "1. Log in to your [Bitrix24](https://www.bitrix24.com) account\n2. Go to **Applications > Developer resources**\n3. Select the **Ready-made scenarios** tab\n4. Choose **Other > Incoming webhook**\n5. Configure the webhook name and set access permissions\n6. Click **Execute** to test the webhook\n7. Copy the generated webhook URL, which contains your secret code in the format `https://<domain>/rest/1/<secret-code>/<method>.json`",
+        storage: {
+          secrets: ["BITRIX_WEBHOOK_URL"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

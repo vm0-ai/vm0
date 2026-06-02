@@ -253,6 +253,8 @@ def _is_browser_user_agent(user_agent: str | None) -> bool:
 
 
 def _is_browser_request(flow: http.HTTPFlow) -> bool:
+    # This is only a browser-looking User-Agent heuristic. It is not trusted
+    # browser provenance: any sandbox client can set this header.
     return _is_browser_user_agent(flow.request.headers.get("User-Agent"))
 
 
@@ -260,7 +262,13 @@ def _record_browser_firewall_passthrough(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
 ) -> None:
-    """Record the firewall allow decision without applying provider auth."""
+    """Record a browser-looking UA allow without applying provider auth.
+
+    This path returns before ``handle_firewall_request()``, so mitmproxy does
+    not fetch or inject vm0 connector/model-provider tokens. Keep it
+    non-billable unless a future trusted browser path explicitly changes that
+    token boundary.
+    """
     api_entry = allow.api_entry
     flow.metadata[metadata_keys.FIREWALL_BASE] = api_entry["base"]
     flow.metadata[metadata_keys.FIREWALL_NAME] = allow.name
@@ -404,7 +412,6 @@ async def request(flow: http.HTTPFlow) -> None:
     try:
         # Store info for response handler
         flow.metadata[metadata_keys.VM_RUN_ID] = run_id
-        flow.metadata["vm_client_ip"] = client_ip
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = vm_info.get("networkLogPath", "")
         flow.metadata[metadata_keys.VM_PROXY_LOG_PATH] = vm_info.get("proxyLogPath", "")
         flow.metadata[metadata_keys.CAPTURE_BODY] = vm_info.get("captureNetworkBodies", False)
@@ -423,7 +430,6 @@ async def request(flow: http.HTTPFlow) -> None:
         original_url = trusted_authority.url
         flow.metadata[metadata_keys.ORIGINAL_URL] = original_url
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        flow.metadata["trusted_authority_port"] = trusted_authority.port
         _set_network_log_target(
             flow,
             url=original_url,
@@ -503,6 +509,9 @@ async def request(flow: http.HTTPFlow) -> None:
                 return
             if isinstance(result, matching.FirewallAllow):
                 if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
+                    # User-Agent is client-controlled. This branch is an auth
+                    # mutation skip for browser-looking traffic, not proof that
+                    # the request came from a trusted browser integration.
                     _record_browser_firewall_passthrough(flow, result)
                     return
 

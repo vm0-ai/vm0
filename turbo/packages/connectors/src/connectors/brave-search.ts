@@ -11,6 +11,10 @@ export const braveSearch = {
         label: "API Key",
         helpText:
           "1. Go to the [Brave Search API dashboard](https://api-dashboard.search.brave.com/register) and sign up for an account\n2. Provide a credit card for identity verification (free plans will not be charged)\n3. After registration, your API key will be available in the dashboard\n4. Copy the API key and use it in the `X-Subscription-Token` request header",
+        storage: {
+          secrets: ["BRAVE_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -32,7 +32,7 @@ _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
-_VALID_REWRITE_SCHEMES = frozenset(("http", "https"))
+_VALID_AUTH_BASE_SCHEME = "https"
 
 
 @dataclass(frozen=True)
@@ -445,8 +445,8 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         )
 
     parsed = urllib.parse.urlsplit(resolved_base)
-    if parsed.scheme.lower() not in _VALID_REWRITE_SCHEMES:
-        raise ValueError("Invalid auth.base URL: scheme must be http or https")
+    if parsed.scheme.lower() != _VALID_AUTH_BASE_SCHEME:
+        raise ValueError("Invalid auth.base URL: scheme must be https")
     if not parsed.netloc:
         raise ValueError("Invalid auth.base URL: missing host")
     if parsed.username is not None or parsed.password is not None:

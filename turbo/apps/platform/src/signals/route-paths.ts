@@ -1,6 +1,7 @@
 export const ROUTES = {
   home: "/",
   agents: "/agents",
+  skills: "/skills",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",
   agentIdeas: "/agents/:agentId/ideas",

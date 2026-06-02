@@ -10,6 +10,10 @@ export const wandb = {
       "api-token": {
         label: "API Key",
         helpText: "Go to wandb.ai → Settings → API Keys → copy your key.",
+        storage: {
+          secrets: ["WANDB_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

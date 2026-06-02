@@ -17,6 +17,14 @@ export const googleDocs = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GOOGLE_DOCS_ACCESS_TOKEN", "GOOGLE_DOCS_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GOOGLE_DOCS_ACCESS_TOKEN",
+            refreshToken: "GOOGLE_DOCS_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -28,8 +36,6 @@ export const googleDocs = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "GOOGLE_DOCS_ACCESS_TOKEN",
-          refreshToken: "GOOGLE_DOCS_REFRESH_TOKEN",
           envBindings: {
             GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
           },

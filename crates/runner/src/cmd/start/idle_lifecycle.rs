@@ -279,6 +279,7 @@ mod tests {
                     memory_mb: 4096,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .expect("create sandbox");
@@ -329,6 +330,7 @@ mod tests {
                     memory_mb: 4096,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .expect("create sandbox");

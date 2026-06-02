@@ -12,13 +12,14 @@ class ConnectorResponseParser(NamedTuple):
     connector usage extraction. The response streaming layer wires ``feed`` into
     the stream callback for that flow.
 
-    ``feed`` receives each streamed response-body chunk. For supported
-    ``Content-Encoding`` values (``gzip``, ``deflate``, ``br``, and ``zstd``),
-    the stream wrapper passes decompressed bytes to ``feed``. With no encoding,
-    ``identity``, or an unsupported encoding, the original chunk bytes are
-    passed through unchanged. Implementations must treat ``b""`` as a no-op:
-    incremental decompressors may produce no output for a source chunk, and
-    decompression failures intentionally suppress later parser input.
+    ``feed`` receives each streamed response-body chunk. For ``gzip``,
+    ``deflate``, and ``zstd``, the stream wrapper passes decompressed bytes to
+    ``feed``. With no encoding or ``identity``, the original chunk bytes are
+    passed through unchanged. Encodings that cannot be safely decoded with a
+    bounded incremental output, including ``br`` and unsupported values, skip
+    response-body parsing for that flow. Implementations must treat ``b""`` as
+    a no-op: incremental decompressors may produce no output for a source
+    chunk, and decompression failures intentionally suppress later parser input.
 
     ``finish`` is optional. When provided, normal completed-response
     finalization calls it once after streaming has fed all chunks and before

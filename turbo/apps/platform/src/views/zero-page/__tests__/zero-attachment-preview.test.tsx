@@ -536,6 +536,33 @@ describe("document thumbnail preview", () => {
     expect(preview.tagName).toBe("A");
     expect(preview).toHaveAttribute("href", "https://example.com/page.html");
     expect(preview).toHaveTextContent("page.html");
+    const iframe = within(preview).getByTitle("Site preview for page.html");
+    expect(iframe).toHaveAttribute(
+      "data-preview-src",
+      "https://example.com/page.html",
+    );
+    expect(iframe).toHaveClass("pointer-events-none");
+    expect(iframe).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("uses the hosted site slug as the fallback site preview card title", () => {
+    const url = "https://tabby-cat-guide-35a4112d.sites.vm7.io";
+    render(
+      <StoreProvider value={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: url,
+            url,
+            contentType: "text/html",
+          }}
+        />
+      </StoreProvider>,
+    );
+
+    expect(screen.getByText("Tabby Cat Guide")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Site preview for Tabby Cat Guide"),
+    ).toHaveAttribute("data-preview-src", url);
   });
 
   it("opens HTML previews in the lightbox on plain left click", () => {

@@ -4,7 +4,7 @@
 //!
 //! `guest_agent::env::Framework` and the rest of the env accessors are
 //! cached in process-wide `LazyLock`s on first read. The pre-existing
-//! `tests/integration.rs` binary defaults to Claude (no `CLI_AGENT_TYPE`
+//! `tests/integration/mod.rs` binary defaults to Claude (no `CLI_AGENT_TYPE`
 //! set), so it can't also exercise the codex branch — once `Framework`
 //! is locked to `ClaudeCode`, the codex path becomes unreachable in that
 //! process. Splitting codex coverage into a separate test binary gives
@@ -507,7 +507,7 @@ async fn read_session_history_codex_marker_skips_special_files() {
 async fn read_session_history_resolves_claude_literal_path() {
     // Claude path goes through the same public entry but uses a literal
     // jsonl path rather than a marker. Covered here because the Claude-
-    // side integration test in `tests/integration.rs` only asserts the
+    // side integration test in `tests/integration/mod.rs` only asserts the
     // marker write, not the read-back through `read_session_history`.
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();

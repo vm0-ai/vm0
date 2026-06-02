@@ -20,6 +20,14 @@ export const close = {
           clientIdEnv: "CLOSE_OAUTH_CLIENT_ID",
           clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["CLOSE_ACCESS_TOKEN", "CLOSE_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "CLOSE_ACCESS_TOKEN",
+            refreshToken: "CLOSE_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -28,8 +36,6 @@ export const close = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "CLOSE_ACCESS_TOKEN",
-          refreshToken: "CLOSE_REFRESH_TOKEN",
           envBindings: {
             CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
           },

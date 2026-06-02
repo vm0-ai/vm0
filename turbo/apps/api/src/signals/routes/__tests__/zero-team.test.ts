@@ -112,10 +112,43 @@ describe("GET /api/zero/team", () => {
         description: "team description",
         sound: "ding",
         avatarUrl: "https://example.com/avatar.png",
+        customSkills: [],
         visibility: "public",
         headVersionId: "version-1",
         updatedAt: expect.any(String),
       },
+    ]);
+  });
+
+  it("returns custom skills for each compose", async () => {
+    const fixture = await track(
+      store.set(
+        seedTeamCompose$,
+        {
+          composes: [
+            {
+              displayName: "research-agent",
+              customSkills: ["research-kit", "draft-helper"],
+            },
+          ],
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroTeamContract);
+
+    const response = await accept(
+      client.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body[0]?.customSkills).toStrictEqual([
+      "research-kit",
+      "draft-helper",
     ]);
   });
 

@@ -11,6 +11,10 @@ export const whaleAlert = {
         label: "API Key",
         helpText:
           "1. Create a Whale Alert developer account\n2. Subscribe to the Custom Alerts or Enterprise REST API plan\n3. Copy the API key provided for your subscription\n4. Use this key as the `api_key` query parameter",
+        storage: {
+          secrets: ["WHALE_ALERT_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

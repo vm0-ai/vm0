@@ -12,6 +12,10 @@ export const altium365 = {
         label: "API Key",
         helpText:
           "1. Sign in to your Altium 365 workspace (e.g. `https://<workspace>.365.altium.com`)\n2. Open **Settings → User Tokens** and click **Generate**\n3. Copy the generated token — it is shown only once and expires three months from creation\n4. Paste the token and your full workspace URL (including `https://`) below",
+        storage: {
+          secrets: ["ALTIUM365_TOKEN"],
+          variables: ["ALTIUM365_WORKSPACE_URL"],
+        },
         grant: {
           kind: "manual",
           fields: {

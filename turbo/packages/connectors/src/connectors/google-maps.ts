@@ -11,6 +11,10 @@ export const googleMaps = {
         label: "API Key",
         helpText:
           "1. Open [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials)\n2. Select or create a project and enable the Maps APIs you need (Geocoding, Places, Directions, etc.)\n3. Go to **APIs & Services → Credentials** and click **Create credentials → API key**\n4. Copy the API key (format: `AIza…`) and restrict it to the APIs and referrers/IPs you trust",
+        storage: {
+          secrets: ["GOOGLE_MAPS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

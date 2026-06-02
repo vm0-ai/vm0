@@ -18,6 +18,14 @@ export const xero = {
           clientIdEnv: "XERO_OAUTH_CLIENT_ID",
           clientSecretEnv: "XERO_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["XERO_ACCESS_TOKEN", "XERO_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "XERO_ACCESS_TOKEN",
+            refreshToken: "XERO_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -49,8 +57,6 @@ export const xero = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "XERO_ACCESS_TOKEN",
-          refreshToken: "XERO_REFRESH_TOKEN",
           envBindings: {
             XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
           },

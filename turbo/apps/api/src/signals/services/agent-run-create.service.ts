@@ -25,8 +25,8 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   getConnectorAuthMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorAuthMethodEnvBindings,
+  getConnectorAuthMethodStorageMetadata,
+  type ConnectorRuntimeBindingEntry,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
@@ -1551,8 +1551,9 @@ interface StoredConnectorRuntimeRow {
 interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
-  readonly envBindings: Record<string, string>;
-  readonly platformSecretNames: ReadonlySet<string>;
+  readonly accessKind: "static" | "refresh-token" | "none";
+  readonly accessTokenSecret: string | undefined;
+  readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
   readonly optionalSecretNames: ReadonlySet<string>;
   readonly optionalVariableNames: ReadonlySet<string>;
 }
@@ -1602,11 +1603,11 @@ function connectorEnvBindingSets(
 ): readonly ConnectorEnvBindingSet[] {
   return rows.map((row) => {
     const method = getConnectorAuthMethod(row.connectorType, row.authMethod);
-    const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    const metadata = getConnectorAuthMethodStorageMetadata(
       row.connectorType,
       row.authMethod,
     );
-    if (!method) {
+    if (!method || !metadata) {
       throw new Error(
         `Invalid auth method "${row.authMethod}" for stored connector "${row.connectorType}"`,
       );
@@ -1628,11 +1629,9 @@ function connectorEnvBindingSets(
     return {
       connectorType: row.connectorType,
       authMethod: row.authMethod,
-      envBindings: getConnectorAuthMethodEnvBindings(
-        row.connectorType,
-        row.authMethod,
-      ),
-      platformSecretNames: new Set(accessMetadata?.platformSecrets ?? []),
+      accessKind: method.access.kind,
+      accessTokenSecret: metadata.secretRoles.accessToken,
+      runtimeBindings: metadata.runtimeBindings,
       optionalSecretNames,
       optionalVariableNames,
     };
@@ -1645,15 +1644,20 @@ function collectStoredConnectorRequirements(
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
 
-  for (const { envBindings, platformSecretNames } of bindingSets) {
-    for (const valueRef of Object.values(envBindings)) {
-      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-        const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-        if (!platformSecretNames.has(secretName)) {
-          secretNames.add(secretName);
+  for (const { runtimeBindings } of bindingSets) {
+    for (const { source } of runtimeBindings) {
+      switch (source.kind) {
+        case "connector-secret": {
+          secretNames.add(source.name);
+          break;
         }
-      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
-        variableNames.add(valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length));
+        case "connector-variable": {
+          variableNames.add(source.name);
+          break;
+        }
+        case "platform-secret": {
+          break;
+        }
       }
     }
   }
@@ -1731,23 +1735,6 @@ async function loadStoredConnectorVariables(
   );
 }
 
-function handlePlatformSecretBinding(args: {
-  readonly secrets: Record<string, string>;
-  readonly envName: string;
-  readonly secretName: string;
-  readonly platformSecretNames: ReadonlySet<string>;
-}): boolean {
-  if (!args.platformSecretNames.has(args.secretName)) {
-    return false;
-  }
-
-  const secretValue = optionalEnv(args.secretName);
-  if (secretValue) {
-    args.secrets[args.envName] = secretValue;
-  }
-  return true;
-}
-
 function resolveStoredConnectorState(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
@@ -1760,71 +1747,62 @@ function resolveStoredConnectorState(
 
   for (const {
     connectorType,
-    authMethod,
-    envBindings,
-    platformSecretNames,
+    accessKind,
+    accessTokenSecret,
+    runtimeBindings,
     optionalSecretNames,
     optionalVariableNames,
   } of bindingSets) {
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-        const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-        if (
-          handlePlatformSecretBinding({
-            secrets,
-            envName,
-            secretName,
-            platformSecretNames,
-          })
-        ) {
-          continue;
+    for (const { envName, valueRef, source } of runtimeBindings) {
+      switch (source.kind) {
+        case "connector-secret": {
+          const secretName = source.name;
+          const secretValue = connectorSecrets[secretName];
+          if (secretValue !== undefined) {
+            secrets[envName] = secretValue;
+            addConnectorEnvironmentTemplate(environment, envName, valueRef);
+          } else if (!optionalSecretNames.has(secretName)) {
+            addConnectorEnvironmentTemplate(environment, envName, valueRef);
+          }
+          break;
         }
-        const secretValue = connectorSecrets[secretName];
-        if (secretValue !== undefined) {
-          secrets[envName] = secretValue;
-          addConnectorEnvironmentTemplate(environment, envName, valueRef);
-        } else if (!optionalSecretNames.has(secretName)) {
-          addConnectorEnvironmentTemplate(environment, envName, valueRef);
+        case "connector-variable": {
+          const variableName = source.name;
+          const variableValue = connectorVariables[variableName];
+          if (variableValue !== undefined) {
+            vars[envName] = variableValue;
+            addConnectorEnvironmentTemplate(environment, envName, valueRef);
+          } else if (!optionalVariableNames.has(variableName)) {
+            addConnectorEnvironmentTemplate(environment, envName, valueRef);
+          }
+          break;
         }
-      } else if (valueRef.startsWith(CONNECTOR_VAR_REF_PREFIX)) {
-        const variableName = valueRef.slice(CONNECTOR_VAR_REF_PREFIX.length);
-        const variableValue = connectorVariables[variableName];
-        if (variableValue !== undefined) {
-          vars[envName] = variableValue;
-          addConnectorEnvironmentTemplate(environment, envName, valueRef);
-        } else if (!optionalVariableNames.has(variableName)) {
-          addConnectorEnvironmentTemplate(environment, envName, valueRef);
+        case "platform-secret": {
+          const secretValue = optionalEnv(source.name);
+          if (secretValue) {
+            secrets[envName] = secretValue;
+          }
+          break;
         }
-      } else {
-        addConnectorEnvironmentTemplate(environment, envName, valueRef);
       }
     }
 
-    const accessMetadata = getConnectorAuthMethodAccessMetadata(
-      connectorType,
-      authMethod,
-    );
     // Firewall auth templates can only reference env aliases from envBindings;
     // store the alias that points at the access secret, not the backing secret name.
-    if (accessMetadata?.kind === "refresh-token") {
-      const secretName = accessMetadata.accessToken;
-      for (const [envName, valueRef] of Object.entries(envBindings)) {
-        if (valueRef === `${CONNECTOR_SECRET_REF_PREFIX}${secretName}`) {
+    if (accessKind === "refresh-token") {
+      for (const { envName, source } of runtimeBindings) {
+        if (
+          source.kind === "connector-secret" &&
+          source.name === accessTokenSecret
+        ) {
           secretConnectorMap[envName] = connectorType;
         }
       }
-    } else if (accessMetadata?.kind === "static") {
-      for (const [envName, valueRef] of Object.entries(
-        accessMetadata.envBindings,
-      )) {
-        if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-          continue;
+    } else if (accessKind === "static") {
+      for (const { envName, source } of runtimeBindings) {
+        if (source.kind === "connector-secret") {
+          secretConnectorMap[envName] = connectorType;
         }
-        const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-        if (platformSecretNames.has(secretName)) {
-          continue;
-        }
-        secretConnectorMap[envName] = connectorType;
       }
     }
   }

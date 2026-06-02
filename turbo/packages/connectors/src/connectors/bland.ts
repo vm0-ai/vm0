@@ -13,6 +13,10 @@ export const bland = {
         label: "API Key",
         helpText:
           "1. Go to the [Bland dashboard](https://app.bland.ai)\n2. Copy your API key from your account or API settings\n3. Paste the key here. You can also use the key with the Bland CLI as `BLAND_API_KEY`",
+        storage: {
+          secrets: ["BLAND_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

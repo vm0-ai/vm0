@@ -27,6 +27,7 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -551,6 +552,9 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
     .delete(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.userId, userId));
   await db.delete(deviceCodes).where(eq(deviceCodes.userId, userId));
+  await db
+    .delete(userPermissionGrants)
+    .where(eq(userPermissionGrants.userId, userId));
   await db.delete(orgMembersCache).where(eq(orgMembersCache.userId, userId));
   await db
     .delete(orgMembersMetadata)

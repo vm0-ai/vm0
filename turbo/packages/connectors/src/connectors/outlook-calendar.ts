@@ -21,6 +21,17 @@ export const outlookCalendar = {
           clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
           clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: [
+            "OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: OAUTH_TOKEN_URL,
@@ -29,8 +40,6 @@ export const outlookCalendar = {
         access: {
           kind: "refresh-token",
           tokenUrl: OAUTH_TOKEN_URL,
-          accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
-          refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
           envBindings: {
             OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
           },

@@ -185,4 +185,31 @@ describe("buildSignupRedirectUrl", () => {
     expect(url.searchParams.get("utm_source")).toBe("google");
     expect(url.searchParams.get("utm_campaign")).toBe("homepage_search");
   });
+
+  it("honors an allowed redirect_url over the attributed app fallback", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://staging-app.vm6.ai",
+      "redirect_url=https%3A%2F%2Fpreview.vm6.ai%2Fonboarding%3Fgclid%3Dtest-click%26vm0_source%3Dpresentation&gclid=test-click&utm_source=google&utm_campaign=paid_onboarding",
+      ["https://staging-app.vm6.ai", "https://*.vm6.ai"],
+    );
+    const url = new URL(redirectUrl);
+
+    expect(url.origin).toBe("https://preview.vm6.ai");
+    expect(url.pathname).toBe("/onboarding");
+    expect(url.searchParams.get("gclid")).toBe("test-click");
+    expect(url.searchParams.get("vm0_source")).toBe("presentation");
+  });
+
+  it("ignores a disallowed redirect_url and keeps the attributed app fallback", () => {
+    const redirectUrl = buildSignupRedirectUrl(
+      "https://app.vm0.ai",
+      "redirect_url=https%3A%2F%2Fevil.example%2Fonboarding&gclid=test-click&utm_source=google&utm_campaign=homepage_search",
+      ["https://app.vm0.ai", "https://so.vm0.ai"],
+    );
+    const url = new URL(redirectUrl);
+
+    expect(url.origin).toBe("https://app.vm0.ai");
+    expect(url.pathname).toBe("/onboarding");
+    expect(url.searchParams.get("gclid")).toBe("test-click");
+  });
 });

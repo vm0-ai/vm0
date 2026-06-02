@@ -18,6 +18,7 @@ import { SafeGoogleOneTap } from "./components/SafeGoogleOneTap";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AttributionCapture } from "./components/AttributionCapture";
 import { PostHogProvider } from "./components/PostHogProvider";
+import { VM0_CLERK_LOCALIZATION } from "./components/auth/banned-account-message";
 import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
@@ -157,6 +158,7 @@ export default async function RootLayout({
       signInFallbackRedirectUrl={getAppUrl()}
       signUpFallbackRedirectUrl={getAppUrl()}
       allowedRedirectOrigins={getAllowedRedirectOrigins()}
+      localization={VM0_CLERK_LOCALIZATION}
     >
       <SafeGoogleOneTap redirectUrl={getAppUrl()} />
       <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>

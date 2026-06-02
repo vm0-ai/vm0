@@ -353,9 +353,10 @@ describe("directed authorize page", () => {
         screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText("OAuth Device Authorization")).toBeInTheDocument();
     expect(
-      screen.getByText("Connect Test OAuth Device (internal)"),
-    ).toBeInTheDocument();
+      screen.getAllByText("Connect Test OAuth Device (internal)").length,
+    ).toBeGreaterThan(0);
   });
 
   it("opens the method picker when authorization needs a multi-method connector", async () => {

@@ -9,21 +9,28 @@ export function getAppUrl(): string {
 // when configured per environment, so a paid onboarding flow hosted on a
 // sibling *.vm0.ai subdomain can run auth on www and return to itself.
 export function getAllowedRedirectOrigins(): string[] {
+  const appUrl = getAppUrl();
   const paidOnboardingUrl = env().NEXT_PUBLIC_PAID_ONBOARDING_URL;
-  if (!paidOnboardingUrl) {
-    return [getAppUrl()];
+  const origins = paidOnboardingUrl ? [appUrl, paidOnboardingUrl] : [appUrl];
+
+  // Any vm6.ai app/web preview is staging-only. Allow the whole *.vm6.ai
+  // family so paid onboarding previews can run auth on the paired web preview
+  // or staging-www and still return to themselves.
+  if (
+    origins.some((origin) => {
+      return isVm6Origin(origin);
+    })
+  ) {
+    origins.push("https://*.vm6.ai");
   }
-  const origins = [getAppUrl(), paidOnboardingUrl];
-  // On the staging preview domain the paid LP/onboarding surface is deployed
-  // per preview (pr-N-so.vm6.ai, or the raw <hash>.vm6.ai). Allow the whole
-  // *.vm6.ai family so each preview can run auth on staging-www and return to
-  // itself. Production keeps the exact origin (so.vm0.ai), never a wildcard.
-  try {
-    if (new URL(paidOnboardingUrl).hostname.endsWith(".vm6.ai")) {
-      origins.push("https://*.vm6.ai");
-    }
-  } catch {
-    // Ignore a malformed paid-onboarding URL; the exact origin above still applies.
-  }
+
   return origins;
+}
+
+function isVm6Origin(origin: string): boolean {
+  try {
+    return new URL(origin).hostname.endsWith(".vm6.ai");
+  } catch {
+    return false;
+  }
 }
