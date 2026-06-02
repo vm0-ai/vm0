@@ -223,7 +223,7 @@ export {
   getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
   getConnectorStoredSecretDisplayInfo,
-  getConnectorTypeForRuntimeEnvName,
+  getDiagnosticConnectorTypeForRuntimeEnvName,
   connectorResponseSchema,
   connectorListResponseSchema,
   scopeDiffResponseSchema,

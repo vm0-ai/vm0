@@ -45,7 +45,7 @@ import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodStorageMetadata,
   getConnectorStoredSecretDisplayInfo,
-  getConnectorTypeForRuntimeEnvName,
+  getDiagnosticConnectorTypeForRuntimeEnvName,
   resolveConnectorAuthClientForMethod,
   getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
@@ -2678,27 +2678,35 @@ describe("getConnectorStoredSecretDisplayInfo", () => {
   });
 });
 
-describe("getConnectorTypeForRuntimeEnvName", () => {
+describe("getDiagnosticConnectorTypeForRuntimeEnvName", () => {
   it("finds connector type for runtime env aliases", () => {
-    expect(getConnectorTypeForRuntimeEnvName("GH_TOKEN")).toBe("github");
-    expect(getConnectorTypeForRuntimeEnvName("GITHUB_TOKEN")).toBe("github");
-    expect(getConnectorTypeForRuntimeEnvName("ATLASSIAN_TOKEN")).toBe(
+    expect(getDiagnosticConnectorTypeForRuntimeEnvName("GH_TOKEN")).toBe(
+      "github",
+    );
+    expect(getDiagnosticConnectorTypeForRuntimeEnvName("GITHUB_TOKEN")).toBe(
+      "github",
+    );
+    expect(getDiagnosticConnectorTypeForRuntimeEnvName("ATLASSIAN_TOKEN")).toBe(
       "atlassian",
     );
-    expect(getConnectorTypeForRuntimeEnvName("ATLASSIAN_EMAIL")).toBe(
+    expect(getDiagnosticConnectorTypeForRuntimeEnvName("ATLASSIAN_EMAIL")).toBe(
       "atlassian",
     );
-    expect(getConnectorTypeForRuntimeEnvName("ATLASSIAN_DOMAIN")).toBe(
-      "atlassian",
-    );
+    expect(
+      getDiagnosticConnectorTypeForRuntimeEnvName("ATLASSIAN_DOMAIN"),
+    ).toBe("atlassian");
   });
 
   it("does not treat stored secret names as runtime env aliases", () => {
-    expect(getConnectorTypeForRuntimeEnvName("GITHUB_ACCESS_TOKEN")).toBeNull();
+    expect(
+      getDiagnosticConnectorTypeForRuntimeEnvName("GITHUB_ACCESS_TOKEN"),
+    ).toBeNull();
   });
 
   it("returns null for unknown runtime env aliases", () => {
-    expect(getConnectorTypeForRuntimeEnvName("UNKNOWN_SECRET")).toBeNull();
+    expect(
+      getDiagnosticConnectorTypeForRuntimeEnvName("UNKNOWN_SECRET"),
+    ).toBeNull();
   });
 });
 

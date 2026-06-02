@@ -650,6 +650,24 @@ describe("zero doctor check-connector command", () => {
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
+
+    it("should not accept stored connector secret names as environment names", async () => {
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--env-name",
+          "GITHUB_ACCESS_TOKEN",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Unknown environment name: GITHUB_ACCESS_TOKEN",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
   });
 
   describe("re-diagnose hint", () => {

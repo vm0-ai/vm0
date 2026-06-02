@@ -964,7 +964,7 @@ export function getConnectorStoredSecretDisplayInfo(
  * This is for human-facing commands such as CLI doctor; runtime connector
  * behavior must use selected auth method metadata.
  */
-export function getConnectorTypeForRuntimeEnvName(
+export function getDiagnosticConnectorTypeForRuntimeEnvName(
   envName: string,
 ): ConnectorType | null {
   for (const type of CONNECTOR_TYPE_KEYS) {
