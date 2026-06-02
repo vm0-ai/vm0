@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.91.1](https://github.com/vm0-ai/vm0/compare/api-v1.91.0...api-v1.91.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **api:** schedule computer-use screenshot cleanup cron ([#15775](https://github.com/vm0-ai/vm0/issues/15775)) ([b659164](https://github.com/vm0-ai/vm0/commit/b659164fa3209b89d9d42ee8dde879e749ea7d26))
+
 ## [1.91.0](https://github.com/vm0-ai/vm0/compare/api-v1.90.10...api-v1.91.0) (2026-06-01)
 
 

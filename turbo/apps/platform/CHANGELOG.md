@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.399.11](https://github.com/vm0-ai/vm0/compare/app-v0.399.10...app-v0.399.11) (2026-06-02)
+
+
+### Refactoring
+
+* split agent permission tab components ([#15776](https://github.com/vm0-ai/vm0/issues/15776)) ([33cfd1b](https://github.com/vm0-ai/vm0/commit/33cfd1b5464f1a069c1aea6477b40b43fcc65ed5))
+
 ## [0.399.10](https://github.com/vm0-ai/vm0/compare/app-v0.399.9...app-v0.399.10) (2026-06-01)
 
 
