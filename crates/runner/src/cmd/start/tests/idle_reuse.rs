@@ -63,23 +63,6 @@ fn device_rate_limits() -> sandbox::DeviceRateLimits {
     }
 }
 
-async fn wait_created_sandbox_id(
-    overrides: &sandbox_mock::MockSandboxOverrides,
-    timeout: Duration,
-) -> sandbox::SandboxId {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        if let Some(config) = overrides.create_configs().into_iter().next() {
-            return config.id;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "sandbox create config was not recorded within {timeout:?}",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-}
-
 #[tokio::test(start_paused = true)]
 async fn job_with_session_parks_vm() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
@@ -245,12 +228,11 @@ async fn park_triggers_immediate_heartbeat() {
     shutdown(&env, run_handle).await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
-    let wait_gate = Arc::new(tokio::sync::Notify::new());
-    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
-        Arc::clone(&wait_gate),
-    ));
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
     overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
 
     let mut profiles = test_profiles();
@@ -280,7 +262,16 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     )]));
     push_job(&env, run_id, "vm0/default", Some(ctx));
 
-    let sandbox_id = wait_created_sandbox_id(&overrides, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter before test writes active workspace image");
+    let sandbox_id = overrides
+        .create_configs()
+        .into_iter()
+        .next()
+        .expect("sandbox create config should be recorded before wait_process entry")
+        .id;
     let active_image = runner_paths.active_workspace_image(&sandbox_id);
     tokio::fs::create_dir_all(active_image.parent().unwrap())
         .await
@@ -289,21 +280,12 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     file.set_len(16 * 1024 * 1024).await.unwrap();
     drop(file);
 
-    let release_task = tokio::spawn({
-        let wait_gate = Arc::clone(&wait_gate);
-        async move {
-            loop {
-                wait_gate.notify_waiters();
-                tokio::task::yield_now().await;
-            }
-        }
-    });
+    overrides.clear_wait_process_lifecycle_gate();
+    wait_gate.release_one();
     let completion = env
         .handle
         .wait_completion(run_id, Duration::from_secs(5))
         .await;
-    release_task.abort();
-    let _ = release_task.await;
     let completion = completion.expect("job should complete");
     assert_eq!(completion.exit_code, 1);
     assert_eq!(

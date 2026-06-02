@@ -331,6 +331,9 @@ pub struct MockSandboxOverrides {
     /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
     /// returning — giving the test a window to cancel the job.
     wait_process_gate: Option<Arc<tokio::sync::Notify>>,
+    /// Optional durable gate that records and blocks every `wait_process`
+    /// entry until released.
+    wait_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// When `Some`, `wait_process` returns a wait-process operation error to
     /// simulate timeout or crash. The stdout channel sender is also kept alive
     /// in `MockSandbox` so the drain task would block without the fix.
@@ -399,6 +402,7 @@ impl MockSandboxOverrides {
             read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
             wait_process_gate: None,
+            wait_process_lifecycle_gate: Mutex::new(None),
             wait_process_error: None,
             wait_process_exits: Mutex::new(VecDeque::new()),
             create_results: Mutex::new(VecDeque::new()),
@@ -437,6 +441,22 @@ impl MockSandboxOverrides {
             wait_process_gate: Some(gate),
             ..Self::new()
         }
+    }
+
+    /// Block every `wait_process` call with a durable lifecycle gate.
+    ///
+    /// Prefer this over [`Self::with_wait_process_gate`]: entries and releases
+    /// are durable, so tests do not need to pre-arm `Notify` futures.
+    pub fn set_wait_process_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.wait_process_lifecycle_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the durable `wait_process` gate for future wait calls.
+    ///
+    /// Already-entered wait calls keep waiting on their cloned gate until the
+    /// test releases it.
+    pub fn clear_wait_process_lifecycle_gate(&self) {
+        *self.wait_process_lifecycle_gate.lock_ignoring_poison() = None;
     }
 
     /// Create overrides that make `wait_process` return an error (simulating
@@ -658,6 +678,32 @@ impl MockSandboxOverrides {
         *self
             .process_cancel_releases_wait_gate
             .lock_ignoring_poison() = releases;
+    }
+
+    async fn wait_for_wait_process_gate(&self) {
+        let lifecycle_gate = {
+            self.wait_process_lifecycle_gate
+                .lock_ignoring_poison()
+                .clone()
+        };
+        if let Some(gate) = lifecycle_gate {
+            gate.enter_and_wait().await;
+        } else if let Some(gate) = &self.wait_process_gate {
+            gate.notified().await;
+        }
+    }
+
+    fn release_wait_process_gate(&self) {
+        if let Some(gate) = &self.wait_process_gate {
+            gate.notify_one();
+        }
+        if let Some(gate) = self
+            .wait_process_lifecycle_gate
+            .lock_ignoring_poison()
+            .clone()
+        {
+            gate.release_one();
+        }
     }
 }
 
@@ -1120,9 +1166,8 @@ impl Sandbox for MockSandbox {
                     if *overrides
                         .process_cancel_releases_wait_gate
                         .lock_ignoring_poison()
-                        && let Some(gate) = &overrides.wait_process_gate
                     {
-                        gate.notify_one();
+                        overrides.release_wait_process_gate();
                     }
                     Ok(())
                 })
@@ -1161,9 +1206,7 @@ impl Sandbox for MockSandbox {
 
         if let Some(overrides) = &self.overrides {
             // Block until the test signals (gives a window for cancellation).
-            if let Some(gate) = &overrides.wait_process_gate {
-                gate.notified().await;
-            }
+            overrides.wait_for_wait_process_gate().await;
             // Return error when configured (simulates timeout or crash).
             if let Some(ref msg) = overrides.wait_process_error {
                 return Err(SandboxError::Operation {
@@ -2810,6 +2853,38 @@ mod tests {
 
         gate.notify_waiters();
         wait.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_process_lifecycle_gate_blocks_until_released() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_wait_process_lifecycle_gate(gate.clone());
+        let sandbox = MockSandbox::with_overrides("test", overrides);
+        let handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+
+        let wait =
+            tokio::spawn(async move { sandbox.wait_process(handle, Duration::from_secs(5)).await });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+        assert!(
+            !wait.is_finished(),
+            "wait_process should block until the lifecycle gate is released",
+        );
+
+        gate.release_one();
+        let result = wait.await.unwrap().unwrap();
+        assert_eq!(result.pid, 1);
+        assert_eq!(result.exit_code, 0);
     }
 
     #[tokio::test]
