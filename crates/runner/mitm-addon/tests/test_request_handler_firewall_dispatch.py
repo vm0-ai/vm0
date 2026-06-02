@@ -436,7 +436,7 @@ async def test_firewall_unknown_policy_allow_writes_empty_permission_metadata(
 async def test_browser_firewall_match_skips_auth_injection(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser-originated firewall allows pass through without connector auth mutation."""
+    """Browser-looking UAs pass through without connector auth mutation."""
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -549,7 +549,7 @@ async def test_non_browser_firewall_match_still_injects_auth(
 async def test_browser_firewall_match_does_not_bypass_denied_unknown_policy(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    """Browser UA only skips auth mutation after the firewall has allowed the request."""
+    """Browser-looking UA only skips auth mutation after firewall allow."""
     reg_path = _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
