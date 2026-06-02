@@ -3689,7 +3689,7 @@
     "hero": {
       "title": "Zero, your trustworthy AI teammate for real work.",
       "subtitle": "Zero connects to 100+ tools and does the work. Reports, triage, outreach, research. In Slack or on the web.",
-      "ctaGetStarted": "Get started",
+      "ctaGetStarted": "Start your 7-day free trial",
       "ctaOpenApp": "Open app",
       "seedBanner": "Check out our $14M seed round fundraising blog."
     },
@@ -3799,7 +3799,7 @@
     },
     "cta": {
       "title": "You decide what matters. Zero handles the rest.",
-      "subtitle": "Start free with credits. No credit card required."
+      "subtitle": "Start your 7-day free trial. Cancel anytime."
     }
   },
   "securityPage": {

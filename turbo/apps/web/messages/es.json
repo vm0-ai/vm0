@@ -3689,7 +3689,7 @@
     "hero": {
       "title": "Zero, tu compañero de IA de confianza para trabajo real.",
       "subtitle": "Zero se conecta a más de 100 herramientas y hace el trabajo. Informes, triaje, contacto, investigación. En Slack o en la web.",
-      "ctaGetStarted": "Comenzar",
+      "ctaGetStarted": "Empieza tu prueba gratis de 7 días",
       "ctaOpenApp": "Abrir app",
       "seedBanner": "Lee nuestro blog sobre nuestra ronda semilla de $14M."
     },
@@ -3799,7 +3799,7 @@
     },
     "cta": {
       "title": "Tú decides qué importa. Zero se encarga del resto.",
-      "subtitle": "Comienza gratis. Úsalo en Slack o en la web. Sin tarjeta de crédito."
+      "subtitle": "Empieza tu prueba gratis de 7 días. Úsalo en Slack o en la web."
     }
   },
   "securityPage": {

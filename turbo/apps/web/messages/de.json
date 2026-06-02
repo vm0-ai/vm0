@@ -3689,7 +3689,7 @@
     "hero": {
       "title": "Zero, Ihr vertrauenswürdiger KI-Teamkollege für echte Arbeit.",
       "subtitle": "Zero verbindet sich mit über 100 Tools und erledigt die Arbeit. Berichte, Triage, Outreach, Recherche. In Slack oder im Web.",
-      "ctaGetStarted": "Jetzt starten",
+      "ctaGetStarted": "7 Tage kostenlos testen",
       "ctaOpenApp": "App öffnen",
       "seedBanner": "Lesen Sie unseren Blog über unsere $14M Seed-Runde."
     },
@@ -3799,7 +3799,7 @@
     },
     "cta": {
       "title": "Sie entscheiden, was wichtig ist. Zero erledigt den Rest.",
-      "subtitle": "Starten Sie kostenlos. Nutzen Sie es in Slack oder im Web. Keine Kreditkarte erforderlich."
+      "subtitle": "Starten Sie Ihre 7-tägige kostenlose Testphase. Nutzen Sie es in Slack oder im Web."
     }
   },
   "securityPage": {
