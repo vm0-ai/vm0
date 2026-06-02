@@ -15,6 +15,7 @@ mod ids;
 mod image_hash;
 mod io_limits;
 mod kmsg_log;
+mod local_queue;
 mod lock;
 mod network_log_drain;
 mod network_log_manager;

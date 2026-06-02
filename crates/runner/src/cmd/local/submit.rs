@@ -15,8 +15,8 @@ use clap::Args;
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
+use crate::local_queue::{self, JobRequest, JobResponse};
 use crate::paths::HomePaths;
-use crate::provider::{JobRequest, JobResponse, local_queue};
 
 /// Poll interval for checking the result file.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
