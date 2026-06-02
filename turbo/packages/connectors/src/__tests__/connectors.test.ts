@@ -29,6 +29,7 @@ import {
   type TokenRevokeConnectorType,
 } from "../connectors";
 import {
+  connectorAuthClientIdentity,
   connectorAuthMethodHasGrantKind,
   connectorAuthMethodRefHasAccessKind,
   connectorAuthMethodRefHasGrantKind,
@@ -2419,6 +2420,14 @@ describe("getRuntimeAvailableConnectorTypes", () => {
       const clientSecret: string = staticAuthClient.clientSecret;
       expect(clientSecret).toBe("github-client-secret");
     }
+    const staticAuthClientIdentity =
+      connectorAuthClientIdentity(staticAuthClient);
+    expect(staticAuthClientIdentity).toStrictEqual({
+      clientRegistration: "static",
+      clientType: "confidential",
+      clientId: "github-client-id",
+    });
+    expect("clientSecret" in staticAuthClientIdentity).toBe(false);
 
     const publicAuthClient = getOauthAuthClient("test-oauth-device", emptyEnv);
     if (!publicAuthClient) {

@@ -708,6 +708,12 @@ export type StaticConfidentialConnectorAuthClient = {
   readonly clientSecret: string;
 };
 
+export type StaticConfidentialConnectorAuthClientIdentity = {
+  readonly clientRegistration: "static";
+  readonly clientType: "confidential";
+  readonly clientId: string;
+};
+
 export type StaticPublicConnectorAuthClient = {
   readonly clientRegistration: "static";
   readonly clientType: "public";
@@ -727,6 +733,11 @@ export type ConnectorAuthClient =
   | StaticConnectorAuthClient
   | DynamicPublicConnectorAuthClient;
 
+export type ConnectorAuthClientIdentity =
+  | StaticConfidentialConnectorAuthClientIdentity
+  | StaticPublicConnectorAuthClient
+  | DynamicPublicConnectorAuthClient;
+
 export type ConnectorAuthClientForConfig<
   Client extends ConnectorAuthClientConfig,
 > = Client extends StaticConfidentialConnectorAuthClientConfig
@@ -741,6 +752,23 @@ export type ConnectorAuthClientForMethod<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
 > = ConnectorAuthClientForConfig<ConnectorAuthMethodClientConfig<Type, Method>>;
+
+export type ConnectorAuthClientIdentityForConfig<
+  Client extends ConnectorAuthClientConfig,
+> = Client extends StaticConfidentialConnectorAuthClientConfig
+  ? StaticConfidentialConnectorAuthClientIdentity
+  : Client extends StaticPublicConnectorAuthClientConfig
+    ? StaticPublicConnectorAuthClient
+    : Client extends DynamicPublicConnectorAuthClientConfig
+      ? DynamicPublicConnectorAuthClient
+      : never;
+
+export type ConnectorAuthClientIdentityForMethod<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = ConnectorAuthClientIdentityForConfig<
+  ConnectorAuthMethodClientConfig<Type, Method>
+>;
 
 export type ConnectorAuthMethodClientRef<
   Type extends ConnectorType,
@@ -788,6 +816,32 @@ export function isStaticConfidentialConnectorAuthClient(
     isStaticConnectorAuthClient(authClient) &&
     authClient.clientType === "confidential"
   );
+}
+
+export function connectorAuthClientIdentity(
+  authClient: ConnectorAuthClient,
+): ConnectorAuthClientIdentity {
+  switch (authClient.clientRegistration) {
+    case "dynamic":
+      return authClient;
+    case "static":
+      return {
+        clientRegistration: "static",
+        clientType: authClient.clientType,
+        clientId: authClient.clientId,
+      };
+  }
+}
+
+export function connectorAuthClientIdentityForMethod<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+>(
+  authClient: ConnectorAuthClientForMethod<Type, Method>,
+): ConnectorAuthClientIdentityForMethod<Type, Method> {
+  return connectorAuthClientIdentity(
+    authClient,
+  ) as ConnectorAuthClientIdentityForMethod<Type, Method>;
 }
 
 export function getConnectorAuthClientConfigForMethod<

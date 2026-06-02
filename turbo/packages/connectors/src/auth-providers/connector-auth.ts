@@ -13,6 +13,7 @@ import {
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
+  connectorAuthClientIdentityForMethod,
   connectorAuthMethodRefHasRevokeKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodAuthCodeGrantConfig,
@@ -501,7 +502,7 @@ export async function buildConnectorAuthCodeAuthorizationUrl<
     args.authMethod,
   );
   return await provider.buildAuthUrl({
-    authClient: args.authClient,
+    authClient: connectorAuthClientIdentityForMethod(args.authClient),
     authCodeGrant,
     redirectUri: args.redirectUri,
     state: args.state,
@@ -584,7 +585,7 @@ export async function startConnectorDeviceAuthorization<
     args.authMethod,
   );
   return await provider.startDeviceAuth({
-    authClient: args.authClient,
+    authClient: connectorAuthClientIdentityForMethod(args.authClient),
     deviceAuthGrant,
     scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
   });

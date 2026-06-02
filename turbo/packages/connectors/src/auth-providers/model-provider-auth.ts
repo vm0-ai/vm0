@@ -80,7 +80,7 @@ export async function refreshModelProviderOAuthToken(args: {
     case "refresh-token": {
       const authClient = access.resolveAuthClient(args.currentEnv);
       if (!authClient) {
-        throw new Error(`${args.providerKey} OAuth client not configured`);
+        throw new Error(`${args.providerKey} auth client not configured`);
       }
 
       return await access.refreshToken({

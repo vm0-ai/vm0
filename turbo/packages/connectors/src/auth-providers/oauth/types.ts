@@ -12,7 +12,10 @@ import type {
   RefreshTokenAccessConnectorType,
   TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
-import type { ConnectorAuthClientForMethod } from "@vm0/connectors/connector-utils";
+import type {
+  ConnectorAuthClientForMethod,
+  ConnectorAuthClientIdentityForMethod,
+} from "@vm0/connectors/connector-utils";
 
 export interface OAuthTokenResult {
   accessToken: string;
@@ -125,12 +128,19 @@ type ConnectorAuthMethodClientArgs<
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
 };
 
+type ConnectorAuthMethodClientIdentityArgs<
+  T extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<T>,
+> = {
+  readonly authClient: ConnectorAuthClientIdentityForMethod<T, Method>;
+};
+
 export type ConnectorAuthCodeAuthorizeArgs<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
     ConnectorAuthCodeGrantAuthMethodId<T>,
 > = OAuthAuthorizeFlowArgs &
-  ConnectorAuthMethodClientArgs<T, Method> & {
+  ConnectorAuthMethodClientIdentityArgs<T, Method> & {
     readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
   };
 
@@ -163,7 +173,7 @@ export type ConnectorDeviceAuthorizationStartArgs<
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
     ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = OAuthDeviceAuthStartFlowArgs &
-  ConnectorAuthMethodClientArgs<T, Method> & {
+  ConnectorAuthMethodClientIdentityArgs<T, Method> & {
     readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   };
 

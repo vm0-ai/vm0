@@ -1001,7 +1001,7 @@ function prepareRefreshTokenContext(
       })
     ) {
       L.debug(
-        `${args.connectorType} OAuth client ID not configured, skipping token refresh`,
+        `${args.connectorType} auth client not configured, skipping token refresh`,
       );
       return { ok: false, reason: "client-unconfigured" };
     }
