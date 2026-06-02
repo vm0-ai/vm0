@@ -4,6 +4,7 @@ import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -324,6 +325,48 @@ describe("zeroClient$ apiBackend routing", () => {
 
     expect(result.status).toBe(200);
     expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted user preferences contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroUserPreferencesContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          timezone: null,
+          pinnedAgentIds: [],
+          sendMode: "enter",
+          captureNetworkBodiesRemaining: 0,
+        });
+      }),
+      mockApi(zeroUserPreferencesContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          timezone: "America/Los_Angeles",
+          pinnedAgentIds: [],
+          sendMode: "cmd-enter",
+          captureNetworkBodiesRemaining: 0,
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroUserPreferencesContract);
+    const getResult = await client.get();
+    const updateResult = await client.update({
+      body: { sendMode: "cmd-enter" },
+    });
+
+    expect(getResult.status).toBe(200);
+    expect(updateResult.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai", "api.vm0.ai"]);
   });
 
   it("routes GET contract requests to api host when apiBackend is on", async () => {

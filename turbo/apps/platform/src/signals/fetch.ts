@@ -2,7 +2,12 @@ import { computed } from "ccstate";
 import { apiBackendEnabled$ } from "./external/feature-switch.ts";
 import { clerk$ } from "./auth.ts";
 import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
-import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
+import {
+  resolveApiBase,
+  resolveApiBaseForNavigation,
+  resolveApiBaseForTarget,
+} from "./api-base.ts";
+import { resolveApiTarget } from "./api-target-policy.ts";
 
 /**
  * API base URL for opening external navigation (e.g. connector OAuth popup).
@@ -50,6 +55,7 @@ function mergeHeadersWithAutoIds(
 function rewriteRequestUrl(
   request: Request,
   apiBase: string,
+  method: string | undefined,
   token: string | null | undefined,
   initHeaders: HeadersInit | Record<string, string> | undefined,
 ): Request | null {
@@ -73,7 +79,7 @@ function rewriteRequestUrl(
   }
 
   const requestInit: RequestInit & { duplex: "half" } = {
-    method: request.method,
+    method: method ?? request.method,
     headers: combinedHeaders,
     mode: request.mode,
     credentials: request.credentials,
@@ -96,11 +102,25 @@ function rewriteRequestUrl(
   );
 }
 
+function apiBaseForRelativePath(
+  path: string,
+  method: string | undefined,
+  useApiBackend: boolean,
+): string {
+  const url = new URL(path, resolveApiBase(false));
+  return resolveApiBaseForTarget(
+    resolveApiTarget(
+      { method: method ?? "GET", pathname: url.pathname },
+      useApiBackend,
+    ),
+  );
+}
+
 export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
     const initialToken = (await clerk.session?.getToken()) ?? null;
-    const apiBase = await get(apiBase$);
+    const useApiBackend = await get(apiBackendEnabled$);
 
     const performFetch = async (token: string | null): Promise<Response> => {
       // Clone Request inputs so the body stream is available for retry.
@@ -138,20 +158,38 @@ export const fetch$ = computed((get) => {
       }
 
       if (typeof requestInput === "string" && !requestInput.includes("://")) {
-        const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
+        const requestMethod = finalInit.method;
         const path = requestInput.startsWith("/")
           ? requestInput
           : `/${requestInput}`;
+        const apiBase = apiBaseForRelativePath(
+          path,
+          requestMethod,
+          useApiBackend,
+        );
+        const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
         finalUrl = `${baseUrl}${path}`;
       } else if (requestInput instanceof URL && !requestInput.host) {
+        const apiBase = apiBaseForRelativePath(
+          requestInput.pathname,
+          finalInit.method,
+          useApiBackend,
+        );
         finalUrl = new URL(
           requestInput.pathname + requestInput.search + requestInput.hash,
           apiBase,
         );
       } else if (requestInput instanceof Request) {
+        const requestMethod = finalInit.method ?? requestInput.method;
+        const apiBase = apiBaseForRelativePath(
+          new URL(requestInput.url).pathname,
+          requestMethod,
+          useApiBackend,
+        );
         const rewritten = rewriteRequestUrl(
           requestInput,
           apiBase,
+          requestMethod,
           token,
           finalInit.headers,
         );

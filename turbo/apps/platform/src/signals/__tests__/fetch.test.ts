@@ -522,6 +522,80 @@ describe("apiBackend routing", () => {
     expect(postHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
+  it("routes policy allowlisted user preferences string paths to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/user-preferences", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/user-preferences");
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted user preferences Request inputs to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.post("*/api/zero/user-preferences", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch(
+      new Request("/api/zero/user-preferences", {
+        method: "POST",
+        body: JSON.stringify({ sendMode: "cmd-enter" }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("uses RequestInit method overrides for policy allowlisted user preferences Request inputs", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.post("*/api/zero/user-preferences", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch(new Request("/api/zero/user-preferences"), {
+      method: "POST",
+    });
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
   it("routes GET and POST to api host when apiBackend is on", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
