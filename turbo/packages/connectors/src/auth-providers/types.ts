@@ -98,7 +98,7 @@ interface NoneRevokeProvider {
   readonly kind: "none";
 }
 
-interface TokenRevokeProvider<
+export interface TokenRevokeProvider<
   T extends TokenRevokeConnectorType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =
     ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,

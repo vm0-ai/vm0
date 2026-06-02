@@ -7,10 +7,10 @@ import type {
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
-  ConnectorAuthProviderType,
   ConnectorType,
   DeviceAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
+  TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ConnectorAuthClientForMethod } from "@vm0/connectors/connector-utils";
 
@@ -62,26 +62,6 @@ interface OAuthDeviceAuthStartFlowArgs {
 interface OAuthDeviceAuthPollFlowArgs {
   readonly deviceCode: string;
 }
-
-type OptionalClientCredentialArgs = {
-  readonly clientId?: string;
-  readonly clientSecret?: string;
-};
-
-export type OAuthAuthorizeArgs = OAuthAuthorizeFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthExchangeArgs = OAuthExchangeFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthRefreshArgs = OAuthRefreshFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthDeviceAuthStartArgs = OAuthDeviceAuthStartFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthDeviceAuthPollArgs = OAuthDeviceAuthPollFlowArgs &
-  OptionalClientCredentialArgs;
 
 export interface OAuthRefreshResult {
   readonly accessToken: string;
@@ -173,7 +153,7 @@ export type ConnectorAuthProviderRefreshArgs<
   };
 
 export type ConnectorAuthProviderRevokeArgs<
-  T extends ConnectorAuthProviderType,
+  T extends TokenRevokeConnectorType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =
     ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
 > = OAuthRevokeFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;

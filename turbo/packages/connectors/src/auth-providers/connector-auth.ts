@@ -27,17 +27,12 @@ import type {
   AuthCodeConnectorAuthProvider,
   DeviceAuthConnectorAuthProvider,
   RefreshTokenAccessProvider,
+  TokenRevokeProvider,
 } from "./types";
 import {
   type AuthUrlResult,
-  type OAuthAuthorizeArgs,
-  type OAuthDeviceAuthPollArgs,
   type OAuthDeviceAuthPollResult,
-  type OAuthDeviceAuthStartArgs,
   type OAuthDeviceAuthStartResult,
-  type OAuthExchangeArgs,
-  type ConnectorAuthProviderRevokeArgs,
-  type OAuthRefreshArgs,
   type OAuthRefreshResult,
   type OAuthTokenResult,
 } from "./oauth/types";
@@ -99,13 +94,8 @@ import {
 
 export type {
   AuthUrlResult,
-  OAuthDeviceAuthPollArgs,
   OAuthDeviceAuthPollResult,
-  OAuthDeviceAuthStartArgs,
   OAuthDeviceAuthStartResult,
-  OAuthAuthorizeArgs,
-  OAuthExchangeArgs,
-  OAuthRefreshArgs,
   OAuthRefreshResult,
   OAuthTokenResult,
 };
@@ -133,17 +123,6 @@ type ConnectorDeviceAuthGrantProvider<
     ConnectorDeviceAuthGrantAuthMethodId<Type>,
 > = DeviceAuthConnectorAuthProvider<Type, Method>["grant"];
 
-interface ConnectorTokenRevokeProvider<
-  Type extends TokenRevokeConnectorType = TokenRevokeConnectorType,
-  Method extends ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke"> =
-    ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke">,
-> {
-  readonly kind: "token-revoke";
-  revokeToken(
-    args: ConnectorAuthProviderRevokeArgs<Type, Method>,
-  ): Promise<void>;
-}
-
 type ConnectorAuthCodeProviderEntry<
   Type extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<Type>,
@@ -169,7 +148,7 @@ type ConnectorTokenRevokeProviderEntry<
   Type extends TokenRevokeConnectorType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke">,
 > = {
-  readonly revoke: ConnectorTokenRevokeProvider<Type, Method>;
+  readonly revoke: TokenRevokeProvider<Type, Method>;
 };
 
 type ConnectorAuthCodeGrantProviderEntries<Type extends ConnectorType> = {
@@ -261,7 +240,7 @@ function authCodeTokenRevokeProviderEntry<
     ConnectorAuthMethodIdsByRevokeKind<Type, "token-revoke">,
 >(
   provider: AuthCodeConnectorAuthProvider<Type, Method> & {
-    readonly revoke: ConnectorTokenRevokeProvider<Type, Method>;
+    readonly revoke: TokenRevokeProvider<Type, Method>;
   },
 ): ConnectorAuthCodeProviderEntry<Type, Method> &
   ConnectorTokenRevokeProviderEntry<Type, Method> {
@@ -278,7 +257,7 @@ function authCodeRefreshTokenRevokeProviderEntry<
 >(
   provider: AuthCodeConnectorAuthProvider<Type, Method> & {
     readonly access: RefreshTokenAccessProvider<Type, Method>;
-    readonly revoke: ConnectorTokenRevokeProvider<Type, Method>;
+    readonly revoke: TokenRevokeProvider<Type, Method>;
   },
 ): ConnectorAuthCodeProviderEntry<Type, Method> &
   ConnectorRefreshTokenAccessProviderEntry<Type, Method> &
@@ -366,7 +345,7 @@ async function revokeTokenRevokeConnectorAccessToken<
 function connectorTokenRevokeProviderFor<
   T extends TokenRevokeConnectorType,
   Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
->(type: T, authMethod: Method): ConnectorTokenRevokeProvider<T, Method> {
+>(type: T, authMethod: Method): TokenRevokeProvider<T, Method> {
   const entry = CONNECTOR_AUTH_METHOD_PROVIDER_REGISTRY[type][
     authMethod
   ] as unknown as ConnectorTokenRevokeProviderEntry<T, Method>;
