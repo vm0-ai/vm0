@@ -589,6 +589,28 @@ describe("connector auth method config", () => {
     expect(duplicateSecrets).toStrictEqual([]);
     expect(duplicateVariables).toStrictEqual([]);
   });
+
+  it("keeps runtime env aliases unique across connector types", () => {
+    const envAliasOwners = new Map<string, Set<ConnectorType>>();
+
+    for (const type of CONNECTOR_TYPE_KEYS) {
+      for (const { envName } of getConnectorEnvBindingEntries(type)) {
+        const owners = envAliasOwners.get(envName) ?? new Set<ConnectorType>();
+        owners.add(type);
+        envAliasOwners.set(envName, owners);
+      }
+    }
+
+    const crossConnectorDuplicates = [...envAliasOwners].flatMap(
+      ([envName, owners]) => {
+        return owners.size > 1
+          ? [{ envName, connectorTypes: [...owners].sort() }]
+          : [];
+      },
+    );
+
+    expect(crossConnectorDuplicates).toStrictEqual([]);
+  });
 });
 
 describe("connector selected auth method capability checks", () => {
@@ -2673,7 +2695,13 @@ describe("getConnectorStoredSecretDisplayInfo", () => {
     });
   });
 
-  it("returns null for stored secrets without runtime env aliases", () => {
+  it("returns null for stored connector secrets without runtime env aliases", () => {
+    expect(
+      getConnectorStoredSecretDisplayInfo("SLOCK_REFRESH_TOKEN"),
+    ).toBeNull();
+  });
+
+  it("returns null for unknown stored secret names", () => {
     expect(getConnectorStoredSecretDisplayInfo("UNKNOWN_SECRET")).toBeNull();
   });
 });
