@@ -4,7 +4,7 @@
 # via the framework-aware checkpoint scan path.
 #
 # The first turn writes a session file at
-# `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl.zst`. Continue
+# `$CODEX_HOME/sessions/YYYY/MM/DD/<thread_id>.jsonl`. Continue
 # rehydrates from the agent session, calls codex with `exec resume`, and
 # the mock-codex appends another turn to the same file.
 
