@@ -2701,6 +2701,12 @@ describe("getConnectorStoredSecretDisplayInfo", () => {
     ).toBeNull();
   });
 
+  it("returns null for platform secrets referenced by runtime env aliases", () => {
+    expect(
+      getConnectorStoredSecretDisplayInfo("GOOGLE_ADS_DEVELOPER_TOKEN"),
+    ).toBeNull();
+  });
+
   it("returns null for unknown stored secret names", () => {
     expect(getConnectorStoredSecretDisplayInfo("UNKNOWN_SECRET")).toBeNull();
   });
