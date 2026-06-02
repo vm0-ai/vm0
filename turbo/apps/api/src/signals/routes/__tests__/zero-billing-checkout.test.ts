@@ -449,10 +449,9 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/trial",
     });
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
-      mode: "subscription",
+      mode: "setup",
       customer: customerId,
-      line_items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
-      allow_promotion_codes: true,
+      payment_method_types: ["card"],
       success_url: `${APP_ORIGIN}/onboarding?billing=pro`,
       cancel_url: `${APP_ORIGIN}/onboarding?billing=canceled`,
       metadata: {
@@ -460,15 +459,16 @@ describe("POST /api/zero/billing/checkout", () => {
         tier: "pro",
         priceId: TEST_PRICE_PRO,
         flow: "trial",
+        trialDays: "7",
       },
-      subscription_data: {
+      setup_intent_data: {
         metadata: {
           orgId: fixture.orgId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
           flow: "trial",
+          trialDays: "7",
         },
-        trial_period_days: 7,
       },
     });
   });
@@ -675,6 +675,111 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     );
 
     expect(response.body).toStrictEqual({ completed: true });
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toMatchObject({
+      tier: "pro",
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "trialing",
+      onboardingPaymentPending: false,
+      currentPeriodEnd: new Date(1_800_000_000 * 1000),
+    });
+  });
+
+  it("creates a Pro trial subscription from completed setup checkout", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const setupIntentId = `seti_${randomUUID().slice(0, 8)}`;
+    const paymentMethodId = `pm_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      onboardingPaymentPending: true,
+      stripeCustomerId: customerId,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const metadata = {
+      orgId: fixture.orgId,
+      tier: "pro",
+      priceId: TEST_PRICE_PRO,
+      flow: "trial",
+      trialDays: "7",
+    };
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_setup_completed",
+      mode: "setup",
+      status: "complete",
+      customer: customerId,
+      subscription: null,
+      metadata,
+      setup_intent: {
+        id: setupIntentId,
+        status: "succeeded",
+        payment_method: paymentMethodId,
+        metadata,
+      },
+    });
+    context.mocks.stripe.subscriptions.create.mockResolvedValue({
+      id: subscriptionId,
+      status: "trialing",
+      cancel_at_period_end: false,
+      metadata: {
+        ...metadata,
+        checkoutSessionId: "cs_test_setup_completed",
+        setupIntentId,
+      },
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_PRO },
+            current_period_end: 1_800_000_000,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_setup_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: true });
+    expect(context.mocks.stripe.checkout.sessions.retrieve).toHaveBeenCalledWith(
+      "cs_test_setup_completed",
+      { expand: ["setup_intent"] },
+    );
+    expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledWith(
+      {
+        customer: customerId,
+        items: [{ price: TEST_PRICE_PRO }],
+        default_payment_method: paymentMethodId,
+        trial_period_days: 7,
+        metadata: {
+          ...metadata,
+          checkoutSessionId: "cs_test_setup_completed",
+          setupIntentId,
+        },
+      },
+      {
+        idempotencyKey: "pro-trial-setup-checkout:cs_test_setup_completed",
+      },
+    );
 
     const writeDb = store.set(writeDb$);
     const [row] = await writeDb

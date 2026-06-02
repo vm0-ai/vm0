@@ -2221,6 +2221,88 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.onboardingPaymentPending).toBeFalsy();
     });
 
+    it("creates Pro trial subscription from setup checkout metadata", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      await updateStripeOrg(fixture, { onboardingPaymentPending: true });
+      mockStripeWebhookEnv();
+      const sessionId = stripeId("cs");
+      const setupIntentId = stripeId("seti");
+      const paymentMethodId = stripeId("pm");
+      const subscriptionId = stripeId("sub");
+      const periodEnd = 1_800_000_000;
+      const metadata = {
+        orgId: fixture.orgId,
+        tier: "pro",
+        priceId: STRIPE_PRICE_PRO,
+        flow: "trial",
+        trialDays: "7",
+      };
+      context.mocks.stripe.subscriptions.create.mockResolvedValue({
+        id: subscriptionId,
+        status: "trialing",
+        cancel_at_period_end: false,
+        metadata: {
+          ...metadata,
+          checkoutSessionId: sessionId,
+          setupIntentId,
+        },
+        items: {
+          data: [
+            {
+              price: { id: STRIPE_PRICE_PRO },
+              current_period_end: periodEnd,
+            },
+          ],
+        },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: sessionId,
+          mode: "setup",
+          status: "complete",
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          metadata,
+          setup_intent: {
+            id: setupIntentId,
+            status: "succeeded",
+            payment_method: paymentMethodId,
+            metadata,
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(context.mocks.stripe.subscriptions.create).toHaveBeenCalledWith(
+        {
+          customer: fixture.stripeCustomerId,
+          items: [{ price: STRIPE_PRICE_PRO }],
+          default_payment_method: paymentMethodId,
+          trial_period_days: 7,
+          metadata: {
+            ...metadata,
+            checkoutSessionId: sessionId,
+            setupIntentId,
+          },
+        },
+        {
+          idempotencyKey: `pro-trial-setup-checkout:${sessionId}`,
+        },
+      );
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("pro");
+      expect(billing.stripeSubscriptionId).toBe(subscriptionId);
+      expect(billing.subscriptionStatus).toBe("trialing");
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
+      expect(billing.onboardingPaymentPending).toBeFalsy();
+    });
+
     it("is idempotent when subscription is already stored", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),

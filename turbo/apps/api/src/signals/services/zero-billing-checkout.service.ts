@@ -5,7 +5,7 @@ import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 
@@ -134,6 +134,9 @@ function checkoutSessionMetadata(args: {
     priceId: args.priceId,
     flow: args.trialDays === undefined ? "standard" : "trial",
   };
+  if (args.trialDays !== undefined) {
+    metadata.trialDays = String(args.trialDays);
+  }
   for (const [key, value] of Object.entries(args.adAttribution ?? {})) {
     if (value) {
       metadata[key] = value;
@@ -151,11 +154,152 @@ function stripeObjectId(
   return value?.id ?? null;
 }
 
+async function checkoutSessionSetupIntent(
+  stripe: ReturnType<typeof getStripeClient>,
+  session: Stripe.Checkout.Session,
+): Promise<Stripe.SetupIntent | null> {
+  const setupIntent = session.setup_intent;
+  if (!setupIntent) {
+    return null;
+  }
+  if (typeof setupIntent === "string") {
+    return await stripe.setupIntents.retrieve(setupIntent);
+  }
+  return setupIntent;
+}
+
+function setupIntentPaymentMethodId(
+  setupIntent: Stripe.SetupIntent,
+): string | null {
+  return stripeObjectId(setupIntent.payment_method);
+}
+
+function setupTrialSubscriptionMetadata(args: {
+  readonly session: Stripe.Checkout.Session;
+  readonly setupIntent: Stripe.SetupIntent;
+}): Record<string, string> {
+  return {
+    ...args.session.metadata,
+    ...args.setupIntent.metadata,
+    checkoutSessionId: args.session.id,
+    setupIntentId: args.setupIntent.id,
+  };
+}
+
 function subscriptionPeriodEnd(subscription: Stripe.Subscription): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
     ? new Date(periodEndUnix * 1000)
     : null;
+}
+
+type SetupTrialCheckoutCompletionResult =
+  | { readonly status: "completed" }
+  | { readonly status: "pending" }
+  | {
+      readonly status: "tier_conflict";
+      readonly currentTier: string | null;
+      readonly targetTier: SubscriptionCheckoutTier;
+    };
+
+export async function completeSetupTrialCheckoutSession(args: {
+  readonly db: Db;
+  readonly stripe: ReturnType<typeof getStripeClient>;
+  readonly session: Stripe.Checkout.Session;
+  readonly customerId: string;
+}): Promise<SetupTrialCheckoutCompletionResult> {
+  const metadata = args.session.metadata ?? {};
+  if (
+    args.session.status !== "complete" ||
+    args.session.mode !== "setup" ||
+    metadata.flow !== "trial"
+  ) {
+    return { status: "pending" };
+  }
+
+  const priceId = metadata.priceId;
+  if (!priceId) {
+    return { status: "pending" };
+  }
+  const tier = tierFromPriceId(priceId);
+  if (tier !== "pro") {
+    return { status: "pending" };
+  }
+
+  const [org] = await args.db
+    .select({
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      tier: orgMetadata.tier,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, args.customerId))
+    .limit(1);
+  if (!org) {
+    return { status: "pending" };
+  }
+
+  if (org.stripeSubscriptionId) {
+    const existingSubscription = await args.stripe.subscriptions.retrieve(
+      org.stripeSubscriptionId,
+    );
+    if (existingSubscription.metadata.checkoutSessionId === args.session.id) {
+      return { status: "completed" };
+    }
+  }
+
+  if (
+    checkoutWouldReplaceWithSameOrLowerTier({
+      currentTier: org.tier,
+      targetTier: tier,
+    })
+  ) {
+    return {
+      status: "tier_conflict",
+      currentTier: org.tier,
+      targetTier: tier,
+    };
+  }
+
+  const setupIntent = await checkoutSessionSetupIntent(args.stripe, args.session);
+  if (setupIntent?.status !== "succeeded") {
+    return { status: "pending" };
+  }
+  const paymentMethodId = setupIntentPaymentMethodId(setupIntent);
+  if (!paymentMethodId) {
+    return { status: "pending" };
+  }
+
+  const subscription = await args.stripe.subscriptions.create(
+    {
+      customer: args.customerId,
+      items: [{ price: priceId }],
+      default_payment_method: paymentMethodId,
+      trial_period_days: 7,
+      metadata: setupTrialSubscriptionMetadata({
+        session: args.session,
+        setupIntent,
+      }),
+    },
+    {
+      idempotencyKey: `pro-trial-setup-checkout:${args.session.id}`,
+    },
+  );
+  const periodEnd = subscriptionPeriodEnd(subscription);
+
+  await args.db
+    .update(orgMetadata)
+    .set({
+      tier,
+      stripeSubscriptionId: subscription.id,
+      subscriptionStatus: subscription.status,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      onboardingPaymentPending: false,
+      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.stripeCustomerId, args.customerId));
+
+  return { status: "completed" };
 }
 
 function customUnitAmountParams(
@@ -196,9 +340,8 @@ async function createPresetCustomCreditPrice(
 }
 
 /**
- * Create a Stripe Checkout session for subscription. Returns the
- * checkout session URL. Mirrors apps/web's createCheckoutSession
- * (allow_promotion_codes + subscription metadata orgId tag).
+ * Create a Stripe Checkout session for subscription checkout or Pro trial
+ * payment method setup. Returns the checkout session URL.
  */
 export const createCheckoutSession$ = command(
   async (
@@ -221,21 +364,32 @@ export const createCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: args.priceId, quantity: 1 }],
-      allow_promotion_codes: true,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      metadata,
-      subscription_data: {
-        metadata,
-        ...(args.trialDays === undefined
-          ? {}
-          : { trial_period_days: args.trialDays }),
-      },
-    });
+    const session = await stripe.checkout.sessions.create(
+      args.trialDays === undefined
+        ? {
+            mode: "subscription",
+            customer: customerId,
+            line_items: [{ price: args.priceId, quantity: 1 }],
+            allow_promotion_codes: true,
+            success_url: args.successUrl,
+            cancel_url: args.cancelUrl,
+            metadata,
+            subscription_data: {
+              metadata,
+            },
+          }
+        : {
+            mode: "setup",
+            customer: customerId,
+            payment_method_types: ["card"],
+            success_url: args.successUrl,
+            cancel_url: args.cancelUrl,
+            metadata,
+            setup_intent_data: {
+              metadata,
+            },
+          },
+    );
     signal.throwIfAborted();
 
     if (!session.url) {
@@ -264,7 +418,9 @@ export const completeCheckoutSession$ = command(
     signal.throwIfAborted();
 
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.retrieve(args.sessionId);
+    const session = await stripe.checkout.sessions.retrieve(args.sessionId, {
+      expand: ["setup_intent"],
+    });
     signal.throwIfAborted();
 
     const customerId = stripeObjectId(session.customer);
@@ -272,7 +428,20 @@ export const completeCheckoutSession$ = command(
       return { status: "customer_mismatch" };
     }
 
-    if (session.status !== "complete" || session.mode !== "subscription") {
+    if (session.status !== "complete") {
+      return { status: "pending" };
+    }
+
+    if (session.mode === "setup") {
+      return await completeSetupTrialCheckoutSession({
+        db,
+        stripe,
+        session,
+        customerId,
+      });
+    }
+
+    if (session.mode !== "subscription") {
       return { status: "pending" };
     }
 

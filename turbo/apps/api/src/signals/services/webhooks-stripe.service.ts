@@ -13,6 +13,7 @@ import { getCampaign } from "./one-time-products";
 import {
   checkoutTierConflictMessage,
   checkoutWouldReplaceWithSameOrLowerTier,
+  completeSetupTrialCheckoutSession,
   type SubscriptionCheckoutTier,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
@@ -24,7 +25,10 @@ type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 interface CheckoutSessionInput {
   readonly id: string;
+  readonly mode?: string | null;
+  readonly status?: string | null;
   readonly subscription: string | { readonly id: string } | null;
+  readonly setup_intent?: string | Stripe.SetupIntent | null;
   readonly customer: string | { readonly id: string } | null;
   readonly metadata: Record<string, string> | null;
   readonly amount_subtotal?: number | null;
@@ -491,6 +495,40 @@ async function handleCheckoutCompleted(
   }
 
   if (await handlePaidCheckoutPurpose(db, session, "one_time_purchase")) {
+    return;
+  }
+
+  if (session.mode === "setup") {
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id;
+    if (!customerId) {
+      L.warn("setup checkout.session.completed without customer ID", {
+        sessionId: session.id,
+      });
+      return;
+    }
+
+    const stripe = getStripeClient();
+    const result = await completeSetupTrialCheckoutSession({
+      db,
+      stripe,
+      session: session as Stripe.Checkout.Session,
+      customerId,
+    });
+    if (result.status === "tier_conflict") {
+      L.warn("setup checkout.session.completed rejected tier replacement", {
+        customerId,
+        sessionId: session.id,
+        currentTier: result.currentTier,
+        targetTier: result.targetTier,
+        reason: checkoutTierConflictMessage({
+          currentTier: result.currentTier,
+          targetTier: result.targetTier,
+        }),
+      });
+    }
     return;
   }
 

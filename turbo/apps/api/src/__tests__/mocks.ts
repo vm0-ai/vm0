@@ -116,7 +116,11 @@ export interface ApiTestMocks {
       readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
     };
+    readonly setupIntents: {
+      readonly retrieve: AsyncMock;
+    };
     readonly subscriptions: {
+      readonly create: AsyncMock;
       readonly retrieve: AsyncMock;
       readonly update: AsyncMock;
       readonly cancel: AsyncMock;
@@ -261,7 +265,11 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
+    setupIntents: {
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     subscriptions: {
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       update: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       cancel: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -548,7 +556,11 @@ vi.mock("stripe", async (importOriginal) => {
           retrieve: apiTestMocks.stripe.customers.retrieve,
           create: apiTestMocks.stripe.customers.create,
         },
+        setupIntents: {
+          retrieve: apiTestMocks.stripe.setupIntents.retrieve,
+        },
         subscriptions: {
+          create: apiTestMocks.stripe.subscriptions.create,
           retrieve: apiTestMocks.stripe.subscriptions.retrieve,
           update: apiTestMocks.stripe.subscriptions.update,
           cancel: apiTestMocks.stripe.subscriptions.cancel,
@@ -776,6 +788,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.invoiceItems.create.mockReset();
   apiTestMocks.stripe.customers.retrieve.mockReset();
   apiTestMocks.stripe.customers.create.mockReset();
+  apiTestMocks.stripe.setupIntents.retrieve.mockReset();
+  apiTestMocks.stripe.subscriptions.create.mockReset();
   apiTestMocks.stripe.subscriptions.retrieve.mockReset();
   apiTestMocks.stripe.subscriptions.update.mockReset();
   apiTestMocks.stripe.subscriptions.cancel.mockReset();
