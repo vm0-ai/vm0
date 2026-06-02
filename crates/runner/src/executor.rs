@@ -6044,6 +6044,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_inner_ignores_workspace_cache_when_feature_flag_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-cache-disabled".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            false,
+        )]));
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let seeded_cache =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-disabled", 16).await;
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.workspace_image.is_none());
+        assert!(!outcome.workspace_promotable);
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: None,
+            })
+        );
+        assert!(
+            seeded_cache.exists(),
+            "disabled feature flag must not consume or invalidate the workspace cache baseline"
+        );
+    }
+
+    #[tokio::test]
     async fn execute_inner_aborts_drain_task_on_wait_process_error() {
         // Simulate wait_process timeout: stdout channel stays open (sender held
         // alive by MockSandbox), wait_process returns error.
