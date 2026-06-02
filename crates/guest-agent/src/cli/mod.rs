@@ -647,7 +647,7 @@ pub async fn execute_cli(
     };
     let masked_stderr_lines = stderr_lines
         .into_iter()
-        .map(|line| masker.mask_string(&line))
+        .map(|line| masker.mask_owned_string(line))
         .collect::<Vec<_>>();
 
     // If event loop had an error, propagate it
