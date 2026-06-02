@@ -24,12 +24,12 @@ use sha2::{Digest, Sha256};
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 
-/// Short hex digests (16 chars = 64 bits) of a `(name, version)` pair, used
-/// when building filesystem paths from untrusted manifest fields.
+/// Short hex digests for storage name and version components, used when
+/// building filesystem paths from untrusted manifest fields.
 ///
-/// The 64-bit prefix keeps directory names compact and is intended for this
-/// bounded runner-local cache, not as a mathematical uniqueness guarantee or
-/// unbounded global key.
+/// Each component uses a 16-character / 64-bit prefix. That keeps directory
+/// names compact for this bounded runner-local cache, but is not a
+/// mathematical uniqueness guarantee or unbounded global key.
 fn storage_key_hashes(name: &str, version: &str) -> (String, String) {
     (short_digest(name), short_digest(version))
 }
