@@ -11,6 +11,10 @@ export const exa = {
         label: "API Key",
         helpText:
           "1. Sign up at [dashboard.exa.ai](https://dashboard.exa.ai)\n2. Click your account \u2192 **API Keys** \u2192 **Create API Key**\n3. Copy the key (starts with `exa_`). Free tier: 1,000 requests/month.",
+        storage: {
+          secrets: ["EXA_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

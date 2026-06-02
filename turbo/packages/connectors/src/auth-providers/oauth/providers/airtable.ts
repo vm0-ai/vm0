@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const AIRTABLE_AUTHORIZATION_URL = "https://airtable.com/oauth2/v1/authorize";
@@ -57,11 +57,11 @@ async function computeCodeChallenge(codeVerifier: string): Promise<string> {
  * Airtable requires PKCE (code_challenge with S256 method).
  */
 export async function buildAirtableAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<{ url: string; codeVerifier: string }> {
-  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -86,13 +86,13 @@ export async function buildAirtableAuthorizationUrl(
  * Airtable uses Basic auth (base64 of client_id:client_secret) for token exchange.
  */
 export async function exchangeAirtableCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   codeVerifier?: string,
 ): Promise<AirtableTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   if (!codeVerifier) {
     throw new Error("Airtable requires PKCE code_verifier for token exchange");
   }
@@ -153,14 +153,16 @@ export async function exchangeAirtableCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://airtable.com/developers/web/api/oauth-reference
  */
 export async function refreshAirtableToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<AirtableRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

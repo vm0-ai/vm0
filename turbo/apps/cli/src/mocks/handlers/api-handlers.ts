@@ -2,8 +2,20 @@ import { http, HttpResponse } from "msw";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
+  type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 import { getAvailableConnectorAuthMethods } from "@vm0/connectors/connector-utils";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isConnectorAuthMethodId(
+  value: unknown,
+): value is ConnectorAuthMethodId {
+  return connectorAuthMethodIdSchema.safeParse(value).success;
+}
 
 function defaultAvailableConnectors() {
   return CONNECTOR_TYPE_KEYS.map((type) => {
@@ -23,11 +35,21 @@ function defaultAvailableConnectors() {
     });
 }
 
-function connectorApiTokenResponse(type: string) {
+function manualGrantAuthMethodFromBody(body: unknown): ConnectorAuthMethodId {
+  if (isRecord(body) && isConnectorAuthMethodId(body.authMethod)) {
+    return body.authMethod;
+  }
+  return "api-token";
+}
+
+function connectorManualGrantResponse(
+  type: string,
+  authMethod: ConnectorAuthMethodId,
+) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
     type,
-    authMethod: "api-token",
+    authMethod,
     externalId: null,
     externalUsername: null,
     externalEmail: null,
@@ -104,21 +126,39 @@ export const apiHandlers = [
     );
   }),
   http.post(
-    "http://localhost:3000/api/zero/connectors/:type/api-token",
-    ({ params }) => {
-      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+    "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+    async ({ params, request }) => {
+      const body: unknown = await request.json();
+      return HttpResponse.json(
+        connectorManualGrantResponse(
+          String(params.type),
+          manualGrantAuthMethodFromBody(body),
+        ),
+      );
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/zero/connectors/:type/api-token",
-    ({ params }) => {
-      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+    "https://app.vm0.ai/api/zero/connectors/:type/manual-grant",
+    async ({ params, request }) => {
+      const body: unknown = await request.json();
+      return HttpResponse.json(
+        connectorManualGrantResponse(
+          String(params.type),
+          manualGrantAuthMethodFromBody(body),
+        ),
+      );
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/zero/connectors/:type/api-token",
-    ({ params }) => {
-      return HttpResponse.json(connectorApiTokenResponse(String(params.type)));
+    "https://www.vm0.ai/api/zero/connectors/:type/manual-grant",
+    async ({ params, request }) => {
+      const body: unknown = await request.json();
+      return HttpResponse.json(
+        connectorManualGrantResponse(
+          String(params.type),
+          manualGrantAuthMethodFromBody(body),
+        ),
+      );
     },
   ),
 

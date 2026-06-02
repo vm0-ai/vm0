@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -147,6 +148,7 @@ function currentSecond(): number {
 function zeroToken(args: {
   readonly userId: string;
   readonly orgId: string;
+  readonly capabilities?: readonly ZeroCapability[];
 }): string {
   const seconds = currentSecond();
   return signSandboxJwtForTests({
@@ -154,19 +156,23 @@ function zeroToken(args: {
     userId: args.userId,
     orgId: args.orgId,
     runId: uniqueId("run"),
-    capabilities: [],
+    capabilities: args.capabilities ?? [],
     iat: seconds,
     exp: seconds + 600,
   });
 }
 
-async function seedMemberRows(orgId: string, userId: string): Promise<void> {
+async function seedMemberRows(
+  orgId: string,
+  userId: string,
+  role: "admin" | "member" = "member",
+): Promise<void> {
   const writeDb = store.set(writeDb$);
   await trackCleanup(Promise.resolve({ orgId }));
   await writeDb.insert(orgMembersCache).values({
     orgId,
     userId,
-    role: "member",
+    role,
   });
   await writeDb.insert(orgMembersMetadata).values({ orgId, userId });
 }
@@ -331,7 +337,7 @@ describe("GET /api/zero/org/members", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("rejects zero tokens", async () => {
+  it("rejects zero tokens without billing read capability", async () => {
     const token = zeroToken({
       userId: uniqueId("user"),
       orgId: uniqueId("org"),
@@ -344,7 +350,7 @@ describe("GET /api/zero/org/members", () => {
     );
 
     expect(response.body.error).toStrictEqual({
-      message: "This endpoint is not available for sandbox tokens",
+      message: "Missing required capability: billing:read",
       code: "FORBIDDEN",
     });
     expect(
@@ -353,6 +359,48 @@ describe("GET /api/zero/org/members", () => {
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
     ).not.toHaveBeenCalled();
+  });
+
+  it("accepts zero tokens with billing read capability", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const adminUserId = `user_${randomUUID()}`;
+
+    await seedMemberRows(orgId, adminUserId, "admin");
+    mockClerkOrg({ slug: "acme", createdAt: 1_700_000_000_000 });
+    mockClerkMemberships([
+      {
+        userId: adminUserId,
+        role: "org:admin",
+        createdAtMs: 1_700_000_000_000,
+      },
+    ]);
+    mockClerkNoInvitations();
+    mockClerkUsers([
+      {
+        id: adminUserId,
+        email: "admin@acme.com",
+        firstName: "Ada",
+        lastName: "Lovelace",
+        imageUrl: "",
+      },
+    ]);
+    mockClerkMembershipRequests(orgId, []);
+    const token = zeroToken({
+      userId: adminUserId,
+      orgId,
+      capabilities: ["billing:read"],
+    });
+
+    const client = setupApp({ context })(zeroOrgMembersContract);
+    const response = await accept(
+      client.members({ headers: { authorization: `Bearer ${token}` } }),
+      [200],
+    );
+
+    expect(response.body.role).toBe("admin");
+    expect(response.body.slug).toBe("acme");
+    expect(response.body.members).toHaveLength(1);
+    expect(response.body.members[0]?.email).toBe("admin@acme.com");
   });
 
   it("returns members and admin-only data for an admin caller", async () => {

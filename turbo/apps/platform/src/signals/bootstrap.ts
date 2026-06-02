@@ -28,6 +28,7 @@ import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-s
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
+import { setupSkillsPage$ } from "./skills-page/skills-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
@@ -46,7 +47,6 @@ import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authoriz
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
-import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
@@ -100,10 +100,6 @@ function redirectWithId(target: RoutePath, targetParam: string) {
 const ROUTE_CONFIG = [
   // --- New routes ---
   {
-    path: ROUTES.chatList,
-    setup: setupAuthPageWrapper(setupChatListPage$),
-  },
-  {
     path: ROUTES.insights,
     setup: setupAuthPageWrapper(setupNetworkInsightsPage$),
   },
@@ -150,6 +146,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.agents,
     setup: setupAuthPageWrapper(setupAgentsPage$),
+  },
+  {
+    path: ROUTES.skills,
+    setup: setupAuthPageWrapper(setupSkillsPage$),
   },
   {
     path: ROUTES.settingsSlack,

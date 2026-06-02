@@ -733,10 +733,11 @@ describe("GET /api/zero/skills/:name", () => {
       description: "A useful skill",
       content: "# My Skill Content",
       files: [{ path: "SKILL.md", size: 18 }],
+      fileContents: [{ path: "SKILL.md", content: "# My Skill Content" }],
     });
   });
 
-  it("returns file listing for a multi-file skill", async () => {
+  it("returns file listing and file contents for a multi-file skill", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),
     );
@@ -765,7 +766,7 @@ describe("GET /api/zero/skills/:name", () => {
     mockSkillContent(context, {
       s3Key,
       content: "# Multi",
-      extraFiles: [{ path: "templates/prompt.md", size: 42 }],
+      extraFiles: [{ path: "templates/prompt.md", content: "Use the tool" }],
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -779,7 +780,11 @@ describe("GET /api/zero/skills/:name", () => {
 
     expect(response.body.files).toStrictEqual([
       { path: "SKILL.md", size: 7 },
-      { path: "templates/prompt.md", size: 42 },
+      { path: "templates/prompt.md", size: 12 },
+    ]);
+    expect(response.body.fileContents).toStrictEqual([
+      { path: "SKILL.md", content: "# Multi" },
+      { path: "templates/prompt.md", content: "Use the tool" },
     ]);
     expect(response.body.content).toBe("# Multi");
   });
@@ -832,6 +837,7 @@ describe("GET /api/zero/skills/:name", () => {
       description: null,
       content: null,
       files: null,
+      fileContents: null,
     });
   });
 
@@ -939,6 +945,7 @@ describe("GET /api/zero/skills/:name", () => {
       description: "Readable through CLI auth",
       content: "# CLI Readable",
       files: [{ path: "SKILL.md", size: 14 }],
+      fileContents: [{ path: "SKILL.md", content: "# CLI Readable" }],
     });
   });
 });

@@ -11,15 +11,22 @@ export const github = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with GitHub to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GH_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["GITHUB_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GITHUB_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://github.com/login/oauth/access_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GH_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["repo", "project", "workflow"],
         },
         access: {

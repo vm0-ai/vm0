@@ -93,6 +93,36 @@ export function isReasoningModel(m: ModelEntry): m is ReasoningModelEntry {
 
 export const MODELS: ModelEntry[] = [
   {
+    slug: "claude-opus-4-8",
+    modelId: "claude-opus-4-8",
+    name: "Claude Opus 4.8",
+    vendor: "Anthropic",
+    category: "reasoning",
+    multiplier: 1.7,
+    contextWindowK: 1000,
+    promptCaching: true,
+    modalities: ["Text", "Vision", "Code"],
+    releasedToVm0: "May 28, 2026",
+    pricing: {
+      inputUsd: 5,
+      outputUsd: 25,
+      cacheReadUsd: 0.5,
+      cacheWriteUsd: 6.25,
+    },
+    vm0Tier: "core",
+    byoKeyLabel: "Anthropic API key",
+    defaultFor: [],
+    comparisonSlugs: [
+      "Claude Opus 4.7",
+      "Claude Sonnet 4.6",
+      "GPT-5.5",
+      "Gemini 3.1 Pro",
+      "DeepSeek V4 Pro",
+    ],
+    alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "gpt-5-5"],
+  },
+
+  {
     slug: "claude-opus-4-7",
     modelId: "claude-opus-4-7",
     name: "Claude Opus 4.7",
@@ -113,13 +143,13 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "Anthropic API key",
     defaultFor: [],
     comparisonSlugs: [
+      "Claude Opus 4.8",
       "Claude Sonnet 4.6",
       "Claude Opus 4.6",
       "Kimi K2.6",
       "DeepSeek V4 Pro",
-      "GPT-5.2 / Gemini 3 Pro",
     ],
-    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-6", "deepseek-v4-pro"],
+    alternativeSlugs: ["claude-opus-4-8", "claude-sonnet-4-6", "kimi-k2-6"],
   },
 
   {
@@ -190,12 +220,8 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "core",
     byoKeyLabel: "Anthropic API key",
     defaultFor: ["VM0 Managed"],
-    comparisonSlugs: ["Claude Opus 4.7", "Claude Haiku 4.5", "DeepSeek V4 Pro"],
-    alternativeSlugs: [
-      "claude-opus-4-7",
-      "claude-haiku-4-5",
-      "deepseek-v4-pro",
-    ],
+    comparisonSlugs: ["Claude Opus 4.7", "DeepSeek V4 Pro", "GPT-5.4 Mini"],
+    alternativeSlugs: ["claude-opus-4-7", "deepseek-v4-pro"],
   },
 
   {
@@ -248,34 +274,6 @@ export const MODELS: ModelEntry[] = [
   },
 
   {
-    slug: "claude-haiku-4-5",
-    modelId: "claude-haiku-4-5",
-    name: "Claude Haiku 4.5",
-    vendor: "Anthropic",
-    category: "reasoning",
-    multiplier: 0.3,
-    contextWindowK: 200,
-    promptCaching: true,
-    modalities: ["Text", "Vision", "Code"],
-    releasedToVm0: "Available since launch",
-    pricing: {
-      inputUsd: 1,
-      outputUsd: 5,
-      cacheReadUsd: 0.1,
-      cacheWriteUsd: 1.25,
-    },
-    vm0Tier: "cost-saving",
-    byoKeyLabel: "Anthropic API key",
-    defaultFor: [],
-    comparisonSlugs: ["Claude Sonnet 4.6", "DeepSeek V4 Flash", "MiniMax M2.7"],
-    alternativeSlugs: [
-      "claude-sonnet-4-6",
-      "deepseek-v4-flash",
-      "minimax-m2-7",
-    ],
-  },
-
-  {
     slug: "gpt-5-4-mini",
     modelId: "gpt-5.4-mini",
     name: "GPT-5.4 Mini",
@@ -295,8 +293,8 @@ export const MODELS: ModelEntry[] = [
     vm0Tier: "cost-saving",
     byoKeyLabel: "OpenAI API key",
     defaultFor: [],
-    comparisonSlugs: ["GPT-5.4", "Claude Haiku 4.5", "DeepSeek V4 Flash"],
-    alternativeSlugs: ["gpt-5-4", "claude-haiku-4-5", "deepseek-v4-flash"],
+    comparisonSlugs: ["GPT-5.4", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
+    alternativeSlugs: ["gpt-5-4"],
   },
 
   {
@@ -344,8 +342,8 @@ export const MODELS: ModelEntry[] = [
     vm0TimeoutMin: 10,
     byoKeyLabel: "DeepSeek API key",
     defaultFor: [],
-    comparisonSlugs: ["DeepSeek V4 Flash", "Claude Sonnet 4.6", "Kimi K2.6"],
-    alternativeSlugs: ["deepseek-v4-flash", "claude-sonnet-4-6", "kimi-k2-6"],
+    comparisonSlugs: ["Claude Sonnet 4.6", "Kimi K2.6", "GLM-5.1"],
+    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-6"],
   },
 
   {
@@ -373,53 +371,28 @@ export const MODELS: ModelEntry[] = [
   },
 
   {
-    slug: "minimax-m2-7",
-    modelId: "MiniMax-M2.7",
-    name: "MiniMax M2.7",
+    slug: "minimax-m3",
+    modelId: "MiniMax-M3",
+    name: "MiniMax M3",
     vendor: "MiniMax",
     category: "reasoning",
-    multiplier: 0.1,
-    contextWindowK: 200,
+    multiplier: 0.2,
+    contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text", "Code"],
-    releasedToVm0: "Available since launch",
+    modalities: ["Text", "Vision", "Code"],
+    releasedToVm0: "June 1, 2026",
     pricing: {
-      inputUsd: 0.3,
-      outputUsd: 1.2,
-      cacheReadUsd: 0.06,
-      cacheWriteUsd: 0.375,
+      inputUsd: 0.6,
+      outputUsd: 2.4,
+      cacheReadUsd: 0.12,
+      cacheWriteUsd: null,
     },
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 50,
     byoKeyLabel: "MiniMax API key",
     defaultFor: ["MiniMax"],
-    comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Flash", "GLM-5.1"],
-    alternativeSlugs: ["kimi-k2-6", "deepseek-v4-flash", "claude-haiku-4-5"],
-  },
-
-  {
-    slug: "deepseek-v4-flash",
-    modelId: "deepseek-v4-flash",
-    name: "DeepSeek V4 Flash",
-    vendor: "DeepSeek",
-    category: "reasoning",
-    multiplier: 0.02,
-    contextWindowK: 1000,
-    promptCaching: true,
-    modalities: ["Text", "Code"],
-    releasedToVm0: "April 24, 2026",
-    pricing: {
-      inputUsd: 0.14,
-      outputUsd: 0.28,
-      cacheReadUsd: 0.028,
-      cacheWriteUsd: null,
-    },
-    vm0Tier: "cost-saving",
-    vm0TimeoutMin: 10,
-    byoKeyLabel: "DeepSeek API key",
-    defaultFor: ["DeepSeek"],
-    comparisonSlugs: ["DeepSeek V4 Pro", "Claude Haiku 4.5", "MiniMax M2.7"],
-    alternativeSlugs: ["deepseek-v4-pro", "claude-haiku-4-5", "minimax-m2-7"],
+    comparisonSlugs: ["Kimi K2.6", "Claude Sonnet 4.6", "GLM-5.1"],
+    alternativeSlugs: ["kimi-k2-6", "claude-sonnet-4-6"],
   },
 
   // -------------------------------------------------------------------------

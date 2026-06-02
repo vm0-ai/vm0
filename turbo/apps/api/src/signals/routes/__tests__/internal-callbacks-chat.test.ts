@@ -1078,12 +1078,10 @@ describe("POST /api/internal/callbacks/chat", () => {
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 
-  it("renders ChatGPT Codex usage limit errors with VM0 guidance", async () => {
+  it("shows Codex usage limit errors verbatim on failed callbacks", async () => {
     const fixture = await track(seedChatCallbackFixture());
     const codexUsageLimitError =
       "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";
-    const expectedDisplayError =
-      "ChatGPT Codex usage limit reached. This limit resets at 6:17 AM. View details in [ChatGPT Codex usage settings](https://chatgpt.com/codex/settings/usage), or switch to another model to continue now.";
 
     const response = await postSignedCallback({
       callbackId: fixture.callbackId,
@@ -1100,9 +1098,37 @@ describe("POST /api/internal/callbacks/chat", () => {
     const errorMessage = messages.find((message) => {
       return message.role === "assistant" && message.runId === fixture.runId;
     });
-    expect(errorMessage?.error).toBe(expectedDisplayError);
-    expect(errorMessage?.content).toBe(expectedDisplayError);
-    expect(errorMessage?.error).not.toBe(codexUsageLimitError);
+    expect(errorMessage?.error).toBe(codexUsageLimitError);
+    expect(errorMessage?.content).toBe(codexUsageLimitError);
+    expect(errorMessage?.error).not.toContain("switch to another model");
+    expect(context.mocks.axiom.query).not.toHaveBeenCalled();
+  });
+
+  it("shows Claude session limit errors verbatim on failed callbacks", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    const sessionLimitError =
+      "You've hit your session limit · resets 12:50pm (Asia/Shanghai)";
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "failed",
+      error: sessionLimitError,
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ success: true });
+
+    const messages = await listMessages(fixture.threadId);
+    const errorMessage = messages.find((message) => {
+      return message.role === "assistant" && message.runId === fixture.runId;
+    });
+    expect(errorMessage?.error).toBe(sessionLimitError);
+    expect(errorMessage?.content).toBe(sessionLimitError);
+    expect(errorMessage?.error).not.toBe(
+      "Oops, something went wrong. Please try again later.",
+    );
     expect(context.mocks.axiom.query).not.toHaveBeenCalled();
   });
 

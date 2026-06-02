@@ -9,6 +9,7 @@ import type {
 import {
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
+  fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
@@ -54,10 +55,12 @@ interface ComputerUsePerformActionOptions extends ComputerUseAppOptions {
 }
 
 interface ComputerUseTypeTextOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
   readonly text: string;
 }
 
 interface ComputerUsePressKeyOptions extends ComputerUseAppOptions {
+  readonly snapshotId?: string;
   readonly key: string;
 }
 
@@ -66,8 +69,10 @@ const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/s;
 const COMPUTER_USE_HELP_TEXT = `
 Workflow:
   1. Start the Zero Desktop app and make sure Computer Use is online.
-  2. Run "zero computer-use list-apps" to find the target app name or bundle id.
-  3. Run "zero computer-use get-app-state --app <app>" to get a screenshot,
+  2. Run "zero computer-use list-apps" to find the target app's bundleId.
+     --app accepts a bundle id only (e.g. com.google.Chrome); the name is for
+     display. Apps listed without a bundleId cannot be targeted.
+  3. Run "zero computer-use get-app-state --app <bundleId>" to get a screenshot,
      snapshotId, visible element indexes, and accessibility state.
   4. Prefer element actions with --snapshot-id and --element-index. Use --x/--y
      only when the target is visible in the returned screenshot but has no useful
@@ -81,32 +86,39 @@ Notes:
   Write commands are sent to the connected Desktop host and may wait for local
   approval before they run. Coordinate fallbacks use screenshot coordinates from
   get-app-state; pass the matching --snapshot-id when acting on a prior snapshot.
-  type-text sends literal keyboard input to the target app's current focus. Use
-  set-value when you need deterministic accessibility value assignment.
+  type-text sends literal keyboard input to the target app's current focus. It
+  first verifies the focused element is editable and fails with
+  element_not_editable when it is not (for example a focused table or list), so
+  click into a text field before typing. Use set-value when you need
+  deterministic accessibility value assignment.
   press-key accepts xdotool-style names such as shift+semicolon, Control_L+J,
   ctrl+alt+n, and BackSpace, plus existing macOS-style forms such as Command+L.
+  type-text and press-key accept the same --snapshot-id as the element actions:
+  pass it to deliver keyboard input to that snapshot's window. Without it, the
+  most relevant window for the app is picked, which is ambiguous for multi-window
+  apps.
 
 Examples:
   List available apps:
     zero computer-use list-apps
 
   Inspect Safari state:
-    zero computer-use get-app-state --app Safari
+    zero computer-use get-app-state --app com.apple.Safari
 
   Click element index 7 from snapshot desktop_abc:
-    zero computer-use click --app Safari --snapshot-id desktop_abc --element-index 7
+    zero computer-use click --app com.apple.Safari --snapshot-id desktop_abc --element-index 7
 
   Click screenshot coordinate (320, 240) from snapshot desktop_abc:
-    zero computer-use click --app Safari --snapshot-id desktop_abc --x 320 --y 240
+    zero computer-use click --app com.apple.Safari --snapshot-id desktop_abc --x 320 --y 240
 
-  Type text into the current focus in Safari:
-    zero computer-use type-text --app Safari --text "Hello"
+  Type text into the snapshot desktop_abc window in Safari:
+    zero computer-use type-text --app com.apple.Safari --snapshot-id desktop_abc --text "Hello"
 
-  Press a keyboard shortcut:
-    zero computer-use press-key --app Safari --key shift+semicolon
+  Press a keyboard shortcut in the snapshot desktop_abc window:
+    zero computer-use press-key --app com.apple.Safari --snapshot-id desktop_abc --key shift+semicolon
 
   Open an app without activating the current foreground app:
-    zero computer-use open-app --app Things`;
+    zero computer-use open-app --app com.culturedcode.ThingsMac`;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -252,6 +264,31 @@ async function writeScreenshotDataUrl(
   return outputPath;
 }
 
+function screenshotPointerType(value: unknown): "s3" | "expired" | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const type = (value as { readonly type?: unknown }).type;
+  return type === "s3" || type === "expired" ? type : null;
+}
+
+async function writeScreenshotBytes(
+  result: Record<string, unknown>,
+  buffer: Buffer,
+  mimeType: string,
+): Promise<string> {
+  const appName = sanitizeFilenamePart(result.app, "app");
+  const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
+  const outputPath = join(
+    COMPUTER_USE_OUTPUT_DIR,
+    `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
+  );
+
+  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
+  await writeFile(outputPath, buffer);
+  return outputPath;
+}
+
 async function writeAppStateText(
   result: Record<string, unknown>,
   appState: string,
@@ -286,6 +323,7 @@ function compactActionResult(
 
 export async function formatComputerUseResultForConsole(
   result: Record<string, unknown>,
+  commandId: string,
 ): Promise<string> {
   const printable: Record<string, unknown> = { status: "succeeded" };
   const apps = result.apps;
@@ -300,10 +338,22 @@ export async function formatComputerUseResultForConsole(
   if (appState) {
     printable.appState = await writeAppStateText(result, appState);
   }
-  const screenshot = stringField(result, "screenshot");
-  if (screenshot) {
+  const screenshot = result.screenshot;
+  if (typeof screenshot === "string") {
     const screenshotPath = await writeScreenshotDataUrl(result, screenshot);
     printable.screenshot = screenshotPath ?? screenshot;
+  } else {
+    const pointerType = screenshotPointerType(screenshot);
+    if (pointerType === "s3") {
+      const { buffer, mimeType } = await fetchComputerUseScreenshot(commandId);
+      printable.screenshot = await writeScreenshotBytes(
+        result,
+        buffer,
+        mimeType,
+      );
+    } else if (pointerType === "expired") {
+      printable.screenshot = "[screenshot expired]";
+    }
   }
   const action = result.action;
   if (isRecord(action)) {
@@ -318,7 +368,7 @@ async function commandOutputText(
   if (!command.result) {
     return "";
   }
-  return await formatComputerUseResultForConsole(command.result);
+  return await formatComputerUseResultForConsole(command.result, command.id);
 }
 
 async function waitForCommand(
@@ -410,7 +460,10 @@ function addTargetOptions(command: Command): Command {
 }
 
 function appOption(command: Command): Command {
-  return command.requiredOption("--app <name>", "Target app name or bundle id");
+  return command.requiredOption(
+    "--app <bundleId>",
+    "Target app bundle id (e.g. com.google.Chrome); run list-apps to find it",
+  );
 }
 
 const listAppsCommand = addTargetOptions(
@@ -530,11 +583,13 @@ const typeTextCommand = appOption(
     new Command()
       .name("type-text")
       .description("Type literal keyboard input into the target app")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
       .requiredOption("--text <text>", "Text to type")
       .action(
         withErrorHandler(async (options: ComputerUseTypeTextOptions) => {
           await runWriteCommand("keyboard.type_text", options, {
             app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
             text: options.text,
           });
         }),
@@ -547,6 +602,7 @@ const pressKeyCommand = appOption(
     new Command()
       .name("press-key")
       .description("Send a background key or key combination to the target app")
+      .option("--snapshot-id <id>", "Snapshot id returned by get-app-state")
       .requiredOption(
         "--key <key>",
         "Key or xdotool-style combination, for example Command+K, shift+semicolon, or Control_L+J",
@@ -555,6 +611,7 @@ const pressKeyCommand = appOption(
         withErrorHandler(async (options: ComputerUsePressKeyOptions) => {
           await runWriteCommand("keyboard.press_key", options, {
             app: options.app,
+            ...(options.snapshotId ? { snapshotId: options.snapshotId } : {}),
             key: options.key,
           });
         }),

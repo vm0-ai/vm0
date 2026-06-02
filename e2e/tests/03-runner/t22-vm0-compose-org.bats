@@ -35,7 +35,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for run instructions"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Running vm0 compose..."
@@ -68,7 +67,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for name run"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Step 2: Composing agent..."
@@ -107,7 +105,6 @@ agents:
   $AGENT_NAME:
     description: "Test agent for default file behavior"
     framework: claude-code
-    working_dir: /home/user/workspace
 EOF
 
     echo "# Running vm0 compose without arguments from test directory..."

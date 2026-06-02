@@ -12,7 +12,14 @@ export function initPostHog(): void {
     api_host: "/ingest",
     autocapture: false,
     capture_pageview: false,
+    // Replay is off app-wide; it is enabled only for scoped flows (currently
+    // onboarding) via startOnboardingSessionRecording(). When it runs, this
+    // config masks all inputs and text so we capture behavior, not content.
     disable_session_recording: true,
+    session_recording: {
+      maskAllInputs: true,
+      maskTextSelector: "*",
+    },
     persistence: "localStorage+cookie",
     sanitize_properties(properties, _event) {
       if (properties?.$current_url) {
@@ -44,6 +51,28 @@ export function clearPostHogUser(): void {
     return;
   }
   posthog.reset();
+}
+
+// ── Scoped session replay ──────────────────────────────────────────
+//
+// Replay is disabled at init (see initPostHog). These helpers turn it on for a
+// single flow — currently onboarding — so we can see where new users drop off
+// without recording the entire app. Inputs and text are masked (see the
+// session_recording config), so replays show behavior, not content. The
+// onboarding route setup starts recording on enter and stops it on unmount.
+
+export function startOnboardingSessionRecording(): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.startSessionRecording();
+}
+
+export function stopOnboardingSessionRecording(): void {
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  posthog.stopSessionRecording();
 }
 
 // ── Navigation timing (ccstate-based) ──────────────────────────────

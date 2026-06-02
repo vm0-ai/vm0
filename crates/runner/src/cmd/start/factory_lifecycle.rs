@@ -186,7 +186,8 @@ mod tests {
             snapshot_hash: snapshot_hash.into(),
             vcpu: 2,
             memory_mb: 4096,
-            disk_mb: 10240,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 10240,
         }
     }
 

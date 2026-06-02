@@ -11,6 +11,10 @@ export const e2b = {
         label: "API Key",
         helpText:
           "1. Sign up at [e2b.dev](https://e2b.dev)\n2. Go to Dashboard → **API Keys**\n3. Click **Create API Key**\n4. Copy the key (starts with `e2b_`). Paste it here.",
+        storage: {
+          secrets: ["E2B_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

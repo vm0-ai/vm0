@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const DOCUSIGN_AUTHORIZATION_URL = "https://account-d.docusign.com/oauth/auth";
@@ -64,11 +64,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build DocuSign OAuth authorization URL with PKCE code_challenge.
  */
 export async function buildDocuSignAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -90,13 +90,13 @@ export async function buildDocuSignAuthorizationUrl(
  * DocuSign uses Basic auth (Base64 of clientId:clientSecret) for token exchange.
  */
 export async function exchangeDocuSignCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<DocuSignTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const codeVerifier = await deriveCodeVerifier(state);
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
@@ -157,16 +157,18 @@ export async function exchangeDocuSignCode(
  * Access token expires_in: 28800s (8 hours) for auth code grant. Ref: https://developers.docusign.com/platform/auth/reference/obtain-access-token/
  */
 export async function refreshDocuSignToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<DocuSignRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("docusign");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

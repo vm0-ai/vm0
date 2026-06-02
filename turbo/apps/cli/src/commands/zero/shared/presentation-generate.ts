@@ -14,23 +14,15 @@ import {
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
 
-const PRESENTATION_MAX_IMAGES = 8;
 const PRESENTATION_TARGET = "presentation";
 
 interface PresentationOptions {
   prompt?: string;
-  provider?: string;
-  style: string;
   slides: number;
-  images: number;
-  imageModel?: string;
-  theme?: string;
-  audience?: string;
   title?: string;
+  siteSlug?: string;
   designSystem?: string;
   template?: string;
-  all?: boolean;
-  json?: boolean;
 }
 
 interface PresentationGenerateCommandConfig {
@@ -46,23 +38,6 @@ function parseSlideCount(value: string): number {
     throw new InvalidArgumentError("slides must be an integer");
   }
   return slideCount;
-}
-
-function parseImageCount(value: string): number {
-  const imageCount = Number(value);
-  if (!Number.isInteger(imageCount)) {
-    throw new InvalidArgumentError("images must be an integer");
-  }
-  if (
-    !Number.isSafeInteger(imageCount) ||
-    imageCount < 0 ||
-    imageCount > PRESENTATION_MAX_IMAGES
-  ) {
-    throw new InvalidArgumentError(
-      `images must be between 0 and ${PRESENTATION_MAX_IMAGES}`,
-    );
-  }
-  return imageCount;
 }
 
 function unknownDesignSystemError(id: string, usageCommand: string): Error {
@@ -111,31 +86,7 @@ export function createPresentationGenerateCommand(
       "--prompt <text>",
       "Presentation prompt; can also be piped via stdin",
     )
-    .option(
-      "--provider <name>",
-      "Provider: 'built-in' to run vm0's pipeline, or a connector name to get its skill-invocation guidance",
-    )
-    .option(
-      "--all",
-      "When listing providers (no --prompt given), include unavailable or not-yet-authorized connectors",
-    )
-    .option("--style <style>", "Style: editorial or swiss", "editorial")
-    .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
-    .option(
-      "--images <count>",
-      `Generated image count: 0-${PRESENTATION_MAX_IMAGES}`,
-      parseImageCount,
-      2,
-    )
-    .option(
-      "--image-model <model>",
-      "Image model for generated visuals (default: gpt-image-1): gpt-image-2, gpt-image-1.5, gpt-image-1, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, or seedream4",
-    )
-    .option(
-      "--theme <theme>",
-      "Theme: editorial supports ink, coral, forest; swiss supports ikb, lemon, lime, mono",
-    )
-    .option("--audience <text>", "Audience context")
+    .option("--site-slug <slug>", "Hosted site slug override")
     .option("--title <text>", "Requested deck title")
     .option(
       "--design-system <id>",
@@ -145,7 +96,7 @@ export function createPresentationGenerateCommand(
       "--template <id>",
       "Template id from the registry, scoped to presentation (see Templates below). Accepts either 'html-ppt-pitch-deck' or 'template:html-ppt-pitch-deck'.",
     )
-    .option("--json", "Print metadata as JSON")
+    .option("--slides <count>", "Slide count: 4-20", parseSlideCount, 8)
     .addHelpText("after", () => {
       const designSystems = listDesignSystems();
       const templates = listTemplates(PRESENTATION_TARGET);
@@ -170,10 +121,7 @@ ${formatRegistryListing(templates, "presentation templates")}`;
       withErrorHandler(async (options: PresentationOptions) => {
         const dispatch = await dispatchGenerate({
           generationType: config.generationType,
-          provider: options.provider,
           prompt: options.prompt,
-          all: options.all,
-          json: options.json,
         });
         if (dispatch.outcome === "handled") return;
         const prompt = dispatch.prompt;
@@ -215,15 +163,9 @@ ${formatRegistryListing(templates, "presentation templates")}`;
           kind: "presentation",
           prompt,
           slugSource: options.title,
+          siteSlug: options.siteSlug,
           details: [
-            `Style: ${options.style}`,
             `Slide count: ${options.slides}`,
-            `Suggested generated visual count: ${options.images}`,
-            `Image model preference if visuals are generated separately: ${
-              options.imageModel ?? "default"
-            }`,
-            `Theme: ${options.theme ?? "agent decides from style"}`,
-            `Audience: ${options.audience ?? "not specified"}`,
             `Requested deck title: ${options.title ?? "not specified"}`,
             `Selected design system: ${
               resolvedDesignSystem
@@ -245,10 +187,6 @@ ${formatRegistryListing(templates, "presentation templates")}`;
           ],
         });
 
-        if (options.json) {
-          console.log(JSON.stringify(packet));
-          return;
-        }
         console.log(packet.instructions);
       }),
     );

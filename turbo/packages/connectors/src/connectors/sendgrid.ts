@@ -12,6 +12,10 @@ export const sendgrid = {
         label: "API Key",
         helpText:
           "1. Log in to [SendGrid](https://app.sendgrid.com) and open **Settings > API Keys**\n2. Click **Create API Key**, name it (e.g. `vm0`), and pick **Full Access** or a scoped permission set covering Mail Send, Templates, and Suppressions\n3. Click **Create & View** and copy the API key — it is shown only once\n4. Paste the key below (starts with `SG.`)",
+        storage: {
+          secrets: ["SENDGRID_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

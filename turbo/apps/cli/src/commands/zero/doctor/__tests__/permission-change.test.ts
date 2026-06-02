@@ -13,8 +13,17 @@ import { server } from "../../../../mocks/server";
 import { permissionChangeCommand } from "../permission-change";
 
 /** Minimal org response for MSW handlers */
-function orgResponse(role: "admin" | "member") {
-  return { id: "org-1", slug: "test-org", name: "Test Org", role };
+function orgResponse(
+  role: "admin" | "member",
+  permissionGrantMode?: "legacy" | "user-grants",
+) {
+  return {
+    id: "org-1",
+    slug: "test-org",
+    name: "Test Org",
+    role,
+    ...(permissionGrantMode && { permissionGrantMode }),
+  };
 }
 
 describe("zero doctor permission-change command", () => {
@@ -25,12 +34,16 @@ describe("zero doctor permission-change command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockConsoleDebug = vi
+    .spyOn(console, "debug")
+    .mockImplementation(() => {});
 
   afterEach(() => {
     vi.unstubAllEnvs();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    mockConsoleDebug.mockClear();
   });
 
   describe("admin role", () => {
@@ -168,6 +181,93 @@ describe("zero doctor permission-change command", () => {
       expect(logCalls).not.toContain("[Request Slack access]");
       expect(logCalls).not.toContain("app.vm0.ai");
     });
+
+    it("should output self-service enable message when user grants are active", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member", "user-grants"));
+        }),
+      );
+
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "channels:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        'You can allow the "channels:read" permission for your connector access',
+      );
+      expect(logCalls).toContain("[Manage Slack permissions]");
+      expect(logCalls).toContain("action=allow");
+      expect(logCalls).not.toContain("admin approval");
+      expect(logCalls).not.toContain("Re-run with `--reason");
+    });
+
+    it("should not include reason in URL when user grants are active", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member", "user-grants"));
+        }),
+      );
+
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "channels:read",
+        "--enable",
+        "--reason",
+        "Need to read channel list",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        'You can allow the "channels:read" permission for your connector access',
+      );
+      expect(logCalls).not.toContain("reason=");
+    });
+
+    it("should output self-service disable message when user grants are active", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member", "user-grants"));
+        }),
+      );
+
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "channels:read",
+        "--disable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        'You can deny the "channels:read" permission for your connector access',
+      );
+      expect(logCalls).toContain("[Manage Slack permissions]");
+      expect(logCalls).toContain("action=deny");
+      expect(logCalls).not.toContain("admin approval");
+      expect(logCalls).not.toContain("Contact an org admin");
+      expect(logCalls).not.toContain("Re-run with `--reason");
+    });
   });
 
   describe("owner role", () => {
@@ -288,6 +388,35 @@ describe("zero doctor permission-change command", () => {
       expect(logCalls).toContain("/agents?");
       expect(logCalls).not.toContain("/agents/permissions");
     });
+
+    it("should use self-service wording without ZERO_AGENT_ID when user grants are active", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member", "user-grants"));
+        }),
+      );
+
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "channels:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        'You can allow the "channels:read" permission for your connector access',
+      );
+      expect(logCalls).toContain("/agents?");
+      expect(logCalls).not.toContain("/agents/permissions");
+      expect(logCalls).not.toContain("admin approval");
+      expect(logCalls).not.toContain("Re-run with `--reason");
+    });
   });
 
   describe("unknown role (API failure)", () => {
@@ -316,6 +445,7 @@ describe("zero doctor permission-change command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('To enable the "channels:read" permission');
       expect(logCalls).toContain("[Manage Slack permissions]");
+      expect(mockConsoleDebug).not.toHaveBeenCalled();
     });
   });
 
@@ -425,6 +555,58 @@ describe("zero doctor permission-change command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("AS THE USER's identity");
+    });
+
+    it("should use grant wording in slack chat:write guidance when user grants are active", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member", "user-grants"));
+        }),
+      );
+
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "chat:write",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("AS THE USER's identity");
+      expect(logCalls).toContain("Only allow this permission below");
+      expect(logCalls).not.toContain("Only request user approval");
+    });
+  });
+
+  describe("gmail gmail.send custom guidance", () => {
+    it("should use grant wording in gmail.send guidance when user grants are active", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member", "user-grants"));
+        }),
+      );
+
+      await permissionChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "gmail",
+        "--permission",
+        "gmail.send",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("send emails directly as the user");
+      expect(logCalls).toContain("Only allow this permission below");
+      expect(logCalls).not.toContain("Only request user approval");
     });
   });
 

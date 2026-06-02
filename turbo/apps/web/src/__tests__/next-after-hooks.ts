@@ -15,16 +15,11 @@ export const nextAfterCallbacks: Array<() => unknown | Promise<unknown>> = [];
 // calls after the context has been finalized.
 export const nextAfterArgForms: Array<"fn" | "promise"> = [];
 
-// Test-only storage for @vercel/functions waitUntil() promises captured by
-// the mock in setup.ts. waitUntil() receives an already-started Promise —
-// the mock stores the promise reference so flushAfter() can await it.
-export const nextWaitUntilPromises: Array<Promise<unknown>> = [];
-
 const MAX_ASYNC_HOOK_DRAIN_PASSES = 100;
 
 export async function flushNextAsyncHooks(): Promise<void> {
   let passes = 0;
-  while (nextAfterCallbacks.length > 0 || nextWaitUntilPromises.length > 0) {
+  while (nextAfterCallbacks.length > 0) {
     passes++;
     if (passes > MAX_ASYNC_HOOK_DRAIN_PASSES) {
       throw new Error("Exceeded async hook drain limit");
@@ -37,15 +32,10 @@ export async function flushNextAsyncHooks(): Promise<void> {
         return fn();
       }),
     );
-
-    const promises = [...nextWaitUntilPromises];
-    nextWaitUntilPromises.length = 0;
-    await Promise.all(promises);
   }
 }
 
 export function resetNextAfterHooks(): void {
   nextAfterCallbacks.length = 0;
   nextAfterArgForms.length = 0;
-  nextWaitUntilPromises.length = 0;
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const X_AUTHORIZATION_URL = "https://x.com/i/oauth2/authorize";
@@ -65,11 +65,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build X OAuth2 PKCE authorization URL.
  */
 export async function buildXAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("x");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -92,16 +92,18 @@ export async function buildXAuthorizationUrl(
  * Access token expires_in: 7200s (2 hours). Ref: https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code
  */
 export async function refreshXToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<XRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("x");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -146,13 +148,13 @@ export async function refreshXToken(
  * Exchange authorization code for access token and user info with PKCE code_verifier.
  */
 export async function exchangeXCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<XTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("x");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",

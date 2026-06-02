@@ -12,6 +12,10 @@ export const segment = {
         label: "Public API Token",
         helpText:
           "1. Log in to [Segment](https://app.segment.com)\n2. Open the workspace you want to manage\n3. Create a Public API token with the permissions required for your workflow\n4. Copy the token",
+        storage: {
+          secrets: ["SEGMENT_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

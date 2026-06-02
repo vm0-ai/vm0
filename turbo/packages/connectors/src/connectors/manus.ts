@@ -11,6 +11,10 @@ export const manus = {
         label: "API Key",
         helpText:
           "1. Sign in to [Manus](https://manus.im)\n2. Navigate to **Settings → Integration → Build with Manus API**\n3. Click **Create New**, give it a name, and confirm\n4. Copy the generated API key",
+        storage: {
+          secrets: ["MANUS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

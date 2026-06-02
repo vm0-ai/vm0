@@ -12,15 +12,22 @@ export const metaAds = {
         featureFlag: FeatureSwitchKey.MetaAdsConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Facebook to grant access to Ads Manager.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "META_ADS_OAUTH_CLIENT_ID",
+          clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["META_ADS_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "META_ADS_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "META_ADS_OAUTH_CLIENT_ID",
-            clientSecretEnv: "META_ADS_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["ads_management", "ads_read", "business_management"],
         },
         access: {

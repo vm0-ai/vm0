@@ -19,6 +19,10 @@ import {
 } from "../zero-page/billing.ts";
 import { allConnectorTypes$ } from "../zero-page/settings/connectors.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import {
+  startOnboardingSessionRecording,
+  stopOnboardingSessionRecording,
+} from "../../lib/posthog.ts";
 export const setupOnboardingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(OnboardingPage));
@@ -103,6 +107,13 @@ export const setupOnboardingPage$ = command(
       set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
+
+    // Scope session replay to the onboarding flow so we can see where new users
+    // drop off. Masked (all inputs + text); stops when the route unmounts.
+    startOnboardingSessionRecording();
+    signal.addEventListener("abort", () => {
+      stopOnboardingSessionRecording();
+    });
 
     // Fire Google Ads conversion event: user arrived at onboarding after signup
     type GtagFn = (...args: unknown[]) => void;

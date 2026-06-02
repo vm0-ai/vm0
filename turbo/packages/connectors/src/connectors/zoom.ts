@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://zoom.us/oauth/token";
+
 export const zoom = {
   zoom: {
     label: "Zoom",
@@ -12,15 +14,23 @@ export const zoom = {
         featureFlag: FeatureSwitchKey.ZoomConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Zoom to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
+          clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["ZOOM_ACCESS_TOKEN", "ZOOM_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "ZOOM_ACCESS_TOKEN",
+            refreshToken: "ZOOM_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://zoom.us/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
-            clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "user:read:user",
             "meeting:read:list_meetings",
@@ -40,8 +50,7 @@ export const zoom = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "ZOOM_ACCESS_TOKEN",
-          refreshToken: "ZOOM_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
           },

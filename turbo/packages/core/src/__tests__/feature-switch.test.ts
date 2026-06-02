@@ -21,6 +21,12 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
   });
 
+  it("should return false for user permission grants by default", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.UserPermissionGrants, {})).toBe(
+      false,
+    );
+  });
+
   it("should return false for disabled switch with non-matching userId", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {
@@ -35,11 +41,21 @@ describe("isFeatureEnabled", () => {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.OrgSkills, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
   });
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.OrgSkills, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -90,18 +106,24 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.HostedSites]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.OrgSkills]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
+      true,
+    );
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(true);
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.PwaOfflineCache]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.HostedSites]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.OrgSkills]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
+      true,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(false);
   });
 
   it("should apply overrides to enable disabled features", () => {

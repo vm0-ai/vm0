@@ -67,6 +67,7 @@ export async function refreshModelProviderOAuthToken(args: {
   readonly providerKey: ModelProviderOAuthProviderKey;
   readonly currentEnv: ProviderEnv;
   readonly refreshToken: string;
+  readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
   const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
 
@@ -86,6 +87,7 @@ export async function refreshModelProviderOAuthToken(args: {
         clientId,
         clientSecret: access.getClientSecret(args.currentEnv),
         refreshToken: args.refreshToken,
+        signal: args.signal,
       });
     }
   }

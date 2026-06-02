@@ -49,7 +49,7 @@ async fn install_usage_flush_child(config: &mut RunConfig) {
     use std::os::unix::fs::PermissionsExt;
     use tokio::io::AsyncBufReadExt;
 
-    let script = config.base_dir.join("usage-flush-child.sh");
+    let script = config.paths.base_dir.join("usage-flush-child.sh");
     std::fs::write(
         &script,
         r#"#!/usr/bin/env bash
@@ -91,7 +91,7 @@ while true; do read -r _ <&3 || true; done
         .unwrap()
         .expect("usage flush child stdout closed before ready");
     assert_eq!(ready, "ready");
-    config.mitm.set_child_for_test(child);
+    config.proxy.mitm.set_child_for_test(child);
 }
 
 // -----------------------------------------------------------------------
@@ -122,9 +122,9 @@ async fn main_loop_discover_claim_execute_complete() {
 async fn job_completion_requests_proxy_usage_flush_without_waiting() {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     install_usage_flush_child(&mut config).await;
-    let usage_state_id = config.mitm.usage_state_id_for_test().to_string();
-    write_usage_pending_state(&config.base_dir, &usage_state_id, 0, 0, 1);
-    let base_dir = config.base_dir.clone();
+    let usage_state_id = config.proxy.mitm.usage_state_id_for_test().to_string();
+    write_usage_pending_state(&config.paths.base_dir, &usage_state_id, 0, 0, 1);
+    let base_dir = config.paths.base_dir.clone();
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -388,7 +388,7 @@ async fn shutdown_drains_memory_prefetch_before_stopped() {
         let _ = cancelled_tx.send(());
         let _ = release_rx.await;
     });
-    config.memory_prefetch =
+    config.shutdown.memory_prefetch =
         crate::prefetch::MemoryPrefetchTasks::from_test_handle(prefetch_cancel, handle);
     let run_handle = tokio::spawn(run(config));
 
@@ -498,8 +498,8 @@ async fn drain_resume_then_second_drain_drains_idle_pool() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -620,7 +620,7 @@ async fn heartbeat_fires_while_budget_exhausted() {
     ));
     // Budget sized for exactly one `test_profiles()` slot (vcpu=2, mem=4096).
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -794,7 +794,7 @@ async fn graceful_shutdown_aborts_signal_handler_task() {
         .expect("signal handler test task should start");
 
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    config.signal_source = SignalSource::Override(SignalController {
+    config.signals.signal_source = SignalSource::Override(SignalController {
         mode_rx: env.mode_tx.subscribe(),
         lifecycle: env.lifecycle.clone(),
         handler_task: Some(SignalHandlerTask::new(handler_task)),
@@ -818,7 +818,7 @@ async fn assert_signal_handler_task_end_cancels_active_jobs(
         gate,
     ));
     let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    config.signal_source = SignalSource::Override(SignalController {
+    config.signals.signal_source = SignalSource::Override(SignalController {
         mode_rx: env.mode_tx.subscribe(),
         lifecycle: env.lifecycle.clone(),
         handler_task: Some(SignalHandlerTask::new(handler_task)),
@@ -875,6 +875,44 @@ async fn drain_then_hard_shutdown_upgrades() {
         "Draining → hard shutdown should exit within 3s",
     )
     .await;
+}
+
+/// TOCTOU regression: soft drain can arrive after the main loop has selected
+/// a discovered candidate but before claim. The candidate is still unowned at
+/// that point, so Draining must roll back local admission and skip claim.
+#[tokio::test]
+async fn claim_after_draining_sent_skips_unclaimed_job() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let budget = Arc::clone(&config.capacity.budget);
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+
+    assert!(env.parking_gate.soft_drain());
+    env.mode_tx.send_if_modified(|v| {
+        *v = RunnerMode::Draining;
+        false
+    });
+
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+    assert_run_exits_within(
+        run_handle,
+        Duration::from_secs(3),
+        "draining should skip the discovered unclaimed job and exit",
+    )
+    .await;
+
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+    let completions = env.handle.completions.lock().unwrap();
+    assert!(
+        !completions
+            .iter()
+            .any(|completion| completion.run_id == run_id),
+        "draining should not claim or complete a newly discovered job"
+    );
 }
 
 /// TOCTOU regression: a SIGTERM that iterates `cancel_tokens` *before*
@@ -1146,7 +1184,7 @@ async fn draining_auto_stop_preserves_concurrent_resume() {
 async fn claim_failure_rolls_back_budget() {
     // Budget for exactly 1 job (2 vcpu, 4096 MB matches the test profile).
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -1157,6 +1195,7 @@ async fn claim_failure_rolls_back_budget() {
 
     // Returning to discovery proves the failed claim was processed.
     wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id_1, Duration::from_secs(5)).await;
     assert_eq!(budget.allocated().2, 0);
 
     // Second job: claim succeeds — budget should have been freed.
@@ -1184,7 +1223,7 @@ async fn claim_failure_rolls_back_budget() {
 async fn claim_run_id_mismatch_rolls_back_local_state() {
     // Budget for exactly 1 job, so a leaked lease would block the follow-up job.
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;
@@ -1316,7 +1355,7 @@ async fn duplicate_discovery_deduplicated() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     wait_discover_entered(&env, Duration::from_secs(2)).await;

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { parseSegment } from "./segment-parser";
+import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
+import { parseSegment, splitPathSegments } from "./segment-parser";
 
 /**
  * Proxy-side firewall configuration for token replacement.
@@ -49,6 +50,12 @@ export const firewallSchema = z.object({
  * Flat array of firewall entries: [{ name, apis }]
  */
 export const firewallsSchema = z.array(firewallSchema);
+
+/**
+ * Reserved permission name used by user grant storage to represent the
+ * unknown-endpoint policy row for a connector firewall.
+ */
+export const UNKNOWN_PERMISSION_GRANT = "__unknown__";
 
 /**
  * Zod schema for validating firewall config (GitHub-hosted YAML).
@@ -179,6 +186,13 @@ const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 const AUTH_REFERENCE_PATTERN =
   /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const AUTH_REFERENCE_PATTERN_G = new RegExp(AUTH_REFERENCE_PATTERN.source, "g");
+const AUTH_REFERENCE_PREFIX_PATTERN = new RegExp(
+  `^${AUTH_REFERENCE_PATTERN.source}`,
+);
+const AUTH_TEMPLATE_START = "${{";
+const AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder";
+const IPV4_MAX_OCTET = 255;
 
 export type FirewallTemplateReferenceNamespace = "secrets" | "vars";
 
@@ -738,6 +752,630 @@ function errMsg(base: string, svc: string, detail: string): string {
   return `Invalid base URL "${base}" in firewall "${svc}": ${detail}`;
 }
 
+const HOST_DOT_EQUIVALENTS = new Set([".", "\u3002", "\uff0e", "\uff61"]);
+const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
+const FORBIDDEN_NORMALIZED_LABEL_CHARS = new Set("#%,/:<>?@[\\]^|[]".split(""));
+const ALLOWED_BASE_URL_SCHEMES = new Set(["http", "https"]);
+const REQUIRED_AUTH_BASE_URL_SCHEME = "https";
+const WHITESPACE_PATTERN = /\s/u;
+const UNICODE_CONTROL_PATTERN = /\p{C}/u;
+const UNICODE_MARK_PATTERN = /\p{M}/u;
+const UNICODE_LETTER_PATTERN = /\p{L}/u;
+const GREEK_COMBINING_YPOGEGRAMMENI = "\u0345";
+const GREEK_SMALL_IOTA = "\u03b9";
+// WHATWG accepts these RTL-class label chars in places where Python's IDNA
+// bidi validation rejects mixed LTR/RTL labels at runtime.
+const IDNA_BIDI_RTL_LABEL_RANGES = [
+  [0x061d, 0x061d],
+  [0x0870, 0x088e],
+  [0x08b5, 0x08b5],
+  [0x08c8, 0x08c9],
+  [0xfbc2, 0xfbc2],
+  [0x10f70, 0x10f81],
+  [0x10f86, 0x10f89],
+] as const;
+// Keep creation-time host validation aligned with mitm-addon host_normalization.py.
+const UNSAFE_UTS46_COLLISION_CHARS = new Set([
+  "\u03f2",
+  "\u04c0",
+  "\u1e9e",
+  "\u1806",
+  "\u2132",
+  "\u2183",
+  "\u3164",
+  "\uffa0",
+  "\ufffc",
+  "\ufffd",
+  "\u{2f868}",
+  "\u{2f874}",
+  "\u{2f91f}",
+  "\u{2f95f}",
+  "\u{2f9bf}",
+]);
+const UNSAFE_UTS46_COLLISION_RANGES = [
+  [0x10a0, 0x10c5],
+  [0x115f, 0x1160],
+  [0x17b4, 0x17b5],
+  [0x2ff0, 0x2ffb],
+] as const;
+const UNSAFE_UTS46_IGNORABLE_RANGES = [
+  [0x034f, 0x034f],
+  [0x180b, 0x180d],
+  [0x180f, 0x180f],
+  [0xfe00, 0xfe0f],
+  [0xe0100, 0xe01ef],
+] as const;
+
+interface ParameterizedAuthorityParts {
+  readonly normalizedHost: string;
+  readonly portSuffix: string;
+}
+
+function isHexDigit(char: string): boolean {
+  return (
+    (char >= "0" && char <= "9") ||
+    (char >= "a" && char <= "f") ||
+    (char >= "A" && char <= "F")
+  );
+}
+
+function validateBaseUrlScheme(
+  scheme: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (!ALLOWED_BASE_URL_SCHEMES.has(scheme.toLowerCase())) {
+    throw new Error(errMsg(base, serviceName, "scheme must be http or https"));
+  }
+}
+
+function validateUrlSchemeDelimiter(
+  value: string,
+  serviceName: string,
+  label: "base URL" | "auth.base URL",
+  displayValue = value,
+): void {
+  if (value.includes("://")) return;
+
+  const colonIndex = value.indexOf(":");
+  if (colonIndex !== -1) {
+    const scheme = value.slice(0, colonIndex);
+    const schemeDetail =
+      label === "auth.base URL"
+        ? "scheme must be https"
+        : "scheme must be http or https";
+    const allowedScheme =
+      label === "auth.base URL"
+        ? scheme.toLowerCase() === REQUIRED_AUTH_BASE_URL_SCHEME
+        : ALLOWED_BASE_URL_SCHEMES.has(scheme.toLowerCase());
+    if (!allowedScheme) {
+      throw new Error(
+        `Invalid ${label} "${displayValue}" in firewall "${serviceName}": ${schemeDetail}`,
+      );
+    }
+    throw new Error(
+      `Invalid ${label} "${displayValue}" in firewall "${serviceName}": URL must include "://" after the scheme`,
+    );
+  }
+
+  throw new Error(
+    `Invalid ${label} "${displayValue}" in firewall "${serviceName}": URL must include a scheme (e.g. "https://${displayValue}")`,
+  );
+}
+
+function isAscii(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    if (value.charCodeAt(i) > 0x7f) return false;
+  }
+  return true;
+}
+
+function isIpv4NumberComponent(value: string): boolean {
+  if (value === "") return false;
+  if (value.toLowerCase().startsWith("0x")) {
+    return (
+      value.length > 2 &&
+      [...value.slice(2)].every((char) => {
+        return isHexDigit(char);
+      })
+    );
+  }
+  return [...value].every((char) => {
+    return char >= "0" && char <= "9";
+  });
+}
+
+function isIpv4LiteralLike(value: string): boolean {
+  const parts = value.split(".");
+  return (
+    parts.length >= 1 && parts.length <= 4 && parts.every(isIpv4NumberComponent)
+  );
+}
+
+function isCanonicalIpv4Address(value: string): boolean {
+  const parts = value.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (
+      part === "" ||
+      ![...part].every((char) => {
+        return char >= "0" && char <= "9";
+      })
+    ) {
+      return false;
+    }
+    if (part.length > 1 && part.startsWith("0")) return false;
+    return Number(part) <= IPV4_MAX_OCTET;
+  });
+}
+
+function codePointInRanges(
+  codePoint: number,
+  ranges: readonly (readonly [number, number])[],
+): boolean {
+  return ranges.some(([start, end]) => {
+    return start <= codePoint && codePoint <= end;
+  });
+}
+
+function hasUnsafeUts46MappingChar(value: string): boolean {
+  for (const char of value) {
+    const codePoint = char.codePointAt(0);
+    if (
+      UNSAFE_UTS46_COLLISION_CHARS.has(char) ||
+      (codePoint !== undefined &&
+        (codePointInRanges(codePoint, UNSAFE_UTS46_COLLISION_RANGES) ||
+          codePointInRanges(codePoint, UNSAFE_UTS46_IGNORABLE_RANGES)))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizesToAscii(value: string): boolean {
+  return isAscii(normalizeLabelTextForIdnaValidation(value));
+}
+
+function normalizeLabelTextForIdnaValidation(value: string): string {
+  return value
+    .replaceAll(GREEK_COMBINING_YPOGEGRAMMENI, GREEK_SMALL_IOTA)
+    .normalize("NFKD")
+    .normalize("NFC")
+    .toLowerCase();
+}
+
+function hasForbiddenNormalizedLabelChar(value: string): boolean {
+  for (const char of normalizeLabelTextForIdnaValidation(value)) {
+    if (
+      FORBIDDEN_NORMALIZED_LABEL_CHARS.has(char) ||
+      HOST_DOT_EQUIVALENTS.has(char) ||
+      WHITESPACE_PATTERN.test(char) ||
+      UNICODE_CONTROL_PATTERN.test(char)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizedLabelStartsWithMark(value: string): boolean {
+  const [firstChar] = normalizeLabelTextForIdnaValidation(value);
+  return firstChar !== undefined && UNICODE_MARK_PATTERN.test(firstChar);
+}
+
+function isIdnaBidiRtlLabelChar(char: string): boolean {
+  const codePoint = char.codePointAt(0);
+  return (
+    codePoint !== undefined &&
+    codePointInRanges(codePoint, IDNA_BIDI_RTL_LABEL_RANGES)
+  );
+}
+
+function isLtrLetterForBidiCheck(char: string): boolean {
+  return UNICODE_LETTER_PATTERN.test(char) && !isIdnaBidiRtlLabelChar(char);
+}
+
+function isAsciiDigit(char: string): boolean {
+  return char >= "0" && char <= "9";
+}
+
+function isArabicNumberForBidiCheck(char: string): boolean {
+  const codePoint = char.codePointAt(0);
+  return codePoint !== undefined && 0x0660 <= codePoint && codePoint <= 0x0669;
+}
+
+function effectiveBidiEndChar(chars: readonly string[]): string | undefined {
+  for (let index = chars.length - 1; index >= 0; index -= 1) {
+    const char = chars[index]!;
+    if (!UNICODE_MARK_PATTERN.test(char)) return char;
+  }
+  return chars.at(-1);
+}
+
+function firstEffectiveBidiChar(chars: readonly string[]): string | undefined {
+  return chars.find((char) => {
+    return !UNICODE_MARK_PATTERN.test(char);
+  });
+}
+
+function isRtlEndCharForBidiCheck(char: string): boolean {
+  return (
+    isIdnaBidiRtlLabelChar(char) ||
+    isAsciiDigit(char) ||
+    isArabicNumberForBidiCheck(char)
+  );
+}
+
+function hasInvalidMixedBidiLabelText(value: string): boolean {
+  const chars = Array.from(normalizeLabelTextForIdnaValidation(value));
+  const firstRtlIndex = chars.findIndex((char) => {
+    return isIdnaBidiRtlLabelChar(char);
+  });
+  if (firstRtlIndex === -1) return false;
+
+  const suffix = chars.slice(firstRtlIndex + 1);
+  if (firstRtlIndex === 0) {
+    const suffixHasLtrLetter = suffix.some((char) => {
+      return isLtrLetterForBidiCheck(char);
+    });
+    if (suffixHasLtrLetter) return true;
+
+    const endChar = effectiveBidiEndChar(chars);
+    return endChar !== undefined && !isRtlEndCharForBidiCheck(endChar);
+  }
+
+  const suffixHasLtrLetter = suffix.some((char) => {
+    return isLtrLetterForBidiCheck(char);
+  });
+  if (suffixHasLtrLetter) return true;
+
+  const prefix = chars.slice(0, firstRtlIndex);
+  const prefixHasLtrLetter = prefix.some((char) => {
+    return isLtrLetterForBidiCheck(char);
+  });
+  if (prefixHasLtrLetter) {
+    if (prefix.some(isArabicNumberForBidiCheck)) return true;
+    const firstPrefixChar = firstEffectiveBidiChar(prefix);
+    if (
+      firstPrefixChar === undefined ||
+      !isLtrLetterForBidiCheck(firstPrefixChar)
+    ) {
+      return true;
+    }
+    return suffix.some((char) => {
+      return !UNICODE_MARK_PATTERN.test(char);
+    });
+  }
+
+  const endChar = effectiveBidiEndChar(chars);
+  return endChar !== undefined && !isRtlEndCharForBidiCheck(endChar);
+}
+
+function baseUrlRawSyntaxTarget(base: string): string {
+  return base.replace(BASE_URL_VARS_PATTERN_G, AUTH_TEMPLATE_URL_PLACEHOLDER);
+}
+
+function validateHostPercentEncoding(
+  host: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (host.includes(",")) {
+    throw new Error(errMsg(base, serviceName, "host must not contain commas"));
+  }
+  for (let i = 0; i < host.length; i += 1) {
+    if (host[i] !== "%") continue;
+    if (
+      i + 2 >= host.length ||
+      !isHexDigit(host[i + 1]!) ||
+      !isHexDigit(host[i + 2]!)
+    ) {
+      throw new Error(
+        errMsg(base, serviceName, "host has invalid percent encoding"),
+      );
+    }
+
+    let end = i;
+    while (
+      end + 2 < host.length &&
+      host[end] === "%" &&
+      isHexDigit(host[end + 1]!) &&
+      isHexDigit(host[end + 2]!)
+    ) {
+      end += 3;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(host.slice(i, end));
+    } catch {
+      throw new Error(
+        errMsg(base, serviceName, "host has invalid percent encoding"),
+      );
+    }
+    for (const char of decoded) {
+      if (char === "{" || char === "}") {
+        throw new Error(
+          errMsg(
+            base,
+            serviceName,
+            "host must not contain percent-encoded braces",
+          ),
+        );
+      }
+      if (HOST_DOT_EQUIVALENTS.has(char)) {
+        throw new Error(
+          errMsg(
+            base,
+            serviceName,
+            "host must not contain percent-encoded dots",
+          ),
+        );
+      }
+      if (char === ",") {
+        throw new Error(
+          errMsg(base, serviceName, "host must not contain commas"),
+        );
+      }
+    }
+    i = end - 1;
+  }
+  if (host.includes("%")) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(host);
+    } catch {
+      throw new Error(
+        errMsg(base, serviceName, "host has invalid percent encoding"),
+      );
+    }
+    validateHostHasNoUnsafeIdnaMappings(decoded, base, serviceName);
+  }
+}
+
+function rawAuthorityFromBaseUrl(base: string): string | null {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) return null;
+  const rest = base.slice(schemeEnd + 3);
+  const delimiterIndexes = [
+    rest.indexOf("/"),
+    rest.indexOf("?"),
+    rest.indexOf("#"),
+  ].filter((index) => {
+    return index !== -1;
+  });
+  const authorityEnd =
+    delimiterIndexes.length === 0 ? -1 : Math.min(...delimiterIndexes);
+  return authorityEnd === -1 ? rest : rest.slice(0, authorityEnd);
+}
+
+function validateNoUserinfo(
+  authority: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (authority.includes("@")) {
+    throw new Error(errMsg(base, serviceName, "must not contain userinfo"));
+  }
+}
+
+function validateHostHasNoEmptyLabels(
+  host: string,
+  base: string,
+  serviceName: string,
+): string {
+  let normalizedHost = host.replace(HOST_DOT_EQUIVALENT_PATTERN, ".");
+  if (normalizedHost.endsWith(".")) {
+    normalizedHost = normalizedHost.slice(0, -1);
+  }
+  if (
+    normalizedHost === "" ||
+    normalizedHost.endsWith(".") ||
+    normalizedHost.split(".").some((label) => {
+      return label === "";
+    })
+  ) {
+    throw new Error(
+      errMsg(base, serviceName, "host must not contain empty labels"),
+    );
+  }
+  return normalizedHost;
+}
+
+function normalizeHostForIpv4LiteralSyntax(host: string): string {
+  let normalized = host.replace(HOST_DOT_EQUIVALENT_PATTERN, ".").toLowerCase();
+  if (normalized.endsWith(".")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
+function rawHostForCanonicalIpv4Syntax(host: string): string {
+  const normalized = host.toLowerCase();
+  return normalized.endsWith(".") ? normalized.slice(0, -1) : normalized;
+}
+
+function splitAuthorityHostSegments(host: string): string[] {
+  if (host.startsWith("[") && host.endsWith("]")) {
+    return [host];
+  }
+  return host.split(".");
+}
+
+function rawHostFromAuthority(authority: string): string {
+  const withoutUserinfo = authority.slice(authority.lastIndexOf("@") + 1);
+  if (withoutUserinfo.startsWith("[")) {
+    const closeBracket = withoutUserinfo.indexOf("]");
+    return closeBracket === -1
+      ? withoutUserinfo
+      : withoutUserinfo.slice(0, closeBracket + 1);
+  }
+  const portSeparator = withoutUserinfo.lastIndexOf(":");
+  return portSeparator === -1
+    ? withoutUserinfo
+    : withoutUserinfo.slice(0, portSeparator);
+}
+
+function validateLabelHasNoUnsafeIdnaMappings(
+  label: string,
+  base: string,
+  serviceName: string,
+): void {
+  const parsed = parseSegment(label);
+  const value =
+    parsed.kind === "param" ? `${parsed.prefix}${parsed.suffix}` : label;
+  if (value === "" || isAscii(value)) return;
+  if (hasForbiddenNormalizedLabelChar(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host must not contain characters that normalize to forbidden host syntax",
+      ),
+    );
+  }
+  if (normalizedLabelStartsWithMark(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host label must not start with a combining mark",
+      ),
+    );
+  }
+  if (hasInvalidMixedBidiLabelText(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host must not contain invalid bidirectional label text",
+      ),
+    );
+  }
+  if (hasUnsafeUts46MappingChar(value) || normalizesToAscii(value)) {
+    throw new Error(
+      errMsg(
+        base,
+        serviceName,
+        "host must not contain unsafe IDNA compatibility mappings",
+      ),
+    );
+  }
+}
+
+function validateHostHasNoUnsafeIdnaMappings(
+  authorityOrHost: string,
+  base: string,
+  serviceName: string,
+): void {
+  const host = rawHostFromAuthority(authorityOrHost);
+  if (host.startsWith("[") && host.endsWith("]")) return;
+  for (const label of host
+    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
+    .split(".")) {
+    validateLabelHasNoUnsafeIdnaMappings(label, base, serviceName);
+  }
+}
+
+function validateHostHasCanonicalIpv4Syntax(
+  authorityOrHost: string,
+  base: string,
+  serviceName: string,
+): void {
+  const host = rawHostFromAuthority(authorityOrHost);
+  if (host.startsWith("[") && host.endsWith("]")) return;
+  const normalizedHost = normalizeHostForIpv4LiteralSyntax(host);
+  if (
+    isIpv4LiteralLike(normalizedHost) &&
+    (rawHostForCanonicalIpv4Syntax(host) !== normalizedHost ||
+      !isCanonicalIpv4Address(normalizedHost))
+  ) {
+    throw new Error(
+      errMsg(base, serviceName, "host must use canonical IPv4 address syntax"),
+    );
+  }
+}
+
+function splitParameterizedAuthority(
+  authority: string,
+  base: string,
+  serviceName: string,
+): ParameterizedAuthorityParts {
+  let host = authority;
+  let portSuffix = "";
+  if (authority.startsWith("[")) {
+    const closeBracket = authority.indexOf("]");
+    if (closeBracket === -1) {
+      throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+    }
+    host = authority.slice(0, closeBracket + 1);
+    portSuffix = authority.slice(closeBracket + 1);
+    if (portSuffix !== "" && !portSuffix.startsWith(":")) {
+      throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+    }
+  } else {
+    const portSeparator = authority.lastIndexOf(":");
+    if (portSeparator !== -1) {
+      host = authority.slice(0, portSeparator);
+      portSuffix = authority.slice(portSeparator);
+    }
+  }
+
+  const normalizedHost = validateHostHasNoEmptyLabels(host, base, serviceName);
+
+  return { normalizedHost, portSuffix };
+}
+
+function validateStaticHostLabels(
+  hostname: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) return;
+  validateHostHasNoEmptyLabels(hostname, base, serviceName);
+}
+
+function hostSegmentForSyntaxValidation(
+  seg: string,
+  base: string,
+  svc: string,
+): string {
+  const parsed = parseSegment(seg);
+  if (parsed.kind === "literal") return seg;
+  if (parsed.kind === "error") {
+    throw new Error(errMsg(base, svc, parsed.reason));
+  }
+  if (!isAscii(parsed.prefix) || !isAscii(parsed.suffix)) {
+    throw new Error(
+      errMsg(
+        base,
+        svc,
+        `host parameter segment "${seg}" must use ASCII literal prefix and suffix`,
+      ),
+    );
+  }
+  return `${parsed.prefix}x${parsed.suffix}`;
+}
+
+function validateParameterizedHostUrlSyntax(
+  scheme: string,
+  authority: ParameterizedAuthorityParts,
+  base: string,
+  serviceName: string,
+): void {
+  const syntaxHost = splitAuthorityHostSegments(authority.normalizedHost)
+    .map((seg) => {
+      return hostSegmentForSyntaxValidation(seg, base, serviceName);
+    })
+    .join(".");
+  try {
+    new URL(`${scheme}://${syntaxHost}${authority.portSuffix}`);
+  } catch {
+    throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+  }
+}
+
 /**
  * Validate host segments (`.`-delimited) for parameterized base URLs.
  * Greedy params (`+`/`*`) must be the first (leftmost) host segment and
@@ -847,11 +1485,13 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   if (schemeEnd === -1) {
     throw new Error(errMsg(base, serviceName, "missing scheme"));
   }
-  if (base.slice(0, schemeEnd).includes("{")) {
+  const scheme = base.slice(0, schemeEnd);
+  if (scheme.includes("{")) {
     throw new Error(
       errMsg(base, serviceName, "scheme must not contain parameters"),
     );
   }
+  validateBaseUrlScheme(scheme, base, serviceName);
   if (base.includes("?")) {
     throw new Error(errMsg(base, serviceName, "must not contain query string"));
   }
@@ -863,22 +1503,61 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const slashIdx = rest.indexOf("/");
   const host = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
   const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
+  validateNoUserinfo(host, base, serviceName);
+  validateHostPercentEncoding(host, base, serviceName);
+  const authority = splitParameterizedAuthority(host, base, serviceName);
+  validateHostHasCanonicalIpv4Syntax(
+    authority.normalizedHost,
+    base,
+    serviceName,
+  );
+  validateHostHasNoUnsafeIdnaMappings(
+    authority.normalizedHost,
+    base,
+    serviceName,
+  );
+  validateParameterizedHostUrlSyntax(
+    base.slice(0, schemeEnd),
+    authority,
+    base,
+    serviceName,
+  );
 
   const paramNames = new Set<string>();
-  validateHostParams(host.split("."), paramNames, base, serviceName);
+  validateHostParams(
+    splitAuthorityHostSegments(authority.normalizedHost),
+    paramNames,
+    base,
+    serviceName,
+  );
   if (path) {
-    validatePathParams(
-      path.split("/").filter(Boolean),
-      paramNames,
-      base,
-      serviceName,
-    );
+    validatePathParams(splitPathSegments(path), paramNames, base, serviceName);
   }
 }
 
 export function validateBaseUrl(base: string, serviceName: string): void {
+  if (base.includes("\\")) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain backslash`,
+    );
+  }
+
+  const rawSyntaxTarget = baseUrlRawSyntaxTarget(base);
+  if (hasRawWhitespace(rawSyntaxTarget)) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
+  if (hasUnsafeUrlCodepoint(rawSyntaxTarget)) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain control characters or invalid Unicode`,
+    );
+  }
+
   // Template base URLs are validated after variable resolution at compose time.
   if (hasBaseUrlVars(base)) return;
+
+  validateUrlSchemeDelimiter(base, serviceName, "base URL");
 
   // Parameterized base URLs have their own validation path.
   if (hasBaseUrlParams(base)) {
@@ -899,6 +1578,7 @@ export function validateBaseUrl(base: string, serviceName: string): void {
       `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL`,
     );
   }
+  validateBaseUrlScheme(url.protocol.slice(0, -1), base, serviceName);
   if (url.search) {
     throw new Error(
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain query string`,
@@ -909,6 +1589,170 @@ export function validateBaseUrl(base: string, serviceName: string): void {
       `Invalid base URL "${base}" in firewall "${serviceName}": must not contain fragment`,
     );
   }
+  const authority = rawAuthorityFromBaseUrl(base);
+  if (authority !== null) {
+    if (authority === "") {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    validateNoUserinfo(authority, base, serviceName);
+    validateHostPercentEncoding(authority, base, serviceName);
+    validateHostHasCanonicalIpv4Syntax(authority, base, serviceName);
+    validateHostHasNoUnsafeIdnaMappings(authority, base, serviceName);
+  }
+  validateStaticHostLabels(url.hostname, base, serviceName);
+  if (url.hostname.includes("{") || url.hostname.includes("}")) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": host must not contain braces`,
+    );
+  }
+}
+
+interface AuthBaseStaticValidationTarget {
+  readonly url: string | null;
+  readonly dynamicPrefixSuffix: string;
+}
+
+function authBaseForStaticUrlValidation(
+  authBase: string,
+): AuthBaseStaticValidationTarget {
+  if (!authBase.includes(AUTH_TEMPLATE_START)) {
+    return { url: authBase, dynamicPrefixSuffix: "" };
+  }
+
+  const replaced = authBase.replace(
+    AUTH_REFERENCE_PATTERN_G,
+    AUTH_TEMPLATE_URL_PLACEHOLDER,
+  );
+  if (replaced.includes(AUTH_TEMPLATE_START)) {
+    return { url: authBase, dynamicPrefixSuffix: "" };
+  }
+  const prefixMatch = AUTH_REFERENCE_PREFIX_PATTERN.exec(authBase);
+  if (prefixMatch) {
+    return {
+      url: null,
+      dynamicPrefixSuffix: authBase
+        .slice(prefixMatch[0].length)
+        .replace(AUTH_REFERENCE_PATTERN_G, AUTH_TEMPLATE_URL_PLACEHOLDER),
+    };
+  }
+  return { url: replaced, dynamicPrefixSuffix: "" };
+}
+
+function validateDynamicAuthBaseSuffix(
+  authBase: string,
+  suffix: string,
+  serviceName: string,
+): void {
+  if (suffix.includes(AUTH_TEMPLATE_START)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": contains unsupported template reference`,
+    );
+  }
+  if (hasRawWhitespace(suffix)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
+  if (hasUnsafeUrlCodepoint(suffix)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters or invalid Unicode`,
+    );
+  }
+  if (suffix.includes("#")) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
+  if (suffix !== "" && !suffix.startsWith("/") && !suffix.startsWith("?")) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": dynamic URL suffix must start with "/" or "?"`,
+    );
+  }
+}
+
+export function validateAuthBaseUrl(
+  authBase: string,
+  serviceName: string,
+): void {
+  if (authBase.includes("\\")) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain backslash`,
+    );
+  }
+
+  // Auth base URLs may be fully or partially secret/var-backed; resolved
+  // values are only available in the sandbox when auth is applied.
+  const target = authBaseForStaticUrlValidation(authBase);
+  validateDynamicAuthBaseSuffix(
+    authBase,
+    target.dynamicPrefixSuffix,
+    serviceName,
+  );
+  const validationUrl = target.url;
+  if (validationUrl === null) return;
+  if (validationUrl.includes(AUTH_TEMPLATE_START)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": contains unsupported template reference`,
+    );
+  }
+
+  if (hasRawWhitespace(validationUrl)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain whitespace`,
+    );
+  }
+  if (hasUnsafeUrlCodepoint(validationUrl)) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain control characters or invalid Unicode`,
+    );
+  }
+
+  validateUrlSchemeDelimiter(
+    validationUrl,
+    serviceName,
+    "auth.base URL",
+    authBase,
+  );
+
+  let url: URL;
+  try {
+    url = new URL(validationUrl);
+  } catch {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL`,
+    );
+  }
+  if (
+    url.protocol.slice(0, -1).toLowerCase() !== REQUIRED_AUTH_BASE_URL_SCHEME
+  ) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": scheme must be https`,
+    );
+  }
+  if (url.hash) {
+    throw new Error(
+      `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
+  const authority = rawAuthorityFromBaseUrl(validationUrl);
+  if (authority !== null) {
+    if (authority === "") {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authority.includes("@")) {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": must not contain userinfo`,
+      );
+    }
+    validateHostPercentEncoding(authority, validationUrl, serviceName);
+    validateHostHasCanonicalIpv4Syntax(authority, validationUrl, serviceName);
+    validateHostHasNoUnsafeIdnaMappings(authority, validationUrl, serviceName);
+  }
+  validateStaticHostLabels(url.hostname, validationUrl, serviceName);
 }
 
 /**

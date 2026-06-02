@@ -11,6 +11,10 @@ export const line = {
         label: "Channel Access Token",
         helpText:
           "1. Log in to the [LINE Developers Console](https://developers.line.biz/console)\n2. Select your provider and channel\n3. Go to the **Messaging API** tab\n4. Issue or copy the **Channel access token (long-lived)**",
+        storage: {
+          secrets: ["LINE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

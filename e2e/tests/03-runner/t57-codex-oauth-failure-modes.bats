@@ -154,7 +154,6 @@ agents:
   ${agent_name}:
     description: "ChatGPT OAuth stale-rejection test"
     framework: codex
-    working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$test_dir/vm0.yaml" >/dev/null
 

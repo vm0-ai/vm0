@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token";
+
 export const strava = {
   strava: {
     label: "Strava",
@@ -10,15 +12,23 @@ export const strava = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Strava to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "STRAVA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["STRAVA_ACCESS_TOKEN", "STRAVA_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "STRAVA_ACCESS_TOKEN",
+            refreshToken: "STRAVA_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://www.strava.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "STRAVA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "STRAVA_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "read",
             "profile:read_all",
@@ -28,8 +38,7 @@ export const strava = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "STRAVA_ACCESS_TOKEN",
-          refreshToken: "STRAVA_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
           },

@@ -186,7 +186,12 @@ jobs:
 
       - name: Run workflow script tests
         run: |
-          bash -n .github/scripts/*.sh .github/scripts/tests/*.sh
+          shopt -s nullglob
+          script_files=(
+            .github/scripts/*.sh
+            .github/scripts/tests/*.sh
+          )
+          bash -n "${script_files[@]}"
           for test_script in .github/scripts/tests/*.sh; do
             bash "$test_script"
           done

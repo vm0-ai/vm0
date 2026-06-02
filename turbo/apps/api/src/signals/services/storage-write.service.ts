@@ -3,7 +3,7 @@ import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { storageVersionLineage } from "@vm0/db/schema/storage-version-lineage";
-import { command, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -60,11 +60,6 @@ interface RuntimeOrg {
 
 type StorageRow = typeof storages.$inferSelect;
 type StorageVersionRow = typeof storageVersions.$inferSelect;
-
-type SignalGetter = {
-  <T>(source: Computed<T>): T;
-  <T>(source: Computed<Promise<T>>): Promise<T>;
-};
 
 type StorageErrorResponse =
   | ReturnType<typeof badRequestMessage>
@@ -208,8 +203,7 @@ async function resolveStorageRuntimeOrg(args: {
   return { orgId: args.auth.orgId };
 }
 
-async function mergeWithBaseVersion(args: {
-  readonly get: SignalGetter;
+function mergeWithBaseVersion(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storageId: string;
@@ -217,39 +211,41 @@ async function mergeWithBaseVersion(args: {
   readonly baseVersion: string;
   readonly changes: StorageChanges;
   readonly signal: AbortSignal;
-}): Promise<readonly FileEntryWithHash[]> {
-  const [baseVersionRecord] = await args.db
-    .select()
-    .from(storageVersions)
-    .where(
-      and(
-        eq(storageVersions.storageId, args.storageId),
-        eq(storageVersions.id, args.baseVersion),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
+}): Computed<Promise<readonly FileEntryWithHash[]>> {
+  return computed(async (get): Promise<readonly FileEntryWithHash[]> => {
+    const [baseVersionRecord] = await args.db
+      .select()
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, args.storageId),
+          eq(storageVersions.id, args.baseVersion),
+        ),
+      )
+      .limit(1);
+    args.signal.throwIfAborted();
 
-  if (!baseVersionRecord) {
-    return args.files;
-  }
+    if (!baseVersionRecord) {
+      return args.files;
+    }
 
-  const baseManifest = await args.get(
-    downloadManifest(args.bucket, baseVersionRecord.s3Key),
-  );
-  args.signal.throwIfAborted();
+    const baseManifest = await get(
+      downloadManifest(args.bucket, baseVersionRecord.s3Key),
+    );
+    args.signal.throwIfAborted();
 
-  const currentFiles = new Map(
-    args.files.map((file) => {
-      return [file.path, file];
-    }),
-  );
-  const deleted = new Set(args.changes.deleted ?? []);
-  const baseFiles = baseManifest.files.filter((file) => {
-    return !deleted.has(file.path) && !currentFiles.has(file.path);
+    const currentFiles = new Map(
+      args.files.map((file) => {
+        return [file.path, file];
+      }),
+    );
+    const deleted = new Set(args.changes.deleted ?? []);
+    const baseFiles = baseManifest.files.filter((file) => {
+      return !deleted.has(file.path) && !currentFiles.has(file.path);
+    });
+
+    return [...baseFiles, ...args.files];
   });
-
-  return [...baseFiles, ...args.files];
 }
 
 function totalSize(files: readonly FileEntryWithHash[]): number {
@@ -325,116 +321,120 @@ async function upsertStorageForPrepare(args: {
   return storage;
 }
 
-async function resolvePreparedFiles(args: {
-  readonly get: SignalGetter;
+function resolvePreparedFiles(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storageId: string;
   readonly input: PrepareStorageInput;
   readonly signal: AbortSignal;
-}): Promise<readonly FileEntryWithHash[]> {
-  const baseVersion = args.input.baseVersion;
-  const changes = args.input.changes;
-  if (!baseVersion || !changes) {
-    return args.input.files;
-  }
+}): Computed<Promise<readonly FileEntryWithHash[]>> {
+  return computed(async (get): Promise<readonly FileEntryWithHash[]> => {
+    const baseVersion = args.input.baseVersion;
+    const changes = args.input.changes;
+    if (!baseVersion || !changes) {
+      return args.input.files;
+    }
 
-  const mergeResult = await settle(
-    mergeWithBaseVersion({
-      get: args.get,
-      db: args.db,
-      bucket: args.bucket,
-      storageId: args.storageId,
-      files: args.input.files,
-      baseVersion,
-      changes,
-      signal: args.signal,
-    }),
-  );
-  args.signal.throwIfAborted();
+    const mergeResult = await settle(
+      get(
+        mergeWithBaseVersion({
+          db: args.db,
+          bucket: args.bucket,
+          storageId: args.storageId,
+          files: args.input.files,
+          baseVersion,
+          changes,
+          signal: args.signal,
+        }),
+      ),
+    );
+    args.signal.throwIfAborted();
 
-  return mergeResult.ok ? mergeResult.value : args.input.files;
+    return mergeResult.ok ? mergeResult.value : args.input.files;
+  });
 }
 
-async function existingStorageVersionIsReusable(args: {
-  readonly get: SignalGetter;
+function existingStorageVersionIsReusable(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storageId: string;
   readonly versionId: string;
   readonly force: boolean | undefined;
   readonly signal: AbortSignal;
-}): Promise<boolean> {
-  if (args.force) {
-    return false;
-  }
+}): Computed<Promise<boolean>> {
+  return computed(async (get): Promise<boolean> => {
+    if (args.force) {
+      return false;
+    }
 
-  const existingVersion = await findStorageVersion({
-    db: args.db,
-    storageId: args.storageId,
-    versionId: args.versionId,
+    const existingVersion = await findStorageVersion({
+      db: args.db,
+      storageId: args.storageId,
+      versionId: args.versionId,
+    });
+    args.signal.throwIfAborted();
+
+    if (!existingVersion) {
+      return false;
+    }
+
+    const exists = await get(
+      verifyS3FilesExist(
+        args.bucket,
+        existingVersion.s3Key,
+        existingVersion.fileCount,
+      ),
+    );
+    args.signal.throwIfAborted();
+
+    return exists;
   });
-  args.signal.throwIfAborted();
-
-  if (!existingVersion) {
-    return false;
-  }
-
-  const exists = await args.get(
-    verifyS3FilesExist(
-      args.bucket,
-      existingVersion.s3Key,
-      existingVersion.fileCount,
-    ),
-  );
-  args.signal.throwIfAborted();
-
-  return exists;
 }
 
-async function createStorageUploadResponse(args: {
-  readonly get: SignalGetter;
+function createStorageUploadResponse(args: {
   readonly bucket: string;
   readonly storage: StorageRow;
   readonly versionId: string;
   readonly signal: AbortSignal;
-}): Promise<PrepareStorageResponse> {
-  const s3Key = `${args.storage.s3Prefix}/${args.versionId}`;
-  const archiveKey = `${s3Key}/archive.tar.gz`;
-  const manifestKey = `${s3Key}/manifest.json`;
-  const [archiveUrl, manifestUrl] = await Promise.all([
-    args.get(
-      generatePresignedPutUrl(
-        args.bucket,
-        archiveKey,
-        "application/gzip",
-        3600,
-        true,
+}): Computed<Promise<PrepareStorageResponse>> {
+  return computed(async (get): Promise<PrepareStorageResponse> => {
+    const s3Key = `${args.storage.s3Prefix}/${args.versionId}`;
+    const archiveKey = `${s3Key}/archive.tar.gz`;
+    const manifestKey = `${s3Key}/manifest.json`;
+    const [archiveUrl, manifestUrl] = await Promise.all([
+      get(
+        generatePresignedPutUrl(
+          args.bucket,
+          archiveKey,
+          "application/gzip",
+          3600,
+          true,
+        ),
       ),
-    ),
-    args.get(
-      generatePresignedPutUrl(
-        args.bucket,
-        manifestKey,
-        "application/json",
-        3600,
-        true,
+      get(
+        generatePresignedPutUrl(
+          args.bucket,
+          manifestKey,
+          "application/json",
+          3600,
+          true,
+        ),
       ),
-    ),
-  ]);
-  args.signal.throwIfAborted();
+    ]);
+    args.signal.throwIfAborted();
 
-  return {
-    status: 200,
-    body: {
-      versionId: args.versionId,
-      existing: false,
-      uploads: {
-        archive: { key: archiveKey, presignedUrl: archiveUrl },
-        manifest: { key: manifestKey, presignedUrl: manifestUrl },
+    return {
+      status: 200,
+      body: {
+        versionId: args.versionId,
+        existing: false,
+        uploads: {
+          archive: { key: archiveKey, presignedUrl: archiveUrl },
+          manifest: { key: manifestKey, presignedUrl: manifestUrl },
+        },
       },
-    },
-  };
+    };
+  });
 }
 
 function s3FilesMissingConflict(): Extract<
@@ -452,75 +452,83 @@ function s3FilesMissingConflict(): Extract<
   };
 }
 
-async function commitExistingStorageVersion(args: {
-  readonly get: SignalGetter;
+function commitExistingStorageVersion(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storage: StorageRow;
   readonly version: StorageVersionRow;
   readonly input: CommitStorageInput;
   readonly signal: AbortSignal;
-}): Promise<CommitStorageResponse> {
-  const exists = await args.get(
-    verifyS3FilesExist(args.bucket, args.version.s3Key, args.version.fileCount),
-  );
-  args.signal.throwIfAborted();
-
-  if (!exists) {
-    return s3FilesMissingConflict();
-  }
-
-  if (args.storage.headVersionId !== args.input.versionId) {
-    await args.db
-      .update(storages)
-      .set({ headVersionId: args.input.versionId, updatedAt: nowDate() })
-      .where(eq(storages.id, args.storage.id));
+}): Computed<Promise<CommitStorageResponse>> {
+  return computed(async (get): Promise<CommitStorageResponse> => {
+    const exists = await get(
+      verifyS3FilesExist(
+        args.bucket,
+        args.version.s3Key,
+        args.version.fileCount,
+      ),
+    );
     args.signal.throwIfAborted();
-  }
 
-  return {
-    status: 200,
-    body: {
-      success: true,
-      versionId: args.input.versionId,
-      storageName: args.input.storageName,
-      size: Number(args.version.size),
-      fileCount: args.version.fileCount,
-      deduplicated: true,
-    },
-  };
+    if (!exists) {
+      return s3FilesMissingConflict();
+    }
+
+    if (args.storage.headVersionId !== args.input.versionId) {
+      await args.db
+        .update(storages)
+        .set({ headVersionId: args.input.versionId, updatedAt: nowDate() })
+        .where(eq(storages.id, args.storage.id));
+      args.signal.throwIfAborted();
+    }
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        versionId: args.input.versionId,
+        storageName: args.input.storageName,
+        size: Number(args.version.size),
+        fileCount: args.version.fileCount,
+        deduplicated: true,
+      },
+    };
+  });
 }
 
-async function verifyUploadedStorageFiles(args: {
-  readonly get: SignalGetter;
+function verifyUploadedStorageFiles(args: {
   readonly bucket: string;
   readonly s3Key: string;
   readonly fileCount: number;
   readonly signal: AbortSignal;
-}): Promise<ReturnType<typeof badRequestMessage> | null> {
-  const manifestKey = `${args.s3Key}/manifest.json`;
-  const archiveKey = `${args.s3Key}/archive.tar.gz`;
-  const [manifestExists, archiveExists] = await Promise.all([
-    args.get(s3ObjectExists(args.bucket, manifestKey)),
-    args.fileCount > 0
-      ? args.get(s3ObjectExists(args.bucket, archiveKey))
-      : Promise.resolve(true),
-  ]);
-  args.signal.throwIfAborted();
+}): Computed<Promise<ReturnType<typeof badRequestMessage> | null>> {
+  return computed(
+    async (get): Promise<ReturnType<typeof badRequestMessage> | null> => {
+      const manifestKey = `${args.s3Key}/manifest.json`;
+      const archiveKey = `${args.s3Key}/archive.tar.gz`;
+      const [manifestExists, archiveExists] = await Promise.all([
+        get(s3ObjectExists(args.bucket, manifestKey)),
+        args.fileCount > 0
+          ? get(s3ObjectExists(args.bucket, archiveKey))
+          : Promise.resolve(true),
+      ]);
+      args.signal.throwIfAborted();
 
-  if (!manifestExists) {
-    return badRequestMessage(
-      "Manifest not uploaded - upload failed or incomplete",
-    );
-  }
+      if (!manifestExists) {
+        return badRequestMessage(
+          "Manifest not uploaded - upload failed or incomplete",
+        );
+      }
 
-  if (args.fileCount > 0 && !archiveExists) {
-    return badRequestMessage(
-      "Archive not uploaded - upload failed or incomplete",
-    );
-  }
+      if (args.fileCount > 0 && !archiveExists) {
+        return badRequestMessage(
+          "Archive not uploaded - upload failed or incomplete",
+        );
+      }
 
-  return null;
+      return null;
+    },
+  );
 }
 
 async function insertStorageVersionAndUpdateHead(args: {
@@ -572,48 +580,50 @@ async function insertStorageVersionAndUpdateHead(args: {
   });
 }
 
-async function commitNewStorageVersion(args: {
-  readonly get: SignalGetter;
+function commitNewStorageVersion(args: {
   readonly db: Db;
   readonly bucket: string;
   readonly storage: StorageRow;
   readonly input: CommitStorageInput;
   readonly signal: AbortSignal;
-}): Promise<CommitStorageResponse> {
-  const s3Key = `${args.storage.s3Prefix}/${args.input.versionId}`;
-  const fileCount = args.input.files.length;
-  const uploadError = await verifyUploadedStorageFiles({
-    get: args.get,
-    bucket: args.bucket,
-    s3Key,
-    fileCount,
-    signal: args.signal,
-  });
-  if (uploadError) {
-    return uploadError;
-  }
+}): Computed<Promise<CommitStorageResponse>> {
+  return computed(async (get): Promise<CommitStorageResponse> => {
+    const s3Key = `${args.storage.s3Prefix}/${args.input.versionId}`;
+    const fileCount = args.input.files.length;
+    const uploadError = await get(
+      verifyUploadedStorageFiles({
+        bucket: args.bucket,
+        s3Key,
+        fileCount,
+        signal: args.signal,
+      }),
+    );
+    if (uploadError) {
+      return uploadError;
+    }
 
-  const size = totalSize(args.input.files);
-  await insertStorageVersionAndUpdateHead({
-    db: args.db,
-    storageId: args.storage.id,
-    s3Key,
-    input: args.input,
-    size,
-    fileCount,
-  });
-  args.signal.throwIfAborted();
-
-  return {
-    status: 200,
-    body: {
-      success: true,
-      versionId: args.input.versionId,
-      storageName: args.input.storageName,
+    const size = totalSize(args.input.files);
+    await insertStorageVersionAndUpdateHead({
+      db: args.db,
+      storageId: args.storage.id,
+      s3Key,
+      input: args.input,
       size,
       fileCount,
-    },
-  };
+    });
+    args.signal.throwIfAborted();
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        versionId: args.input.versionId,
+        storageName: args.input.storageName,
+        size,
+        fileCount,
+      },
+    };
+  });
 }
 
 async function recordStorageLineage(args: {
@@ -693,36 +703,41 @@ export const prepareStorageUploadForAuth$ = command(
       return storageServiceNotConfigured();
     }
 
-    const mergedFiles = await resolvePreparedFiles({
-      get,
-      db: writeDb,
-      bucket,
-      storageId: storage.id,
-      input: args,
-      signal,
-    });
+    const mergedFiles = await get(
+      resolvePreparedFiles({
+        db: writeDb,
+        bucket,
+        storageId: storage.id,
+        input: args,
+        signal,
+      }),
+    );
+    signal.throwIfAborted();
     const versionId = computeContentHashFromHashes(storage.id, mergedFiles);
 
-    const existingReusable = await existingStorageVersionIsReusable({
-      get,
-      db: writeDb,
-      bucket,
-      storageId: storage.id,
-      versionId,
-      force: args.force,
-      signal,
-    });
+    const existingReusable = await get(
+      existingStorageVersionIsReusable({
+        db: writeDb,
+        bucket,
+        storageId: storage.id,
+        versionId,
+        force: args.force,
+        signal,
+      }),
+    );
+    signal.throwIfAborted();
     if (existingReusable) {
       return { status: 200, body: { versionId, existing: true } };
     }
 
-    return await createStorageUploadResponse({
-      get,
-      bucket,
-      storage,
-      versionId,
-      signal,
-    });
+    return await get(
+      createStorageUploadResponse({
+        bucket,
+        storage,
+        versionId,
+        signal,
+      }),
+    );
   },
 );
 
@@ -777,25 +792,27 @@ export const commitStorageUploadForAuth$ = command(
     signal.throwIfAborted();
 
     if (existingVersion) {
-      return await commitExistingStorageVersion({
-        get,
+      return await get(
+        commitExistingStorageVersion({
+          db: writeDb,
+          bucket,
+          storage,
+          version: existingVersion,
+          input: args,
+          signal,
+        }),
+      );
+    }
+
+    const response = await get(
+      commitNewStorageVersion({
         db: writeDb,
         bucket,
         storage,
-        version: existingVersion,
         input: args,
         signal,
-      });
-    }
-
-    const response = await commitNewStorageVersion({
-      get,
-      db: writeDb,
-      bucket,
-      storage,
-      input: args,
-      signal,
-    });
+      }),
+    );
     signal.throwIfAborted();
 
     if (response.status === 200) {

@@ -47,7 +47,6 @@ agents:
     volumes:
       - test-volume:/home/user/data
       - claude-files:/home/user/.config/claude
-    working_dir: /home/user/workspace
 volumes:
   test-volume:
     name: $TEST_VOLUME_NAME

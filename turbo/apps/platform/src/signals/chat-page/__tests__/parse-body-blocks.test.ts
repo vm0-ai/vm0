@@ -216,6 +216,7 @@ describe("parseBodyRenderBlocks", () => {
   });
 
   it("renders permission URLs as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "https://app.vm0.ai");
     const url =
       "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow";
 
@@ -239,6 +240,122 @@ describe("parseBodyRenderBlocks", () => {
       originalUrl: url,
       href: "/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
     });
+  });
+
+  it("renders platform host variant permission links as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "https://www.vm0.ai");
+    const url =
+      "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "permission-action",
+      id: "permission-action-1",
+      connectorRef: "slack",
+      agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+      permission: "channels:read",
+      action: "allow",
+      originalUrl: url,
+      href: "/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow",
+    });
+  });
+
+  it("renders tunnel host variant permission links as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "https://tunnel-yuma-vm0-api.vm7.ai");
+    const url =
+      "https://tunnel-yuma-vm0-app.vm7.ai/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "permission-action",
+      id: "permission-action-1",
+      connectorRef: "slack",
+      agentId: "b431c9a7-4f78-4977-aba1-dec4c04b212c",
+      permission: "chat:write",
+      action: "allow",
+      originalUrl: url,
+      href: "/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow",
+    });
+  });
+
+  it("renders permission links with surrounding text as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "https://tunnel-yuma-vm0-api.vm7.ai");
+    const url =
+      "https://tunnel-yuma-vm0-app.vm7.ai/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `请打开这里启用权限：[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "permission-action",
+      id: "permission-action-1",
+      connectorRef: "slack",
+      agentId: "b431c9a7-4f78-4977-aba1-dec4c04b212c",
+      permission: "chat:write",
+      action: "allow",
+      originalUrl: url,
+      href: "/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow",
+    });
+  });
+
+  it("renders tunnel permission links with local API config as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+    const url =
+      "https://tunnel-yuma-vm0-app.vm7.ai/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `请打开这里启用权限：[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe("");
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "permission-action",
+      id: "permission-action-1",
+      connectorRef: "slack",
+      agentId: "b431c9a7-4f78-4977-aba1-dec4c04b212c",
+      permission: "chat:write",
+      action: "allow",
+      originalUrl: url,
+      href: "/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow",
+    });
+  });
+
+  it("does not render external permission links as permission action blocks", () => {
+    vi.stubEnv("VITE_API_URL", "http://localhost:3000");
+    const url =
+      "https://evil.example/agents/b431c9a7-4f78-4977-aba1-dec4c04b212c/permissions?ref=slack&permission=chat%3Awrite&action=allow";
+
+    const { cleanContent, blocks } = parseBodyRenderBlocks(
+      `[Manage Slack permissions](${url})`,
+      { previews: false },
+    );
+
+    expect(cleanContent).toBe(`[Manage Slack permissions](${url})`);
+    expect(blocks).toStrictEqual([
+      {
+        type: "markdown",
+        id: "markdown-1",
+        content: `[Manage Slack permissions](${url})`,
+      },
+    ]);
   });
 
   it("does not render external connector authorize URLs as action blocks", () => {

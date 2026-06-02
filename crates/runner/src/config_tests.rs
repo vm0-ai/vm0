@@ -75,7 +75,8 @@ firecracker:
     snapshot_hash: {snapshot_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 {extra}"#,
             rootfs_hash = TEST_ROOTFS_HASH,
             snapshot_hash = TEST_SNAPSHOT_HASH,
@@ -147,7 +148,8 @@ fn make_profiles() -> BTreeMap<String, ProfileConfig> {
             snapshot_hash: TEST_SNAPSHOT_HASH.into(),
             vcpu: 2,
             memory_mb: 4096,
-            disk_mb: 16384,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 16384,
         },
     );
     profiles
@@ -167,7 +169,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 sandbox:
   max_concurrent: 8
   concurrency_factor: 2.0
@@ -186,11 +189,37 @@ server:
     let default = &config.profiles["vm0/default"];
     assert_eq!(default.vcpu, 2);
     assert_eq!(default.rootfs_hash, TEST_ROOTFS_HASH);
+    assert_eq!(default.rootfs_disk_mb, 8192);
+    assert_eq!(default.workspace_disk_mb, 16384);
     assert_eq!(config.sandbox.max_concurrent, 8);
     assert!((config.sandbox.concurrency_factor - 2.0).abs() < f64::EPSILON);
     let server = config.server.unwrap();
     assert_eq!(server.url, "https://api.example.com");
     assert_eq!(server.token, "secret");
+}
+
+#[tokio::test]
+async fn load_rejects_legacy_disk_mb_without_split_disk_fields() {
+    let fixture = ConfigFixture::new().await;
+    let yaml = fixture.yaml(&format!(
+        r#"
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 12288
+"#,
+        hash = TEST_ROOTFS_HASH,
+        snap_hash = TEST_SNAPSHOT_HASH,
+    ));
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(
+        err.to_string().contains("rootfs_disk_mb") || err.to_string().contains("workspace_disk_mb"),
+        "unexpected error: {err}"
+    );
 }
 
 #[tokio::test]
@@ -227,7 +256,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -255,7 +285,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         snap_hash = TEST_SNAPSHOT_HASH,
     ));
@@ -275,7 +306,8 @@ profiles:
     snapshot_hash: ../etc
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
     ));
@@ -295,7 +327,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 0
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -306,7 +339,7 @@ profiles:
 }
 
 #[tokio::test]
-async fn load_rejects_zero_disk_mb_in_profile() {
+async fn load_rejects_zero_rootfs_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
     let yaml = fixture.yaml(&format!(
         r#"
@@ -316,7 +349,30 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 0
+    rootfs_disk_mb: 0
+    workspace_disk_mb: 16384
+"#,
+        hash = TEST_ROOTFS_HASH,
+        snap_hash = TEST_SNAPSHOT_HASH,
+    ));
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(err.to_string().contains("non-zero"), "got: {err}");
+}
+
+#[tokio::test]
+async fn load_rejects_zero_workspace_disk_mb_in_profile() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml(&format!(
+        r#"
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
+    vcpu: 2
+    memory_mb: 4096
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 0
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -337,7 +393,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 1024
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -359,7 +416,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2048
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -380,7 +438,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 2000000
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -391,7 +450,7 @@ profiles:
 }
 
 #[tokio::test]
-async fn load_rejects_excessive_disk_mb_in_profile() {
+async fn load_rejects_excessive_rootfs_disk_mb_in_profile() {
     let fixture = ConfigFixture::without_image_artifacts().await;
     let yaml = fixture.yaml(&format!(
         r#"
@@ -401,7 +460,30 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 2000000
+    rootfs_disk_mb: 2000000
+    workspace_disk_mb: 16384
+"#,
+        hash = TEST_ROOTFS_HASH,
+        snap_hash = TEST_SNAPSHOT_HASH,
+    ));
+
+    let err = fixture.load_config(&yaml, true).await.unwrap_err();
+    assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
+}
+
+#[tokio::test]
+async fn load_rejects_excessive_workspace_disk_mb_in_profile() {
+    let fixture = ConfigFixture::without_image_artifacts().await;
+    let yaml = fixture.yaml(&format!(
+        r#"
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
+    vcpu: 2
+    memory_mb: 4096
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 2000000
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,
@@ -511,7 +593,8 @@ async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
         snapshot_hash: TEST_SNAPSHOT_HASH.into(),
         vcpu: 2,
         memory_mb: 4096,
-        disk_mb: 16384,
+        rootfs_disk_mb: 8192,
+        workspace_disk_mb: 16384,
     };
     let err = validate_profile_image_artifacts("vm0/default", &profile, &home)
         .await
@@ -633,6 +716,17 @@ async fn generate_then_load_round_trip() {
 
     generate(&config).await.unwrap();
 
+    let generated = tokio::fs::read_to_string(runner_dir.join("runner.yaml"))
+        .await
+        .unwrap();
+    assert!(generated.contains("rootfs_disk_mb: 8192"));
+    assert!(generated.contains("workspace_disk_mb: 16384"));
+    assert!(
+        generated
+            .lines()
+            .all(|line| !line.trim_start().starts_with("disk_mb:"))
+    );
+
     let loaded = load_with_home(&runner_dir.join("runner.yaml"), &fixture.home, true)
         .await
         .unwrap();
@@ -666,7 +760,8 @@ profiles:
     snapshot_hash: {snap_hash}
     vcpu: 2
     memory_mb: 4096
-    disk_mb: 16384
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 "#,
         hash = TEST_ROOTFS_HASH,
         snap_hash = TEST_SNAPSHOT_HASH,

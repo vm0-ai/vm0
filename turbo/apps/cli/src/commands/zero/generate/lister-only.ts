@@ -6,7 +6,6 @@ import { runLister, type GenerationType } from "./lib/lister";
 interface ListerOnlyOptions {
   readonly provider?: string;
   readonly all?: boolean;
-  readonly json?: boolean;
 }
 
 interface ListerOnlyConfig {
@@ -29,7 +28,6 @@ export function createListerOnlyCommand(config: ListerOnlyConfig): Command {
       "Connector name; prints that connector's skill-invocation guidance",
     )
     .option("--all", "Include unavailable or not-yet-authorized connectors")
-    .option("--json", "Print the provider list as JSON")
     .addHelpText(
       "after",
       `
@@ -57,7 +55,6 @@ Notes:
         }
         await runLister(config.generationType, {
           all: options.all,
-          json: options.json,
         });
       }),
     );

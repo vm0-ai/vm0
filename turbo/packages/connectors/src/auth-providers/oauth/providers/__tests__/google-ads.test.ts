@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getConnectorOAuthClient } from "../../../../connector-utils";
-import { hasConnectorOAuthProvider } from "../../../connector-auth";
+import {
+  getConnectorAuthMethodAuthCodeGrantConfig,
+  resolveConnectorAuthClientForMethod,
+} from "../../../../connector-utils";
 import { googleAdsProvider } from "../google-ads-provider";
 import { server } from "./test-server";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 describe("connector/providers/google-ads", () => {
   describe("googleAdsProvider", () => {
-    it("registers google-ads as an OAuth connector type", () => {
-      expect(hasConnectorOAuthProvider("google-ads")).toBe(true);
-    });
-
     it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
       const url = googleAdsProvider.grant.buildAuthUrl({
+        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
+          "google-ads",
+          "oauth",
+        ),
         clientId: "test-client",
         redirectUri: "https://example.com/callback",
         state: "test-state",
@@ -48,7 +54,7 @@ describe("connector/providers/google-ads", () => {
       };
 
       expect(
-        getConnectorOAuthClient("google-ads", (name) => {
+        resolveConnectorAuthClientForMethod("google-ads", "oauth", (name) => {
           return env[name];
         }),
       ).toMatchObject({
@@ -96,6 +102,10 @@ describe("connector/providers/google-ads", () => {
       server.use(tokenHandler, userInfoHandler);
 
       const result = await googleAdsProvider.grant.exchangeCode({
+        authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
+          "google-ads",
+          "oauth",
+        ),
         clientId: "client-id",
         clientSecret: "client-secret",
         code: "auth-code",
@@ -136,6 +146,11 @@ describe("connector/providers/google-ads", () => {
         clientId: "client-id",
         clientSecret: "client-secret",
         refreshToken: "refresh-token",
+        signal: testRefreshSignal(),
+        tokenUrl: getConnectorAuthMethodAuthCodeGrantConfig(
+          "google-ads",
+          "oauth",
+        ).tokenUrl,
       });
 
       expect(result).toEqual({

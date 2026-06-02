@@ -34,7 +34,6 @@ agents:
   $AGENT_NAME:
     description: "Stuck tool watchdog test"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       VM0_STUCK_TOOL_TIMEOUT_SECS: "3"
 EOF

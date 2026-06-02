@@ -883,7 +883,6 @@ mod tests {
                     "runId": context_run_id,
                     "prompt": "hello",
                     "sandboxToken": "claim-sandbox-token",
-                    "workingDir": "/home/user",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": []
                 }));
@@ -918,7 +917,6 @@ mod tests {
                     "runId": run_id,
                     "prompt": "hello",
                     "sandboxToken": "claim-sandbox-token",
-                    "workingDir": "/home/user",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": []
                 }));
@@ -970,7 +968,6 @@ mod tests {
                     "runId": run_id_a,
                     "prompt": "first",
                     "sandboxToken": "sandbox-token-a",
-                    "workingDir": "/home/user",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": []
                 }));
@@ -983,7 +980,6 @@ mod tests {
                     "runId": run_id_b,
                     "prompt": "second",
                     "sandboxToken": "sandbox-token-b",
-                    "workingDir": "/home/user",
                     "cliAgentType": "claude_code",
                     "billableFirewalls": []
                 }));

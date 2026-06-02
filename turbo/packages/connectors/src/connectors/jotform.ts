@@ -11,6 +11,10 @@ export const jotform = {
         label: "API Key",
         helpText:
           "1. Log in to your [Jotform account](https://www.jotform.com/myaccount/api)\n2. Navigate to **Settings** → **API**\n3. Click **Create New Key**\n4. Copy your **API Key**",
+        storage: {
+          secrets: ["JOTFORM_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

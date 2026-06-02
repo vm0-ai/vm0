@@ -13,6 +13,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-meet",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-meet",
           clientId,
           clientSecret,
@@ -55,10 +57,12 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
+          args.tokenUrl,
           "google-meet",
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

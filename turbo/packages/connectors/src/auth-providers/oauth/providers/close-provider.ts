@@ -17,6 +17,7 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeCloseCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -43,7 +44,13 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshCloseToken(clientId, clientSecret, args.refreshToken);
+      return refreshCloseToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

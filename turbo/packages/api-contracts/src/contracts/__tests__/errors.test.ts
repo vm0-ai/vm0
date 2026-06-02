@@ -24,19 +24,19 @@ describe("formatRunErrorForExternalSurface", () => {
     ).toBe("Cannot continue session with this provider");
   });
 
-  it("appends Compare plans link for admins on insufficient credits", () => {
+  it("appends Add credits link for admins on insufficient credits", () => {
     expect(
       formatRunErrorForExternalSurface({
         code: "INSUFFICIENT_CREDITS",
         message: "Insufficient credits. Please add credits to continue.",
         insufficientCredits: {
           canManageBilling: true,
-          comparePlansUrl:
-            "https://app.example.test/?settings=billing&billingView=plans",
+          addCreditsUrl:
+            "https://app.example.test/?settings=billing&billingView=credits",
         },
       }),
     ).toBe(
-      "Insufficient credits. Please add credits to continue.\n\nCompare plans: https://app.example.test/?settings=billing&billingView=plans",
+      "Insufficient credits. Please add credits to continue.\n\nAdd credits: https://app.example.test/?settings=billing&billingView=credits",
     );
   });
 
@@ -47,21 +47,44 @@ describe("formatRunErrorForExternalSurface", () => {
         message: "Insufficient credits. Please add credits to continue.",
         insufficientCredits: {
           canManageBilling: false,
-          comparePlansUrl:
-            "https://app.example.test/?settings=billing&billingView=plans",
+          addCreditsUrl:
+            "https://app.example.test/?settings=billing&billingView=credits",
         },
       }),
     ).toBe(INSUFFICIENT_CREDITS_ASK_ADMIN_MESSAGE);
   });
 
-  it("preserves ChatGPT Codex usage limit guidance", () => {
+  it("shows Codex usage limit errors verbatim", () => {
+    const codexUsageLimit =
+      "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 6:17 AM.";
+    const formatted = formatRunErrorForExternalSurface({
+      code: "UNKNOWN",
+      message: codexUsageLimit,
+    });
+    expect(formatted).toBe(codexUsageLimit);
+    expect(formatted).not.toContain("switch to another model");
+  });
+
+  it("shows Claude session limit errors verbatim", () => {
+    const sessionLimit =
+      "You've hit your session limit · resets 12:50pm (Asia/Shanghai)";
     expect(
       formatRunErrorForExternalSurface({
         code: "UNKNOWN",
-        message:
-          "ChatGPT Codex usage limit reached. Visit chatgpt.com/codex/settings/usage.",
+        message: sessionLimit,
       }),
-    ).toContain("ChatGPT Codex usage limit reached.");
+    ).toBe(sessionLimit);
+  });
+
+  it("shows Claude weekly limit errors verbatim", () => {
+    const weeklyLimit =
+      "You've hit your weekly limit · resets 10am (Asia/Shanghai)";
+    expect(
+      formatRunErrorForExternalSurface({
+        code: "UNKNOWN",
+        message: weeklyLimit,
+      }),
+    ).toBe(weeklyLimit);
   });
 
   it("falls back to the Web generic message for unallowlisted errors", () => {

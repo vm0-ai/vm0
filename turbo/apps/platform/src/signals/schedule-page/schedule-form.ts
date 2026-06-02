@@ -16,9 +16,6 @@ export interface ScheduleFormData {
   dayOfWeek: string;
   dayOfMonth: string;
   prompt: string;
-  modelProviderId: string | null;
-  selectedModel: string | null;
-  preferPersonalProvider: boolean;
 }
 
 export function createDefaultFormData(): ScheduleFormData {
@@ -34,9 +31,6 @@ export function createDefaultFormData(): ScheduleFormData {
     dayOfWeek: "1",
     dayOfMonth: "1",
     prompt: "",
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
   };
 }
 

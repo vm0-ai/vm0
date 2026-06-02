@@ -47,6 +47,7 @@ import {
   type OptimisticChatPane,
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
+import { sidebarChatThreadsExtraThreads$ } from "./sidebar-chat-threads-pagination.ts";
 import { onRejection, toVoid } from "../utils.ts";
 import { resolveModelFirstUserDefaultSelection } from "../zero-page/model-default-selection.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -406,8 +407,9 @@ export const createNewChatThreadOptimistically$ = command(
 export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
     const persisted = await get(chatThreads$);
+    const extraPersisted = await get(sidebarChatThreadsExtraThreads$);
     const pending = get(allPendingChatThreads$);
-    if (pending.length === 0) {
+    if (pending.length === 0 && extraPersisted.length === 0) {
       return persisted;
     }
 
@@ -417,7 +419,7 @@ export const sidebarChatThreads$ = computed(
     }
 
     const persistedIds = new Set(
-      persisted.map((thread) => {
+      [...persisted, ...extraPersisted].map((thread) => {
         return thread.id;
       }),
     );
@@ -441,17 +443,19 @@ export const sidebarChatThreads$ = computed(
       });
 
     if (optimisticItems.length === 0) {
-      return persisted;
+      return [...persisted, ...extraPersisted];
     }
 
-    return [...persisted, ...optimisticItems].sort((a, b) => {
-      const aPinned = a.pinnedAt ? 0 : 1;
-      const bPinned = b.pinnedAt ? 0 : 1;
-      if (aPinned !== bPinned) {
-        return aPinned - bPinned;
-      }
-      return b.updatedAt.localeCompare(a.updatedAt);
-    });
+    return [...persisted, ...extraPersisted, ...optimisticItems].sort(
+      (a, b) => {
+        const aPinned = a.pinnedAt ? 0 : 1;
+        const bPinned = b.pinnedAt ? 0 : 1;
+        if (aPinned !== bPinned) {
+          return aPinned - bPinned;
+        }
+        return b.updatedAt.localeCompare(a.updatedAt);
+      },
+    );
   },
 );
 

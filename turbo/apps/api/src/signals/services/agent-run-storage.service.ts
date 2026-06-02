@@ -13,7 +13,7 @@ import {
 } from "@vm0/core/storage-names";
 import { MIN_VERSION_PREFIX_LENGTH } from "@vm0/core/version-id";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import type { Getter } from "ccstate";
+import { computed, type Computed } from "ccstate";
 import { and, eq, inArray, like } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -23,7 +23,6 @@ import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 
-type ComputedGetter = Getter;
 type StorageType = "artifact" | "volume";
 type ManifestStorage = StorageManifest["storages"][number];
 type ManifestArtifact = StorageManifest["artifacts"][number];
@@ -298,103 +297,103 @@ async function loadStorageIndex(
   return index;
 }
 
-async function ensureArtifactStorage(args: {
-  readonly get: ComputedGetter;
+function ensureArtifactStorage(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
   readonly bucket: string;
-}): Promise<void> {
-  const lookup = {
-    orgId: args.orgId,
-    userId: args.userId,
-    name: args.name,
-    type: "artifact" as const,
-  };
-  let storage = await findStorage(args.db, lookup);
+}): Computed<Promise<void>> {
+  return computed(async (get): Promise<void> => {
+    const lookup = {
+      orgId: args.orgId,
+      userId: args.userId,
+      name: args.name,
+      type: "artifact" as const,
+    };
+    let storage = await findStorage(args.db, lookup);
 
-  if (!storage) {
-    const [created] = await args.db
-      .insert(storages)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        name: args.name,
-        type: "artifact",
-        s3Prefix: `${args.orgId}/artifact/${args.name}`,
-      })
-      .onConflictDoNothing()
-      .returning({
-        id: storages.id,
-        headVersionId: storages.headVersionId,
-        s3Prefix: storages.s3Prefix,
-      });
-    storage = created ?? (await findStorage(args.db, lookup));
-  }
+    if (!storage) {
+      const [created] = await args.db
+        .insert(storages)
+        .values({
+          orgId: args.orgId,
+          userId: args.userId,
+          name: args.name,
+          type: "artifact",
+          s3Prefix: `${args.orgId}/artifact/${args.name}`,
+        })
+        .onConflictDoNothing()
+        .returning({
+          id: storages.id,
+          headVersionId: storages.headVersionId,
+          s3Prefix: storages.s3Prefix,
+        });
+      storage = created ?? (await findStorage(args.db, lookup));
+    }
 
-  if (!storage) {
-    throw new Error(`Failed to create artifact storage "${args.name}"`);
-  }
-  if (storage.headVersionId) {
-    return;
-  }
+    if (!storage) {
+      throw new Error(`Failed to create artifact storage "${args.name}"`);
+    }
+    if (storage.headVersionId) {
+      return;
+    }
 
-  const versionId = computeContentHashFromHashes(storage.id, []);
-  const s3Key = `${storage.s3Prefix}/${versionId}`;
-  await Promise.all([
-    args.get(
-      putS3Object(
-        args.bucket,
-        `${s3Key}/manifest.json`,
-        createEmptyStorageManifest(),
-        "application/json",
+    const versionId = computeContentHashFromHashes(storage.id, []);
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
+    await Promise.all([
+      get(
+        putS3Object(
+          args.bucket,
+          `${s3Key}/manifest.json`,
+          createEmptyStorageManifest(),
+          "application/json",
+        ),
       ),
-    ),
-    args.get(
-      putS3Object(
-        args.bucket,
-        `${s3Key}/archive.tar.gz`,
-        EMPTY_TAR_GZ,
-        "application/gzip",
+      get(
+        putS3Object(
+          args.bucket,
+          `${s3Key}/archive.tar.gz`,
+          EMPTY_TAR_GZ,
+          "application/gzip",
+        ),
       ),
-    ),
-  ]);
+    ]);
 
-  await args.db.transaction(async (tx) => {
-    await tx
-      .insert(storageVersions)
-      .values({
-        id: versionId,
-        storageId: storage.id,
-        s3Key,
-        size: 0,
-        fileCount: 0,
-        message: "Initial empty artifact",
-        createdBy: args.userId,
-      })
-      .onConflictDoNothing();
-    await tx
-      .update(storages)
-      .set({
-        headVersionId: versionId,
-        size: 0,
-        fileCount: 0,
-        updatedAt: nowDate(),
-      })
-      .where(eq(storages.id, storage.id));
+    await args.db.transaction(async (tx) => {
+      await tx
+        .insert(storageVersions)
+        .values({
+          id: versionId,
+          storageId: storage.id,
+          s3Key,
+          size: 0,
+          fileCount: 0,
+          message: "Initial empty artifact",
+          createdBy: args.userId,
+        })
+        .onConflictDoNothing();
+      await tx
+        .update(storages)
+        .set({
+          headVersionId: versionId,
+          size: 0,
+          fileCount: 0,
+          updatedAt: nowDate(),
+        })
+        .where(eq(storages.id, storage.id));
+    });
   });
 }
 
-export async function ensureUserArtifactStorage(args: {
-  readonly get: Getter;
+export function ensureUserArtifactStorage(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
   readonly bucket: string;
-}): Promise<void> {
-  await ensureArtifactStorage(args);
+}): Computed<Promise<void>> {
+  return ensureArtifactStorage(args);
 }
 
 function resolveLatestVersion(
@@ -563,158 +562,164 @@ async function resolveVolumeStorage(args: {
   );
 }
 
-async function buildStorageEntry(args: {
-  readonly get: ComputedGetter;
+function buildStorageEntry(args: {
   readonly bucket: string;
   readonly name: string;
   readonly mountPath: string;
   readonly vasStorageName: string;
   readonly instructionsTargetFilename?: string;
   readonly resolved: StorageResolution;
-}): Promise<ManifestStorage> {
-  const archiveUrl = await args.get(
-    generatePresignedGetUrl(
-      args.bucket,
-      `${args.resolved.s3Key}/archive.tar.gz`,
-      DOWNLOAD_URL_TTL_SECONDS,
-      undefined,
-      true,
-    ),
-  );
-  return {
-    name: args.name,
-    mountPath: args.mountPath,
-    vasStorageName: args.vasStorageName,
-    vasVersionId: args.resolved.versionId,
-    ...(args.instructionsTargetFilename
-      ? { instructionsTargetFilename: args.instructionsTargetFilename }
-      : {}),
-    archiveUrl,
-  };
+}): Computed<Promise<ManifestStorage>> {
+  return computed(async (get): Promise<ManifestStorage> => {
+    const archiveUrl = await get(
+      generatePresignedGetUrl(
+        args.bucket,
+        `${args.resolved.s3Key}/archive.tar.gz`,
+        DOWNLOAD_URL_TTL_SECONDS,
+        undefined,
+        true,
+      ),
+    );
+    return {
+      name: args.name,
+      mountPath: args.mountPath,
+      vasStorageName: args.vasStorageName,
+      vasVersionId: args.resolved.versionId,
+      ...(args.instructionsTargetFilename
+        ? { instructionsTargetFilename: args.instructionsTargetFilename }
+        : {}),
+      archiveUrl,
+    };
+  });
 }
 
-async function buildComposeStorageEntry(args: {
-  readonly get: ComputedGetter;
+function buildComposeStorageEntry(args: {
   readonly db: Db;
   readonly index: StorageIndex;
   readonly bucket: string;
   readonly agentOrgId: string;
   readonly volume: ResolvedVolume;
-}): Promise<ManifestStorage | null> {
-  const resolvedResult = await settle(
-    resolveVolumeStorage({
-      db: args.db,
-      index: args.index,
-      volume: args.volume,
-      primaryOrgId: args.agentOrgId,
-      allowSystemFallback: true,
-    }),
-  );
-  if (!resolvedResult.ok) {
-    if (args.volume.optional && isMissingStorageError(resolvedResult.error)) {
+}): Computed<Promise<ManifestStorage | null>> {
+  return computed(async (get): Promise<ManifestStorage | null> => {
+    const resolvedResult = await settle(
+      resolveVolumeStorage({
+        db: args.db,
+        index: args.index,
+        volume: args.volume,
+        primaryOrgId: args.agentOrgId,
+        allowSystemFallback: true,
+      }),
+    );
+    if (!resolvedResult.ok) {
+      if (args.volume.optional && isMissingStorageError(resolvedResult.error)) {
+        return null;
+      }
+      throw resolvedResult.error;
+    }
+    if (!resolvedResult.value) {
       return null;
     }
-    throw resolvedResult.error;
-  }
-  if (!resolvedResult.value) {
-    return null;
-  }
-  return await buildStorageEntry({
-    get: args.get,
-    bucket: args.bucket,
-    name: args.volume.name,
-    mountPath: args.volume.mountPath,
-    vasStorageName: args.volume.vasStorageName,
-    instructionsTargetFilename: args.volume.instructionsTargetFilename,
-    resolved: resolvedResult.value,
+    return await get(
+      buildStorageEntry({
+        bucket: args.bucket,
+        name: args.volume.name,
+        mountPath: args.volume.mountPath,
+        vasStorageName: args.volume.vasStorageName,
+        instructionsTargetFilename: args.volume.instructionsTargetFilename,
+        resolved: resolvedResult.value,
+      }),
+    );
   });
 }
 
-async function buildAdditionalStorageEntry(args: {
-  readonly get: ComputedGetter;
+function buildAdditionalStorageEntry(args: {
   readonly db: Db;
   readonly index: StorageIndex;
   readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
-}): Promise<ManifestStorage | null> {
-  const resolvedResult = await settle(
-    resolveVolumeStorage({
-      db: args.db,
-      index: args.index,
-      volume: args.volume,
-      primaryOrgId: args.runtimeOrgId,
-      allowSystemFallback: true,
-    }),
-  );
-  if (!resolvedResult.ok) {
-    if (isMissingStorageError(resolvedResult.error)) {
+}): Computed<Promise<ManifestStorage | null>> {
+  return computed(async (get): Promise<ManifestStorage | null> => {
+    const resolvedResult = await settle(
+      resolveVolumeStorage({
+        db: args.db,
+        index: args.index,
+        volume: args.volume,
+        primaryOrgId: args.runtimeOrgId,
+        allowSystemFallback: true,
+      }),
+    );
+    if (!resolvedResult.ok) {
+      if (isMissingStorageError(resolvedResult.error)) {
+        return null;
+      }
+      throw resolvedResult.error;
+    }
+    if (!resolvedResult.value) {
       return null;
     }
-    throw resolvedResult.error;
-  }
-  if (!resolvedResult.value) {
-    return null;
-  }
-  return await buildStorageEntry({
-    get: args.get,
-    bucket: args.bucket,
-    name: args.volume.name,
-    mountPath: args.volume.mountPath,
-    vasStorageName: args.volume.name,
-    resolved: resolvedResult.value,
+    return await get(
+      buildStorageEntry({
+        bucket: args.bucket,
+        name: args.volume.name,
+        mountPath: args.volume.mountPath,
+        vasStorageName: args.volume.name,
+        resolved: resolvedResult.value,
+      }),
+    );
   });
 }
 
-async function buildArtifactEntry(args: {
-  readonly get: ComputedGetter;
+function buildArtifactEntry(args: {
   readonly db: Db;
   readonly index: StorageIndex;
   readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly userId: string;
   readonly artifact: ContextArtifact;
-}): Promise<ManifestArtifact> {
-  const resolved = await resolveStorageVersion(
-    args.db,
-    args.index,
-    {
-      orgId: args.runtimeOrgId,
-      userId: args.userId,
-      name: args.artifact.name,
-      type: "artifact",
-    },
-    args.artifact.version,
-  );
-  const [archiveUrl, manifestUrl] = await Promise.all([
-    args.get(
-      generatePresignedGetUrl(
-        args.bucket,
-        `${resolved.s3Key}/archive.tar.gz`,
-        DOWNLOAD_URL_TTL_SECONDS,
-        undefined,
-        true,
+}): Computed<Promise<ManifestArtifact>> {
+  return computed(async (get): Promise<ManifestArtifact> => {
+    const resolved = await resolveStorageVersion(
+      args.db,
+      args.index,
+      {
+        orgId: args.runtimeOrgId,
+        userId: args.userId,
+        name: args.artifact.name,
+        type: "artifact",
+      },
+      args.artifact.version,
+    );
+    const [archiveUrl, manifestUrl] = await Promise.all([
+      get(
+        generatePresignedGetUrl(
+          args.bucket,
+          `${resolved.s3Key}/archive.tar.gz`,
+          DOWNLOAD_URL_TTL_SECONDS,
+          undefined,
+          true,
+        ),
       ),
-    ),
-    args.get(
-      generatePresignedGetUrl(
-        args.bucket,
-        `${resolved.s3Key}/manifest.json`,
-        DOWNLOAD_URL_TTL_SECONDS,
-        undefined,
-        true,
+      get(
+        generatePresignedGetUrl(
+          args.bucket,
+          `${resolved.s3Key}/manifest.json`,
+          DOWNLOAD_URL_TTL_SECONDS,
+          undefined,
+          true,
+        ),
       ),
-    ),
-  ]);
+    ]);
 
-  return {
-    mountPath: args.artifact.mountPath,
-    vasStorageName: args.artifact.name,
-    vasStorageId: resolved.storageId,
-    vasVersionId: resolved.versionId,
-    archiveUrl,
-    manifestUrl,
-  };
+    return {
+      mountPath: args.artifact.mountPath,
+      vasStorageName: args.artifact.name,
+      vasStorageId: resolved.storageId,
+      vasVersionId: resolved.versionId,
+      archiveUrl,
+      manifestUrl,
+    };
+  });
 }
 
 function mergeStorageEntries(args: {
@@ -734,8 +739,7 @@ function mergeStorageEntries(args: {
   ];
 }
 
-export async function prepareAgentRunStorageManifest(args: {
-  readonly get: ComputedGetter;
+export function prepareAgentRunStorageManifest(args: {
   readonly db: Db;
   readonly content: AgentComposeContent;
   readonly vars: Record<string, string> | undefined;
@@ -746,94 +750,100 @@ export async function prepareAgentRunStorageManifest(args: {
   readonly volumeVersionOverrides: Record<string, string> | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly framework: SupportedFramework;
-}): Promise<StorageManifest> {
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  const artifacts = dedupArtifacts(args.artifacts);
-  const composeVolumes = resolveComposeVolumes({
-    content: args.content,
-    vars: args.vars,
-    volumeVersionOverrides: args.volumeVersionOverrides,
-    framework: args.framework,
-  });
+}): Computed<Promise<StorageManifest>> {
+  return computed(async (get): Promise<StorageManifest> => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const artifacts = dedupArtifacts(args.artifacts);
+    const composeVolumes = resolveComposeVolumes({
+      content: args.content,
+      vars: args.vars,
+      volumeVersionOverrides: args.volumeVersionOverrides,
+      framework: args.framework,
+    });
 
-  await Promise.all(
-    artifacts.map((artifact) => {
-      return ensureArtifactStorage({
-        get: args.get,
-        db: args.db,
-        orgId: args.runtimeOrgId,
-        userId: args.userId,
-        name: artifact.name,
-        bucket,
-      });
-    }),
-  );
-
-  // Resolve every volume/artifact from one pre-fetched snapshot instead of a
-  // per-item `SELECT storages` round-trip. Loaded after ensureArtifactStorage
-  // so freshly created artifact rows are included.
-  const storageIndex = await loadStorageIndex(args.db, [
-    args.agentOrgId,
-    args.runtimeOrgId,
-    SYSTEM_ORG_ID,
-  ]);
-
-  const [composeEntries, additionalEntries, artifactEntries] =
-    await Promise.all([
-      Promise.all(
-        composeVolumes.map((volume) => {
-          return buildComposeStorageEntry({
-            get: args.get,
+    await Promise.all(
+      artifacts.map((artifact) => {
+        return get(
+          ensureArtifactStorage({
             db: args.db,
-            index: storageIndex,
-            bucket,
-            agentOrgId: args.agentOrgId,
-            volume,
-          });
-        }),
-      ),
-      Promise.all(
-        (args.additionalVolumes ?? []).map((volume) => {
-          return buildAdditionalStorageEntry({
-            get: args.get,
-            db: args.db,
-            index: storageIndex,
-            bucket,
-            runtimeOrgId: args.runtimeOrgId,
-            volume,
-          });
-        }),
-      ),
-      Promise.all(
-        artifacts.map((artifact) => {
-          return buildArtifactEntry({
-            get: args.get,
-            db: args.db,
-            index: storageIndex,
-            bucket,
-            runtimeOrgId: args.runtimeOrgId,
+            orgId: args.runtimeOrgId,
             userId: args.userId,
-            artifact,
-          });
-        }),
-      ),
+            name: artifact.name,
+            bucket,
+          }),
+        );
+      }),
+    );
+
+    // Resolve every volume/artifact from one pre-fetched snapshot instead of a
+    // per-item `SELECT storages` round-trip. Loaded after ensureArtifactStorage
+    // so freshly created artifact rows are included.
+    const storageIndex = await loadStorageIndex(args.db, [
+      args.agentOrgId,
+      args.runtimeOrgId,
+      SYSTEM_ORG_ID,
     ]);
 
-  return {
-    storages: [
-      ...mergeStorageEntries({
-        composeEntries: composeEntries.filter(
-          (entry): entry is ManifestStorage => {
-            return entry !== null;
-          },
+    const [composeEntries, additionalEntries, artifactEntries] =
+      await Promise.all([
+        Promise.all(
+          composeVolumes.map((volume) => {
+            return get(
+              buildComposeStorageEntry({
+                db: args.db,
+                index: storageIndex,
+                bucket,
+                agentOrgId: args.agentOrgId,
+                volume,
+              }),
+            );
+          }),
         ),
-        additionalEntries: additionalEntries.filter(
-          (entry): entry is ManifestStorage => {
-            return entry !== null;
-          },
+        Promise.all(
+          (args.additionalVolumes ?? []).map((volume) => {
+            return get(
+              buildAdditionalStorageEntry({
+                db: args.db,
+                index: storageIndex,
+                bucket,
+                runtimeOrgId: args.runtimeOrgId,
+                volume,
+              }),
+            );
+          }),
         ),
-      }),
-    ],
-    artifacts: artifactEntries,
-  };
+        Promise.all(
+          artifacts.map((artifact) => {
+            return get(
+              buildArtifactEntry({
+                db: args.db,
+                index: storageIndex,
+                bucket,
+                runtimeOrgId: args.runtimeOrgId,
+                userId: args.userId,
+                artifact,
+              }),
+            );
+          }),
+        ),
+      ]);
+
+    return {
+      storages: [
+        ...mergeStorageEntries({
+          composeEntries: composeEntries.filter(
+            (entry): entry is ManifestStorage => {
+              return entry !== null;
+            },
+          ),
+          additionalEntries: additionalEntries.filter(
+            (entry): entry is ManifestStorage => {
+              return entry !== null;
+            },
+          ),
+        }),
+      ],
+      artifacts: artifactEntries,
+    };
+  });
 }

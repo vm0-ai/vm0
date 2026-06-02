@@ -143,7 +143,9 @@ class TestLogProxyEntry:
             )
 
         log.warn.assert_called_once()
-        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write proxy log:" in warning
+        assert "FileNotFoundError" in warning
 
     def test_directory_path_warns_and_does_not_raise(self, tmp_path):
         log = MagicMock()
@@ -152,7 +154,9 @@ class TestLogProxyEntry:
             logging_utils.log_proxy_entry(str(tmp_path), "warn", "message")
 
         log.warn.assert_called_once()
-        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write proxy log:" in warning
+        assert "IsADirectoryError" in warning
 
     def test_non_serializable_extra_warns_without_creating_file(self, tmp_path):
         proxy_path = tmp_path / "proxy-test.jsonl"
@@ -164,7 +168,8 @@ class TestLogProxyEntry:
             )
 
         log.warn.assert_called_once()
-        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to encode proxy log: TypeError:" in warning
         assert not proxy_path.exists()
 
     def test_extra_cannot_override_reserved_fields(self, tmp_path):

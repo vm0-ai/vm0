@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token";
+
 export const linear = {
   linear: {
     label: "Linear",
@@ -10,15 +12,23 @@ export const linear = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Linear to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
+          clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["LINEAR_ACCESS_TOKEN", "LINEAR_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "LINEAR_ACCESS_TOKEN",
+            refreshToken: "LINEAR_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.linear.app/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "LINEAR_OAUTH_CLIENT_ID",
-            clientSecretEnv: "LINEAR_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "read",
             "write",
@@ -29,8 +39,7 @@ export const linear = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "LINEAR_ACCESS_TOKEN",
-          refreshToken: "LINEAR_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
           },

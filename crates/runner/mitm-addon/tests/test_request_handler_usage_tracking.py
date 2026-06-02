@@ -1,16 +1,85 @@
 """Billable usage tracking lifecycle tests for the request hook."""
 
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy.flow import Error
 
 import auth
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
 from tests.pending_helpers import assert_pending
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
+
+_ForwardResponse = tuple[int, bytes, dict[str, str]]
+
+
+class _ForwardProbe:
+    def __init__(
+        self,
+        *,
+        response: _ForwardResponse | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        if response is None and error is None:
+            raise ValueError("forward probe requires a response or error")
+        if response is not None and error is not None:
+            raise ValueError("forward probe accepts only one response or error")
+
+        self.started: asyncio.Event = asyncio.Event()
+        self.release: asyncio.Event = asyncio.Event()
+        self.calls = 0
+        self._response: _ForwardResponse = (
+            response if response is not None else (500, b"", dict[str, str]())
+        )
+        self._error: Exception | None = error
+
+    async def __call__(self, *_args: object) -> _ForwardResponse:
+        self.calls += 1
+        self.started.set()
+        await self.release.wait()
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+async def _wait_for_forward_start(probe: _ForwardProbe, request_task: asyncio.Task[None]) -> None:
+    started_task = asyncio.create_task(probe.started.wait())
+    try:
+        done, _ = await asyncio.wait(
+            (started_task, request_task),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if started_task in done:
+            return
+
+        try:
+            await request_task
+        except asyncio.CancelledError as e:
+            raise AssertionError("request finished before forward_request started") from e
+        except Exception as e:
+            raise AssertionError("request finished before forward_request started") from e
+        raise AssertionError("request finished before forward_request started")
+    finally:
+        if not started_task.done():
+            started_task.cancel()
+            await asyncio.gather(started_task, return_exceptions=True)
+
+
+async def _release_forward_probe(probe: _ForwardProbe, request_task: asyncio.Task[None]) -> None:
+    probe.release.set()
+    if not request_task.done():
+        await asyncio.gather(request_task, return_exceptions=True)
+
+
+async def _await_request_task(request_task: asyncio.Task[None]) -> None:
+    result = (await asyncio.gather(request_task, return_exceptions=True))[0]
+    if isinstance(result, BaseException):
+        raise result
 
 
 @pytest.fixture
@@ -68,6 +137,69 @@ async def test_billable_flow_is_tracked_before_responseheaders(
     assert_pending(
         usage_pending_path,
         flows=1,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
+
+
+async def test_billable_flow_error_releases_tracking_after_request(
+    tmp_path,
+    usage_pending_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+):
+    """Connection errors release billable tracking created by request()."""
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="x",
+            api_entry={
+                "base": "https://api.x.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [{"name": "read-posts", "rules": ["GET /2/users/by"]}],
+            },
+            network_policy={
+                "allow": ["read-posts"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            billable_firewalls=["x"],
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False, client_ip="10.200.0.5", host="api.x.com", path="/2/users/by"
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+        assert flow.metadata["_usage_flow_tracked"] is True
+        usage.write_pending_snapshot(flush_request_id="request-1")
+        assert_pending(
+            usage_pending_path,
+            flows=1,
+            buffered=0,
+            reports=0,
+            flush_request_id="request-1",
+        )
+
+        flow.error = Error("connection reset")
+        mitm_addon.error(flow)
+
+    assert "_usage_flow_tracked" not in flow.metadata
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(
+        usage_pending_path,
+        flows=0,
         buffered=0,
         reports=0,
         flush_request_id="request-1",
@@ -155,7 +287,7 @@ async def test_unexpected_request_exception_releases_tracking(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.id not in mitm_addon._request_start_times
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert "_usage_flow_tracked" not in flow.metadata
     usage.write_pending_snapshot(flush_request_id="request-1")
     assert_pending(
@@ -328,18 +460,9 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
         "refreshed_secrets": [],
         "cache_hit": False,
     }
-
-    async def forward_request(*_args):
-        assert flow.metadata["_usage_flow_tracked"] is True
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(
-            usage_pending_path,
-            flows=1,
-            buffered=0,
-            reports=0,
-            flush_request_id="request-1",
-        )
-        return (200, b'{"delivered":true}', {"Content-Type": "application/json"})
+    probe = _ForwardProbe(
+        response=(200, b'{"delivered":true}', {"Content-Type": "application/json"})
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -351,10 +474,29 @@ async def test_billable_auth_url_rewrite_flow_drains_after_response(
         patch.object(
             auth,
             "forward_request",
-            AsyncMock(side_effect=forward_request),
+            probe,
         ),
     ):
-        await mitm_addon.request(flow)
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await _wait_for_forward_start(probe, request_task)
+
+            assert probe.calls == 1
+            assert flow.metadata["_usage_flow_tracked"] is True
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                usage_pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+
+            probe.release.set()
+            await _await_request_task(request_task)
+        finally:
+            if not request_task.done():
+                await _release_forward_probe(probe, request_task)
 
         assert flow.response is not None
         assert flow.metadata["auth_url_rewrite"] is True
@@ -423,18 +565,7 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
         "refreshed_secrets": [],
         "cache_hit": False,
     }
-
-    async def fail_forward_request(*_args):
-        assert flow.metadata["_usage_flow_tracked"] is True
-        usage.write_pending_snapshot(flush_request_id="request-1")
-        assert_pending(
-            usage_pending_path,
-            flows=1,
-            buffered=0,
-            reports=0,
-            flush_request_id="request-1",
-        )
-        raise RuntimeError("upstream unavailable")
+    probe = _ForwardProbe(error=RuntimeError("upstream unavailable"))
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -446,10 +577,29 @@ async def test_billable_auth_url_rewrite_forward_failure_releases_tracking(
         patch.object(
             auth,
             "forward_request",
-            AsyncMock(side_effect=fail_forward_request),
+            probe,
         ),
     ):
-        await mitm_addon.request(flow)
+        request_task = asyncio.create_task(mitm_addon.request(flow))
+        try:
+            await _wait_for_forward_start(probe, request_task)
+
+            assert probe.calls == 1
+            assert flow.metadata["_usage_flow_tracked"] is True
+            usage.write_pending_snapshot(flush_request_id="request-1")
+            assert_pending(
+                usage_pending_path,
+                flows=1,
+                buffered=0,
+                reports=0,
+                flush_request_id="request-1",
+            )
+
+            probe.release.set()
+            await _await_request_task(request_task)
+        finally:
+            if not request_task.done():
+                await _release_forward_probe(probe, request_task)
 
     assert flow.response is not None
     assert flow.response.status_code == 502

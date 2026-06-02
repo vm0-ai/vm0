@@ -13,8 +13,10 @@ import { secrets } from "@vm0/db/schema/secret";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { decryptSecretValue } from "../../services/crypto.utils";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
+import {
+  decryptSecretForTests,
+  encryptSecretForTests,
+} from "./helpers/encrypt-secret";
 import {
   deleteOrgModelProviders$,
   seedOrgModelProvider$,
@@ -111,7 +113,7 @@ async function findOrgModelProviderSecret(
     )
     .limit(1);
 
-  return row ? decryptSecretValue(row.encryptedValue) : undefined;
+  return row ? decryptSecretForTests(row.encryptedValue) : undefined;
 }
 
 async function insertOrgModelProviderSecret(

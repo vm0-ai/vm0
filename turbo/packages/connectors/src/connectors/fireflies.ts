@@ -11,6 +11,10 @@ export const fireflies = {
         label: "API Token",
         helpText:
           "1. Log in to [Fireflies](https://fireflies.ai)\n2. Navigate to the **Integrations** section\n3. Click on **Fireflies API**\n4. Copy your API key and store it securely",
+        storage: {
+          secrets: ["FIREFLIES_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

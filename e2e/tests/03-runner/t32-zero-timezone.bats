@@ -43,7 +43,6 @@ agents:
   ${AGENT_NAME}:
     description: "E2E timezone test agent"
     framework: claude-code
-    working_dir: /home/user/workspace
     volumes:
       - claude-files:/home/user/.claude
 
@@ -115,7 +114,6 @@ agents:
   ${OVERRIDE_AGENT_NAME}:
     description: "Agent with explicit TZ"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TZ: "Europe/London"
     volumes:

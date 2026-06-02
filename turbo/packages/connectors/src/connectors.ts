@@ -115,6 +115,7 @@ import { greenhouse } from "./connectors/greenhouse";
 import { groq } from "./connectors/groq";
 import { helicone } from "./connectors/helicone";
 import { heygen } from "./connectors/heygen";
+import { hitem3d } from "./connectors/hitem3d";
 import { htmlcsstoimage } from "./connectors/htmlcsstoimage";
 import { honcho } from "./connectors/honcho";
 import { huggingFace } from "./connectors/hugging-face";
@@ -229,6 +230,7 @@ import { testrail } from "./connectors/testrail";
 import { ticketmaster } from "./connectors/ticketmaster";
 import { tldv } from "./connectors/tldv";
 import { together } from "./connectors/together";
+import { tripo } from "./connectors/tripo";
 import { twenty } from "./connectors/twenty";
 import { twilio } from "./connectors/twilio";
 import { typeform } from "./connectors/typeform";
@@ -259,7 +261,7 @@ export interface ConnectorManualGrantFieldConfig {
   storage?: "secret" | "variable";
 }
 
-export type ConnectorOAuthClientConfig =
+export type ConnectorAuthClientConfig =
   | {
       readonly clientRegistration: "static";
       readonly clientType: "confidential";
@@ -287,33 +289,33 @@ export type ConnectorOAuthClientConfig =
       readonly clientType: "public";
     };
 
-export type StaticConfidentialConnectorOAuthClientConfig = Extract<
-  ConnectorOAuthClientConfig,
+export type StaticConfidentialConnectorAuthClientConfig = Extract<
+  ConnectorAuthClientConfig,
   {
     readonly clientRegistration: "static";
     readonly clientType: "confidential";
   }
 >;
 
-export type StaticPublicConnectorOAuthClientConfig = Extract<
-  ConnectorOAuthClientConfig,
+export type StaticPublicConnectorAuthClientConfig = Extract<
+  ConnectorAuthClientConfig,
   {
     readonly clientRegistration: "static";
     readonly clientType: "public";
   }
 >;
 
-export type DynamicPublicConnectorOAuthClientConfig = Extract<
-  ConnectorOAuthClientConfig,
+export type DynamicPublicConnectorAuthClientConfig = Extract<
+  ConnectorAuthClientConfig,
   {
     readonly clientRegistration: "dynamic";
     readonly clientType: "public";
   }
 >;
 
-export type PublicConnectorOAuthClientConfig =
-  | StaticPublicConnectorOAuthClientConfig
-  | DynamicPublicConnectorOAuthClientConfig;
+export type PublicConnectorAuthClientConfig =
+  | StaticPublicConnectorAuthClientConfig
+  | DynamicPublicConnectorAuthClientConfig;
 
 export type ConnectorGrantKind =
   | "manual"
@@ -329,7 +331,6 @@ export interface ConnectorManualGrantConfig {
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
   readonly tokenUrl: string;
-  readonly client: ConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 
@@ -337,7 +338,6 @@ export interface ConnectorDeviceAuthGrantConfig {
   readonly kind: "device-auth";
   readonly deviceAuthUrl: string;
   readonly tokenUrl: string;
-  readonly client: PublicConnectorOAuthClientConfig;
   readonly scopes: string[];
 }
 
@@ -355,16 +355,40 @@ export type ConnectorAccessKind = "static" | "refresh-token" | "none";
 
 export type ConnectorEnvBindings = Record<string, string>;
 
-export interface ConnectorStaticAccessConfig {
-  readonly kind: "static";
-  readonly envBindings: ConnectorEnvBindings;
+export const CONNECTOR_PLATFORM_SECRET_NAMES = [
+  "GOOGLE_ADS_DEVELOPER_TOKEN",
+] as const;
+export type ConnectorPlatformSecretName =
+  (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
+
+export interface ConnectorStorageConfig {
+  readonly secrets: readonly string[];
+  readonly variables: readonly string[];
+  /** Role mapping for provider-written or refreshable connector secrets. */
+  readonly secretRoles?: ConnectorSecretRolesConfig;
 }
 
-export interface ConnectorRefreshTokenAccessConfig {
-  readonly kind: "refresh-token";
-  readonly accessToken: string;
-  readonly refreshToken: string;
+export interface ConnectorSecretRolesConfig {
+  readonly accessToken?: string;
+  readonly refreshToken?: string;
+}
+
+interface ConnectorEnvBindingAccessConfigBase {
   readonly envBindings: ConnectorEnvBindings;
+  /**
+   * `$secrets.NAME` backing sources read from platform env instead of connector
+   * DB storage. Runtime aliases must still be declared in `envBindings`.
+   */
+  readonly platformSecrets?: readonly ConnectorPlatformSecretName[];
+}
+
+export interface ConnectorStaticAccessConfig extends ConnectorEnvBindingAccessConfigBase {
+  readonly kind: "static";
+}
+
+export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
+  readonly kind: "refresh-token";
+  readonly tokenUrl: string;
 }
 
 export interface ConnectorNoAccessConfig {
@@ -386,28 +410,54 @@ export type ConnectorRevokeConfig =
       readonly kind: "token-revoke";
     };
 
-/**
- * Auth method configuration for user-selectable connector connection flows.
- */
-export interface ConnectorAuthMethodConfig {
+interface ConnectorAuthMethodConfigBase {
   label: string;
   helpText?: string;
   /** When set, this auth method is only available while the feature is enabled. */
   featureFlag?: FeatureSwitchKey;
   /** When false, feature-gated UI surfaces should not add an experimental label. */
   showExperimentalLabel?: boolean;
-  readonly grant: ConnectorGrantConfig;
-  readonly access: ConnectorAccessConfig;
-  readonly revoke: ConnectorRevokeConfig;
+  /**
+   * Connector-scoped storage names owned by this auth method.
+   *
+   * These lists are write/delete allowlists, not guarantees that rows currently
+   * exist in the DB.
+   */
+  storage: ConnectorStorageConfig;
 }
+
+/**
+ * Auth method configuration for user-selectable connector connection flows.
+ */
+export type ConnectorAuthMethodConfig =
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client: ConnectorAuthClientConfig;
+      readonly grant: ConnectorAuthCodeGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client: PublicConnectorAuthClientConfig;
+      readonly grant: ConnectorDeviceAuthGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    })
+  | (ConnectorAuthMethodConfigBase & {
+      readonly client?: ConnectorAuthClientConfig;
+      readonly grant: ConnectorManualGrantConfig | ConnectorManagedGrantConfig;
+      readonly access: ConnectorAccessConfig;
+      readonly revoke: ConnectorRevokeConfig;
+    });
 
 /**
  * Connector auth method ids exposed as configured connection flows.
  *
- * These values describe user-selectable connection choices. Behavior must be
- * derived from the auth method lifecycle config, not from the id itself.
+ * These values are connector registry keys, not lifecycle categories. Behavior
+ * must be derived from the selected auth method lifecycle config.
  */
-export type ConnectorAuthMethodId = "oauth" | "api-token" | "api";
+export const CONNECTOR_AUTH_METHOD_IDS = ["oauth", "api-token", "api"] as const;
+export const connectorAuthMethodIdSchema = z.enum(CONNECTOR_AUTH_METHOD_IDS);
+export type ConnectorAuthMethodId = z.infer<typeof connectorAuthMethodIdSchema>;
 
 type AssertNever<T extends never> = T;
 
@@ -548,6 +598,180 @@ export type ConnectorConfig = ConnectorConfigBase & {
   readonly authMethods: ConnectorAuthMethods;
 };
 
+type ConnectorStorageSecretName<Storage> = Storage extends {
+  readonly secrets: readonly (infer Name)[];
+}
+  ? Extract<Name, string>
+  : never;
+
+type ConnectorStorageVariableName<Storage> = Storage extends {
+  readonly variables: readonly (infer Name)[];
+}
+  ? Extract<Name, string>
+  : never;
+
+type ConnectorAccessPlatformSecretName<Access> = Access extends {
+  readonly platformSecrets: readonly (infer Name)[];
+}
+  ? Extract<Name, ConnectorPlatformSecretName>
+  : never;
+
+type ConnectorRuntimeValueRef<Storage, Access> =
+  | `$secrets.${ConnectorStorageSecretName<Storage> | ConnectorAccessPlatformSecretName<Access>}`
+  | `$vars.${ConnectorStorageVariableName<Storage>}`;
+
+type ValidatedConnectorEnvBindings<EnvBindings, Storage, Access> = {
+  readonly [EnvName in keyof EnvBindings]: EnvBindings[EnvName] extends ConnectorRuntimeValueRef<
+    Storage,
+    Access
+  >
+    ? EnvBindings[EnvName]
+    : ConnectorRuntimeValueRef<Storage, Access>;
+};
+
+type ValidatedConnectorAccessConfig<Access, Storage> = Access extends {
+  readonly envBindings: infer EnvBindings;
+}
+  ? Access & {
+      readonly envBindings: ValidatedConnectorEnvBindings<
+        EnvBindings,
+        Storage,
+        Access
+      >;
+    }
+  : Access;
+
+type ValidatedConnectorManualGrantField<
+  Field,
+  FieldName extends string,
+  Storage,
+> =
+  FieldName extends ConnectorStorageSecretName<Storage>
+    ? Field extends { readonly storage: "variable" }
+      ? never
+      : Field
+    : FieldName extends ConnectorStorageVariableName<Storage>
+      ? Field extends { readonly storage: "variable" }
+        ? Field
+        : never
+      : never;
+
+type ValidatedConnectorGrantConfig<Grant, Storage> = Grant extends {
+  readonly kind: "manual";
+  readonly fields: infer Fields;
+}
+  ? Grant & {
+      readonly fields: {
+        readonly [FieldName in keyof Fields]: FieldName extends string
+          ? ValidatedConnectorManualGrantField<
+              Fields[FieldName],
+              FieldName,
+              Storage
+            >
+          : never;
+      };
+    }
+  : Grant;
+
+type ValidatedConnectorSecretName<Name, Storage> =
+  Name extends ConnectorStorageSecretName<Storage>
+    ? Name
+    : ConnectorStorageSecretName<Storage>;
+
+type ValidatedConnectorSecretRoles<Bindings, Storage> = Bindings & {
+  readonly accessToken?: Bindings extends {
+    readonly accessToken: infer Name;
+  }
+    ? ValidatedConnectorSecretName<Name, Storage>
+    : ConnectorStorageSecretName<Storage>;
+  readonly refreshToken?: Bindings extends {
+    readonly refreshToken: infer Name;
+  }
+    ? ValidatedConnectorSecretName<Name, Storage>
+    : ConnectorStorageSecretName<Storage>;
+};
+
+type ConnectorSecretRolesFromStorage<Storage> = Storage extends {
+  readonly secretRoles: infer Bindings;
+}
+  ? Bindings
+  : Record<string, never>;
+
+type ConnectorRefreshSecretRoles<Storage> = ValidatedConnectorSecretRoles<
+  ConnectorSecretRolesFromStorage<Storage>,
+  Storage
+> & {
+  readonly accessToken: ConnectorStorageSecretName<Storage>;
+  readonly refreshToken: ConnectorStorageSecretName<Storage>;
+};
+
+type ConnectorStaticProviderSecretRoles<Storage> =
+  ValidatedConnectorSecretRoles<
+    ConnectorSecretRolesFromStorage<Storage>,
+    Storage
+  > & {
+    readonly accessToken: ConnectorStorageSecretName<Storage>;
+  };
+
+type ValidatedConnectorStorageSecretRolesProperty<Method, Storage> =
+  Method extends {
+    readonly access: { readonly kind: "refresh-token" };
+  }
+    ? {
+        readonly secretRoles: ConnectorRefreshSecretRoles<Storage>;
+      }
+    : Method extends {
+          readonly grant: { readonly kind: "auth-code" | "device-auth" };
+          readonly access: { readonly kind: "static" };
+        }
+      ? {
+          readonly secretRoles: ConnectorStaticProviderSecretRoles<Storage>;
+        }
+      : Storage extends { readonly secretRoles: infer Bindings }
+        ? {
+            readonly secretRoles: ValidatedConnectorSecretRoles<
+              Bindings,
+              Storage
+            >;
+          }
+        : { readonly secretRoles?: ConnectorSecretRolesConfig };
+
+type ValidatedConnectorAuthMethod<Method> = Method extends {
+  readonly storage: infer Storage;
+  readonly grant: infer Grant;
+  readonly access: infer Access;
+}
+  ? Method & {
+      readonly storage: Storage &
+        ConnectorStorageConfig &
+        ValidatedConnectorStorageSecretRolesProperty<Method, Storage>;
+      readonly grant: ValidatedConnectorGrantConfig<Grant, Storage>;
+      readonly access: ValidatedConnectorAccessConfig<Access, Storage>;
+    }
+  : never;
+
+type ValidatedConnectorConfig<Config> = Config extends {
+  readonly authMethods: infer AuthMethods;
+}
+  ? Config & {
+      readonly authMethods: {
+        readonly [Method in keyof AuthMethods]: ValidatedConnectorAuthMethod<
+          AuthMethods[Method]
+        >;
+      };
+    }
+  : never;
+
+type ValidatedConnectorRegistry<Configs> = {
+  readonly [Type in keyof Configs]: ValidatedConnectorConfig<Configs[Type]>;
+};
+
+function defineConnectors<
+  const Configs extends Record<string, ConnectorConfig>,
+>(configs: Configs & ValidatedConnectorRegistry<Configs>): Configs {
+  return configs;
+}
+
 /**
  * Connector type configuration
  * Maps type to display info, auth methods, and runtime env bindings.
@@ -556,7 +780,7 @@ export type ConnectorConfig = ConnectorConfigBase & {
  * Spreading here keeps the ConnectorType union literal-keyed so the
  * schema, utility getters, and autocomplete all continue to work.
  */
-const CONNECTOR_TYPES_DEF = {
+const CONNECTOR_TYPES_DEF = defineConnectors({
   ...github,
   ...gmail,
   ...notion,
@@ -672,6 +896,7 @@ const CONNECTOR_TYPES_DEF = {
   ...groq,
   ...helicone,
   ...heygen,
+  ...hitem3d,
   ...htmlcsstoimage,
   ...honcho,
   ...huggingFace,
@@ -786,6 +1011,7 @@ const CONNECTOR_TYPES_DEF = {
   ...ticketmaster,
   ...tldv,
   ...together,
+  ...tripo,
   ...twenty,
   ...twilio,
   ...typeform,
@@ -804,7 +1030,7 @@ const CONNECTOR_TYPES_DEF = {
   ...zep,
   ...zeptomail,
   ...zoom,
-} as const satisfies Record<string, ConnectorConfig>;
+} as const);
 
 export type ConnectorType = Extract<keyof typeof CONNECTOR_TYPES_DEF, string>;
 type ConnectorAuthMethodsOf<Type extends ConnectorType> =
@@ -812,103 +1038,55 @@ type ConnectorAuthMethodsOf<Type extends ConnectorType> =
 
 export type ConnectorAuthMethodIds<Type extends ConnectorType> = Extract<
   keyof ConnectorAuthMethodsOf<Type>,
-  string
+  ConnectorAuthMethodId
 >;
-type ConnectorAuthMethodKeys<Type extends ConnectorType> =
-  ConnectorAuthMethodIds<Type> & keyof ConnectorAuthMethodGrantKindById;
+export type ConnectorAuthMethodClientConfig<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = "client" extends keyof ConnectorAuthMethodsOf<Type>[Method]
+  ? ConnectorAuthMethodsOf<Type>[Method]["client"] extends ConnectorAuthClientConfig
+    ? ConnectorAuthMethodsOf<Type>[Method]["client"]
+    : never
+  : never;
 
-type ConnectorAuthMethodGrantKindById = {
-  readonly oauth: "auth-code" | "device-auth";
-  readonly "api-token": "manual";
-  readonly api: "managed";
-};
+export type ConnectorAuthMethodIdsByGrantKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorGrantKind,
+> = Type extends ConnectorType
+  ? {
+      [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+        readonly grant: { readonly kind: Kind };
+      }
+        ? Method
+        : never;
+    }[ConnectorAuthMethodIds<Type>]
+  : never;
 
-type ConnectorAuthMethodAccessKindById = {
-  readonly oauth: "refresh-token" | "static";
-  readonly "api-token": "static";
-  readonly api: "none";
-};
+export type ConnectorAuthMethodIdsByAccessKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorAccessKind,
+> = Type extends ConnectorType
+  ? {
+      [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+        readonly access: { readonly kind: Kind };
+      }
+        ? Method
+        : never;
+    }[ConnectorAuthMethodIds<Type>]
+  : never;
 
-type ConnectorAuthMethodRevokeKindById = {
-  readonly oauth: "none" | "token-revoke";
-  readonly "api-token": "none";
-  readonly api: "none";
-};
-
-export type ConnectorAuthMethodKindMapsCoverUnion = AssertNever<
-  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodGrantKindById>
-  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodAccessKindById>
-  | Exclude<ConnectorAuthMethodId, keyof ConnectorAuthMethodRevokeKindById>
->;
-
-export type ConnectorAuthMethodKindMapsMatchConfigUnions = AssertNever<
-  | Exclude<
-      ConnectorAuthMethodGrantKindById[keyof ConnectorAuthMethodGrantKindById],
-      ConnectorGrantKind
-    >
-  | Exclude<
-      ConnectorGrantKind,
-      ConnectorAuthMethodGrantKindById[keyof ConnectorAuthMethodGrantKindById]
-    >
-  | Exclude<
-      ConnectorAuthMethodAccessKindById[keyof ConnectorAuthMethodAccessKindById],
-      ConnectorAccessKind
-    >
-  | Exclude<
-      ConnectorAccessKind,
-      ConnectorAuthMethodAccessKindById[keyof ConnectorAuthMethodAccessKindById]
-    >
-  | Exclude<
-      ConnectorAuthMethodRevokeKindById[keyof ConnectorAuthMethodRevokeKindById],
-      ConnectorRevokeKind
-    >
-  | Exclude<
-      ConnectorRevokeKind,
-      ConnectorAuthMethodRevokeKindById[keyof ConnectorAuthMethodRevokeKindById]
-    >
->;
-
-type InvalidAuthMethodGrantKindConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly grant: {
-        readonly kind: ConnectorAuthMethodGrantKindById[Method];
-      };
-    }
-      ? never
-      : Type;
-  }[ConnectorAuthMethodKeys<Type>];
-}[ConnectorType];
-export type ConnectorAuthMethodGrantKindsMatchKeys =
-  AssertNever<InvalidAuthMethodGrantKindConnectorType>;
-
-type InvalidAuthMethodAccessKindConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly access: {
-        readonly kind: ConnectorAuthMethodAccessKindById[Method];
-      };
-    }
-      ? never
-      : Type;
-  }[ConnectorAuthMethodKeys<Type>];
-}[ConnectorType];
-export type ConnectorAuthMethodAccessKindsMatchKeys =
-  AssertNever<InvalidAuthMethodAccessKindConnectorType>;
-
-type InvalidAuthMethodRevokeKindConnectorType = {
-  [Type in ConnectorType]: {
-    [Method in ConnectorAuthMethodKeys<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
-      readonly revoke: {
-        readonly kind: ConnectorAuthMethodRevokeKindById[Method];
-      };
-    }
-      ? never
-      : Type;
-  }[ConnectorAuthMethodKeys<Type>];
-}[ConnectorType];
-export type ConnectorAuthMethodRevokeKindsMatchKeys =
-  AssertNever<InvalidAuthMethodRevokeKindConnectorType>;
+export type ConnectorAuthMethodIdsByRevokeKind<
+  Type extends ConnectorType,
+  Kind extends ConnectorRevokeKind,
+> = Type extends ConnectorType
+  ? {
+      [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+        readonly revoke: { readonly kind: Kind };
+      }
+        ? Method
+        : never;
+    }[ConnectorAuthMethodIds<Type>]
+  : never;
 
 export type ConnectorTypesByGrantKind<Kind extends ConnectorGrantKind> = {
   [Type in ConnectorType]: {
@@ -940,12 +1118,38 @@ export type ConnectorTypesByRevokeKind<Kind extends ConnectorRevokeKind> = {
   }[keyof ConnectorAuthMethodsOf<Type>];
 }[ConnectorType];
 
-export type OAuthGrantConnectorType = ConnectorTypesByGrantKind<
+export type ConnectorAuthProviderType = ConnectorTypesByGrantKind<
   "auth-code" | "device-auth"
 >;
 export type AuthCodeGrantConnectorType = ConnectorTypesByGrantKind<"auth-code">;
 export type DeviceAuthGrantConnectorType =
   ConnectorTypesByGrantKind<"device-auth">;
+export type ConnectorAuthCodeGrantAuthMethodId<
+  Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<Type, "auth-code">;
+export type ConnectorDeviceAuthGrantAuthMethodId<
+  Type extends DeviceAuthGrantConnectorType = DeviceAuthGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<Type, "device-auth">;
+export type RefreshTokenAccessConnectorType =
+  ConnectorTypesByAccessKind<"refresh-token">;
+export type TokenRevokeConnectorType =
+  ConnectorTypesByRevokeKind<"token-revoke">;
+type TokenRevokeConnectorTypeWithNonConfidentialClient = {
+  [Type in TokenRevokeConnectorType]: {
+    [Method in ConnectorAuthMethodIds<Type>]: ConnectorAuthMethodsOf<Type>[Method] extends {
+      readonly revoke: { readonly kind: "token-revoke" };
+      readonly client: StaticConfidentialConnectorAuthClientConfig;
+    }
+      ? never
+      : ConnectorAuthMethodsOf<Type>[Method] extends {
+            readonly revoke: { readonly kind: "token-revoke" };
+          }
+        ? Type
+        : never;
+  }[ConnectorAuthMethodIds<Type>];
+}[TokenRevokeConnectorType];
+export type TokenRevokeConnectorAuthMethodsUseConfidentialClients =
+  AssertNever<TokenRevokeConnectorTypeWithNonConfidentialClient>;
 
 export type ConnectorInvalidDefaultAuthMethodType<
   Configs extends Record<string, ConnectorConfig>,

@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://auth.monday.com/oauth2/token";
+
 export const monday = {
   monday: {
     label: "Monday.com",
@@ -10,15 +12,23 @@ export const monday = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Monday.com to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
+          clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["MONDAY_ACCESS_TOKEN", "MONDAY_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "MONDAY_ACCESS_TOKEN",
+            refreshToken: "MONDAY_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://auth.monday.com/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
-            clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "me:read",
             "boards:read",
@@ -38,8 +48,7 @@ export const monday = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "MONDAY_ACCESS_TOKEN",
-          refreshToken: "MONDAY_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },

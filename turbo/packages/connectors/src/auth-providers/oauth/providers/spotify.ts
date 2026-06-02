@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const SPOTIFY_AUTHORIZATION_URL = "https://accounts.spotify.com/authorize";
@@ -31,11 +31,11 @@ interface SpotifyRefreshResult {
  * Build Spotify OAuth authorization URL.
  */
 export function buildSpotifyAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("spotify");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,12 +52,12 @@ export function buildSpotifyAuthorizationUrl(
  * Spotify requires Basic auth header (base64 of clientId:clientSecret).
  */
 export async function exchangeSpotifyCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<SpotifyTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("spotify");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
@@ -114,16 +114,18 @@ export async function exchangeSpotifyCode(
  * Uses Basic auth header (base64 of clientId:clientSecret).
  */
 export async function refreshSpotifyToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<SpotifyRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("spotify");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

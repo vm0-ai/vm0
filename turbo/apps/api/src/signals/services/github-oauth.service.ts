@@ -8,14 +8,16 @@ import {
 
 import { and, eq } from "drizzle-orm";
 import {
-  buildConnectorOAuthAuthUrl,
+  buildConnectorAuthCodeAuthorizationUrl,
   type AuthUrlResult,
 } from "@vm0/connectors/auth-providers";
 import {
-  getConnectorOAuthClient,
-  isStaticConfidentialConnectorOAuthClient,
+  connectorAuthMethodHasGrantKind,
+  resolveConnectorAuthClientForMethod,
+  isStaticConfidentialConnectorAuthClient,
   type ConnectorEnvReader,
 } from "@vm0/connectors/connector-utils";
+import type { ConnectorAuthCodeGrantAuthMethodId } from "@vm0/connectors/connectors";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
@@ -34,6 +36,7 @@ const L = logger("GithubOAuth");
 const INSTALLATION_ID_RE = /^\d+$/;
 const MAX_GITHUB_CONNECT_AGE_SECONDS = 10 * 60;
 const GITHUB_CONNECT_OAUTH_STATE_TTL_SECONDS = 15 * 60;
+const GITHUB_OAUTH_AUTH_METHOD = "oauth";
 
 interface AppInstallation {
   readonly id: number;
@@ -55,6 +58,19 @@ interface GithubOAuthState {
   readonly orgId: string | null;
   readonly composeId: string | null;
   readonly sig: string | null;
+}
+
+export function getGithubOAuthAuthMethod(): ConnectorAuthCodeGrantAuthMethodId<"github"> {
+  if (
+    !connectorAuthMethodHasGrantKind(
+      "github",
+      GITHUB_OAUTH_AUTH_METHOD,
+      "auth-code",
+    )
+  ) {
+    throw new Error("github oauth auth method must use an auth-code grant");
+  }
+  return GITHUB_OAUTH_AUTH_METHOD;
 }
 
 function validateInstallationId(installationId: string): string {
@@ -370,17 +386,23 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   readonly readEnv: ConnectorEnvReader;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  const oauthClient = getConnectorOAuthClient("github", args.readEnv);
-  if (!oauthClient || !isStaticConfidentialConnectorOAuthClient(oauthClient)) {
+  const authMethod = getGithubOAuthAuthMethod();
+  const authClient = resolveConnectorAuthClientForMethod(
+    "github",
+    authMethod,
+    args.readEnv,
+  );
+  if (!authClient || !isStaticConfidentialConnectorAuthClient(authClient)) {
     return null;
   }
 
   const state = generateConnectorOAuthState();
   const redirectUri = `${args.origin}/api/connectors/github/callback`;
   const authResult = normalizeAuthUrlResult(
-    await buildConnectorOAuthAuthUrl({
+    await buildConnectorAuthCodeAuthorizationUrl({
       type: "github",
-      oauthClient,
+      authMethod,
+      authClient,
       redirectUri,
       state,
     }),
@@ -389,6 +411,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
   await args.db.insert(connectorOauthStates).values({
     state,
     type: "github",
+    authMethod,
     userId: args.vm0UserId,
     orgId: args.orgId,
     redirectUri,
@@ -407,7 +430,12 @@ export function parseGithubOauthState(
   state: string | undefined,
 ): GithubOAuthState | null {
   if (!state) {
-    return { vm0UserId: null, orgId: null, composeId: null, sig: null };
+    return {
+      vm0UserId: null,
+      orgId: null,
+      composeId: null,
+      sig: null,
+    };
   }
 
   const parsed = safeJsonParse(state);

@@ -11,6 +11,7 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildRedditAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -21,6 +22,7 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeRedditCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -47,7 +49,13 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshRedditToken(clientId, clientSecret, args.refreshToken);
+      return refreshRedditToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

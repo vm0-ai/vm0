@@ -6,11 +6,13 @@ import {
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
-import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import {
-  getConnectorOAuthSecretMetadata,
-  hasConnectorOAuthProvider,
-} from "@vm0/connectors/auth-providers";
+  type ConnectorAuthProviderType,
+  type ConnectorAuthMethodId,
+  type ConnectorType,
+  connectorTypeSchema,
+} from "@vm0/connectors/connectors";
+import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -35,7 +37,7 @@ import {
   testUserOrgId,
   ensureTestOrg$,
 } from "../services/cli-auth.service";
-import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import { upsertOrgMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
 import {
   isCodexAuthJsonFreePlanError,
@@ -62,6 +64,14 @@ const testCodexOauthQuery$ = queryOf(cliAuthTestCodexOauthContract.create);
 
 function stringError(status: 400 | 404, error: string) {
   return { status, body: { error } };
+}
+
+function connectorTypeHasSelectedProviderDrivenGrant(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): type is ConnectorAuthProviderType {
+  const grantKind = getConnectorAuthMethod(type, authMethod)?.grant.kind;
+  return grantKind === "auth-code" || grantKind === "device-auth";
 }
 
 function testEndpointAllowed(request: {
@@ -188,7 +198,10 @@ const createTestConnector$ = command(
       ) {
         return stringError(400, "Invalid JSON body");
       }
-      return stringError(400, "connectorName and accessToken are required");
+      return stringError(
+        400,
+        "connectorName, authMethod, and accessToken are required",
+      );
     }
 
     const connectorParsed = connectorTypeSchema.safeParse(
@@ -211,19 +224,30 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    if (!hasConnectorOAuthProvider(connectorType)) {
-      return stringError(400, `${connectorType} connector does not use OAuth`);
+    const authMethod = bodyResult.data.authMethod;
+    if (!getConnectorAuthMethod(connectorType, authMethod)) {
+      return stringError(
+        400,
+        `${connectorType} connector does not configure auth method ${authMethod}`,
+      );
     }
-    const secretMetadata = getConnectorOAuthSecretMetadata(connectorType);
-    const refreshSecretName = secretMetadata.isRefreshable
-      ? secretMetadata.refreshSecretName
-      : undefined;
+
+    if (
+      !connectorTypeHasSelectedProviderDrivenGrant(connectorType, authMethod)
+    ) {
+      return stringError(
+        400,
+        `${connectorType} connector auth method ${authMethod} does not use an auth-code or device-auth grant`,
+      );
+    }
+
     await set(
-      upsertOAuthConnector$,
+      upsertConnectorTokenConnection$,
       {
         orgId,
         userId,
         type: connectorType,
+        authMethod,
         accessToken: bodyResult.data.accessToken,
         userInfo: {
           id: `e2e-test-${connectorType}`,
@@ -232,7 +256,6 @@ const createTestConnector$ = command(
         },
         oauthScopes: [],
         refreshToken: bodyResult.data.refreshToken,
-        refreshSecretName,
         expiresIn: bodyResult.data.expiresIn,
       },
       signal,

@@ -12,6 +12,10 @@ export const minimax = {
         label: "API Key",
         helpText:
           "1. Log in to [MiniMax Platform](https://platform.minimax.io)\n2. Go to **User Center > Basic Information > Interface Key**\n3. Create a new API key\n4. Copy the key",
+        storage: {
+          secrets: ["MINIMAX_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

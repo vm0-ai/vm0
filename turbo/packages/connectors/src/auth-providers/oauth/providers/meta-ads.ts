@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const META_ADS_AUTHORIZATION_URL =
@@ -27,11 +27,11 @@ interface MetaAdsTokenResult {
  * Uses Facebook Login OAuth flow with ads_management scopes.
  */
 export function buildMetaAdsAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("meta-ads");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -48,12 +48,12 @@ export function buildMetaAdsAuthorizationUrl(
  * Meta returns a short-lived token; we exchange it for a long-lived token.
  */
 export async function exchangeMetaAdsCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<MetaAdsTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("meta-ads");
   // Step 1: Exchange code for short-lived token
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",

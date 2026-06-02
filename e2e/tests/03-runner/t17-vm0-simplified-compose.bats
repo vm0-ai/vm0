@@ -19,8 +19,8 @@ teardown() {
 # Provider auto-configuration tests
 # ============================================
 
-@test "vm0 compose with provider auto-config (image and working_dir)" {
-    echo "# Creating config without image or working_dir..."
+@test "vm0 compose with provider auto-config" {
+    echo "# Creating config without image..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -38,14 +38,14 @@ EOF
     assert_output --partial "Compose created"
 }
 
-@test "vm0 compose with explicit working_dir skips working_dir auto-config" {
-    echo "# Creating config with explicit image and working_dir..."
+@test "vm0 compose ignores legacy working_dir field" {
+    echo "# Creating config with legacy working_dir..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent with explicit config"
+    description: "Test agent with legacy config"
     framework: claude-code
     working_dir: /custom/path
 EOF

@@ -15,6 +15,7 @@ import {
 } from "@tabler/icons-react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
+import { IN_VITEST } from "../../env.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import {
   textPreviewCollapsedByKey$,
@@ -180,6 +181,83 @@ function AttachmentAnchorChip({
   );
 }
 
+function titleCaseSiteSlug(slug: string): string {
+  return slug
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => {
+      return `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`;
+    })
+    .join(" ");
+}
+
+function fallbackHtmlPreviewTitle(filename: string, url: string): string {
+  if (filename !== url) {
+    return filename;
+  }
+  if (!URL.canParse(url)) {
+    return filename;
+  }
+  const hostname = new URL(url).hostname;
+  const subdomain = hostname.split(".")[0];
+  if (!subdomain) {
+    return filename;
+  }
+  const slug = subdomain.replace(/-[a-f0-9]{8}$/i, "");
+  return titleCaseSiteSlug(slug) || filename;
+}
+
+function HtmlSitePreviewCard({
+  filename,
+  url,
+}: {
+  filename: string;
+  url: string;
+}) {
+  const publicUrl = publicAttachmentUrl(url);
+  const openDocument = useSet(openDocumentLightboxOrArtifact$);
+  const title = fallbackHtmlPreviewTitle(filename, url);
+
+  return (
+    <a
+      href={publicUrl}
+      data-testid="attachment-preview-html"
+      onClick={(event) => {
+        if (shouldUseNativeAnchorNavigation(event)) {
+          return;
+        }
+        event.preventDefault();
+        event.currentTarget.blur();
+        openDocument({ kind: "html", url, filename });
+      }}
+      aria-label={`Open html preview for ${filename}`}
+      title={title}
+      className="group/site-preview inline-flex w-[min(100%,320px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
+    >
+      <div className="flex min-h-10 items-center border-b border-border/60 bg-background/95 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {title}
+        </span>
+      </div>
+      <div className="relative aspect-[16/10] bg-muted/30">
+        <iframe
+          src={IN_VITEST ? undefined : publicUrl}
+          srcDoc={
+            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
+          }
+          data-preview-src={publicUrl}
+          title={`Site preview for ${title}`}
+          sandbox="allow-scripts"
+          tabIndex={-1}
+          loading="lazy"
+          scrolling="no"
+          className="pointer-events-none h-full w-full origin-top-left bg-background transition-transform duration-200 group-hover/site-preview:scale-[1.01]"
+        />
+      </div>
+    </a>
+  );
+}
+
 function TextPreviewInline({ filename, url, kind, text$ }: TextPreviewProps) {
   const textPreviewCollapsedByKey = useGet(textPreviewCollapsedByKey$);
   const toggleTextPreviewCollapsed = useSet(toggleTextPreviewCollapsed$);
@@ -274,11 +352,13 @@ function DocumentThumbnailPreview({
   const openDocumentLightbox = useSet(openDocumentLightboxOrArtifact$);
   const lightboxOpen = useGet(lightboxUrl$) !== null;
 
-  // html chip is always the collapsed anchor form (it has no body to inline);
-  // markdown/csv/pdf use the same chip when the artifact sidebar is on, and
-  // keep the full thumbnail card otherwise so legacy lightbox layouts still
-  // look right.
-  if (kind === "html" || sidebarEnabled) {
+  if (kind === "html") {
+    return <HtmlSitePreviewCard filename={filename} url={url} />;
+  }
+
+  // markdown/csv/pdf use the chip when the artifact sidebar is on, and keep the
+  // full thumbnail card otherwise so legacy lightbox layouts still look right.
+  if (sidebarEnabled) {
     return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
   }
 

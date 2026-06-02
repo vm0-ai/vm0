@@ -283,6 +283,7 @@ describe("GET /api/zero/runs/:id/network", () => {
       makeAxiomEvent({
         runId,
         userId: fixture.userId,
+        browser_user_agent: true,
         auth_cache_hit: null,
         auth_resolved_secrets: null,
         firewall_params: {
@@ -325,6 +326,7 @@ describe("GET /api/zero/runs/:id/network", () => {
       response_headers: {
         "content-type": "application/json",
       },
+      browser_user_agent: true,
     });
     expect(response.body.networkLogs[0]?.auth_cache_hit).toBeUndefined();
     expect(response.body.networkLogs[0]?.auth_resolved_secrets).toBeUndefined();

@@ -274,6 +274,41 @@ def test_extracts_selected_scalars_across_chunks():
     }
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (b'{"model":"plain-ascii"}', "plain-ascii"),
+        (b'{"model":"snowman \xe2\x98\x83"}', "snowman \u2603"),
+    ],
+)
+def test_decodes_selected_unescaped_strings(payload, expected):
+    extractor = JsonSelectiveExtractor(scalar_fields={("model",): ScalarField("string")})
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("model",): expected}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        (rb'{"model":"quote:\" backslash:\\ solidus:\/"}', 'quote:" backslash:\\ solidus:/'),
+        (rb'{"model":"\b\f\n\r\t"}', "\b\f\n\r\t"),
+        (rb'{"model":"\u2603"}', "\u2603"),
+    ],
+)
+def test_decodes_selected_json_escapes(payload, expected):
+    extractor = JsonSelectiveExtractor(scalar_fields={("model",): ScalarField("string")})
+
+    extractor.feed(payload)
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {("model",): expected}
+
+
 def test_decodes_selected_escaped_strings():
     extractor = JsonSelectiveExtractor(scalar_fields={("model",): ScalarField("string")})
 
@@ -331,6 +366,18 @@ def test_decodes_escaped_object_keys_for_path_matching():
 
     assert result.complete is True
     assert result.values == {("usage", "input_tokens"): 5}
+
+
+def test_decodes_escaped_punctuation_object_keys_for_path_matching():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={('us"age', "input_tokens"): ScalarField("int")}
+    )
+
+    extractor.feed(rb'{"us\"age":{"input_tokens":5}}')
+    result = _finish(extractor)
+
+    assert result.complete is True
+    assert result.values == {('us"age', "input_tokens"): 5}
 
 
 def test_decodes_escaped_object_keys_across_chunks():
@@ -438,6 +485,19 @@ def test_rejects_oversized_selected_string():
     )
 
     extractor.feed(b'{"model":"abcd"}')
+    result = _finish(extractor)
+
+    assert result.complete is False
+    assert result.error == "string limit exceeded"
+    assert result.values == {}
+
+
+def test_selected_string_limit_counts_escape_bytes():
+    extractor = JsonSelectiveExtractor(
+        scalar_fields={("model",): ScalarField("string", max_bytes=1)}
+    )
+
+    extractor.feed(rb'{"model":"\n"}')
     result = _finish(extractor)
 
     assert result.complete is False

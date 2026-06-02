@@ -25,9 +25,13 @@ import {
   COMPUTER_USE_FEATURE_SWITCH_KEY,
   IDLE_COMPUTER_USE_HOST_STATE,
   hasRequiredComputerUsePermissions,
+  type ComputerUseHostRuntimeState,
   type DesktopComputerUseState,
 } from "./computer-use-types";
-import type { DesktopAuthState } from "./desktop-bridge";
+import {
+  resolveComputerUseStartupGate,
+  type ComputerUseStartupGate,
+} from "./computer-use-startup-gate";
 import {
   getComputerUsePermissionState,
   refreshComputerUsePermissionState,
@@ -38,7 +42,7 @@ import {
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { resolveDesktopConfig } from "./config";
 import { createDesktopComputerUseSessionFetch } from "./desktop-computer-use-api";
-import { headersWithSessionCookies } from "./desktop-session-cookies";
+import { DesktopAuthSession } from "./desktop-auth-session";
 import {
   installDesktopAuthIpc,
   notifyDesktopAuthChanged,
@@ -82,20 +86,76 @@ const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
-const AUTH_ME_PATH = "/api/auth/me";
-const ZERO_ORG_PATH = "/api/zero/org";
 const COMPUTER_USE_QUIT_STOP_TIMEOUT_MS = 1_000;
 let mainWindow: BrowserWindow | null = null;
-let pendingDesktopAuthCode: string | null = null;
 let appIsQuitting = false;
 let computerUseQuitStopStarted = false;
 const desktopAuthStartGate = createDesktopAuthStartGate();
 let computerUseRuntime: ComputerUseHostRuntime | null = null;
-let desktopAuthToken: string | null = null;
-let desktopAuthTokenRefresh: Promise<string | null> | null = null;
+let computerUseBlockedHostState: ComputerUseHostRuntimeState | null = null;
 const computerUseSnapshotStore = new ComputerUseSnapshotStore();
 const computerUseNativeBackend = createComputerUseNativeBackend();
 setComputerUsePermissionNativeBackend(computerUseNativeBackend);
+
+async function runAuthWindow(request: {
+  readonly url: string;
+  readonly visible: boolean;
+  readonly allowInteractiveFallbacks: boolean;
+}): Promise<void> {
+  const authWindow = new BrowserWindow({
+    ...browserWindowOptions(),
+    show: request.visible,
+    width: request.visible ? 520 : 480,
+    height: 640,
+    skipTaskbar: !request.visible,
+  });
+  installAuthConsumeWindowPolicy(authWindow);
+  const pending = waitForAuthConsumeWindow(authWindow, {
+    allowInteractiveFallbacks: request.allowInteractiveFallbacks,
+  });
+  await loadAuthUrl(authWindow, request.url);
+  await pending;
+}
+
+let authSession: DesktopAuthSession | null = null;
+let pendingDesktopAuthCode: string | null = null;
+
+function getAuthSession(): DesktopAuthSession {
+  if (authSession) {
+    return authSession;
+  }
+
+  if (!app.isReady()) {
+    throw new Error("Desktop auth session is unavailable before app is ready");
+  }
+
+  authSession = new DesktopAuthSession({
+    apiBaseUrl: desktopApiBaseUrl,
+    cookieUrls: [config.webUrl, config.platformUrl],
+    cookieSource: session.fromPartition(config.sessionPartition),
+    tokenUrl: desktopAuthTokenUrl,
+    consumeUrl: (code) => buildDesktopAuthConsumeUrl(config.webUrl, code),
+    selectOrgUrl: desktopAuthSelectOrgUrl,
+    runAuthWindow,
+    onChange: notifyDesktopAuthChanged,
+    onAuthCompleted: maybeStartComputerUseAfterAuth,
+  });
+
+  if (pendingDesktopAuthCode) {
+    authSession.queuePendingCode(pendingDesktopAuthCode);
+    pendingDesktopAuthCode = null;
+  }
+
+  return authSession;
+}
+
+function queuePendingDesktopAuthCode(code: string): void {
+  if (authSession) {
+    authSession.queuePendingCode(code);
+    return;
+  }
+  pendingDesktopAuthCode = code;
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -144,85 +204,33 @@ function getComputerUseBridgeState(): DesktopComputerUseState {
     platform: process.platform,
     supported: process.platform === "darwin",
     permissions: getComputerUsePermissionState(),
-    host: computerUseRuntime?.getState() ?? IDLE_COMPUTER_USE_HOST_STATE,
-  };
-}
-
-interface AuthMeResponse {
-  readonly userId: string;
-  readonly email: string;
-}
-
-interface ZeroOrgResponse {
-  readonly id: string;
-  readonly name: string;
-  readonly slug?: string;
-}
-
-function signedOutDesktopAuthState(): DesktopAuthState {
-  return {
-    status: "signed_out",
-    user: null,
-    organization: null,
-  };
-}
-
-async function desktopAuthHeadersFor(requestUrl: URL): Promise<Headers> {
-  const headers = await headersWithSessionCookies(
-    session.fromPartition(config.sessionPartition),
-    [config.webUrl, config.platformUrl, requestUrl],
-  );
-  if (desktopAuthToken) {
-    headers.set("authorization", `Bearer ${desktopAuthToken}`);
-  }
-  return headers;
-}
-
-async function getDesktopAuthState(): Promise<DesktopAuthState> {
-  const meUrl = new URL(AUTH_ME_PATH, desktopApiBaseUrl);
-  const meResponse = await fetch(meUrl, {
-    headers: await desktopAuthHeadersFor(meUrl),
-  });
-  if (meResponse.status === 401) {
-    desktopAuthToken = null;
-    return signedOutDesktopAuthState();
-  }
-  if (!meResponse.ok) {
-    throw new Error(`Desktop auth status failed: ${meResponse.status}`);
-  }
-
-  const user = (await meResponse.json()) as AuthMeResponse;
-  const orgUrl = new URL(ZERO_ORG_PATH, desktopApiBaseUrl);
-  const orgResponse = await fetch(orgUrl, {
-    headers: await desktopAuthHeadersFor(orgUrl),
-  });
-  if (orgResponse.status === 401) {
-    desktopAuthToken = null;
-    return signedOutDesktopAuthState();
-  }
-  if (orgResponse.status === 404) {
-    return { status: "signed_in", user, organization: null };
-  }
-  if (!orgResponse.ok) {
-    throw new Error(
-      `Desktop organization status failed: ${orgResponse.status}`,
-    );
-  }
-
-  const organization = (await orgResponse.json()) as ZeroOrgResponse;
-  return {
-    status: "signed_in",
-    user,
-    organization: {
-      id: organization.id,
-      name: organization.name,
-      slug: organization.slug ?? null,
-    },
+    host:
+      computerUseRuntime?.getState() ??
+      computerUseBlockedHostState ??
+      IDLE_COMPUTER_USE_HOST_STATE,
   };
 }
 
 async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
+  const permissions = await refreshComputerUsePermissionState();
+  let startupGate: ComputerUseStartupGate = { status: "missing_permissions" };
+  if (hasRequiredComputerUsePermissions(permissions)) {
+    const authState = await getAuthSession().getAuthState();
+    startupGate = resolveComputerUseStartupGate({ authState, permissions });
+  }
+  if (startupGate.status !== "ready") {
+    if (computerUseRuntime) {
+      await computerUseRuntime.stop();
+      computerUseRuntime = null;
+    }
+    computerUseBlockedHostState =
+      startupGate.status === "blocked" ? startupGate.host : null;
+    notifyDesktopComputerUseChanged();
+    return getComputerUseBridgeState();
+  }
+
   const desktopSession = session.fromPartition(config.sessionPartition);
+  computerUseBlockedHostState = null;
   if (!computerUseRuntime) {
     computerUseRuntime = new ComputerUseHostRuntime({
       platformUrl: config.platformUrl,
@@ -231,7 +239,8 @@ async function startComputerUseRuntime(): Promise<DesktopComputerUseState> {
       sessionFetch: createDesktopComputerUseSessionFetch({
         platformUrl: config.platformUrl,
         session: desktopSession,
-        getAuthToken: getDesktopAuthToken,
+        getCachedAuthToken: () => getAuthSession().getCachedToken(),
+        getAuthToken: (options) => getAuthSession().getToken(options),
       }),
       hostFetch: (input, init) => {
         return fetch(input, init);
@@ -263,7 +272,10 @@ async function requestComputerUseScreenRecording(): Promise<DesktopComputerUseSt
 }
 
 async function refreshComputerUsePermissions(): Promise<DesktopComputerUseState> {
-  await refreshComputerUsePermissionState();
+  const permissions = await refreshComputerUsePermissionState();
+  if (!hasRequiredComputerUsePermissions(permissions)) {
+    computerUseBlockedHostState = null;
+  }
   notifyDesktopComputerUseChanged();
   return getComputerUseBridgeState();
 }
@@ -308,12 +320,12 @@ async function stopComputerUseRuntimeForQuit(): Promise<void> {
 function installDesktopAuth(): void {
   installDesktopAuthIpc(
     {
-      getState: getDesktopAuthState,
+      getState: () => getAuthSession().getAuthState(),
       openSignIn: () => {
         openExternal(desktopAuthStartUrl);
       },
-      openOrgSelection: openDesktopAuthSelectOrg,
-      completeSignIn: completeDesktopAuthSignIn,
+      openOrgSelection: () => getAuthSession().selectOrganization(),
+      completeSignIn: (token) => getAuthSession().completeSignIn(token),
     },
     {
       rendererUrl: localRendererUrl,
@@ -359,11 +371,6 @@ function logDesktopAuthError(error: unknown): void {
   console.error("Desktop auth flow failed", error);
 }
 
-function completeDesktopAuthSignIn(token: string): void {
-  desktopAuthToken = token;
-  notifyDesktopAuthChanged();
-}
-
 async function loadAuthUrl(window: BrowserWindow, url: string): Promise<void> {
   try {
     await window.loadURL(url);
@@ -372,42 +379,6 @@ async function loadAuthUrl(window: BrowserWindow, url: string): Promise<void> {
       throw error;
     }
   }
-}
-
-async function refreshDesktopAuthToken(): Promise<string | null> {
-  if (desktopAuthTokenRefresh) {
-    return await desktopAuthTokenRefresh;
-  }
-
-  desktopAuthTokenRefresh = (async () => {
-    const authWindow = new BrowserWindow({
-      ...browserWindowOptions(),
-      show: false,
-      width: 480,
-      height: 640,
-      skipTaskbar: true,
-    });
-    installAuthConsumeWindowPolicy(authWindow);
-    const pendingToken = waitForAuthConsumeWindow(authWindow);
-    await loadAuthUrl(authWindow, desktopAuthTokenUrl);
-    await pendingToken;
-    return desktopAuthToken;
-  })();
-
-  try {
-    return await desktopAuthTokenRefresh;
-  } finally {
-    desktopAuthTokenRefresh = null;
-  }
-}
-
-async function getDesktopAuthToken(options?: {
-  readonly forceRefresh?: boolean;
-}): Promise<string | null> {
-  if (!options?.forceRefresh && desktopAuthToken) {
-    return desktopAuthToken;
-  }
-  return await refreshDesktopAuthToken();
 }
 
 function openDesktopAuthStart(rawUrl: string): boolean {
@@ -429,12 +400,12 @@ function openDesktopAuthCallback(rawUrl: string): boolean {
 
   desktopAuthStartGate.suppressRetry();
 
-  if (!app.isReady()) {
-    pendingDesktopAuthCode = callback.code;
+  if (!authSession) {
+    queuePendingDesktopAuthCode(callback.code);
     return true;
   }
 
-  void openDesktopAuthConsume(callback.code).catch(logDesktopAuthError);
+  void authSession.consumeCode(callback.code).catch(logDesktopAuthError);
   return true;
 }
 
@@ -575,7 +546,10 @@ function installAuthConsumeWindowPolicy(window: BrowserWindow): void {
   });
 }
 
-function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
+function waitForAuthConsumeWindow(
+  window: BrowserWindow,
+  options: { readonly allowInteractiveFallbacks: boolean },
+): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => {
@@ -614,8 +588,19 @@ function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
     };
 
     const handleNavigation = (_event: Electron.Event, url: string): void => {
+      if (
+        !options.allowInteractiveFallbacks &&
+        isDesktopAuthStartNavigation(url, config.allowedAppOrigins)
+      ) {
+        resolveAuth();
+        return;
+      }
       if (isDesktopAuthSelectOrgNavigation(url, config.allowedAppOrigins)) {
-        showAndFocusWindow(window);
+        if (options.allowInteractiveFallbacks) {
+          showAndFocusWindow(window);
+          return;
+        }
+        resolveAuth();
         return;
       }
       if (isDesktopAuthCompletionNavigation(url, config.allowedAppOrigins)) {
@@ -653,8 +638,10 @@ function waitForAuthConsumeWindow(window: BrowserWindow): Promise<void> {
 }
 
 async function maybeStartComputerUseAfterAuth(): Promise<void> {
-  computerUseRuntime?.stop();
+  const runtime = computerUseRuntime;
   computerUseRuntime = null;
+  computerUseBlockedHostState = null;
+  await runtime?.stop();
   notifyDesktopAuthChanged();
   notifyDesktopComputerUseChanged();
   const permissions = await refreshComputerUsePermissionState();
@@ -662,37 +649,6 @@ async function maybeStartComputerUseAfterAuth(): Promise<void> {
   if (hasRequiredComputerUsePermissions(permissions)) {
     await startComputerUseRuntime();
   }
-}
-
-async function openDesktopAuthSelectOrg(): Promise<void> {
-  const authWindow = new BrowserWindow({
-    ...browserWindowOptions(),
-    show: true,
-    width: 520,
-    height: 640,
-    skipTaskbar: false,
-  });
-  installAuthConsumeWindowPolicy(authWindow);
-  const pendingSelection = waitForAuthConsumeWindow(authWindow);
-  await loadAuthUrl(authWindow, desktopAuthSelectOrgUrl);
-  await pendingSelection;
-  await maybeStartComputerUseAfterAuth();
-}
-
-async function openDesktopAuthConsume(code: string): Promise<void> {
-  const consumeUrl = buildDesktopAuthConsumeUrl(config.webUrl, code);
-  const authWindow = new BrowserWindow({
-    ...browserWindowOptions(),
-    show: false,
-    width: 480,
-    height: 640,
-    skipTaskbar: true,
-  });
-  installAuthConsumeWindowPolicy(authWindow);
-  const pendingConsume = waitForAuthConsumeWindow(authWindow);
-  await loadAuthUrl(authWindow, consumeUrl);
-  await pendingConsume;
-  await maybeStartComputerUseAfterAuth();
 }
 
 function handleDesktopAuthCallback(rawUrl: string): void {
@@ -709,12 +665,12 @@ function handleDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
   }
 
   desktopAuthStartGate.suppressRetry();
-  if (!app.isReady()) {
-    pendingDesktopAuthCode = callback.code;
+  if (!authSession) {
+    queuePendingDesktopAuthCode(callback.code);
     return true;
   }
 
-  void openDesktopAuthConsume(callback.code).catch(logDesktopAuthError);
+  void authSession.consumeCode(callback.code).catch(logDesktopAuthError);
   return true;
 }
 
@@ -728,7 +684,7 @@ function queueDesktopAuthCallbackArgv(argv: readonly string[]): boolean {
   }
 
   desktopAuthStartGate.suppressRetry();
-  pendingDesktopAuthCode = callback.code;
+  queuePendingDesktopAuthCode(callback.code);
   return true;
 }
 
@@ -797,14 +753,16 @@ if (!hasSingleInstanceLock) {
     installDesktopRendererProtocol();
     installComputerUse();
     refreshComputerUsePermissionsForState();
+    const desktopAuthSession = getAuthSession();
     installDesktopAuth();
     queueDesktopAuthCallbackArgv(process.argv);
 
-    const pendingCode = pendingDesktopAuthCode;
-    pendingDesktopAuthCode = null;
+    const pendingCode = desktopAuthSession.takePendingCode();
     await createMainWindow();
     if (pendingCode) {
-      void openDesktopAuthConsume(pendingCode).catch(logDesktopAuthError);
+      void desktopAuthSession
+        .consumeCode(pendingCode)
+        .catch(logDesktopAuthError);
     }
 
     app.on("activate", () => {

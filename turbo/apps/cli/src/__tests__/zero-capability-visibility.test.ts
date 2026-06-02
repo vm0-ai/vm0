@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command, Help } from "commander";
 import { buildZeroHelpText, registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
@@ -19,6 +18,7 @@ function buildCommands(): Command[] {
     new Command("model-provider"),
     new Command("agent"),
     new Command("connector"),
+    new Command("credit"),
     new Command("logs"),
     new Command("preference"),
     new Command("run"),
@@ -34,6 +34,7 @@ function buildCommands(): Command[] {
     new Command("web"),
     new Command("host"),
     new Command("maps"),
+    new Command("banking"),
   ];
 }
 
@@ -152,6 +153,7 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toEqual([
       "org",
       "connector",
+      "credit",
       "logs",
       "preference",
       "run",
@@ -163,6 +165,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "host",
       "maps",
+      "banking",
     ]);
   });
 
@@ -360,28 +363,10 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide generate when only host:write is present and hostedSites is disabled", () => {
+  it("should show generate when file capabilities are missing", () => {
     const token = buildZeroToken({
-      userId: "user-non-staff",
-      orgId: "org-non-staff",
-      scope: "zero",
-      capabilities: ["host:write"],
-      featureSwitches: { [FeatureSwitchKey.HostedSites]: false },
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("generate");
-  });
-
-  it("should show generate when hostedSites is enabled", () => {
-    const token = buildZeroToken({
-      userId: "user-enabled",
-      orgId: "org-non-staff",
       scope: "zero",
       capabilities: [],
-      featureSwitches: { [FeatureSwitchKey.HostedSites]: true },
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -416,6 +401,78 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("maps");
   });
 
+  it("should show banking when banking:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["banking:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("banking");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide banking when banking:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("banking");
+  });
+
+  it("should show credit when billing:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("credit");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide credit when billing:write capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("credit");
+  });
+
+  it("should show billing help examples only for billing capabilities", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["billing:read", "billing:write"],
+    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+
+    expect(help).toContain("Check credits?");
+    expect(help).toContain("Buy credits?");
+  });
+
+  it("should hide billing help examples when billing capabilities are missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    const help = buildZeroHelpText(decodeZeroTokenPayload(token));
+
+    expect(help).not.toContain("Check credits?");
+    expect(help).not.toContain("Buy credits?");
+  });
+
   it("should show the maps help example when maps:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -438,6 +495,28 @@ describe("registerZeroCommands", () => {
     );
   });
 
+  it("should show the banking help example when banking:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["banking:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Read bank data?",
+    );
+  });
+
+  it("should hide the banking help example when banking:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Read bank data?",
+    );
+  });
+
   it("should show the host help example when host:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -449,27 +528,10 @@ describe("registerZeroCommands", () => {
     );
   });
 
-  it("should hide the website help example when hostedSites is disabled", () => {
+  it("should show the website help example", () => {
     const token = buildZeroToken({
-      userId: "user-non-staff",
-      orgId: "org-non-staff",
-      scope: "zero",
-      capabilities: ["host:write"],
-      featureSwitches: { [FeatureSwitchKey.HostedSites]: false },
-    });
-
-    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
-      "Generate website?",
-    );
-  });
-
-  it("should show the website help example when hostedSites is enabled", () => {
-    const token = buildZeroToken({
-      userId: "user-enabled",
-      orgId: "org-non-staff",
       scope: "zero",
       capabilities: [],
-      featureSwitches: { [FeatureSwitchKey.HostedSites]: true },
     });
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
@@ -623,7 +685,7 @@ describe("registerZeroCommands", () => {
   });
 });
 
-describe("zero generate feature switch visibility", () => {
+describe("zero generate command visibility", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
@@ -636,27 +698,10 @@ describe("zero generate feature switch visibility", () => {
     return generateCommand as Command;
   }
 
-  it("should hide website generation when hostedSites is disabled", async () => {
+  it("should show website generation", async () => {
     const token = buildZeroToken({
-      userId: "user-non-staff",
-      orgId: "org-non-staff",
-      scope: "zero",
-      capabilities: ["host:write"],
-      featureSwitches: { [FeatureSwitchKey.HostedSites]: false },
-    });
-
-    const generateCommand = await importGenerateCommand(token);
-
-    expect(visibleCommandNames(generateCommand)).not.toContain("website");
-  });
-
-  it("should show website generation when hostedSites is enabled", async () => {
-    const token = buildZeroToken({
-      userId: "user-enabled",
-      orgId: "org-non-staff",
       scope: "zero",
       capabilities: [],
-      featureSwitches: { [FeatureSwitchKey.HostedSites]: true },
     });
 
     const generateCommand = await importGenerateCommand(token);

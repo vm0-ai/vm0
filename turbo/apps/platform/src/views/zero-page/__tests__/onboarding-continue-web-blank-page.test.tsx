@@ -62,6 +62,10 @@ describe("onboarding Pro trial checkout loading", () => {
       expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
     });
     await fill(screen.getByPlaceholderText("e.g. Acme Corp"), "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Step 2: choose tools — pick a connector so finishing re-runs setup.

@@ -4,12 +4,18 @@ import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
   connectorTypeSchema,
+  type ConnectorAuthMethodId,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { connectZeroConnectorApiToken } from "../../../lib/api";
+import {
+  getConfiguredConnectorAuthMethods,
+  getConnectorAuthMethod,
+} from "@vm0/connectors/connector-utils";
+import { connectZeroConnectorManualGrant } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 interface ConnectOptions {
+  readonly authMethod?: string;
   readonly value?: readonly string[];
   readonly json?: boolean;
 }
@@ -60,10 +66,71 @@ function parseConnectorType(type: string): ConnectorType {
   });
 }
 
+function parseConfiguredAuthMethod(
+  type: ConnectorType,
+  rawAuthMethod: string,
+): ConnectorAuthMethodId {
+  const configuredAuthMethods = getConfiguredConnectorAuthMethods(type);
+  const authMethod = configuredAuthMethods.find((method) => {
+    return method === rawAuthMethod;
+  });
+  if (authMethod) {
+    return authMethod;
+  }
+
+  throw new Error(
+    `${type} connector does not have ${rawAuthMethod} auth method`,
+    {
+      cause: new Error(
+        `Available auth methods: ${configuredAuthMethods.join(", ")}`,
+      ),
+    },
+  );
+}
+
+function getManualGrantAuthMethods(
+  type: ConnectorType,
+): ConnectorAuthMethodId[] {
+  return getConfiguredConnectorAuthMethods(type).filter((authMethod) => {
+    return getConnectorAuthMethod(type, authMethod)?.grant.kind === "manual";
+  });
+}
+
+function parseManualGrantAuthMethod(
+  type: ConnectorType,
+  rawAuthMethod: string | undefined,
+): ConnectorAuthMethodId {
+  if (rawAuthMethod) {
+    const authMethod = parseConfiguredAuthMethod(type, rawAuthMethod);
+    if (getConnectorAuthMethod(type, authMethod)?.grant.kind === "manual") {
+      return authMethod;
+    }
+
+    throw new Error(
+      `${type} ${authMethod} auth method does not use a manual grant`,
+    );
+  }
+
+  const authMethods = getManualGrantAuthMethods(type);
+  const authMethod = authMethods[0];
+  if (authMethods.length === 1 && authMethod) {
+    return authMethod;
+  }
+
+  if (authMethods.length === 0) {
+    throw new Error(`${type} connector does not use a manual grant`);
+  }
+
+  throw new Error(`${type} connector has multiple manual grant auth methods`, {
+    cause: new Error(`Pass --auth-method ${authMethods.join("|")}`),
+  });
+}
+
 export const connectCommand = new Command()
   .name("connect")
-  .description("Connect a connector with API-token credentials")
+  .description("Connect a connector with manual grant values")
   .argument("<type>", "Connector type (e.g., zendesk)")
+  .option("--auth-method <method>", "Connector auth method to use")
   .option(
     "--value <name=value>",
     "Connector field value; repeat for multiple fields",
@@ -74,8 +141,13 @@ export const connectCommand = new Command()
   .action(
     withErrorHandler(async (type: string, options: ConnectOptions) => {
       const connectorType = parseConnectorType(type);
-      const connector = await connectZeroConnectorApiToken(
+      const authMethod = parseManualGrantAuthMethod(
         connectorType,
+        options.authMethod,
+      );
+      const connector = await connectZeroConnectorManualGrant(
+        connectorType,
+        authMethod,
         parseConnectorValues(options.value),
       );
 

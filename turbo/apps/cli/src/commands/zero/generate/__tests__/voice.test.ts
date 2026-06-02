@@ -39,6 +39,7 @@ describe("zero generate voice command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    vi.stubEnv("ZERO_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -78,37 +79,6 @@ describe("zero generate voice command", () => {
     expect(stdout).toContain(`File: ${VOICE_RESULT.filename}`);
     expect(stdout).toContain("Duration: 3s");
     expect(stdout).toContain("Credits charged: 1");
-  });
-
-  it("should print JSON metadata when --json is provided", async () => {
-    server.use(
-      http.post(SPEECH_URL, () => {
-        return HttpResponse.json({ ...VOICE_RESULT, voice: "marin" });
-      }),
-    );
-
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "voice",
-      "--text",
-      "JSON please",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      id: VOICE_RESULT.id,
-      filename: VOICE_RESULT.filename,
-      contentType: "audio/wav",
-      size: VOICE_RESULT.size,
-      url: VOICE_RESULT.url,
-      durationSeconds: 3,
-      creditsCharged: 1,
-      model: "gpt-4o-mini-tts",
-      voice: "marin",
-    });
   });
 
   it("should surface API errors", async () => {

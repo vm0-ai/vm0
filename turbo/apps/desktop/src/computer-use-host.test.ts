@@ -16,6 +16,17 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 function createRuntime(
   options: {
     readonly sessionFetch?: ComputerUseHostFetch;
@@ -229,6 +240,111 @@ describe("ComputerUseHostRuntime", () => {
         appState: "0 standard window Inbox",
         screenshot: "data:image/png;base64,abc123",
       },
+    });
+
+    await runtime.stop();
+  });
+
+  it("keeps heartbeats running while a command is executing", async () => {
+    vi.useFakeTimers();
+    const command: ComputerUseCommand = {
+      id: "cmd-1",
+      kind: "keyboard.type_text",
+      payload: { app: "Chrome", text: "https://mail.google.com/" },
+    };
+    const execution = deferred<ComputerUseCommandExecutionResult>();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({ status: "command", command })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const executeCommand = vi.fn<
+      (
+        command: ComputerUseCommand,
+        permissions: ComputerUsePermissionState,
+      ) => Promise<ComputerUseCommandExecutionResult>
+    >(async () => {
+      return await execution.promise;
+    });
+    const { runtime } = createRuntime({ hostFetch, executeCommand });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(executeCommand).toHaveBeenCalledOnce();
+    expect(completeCalls).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    const heartbeatCalls = hostFetch.mock.calls.filter(([url]) => {
+      return url.endsWith("/api/zero/computer-use/heartbeat");
+    });
+    expect(heartbeatCalls.length).toBeGreaterThan(1);
+    expect(completeCalls).toBe(0);
+
+    execution.resolve({ status: "succeeded", result: {} });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(completeCalls).toBe(1);
+
+    await runtime.stop();
+  });
+
+  it("retries transient command completion failures", async () => {
+    vi.useFakeTimers();
+    let nextCalls = 0;
+    let completeCalls = 0;
+    const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
+      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+        return jsonResponse({ ok: true, hostId: "host-1" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+        nextCalls++;
+        return nextCalls === 1
+          ? jsonResponse({
+              status: "command",
+              command: {
+                id: "cmd-1",
+                kind: "app.state",
+                payload: { app: "Chrome" },
+              },
+            })
+          : jsonResponse({ status: "idle" });
+      }
+      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+        completeCalls++;
+        return completeCalls === 1
+          ? new Response("{}", { status: 503 })
+          : jsonResponse({ ok: true });
+      }
+      throw new Error(`Unexpected host request: ${url}`);
+    });
+    const { runtime } = createRuntime({ hostFetch });
+
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(completeCalls).toBe(2);
+    expect(runtime.getState()).toMatchObject({
+      status: "online",
+      lastError: null,
     });
 
     await runtime.stop();

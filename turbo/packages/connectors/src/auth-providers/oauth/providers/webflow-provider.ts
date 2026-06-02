@@ -10,6 +10,7 @@ export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
     buildAuthUrl: (args) => {
       const { clientId } = args;
       return buildWebflowAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
@@ -20,6 +21,7 @@ export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeWebflowCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,

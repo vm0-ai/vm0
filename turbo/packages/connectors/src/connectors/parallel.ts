@@ -11,6 +11,10 @@ export const parallel = {
         label: "API Key",
         helpText:
           "1. Go to [Parallel Platform](https://platform.parallel.ai)\n2. Create or copy your API key\n3. Use it as `PARALLEL_API_KEY`",
+        storage: {
+          secrets: ["PARALLEL_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

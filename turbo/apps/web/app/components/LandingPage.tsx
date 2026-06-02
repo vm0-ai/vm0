@@ -5,6 +5,7 @@ import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { useTranslations } from "next-intl";
 import { getAppUrl } from "../../src/lib/zero/url";
+import { buildSignupHref } from "../../src/lib/adAttribution";
 import { Footer } from "./Footer";
 import Image from "next/image";
 import { AvatarCustomizer } from "./AvatarCustomizer";
@@ -826,8 +827,14 @@ export function LandingPage({ initialIsSignedIn = false }: LandingPageProps) {
   const revealRef = useScrollReveal();
   const t = useTranslations("landing");
 
+  const appUrl = getAppUrl();
+  const [landingSearch, setLandingSearch] = useState("");
+  useEffect(() => {
+    setLandingSearch(window.location.search);
+  }, []);
+
   const ctaText = isSignedIn ? t("hero.ctaOpenApp") : t("hero.ctaGetStarted");
-  const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
+  const ctaHref = isSignedIn ? appUrl : buildSignupHref(landingSearch);
 
   return (
     <div

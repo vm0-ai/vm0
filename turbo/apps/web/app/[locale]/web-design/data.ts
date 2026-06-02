@@ -24,22 +24,6 @@ export interface GalleryItem {
   readonly designSystemId?: string;
 }
 
-export const GALLERY_CATEGORIES: readonly (GalleryCategory | "all")[] = [
-  "all",
-  "website",
-];
-
-export const GALLERY_CATEGORY_LABELS: Record<GalleryCategory | "all", string> =
-  {
-    all: "All",
-    illustration: "Illustration",
-    presentation: "Presentation",
-    website: "Website Design",
-    report: "Report",
-    video: "Video",
-    audio: "Audio",
-  };
-
 export const GALLERY_ITEMS: readonly GalleryItem[] = [
   {
     slug: "spacex-mission-brief",

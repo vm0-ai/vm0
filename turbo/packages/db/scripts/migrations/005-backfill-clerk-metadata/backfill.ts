@@ -44,8 +44,8 @@ export interface BackfillStats {
 
 export type ClerkClient = ReturnType<typeof createClerkClient>;
 
-// Accept any Drizzle PgDatabase so both postgres-js (script) and
-// node-postgres (tests via globalThis.services.db) work.
+// Accept any Drizzle PgDatabase so both postgres-js scripts and
+// node-postgres-backed tests work.
 export type Db = PgDatabase<PgQueryResultHKT>;
 
 // ---------------------------------------------------------------------------

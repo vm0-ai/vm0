@@ -7,8 +7,8 @@ import {
   connectorTypeSchema,
 } from "@vm0/connectors/connectors";
 import {
-  getScopeDiff,
-  hasRequiredScopes,
+  getConnectorAuthMethodScopeDiff,
+  hasRequiredConnectorAuthMethodScopes,
 } from "@vm0/connectors/connector-utils";
 import { getZeroConnector, searchZeroConnectors } from "../../../lib/api";
 import { formatDateTime } from "../../../lib/domain/schedule-utils";
@@ -62,10 +62,17 @@ function printConnectorDetails(
     }
 
     if (
-      connector.authMethod === "oauth" &&
-      !hasRequiredScopes(type, connector.oauthScopes)
+      !hasRequiredConnectorAuthMethodScopes(
+        type,
+        connector.authMethod,
+        connector.oauthScopes,
+      )
     ) {
-      const diff = getScopeDiff(type, connector.oauthScopes);
+      const diff = getConnectorAuthMethodScopeDiff(
+        type,
+        connector.authMethod,
+        connector.oauthScopes,
+      );
       console.log(
         `${"Permissions:".padEnd(LABEL_WIDTH)}${chalk.yellow("update available")}`,
       );

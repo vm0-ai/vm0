@@ -168,7 +168,6 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("VM0_POST_RESULT_SIGKILL_GRACE_SECS", "1"),
         ("VM0_RUN_ID", run_id.as_str()),
         ("VM0_PROMPT", prompt.as_str()),
-        ("VM0_WORKING_DIR", workdir.as_str()),
         ("VM0_API_URL", "http://127.0.0.1:1"),
         ("VM0_API_TOKEN", ""),
         ("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc"),
@@ -178,14 +177,30 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
 
     let mut fifo_gate = FifoGate::open(fifo.path())?;
     let connection = start_host_and_guest(tmp.path()).await?;
-    let command = shell_quote(guest_agent);
+    let command = format!(
+        "cleanup_home_user=0; \
+         cleanup_workspace=0; \
+         if [ ! -e /home/user ]; then cleanup_home_user=1; fi; \
+         if [ ! -e /home/user/workspace ]; then cleanup_workspace=1; fi; \
+         {}; \
+         status=$?; \
+         if [ \"$cleanup_workspace\" = 1 ]; then \
+           rmdir /home/user/workspace 2>/dev/null || true; \
+         fi; \
+         if [ \"$cleanup_home_user\" = 1 ]; then \
+           rmdir /home/user 2>/dev/null || true; \
+        fi; \
+         exit $status",
+        shell_quote(guest_agent)
+    );
+    let sudo = needs_sudo_for_canonical_workspace();
     let mut handle = connection
         .host()
         .start_supervised_exec(SupervisedExecRequest {
             timeout: ExecTimeoutPolicy::Duration { timeout_ms: 30_000 },
             command: &command,
             env: &env,
-            sudo: false,
+            sudo,
             label: "guest-agent-process-control-channel",
             stdout: ExecOutputPolicy::Stream {
                 limit_bytes: 1024 * 1024,
@@ -405,4 +420,20 @@ fn shell_quote_path(path: &Path) -> String {
 
 fn shell_quote(raw: &str) -> String {
     format!("'{}'", raw.replace('\'', "'\\''"))
+}
+
+fn needs_sudo_for_canonical_workspace() -> bool {
+    let parent = Path::new("/home/user");
+    if parent.exists() {
+        return !path_is_writable(parent);
+    }
+    !path_is_writable(Path::new("/home"))
+}
+
+fn path_is_writable(path: &Path) -> bool {
+    let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: c_path is a valid NUL-terminated path.
+    unsafe { libc::access(c_path.as_ptr(), libc::W_OK) == 0 }
 }

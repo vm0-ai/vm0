@@ -138,10 +138,11 @@ Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS tha
 - Cannot run on cloud VMs (nested virtualization limitations)
 
 **Software**:
-- Firecracker v1.14.1 binary
+- Firecracker v1.15.1 binary
 - Linux kernel v6.1.155 (for microVM)
 - Node.js 24.x, pnpm, pm2
 - mitmproxy (network observability)
+- mkfs.ext4 / e2fsprogs (workspace drive image initialization)
 - debootstrap (rootfs build only)
 
 #### Architecture
@@ -151,14 +152,26 @@ Firecracker is an open-source VMM (Virtual Machine Monitor) developed by AWS tha
 **VM Configuration**:
 ```yaml
 # runner.yaml
+name: prod-1
+group: vm0/production
+base_dir: /var/lib/vm0-runner/runners/prod-1
+ca_dir: /var/lib/vm0-runner/ca
+
 firecracker:
   binary: /usr/local/bin/firecracker
   kernel: /opt/firecracker/vmlinux
 
 sandbox:
-  vcpu: 2
-  memory_mb: 2048
   max_concurrent: 1
+
+profiles:
+  vm0/default:
+    rootfs_hash: <rootfs_hash>
+    snapshot_hash: <snapshot_hash>
+    vcpu: 2
+    memory_mb: 4096
+    rootfs_disk_mb: 8192
+    workspace_disk_mb: 16384
 ```
 
 **Host-local runner overrides**:
@@ -196,6 +209,12 @@ sandbox:
 - Device: `/dev/nbdN` (writable block device)
 - Reads of unmodified blocks go to base image, writes captured in COW file
 - Enables instant boot without rootfs copy
+
+**Per-VM Workspace Drive**:
+- Sparse ext4 image: `{base_dir}/workspaces/{sandbox_id}/workspace.ext4`
+- Exposed to the guest as `/dev/vdb`
+- Mounted by the runner at `/home/user/workspace`
+- Sized from the runner profile `workspace_disk_mb`
 
 #### Network Architecture
 

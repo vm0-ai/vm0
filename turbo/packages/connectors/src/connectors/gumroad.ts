@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://gumroad.com/oauth/token";
+
 export const gumroad = {
   gumroad: {
     label: "Gumroad",
@@ -11,15 +13,23 @@ export const gumroad = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Gumroad to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
+          clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["GUMROAD_ACCESS_TOKEN", "GUMROAD_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "GUMROAD_ACCESS_TOKEN",
+            refreshToken: "GUMROAD_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://gumroad.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
-            clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "view_profile",
             "edit_products",
@@ -29,7 +39,8 @@ export const gumroad = {
           ],
         },
         access: {
-          kind: "static",
+          kind: "refresh-token",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             GUMROAD_TOKEN: "$secrets.GUMROAD_ACCESS_TOKEN",
           },
@@ -40,6 +51,10 @@ export const gumroad = {
         label: "Access Token",
         helpText:
           "1. Log in to [Gumroad](https://app.gumroad.com/settings/advanced)\n2. Scroll to the **Applications** section\n3. Click **Generate access token**\n4. Copy the token and paste it here",
+        storage: {
+          secrets: ["GUMROAD_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

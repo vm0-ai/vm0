@@ -60,6 +60,15 @@ impl CowLayer {
     /// `size`: total device size in bytes
     /// `block_size`: block size (typically 4096)
     /// `flush_threshold`: flush write buffer when it exceeds this size in bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns an invalid-input error if `block_size` is zero or if `size` is
+    /// not an exact multiple of `block_size`. The COW layer stores and restores
+    /// full blocks internally, so partial final blocks are not supported.
+    ///
+    /// Returns an I/O error if the base image cannot be opened, or if an
+    /// existing bitmap sidecar or its associated COW file cannot be restored.
     pub fn new(
         base_path: &Path,
         cow_path: &Path,
@@ -67,11 +76,18 @@ impl CowLayer {
         block_size: usize,
         flush_threshold: usize,
     ) -> Result<Self> {
-        assert!(block_size > 0, "block_size must be positive");
-        debug_assert!(
-            size.is_multiple_of(block_size as u64),
-            "device size ({size}) must be a multiple of block_size ({block_size})"
-        );
+        if block_size == 0 {
+            return Err(NbdCowError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "block_size must be positive",
+            )));
+        }
+        if !size.is_multiple_of(block_size as u64) {
+            return Err(NbdCowError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("device size ({size}) must be a multiple of block_size ({block_size})"),
+            )));
+        }
         let base_fd = File::open(base_path)?;
         let num_blocks = (size as usize).div_ceil(block_size);
 
@@ -474,6 +490,37 @@ mod tests {
         flush_threshold: usize,
     ) -> CowLayer {
         CowLayer::new(base.path(), cow_file.path(), size, 4096, flush_threshold).unwrap()
+    }
+
+    fn assert_invalid_input(result: Result<CowLayer>) {
+        let err = match result {
+            Ok(_) => panic!("expected invalid input error"),
+            Err(err) => err,
+        };
+        assert!(
+            matches!(&err, NbdCowError::Io(e) if e.kind() == std::io::ErrorKind::InvalidInput),
+            "expected invalid input error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn constructor_rejects_zero_block_size() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        let result = CowLayer::new(base.path(), cow_file.path(), 4096, 0, 1024 * 1024);
+
+        assert_invalid_input(result);
+    }
+
+    #[test]
+    fn constructor_rejects_non_block_aligned_size() {
+        let base = create_base_image(&vec![0x00; 4097]);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        let result = CowLayer::new(base.path(), cow_file.path(), 4097, 4096, 1024 * 1024);
+
+        assert_invalid_input(result);
     }
 
     #[test]

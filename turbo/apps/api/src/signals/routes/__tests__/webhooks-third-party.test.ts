@@ -28,6 +28,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -43,6 +44,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
+import { mockStripeClient } from "../../external/stripe-client";
 import { clearAllDetached } from "../../utils";
 import {
   createFixtureTracker,
@@ -62,6 +64,9 @@ const GITHUB_WEBHOOK_PATH = "/api/webhooks/github";
 const GITHUB_WEBHOOK_SECRET = "github-secret";
 const GITHUB_APP_SLUG = "vm0-agent";
 const GITHUB_APP_ID = "123456";
+const SLACK_CONNECTOR = "slack";
+const SLACK_READ_PERMISSION = "channels:read";
+const SLACK_WRITE_PERMISSION = "chat:write";
 
 interface AppResponse {
   readonly status: number;
@@ -85,6 +90,11 @@ interface StripeFixture {
 interface ClerkFixture {
   readonly orgId: string;
   readonly userId: string;
+}
+
+interface ClerkAgentFixture {
+  readonly agentId: string;
+  readonly ownerUserId: string;
 }
 
 interface GitHubUserPayload {
@@ -614,6 +624,9 @@ function mockStripeWebhookEnv(): void {
   mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   mockEnv("ZERO_PRICE", STRIPE_PRICE_MAP);
   mockEnv("ZERO_ONE_TIME_CAMPAIGN", STRIPE_ONE_TIME_CAMPAIGN);
+  mockStripeClient(
+    context.mocks.stripe as unknown as Parameters<typeof mockStripeClient>[0],
+  );
 }
 
 function invoiceLinesWithSubscriptionPeriod(periodEnd: number): {
@@ -974,6 +987,13 @@ const deleteClerkFixture$ = command(
     await db
       .delete(modelProviderAuthSessions)
       .where(eq(modelProviderAuthSessions.orgId, fixture.orgId));
+    await db
+      .delete(userPermissionGrants)
+      .where(eq(userPermissionGrants.orgId, fixture.orgId));
+    await db.delete(zeroAgents).where(eq(zeroAgents.orgId, fixture.orgId));
+    await db
+      .delete(agentComposes)
+      .where(eq(agentComposes.orgId, fixture.orgId));
     await db.delete(storages).where(eq(storages.userId, fixture.userId));
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     await db
@@ -1020,6 +1040,34 @@ const seedClerkFixture$ = command(
   },
 );
 
+async function seedClerkAgent(
+  fixture: ClerkFixture,
+  ownerUserId = `user_${randomUUID()}`,
+): Promise<ClerkAgentFixture> {
+  const db = store.set(writeDb$);
+  const name = `clerk-cleanup-${randomUUID().slice(0, 8)}`;
+
+  const [compose] = await db
+    .insert(agentComposes)
+    .values({ userId: ownerUserId, orgId: fixture.orgId, name })
+    .returning({ id: agentComposes.id });
+  if (!compose) {
+    throw new Error("compose insert returned no row");
+  }
+
+  await db.insert(zeroAgents).values({
+    id: compose.id,
+    orgId: fixture.orgId,
+    owner: ownerUserId,
+    name,
+    visibility: "public",
+    displayName: "Clerk cleanup agent",
+    customSkills: [],
+  });
+
+  return { agentId: compose.id, ownerUserId };
+}
+
 async function seedClerkOauthDeviceAuthSession(
   fixture: ClerkFixture,
 ): Promise<void> {
@@ -1030,6 +1078,7 @@ async function seedClerkOauthDeviceAuthSession(
       orgId: fixture.orgId,
       userId: fixture.userId,
       connectorType: "test-oauth-device",
+      authMethod: "oauth",
       sessionTokenHash: `test-session-token-${randomUUID()}`,
       encryptedProviderState: "encrypted-provider-state",
       userCode: "TEST-DEVICE",
@@ -1394,7 +1443,7 @@ describe("POST /api/webhooks/github", () => {
     expect(runs[0]?.prompt).toBe("Handle this labeled GitHub work");
   });
 
-  it("continues an existing session for the same GitHub issue", async () => {
+  it("starts a new session for label triggers on a GitHub issue with an existing session", async () => {
     const fixture = await trackGitHub(
       store.set(seedGitHubWebhookFixture$, undefined, context.signal),
     );
@@ -1451,7 +1500,8 @@ describe("POST /api/webhooks/github", () => {
     expect(response.status).toBe(200);
     const runs = await selectGitHubRuns(fixture);
     expect(runs).toHaveLength(1);
-    expect(runs[0]?.sessionId).toBe(session.id);
+    expect(runs[0]?.sessionId).toStrictEqual(expect.any(String));
+    expect(runs[0]?.sessionId).not.toBe(session.id);
     expect(runs[0]?.appendSystemPrompt).toContain("Earlier discussion");
     expect(runs[0]?.appendSystemPrompt).toContain("New detail");
     expect(runs[0]?.appendSystemPrompt).toContain("- MSG_ID: issue:42");
@@ -1460,8 +1510,9 @@ describe("POST /api/webhooks/github", () => {
 
     const callbacks = await selectGitHubCallbacks(runs[0]?.id ?? "");
     expect(callbacks[0]?.payload).toMatchObject({
-      existingSessionId: session.id,
+      sessionContinuityEnabled: false,
     });
+    expect(callbacks[0]?.payload).not.toHaveProperty("existingSessionId");
   });
 
   it("dispatches pull requests with a matching label listener", async () => {
@@ -2202,6 +2253,41 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.stripeSubscriptionId).toBe(subId);
     });
 
+    it("does not replace a higher current tier with a lower checkout", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const teamSubId = stripeId("sub");
+      const proSubId = stripeId("sub");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        subscriptionStatus: "active",
+        tier: "team",
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: proSubId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: stripeId("cs"),
+          subscription: proSubId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.subscriptionStatus).toBe("active");
+    });
+
     it("does not grant one-time credits before checkout payment settles", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -2269,7 +2355,46 @@ describe("POST /api/webhooks/stripe", () => {
       });
     });
 
-    it("grants custom credit purchase credits from the checkout total", async () => {
+    it("grants custom credit purchase credits from the checkout subtotal before discounts", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+      const sessionId = stripeId("cs");
+
+      const response = await postStripeWebhookEvent({
+        type: "checkout.session.completed",
+        dataObject: {
+          id: sessionId,
+          subscription: null,
+          customer: fixture.stripeCustomerId,
+          payment_status: "paid",
+          amount_subtotal: 10_000,
+          amount_total: 5000,
+          metadata: {
+            purpose: "credit_purchase",
+            orgId: fixture.orgId,
+            creditsAmountMode: "amount_subtotal",
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect((await selectStripeBilling(fixture)).credits).toBe(
+        creditsBefore + 100_000,
+      );
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        source: "auto_recharge",
+        stripeInvoiceId: sessionId,
+        amount: 100_000,
+        remaining: 100_000,
+      });
+    });
+
+    it("keeps processing older custom credit checkout sessions from the checkout total", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
@@ -2297,14 +2422,6 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits).toBe(
         creditsBefore + 100_000,
       );
-      const records = await selectStripeCreditExpiresRecords(fixture);
-      expect(records).toHaveLength(1);
-      expect(records[0]).toMatchObject({
-        source: "auto_recharge",
-        stripeInvoiceId: sessionId,
-        amount: 100_000,
-        remaining: 100_000,
-      });
     });
   });
 
@@ -2374,6 +2491,50 @@ describe("POST /api/webhooks/stripe", () => {
       expect((await selectStripeBilling(fixture)).credits - creditsBefore).toBe(
         120_000,
       );
+    });
+
+    it("skips lower subscription invoices when a higher subscription is current", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const teamSubId = stripeId("sub");
+      const proSubId = stripeId("sub");
+      const invId = stripeId("inv");
+      const currentPeriodEnd = new Date("2026-04-26T07:24:12Z");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: teamSubId,
+        tier: "team",
+        currentPeriodEnd,
+      });
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+        id: proSubId,
+        status: "active",
+        items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+      });
+      const creditsBefore = (await selectStripeBilling(fixture)).credits;
+
+      const response = await postStripeWebhookEvent({
+        type: "invoice.paid",
+        dataObject: {
+          id: invId,
+          customer: fixture.stripeCustomerId,
+          metadata: null,
+          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
+          parent: { subscription_details: { subscription: proSubId } },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.credits).toBe(creditsBefore);
+      expect(billing.tier).toBe("team");
+      expect(billing.stripeSubscriptionId).toBe(teamSubId);
+      expect(billing.lastProcessedInvoiceId).toBeNull();
+      expect(billing.currentPeriodEnd).toStrictEqual(currentPeriodEnd);
+      await expect(
+        selectStripeCreditExpiresRecords(fixture),
+      ).resolves.toStrictEqual([]);
     });
 
     it("adds renewal credits to an existing balance", async () => {
@@ -3131,6 +3292,15 @@ describe("POST /api/webhooks/clerk", () => {
     );
     await seedClerkOauthDeviceAuthSession(fixture);
     await seedClerkModelProviderAuthSession(fixture);
+    const agent = await seedClerkAgent(fixture, fixture.userId);
+    await store.set(writeDb$).insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId: agent.agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "organization.deleted",
       data: { id: fixture.orgId },
@@ -3169,11 +3339,16 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ id: modelProviderAuthSessions.id })
       .from(modelProviderAuthSessions)
       .where(eq(modelProviderAuthSessions.orgId, fixture.orgId));
+    const grantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(eq(userPermissionGrants.orgId, fixture.orgId));
     expect(cacheRows).toHaveLength(0);
     expect(metadataRows).toHaveLength(0);
     expect(membershipRows).toHaveLength(0);
     expect(deviceSessionRows).toHaveLength(0);
     expect(modelProviderAuthSessionRows).toHaveLength(0);
+    expect(grantRows).toHaveLength(0);
   });
 
   it("does not schedule organization deletion cleanup without an org ID", async () => {
@@ -3281,6 +3456,99 @@ describe("POST /api/webhooks/clerk", () => {
     expect(orgRows).toHaveLength(1);
     expect(deviceSessionRows).toHaveLength(0);
     expect(modelProviderAuthSessionRows).toHaveLength(0);
+  });
+
+  it("removes deleted user permission grants without removing grants for other users", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    const otherUserId = `user_${randomUUID()}`;
+    const agent = await seedClerkAgent(fixture);
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "allow",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        agentId: agent.agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_WRITE_PERMISSION,
+        action: "deny",
+      },
+    ]);
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "user.deleted",
+      data: { id: fixture.userId },
+    });
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const deletedUserGrantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.agentId, agent.agentId),
+          eq(userPermissionGrants.userId, fixture.userId),
+        ),
+      );
+    const otherUserGrantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.agentId, agent.agentId),
+          eq(userPermissionGrants.userId, otherUserId),
+        ),
+      );
+    const agentRows = await db
+      .select({ id: zeroAgents.id, owner: zeroAgents.owner })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, agent.agentId));
+    expect(deletedUserGrantRows).toHaveLength(0);
+    expect(otherUserGrantRows).toHaveLength(1);
+    expect(agentRows).toStrictEqual([
+      { id: agent.agentId, owner: agent.ownerUserId },
+    ]);
+  });
+
+  it("removes user permission grants through the agent delete cascade", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    const agent = await seedClerkAgent(fixture, fixture.userId);
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId: agent.agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+
+    await db.delete(zeroAgents).where(eq(zeroAgents.id, agent.agentId));
+
+    const grantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(eq(userPermissionGrants.agentId, agent.agentId));
+    expect(grantRows).toHaveLength(0);
   });
 
   it("does not schedule user deletion cleanup without a user ID", async () => {

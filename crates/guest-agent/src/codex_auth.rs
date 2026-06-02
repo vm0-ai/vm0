@@ -21,7 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
-use api_contracts::generated::model_providers::codex_oauth_token::placeholders::{
+use api_contracts::generated::constants::codex_oauth_token::placeholders::{
     CHATGPT_ACCOUNT_ID as PLACEHOLDER_CHATGPT_ACCOUNT_ID,
     CHATGPT_REFRESH_TOKEN as PLACEHOLDER_CHATGPT_REFRESH_TOKEN,
 };

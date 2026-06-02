@@ -49,9 +49,9 @@ export function CustomConnectorDeleteConfirm({
           <DialogTitle>Delete {displayName}?</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          This removes the connector and every member&apos;s stored credential
-          for it. Agents authorized for this connector will lose access
-          immediately. This can&apos;t be undone.
+          This removes the connector and every member&apos;s stored secret for
+          it. Agents authorized for this connector will lose access immediately.
+          This can&apos;t be undone.
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={closeDialog} disabled={submitting}>

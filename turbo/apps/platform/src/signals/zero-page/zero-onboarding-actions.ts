@@ -4,6 +4,7 @@ import {
   zeroOnboardingStep$,
   zeroOnboardingStatus$,
   zeroWorkspaceName$,
+  zeroSelectedRole$,
   zeroSelectedConnectors$,
   setZeroStep$,
   completeZeroOnboarding$,
@@ -162,7 +163,7 @@ export const onboardingShowNext$ = computed(async (get) => {
 export const onboardingNextDisabled$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
   if (step === "1") {
-    return !get(zeroWorkspaceName$).trim();
+    return !get(zeroWorkspaceName$).trim() || !get(zeroSelectedRole$);
   }
   return false;
 });

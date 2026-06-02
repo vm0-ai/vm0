@@ -35,7 +35,6 @@ agents:
       OPENAI_API_KEY: ""
     volumes:
       - codex-files:/home/user/.codex
-    working_dir: /home/user/workspace
 volumes:
   codex-files:
     name: $VOLUME_NAME

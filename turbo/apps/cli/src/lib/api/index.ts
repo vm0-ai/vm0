@@ -124,7 +124,7 @@ export {
   listZeroConnectors,
   getZeroConnector,
   searchZeroConnectors,
-  connectZeroConnectorApiToken,
+  connectZeroConnectorManualGrant,
 } from "./domains/zero-connectors";
 
 // Domain modules - Integrations Slack
@@ -212,11 +212,18 @@ export {
 export {
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
+  fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "./domains/zero-computer-use";
 
 // Domain modules - Zero Maps
 export { callZeroMaps, type ZeroMapsResponse } from "./domains/zero-maps";
+
+// Domain modules - Zero Banking
+export {
+  callZeroBanking,
+  type ZeroBankingResponse,
+} from "./domains/zero-banking";
 
 // Domain modules - Web
 export {

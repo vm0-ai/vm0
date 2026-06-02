@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
+
 export const reddit = {
   reddit: {
     label: "Reddit",
@@ -12,21 +14,28 @@ export const reddit = {
         featureFlag: FeatureSwitchKey.RedditConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Reddit to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["REDDIT_ACCESS_TOKEN", "REDDIT_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "REDDIT_ACCESS_TOKEN",
+            refreshToken: "REDDIT_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://www.reddit.com/api/v1/access_token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["identity", "read"],
         },
         access: {
           kind: "refresh-token",
-          accessToken: "REDDIT_ACCESS_TOKEN",
-          refreshToken: "REDDIT_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
           },

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { connectorTypeSchema, type ConnectorType } from "../connectors";
 import {
-  getConnectorEnvBindings,
+  getConnectorEnvBindingEntries,
   getConnectorManualGrantFieldNames,
 } from "../connector-utils";
 import {
@@ -13,12 +13,6 @@ import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
 const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
-
-const PLATFORM_INJECTED_SECRET_NAMES: Partial<
-  Record<string, readonly string[]>
-> = {
-  "google-ads": ["GOOGLE_ADS_DEVELOPER_TOKEN"],
-};
 
 interface ConnectorAuthSources {
   readonly secretBackedKeys: ReadonlySet<string>;
@@ -99,11 +93,11 @@ function connectorAuthSources(
   const secretBackedKeys = new Set<string>();
   const variableBackedKeys = new Set<string>();
 
-  const envBindings = getConnectorEnvBindings(connectorType);
-  const hasEnvBindings = Object.keys(envBindings).length > 0;
+  const envBindingEntries = getConnectorEnvBindingEntries(connectorType);
+  const hasEnvBindings = envBindingEntries.length > 0;
 
   if (hasEnvBindings) {
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
+    for (const { envName, valueRef } of envBindingEntries) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         // Firewall auth templates resolve against sandbox env names, not raw
         // OAuth storage keys such as GITHUB_ACCESS_TOKEN.
@@ -122,21 +116,17 @@ function connectorAuthSources(
     });
   }
 
-  for (const name of PLATFORM_INJECTED_SECRET_NAMES[connectorType] ?? []) {
-    secretBackedKeys.add(name);
-  }
-
   return { secretBackedKeys, variableBackedKeys };
 }
 
 function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
   const placeholderKeys = new Set<string>();
 
-  const envBindings = getConnectorEnvBindings(connectorType);
-  const hasEnvBindings = Object.keys(envBindings).length > 0;
+  const envBindingEntries = getConnectorEnvBindingEntries(connectorType);
+  const hasEnvBindings = envBindingEntries.length > 0;
 
   if (hasEnvBindings) {
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
+    for (const { envName, valueRef } of envBindingEntries) {
       if (valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
         placeholderKeys.add(envName);
         placeholderKeys.add(valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length));
@@ -149,10 +139,6 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
     });
   }
 
-  for (const name of PLATFORM_INJECTED_SECRET_NAMES[connectorType] ?? []) {
-    placeholderKeys.add(name);
-  }
-
   return placeholderKeys;
 }
 
@@ -160,7 +146,7 @@ function connectorPlaceholderKeys(connectorType: ConnectorType): Set<string> {
  * Verify that every builtin firewall's placeholder names match the
  * secret-backed environment names exposed by the connector that references it.
  *
- * OAuth connectors expose environment names via derived env bindings (e.g. SLACK_TOKEN).
+ * Connector auth-provider methods expose environment names via derived env bindings (e.g. SLACK_TOKEN).
  * API-token connectors expose manual grant fields.
  * The firewall's `placeholders` keys must be a subset of these secret names,
  * otherwise the proxy won't find the secret to inject.

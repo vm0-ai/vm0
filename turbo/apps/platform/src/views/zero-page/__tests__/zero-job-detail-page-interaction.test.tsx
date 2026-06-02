@@ -4,7 +4,9 @@ import userEvent from "@testing-library/user-event";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
+  zeroAgentPermissionPoliciesContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -18,6 +20,9 @@ import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
+import { createMockUserPermissionGrantResponse } from "../../../mocks/handlers/api-user-permission-grants.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -208,6 +213,99 @@ describe("zero job detail page - interaction and state", () => {
         screen.getByRole("heading", { name: /Slack permissions/i }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("should save current-user grants from permissions drawer when user grants are enabled", async () => {
+    const grantBodies: unknown[] = [];
+    let policyUpdated = false;
+
+    mockAPIs();
+    setMockOrg({ role: "member" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantBodies.push(body);
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
+        policyUpdated = true;
+        return respond(200, {
+          agentId: "e0000000-0000-4000-a000-000000000010",
+          ownerId: "test-user-123",
+          description: "A helpful agent",
+          displayName: "My Agent",
+          sound: null,
+          avatarUrl: "preset:2",
+          permissionPolicies: {
+            slack: { policies: { "channels:read": "deny" } },
+          },
+          customSkills: [],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+    await waitForPageLoad();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/Manage Slack permissions/i),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByLabelText(/Manage Slack permissions/i));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /Slack permissions/i }),
+      ).toBeInTheDocument();
+    });
+
+    const readGroupButton = queryAllByRoleFast("button").find((element) => {
+      return /^Read \(\d+\)$/.test(element.textContent ?? "");
+    });
+    expect(readGroupButton).toBeDefined();
+    click(readGroupButton!);
+
+    const permissionRow = screen
+      .getByText("channels:read")
+      .closest("div")?.parentElement;
+    expect(permissionRow).not.toBeNull();
+    const denyButton = queryAllByRoleFast(
+      "button",
+      permissionRow as HTMLElement,
+    ).find((element) => {
+      return element.textContent === "Deny";
+    });
+    expect(denyButton).toBeDefined();
+    click(denyButton!);
+
+    const applyButton = queryAllByRoleFast("button").find((element) => {
+      return element.textContent === "Apply";
+    });
+    expect(applyButton).toBeDefined();
+    click(applyButton!);
+
+    await waitFor(() => {
+      expect(grantBodies).toHaveLength(1);
+    });
+    expect(grantBodies[0]).toMatchObject({
+      agentId: "e0000000-0000-4000-a000-000000000010",
+      connectorRef: "slack",
+      permission: "channels:read",
+      action: "deny",
+    });
+    expect(policyUpdated).toBeFalsy();
   });
 
   it("should filter connector list when searching (AGENT-D-032)", async () => {

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { command, type Setter } from "ccstate";
+import { command } from "ccstate";
 import type { ClaudeCodeDeviceAuthScope } from "@vm0/api-contracts/contracts/zero-claude-code-device-auth";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviderAuthSessions } from "@vm0/db/schema/model-provider-auth-session";
@@ -689,208 +689,229 @@ function toModelProviderResponse(
   };
 }
 
-async function importClaudeCodeOAuthToken(args: {
-  readonly stateSet: Setter;
-  readonly scope: ClaudeCodeDeviceAuthScope;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly accessToken: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly provider: ModelProviderResponse;
-  readonly created: boolean;
-}> {
-  const result =
-    args.scope === "org"
-      ? await args.stateSet(
-          upsertOrgModelProvider$,
-          {
-            orgId: args.orgId,
-            type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
-            secret: args.accessToken,
-          },
-          args.signal,
-        )
-      : await args.stateSet(
-          upsertUserModelProvider$,
-          {
-            orgId: args.orgId,
-            userId: args.userId,
-            type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
-            secret: args.accessToken,
-          },
-          args.signal,
-        );
-  if ("status" in result) {
-    throw new Error(
-      "Claude Code OAuth token import returned an unexpected response",
+const importClaudeCodeOAuthToken$ = command(
+  async (
+    { set },
+    args: {
+      readonly scope: ClaudeCodeDeviceAuthScope;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly accessToken: string;
+    },
+    signal: AbortSignal,
+  ): Promise<{
+    readonly provider: ModelProviderResponse;
+    readonly created: boolean;
+  }> => {
+    const result =
+      args.scope === "org"
+        ? await set(
+            upsertOrgModelProvider$,
+            {
+              orgId: args.orgId,
+              type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
+              secret: args.accessToken,
+            },
+            signal,
+          )
+        : await set(
+            upsertUserModelProvider$,
+            {
+              orgId: args.orgId,
+              userId: args.userId,
+              type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
+              secret: args.accessToken,
+            },
+            signal,
+          );
+    if ("status" in result) {
+      throw new Error(
+        "Claude Code OAuth token import returned an unexpected response",
+      );
+    }
+    return {
+      provider: toModelProviderResponse(result.provider),
+      created: result.created,
+    };
+  },
+);
+
+const completeLoadedClaudeCodeDeviceAuth$ = command(
+  async (
+    { set },
+    args: {
+      readonly writeDb: Db;
+      readonly session: ModelProviderAuthSession;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly orgRole: "admin" | "member" | undefined;
+      readonly authorizationCode: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ClaudeCodeDeviceAuthCompleteResult> => {
+    const { writeDb, session } = args;
+    if (isSessionExpired(session)) {
+      await markSessionExpired({ writeDb, session });
+      signal.throwIfAborted();
+      return {
+        status: "invalid_token",
+        message: "Claude Code device auth session expired",
+      };
+    }
+    if (session.status !== "awaiting_user_approval") {
+      return {
+        status: "invalid_token",
+        message: "Claude Code device auth session is not ready",
+      };
+    }
+
+    const providerState = await decodeProviderState(
+      session.encryptedProviderState,
+      session,
     );
-  }
-  return {
-    provider: toModelProviderResponse(result.provider),
-    created: result.created,
-  };
-}
+    signal.throwIfAborted();
+    if (!providerState) {
+      return {
+        status: "error",
+        code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
+        message: "Claude Code device auth session state is invalid",
+      };
+    }
+    if (providerState.scope === "org" && args.orgRole !== "admin") {
+      return {
+        status: "forbidden",
+        message: "Only admins can manage org model providers",
+      };
+    }
 
-async function completeLoadedClaudeCodeDeviceAuth(args: {
-  readonly stateSet: Setter;
-  readonly writeDb: Db;
-  readonly session: ModelProviderAuthSession;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly orgRole: "admin" | "member" | undefined;
-  readonly authorizationCode: string;
-  readonly signal: AbortSignal;
-}): Promise<ClaudeCodeDeviceAuthCompleteResult> {
-  const { writeDb, session, signal } = args;
-  if (isSessionExpired(session)) {
-    await markSessionExpired({ writeDb, session });
-    return {
-      status: "invalid_token",
-      message: "Claude Code device auth session expired",
-    };
-  }
-  if (session.status !== "awaiting_user_approval") {
-    return {
-      status: "invalid_token",
-      message: "Claude Code device auth session is not ready",
-    };
-  }
-
-  const providerState = await decodeProviderState(
-    session.encryptedProviderState,
-    session,
-  );
-  if (!providerState) {
-    return {
-      status: "error",
-      code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
-      message: "Claude Code device auth session state is invalid",
-    };
-  }
-  if (providerState.scope === "org" && args.orgRole !== "admin") {
-    return {
-      status: "forbidden",
-      message: "Only admins can manage org model providers",
-    };
-  }
-
-  const parsedAuthorizationCode = safeSync(() => {
-    return parseAuthorizationCodeInput({
-      raw: args.authorizationCode,
-      expectedState: providerState.state,
+    const parsedAuthorizationCode = safeSync(() => {
+      return parseAuthorizationCodeInput({
+        raw: args.authorizationCode,
+        expectedState: providerState.state,
+      });
     });
-  });
-  if ("error" in parsedAuthorizationCode) {
-    return {
-      status: "invalid_token",
-      message: unknownErrorMessage(
-        parsedAuthorizationCode.error,
-        "Invalid Claude Code authorization code",
+    if ("error" in parsedAuthorizationCode) {
+      return {
+        status: "invalid_token",
+        message: unknownErrorMessage(
+          parsedAuthorizationCode.error,
+          "Invalid Claude Code authorization code",
+        ),
+      };
+    }
+    const authorizationCode = parsedAuthorizationCode.ok;
+
+    const claimed = await claimCompleting({ writeDb, session });
+    signal.throwIfAborted();
+    if (!claimed) {
+      return {
+        status: "invalid_token",
+        message: "Claude Code device auth session is already completing",
+      };
+    }
+
+    return await set(
+      importClaimedClaudeCodeDeviceAuth$,
+      {
+        writeDb,
+        session,
+        scope: providerState.scope,
+        orgId: args.orgId,
+        userId: args.userId,
+        authorizationCode,
+        state: providerState.state,
+        codeVerifier: providerState.codeVerifier,
+      },
+      signal,
+    );
+  },
+);
+
+const importClaimedClaudeCodeDeviceAuth$ = command(
+  async (
+    { set },
+    args: {
+      readonly writeDb: Db;
+      readonly session: ModelProviderAuthSession;
+      readonly scope: ClaudeCodeDeviceAuthScope;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly authorizationCode: string;
+      readonly state: string;
+      readonly codeVerifier: string;
+    },
+    signal: AbortSignal,
+  ): Promise<ClaudeCodeDeviceAuthCompleteResult> => {
+    const tokens = await settle(
+      exchangeClaudeCodeAuthorizationCode({
+        authorizationCode: args.authorizationCode,
+        state: args.state,
+        codeVerifier: args.codeVerifier,
+        signal,
+      }),
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!tokens.ok) {
+      const message = unknownErrorMessage(
+        tokens.error,
+        "Claude Code device auth token exchange failed",
+      );
+      await markSessionError({
+        writeDb: args.writeDb,
+        sessionId: args.session.id,
+        message,
+      });
+      signal.throwIfAborted();
+      return {
+        status: "error",
+        code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
+        message,
+      };
+    }
+
+    const imported = await settle(
+      set(
+        importClaudeCodeOAuthToken$,
+        {
+          scope: args.scope,
+          orgId: args.orgId,
+          userId: args.userId,
+          accessToken: tokens.value.accessToken,
+        },
+        signal,
       ),
-    };
-  }
-  const authorizationCode = parsedAuthorizationCode.ok;
-
-  const claimed = await claimCompleting({ writeDb, session });
-  signal.throwIfAborted();
-  if (!claimed) {
-    return {
-      status: "invalid_token",
-      message: "Claude Code device auth session is already completing",
-    };
-  }
-
-  return await importClaimedClaudeCodeDeviceAuth({
-    stateSet: args.stateSet,
-    writeDb,
-    session,
-    scope: providerState.scope,
-    orgId: args.orgId,
-    userId: args.userId,
-    authorizationCode,
-    state: providerState.state,
-    codeVerifier: providerState.codeVerifier,
-    signal,
-  });
-}
-
-async function importClaimedClaudeCodeDeviceAuth(args: {
-  readonly stateSet: Setter;
-  readonly writeDb: Db;
-  readonly session: ModelProviderAuthSession;
-  readonly scope: ClaudeCodeDeviceAuthScope;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly authorizationCode: string;
-  readonly state: string;
-  readonly codeVerifier: string;
-  readonly signal: AbortSignal;
-}): Promise<ClaudeCodeDeviceAuthCompleteResult> {
-  const tokens = await settle(
-    exchangeClaudeCodeAuthorizationCode({
-      authorizationCode: args.authorizationCode,
-      state: args.state,
-      codeVerifier: args.codeVerifier,
-      signal: args.signal,
-    }),
-    args.signal,
-  );
-  args.signal.throwIfAborted();
-
-  if (!tokens.ok) {
-    const message = unknownErrorMessage(
-      tokens.error,
-      "Claude Code device auth token exchange failed",
+      signal,
     );
-    await markSessionError({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
-      message,
-    });
+    signal.throwIfAborted();
+
+    if (!imported.ok) {
+      const message = unknownErrorMessage(
+        imported.error,
+        "Claude Code device auth import failed",
+      );
+      await markSessionError({
+        writeDb: args.writeDb,
+        sessionId: args.session.id,
+        message,
+      });
+      signal.throwIfAborted();
+      return {
+        status: "error",
+        code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
+        message,
+      };
+    }
+
+    await markSessionImported({ writeDb: args.writeDb, session: args.session });
+    signal.throwIfAborted();
     return {
-      status: "error",
-      code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
-      message,
+      status: "complete",
+      body: imported.value,
     };
-  }
-
-  const imported = await settle(
-    importClaudeCodeOAuthToken({
-      stateSet: args.stateSet,
-      scope: args.scope,
-      orgId: args.orgId,
-      userId: args.userId,
-      accessToken: tokens.value.accessToken,
-      signal: args.signal,
-    }),
-    args.signal,
-  );
-  args.signal.throwIfAborted();
-
-  if (!imported.ok) {
-    const message = unknownErrorMessage(
-      imported.error,
-      "Claude Code device auth import failed",
-    );
-    await markSessionError({
-      writeDb: args.writeDb,
-      sessionId: args.session.id,
-      message,
-    });
-    return {
-      status: "error",
-      code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
-      message,
-    };
-  }
-
-  await markSessionImported({ writeDb: args.writeDb, session: args.session });
-  return {
-    status: "complete",
-    body: imported.value,
-  };
-}
+  },
+);
 
 export const completeClaudeCodeDeviceAuth$ = command(
   async (
@@ -927,16 +948,18 @@ export const completeClaudeCodeDeviceAuth$ = command(
         message: "Claude Code device auth session not found",
       };
     }
-    return await completeLoadedClaudeCodeDeviceAuth({
-      stateSet: set,
-      writeDb,
-      session,
-      orgId: args.orgId,
-      userId: args.userId,
-      orgRole: args.orgRole,
-      authorizationCode: args.authorizationCode,
+    return await set(
+      completeLoadedClaudeCodeDeviceAuth$,
+      {
+        writeDb,
+        session,
+        orgId: args.orgId,
+        userId: args.userId,
+        orgRole: args.orgRole,
+        authorizationCode: args.authorizationCode,
+      },
       signal,
-    });
+    );
   },
 );
 

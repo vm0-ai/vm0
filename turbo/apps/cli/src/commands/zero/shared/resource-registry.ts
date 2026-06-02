@@ -3364,7 +3364,9 @@ export function toGenerationTarget(value: string): GenerationTarget {
   return value as GenerationTarget;
 }
 
-export function selectResourceCandidates(): ResourceCandidateSlice {
+export function selectResourceCandidates(
+  target?: GenerationTarget,
+): ResourceCandidateSlice {
   return {
     registryVersion: RESOURCE_REGISTRY_VERSION,
     source: {
@@ -3383,7 +3385,7 @@ export function selectResourceCandidates(): ResourceCandidateSlice {
     ],
     candidates: {
       skills: filterByKind("skill"),
-      templates: filterByKind("template"),
+      templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),
       audioStyles: filterByKind("audio-style"),

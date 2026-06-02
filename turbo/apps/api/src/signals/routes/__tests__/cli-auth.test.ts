@@ -37,7 +37,7 @@ import { signPatJwtForTests, signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now, nowDate } from "../../external/time";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptSecretForTests } from "./helpers/encrypt-secret";
 
 const context = testContext();
 const store = createStore();
@@ -524,7 +524,7 @@ describe("CLI auth routes", () => {
       )
       .limit(1);
 
-    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+    return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
   async function findConnectorSecret(args: {
@@ -546,7 +546,7 @@ describe("CLI auth routes", () => {
       )
       .limit(1);
 
-    return row ? decryptSecretValue(row.encryptedValue) : undefined;
+    return row ? decryptSecretForTests(row.encryptedValue) : undefined;
   }
 
   async function readConnectorState(args: {
@@ -1735,6 +1735,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
           },
         }),
@@ -1763,7 +1764,7 @@ describe("CLI auth routes", () => {
         400,
       );
       expect(missingFields.body).toStrictEqual({
-        error: "connectorName and accessToken are required",
+        error: "connectorName, authMethod, and accessToken are required",
       });
 
       const emptyRefreshToken = await acceptResponse<{
@@ -1773,6 +1774,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
             refreshToken: "",
           },
@@ -1780,7 +1782,7 @@ describe("CLI auth routes", () => {
         400,
       );
       expect(emptyRefreshToken.body).toStrictEqual({
-        error: "connectorName and accessToken are required",
+        error: "connectorName, authMethod, and accessToken are required",
       });
     });
 
@@ -1792,6 +1794,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "unknown-connector",
+            authMethod: "oauth",
             accessToken: "unknown-access-token",
           },
         }),
@@ -1814,6 +1817,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
           },
         }),
@@ -1825,7 +1829,7 @@ describe("CLI auth routes", () => {
       });
     });
 
-    it("rejects connector types that do not use OAuth", async () => {
+    it("rejects connector types without an auth-code or device-auth grant", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-non-oauth" });
@@ -1837,6 +1841,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "cloudinary",
+            authMethod: "api-token",
             accessToken: "cloudinary-access-token",
           },
         }),
@@ -1844,7 +1849,8 @@ describe("CLI auth routes", () => {
       );
 
       expect(response.body).toStrictEqual({
-        error: "cloudinary connector does not use OAuth",
+        error:
+          "cloudinary connector auth method api-token does not use an auth-code or device-auth grant",
       });
       await expect(
         readConnectorState({ orgId, userId, type: "cloudinary" }),
@@ -1858,7 +1864,34 @@ describe("CLI auth routes", () => {
       ).resolves.toBeUndefined();
     });
 
-    it("seeds OAuth connector token state for the test user org", async () => {
+    it("rejects auth methods that are not configured for the connector type", async () => {
+      const userId = trackUser(`user_${randomUUID()}`);
+      const orgId = trackOrg(`org_${randomUUID()}`);
+      await seedOrgMembership({ orgId, userId, slug: "connector-auth-method" });
+      mockTestUser({ userId, orgId });
+      const client = setupApp({ context })(cliAuthTestConnectorContract);
+
+      const response = await acceptResponse<{ readonly error: string }>(
+        client.create({
+          query: {},
+          body: {
+            connectorName: "github",
+            authMethod: "api-token",
+            accessToken: "github-access-token",
+          },
+        }),
+        400,
+      );
+
+      expect(response.body).toStrictEqual({
+        error: "github connector does not configure auth method api-token",
+      });
+      await expect(
+        readConnectorState({ orgId, userId, type: "github" }),
+      ).resolves.toBeNull();
+    });
+
+    it("seeds connector token state for the test user org", async () => {
       const userId = trackUser(`user_${randomUUID()}`);
       const orgId = trackOrg(`org_${randomUUID()}`);
       await seedOrgMembership({ orgId, userId, slug: "connector-org" });
@@ -1870,6 +1903,7 @@ describe("CLI auth routes", () => {
           query: {},
           body: {
             connectorName: "test-oauth",
+            authMethod: "oauth",
             accessToken: "test-oauth-access-token",
             refreshToken: "test-oauth-refresh-token",
             expiresIn: -60,
@@ -1933,6 +1967,7 @@ describe("CLI auth routes", () => {
           query: { email: "custom@test.com" },
           body: {
             connectorName: "github",
+            authMethod: "oauth",
             accessToken: "github-access-token",
           },
         }),

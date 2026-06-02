@@ -134,12 +134,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the PostHog analytics connector",
     enabled: false,
   },
-  [FeatureSwitchKey.PwaOfflineCache]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable PWA offline caching (static asset cache-first, offline fallback page, and service worker updateViaCache: none)",
-    enabled: true,
-  },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Mailchimp email marketing connector",
@@ -172,10 +166,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
+  [FeatureSwitchKey.UserPermissionGrants]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Gate the per-user Zero firewall permission grant rollout. Staff-only while the grant backfill and rollout verification complete.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable remote desktop host registration",
     enabled: false,
+  },
+  [FeatureSwitchKey.Banking]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Enable the managed Zero Banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.LarkConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -204,6 +212,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
+  },
+  [FeatureSwitchKey.OrgSkills]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the organization custom skills library in the Zero sidebar and page UI",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -265,11 +280,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.HostedSites]: {
-    maintainer: "lancy@vm0.ai",
-    description: "Enable static hosted-site deployments from zero host.",
-    enabled: true,
-  },
   [FeatureSwitchKey.SandboxIoLimiters]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -290,6 +300,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatScrollToBottomButton]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread (above the composer) whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
+    enabled: true,
   },
 };
 

@@ -41,6 +41,12 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/showcase",
   "/web-design",
   "/:locale/web-design",
+  "/presentation",
+  "/:locale/presentation",
+  "/report",
+  "/:locale/report",
+  "/sprite",
+  "/:locale/sprite",
   "/terms-of-use",
   "/privacy-policy",
   "/support",
@@ -229,6 +235,9 @@ export default async function middleware(
 
 export const config = {
   matcher: [
+    // Keep locale-prefixed docs routes behind Clerk even when legacy crawlers
+    // request markdown-like URLs such as /en/docs/quickstart.md.
+    "/:locale(en|de|ja|es)/docs/(.*)",
     // Match all routes except:
     // - _next (Next.js internals)
     // - _vercel (Vercel internals)

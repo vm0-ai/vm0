@@ -55,6 +55,7 @@ function mockAPIs({
           description: null,
           sound: null,
           avatarUrl: null,
+          customSkills: [],
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -101,7 +102,21 @@ describe("zero sidebar", () => {
     expect(features[FeatureSwitchKey.DataExport]).toBeFalsy();
   });
 
-  it("should never show Activity logs in the sidebar regardless of ZeroDebug switch", async () => {
+  it("should hide Activity logs when ZeroDebug switch is off", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Activity logs")).not.toBeInTheDocument();
+  });
+
+  it("should show Activity logs when ZeroDebug switch is on", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
@@ -112,6 +127,34 @@ describe("zero sidebar", () => {
     await waitFor(() => {
       expect(screen.getByText("Agents")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Activity logs")).not.toBeInTheDocument();
+    expect(screen.getByText("Activity logs")).toBeInTheDocument();
+  });
+
+  it("should hide Skills when OrgSkills switch is off", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.OrgSkills]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+  });
+
+  it("should show Skills when OrgSkills switch is on", async () => {
+    mockAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.OrgSkills]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Skills")).toBeInTheDocument();
   });
 });

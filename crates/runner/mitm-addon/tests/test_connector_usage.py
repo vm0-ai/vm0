@@ -2,9 +2,9 @@
 
 import gzip
 import json
-import time
+import zlib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from mitmproxy.test import tutils
@@ -13,44 +13,85 @@ import body_utils
 import mitm_addon
 import usage
 from tests.flow_helpers import header_map, response_stream
-from tests.usage_helpers import (
-    request_bodies_from_calls,
-    usage_event_events_from_calls,
-)
-from usage.providers.connectors import x as usage_x_connector
 
 
-class TestIsStreamPath:
-    """Tests for is_stream_path predicate (issue #9534)."""
+class TestXStreamPathRouting:
+    """Tests for stream path routing through responseheaders (issue #9534)."""
 
-    def test_all_five_stream_endpoints_match(self):
-        assert usage.x.is_stream_path("/2/tweets/search/stream") is True
-        assert usage.x.is_stream_path("/2/tweets/sample/stream") is True
-        assert usage.x.is_stream_path("/2/tweets/sample10/stream") is True
-        assert usage.x.is_stream_path("/2/tweets/compliance/stream") is True
-        assert usage.x.is_stream_path("/2/users/compliance/stream") is True
+    def _make_x_response_flow(self, real_flow, path: str):
+        flow = real_flow(with_response=False, host="api.x.com", path=path)
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = f"https://api.x.com{path}"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+        return flow
 
-    def test_stream_rules_is_not_stream(self):
-        # Rules management is a regular JSON request/response endpoint.
-        assert usage.x.is_stream_path("/2/tweets/search/stream/rules") is False
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/2/tweets/search/stream",
+            "/2/tweets/sample/stream",
+            "/2/tweets/sample10/stream",
+            "/2/tweets/compliance/stream",
+            "/2/users/compliance/stream",
+        ],
+    )
+    def test_stream_endpoints_register_ndjson_parser(self, real_flow, path):
+        flow = self._make_x_response_flow(real_flow, path)
 
-    def test_non_stream_paths_do_not_match(self):
-        assert usage.x.is_stream_path("/2/tweets/search/recent") is False
-        assert usage.x.is_stream_path("/2/users/by") is False
-        assert usage.x.is_stream_path("/2/tweets/1") is False
-        assert usage.x.is_stream_path("") is False
-        assert usage.x.is_stream_path("/") is False
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/2/tweets/search/stream/rules",
+            "/2/tweets/search/recent",
+            "/2/users/by",
+            "/2/tweets/1",
+            "",
+            "/",
+        ],
+    )
+    def test_non_stream_paths_register_json_parser(self, real_flow, path):
+        flow = self._make_x_response_flow(real_flow, path)
+
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" in flow.metadata
+
+    def test_brotli_stream_path_skips_response_body_parser(self, real_flow, mitm_ctx):
+        flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
+        flow.response.headers = header_map(
+            {"content-type": "application/json", "content-encoding": "br"}
+        )
+
+        with mitm_ctx() as log:
+            mitm_addon.responseheaders(flow)
+
+        assert callable(response_stream(flow))
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+        assert log.debug.call_count == 1
+        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
 
 class TestReportConnectorUsage:
     """Tests for report_connector_usage helper (issue #9504)."""
 
     @pytest.fixture(autouse=True)
-    def _sync_executor(self, sync_usage_executor):
+    def _sync_executor(self, sync_usage_executor, usage_webhook_api):
         """All tests here route billing through ``_call_and_get_billing`` which
-        inspects ``_opener.open`` inline; the sync executor makes that work
+        inspects webhook delivery inline; the sync executor makes that work
         without each test needing its own ``fresh_usage_executor`` + shutdown.
         """
+        self._usage_webhook_api = usage_webhook_api
 
     def _make_x_flow(
         self,
@@ -64,8 +105,16 @@ class TestReportConnectorUsage:
         permission="tweet.read",
         rule="GET /2/tweets",
         content_encoding="",
+        request_body: bytes | None = None,
+        request_encoding: str | None = None,
     ):
-        flow = real_flow(with_response=False, host="api.x.com", path=path)
+        flow = real_flow(
+            with_response=False,
+            host="api.x.com",
+            path=path,
+            request_body=request_body,
+            request_encoding=request_encoding,
+        )
         flow.metadata["original_url"] = (
             f"https://api.x.com{path}?{query}" if query else f"https://api.x.com{path}"
         )
@@ -92,20 +141,16 @@ class TestReportConnectorUsage:
         """Call report_connector_usage and return the webhook payload(s).
 
         Relies on the class-level ``_sync_executor`` autouse fixture to
-        route submissions inline; only the urllib boundary is mocked here.
+        route submissions inline.
         """
-        with (
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
+            start_count = webhook.request_count
             usage.report_connector_usage(flow, run_id)
             usage.flush_usage_events(trigger="test")
         return [
             event
-            for body in request_bodies_from_calls(mock_opener.open.call_args_list)
+            for request in webhook.requests[start_count:]
+            for body in [request.json_body()]
             for event in body["events"]
         ]
 
@@ -179,17 +224,13 @@ class TestReportConnectorUsage:
             body=body,
         )
 
-        with (
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             usage.report_connector_usage(flow, "run-abc-123")
-            mock_opener.open.assert_not_called()
+            assert webhook.request_count == 0
             usage.flush_usage_events(trigger="test")
 
-        mock_opener.open.assert_called_once()
-        [payload] = request_bodies_from_calls(mock_opener.open.call_args_list)
+        assert webhook.request_count == 1
+        [payload] = webhook.json_bodies()
         assert payload["runId"] == "run-abc-123"
         assert "idempotencyKey" not in payload
         by_cat = {event["category"]: event for event in payload["events"]}
@@ -209,15 +250,11 @@ class TestReportConnectorUsage:
         ).encode()
         flow = self._make_x_flow(real_flow, tmp_path, query="expansions=future", body=body)
 
-        with (
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             usage.report_connector_usage(flow, "run-abc-123")
             usage.flush_usage_events(trigger="test")
 
-        bodies = request_bodies_from_calls(mock_opener.open.call_args_list)
+        bodies = webhook.json_bodies()
         assert [len(body["events"]) for body in bodies] == [100, 1]
         assert {body["runId"] for body in bodies} == {"run-abc-123"}
         assert all(
@@ -244,7 +281,7 @@ class TestReportConnectorUsage:
         payloads = self._call_and_get_billing(flow)
         assert payloads == []
 
-    def test_soft_error_emits_no_billing(self, tmp_path, real_flow):
+    def test_soft_error_with_request_hints_emits_no_billing(self, tmp_path, real_flow):
         """HTTP 200 + errors array + no data field emits no usage_event
         row (issue #9620)."""
         body = json.dumps(
@@ -264,9 +301,10 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
-            path="/2/tweets/999999999999999999",
+            path="/2/tweets",
+            query="ids=999999999999999999",
             body=body,
-            rule="GET /2/tweets/{id}",
+            rule="GET /2/tweets",
         )
         payloads = self._call_and_get_billing(flow)
         assert payloads == []
@@ -402,6 +440,128 @@ class TestReportConnectorUsage:
         assert p["category"] == "posts.read"
         assert p["quantity"] == 12567
 
+    def test_tweet_counts_zero_total_does_not_bill_buckets(self, tmp_path, real_flow):
+        """Count endpoint data arrays are time buckets, not returned posts."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 0},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 0},
+                ],
+                "meta": {"total_tweet_count": 0},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=nothing",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+    @pytest.mark.parametrize(
+        "path",
+        ["/2/tweets/counts/recent", "/2/tweets/counts/all"],
+    )
+    def test_tweet_counts_total_lower_than_bucket_count_bills_total(
+        self, tmp_path, real_flow, path
+    ):
+        """Both count endpoints bill total_tweet_count, not time-bucket count."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 1},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 0},
+                    {"start": "2026-04-16T00:00", "end": "2026-04-17T00:00", "tweet_count": 0},
+                ],
+                "meta": {"total_tweet_count": 1},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=path,
+            query="query=rare",
+            body=body,
+            rule=f"GET {path}",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 1
+
+    def test_tweet_counts_path_matching_requires_exact_endpoint(self, tmp_path, real_flow):
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+                "meta": {"total_tweet_count": 1},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent/extra",
+            body=body,
+            rule="GET /2/tweets/counts/recent/extra",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 3
+
+    def test_tweet_counts_missing_total_skips_billing_and_logs_warning(self, tmp_path, real_flow):
+        """Parsed count endpoint responses without total_tweet_count should not bill buckets."""
+        body = json.dumps(
+            {
+                "data": [
+                    {"start": "2026-04-14T00:00", "end": "2026-04-15T00:00", "tweet_count": 2},
+                    {"start": "2026-04-15T00:00", "end": "2026-04-16T00:00", "tweet_count": 3},
+                ],
+                "meta": {},
+            }
+        ).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="query=missing_total",
+            body=body,
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert any(
+            entry["level"] == "warn" and "total_tweet_count" in entry["message"]
+            for entry in entries
+        )
+
+    def test_tweet_counts_unparseable_ignores_request_hints_and_logs_error(
+        self, tmp_path, real_flow
+    ):
+        """Count endpoint request hints do not represent returned post count."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/counts/recent",
+            query="max_results=50",
+            body=b"not json",
+            rule="GET /2/tweets/counts/recent",
+        )
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        assert any(
+            entry["level"] == "error" and "count endpoint" in entry["message"] for entry in entries
+        )
+
     def test_handles_gzip_body(self, tmp_path, real_flow):
         """gzip-encoded response body decompresses before parsing."""
         raw = json.dumps({"data": [{"id": "1"}], "meta": {"result_count": 1}}).encode()
@@ -417,7 +577,6 @@ class TestReportConnectorUsage:
         """responseheaders + response bill X JSON without full-body buffering."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -439,20 +598,46 @@ class TestReportConnectorUsage:
         callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
         assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert by_category == {"posts.read": 1, "user.read": 1}
+
+    def test_full_response_pipeline_brotli_x_json_uses_bounded_fallback(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Brotli streaming decode is skipped, but X JSON fallback remains active."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+
+        with mitm_ctx() as log:
+            mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            body_utils.brotli.compress(b'{"data":[{"id":"1"}],"includes":{"users":[{"id":"u1"}]}}')
+        )
+
+        payloads = self._call_and_get_billing(flow)
+
+        by_category = {event["category"]: event["quantity"] for event in payloads}
+        assert by_category == {"posts.read": 1, "user.read": 1}
+        assert "connector_response_finish" not in flow.metadata
+        assert "x_ndjson_state" not in flow.metadata
+        assert log.debug.call_count == 1
+        assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
 
     def test_full_response_pipeline_x_data_object_bills_single_resource(
         self, tmp_path, real_flow, mitm_ctx
@@ -460,7 +645,6 @@ class TestReportConnectorUsage:
         """Selective X JSON extraction must count a top-level data object as one resource."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/1")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -477,18 +661,12 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":{"id":"1","text":"hello"}}')
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 1
@@ -499,7 +677,6 @@ class TestReportConnectorUsage:
         """Parsed X soft errors must not fall back to URL hints and bill missing resources."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -527,18 +704,12 @@ class TestReportConnectorUsage:
                 }
             ).encode()
         )
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
 
     def test_full_response_pipeline_x_root_array_uses_request_hints(
         self, tmp_path, real_flow, mitm_ctx
@@ -546,7 +717,6 @@ class TestReportConnectorUsage:
         """Non-object JSON roots stay unparsed so request-side hints still bill."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -563,18 +733,12 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'[{"id":"1"}]')
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(),
-            patch.object(usage_x_connector, "get_api_url", return_value="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
@@ -643,6 +807,115 @@ class TestReportConnectorUsage:
         flow.request.content = json.dumps({"text": "hello world"}).encode()
         p = self._call_and_get_single_billing(flow)
         assert p["category"] == "content.create"
+        assert p["quantity"] == 1
+
+    @pytest.mark.parametrize(
+        ("request_encoding", "request_body"),
+        [
+            ("gzip", gzip.compress(json.dumps({"text": "hello world"}).encode())),
+            ("deflate", zlib.compress(json.dumps({"text": "hello world"}).encode())),
+        ],
+    )
+    def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
+        self, tmp_path, real_flow, request_encoding, request_body
+    ):
+        """Small compressed tweet create bodies still refine to Content: Create."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=request_body,
+            request_encoding=request_encoding,
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
+        assert p["quantity"] == 1
+
+    def test_tweet_create_gzip_decoded_body_over_cap_stays_conservative(self, tmp_path, real_flow):
+        """A gzip body that expands beyond the billing inspection cap is not refined."""
+        long_text = "x" * body_utils.STREAM_BUFFER_LIMIT
+        request_body = gzip.compress(json.dumps({"text": long_text}).encode())
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=request_body,
+            request_encoding="gzip",
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    def test_tweet_create_raw_body_over_cap_stays_conservative(self, tmp_path, real_flow):
+        """An oversized identity request body is not refined."""
+        request_body = b"{" + b'"text":"' + b"x" * body_utils.STREAM_BUFFER_LIMIT + b'"}'
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=request_body,
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    @pytest.mark.parametrize("request_encoding", ["gzip", "br", "zstd", "x-vm0-test"])
+    def test_tweet_create_invalid_or_unsupported_encoding_stays_conservative(
+        self, tmp_path, real_flow, request_encoding
+    ):
+        """Invalid compressed or unsupported encoded bodies are not refined."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+            request_body=b'{"text":"hello world"}',
+            request_encoding=request_encoding,
+        )
+        flow.request.method = "POST"
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create_with_url"
+        assert p["quantity"] == 1
+
+    def test_non_refinement_flow_does_not_decode_request_body(self, tmp_path, real_flow):
+        """Only body-refinement candidates should inspect request content."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets/123/retweeted_by?max_results=10",
+            body=json.dumps({"data": [{"id": "u1"}]}).encode(),
+            permission="tweet.read",
+            rule="GET /2/tweets/{id}/retweeted_by",
+            request_body=gzip.compress(b'{"unused": true}'),
+            request_encoding="gzip",
+        )
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/123/retweeted_by?max_results=10"
+
+        with patch(
+            "mitmproxy.net.encoding.decode",
+            side_effect=AssertionError("request body should not be decoded"),
+        ):
+            p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "user.read"
         assert p["quantity"] == 1
 
     @pytest.mark.parametrize(
@@ -726,8 +999,8 @@ class TestReportConnectorUsage:
         assert p["category"] == "content.create"
         assert p["quantity"] == 1
 
-    def test_tweet_create_quote_or_media_stays_on_with_url_bucket(self, tmp_path, real_flow):
-        """Quote tweets and attached media both render as link previews;
+    def test_tweet_create_rendered_link_signals_stay_on_with_url_bucket(self, tmp_path, real_flow):
+        """Quote tweets, attached media, cards, and DM deep links render links;
         we stay on the expensive bucket even when the text has no URL."""
         for req_body in [
             # quote tweet
@@ -736,6 +1009,13 @@ class TestReportConnectorUsage:
             json.dumps({"text": "pic", "media": {"media_ids": ["42"]}}).encode(),
             # attached card
             json.dumps({"text": "card", "card_uri": "card://123"}).encode(),
+            # direct-message deep link
+            json.dumps(
+                {
+                    "text": "DM me for details",
+                    "direct_message_deep_link": "https://x.com/messages/compose?recipient_id=123",
+                }
+            ).encode(),
         ]:
             flow = self._make_x_flow(
                 real_flow,
@@ -750,6 +1030,29 @@ class TestReportConnectorUsage:
             flow.request.content = req_body
             p = self._call_and_get_single_billing(flow)
             assert p["category"] == "content.create_with_url"
+            assert p["quantity"] == 1
+
+    @pytest.mark.parametrize("direct_message_deep_link", ["", "   ", None, 123, {"url": "x"}])
+    def test_tweet_create_invalid_direct_message_deep_link_downgrades_to_content_create(
+        self, tmp_path, real_flow, direct_message_deep_link
+    ):
+        """Invalid DM deep-link values do not block the plain-text downgrade."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/tweets",
+            body=json.dumps({"data": {"id": "1"}}).encode(),
+            status=201,
+            permission="tweet.write",
+            rule="POST /2/tweets",
+        )
+        flow.request.method = "POST"
+        flow.request.content = json.dumps(
+            {"text": "DM me for details", "direct_message_deep_link": direct_message_deep_link}
+        ).encode()
+        p = self._call_and_get_single_billing(flow)
+        assert p["category"] == "content.create"
+        assert p["quantity"] == 1
 
     def test_tweet_create_unparseable_body_stays_conservative(self, tmp_path, real_flow):
         """A malformed request body keeps billing on the max bucket so
@@ -887,6 +1190,40 @@ class TestReportConnectorUsage:
         assert payloads == []
 
     # ---- fallback / unparseable cases ----
+
+    def test_legacy_x_json_fallback_extracts_selective_field_counts(self, tmp_path, real_flow):
+        """Buffered fallback should share X JSON field semantics with the selective parser."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}],
+                "errors": [{"title": "partial failure"}],
+                "includes": {
+                    "users": [{"id": "u1"}],
+                    "media": [],
+                    "topics": "ignored",
+                },
+                "meta": {"result_count": 2, "total_tweet_count": 3},
+            }
+        ).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+
+        payloads = self._call_and_get_billing(flow)
+
+        by_cat = {p["category"]: p["quantity"] for p in payloads}
+        assert by_cat == {"posts.read": 2, "user.read": 1}
+
+    def test_legacy_x_json_fallback_ignores_boolean_result_count(self, tmp_path, real_flow):
+        body = json.dumps({"meta": {"result_count": True}}).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        payloads = self._call_and_get_billing(flow)
+
+        assert payloads == []
+        if proxy_log.exists():
+            entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+            assert all(entry["level"] != "error" for entry in entries)
+            assert all("unparseable" not in entry["message"].lower() for entry in entries)
 
     def test_truncated_buffer_with_no_hints_skips_billing(self, tmp_path, real_flow):
         """Unparseable body + no URL hints → skip emission and log an
@@ -1233,7 +1570,6 @@ class TestReportConnectorUsage:
         """End-to-end: responseheaders registers parser, chunks accumulate, response() logs."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["vm_run_id"] = "run-abc-123"
-        flow.metadata["vm_client_ip"] = "10.200.0.1"
         flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
         flow.metadata["vm_sandbox_token"] = "test-token"
@@ -1247,13 +1583,12 @@ class TestReportConnectorUsage:
         # X streams return application/json with chunked transfer, not x-ndjson.
         flow.response.headers = header_map({"content-type": "application/json"})
         flow.response.stream = False
-        mitm_addon._request_start_times[flow.id] = time.time()
 
         # 1. responseheaders - registers NDJSON parser
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
         # 2. Stream chunks (including keep-alives and a mid-line split)
         chunks = [
@@ -1267,24 +1602,63 @@ class TestReportConnectorUsage:
             callback(chunk)
 
         # 3. Simulated disconnect - response() fires and logs via webhook
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(
-                usage.webhook, "_opener"
-            ) as mock_opener,  # urllib external boundary (#9991)
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
         # 4. Verify billing payloads
-        payloads = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        payloads = webhook.usage_events()
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 3 tweets primary + 0 from includes.tweets (none here) = 3
         assert by_cat["posts.read"] == 3
         # 3 users from includes
         assert by_cat["user.read"] == 3
+
+    def test_full_streaming_pipeline_ignores_malformed_include_values(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
+        """Malformed include values are ignored while valid siblings still bill."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.headers = header_map({"content-type": "application/json"})
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        assert "x_ndjson_state" in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+
+        callback(
+            b'{"data":{"id":"1"},"includes":'
+            b'{"users":null,'
+            b'"tweets":{"id":"t1"},'
+            b'"media":[{"media_key":"m1"}]}}\n'
+        )
+        state = flow.metadata["x_ndjson_state"]
+        assert state["data_count"] == 1
+        assert state["includes"] == {"media": 1}
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 0
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        payloads = webhook.usage_events()
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert by_cat == {"posts.read": 1, "media.read": 1}
 
     def test_response_logs_incremental_x_json_parse_error(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
@@ -1308,17 +1682,12 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
-        assert "x_json_response_finish" in flow.metadata
-        mitm_addon._request_start_times[flow.id] = time.time()
+        assert "connector_response_finish" in flow.metadata
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         lost_visibility_entries = [
@@ -1330,7 +1699,7 @@ class TestReportConnectorUsage:
         assert entry["body_truncated"] is False
         assert isinstance(entry["parse_error"], str)
         assert entry["parse_error"]
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_response_logs_x_json_parse_error_after_forensic_buffer_truncates(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
@@ -1355,16 +1724,11 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"},' + b" " * body_utils.STREAM_BUFFER_LIMIT)
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
-        mitm_addon._request_start_times[flow.id] = time.time()
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
 
-        mock_opener.open.assert_not_called()
+        assert webhook.request_count == 0
         proxy_log = Path(flow.metadata["vm_proxy_log_path"])
         entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
         lost_visibility_entries = [
@@ -1375,7 +1739,7 @@ class TestReportConnectorUsage:
         assert entry["level"] == "error"
         assert entry["body_truncated"] is False
         assert entry["parse_error"] == "incomplete json"
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
     def test_response_uses_request_hints_for_incremental_x_json_parse_error(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
@@ -1399,18 +1763,13 @@ class TestReportConnectorUsage:
 
         mitm_addon.responseheaders(flow)
         response_stream(flow)(b'{"data":[{"id":"1"}')
-        assert "x_json_response_finish" in flow.metadata
-        mitm_addon._request_start_times[flow.id] = time.time()
+        assert "connector_response_finish" in flow.metadata
 
-        with (
-            mitm_ctx(api_url="https://app.test"),
-            patch.object(usage.webhook, "_opener") as mock_opener,
-        ):
-            mock_opener.open.return_value = MagicMock()
+        with self._usage_webhook_api() as webhook:
             mitm_addon.response(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = usage_event_events_from_calls(mock_opener.open.call_args_list)
+        events = webhook.usage_events()
         assert len(events) == 1
         assert events[0]["category"] == "posts.read"
         assert events[0]["quantity"] == 3
@@ -1419,4 +1778,4 @@ class TestReportConnectorUsage:
         assert all(entry["level"] != "error" for entry in entries)
         assert all("unparseable" not in entry["message"].lower() for entry in entries)
         assert all("parse_error" not in entry for entry in entries)
-        assert "x_json_response_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata

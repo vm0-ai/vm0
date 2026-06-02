@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
+
 export const x = {
   x: {
     label: "X",
@@ -10,15 +12,23 @@ export const x = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with X to grant read access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "X_OAUTH_CLIENT_ID",
+          clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["X_ACCESS_TOKEN", "X_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "X_ACCESS_TOKEN",
+            refreshToken: "X_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.x.com/2/oauth2/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "X_OAUTH_CLIENT_ID",
-            clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "tweet.read", // All the Tweets you can view, including Tweets from protected accounts.
             "tweet.write", // Tweet and Retweet for you.
@@ -46,8 +56,7 @@ export const x = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "X_ACCESS_TOKEN",
-          refreshToken: "X_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             X_TOKEN: "$secrets.X_ACCESS_TOKEN",
           },

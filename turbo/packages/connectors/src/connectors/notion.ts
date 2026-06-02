@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
+
 export const notion = {
   notion: {
     label: "Notion",
@@ -10,21 +12,28 @@ export const notion = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Notion to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
+          clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["NOTION_ACCESS_TOKEN", "NOTION_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "NOTION_ACCESS_TOKEN",
+            refreshToken: "NOTION_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.notion.com/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "NOTION_OAUTH_CLIENT_ID",
-            clientSecretEnv: "NOTION_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [],
         },
         access: {
           kind: "refresh-token",
-          accessToken: "NOTION_ACCESS_TOKEN",
-          refreshToken: "NOTION_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
           },

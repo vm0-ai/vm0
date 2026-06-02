@@ -8,8 +8,10 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  IconChartLine,
   IconLayoutGrid,
   IconCalendar,
+  IconFileText,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -83,6 +85,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconUsers as NavIcon,
   },
   {
+    id: "skills",
+    activeKeys: ["skills"],
+    pathname: "/skills",
+    label: "Skills",
+    icon: IconFileText as NavIcon,
+    featureGate: FeatureSwitchKey.OrgSkills,
+  },
+  {
     id: "connectors",
     activeKeys: ["connectors"],
     pathname: "/connectors",
@@ -95,6 +105,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/schedules",
     label: "Scheduled",
     icon: IconCalendar as NavIcon,
+  },
+  {
+    id: "activities",
+    activeKeys: ["activities", "activityDetail", "activityInspect"],
+    pathname: "/activities",
+    label: "Activity logs",
+    icon: IconChartLine as NavIcon,
+    featureGate: FeatureSwitchKey.ZeroDebug,
   },
 ];
 

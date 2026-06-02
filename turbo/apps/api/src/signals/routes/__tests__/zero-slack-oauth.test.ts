@@ -18,7 +18,7 @@ import {
   type SlackConnectFixture,
 } from "./helpers/zero-slack-connect";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import { decryptSecretValue } from "../../services/crypto.utils";
+import { decryptPersistentSecretValue } from "../../services/crypto.utils";
 
 const context = testContext();
 const store = createStore();
@@ -495,9 +495,9 @@ describe("Slack OAuth API routes", () => {
         botUserId: "B_TEST",
         botScopes: JSON.stringify(["chat:write", "channels:read"]),
       });
-      expect(decryptSecretValue(installation!.encryptedBotToken)).toBe(
-        "xoxb-test-token",
-      );
+      await expect(
+        decryptPersistentSecretValue(installation!.encryptedBotToken, {}),
+      ).resolves.toBe("xoxb-test-token");
       expect(context.mocks.slack.oauth.v2.access).toHaveBeenCalledWith(
         expect.objectContaining({
           redirect_uri: `${WEB_ORIGIN}/api/zero/slack/oauth/callback`,
@@ -707,9 +707,9 @@ describe("Slack OAuth API routes", () => {
         context.signal,
       );
       expect(installation).toMatchObject({ orgId: originalOrgId });
-      expect(decryptSecretValue(installation!.encryptedBotToken)).toBe(
-        "xoxb-test-bot-token",
-      );
+      await expect(
+        decryptPersistentSecretValue(installation!.encryptedBotToken, {}),
+      ).resolves.toBe("xoxb-test-bot-token");
       const connection = await store.set(
         findSlackOrgConnection$,
         {
@@ -762,9 +762,9 @@ describe("Slack OAuth API routes", () => {
           "users:read",
         ]),
       });
-      expect(decryptSecretValue(installation!.encryptedBotToken)).toBe(
-        "xoxb-refreshed-token",
-      );
+      await expect(
+        decryptPersistentSecretValue(installation!.encryptedBotToken, {}),
+      ).resolves.toBe("xoxb-refreshed-token");
     });
 
     it("creates a single connection across duplicate platform installs", async () => {

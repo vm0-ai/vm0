@@ -1,5 +1,399 @@
 # Changelog
 
+## [12.406.5](https://github.com/vm0-ai/vm0/compare/web-v12.406.4...web-v12.406.5) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.54.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.42.0
+
+## [12.406.4](https://github.com/vm0-ai/vm0/compare/web-v12.406.3...web-v12.406.4) (2026-06-02)
+
+
+### Bug Fixes
+
+* **web:** handle empty api backend env ([#15851](https://github.com/vm0-ai/vm0/issues/15851)) ([f4ae2a5](https://github.com/vm0-ai/vm0/commit/f4ae2a5a593e1f50a48fb3a057741b96069cd012))
+* **web:** hide internal clerk error text constants ([#15859](https://github.com/vm0-ai/vm0/issues/15859)) ([8a29a0b](https://github.com/vm0-ai/vm0/commit/8a29a0b641735e95405b4909f1b9bf8952ba01fb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.53.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.41.2
+
+## [12.406.3](https://github.com/vm0-ai/vm0/compare/web-v12.406.2...web-v12.406.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* remove poor agent backend models ([#15807](https://github.com/vm0-ai/vm0/issues/15807)) ([e73e675](https://github.com/vm0-ai/vm0/commit/e73e675f6fa38e199634b37734f2f73a56437a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.2
+
+## [12.406.2](https://github.com/vm0-ai/vm0/compare/web-v12.406.1...web-v12.406.2) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.41.1
+
+## [12.406.1](https://github.com/vm0-ai/vm0/compare/web-v12.406.0...web-v12.406.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **api:** move cron schedules to api deployment ([#15784](https://github.com/vm0-ai/vm0/issues/15784)) ([cdcd2f4](https://github.com/vm0-ai/vm0/commit/cdcd2f42802b50b641adf5d6eda1065a1b3ee901))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.41.0
+
+## [12.406.0](https://github.com/vm0-ai/vm0/compare/web-v12.405.6...web-v12.406.0) (2026-06-01)
+
+
+### Features
+
+* add user permission grants api ([#15727](https://github.com/vm0-ai/vm0/issues/15727)) ([d866875](https://github.com/vm0-ai/vm0/commit/d8668757f060fc37bd54c7e0b1368500c880ce38))
+
+
+### Bug Fixes
+
+* preserve signup attribution in stripe metadata ([#15759](https://github.com/vm0-ai/vm0/issues/15759)) ([eaca49b](https://github.com/vm0-ai/vm0/commit/eaca49be6a4cc398937f6102079d525d171b73d2))
+* **web:** route dotted docs urls through proxy ([#15742](https://github.com/vm0-ai/vm0/issues/15742)) ([ce8fe02](https://github.com/vm0-ai/vm0/commit/ce8fe026ba31f02321b4a761542ff3a358ddc402))
+
+
+### Refactoring
+
+* move legacy file redirects to api ([#15732](https://github.com/vm0-ai/vm0/issues/15732)) ([372e41e](https://github.com/vm0-ai/vm0/commit/372e41e54a10b1dc4a86ee3fe5aab28efb11b0f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.51.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.40.1
+
+## [12.405.6](https://github.com/vm0-ai/vm0/compare/web-v12.405.5...web-v12.405.6) (2026-06-01)
+
+
+### Refactoring
+
+* remove connector session handoff ([#15689](https://github.com/vm0-ai/vm0/issues/15689)) ([1ea6d2a](https://github.com/vm0-ai/vm0/commit/1ea6d2a3aa5a0db8d8b6118cba818210a5a49df6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.9
+
+## [12.405.5](https://github.com/vm0-ai/vm0/compare/web-v12.405.4...web-v12.405.5) (2026-06-01)
+
+
+### Refactoring
+
+* split api and web env templates ([#15679](https://github.com/vm0-ai/vm0/issues/15679)) ([6e4773e](https://github.com/vm0-ai/vm0/commit/6e4773e2356b60686e906b31b146a480b2e96823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.8
+  * devDependencies
+    * @vm0/connectors bumped to 1.40.0
+
+## [12.405.4](https://github.com/vm0-ai/vm0/compare/web-v12.405.3...web-v12.405.4) (2026-06-01)
+
+
+### Refactoring
+
+* **web:** remove init services singleton ([#15613](https://github.com/vm0-ai/vm0/issues/15613)) ([6fa1764](https://github.com/vm0-ai/vm0/commit/6fa176412c1f471ca7618680e574938e2115a31b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/core bumped to 8.304.9
+    * @vm0/db bumped to 1.23.12
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.6
+
+## [12.405.3](https://github.com/vm0-ai/vm0/compare/web-v12.405.2...web-v12.405.3) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.6
+    * @vm0/core bumped to 8.304.8
+    * @vm0/db bumped to 1.23.11
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.5
+
+## [12.405.2](https://github.com/vm0-ai/vm0/compare/web-v12.405.1...web-v12.405.2) (2026-06-01)
+
+
+### Performance Improvements
+
+* **computer-use:** store screenshots in object storage instead of jsonb ([#15404](https://github.com/vm0-ai/vm0/issues/15404)) ([e743943](https://github.com/vm0-ai/vm0/commit/e74394382c14df85ecbc761564859dc0bf0b23bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.5
+    * @vm0/core bumped to 8.304.7
+    * @vm0/db bumped to 1.23.10
+
+## [12.405.1](https://github.com/vm0-ai/vm0/compare/web-v12.405.0...web-v12.405.1) (2026-05-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.4
+    * @vm0/core bumped to 8.304.6
+    * @vm0/db bumped to 1.23.9
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.4
+
+## [12.405.0](https://github.com/vm0-ai/vm0/compare/web-v12.404.3...web-v12.405.0) (2026-05-31)
+
+
+### Features
+
+* **web:** allow *.vm6.ai redirect origins on the staging preview domain ([#15577](https://github.com/vm0-ai/vm0/issues/15577)) ([7981e1d](https://github.com/vm0-ai/vm0/commit/7981e1d67f994862823f3c2e43702ca8409b7b78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.3
+    * @vm0/core bumped to 8.304.5
+    * @vm0/db bumped to 1.23.8
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.3
+
+## [12.404.3](https://github.com/vm0-ai/vm0/compare/web-v12.404.2...web-v12.404.3) (2026-05-31)
+
+
+### Refactoring
+
+* route manual connector grants by method ([#15541](https://github.com/vm0-ai/vm0/issues/15541)) ([65eaa81](https://github.com/vm0-ai/vm0/commit/65eaa8144bd0096f741114f97362eeb69a50e503))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.2
+    * @vm0/core bumped to 8.304.4
+    * @vm0/db bumped to 1.23.7
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.2
+
+## [12.404.2](https://github.com/vm0-ai/vm0/compare/web-v12.404.1...web-v12.404.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* **web:** allow paid-onboarding origin in Clerk allowedRedirectOrigins ([#15518](https://github.com/vm0-ai/vm0/issues/15518)) ([4f09b12](https://github.com/vm0-ai/vm0/commit/4f09b122c0dbdd763e8fe4a725bb8b3d9631468d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.1
+    * @vm0/core bumped to 8.304.3
+    * @vm0/db bumped to 1.23.6
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.1
+
+## [12.404.1](https://github.com/vm0-ai/vm0/compare/web-v12.404.0...web-v12.404.1) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.0
+    * @vm0/core bumped to 8.304.2
+    * @vm0/db bumped to 1.23.5
+  * devDependencies
+    * @vm0/connectors bumped to 1.39.0
+
+## [12.404.0](https://github.com/vm0-ai/vm0/compare/web-v12.403.1...web-v12.404.0) (2026-05-30)
+
+
+### Features
+
+* persist ad attribution to Stripe and Clerk ([#15451](https://github.com/vm0-ai/vm0/issues/15451)) ([920f02e](https://github.com/vm0-ai/vm0/commit/920f02e53e47602e87c195ba37fadc71de43f6a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.49.0
+    * @vm0/core bumped to 8.304.1
+    * @vm0/db bumped to 1.23.4
+
+## [12.403.1](https://github.com/vm0-ai/vm0/compare/web-v12.403.0...web-v12.403.1) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.3
+    * @vm0/core bumped to 8.304.0
+    * @vm0/db bumped to 1.23.3
+  * devDependencies
+    * @vm0/connectors bumped to 1.38.2
+
+## [12.403.0](https://github.com/vm0-ai/vm0/compare/web-v12.402.0...web-v12.403.0) (2026-05-30)
+
+
+### Features
+
+* preserve ad attribution through checkout ([#15447](https://github.com/vm0-ai/vm0/issues/15447)) ([475508d](https://github.com/vm0-ai/vm0/commit/475508de4bf308af8e7ea43c568b56382152e650))
+
+## [12.402.0](https://github.com/vm0-ai/vm0/compare/web-v12.401.2...web-v12.402.0) (2026-05-30)
+
+
+### Features
+
+* add sprite generation showcase page ([#15446](https://github.com/vm0-ai/vm0/issues/15446)) ([dc8709b](https://github.com/vm0-ai/vm0/commit/dc8709b8c05deb43846cfea0cce185c5efd3a941))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.2
+    * @vm0/core bumped to 8.303.1
+    * @vm0/db bumped to 1.23.2
+  * devDependencies
+    * @vm0/connectors bumped to 1.38.1
+
+## [12.401.2](https://github.com/vm0-ai/vm0/compare/web-v12.401.1...web-v12.401.2) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.1
+    * @vm0/core bumped to 8.303.0
+    * @vm0/db bumped to 1.23.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.38.0
+
+## [12.401.1](https://github.com/vm0-ai/vm0/compare/web-v12.401.0...web-v12.401.1) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.0
+    * @vm0/core bumped to 8.302.4
+    * @vm0/db bumped to 1.23.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.8
+
+## [12.401.0](https://github.com/vm0-ai/vm0/compare/web-v12.400.1...web-v12.401.0) (2026-05-29)
+
+
+### Features
+
+* **web:** add /presentation gallery page ([#15372](https://github.com/vm0-ai/vm0/issues/15372)) ([3fc6da3](https://github.com/vm0-ai/vm0/commit/3fc6da3afe3e3c55cbf20c8819134055f89f5ab5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.1
+    * @vm0/core bumped to 8.302.3
+    * @vm0/db bumped to 1.22.5
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.7
+
+## [12.400.1](https://github.com/vm0-ai/vm0/compare/web-v12.400.0...web-v12.400.1) (2026-05-29)
+
+
+### Bug Fixes
+
+* **web:** repair illustration gallery asset paths ([#15369](https://github.com/vm0-ai/vm0/issues/15369)) ([b7b9ffa](https://github.com/vm0-ai/vm0/commit/b7b9ffab20d0ba04c0986fe5e8a22ac79323538c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.47.0
+    * @vm0/core bumped to 8.302.2
+    * @vm0/db bumped to 1.22.4
+
+## [12.400.0](https://github.com/vm0-ai/vm0/compare/web-v12.399.1...web-v12.400.0) (2026-05-29)
+
+
+### Features
+
+* add Claude Opus 4.8 model page ([#15338](https://github.com/vm0-ai/vm0/issues/15338)) ([3d743b8](https://github.com/vm0-ai/vm0/commit/3d743b8c4a41d82b417fe951b380775f1388786a))
+
+## [12.399.1](https://github.com/vm0-ai/vm0/compare/web-v12.399.0...web-v12.399.1) (2026-05-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.46.1
+    * @vm0/core bumped to 8.302.1
+    * @vm0/db bumped to 1.22.3
+  * devDependencies
+    * @vm0/connectors bumped to 1.37.6
+
+## [12.399.0](https://github.com/vm0-ai/vm0/compare/web-v12.398.0...web-v12.399.0) (2026-05-29)
+
+
+### Features
+
+* **web:** add 3 new illustration styles to gallery ([#15305](https://github.com/vm0-ai/vm0/issues/15305)) ([65b2d41](https://github.com/vm0-ai/vm0/commit/65b2d41058832f99bf4fc61b2f7e00aa2c6a941a))
+
 ## [12.398.0](https://github.com/vm0-ai/vm0/compare/web-v12.397.3...web-v12.398.0) (2026-05-29)
 
 

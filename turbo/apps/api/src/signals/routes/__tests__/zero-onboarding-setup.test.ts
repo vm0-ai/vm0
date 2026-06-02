@@ -167,6 +167,7 @@ async function readMemberMetadata(orgId: string, userId: string) {
   const [row] = await db
     .select({
       timezone: orgMembersMetadata.timezone,
+      onboardingRole: orgMembersMetadata.onboardingRole,
     })
     .from(orgMembersMetadata)
     .where(
@@ -317,6 +318,7 @@ describe("POST /api/zero/onboarding/setup", () => {
           sound: "professional",
           avatarUrl: "preset:0",
           timezone: "America/Los_Angeles",
+          role: "founder",
         },
       }),
       [200],
@@ -355,6 +357,7 @@ describe("POST /api/zero/onboarding/setup", () => {
       readMemberMetadata(fixture.orgId, fixture.userId),
     ).resolves.toStrictEqual({
       timezone: "America/Los_Angeles",
+      onboardingRole: "founder",
     });
     await expect(
       readMemberRole(fixture.orgId, fixture.userId),
@@ -403,7 +406,7 @@ describe("POST /api/zero/onboarding/setup", () => {
     const second = await accept(
       apiClient().setup({
         headers: authHeaders(),
-        body: { displayName: "Different Name" },
+        body: { displayName: "Different Name", role: "engineer" },
       }),
       [200],
     );
@@ -412,6 +415,11 @@ describe("POST /api/zero/onboarding/setup", () => {
     await expect(countAgents(fixture.orgId)).resolves.toBe(1);
     await expect(readAgent(first.body.agentId)).resolves.toMatchObject({
       displayName: "Zero",
+    });
+    await expect(
+      readMemberMetadata(fixture.orgId, fixture.userId),
+    ).resolves.toMatchObject({
+      onboardingRole: "engineer",
     });
   });
 

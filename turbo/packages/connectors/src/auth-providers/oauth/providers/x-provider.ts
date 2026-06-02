@@ -10,7 +10,12 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
     kind: "auth-code",
     buildAuthUrl: (args) => {
       const { clientId } = args;
-      return buildXAuthorizationUrl(clientId, args.redirectUri, args.state);
+      return buildXAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
       const { clientId, clientSecret } = args;
@@ -21,6 +26,7 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
         throw new Error("X PKCE requires state for code_verifier derivation");
       }
       const result = await exchangeXCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -48,7 +54,13 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
     },
     refreshToken: (args) => {
       const { clientId, clientSecret } = args;
-      return refreshXToken(clientId, clientSecret, args.refreshToken);
+      return refreshXToken(
+        args.tokenUrl,
+        clientId,
+        clientSecret,
+        args.refreshToken,
+        args.signal,
+      );
     },
   },
   revoke: { kind: "none" },

@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
+const SLOCK_DEVICE_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/device/token`;
+const SLOCK_REFRESH_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/refresh`;
 
 export const slock = {
   slock: {
@@ -12,20 +14,31 @@ export const slock = {
       oauth: {
         label: "OAuth Device Authorization",
         helpText: "Sign in with Slock using a device code.",
+        client: {
+          clientRegistration: "dynamic",
+          clientType: "public",
+        },
+        storage: {
+          secrets: [
+            "SLOCK_ACCESS_TOKEN",
+            "SLOCK_SERVER_ID",
+            "SLOCK_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "SLOCK_ACCESS_TOKEN",
+            refreshToken: "SLOCK_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "device-auth",
           deviceAuthUrl: `${SLOCK_API_BASE_URL}/api/auth/device/authorize`,
-          tokenUrl: `${SLOCK_API_BASE_URL}/api/auth/device/token`,
-          client: {
-            clientRegistration: "dynamic",
-            clientType: "public",
-          },
+          tokenUrl: SLOCK_DEVICE_TOKEN_URL,
           scopes: [],
         },
         access: {
           kind: "refresh-token",
-          accessToken: "SLOCK_ACCESS_TOKEN",
-          refreshToken: "SLOCK_REFRESH_TOKEN",
+          tokenUrl: SLOCK_REFRESH_TOKEN_URL,
           envBindings: {
             SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
             SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",

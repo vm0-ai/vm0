@@ -1,6 +1,7 @@
 export const ROUTES = {
   home: "/",
   agents: "/agents",
+  skills: "/skills",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",
   agentIdeas: "/agents/:agentId/ideas",
@@ -8,7 +9,6 @@ export const ROUTES = {
   activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:activityRunId",
-  chatList: "/chats",
   chat: "/chats/:threadId",
   schedules: "/schedules",
   scheduleDetail: "/schedules/:scheduleId",

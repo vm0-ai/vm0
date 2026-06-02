@@ -6,6 +6,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
@@ -78,6 +79,27 @@ function createMockAuthWindow() {
   return { closed: false, close: vi.fn(), location: { href: "" } };
 }
 
+async function clickTestOAuthDeviceConnectButton() {
+  const heading = await screen.findByRole("heading", {
+    name: "OAuth Device Authorization",
+  });
+  const section = heading.parentElement;
+  if (!section) {
+    throw new Error("OAuth Device Authorization section not found");
+  }
+
+  const button = queryAllByRoleFast("button", section).find((element) => {
+    return (
+      element.textContent?.trim() === "Connect Test OAuth Device (internal)"
+    );
+  });
+  if (!button) {
+    throw new Error("Test OAuth device connect button not found");
+  }
+
+  click(button);
+}
+
 describe("onboarding connector permission dialog suppression", () => {
   it("should not set permissionDialogType$ after OAuth connect during onboarding", async () => {
     mockAdminOnboarding();
@@ -99,6 +121,10 @@ describe("onboarding connector permission dialog suppression", () => {
     });
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await fill(input, "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     // Step 3: Try this prompt (github pre-selected from the deep link)
@@ -179,6 +205,10 @@ describe("onboarding connector permission dialog suppression", () => {
       expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
     });
     await fill(screen.getByPlaceholderText("e.g. Acme Corp"), "Test Workspace");
+    click(screen.getByTestId("onboarding-role-founder"));
+    await waitFor(() => {
+      expect(screen.getByTestId("onboarding-next-button")).not.toBeDisabled();
+    });
     click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -191,7 +221,7 @@ describe("onboarding connector permission dialog suppression", () => {
         screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
       ).toBeInTheDocument();
     });
-    click(screen.getByText("Connect Test OAuth Device (internal)"));
+    await clickTestOAuthDeviceConnectButton();
 
     await waitFor(() => {
       expect(

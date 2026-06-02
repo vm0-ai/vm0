@@ -1,6 +1,9 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL =
+  "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+
 export const outlookCalendar = {
   "outlook-calendar": {
     label: "Outlook Calendar",
@@ -12,22 +15,31 @@ export const outlookCalendar = {
         featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Microsoft to grant Outlook Calendar access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
+          clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: [
+            "OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          ],
+          variables: [],
+          secretRoles: {
+            accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl:
-            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
-            clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
         },
         access: {
           kind: "refresh-token",
-          accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
-          refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
           },

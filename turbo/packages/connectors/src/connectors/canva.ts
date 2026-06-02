@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
+
 export const canva = {
   canva: {
     label: "Canva",
@@ -12,15 +14,23 @@ export const canva = {
         featureFlag: FeatureSwitchKey.CanvaConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Canva to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
+          clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["CANVA_ACCESS_TOKEN", "CANVA_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "CANVA_ACCESS_TOKEN",
+            refreshToken: "CANVA_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
-            clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "asset:read",
             "asset:write",
@@ -38,8 +48,7 @@ export const canva = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "CANVA_ACCESS_TOKEN",
-          refreshToken: "CANVA_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
           },

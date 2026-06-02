@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.36.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.2...sandbox-fc-v0.36.3) (2026-06-02)
+
+
+### Documentation
+
+* clarify balloon deflate memory metric ([#15865](https://github.com/vm0-ai/vm0/issues/15865)) ([cc9bf49](https://github.com/vm0-ai/vm0/commit/cc9bf49d87f0c1ee4b3ca875cb37123410f8fd1e))
+
+## [0.36.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.1...sandbox-fc-v0.36.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* enforce snapshot artifact file integrity ([#15835](https://github.com/vm0-ai/vm0/issues/15835)) ([e69b584](https://github.com/vm0-ai/vm0/commit/e69b5840c39dc6aa73f9f30cb1753ef0dee36d36))
+
+## [0.36.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.36.0...sandbox-fc-v0.36.1) (2026-06-02)
+
+## [0.36.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.23...sandbox-fc-v0.36.0) (2026-06-01)
+
+
+### Features
+
+* add canonical workspace drive foundation ([#15688](https://github.com/vm0-ai/vm0/issues/15688)) ([593460a](https://github.com/vm0-ai/vm0/commit/593460ab818768ae75d1fd658a7211a2120a956b))
+
+
+### Bug Fixes
+
+* **sandbox-fc:** guard control exec timeout overflow ([#15748](https://github.com/vm0-ai/vm0/issues/15748)) ([b633b6a](https://github.com/vm0-ai/vm0/commit/b633b6a0d07c472b9ebaf6025863e4a21b92acd4))
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot cleanup resources ([#15752](https://github.com/vm0-ai/vm0/issues/15752)) ([7240b03](https://github.com/vm0-ai/vm0/commit/7240b030fe0f02b3350bc48fd7c6fefafca7474a))
+
+## [0.35.23](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.22...sandbox-fc-v0.35.23) (2026-05-31)
+
+
+### Refactoring
+
+* split sandbox-fc control module ([#15576](https://github.com/vm0-ai/vm0/issues/15576)) ([9ec3a2d](https://github.com/vm0-ai/vm0/commit/9ec3a2dd0787c1f9e35fb00fac9a54716596db30))
+
+## [0.35.22](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.21...sandbox-fc-v0.35.22) (2026-05-31)
+
 ## [0.35.21](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.35.20...sandbox-fc-v0.35.21) (2026-05-28)
 
 

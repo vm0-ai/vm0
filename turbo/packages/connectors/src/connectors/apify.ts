@@ -11,6 +11,10 @@ export const apify = {
         label: "API Token",
         helpText:
           "1. Log in to [Apify Console](https://console.apify.com)\n2. Go to **Settings > Integrations**\n3. Copy your **Personal API token**",
+        storage: {
+          secrets: ["APIFY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

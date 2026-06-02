@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.1...guest-mock-claude-v0.18.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* validate mock claude echo session ids ([#15862](https://github.com/vm0-ai/vm0/issues/15862)) ([1b9c2df](https://github.com/vm0-ai/vm0/commit/1b9c2dfaca34e649e656a3d96a007cdf1fe483f0))
+
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.0...guest-mock-claude-v0.18.1) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.7...guest-mock-claude-v0.18.0) (2026-05-29)
+
+
+### Features
+
+* add echo jsonl mode to mock claude ([#15366](https://github.com/vm0-ai/vm0/issues/15366)) ([ed31ac4](https://github.com/vm0-ai/vm0/commit/ed31ac4daae9777731ef3a86b04265d606d2c98e))
+
 ## [0.17.7](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.6...guest-mock-claude-v0.17.7) (2026-05-28)
 
 

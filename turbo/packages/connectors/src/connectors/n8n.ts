@@ -11,6 +11,10 @@ export const n8n = {
         label: "API Key",
         helpText:
           "1. Open your n8n instance\n2. Go to **Settings** → **n8n API**\n3. Click **Create an API key**\n4. Copy the key and paste it below\n5. Set your instance URL (e.g. `https://your-instance.app.n8n.cloud`)",
+        storage: {
+          secrets: ["N8N_TOKEN"],
+          variables: ["N8N_BASE_URL"],
+        },
         grant: {
           kind: "manual",
           fields: {

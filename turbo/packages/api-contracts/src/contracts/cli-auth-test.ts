@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { connectorAuthMethodIdSchema } from "@vm0/connectors/connectors";
 import { initContract } from "./base";
 
 const c = initContract();
@@ -56,6 +57,7 @@ export const cliAuthTestConnectorContract = c.router({
     query: testEmailQuerySchema,
     body: z.object({
       connectorName: z.string(),
+      authMethod: connectorAuthMethodIdSchema,
       accessToken: z.string(),
       refreshToken: z.string().min(1).optional(),
       expiresIn: z.number().int().optional(),
@@ -69,7 +71,7 @@ export const cliAuthTestConnectorContract = c.router({
       400: stringErrorResponseSchema,
       404: notFoundTextSchema.or(stringErrorResponseSchema),
     },
-    summary: "Seed an OAuth connector for tests",
+    summary: "Seed a provider-driven connector for tests",
   },
 });
 

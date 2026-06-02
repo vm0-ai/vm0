@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
 import {
   zeroComputerUseCommandContract,
   zeroComputerUseHeartbeatContract,
@@ -20,7 +21,9 @@ import { eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { now } from "../../../lib/time";
+import { createApp } from "../../../app-factory";
+import { mockEnv } from "../../../lib/env";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
@@ -108,6 +111,25 @@ async function seedComputerUseHost(args: {
   return host.id;
 }
 
+function s3CommandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function bodyStream(buffer: Buffer): AsyncIterable<Uint8Array> {
+  return (async function* stream(): AsyncIterable<Uint8Array> {
+    yield buffer;
+  })();
+}
+
 describe("desktop computer-use runtime", () => {
   const fixtures: OrgMembershipFixture[] = [];
   const trackedOrgIds: string[] = [];
@@ -129,6 +151,7 @@ describe("desktop computer-use runtime", () => {
   }
 
   afterEach(async () => {
+    clearMockNow();
     const writeDb = store.set(writeDb$);
     if (trackedOrgIds.length > 0) {
       await writeDb
@@ -455,6 +478,88 @@ describe("desktop computer-use runtime", () => {
     });
   });
 
+  it("times out stale running commands before claiming new work", async () => {
+    const baseTime = new Date("2026-06-01T00:00:00.000Z");
+    mockNow(baseTime);
+    const fixture = await createOrgFixture();
+    const hostToken = "host-token";
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken,
+      lastSeenAt: baseTime,
+    });
+    const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
+    const hostClient = setupApp({ context })(
+      zeroComputerUseHostCommandsContract,
+    );
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+
+    const first = await accept(
+      commandClient.create({
+        body: { kind: "app.state", app: "Safari", timeoutMs: 1000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    mockNow(new Date(baseTime.getTime() + 1));
+    const second = await accept(
+      commandClient.create({
+        body: { kind: "apps.list", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+
+    const claimedFirst = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+    expect(claimedFirst.body.status).toBe("command");
+    if (claimedFirst.body.status !== "command") {
+      throw new Error("expected command");
+    }
+    expect(claimedFirst.body.command.id).toBe(first.body.commandId);
+
+    mockNow(new Date(baseTime.getTime() + 1002));
+    const claimedSecond = await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+
+    expect(claimedSecond.body.status).toBe("command");
+    if (claimedSecond.body.status !== "command") {
+      throw new Error("expected command");
+    }
+    expect(claimedSecond.body.command.id).toBe(second.body.commandId);
+
+    const timedOut = await accept(
+      commandClient.get({
+        params: { commandId: first.body.commandId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    expect(timedOut.body).toMatchObject({
+      status: "failed",
+      error: {
+        code: "timeout",
+        message: "Computer-use command timed out after 1000ms",
+      },
+    });
+    expect(timedOut.body.completedAt).toBe("2026-06-01T00:00:01.002Z");
+  });
+
   it("queues write commands without approval and audits completion", async () => {
     const fixture = await createOrgFixture();
     const hostToken = "host-token";
@@ -554,5 +659,348 @@ describe("desktop computer-use runtime", () => {
       inputRisk: "targeted_app_action",
       summary: "Clicked elementIndex=7",
     });
+  });
+
+  it("offloads succeeded screenshots to object storage and exposes a keyless pointer", async () => {
+    const fixture = await createOrgFixture();
+    const hostToken = "host-token";
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken,
+    });
+    const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
+    const hostClient = setupApp({ context })(
+      zeroComputerUseHostCommandsContract,
+    );
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+
+    const puts: Record<string, unknown>[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = s3CommandInput(command);
+      if ("Body" in input) {
+        puts.push(input);
+      }
+      return Promise.resolve({});
+    });
+
+    const created = await accept(
+      commandClient.create({
+        body: { kind: "app.state", app: "Safari", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+
+    const pngBytes = Buffer.from("fake-png-bytes");
+    const screenshotBase64 = pngBytes.toString("base64");
+    await accept(
+      hostClient.complete({
+        params: { commandId: created.body.commandId },
+        body: {
+          status: "succeeded",
+          result: {
+            snapshotId: "snap_1",
+            screenshot: `data:image/png;base64,${screenshotBase64}`,
+            screenshotWidth: 1363,
+            screenshotHeight: 1200,
+          },
+        },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+
+    expect(puts).toHaveLength(1);
+    expect(puts[0]?.Bucket).toBe("test-user-storages");
+    expect(puts[0]?.Key).toBe(
+      `computer-use/${fixture.orgId}/${fixture.userId}/${created.body.commandId}/screenshot.png`,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const [storedRow] = await writeDb
+      .select()
+      .from(computerUseCommands)
+      .where(eq(computerUseCommands.id, created.body.commandId));
+    const stored = storedRow?.result as Record<string, unknown>;
+    expect(stored.screenshot).toMatchObject({
+      type: "s3",
+      mimeType: "image/png",
+      sizeBytes: pngBytes.length,
+      width: 1363,
+      height: 1200,
+    });
+    expect(JSON.stringify(stored)).not.toContain(screenshotBase64);
+
+    const got = await accept(
+      commandClient.get({
+        params: { commandId: created.body.commandId },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    const clientScreenshot = (got.body.result as Record<string, unknown>)
+      .screenshot;
+    expect(clientScreenshot).toStrictEqual({
+      type: "s3",
+      mimeType: "image/png",
+      sizeBytes: pngBytes.length,
+      width: 1363,
+      height: 1200,
+    });
+  });
+
+  it("streams stored screenshots through the proxy and blocks other users", async () => {
+    const fixture = await createOrgFixture();
+    const hostToken = "host-token";
+    await seedComputerUseHost({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      hostToken,
+    });
+    const commandClient = setupApp({ context })(zeroComputerUseCommandContract);
+    const hostClient = setupApp({ context })(
+      zeroComputerUseHostCommandsContract,
+    );
+    const token = mintZeroToken({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+
+    const pngBytes = Buffer.from("proxy-png-bytes");
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = s3CommandInput(command);
+      if ("Body" in input) {
+        return Promise.resolve({});
+      }
+      return Promise.resolve({ Body: bodyStream(pngBytes) });
+    });
+
+    const created = await accept(
+      commandClient.create({
+        body: { kind: "app.state", app: "Safari", timeoutMs: 15_000 },
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    );
+    await accept(
+      hostClient.next({
+        body: { supportedCapabilities: [...supportedCapabilities] },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+    await accept(
+      hostClient.complete({
+        params: { commandId: created.body.commandId },
+        body: {
+          status: "succeeded",
+          result: {
+            snapshotId: "snap_1",
+            screenshot: `data:image/png;base64,${pngBytes.toString("base64")}`,
+            screenshotWidth: 800,
+            screenshotHeight: 600,
+          },
+        },
+        headers: { authorization: `Bearer ${hostToken}` },
+      }),
+      [200],
+    );
+
+    const app = createApp({ signal: context.signal });
+    const ownerResponse = await app.request(
+      `/api/zero/computer-use/commands/${created.body.commandId}/screenshot`,
+      { method: "GET", headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(ownerResponse.status).toBe(200);
+    expect(ownerResponse.headers.get("content-type")).toBe("image/png");
+    const receivedBytes = Buffer.from(await ownerResponse.arrayBuffer());
+    expect(receivedBytes.equals(pngBytes)).toBeTruthy();
+
+    const otherFixture = await createOrgFixture();
+    const otherToken = mintZeroToken({
+      orgId: otherFixture.orgId,
+      userId: otherFixture.userId,
+      capabilities: ["computer-use:write"],
+    });
+    const otherResponse = await app.request(
+      `/api/zero/computer-use/commands/${created.body.commandId}/screenshot`,
+      { method: "GET", headers: { authorization: `Bearer ${otherToken}` } },
+    );
+    expect(otherResponse.status).toBe(404);
+  });
+
+  it("rejects screenshot cleanup with an invalid cron secret", async () => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    const client = setupApp({ context })(
+      cronComputerUseScreenshotCleanupContract,
+    );
+
+    const response = await accept(
+      client.cleanup({
+        headers: { authorization: "Bearer wrong-secret" },
+      }),
+      [401],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("rejects screenshot cleanup without cron authorization", async () => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    const client = setupApp({ context })(
+      cronComputerUseScreenshotCleanupContract,
+    );
+
+    const response = await accept(client.cleanup({ headers: {} }), [401]);
+
+    expect(response.body).toStrictEqual({
+      error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
+    });
+  });
+
+  it("expires old screenshots, deleting objects and tombstoning legacy rows", async () => {
+    mockEnv("CRON_SECRET", "test-cron-secret");
+    const fixture = await createOrgFixture();
+    const writeDb = store.set(writeDb$);
+    const oldCreatedAt = new Date(now() - 40 * 24 * 60 * 60 * 1000);
+    const recentCreatedAt = new Date(now());
+    const pointerKey = `computer-use/${fixture.orgId}/${fixture.userId}/old-pointer/screenshot.png`;
+
+    const [pointerRow] = await writeDb
+      .insert(computerUseCommands)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        kind: "app.state",
+        status: "succeeded",
+        payload: {},
+        result: {
+          snapshotId: "snap_old",
+          screenshot: {
+            type: "s3",
+            bucket: "test-user-storages",
+            key: pointerKey,
+            mimeType: "image/png",
+            sizeBytes: 10,
+            width: 100,
+            height: 100,
+          },
+        },
+        createdAt: oldCreatedAt,
+        updatedAt: oldCreatedAt,
+      })
+      .returning({ id: computerUseCommands.id });
+
+    const [legacyRow] = await writeDb
+      .insert(computerUseCommands)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        kind: "app.state",
+        status: "succeeded",
+        payload: {},
+        result: {
+          snapshotId: "snap_legacy",
+          screenshot: "data:image/png;base64,bGVnYWN5",
+        },
+        createdAt: oldCreatedAt,
+        updatedAt: oldCreatedAt,
+      })
+      .returning({ id: computerUseCommands.id });
+
+    const [recentRow] = await writeDb
+      .insert(computerUseCommands)
+      .values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        kind: "app.state",
+        status: "succeeded",
+        payload: {},
+        result: {
+          snapshotId: "snap_recent",
+          screenshot: {
+            type: "s3",
+            bucket: "test-user-storages",
+            key: "computer-use/recent/screenshot.png",
+            mimeType: "image/png",
+            sizeBytes: 10,
+            width: 100,
+            height: 100,
+          },
+        },
+        createdAt: recentCreatedAt,
+        updatedAt: recentCreatedAt,
+      })
+      .returning({ id: computerUseCommands.id });
+
+    if (!pointerRow || !legacyRow || !recentRow) {
+      throw new Error("Failed to seed computer-use commands");
+    }
+
+    const deletedKeys: string[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      const input = s3CommandInput(command);
+      const del = input.Delete as
+        | { readonly Objects?: { readonly Key?: string }[] }
+        | undefined;
+      for (const object of del?.Objects ?? []) {
+        if (object.Key) {
+          deletedKeys.push(object.Key);
+        }
+      }
+      return Promise.resolve({});
+    });
+
+    const cleanupClient = setupApp({ context })(
+      cronComputerUseScreenshotCleanupContract,
+    );
+    const cleanupResponse = await accept(
+      cleanupClient.cleanup({
+        headers: { authorization: "Bearer test-cron-secret" },
+      }),
+      [200],
+    );
+
+    expect(cleanupResponse.body.cleaned).toBe(2);
+    expect(deletedKeys).toContain(pointerKey);
+    expect(deletedKeys).not.toContain("computer-use/recent/screenshot.png");
+
+    const rows = await writeDb
+      .select()
+      .from(computerUseCommands)
+      .where(
+        inArray(computerUseCommands.id, [
+          pointerRow.id,
+          legacyRow.id,
+          recentRow.id,
+        ]),
+      );
+    const pointerResult = rows.find((row) => {
+      return row.id === pointerRow.id;
+    })?.result as Record<string, unknown>;
+    const legacyResult = rows.find((row) => {
+      return row.id === legacyRow.id;
+    })?.result as Record<string, unknown>;
+    const recentResult = rows.find((row) => {
+      return row.id === recentRow.id;
+    })?.result as Record<string, unknown>;
+    expect(pointerResult.screenshot).toStrictEqual({ type: "expired" });
+    expect(legacyResult.screenshot).toStrictEqual({ type: "expired" });
+    expect(recentResult.screenshot).toMatchObject({ type: "s3" });
   });
 });

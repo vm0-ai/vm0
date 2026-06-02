@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+
 export const stripe = {
   stripe: {
     label: "Stripe",
@@ -13,21 +15,28 @@ export const stripe = {
         featureFlag: FeatureSwitchKey.StripeConnector,
         label: "OAuth (Recommended)",
         helpText: "Sign in with Stripe to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["STRIPE_ACCESS_TOKEN", "STRIPE_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "STRIPE_ACCESS_TOKEN",
+            refreshToken: "STRIPE_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://connect.stripe.com/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["read_write"],
         },
         access: {
           kind: "refresh-token",
-          accessToken: "STRIPE_ACCESS_TOKEN",
-          refreshToken: "STRIPE_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
           },
@@ -38,6 +47,10 @@ export const stripe = {
         label: "API Key",
         helpText:
           "1. Log in to your [Stripe Dashboard](https://dashboard.stripe.com/apikeys)\n2. Go to **Developers > API keys**\n3. Reveal the **Secret key** (starts with `sk_live_` or `sk_test_`) or create a **Restricted key** (`rk_live_...`) with the scopes you need\n4. Copy the key",
+        storage: {
+          secrets: ["STRIPE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

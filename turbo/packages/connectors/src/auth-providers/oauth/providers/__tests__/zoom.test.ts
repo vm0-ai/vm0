@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../../connector-utils";
 import {
   buildZoomAuthorizationUrl,
   exchangeZoomCode,
@@ -8,10 +9,19 @@ import {
 } from "../zoom";
 import { server } from "./test-server";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
+function authCodeGrant() {
+  return getConnectorAuthMethodAuthCodeGrantConfig("zoom", "oauth");
+}
+
 describe("connector/providers/zoom", () => {
   describe("buildZoomAuthorizationUrl", () => {
     it("builds URL with client_id, redirect_uri, state, and response_type", () => {
       const url = buildZoomAuthorizationUrl(
+        authCodeGrant(),
         "test-client-id",
         "https://example.com/callback",
         "test-state",
@@ -50,6 +60,7 @@ describe("connector/providers/zoom", () => {
       server.use(tokenHandler, meHandler);
 
       const result = await exchangeZoomCode(
+        authCodeGrant(),
         "client-id",
         "client-secret",
         "test-code",
@@ -79,6 +90,7 @@ describe("connector/providers/zoom", () => {
 
       await expect(
         exchangeZoomCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "bad-code",
@@ -95,6 +107,7 @@ describe("connector/providers/zoom", () => {
 
       await expect(
         exchangeZoomCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",
@@ -111,6 +124,7 @@ describe("connector/providers/zoom", () => {
 
       await expect(
         exchangeZoomCode(
+          authCodeGrant(),
           "client-id",
           "client-secret",
           "test-code",
@@ -132,9 +146,11 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       const result = await refreshZoomToken(
+        authCodeGrant().tokenUrl,
         "client-id",
         "client-secret",
         "old-refresh-token",
+        testRefreshSignal(),
       );
 
       expect(result.accessToken).toBe("new-zoom-token");
@@ -152,7 +168,13 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       await expect(
-        refreshZoomToken("client-id", "client-secret", "bad-refresh-token"),
+        refreshZoomToken(
+          authCodeGrant().tokenUrl,
+          "client-id",
+          "client-secret",
+          "bad-refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Refresh token revoked");
     });
 
@@ -163,7 +185,13 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       await expect(
-        refreshZoomToken("client-id", "client-secret", "refresh-token"),
+        refreshZoomToken(
+          authCodeGrant().tokenUrl,
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("No access token in Zoom refresh response");
     });
 
@@ -174,7 +202,13 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       await expect(
-        refreshZoomToken("client-id", "client-secret", "refresh-token"),
+        refreshZoomToken(
+          authCodeGrant().tokenUrl,
+          "client-id",
+          "client-secret",
+          "refresh-token",
+          testRefreshSignal(),
+        ),
       ).rejects.toThrow("Zoom token refresh failed");
     });
   });

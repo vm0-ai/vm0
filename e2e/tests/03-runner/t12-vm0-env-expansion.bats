@@ -40,7 +40,6 @@ agents:
   ${AGENT_NAME}:
     description: "Test agent for environment variable expansion"
     framework: claude-code
-    working_dir: /home/user/workspace
     environment:
       TEST_VAR: "\${{ vars.testVar }}"
       TEST_SECRET: "\${{ secrets.TEST_SECRET }}"

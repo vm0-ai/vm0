@@ -29,13 +29,19 @@
 //!   @exit-after-result        - Emit result event, exit(0) immediately;
 //!                               tests that reap stays no-op on the
 //!                               happy path
+//!   @ECHO@                    - First-line marker. Validate remaining non-empty
+//!                               lines as JSONL and emit them unchanged.
 
 use serde_json::{Value, json};
 use std::io::Write;
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
+const ECHO_MARKER: &str = "@ECHO@";
 
 /// Parsed command-line arguments.
 struct ParsedArgs {
@@ -45,6 +51,7 @@ struct ParsedArgs {
 
 #[derive(Debug, Eq, PartialEq)]
 enum MockScenario<'a> {
+    EchoJsonl(&'a str),
     FailNoNewline(&'a str),
     FailInvalidUtf8,
     FailInvalidUtf8Long,
@@ -58,6 +65,9 @@ enum MockScenario<'a> {
 
 impl<'a> MockScenario<'a> {
     fn from_prompt(prompt: &'a str) -> Self {
+        if let Some(payload) = echo_jsonl_payload(prompt) {
+            return Self::EchoJsonl(payload);
+        }
         if let Some(msg) = prompt.strip_prefix("@fail-no-newline:") {
             return Self::FailNoNewline(msg);
         }
@@ -102,6 +112,79 @@ impl<'a> MockScenario<'a> {
         }
         Self::Shell
     }
+}
+
+fn echo_jsonl_payload(prompt: &str) -> Option<&str> {
+    let (first_line, payload) = prompt.split_once('\n').unwrap_or((prompt, ""));
+    if first_line.trim_end_matches('\r') == ECHO_MARKER {
+        return Some(payload);
+    }
+    None
+}
+
+fn parse_echo_jsonl(payload: &str) -> Result<Vec<(String, Value)>, String> {
+    let mut events = Vec::new();
+    for (index, line) in payload.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let event = serde_json::from_str::<Value>(line)
+            .map_err(|e| format!("invalid @ECHO@ JSONL line {}: {e}", index + 2))?;
+        events.push((line.to_string(), event));
+    }
+
+    if events.is_empty() {
+        return Err("@ECHO@ payload must contain at least one JSONL event".to_string());
+    }
+
+    Ok(events)
+}
+
+fn echo_session_id(events: &[(String, Value)]) -> Option<&str> {
+    events.iter().find_map(|(_, event)| {
+        let event_type = event.get("type").and_then(Value::as_str)?;
+        let subtype = event.get("subtype").and_then(Value::as_str)?;
+        if event_type != "system" || subtype != "init" {
+            return None;
+        }
+        event.get("session_id").and_then(Value::as_str)
+    })
+}
+
+fn write_echo_session_history(events: &[(String, Value)], session_id: Option<&str>) {
+    if let Some(session_id) = session_id
+        && let Some(path) = create_session_history(session_id)
+        && let Ok(mut file) = std::fs::File::create(path)
+    {
+        for (line, _) in events {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+}
+
+fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
+    let events = match parse_echo_jsonl(payload) {
+        Ok(events) => events,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let session_id = echo_session_id(&events);
+    if let Some(session_id) = session_id
+        && !is_valid_session_history_id(session_id)
+    {
+        eprintln!("invalid @ECHO@ session_id: {session_id:?}");
+        return ExitCode::from(1);
+    }
+
+    for (line, _) in &events {
+        println!("{line}");
+    }
+    write_echo_session_history(&events, session_id);
+    let _ = std::io::stdout().flush();
+    ExitCode::SUCCESS
 }
 
 fn skip_flag_value(args: &[String], i: &mut usize) {
@@ -187,24 +270,53 @@ fn generate_session_id() -> String {
     format!("mock-{micros}")
 }
 
+fn is_valid_session_history_id(session_id: &str) -> bool {
+    if session_id.is_empty()
+        || session_id == "."
+        || session_id == ".."
+        || session_id.contains('/')
+        || session_id.contains('\\')
+        || session_id.chars().any(char::is_control)
+    {
+        return false;
+    }
+
+    let mut components = Path::new(session_id).components();
+    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
+}
+
 /// Build the session history file path and create the directory.
 ///
 /// Claude Code stores session history at: `{home}/.claude/projects/-{path}/{session_id}.jsonl`
-fn build_session_history_path(session_id: &str, cwd: &str, home: &str) -> Option<String> {
-    let project_name = cwd.trim_start_matches('/').replace('/', "-");
-    let session_dir = format!("{home}/.claude/projects/-{project_name}");
+fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
+    if !is_valid_session_history_id(session_id) {
+        return None;
+    }
+
+    let project_name = CANONICAL_WORKING_DIR
+        .trim_start_matches('/')
+        .replace('/', "-");
+    let session_dir = PathBuf::from(home)
+        .join(".claude")
+        .join("projects")
+        .join(format!("-{project_name}"));
 
     if std::fs::create_dir_all(&session_dir).is_err() {
         return None;
     }
 
-    Some(format!("{session_dir}/{session_id}.jsonl"))
+    Some(
+        session_dir
+            .join(format!("{session_id}.jsonl"))
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// Create session history using `$HOME` from the environment.
-fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
+fn create_session_history(session_id: &str) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    build_session_history_path(session_id, cwd, &home)
+    build_session_history_path(session_id, &home)
 }
 
 /// Emit the init + result JSONL pair shared by post-result mock test
@@ -213,9 +325,7 @@ fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
 /// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
 fn emit_post_result_pair() {
     let session_id = generate_session_id();
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
     let init_event = json!({
         "type": "system",
@@ -240,7 +350,7 @@ fn emit_post_result_pair() {
     });
     println!("{result_event}");
 
-    if let Some(path) = create_session_history(&session_id, &cwd)
+    if let Some(path) = create_session_history(&session_id)
         && let Ok(mut file) = std::fs::File::create(&path)
     {
         let _ = writeln!(file, "{init_event}");
@@ -252,9 +362,7 @@ fn emit_post_result_pair() {
 
 fn emit_stuck_tool_events() {
     let session_id = generate_session_id();
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
     // Init event
     println!(
@@ -362,11 +470,9 @@ fn run_text_mode(prompt: &str) -> ExitCode {
 
 /// Execute prompt in stream-json mode: output JSONL events, capture output.
 fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
-    let session_history_file = create_session_history(session_id, &cwd);
+    let session_history_file = create_session_history(session_id);
     let mut events: Vec<Value> = Vec::with_capacity(5);
 
     // 1. System init event
@@ -480,6 +586,7 @@ fn main() -> ExitCode {
     let parsed = parse_args(&args);
 
     match MockScenario::from_prompt(&parsed.prompt) {
+        MockScenario::EchoJsonl(payload) => run_echo_jsonl_mode(payload),
         MockScenario::FailNoNewline(msg) => {
             eprint!("{msg}");
             let _ = std::io::stderr().flush();
@@ -679,10 +786,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let result = build_session_history_path("test-session-123", "/workspaces/my-project", home);
+        let result = build_session_history_path("test-session-123", home);
 
         let expected =
-            format!("{home}/.claude/projects/-workspaces-my-project/test-session-123.jsonl");
+            format!("{home}/.claude/projects/-home-user-workspace/test-session-123.jsonl");
         assert_eq!(result, Some(expected));
     }
 
@@ -691,32 +798,50 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let _ = build_session_history_path("test-session", "/some/path", home);
+        let _ = build_session_history_path("test-session", home);
 
-        let expected_dir = dir.path().join(".claude/projects/-some-path");
+        let expected_dir = dir.path().join(".claude/projects/-home-user-workspace");
         assert!(expected_dir.exists());
     }
 
     #[test]
-    fn session_history_root_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
-
-        let result = build_session_history_path("root-session", "/", home);
-
-        let expected = format!("{home}/.claude/projects/-/root-session.jsonl");
-        assert_eq!(result, Some(expected));
+    fn session_history_id_accepts_safe_file_components() {
+        for session_id in [
+            "mock-123",
+            "preview-1",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "session.with.dot",
+        ] {
+            assert!(
+                is_valid_session_history_id(session_id),
+                "expected {session_id} to be accepted"
+            );
+        }
     }
 
     #[test]
-    fn session_history_deep_path() {
+    fn session_history_path_rejects_unsafe_session_ids() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let result = build_session_history_path("deep-session", "/a/b/c/d/e/f", home);
-
-        let expected = format!("{home}/.claude/projects/-a-b-c-d-e-f/deep-session.jsonl");
-        assert_eq!(result, Some(expected));
+        for session_id in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "..\\escape",
+            "/absolute",
+            "nested/path",
+            "nested\\path",
+            "line\nbreak",
+        ] {
+            assert!(
+                !is_valid_session_history_id(session_id),
+                "expected {session_id:?} to be rejected"
+            );
+            assert_eq!(build_session_history_path(session_id, home), None);
+        }
+        assert!(!dir.path().join(".claude").exists());
     }
 
     #[test]
@@ -840,5 +965,50 @@ mod tests {
     #[test]
     fn classifies_ordinary_prompt_as_shell() {
         assert_eq!(MockScenario::from_prompt("echo hello"), MockScenario::Shell);
+    }
+
+    #[test]
+    fn classifies_echo_jsonl_when_first_line_is_marker() {
+        assert_eq!(
+            MockScenario::from_prompt("@ECHO@\n{\"type\":\"result\"}"),
+            MockScenario::EchoJsonl("{\"type\":\"result\"}")
+        );
+    }
+
+    #[test]
+    fn classifies_echo_jsonl_with_crlf_marker() {
+        assert_eq!(
+            MockScenario::from_prompt("@ECHO@\r\n{\"type\":\"result\"}"),
+            MockScenario::EchoJsonl("{\"type\":\"result\"}")
+        );
+    }
+
+    #[test]
+    fn does_not_classify_marker_with_extra_text_as_echo_jsonl() {
+        assert_eq!(
+            MockScenario::from_prompt("@ECHO@ please\n{\"type\":\"result\"}"),
+            MockScenario::Shell
+        );
+    }
+
+    #[test]
+    fn parses_echo_jsonl_non_empty_lines() {
+        let events =
+            parse_echo_jsonl(r#"{"type":"system","subtype":"init","session_id":"preview-1"}"#)
+                .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1["type"], "system");
+    }
+
+    #[test]
+    fn rejects_invalid_echo_jsonl() {
+        let err = parse_echo_jsonl(r#"{"type":"system""#).unwrap_err();
+        assert!(err.contains("invalid @ECHO@ JSONL line 2"));
+    }
+
+    #[test]
+    fn rejects_empty_echo_jsonl_payload() {
+        let err = parse_echo_jsonl("\n\n").unwrap_err();
+        assert_eq!(err, "@ECHO@ payload must contain at least one JSONL event");
     }
 }

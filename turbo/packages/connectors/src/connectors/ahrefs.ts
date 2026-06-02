@@ -1,6 +1,8 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
+const OAUTH_TOKEN_URL = "https://app.ahrefs.com/api/token";
+
 export const ahrefs = {
   ahrefs: {
     label: "Ahrefs",
@@ -12,21 +14,28 @@ export const ahrefs = {
         featureFlag: FeatureSwitchKey.AhrefsConnector,
         label: "OAuth",
         helpText: "Sign in with Ahrefs to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "AHREFS_OAUTH_CLIENT_ID",
+          clientSecretEnv: "AHREFS_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["AHREFS_ACCESS_TOKEN", "AHREFS_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "AHREFS_ACCESS_TOKEN",
+            refreshToken: "AHREFS_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://app.ahrefs.com/api/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "AHREFS_OAUTH_CLIENT_ID",
-            clientSecretEnv: "AHREFS_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["api"],
         },
         access: {
           kind: "refresh-token",
-          accessToken: "AHREFS_ACCESS_TOKEN",
-          refreshToken: "AHREFS_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
           },
@@ -37,6 +46,10 @@ export const ahrefs = {
         label: "API Token",
         helpText:
           "1. Log in to [Ahrefs](https://ahrefs.com) as a workspace owner or admin\n2. Go to **Account settings > API keys**\n3. Create a new API key\n4. Copy the API key and use it in the `Authorization: Bearer <YOUR_API_KEY>` header",
+        storage: {
+          secrets: ["AHREFS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

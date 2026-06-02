@@ -134,7 +134,7 @@ fi
 # -----------------------------------------------------------------------------
 echo "8. Running database migrations..."
 cd "$TURBO_DIR"
-if pnpm --filter web db:migrate; then
+if pnpm --filter @vm0/db db:migrate; then
   echo -e "${GREEN}   Database migrations complete${NC}"
 else
   echo -e "${RED}   Error: Database migrations failed${NC}"
@@ -147,7 +147,7 @@ fi
 # -----------------------------------------------------------------------------
 echo "9. Seeding development data..."
 cd "$TURBO_DIR"
-if pnpm --filter web db:dev-seed; then
+if pnpm --filter api db:dev-seed; then
   echo -e "${GREEN}   Development seed complete${NC}"
 else
   echo -e "${RED}   Error: Development seed failed${NC}"

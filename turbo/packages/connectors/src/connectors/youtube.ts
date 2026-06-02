@@ -11,6 +11,10 @@ export const youtube = {
         label: "API Key",
         helpText:
           "1. Go to [Google Cloud Console](https://console.cloud.google.com/)\n2. Enable **YouTube Data API v3**\n3. Go to **Credentials** → **Create Credentials** → **API Key**\n4. Copy the API key",
+        storage: {
+          secrets: ["YOUTUBE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

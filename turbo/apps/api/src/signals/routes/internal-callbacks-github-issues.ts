@@ -472,18 +472,20 @@ const handleGithubIssuesCallback$ = command(
       signal.throwIfAborted();
     }
 
-    await saveIssueSession({
-      db,
-      runId,
-      agentId,
-      installationId,
-      repo,
-      issueNumber,
-      existingSessionId,
-      commentId,
-      status,
-      signal,
-    });
+    if (payload.sessionContinuityEnabled ?? true) {
+      await saveIssueSession({
+        db,
+        runId,
+        agentId,
+        installationId,
+        repo,
+        issueNumber,
+        existingSessionId,
+        commentId,
+        status,
+        signal,
+      });
+    }
 
     L.debug("GitHub issues callback processed successfully", {
       runId,

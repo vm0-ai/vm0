@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const SENTRY_AUTHORIZATION_URL = "https://sentry.io/oauth/authorize/";
@@ -29,11 +29,11 @@ interface SentryRefreshResult {
  * Build Sentry OAuth authorization URL.
  */
 export function buildSentryAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("sentry");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -50,12 +50,12 @@ export function buildSentryAuthorizationUrl(
  * Sentry embeds user info directly in the token response.
  */
 export async function exchangeSentryCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<SentryTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("sentry");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -123,12 +123,14 @@ export async function exchangeSentryCode(
  * Access token expires_in: ~2592000s (30 days). Ref: https://docs.sentry.io/api/auth/
  */
 export async function refreshSentryToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<SentryRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("sentry");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

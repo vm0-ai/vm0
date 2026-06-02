@@ -11,6 +11,10 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import {
+  applyStoredAdAttribution,
+  getStoredAdAttributionMetadata,
+} from "../bootstrap/ad-attribution.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,6 +128,7 @@ export const startCheckout$ = command(
     const successUrl = new URL(currentUrl);
     successUrl.searchParams.set("billing", tier);
     successUrl.searchParams.set("billing_session_id", "{CHECKOUT_SESSION_ID}");
+    applyStoredAdAttribution(successUrl);
     const stripeSuccessUrl = successUrl
       .toString()
       .replace(
@@ -132,6 +137,8 @@ export const startCheckout$ = command(
       );
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
+    applyStoredAdAttribution(cancelUrl);
+    const adAttribution = getStoredAdAttributionMetadata();
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
@@ -144,6 +151,7 @@ export const startCheckout$ = command(
           ...(options?.trialDays === undefined
             ? {}
             : { trialDays: options.trialDays }),
+          ...(adAttribution === undefined ? {} : { adAttribution }),
         },
         fetchOptions: { signal },
       }),
@@ -398,4 +406,29 @@ export const invoicesAsync$ = computed(async (get) => {
   const client = createClient(zeroBillingInvoicesContract);
   const result = await accept(client.get(), [200]);
   return result.body;
+});
+
+// ---------------------------------------------------------------------------
+// Buy credits form state (Billing page > Buy credits section)
+// ---------------------------------------------------------------------------
+
+export type BuyCreditsSelection = 10 | 20 | 50 | "custom";
+
+const internalBuyCreditsSelection$ = state<BuyCreditsSelection>(20);
+const internalBuyCreditsCustomDollars$ = state("");
+
+export const buyCreditsSelection$ = computed((get) => {
+  return get(internalBuyCreditsSelection$);
+});
+export const buyCreditsCustomDollars$ = computed((get) => {
+  return get(internalBuyCreditsCustomDollars$);
+});
+
+export const setBuyCreditsSelection$ = command(
+  ({ set }, value: BuyCreditsSelection) => {
+    set(internalBuyCreditsSelection$, value);
+  },
+);
+export const setBuyCreditsCustomDollars$ = command(({ set }, value: string) => {
+  set(internalBuyCreditsCustomDollars$, value);
 });

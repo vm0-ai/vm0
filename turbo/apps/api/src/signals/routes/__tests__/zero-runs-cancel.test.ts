@@ -287,7 +287,6 @@ describe("POST /api/zero/runs/:id/cancel", () => {
       profile: "vm0/default",
       sessionId: null,
       executionContext: {
-        workingDir: "/workspace",
         storageManifest: null,
         environment: null,
         resumeSession: null,

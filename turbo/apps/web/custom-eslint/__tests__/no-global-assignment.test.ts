@@ -8,25 +8,15 @@ RuleTester.it = it;
 
 const ruleTester = new RuleTester();
 
-const ALLOWED_INIT_SERVICES = "/abs/src/lib/init-services.ts";
 const ALLOWED_GLOBAL_DTS = "/abs/src/types/global.d.ts";
 const REGULAR_FILE = "/abs/src/lib/some-feature.ts";
 
 ruleTester.run("no-global-assignment", rule, {
   valid: [
-    // Reads of the sanctioned singleton are fine
+    // Deep-chain mutation is a mutation of a property on `cache`, not on the
+    // global itself. Out of scope for this rule.
     {
-      code: "const db = globalThis.services.db;",
-      filename: REGULAR_FILE,
-    },
-    {
-      code: "globalThis.services.db.select();",
-      filename: REGULAR_FILE,
-    },
-    // Deep-chain mutation is a mutation of a property on `services`, not on
-    // the global itself. Out of scope for this rule.
-    {
-      code: "globalThis.services.cache = new Map();",
+      code: "globalThis.cache.value = 1;",
       filename: REGULAR_FILE,
     },
     // DOM writes are untouched — the rule only covers globalThis/global
@@ -42,17 +32,9 @@ ruleTester.run("no-global-assignment", rule, {
       code: "self.foo = 1;",
       filename: REGULAR_FILE,
     },
-    // Allowlisted files can install globals freely
+    // Ambient declarations live in the dedicated global type file
     {
-      code: "Object.defineProperty(globalThis, 'services', { get: () => s });",
-      filename: ALLOWED_INIT_SERVICES,
-    },
-    {
-      code: "globalThis.anything = 1;",
-      filename: ALLOWED_INIT_SERVICES,
-    },
-    {
-      code: "declare global { var services: Services; }",
+      code: "declare global { interface Window { readonly bridge?: Bridge; } }",
       filename: ALLOWED_GLOBAL_DTS,
     },
     // Assignments to local objects (not a global root) are untouched
@@ -108,8 +90,7 @@ ruleTester.run("no-global-assignment", rule, {
       errors: [{ messageId: "noDeclareGlobal" }],
     },
     {
-      // Services re-declaration outside the allowlisted files is still banned
-      code: "declare global { var services: Services; }",
+      code: "declare global { interface Window { readonly bridge?: Bridge; } }",
       filename: REGULAR_FILE,
       errors: [{ messageId: "noDeclareGlobal" }],
     },

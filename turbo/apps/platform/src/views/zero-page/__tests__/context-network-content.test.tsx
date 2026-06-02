@@ -871,6 +871,7 @@ describe("networkContent", () => {
       timestamp: "2026-03-10T14:56:05Z",
       url: "https://detail.example.com/path",
       firewall_name: "detail-fw",
+      browser_user_agent: true,
     });
 
     setupMocks({
@@ -887,6 +888,7 @@ describe("networkContent", () => {
       expect(
         screen.getByText("https://detail.example.com/path"),
       ).toBeInTheDocument();
+      expect(screen.getByText("browser")).toBeInTheDocument();
     });
 
     // Click the row to expand
@@ -898,6 +900,8 @@ describe("networkContent", () => {
       const urlLabels = screen.getAllByText("URL");
       // There should be the header column AND the detail label
       expect(urlLabels.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Browser User-Agent")).toBeInTheDocument();
+      expect(screen.getByText("Yes")).toBeInTheDocument();
     });
   });
 

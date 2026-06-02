@@ -1,8 +1,18 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { CANONICAL_WORKING_DIR } from "./runners";
 
 const c = initContract();
+
+export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
+
+export function expandMountPath(mountPath: string | undefined): string {
+  if (mountPath === undefined || mountPath === MOUNT_PATH_TEMPLATE) {
+    return CANONICAL_WORKING_DIR;
+  }
+  return mountPath;
+}
 
 /**
  * Version query parameter schema for compose versions
@@ -45,6 +55,9 @@ export const ZERO_CAPABILITIES = [
   "chat-message:write",
   "chat-message:read",
   "connector:read",
+  "billing:read",
+  "billing:write",
+  "banking:read",
   "maps:read",
   "computer-use:write",
   "file:read",
@@ -114,6 +127,15 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Read chat messages",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
+    "billing:read": { group: "Billing", label: "View billing and credits" },
+    "billing:write": {
+      group: "Billing",
+      label: "Buy credits and manage billing",
+    },
+    "banking:read": {
+      group: "Banking",
+      label: "Read enabled banking accounts",
+    },
     "maps:read": { group: "Maps", label: "Use managed maps services" },
     "computer-use:write": {
       group: "Computer Use",
@@ -151,28 +173,24 @@ const volumeConfigSchema = z.object({
 });
 
 /**
- * Template literal that resolves to the compose's framework-derived
- * working_dir during mount-path expansion.
- */
-export const MOUNT_PATH_TEMPLATE = "${{ working_dir }}";
-
-/**
- * Mount path must be an absolute path (starts with "/") OR the literal
- * template "${{ working_dir }}" which resolves to the framework's working_dir.
+ * Mount path must be an absolute path (starts with "/") or the canonical
+ * workspace template. When omitted, artifacts default to the canonical
+ * workspace root at resolution time.
  */
 const mountPathSchema = z
   .string()
   .min(1, "mount_path cannot be empty")
   .refine((val) => {
     return val === MOUNT_PATH_TEMPLATE || val.startsWith("/");
-  }, `mount_path must be an absolute path or "${MOUNT_PATH_TEMPLATE}"`);
+  }, "mount_path must be an absolute path or ${{ working_dir }}");
 
 /**
  * Artifact entry in compose.
  * - name: required storage name
  * - version: optional, defaults to "latest" at resolution time
- * - mount_path: optional, defaults to working_dir at resolution time.
- *   May be the literal template "${{ working_dir }}".
+ * - mount_path: optional, defaults to the canonical workspace root at
+ *   resolution time. `${{ working_dir }}` is also accepted as a shorthand for
+ *   the same canonical workspace root.
  */
 const artifactConfigSchema = z.object({
   name: z.string().min(1, "Artifact name is required"),

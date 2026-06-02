@@ -32,9 +32,6 @@ pub struct SubmitArgs {
     /// Job prompt
     #[arg(long)]
     prompt: String,
-    /// Working directory inside the VM
-    #[arg(long, default_value = "/home/user/workspace")]
-    working_dir: String,
     /// Agent type
     #[arg(long, default_value = "claude-code")]
     cli_agent_type: String,
@@ -237,7 +234,6 @@ impl SubmitPlan {
         let SubmitArgs {
             group,
             prompt,
-            working_dir,
             cli_agent_type,
             profile,
             session_id,
@@ -271,7 +267,6 @@ impl SubmitPlan {
         let request = JobRequest {
             job_id,
             prompt,
-            working_dir,
             cli_agent_type,
             vars: None,
             environment: None,
@@ -636,7 +631,6 @@ mod tests {
             SubmitArgs {
                 group: group.into(),
                 prompt: "hello".into(),
-                working_dir: "/workspace".into(),
                 cli_agent_type: "claude-code".into(),
                 profile: None,
                 session_id: None,
@@ -651,7 +645,6 @@ mod tests {
 
         assert_eq!(code, ExitCode::SUCCESS);
         assert_eq!(request.prompt, "hello");
-        assert_eq!(request.working_dir, "/workspace");
         assert_eq!(request.cli_agent_type, "claude-code");
         assert_eq!(
             request.profile.as_deref(),
@@ -675,7 +668,6 @@ mod tests {
             SubmitArgs {
                 group: group.into(),
                 prompt: "hello".into(),
-                working_dir: "/workspace".into(),
                 cli_agent_type: "claude-code".into(),
                 profile: Some(profile.into()),
                 session_id: None,
@@ -707,7 +699,6 @@ mod tests {
             SubmitArgs {
                 group: group.into(),
                 prompt: "hello".into(),
-                working_dir: "/project".into(),
                 cli_agent_type: "codex".into(),
                 profile: None,
                 session_id: Some("sess-123".into()),
@@ -723,7 +714,6 @@ mod tests {
 
         assert_eq!(code, ExitCode::SUCCESS);
         assert_eq!(request.prompt, "hello");
-        assert_eq!(request.working_dir, "/project");
         assert_eq!(request.cli_agent_type, "codex");
         assert_eq!(request.session_id.as_deref(), Some("sess-123"));
         assert_eq!(flags.get("alpha"), Some(&true));
@@ -775,7 +765,6 @@ mod tests {
             SubmitArgs {
                 group: group.into(),
                 prompt: "hello".into(),
-                working_dir: "/workspace".into(),
                 cli_agent_type: "claude-code".into(),
                 profile: None,
                 session_id: None,
@@ -1092,7 +1081,6 @@ mod tests {
         let args = SubmitArgs {
             group: "test/group".into(),
             prompt: "hello".into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: Some("bad-name".into()),
             session_id: None,
@@ -1113,7 +1101,6 @@ mod tests {
         let args = SubmitArgs {
             group: "test/group".into(),
             prompt: "hello".into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: Some("vm0/default".into()),
             session_id: None,
@@ -1134,7 +1121,6 @@ mod tests {
         let args = SubmitArgs {
             group: "test/group".into(),
             prompt: "hello".into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: None,
             session_id: None,
@@ -1152,7 +1138,6 @@ mod tests {
         let args = SubmitArgs {
             group: "test/group".into(),
             prompt: "hello".into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: None,
             session_id: None,
@@ -1175,7 +1160,6 @@ mod tests {
         let args = SubmitArgs {
             group: "test/group".into(),
             prompt: "hello".into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: Some("vm0/large".into()),
             session_id: None,
@@ -1200,7 +1184,6 @@ mod tests {
         let args = SubmitArgs {
             group: group.into(),
             prompt: "hello".into(),
-            working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: None,
             session_id: None,

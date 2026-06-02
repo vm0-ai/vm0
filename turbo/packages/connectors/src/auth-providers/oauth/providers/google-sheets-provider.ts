@@ -13,6 +13,7 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-sheets",
           clientId,
           redirectUri,
@@ -24,6 +25,7 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-sheets",
           clientId,
           clientSecret,
@@ -55,10 +57,12 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
         const { clientId, clientSecret } = args;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
+          args.tokenUrl,
           "google-sheets",
           clientId,
           clientSecret,
           refreshToken,
+          args.signal,
         );
       },
     },

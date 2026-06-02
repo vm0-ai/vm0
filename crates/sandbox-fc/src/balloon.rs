@@ -7,13 +7,17 @@ use tracing::{info, warn};
 use crate::api::ApiClient;
 use crate::sandbox::SandboxState;
 
-/// Keep this much memory free in the guest (MiB).
+/// Target guest memory headroom in MiB.
+/// Inflate compares `free_memory` against this target, while deflate compares
+/// `available_memory` against it.
 const TARGET_FREE_MIB: i64 = 256;
-/// Inflate only when free memory exceeds target by this much (MiB).
+/// Inflate only when `free_memory` (`MemFree`) exceeds target by this much
+/// (MiB).
 /// Larger than deflate hysteresis — we're less aggressive reclaiming memory
 /// than returning it, because guest memory pressure is more urgent.
 const INFLATE_HYSTERESIS_MIB: i64 = 128;
-/// Deflate when free memory drops below target by this much (MiB).
+/// Deflate when `available_memory` (`MemAvailable`) drops below target by this
+/// much (MiB).
 /// Smaller than inflate hysteresis — respond faster to guest memory pressure.
 const DEFLATE_HYSTERESIS_MIB: i64 = 64;
 /// Maximum MiB to inflate in a single tick.

@@ -173,56 +173,6 @@ describe("zero generate lister", () => {
     );
   });
 
-  it("outputs machine-readable JSON", async () => {
-    server.use(
-      stubConnectors([connector("fal", "fal-user"), connector("replicate")]),
-      stubUserConnectors(["fal"]),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "image", "--json"]);
-
-    const json = JSON.parse(output()) as {
-      generationType: string;
-      agentId: string;
-      choices: Array<{ type: string; status: string }>;
-      otherCandidates: Array<{ type: string; status: string }>;
-    };
-    expect(json.generationType).toBe("image");
-    expect(json.agentId).toBe(AGENT_ID);
-    expect(json.choices).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ type: "fal", status: "ready" }),
-      ]),
-    );
-    expect(json.otherCandidates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "replicate",
-          status: "not-authorized",
-        }),
-      ]),
-    );
-    expect(json).toMatchObject({
-      builtInProvider: {
-        label: "Built-in fal.ai",
-        model: "gpt-image-1",
-        command:
-          "zero generate image --provider built-in --model gpt-image-1 -h",
-      },
-    });
-    expect(json).toMatchObject({
-      builtInProviders: expect.arrayContaining([
-        expect.objectContaining({ model: "gpt-image-1.5" }),
-        expect.objectContaining({ model: "fal-ai/flux-pro/v1.1" }),
-        expect.objectContaining({ model: "fal-ai/qwen-image" }),
-        expect.objectContaining({
-          model: "fal-ai/bytedance/seedream/v4/text-to-image",
-        }),
-        expect.objectContaining({ model: "fal-ai/nano-banana-2" }),
-      ]),
-    });
-  });
-
   it("does not mark runtime-configured but unavailable connectors as connectable", async () => {
     server.use(
       stubConnectorsWithConfiguredTypes([], ["bentoml"]),
@@ -230,25 +180,12 @@ describe("zero generate lister", () => {
       stubUserConnectors([]),
     );
 
-    await generateCommand.parseAsync(["node", "cli", "text", "--json"]);
+    await generateCommand.parseAsync(["node", "cli", "text", "--all"]);
 
-    const json = JSON.parse(output()) as {
-      otherCandidates: Array<{
-        type: string;
-        status: string;
-        reason: string;
-        actionUrl?: string;
-      }>;
-    };
-    const bentoml = json.otherCandidates.find((candidate) => {
-      return candidate.type === "bentoml";
-    });
-    expect(bentoml).toMatchObject({
-      type: "bentoml",
-      status: "not-available",
-      reason: "not available for this account",
-    });
-    expect(bentoml?.actionUrl).toBeUndefined();
+    const text = output();
+    expect(text).toContain("bentoml");
+    expect(text).toContain("not available for this account");
+    expect(text).not.toContain("/connectors/bentoml");
   });
 
   it("suggests the built-in video command when no video connector is ready", async () => {
@@ -300,9 +237,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in presentation generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(
-      "Use: zero generate presentation --provider built-in -h",
-    );
+    expect(text).toContain("Use: zero generate presentation -h");
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
@@ -323,7 +258,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero generate website --provider built-in -h");
+    expect(text).toContain("Use: zero generate website -h");
     expect(text).toContain("Context:");
     expect(text).toContain(
       "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
@@ -337,29 +272,6 @@ describe("zero generate lister", () => {
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
-  });
-
-  it("includes website context in machine-readable JSON", async () => {
-    server.use(
-      stubConnectorsWithConfiguredTypes([], []),
-      stubUserConnectors([]),
-    );
-
-    await generateCommand.parseAsync(["node", "cli", "website", "--json"]);
-
-    const json = JSON.parse(output()) as {
-      builtInCommand: { command: string } | null;
-      generationContext: { lines: string[] } | null;
-    };
-    expect(json.builtInCommand).toMatchObject({
-      command: "zero generate website --provider built-in -h",
-    });
-    expect(json.generationContext?.lines).toEqual(
-      expect.arrayContaining([
-        "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
-        "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
-      ]),
-    );
   });
 
   it.each([
@@ -390,7 +302,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain(commandLabel);
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(`Use: zero generate ${type} --provider built-in -h`);
+    expect(text).toContain(`Use: zero generate ${type} -h`);
   });
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
@@ -444,9 +356,31 @@ describe("zero generate lister", () => {
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
   });
 
+  it("lists music as the public audio connector-backed subtype", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes(
+        [connector("elevenlabs", "elevenlabs-user")],
+        ["elevenlabs", "minimax"],
+      ),
+      stubUserConnectors(["elevenlabs"]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "music"]);
+
+    const text = output();
+    expect(text).toContain("Music generation choices for current agent");
+    expect(text).toContain("Connectors:");
+    expect(text).toContain("ElevenLabs");
+    expect(text).toContain("@elevenlabs-user");
+    expect(text).not.toContain("Built-in command:");
+  });
+
   it("rejects unknown generation types via Commander", async () => {
     await expect(
       generateCommand.parseAsync(["node", "cli", "spaceship"]),
+    ).rejects.toThrow();
+    await expect(
+      generateCommand.parseAsync(["node", "cli", "audio"]),
     ).rejects.toThrow();
   });
 });

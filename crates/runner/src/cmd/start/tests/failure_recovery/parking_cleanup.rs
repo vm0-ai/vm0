@@ -19,8 +19,8 @@ async fn park_failure_destroys_sandbox_and_skips_pool() {
     }));
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -60,8 +60,8 @@ async fn park_panic_destroys_sandbox_reports_completion_and_releases_budget() {
     overrides.push_park_panic("simulated park panic");
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -94,8 +94,8 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     {
         let mut pool = idle_pool.lock().await;
         *pool = IdlePool::new(IdlePoolConfig {
@@ -166,8 +166,8 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -244,9 +244,9 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
@@ -322,9 +322,9 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
 
     let counter = Arc::clone(&overrides);
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
-    let budget = Arc::clone(&config.budget);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let cancel_tokens = Arc::clone(&config.cancel_tokens);
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();

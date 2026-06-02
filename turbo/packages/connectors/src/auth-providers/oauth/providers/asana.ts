@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
 const ASANA_AUTHORIZATION_URL = "https://app.asana.com/-/oauth_authorize";
@@ -48,12 +48,12 @@ export function buildAsanaAuthorizationUrl(
  * Asana returns a refresh token and user info (data field) in the token response.
  */
 export async function exchangeAsanaCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<AsanaTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("asana");
   const response = await fetch(authCodeGrant.tokenUrl, {
     method: "POST",
     headers: {
@@ -156,12 +156,14 @@ async function fetchAsanaUserInfo(accessToken: string): Promise<{
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.asana.com/docs/oauth
  */
 export async function refreshAsanaToken(
+  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<AsanaRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("asana");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(tokenUrl, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

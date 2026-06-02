@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import threading
 from collections.abc import Iterator
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -21,7 +21,6 @@ class ForwarderConnectionPatch(NamedTuple):
 @contextlib.contextmanager
 def _patched_forwarder_connection(
     *,
-    scheme: Literal["http", "https"] = "https",
     status: int = 200,
     body: bytes = b"ok",
     headers: list[tuple[str, str]] | None = None,
@@ -45,8 +44,7 @@ def _patched_forwarder_connection(
     else:
         conn.getresponse.side_effect = getresponse_side_effect
 
-    connection_name = "HTTPSConnection" if scheme == "https" else "HTTPConnection"
-    with patch.object(forwarder.http_client, connection_name, return_value=conn) as cls:
+    with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn) as cls:
         yield ForwarderConnectionPatch(conn=conn, resp=resp, connection_cls=cls)
 
 
@@ -58,6 +56,16 @@ class TestAuthBaseForwarderSecurity:
     def test_rejects_ftp_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             forwarder._forward_request_sync("ftp://evil.com/file", "GET", [], None)
+
+    def test_rejects_http_scheme_without_opening_connection(self):
+        with (
+            patch.object(forwarder.http_client, "HTTPConnection") as http_conn,
+            patch.object(forwarder.http_client, "HTTPSConnection") as https_conn,
+            pytest.raises(ValueError, match="Unsupported URL scheme"),
+        ):
+            forwarder._forward_request_sync("http://example.com/path", "GET", [], None)
+        http_conn.assert_not_called()
+        https_conn.assert_not_called()
 
     def test_rejects_empty_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
@@ -76,8 +84,6 @@ class TestAuthBaseForwarderSecurity:
         [
             "https://user@example.com/path",
             "https://user:pass@example.com/path",
-            "http://user@example.com/path",
-            "http://user:pass@example.com/path",
         ],
     )
     def test_rejects_userinfo_authority(self, url):
@@ -228,7 +234,6 @@ class TestAuthBaseForwarderSecurity:
     @pytest.mark.parametrize(
         (
             "url",
-            "scheme",
             "expected_connection_host",
             "expected_connection_port",
             "expected_host_header",
@@ -236,23 +241,13 @@ class TestAuthBaseForwarderSecurity:
         [
             pytest.param(
                 "https://example.com:443/path",
-                "https",
                 "example.com",
                 443,
                 "example.com",
                 id="https-default-port",
             ),
             pytest.param(
-                "http://example.com:80/path",
-                "http",
-                "example.com",
-                80,
-                "example.com",
-                id="http-default-port",
-            ),
-            pytest.param(
                 "https://[2001:db8::1]:444/path",
-                "https",
                 "2001:db8::1",
                 444,
                 "[2001:db8::1]:444",
@@ -260,7 +255,6 @@ class TestAuthBaseForwarderSecurity:
             ),
             pytest.param(
                 "https://[2001:db8::1]/path",
-                "https",
                 "2001:db8::1",
                 None,
                 "[2001:db8::1]",
@@ -268,55 +262,28 @@ class TestAuthBaseForwarderSecurity:
             ),
             pytest.param(
                 "https://[2001:db8::1]:443/path",
-                "https",
                 "2001:db8::1",
                 443,
                 "[2001:db8::1]",
                 id="ipv6-https-default-port",
             ),
             pytest.param(
-                "http://[2001:db8::1]:80/path",
-                "http",
-                "2001:db8::1",
-                80,
-                "[2001:db8::1]",
-                id="ipv6-http-default-port",
-            ),
-            pytest.param(
-                "http://[2001:db8::1]:8080/path",
-                "http",
-                "2001:db8::1",
-                8080,
-                "[2001:db8::1]:8080",
-                id="ipv6-http-non-default-port",
-            ),
-            pytest.param(
                 "https://[2001:db8::1]:80/path",
-                "https",
                 "2001:db8::1",
                 80,
                 "[2001:db8::1]:80",
                 id="ipv6-https-http-default-port",
-            ),
-            pytest.param(
-                "http://[2001:db8::1]:443/path",
-                "http",
-                "2001:db8::1",
-                443,
-                "[2001:db8::1]:443",
-                id="ipv6-http-https-default-port",
             ),
         ],
     )
     def test_url_authority_sets_connection_target_and_host_header(
         self,
         url: str,
-        scheme: Literal["http", "https"],
         expected_connection_host: str,
         expected_connection_port: int | None,
         expected_host_header: str,
     ):
-        with _patched_forwarder_connection(scheme=scheme) as upstream:
+        with _patched_forwarder_connection() as upstream:
             forwarder._forward_request_sync(
                 url,
                 "GET",
@@ -641,9 +608,16 @@ class TestForwardRequestAsyncWrapper:
         assert forwarding_thread_ids
         assert all(thread_id != event_loop_thread_id for thread_id in forwarding_thread_ids)
 
-    async def test_propagates_validation_errors(self):
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "file:///etc/passwd",
+            "http://example.com",
+        ],
+    )
+    async def test_propagates_validation_errors(self, url):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            await forwarder.forward_request("file:///etc/passwd", "GET", [], None)
+            await forwarder.forward_request(url, "GET", [], None)
 
     async def test_closes_connection_when_request_raises(self):
         event_loop_thread_id = threading.get_ident()

@@ -188,6 +188,7 @@ function networkLogFromAxiom(event: AxiomNetworkEvent) {
     latency_ms: optionalAxiomField(event.latency_ms),
     request_size: optionalAxiomField(event.request_size),
     response_size: optionalAxiomField(event.response_size),
+    browser_user_agent: optionalAxiomField(event.browser_user_agent),
     dns_event: optionalAxiomField(event.dns_event),
     dns_query_type: optionalAxiomField(event.dns_query_type),
     dns_result: optionalAxiomField(event.dns_result),

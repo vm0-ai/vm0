@@ -1625,40 +1625,41 @@ func optionalRectPayload(_ request: [String: Any], _ key: String) throws -> CGRe
     return try rectPayload(request, key)
 }
 
-func findRunningApp(named appName: String) -> NSRunningApplication? {
-    let apps = NSWorkspace.shared.runningApplications.filter { app in
-        !app.isTerminated
+/// Resolves a running application from a bundle id.
+///
+/// `--app` accepts a bundle id only (e.g. `com.google.Chrome`). The bundle id is
+/// the stable, unique key for an application; the localized name is not and could
+/// resolve to an arbitrary process whose window tree differs from the user-facing
+/// app. Selection is delegated to the shared `selectRunningApp` policy.
+func findRunningApp(named bundleId: String) -> NSRunningApplication? {
+    let runningApplications = NSWorkspace.shared.runningApplications
+    let candidates = runningApplications.map { app in
+        RunningAppCandidate(
+            processIdentifier: Int(app.processIdentifier),
+            bundleId: app.bundleIdentifier,
+            isTerminated: app.isTerminated,
+            isRegularActivationPolicy: app.activationPolicy == .regular
+        )
     }
+    guard let selected = selectRunningApp(bundleId: bundleId, from: candidates) else {
+        return nil
+    }
+    return runningApplications.first { app in
+        Int(app.processIdentifier) == selected.processIdentifier
+    }
+}
 
-    if let exactBundle = apps.first(where: { app in
-        app.bundleIdentifier == appName
-    }) {
-        return exactBundle
-    }
-
-    let normalized = appName.lowercased()
-    if let bundleMatch = apps.first(where: { app in
-        app.bundleIdentifier?.lowercased() == normalized
-    }) {
-        return bundleMatch
-    }
-
-    if let exactName = apps.first(where: { app in
-        app.localizedName == appName
-    }) {
-        return exactName
-    }
-
-    return apps.first { app in
-        app.localizedName?.lowercased() == normalized
-    }
+/// Message shown when `--app` does not resolve to a running application.
+func appNotRunningMessage(_ bundleId: String) -> String {
+    "App is not running: \(bundleId). --app expects a bundle id "
+        + "(e.g. com.google.Chrome); run list-apps to find it."
 }
 
 func resolveRunningApp(named appName: String) throws -> NSRunningApplication {
     guard let app = findRunningApp(named: appName) else {
         throw HelperFailure(
             code: "accessibility_unavailable",
-            message: "App is not running: \(appName)"
+            message: appNotRunningMessage(appName)
         )
     }
     return app
@@ -1673,16 +1674,6 @@ func trimmedPipeOutput(_ pipe: Pipe) -> String {
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     return String(data: data, encoding: .utf8)?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-}
-
-func appOpenFailureCode(_ stderr: String) -> String {
-    let normalized = stderr.lowercased()
-    if normalized.contains("unable to find application") ||
-        normalized.contains("does not exist")
-    {
-        return "app_not_found"
-    }
-    return "app_open_failed"
 }
 
 func attribute(_ element: AXUIElement, _ name: CFString) -> Any? {
@@ -2145,7 +2136,11 @@ func cgWindowCandidates(pid: pid_t, scope: CGWindowCandidateScope = .currentSpac
     }
     if let currentSpaceId {
         return candidates.filter { candidate in
-            candidate.spaceIds?.contains(currentSpaceId) ?? candidate.isOnScreen
+            isWindowCandidateReachableFromCurrentDisplayContext(
+                currentSpaceId: currentSpaceId,
+                windowSpaceIds: candidate.spaceIds,
+                isOnScreen: candidate.isOnScreen
+            )
         }
     }
     return candidates.filter { candidate in
@@ -2389,17 +2384,47 @@ func snapshotWindowTarget(
     return target
 }
 
-func performWithRequiredBackgroundTarget<T>(
-    appName: String,
-    preferredScreenPoint: CGPoint? = nil,
-    _ action: (WindowTarget) throws -> T
-) throws -> T {
+func resolveBackgroundWindowTarget(appName: String) throws -> WindowTarget {
     let app = try resolveRunningApp(named: appName)
-    guard let target = resolveWindowTarget(app: app, preferredScreenPoint: preferredScreenPoint) else {
+    guard let target = resolveWindowTarget(app: app) else {
         throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
     }
+    return target
+}
 
-    return try action(target)
+// Keyboard dispatch is addressed to a concrete window via postToPid, so it must
+// target the same window the agent inspected. When a snapshotId is supplied we
+// pin to that snapshot's window (matching click/scroll); otherwise we fall back
+// to the heuristic best window for the app. The snapshot windowFrame is not
+// enforced here because keyboard input has no screenshot-coordinate dependency,
+// so a window that merely moved should still receive the key.
+func resolveKeyboardWindowTarget(
+    appName: String,
+    snapshotId: String?,
+    session: ComputerUseRuntimeSession?
+) throws -> WindowTarget {
+    guard let snapshotId else {
+        return try resolveBackgroundWindowTarget(appName: appName)
+    }
+    guard let session else {
+        throw HelperFailure(
+            code: "unsupported_command",
+            message: "Snapshot targeting requires a runtime session snapshot: \(snapshotId)"
+        )
+    }
+    let metadata = try session.snapshot(appName: appName, snapshotId: snapshotId)
+    let windowId = optionalInt(metadata, "windowId")
+    let windowFrame = try optionalRectPayload(metadata, "windowFrame")
+    let preferredScreenPoint = windowFrame.map { frame in
+        CGPoint(x: frame.midX, y: frame.midY)
+    } ?? .zero
+    return try snapshotWindowTarget(
+        appName: appName,
+        snapshotId: snapshotId,
+        preferredScreenPoint: preferredScreenPoint,
+        windowId: windowId,
+        windowFrame: nil
+    )
 }
 
 func showVisualPointerIfTargetPointVisible(app: NSRunningApplication, point: CGPoint) -> Bool {
@@ -2478,44 +2503,17 @@ func applicationNames(for url: URL) -> [String] {
     return names
 }
 
-func applicationURL(named appName: String) -> URL? {
-    let trimmed = appName.trimmingCharacters(in: .whitespacesAndNewlines)
-    if trimmed.isEmpty {
+/// Resolves the on-disk URL for an application from its bundle id, used to launch
+/// it when it is not already running. `--app` accepts a bundle id only.
+func applicationURL(forBundleId bundleId: String) -> URL? {
+    let trimmed = bundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
         return nil
     }
-    if trimmed.hasPrefix("/") || trimmed.hasPrefix("~") {
-        let expanded = (trimmed as NSString).expandingTildeInPath
-        if FileManager.default.fileExists(atPath: expanded) {
-            return URL(fileURLWithPath: expanded)
-        }
-    }
-    if trimmed.contains("."),
-       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: trimmed)
-    {
-        return url
-    }
-
-    let candidates = discoveredApplicationURLs()
-    if let exactBundleID = candidates.first(where: { url in
-        Bundle(url: url)?.bundleIdentifier?.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-    }) {
-        return exactBundleID
-    }
-    if let exactName = candidates.first(where: { url in
-        applicationNames(for: url).contains { name in
-            name.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-        }
-    }) {
-        return exactName
-    }
-    return candidates.first { url in
-        applicationNames(for: url).contains { name in
-            name.localizedCaseInsensitiveContains(trimmed)
-        }
-    }
+    return NSWorkspace.shared.urlForApplication(withBundleIdentifier: trimmed)
 }
 
-func applicationURL(for app: NSRunningApplication, fallbackName: String) -> URL? {
+func applicationURL(for app: NSRunningApplication, fallbackBundleId: String) -> URL? {
     if let bundleURL = app.bundleURL {
         return bundleURL
     }
@@ -2524,35 +2522,7 @@ func applicationURL(for app: NSRunningApplication, fallbackName: String) -> URL?
     {
         return url
     }
-    return applicationURL(named: fallbackName)
-}
-
-func openWithCommandInBackground(named appName: String) throws {
-    let process = Process()
-    let stdoutPipe = Pipe()
-    let stderrPipe = Pipe()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-g", "-a", appName]
-    process.standardOutput = stdoutPipe
-    process.standardError = stderrPipe
-    do {
-        try process.run()
-    } catch {
-        throw HelperFailure(
-            code: "app_open_failed",
-            message: "Unable to request opening \(appName): \(error)"
-        )
-    }
-    process.waitUntilExit()
-    _ = trimmedPipeOutput(stdoutPipe)
-    if process.terminationStatus != 0 {
-        let stderr = trimmedPipeOutput(stderrPipe)
-        let detail = stderr.isEmpty ? "" : ": \(stderr)"
-        throw HelperFailure(
-            code: appOpenFailureCode(stderr),
-            message: "Unable to open \(appName)\(detail)"
-        )
-    }
+    return applicationURL(forBundleId: fallbackBundleId)
 }
 
 func openApplication(at url: URL, named appName: String, activates: Bool) throws -> NSRunningApplication? {
@@ -2573,15 +2543,6 @@ func openApplication(at url: URL, named appName: String, activates: Bool) throws
         )
     }
     return launchResult.app
-}
-
-func openApplicationWithoutActivation(named appName: String) throws -> NSRunningApplication? {
-    guard let url = applicationURL(named: appName) else {
-        try openWithCommandInBackground(named: appName)
-        return nil
-    }
-
-    return try openApplication(at: url, named: appName, activates: false)
 }
 
 @discardableResult
@@ -2750,7 +2711,7 @@ func foregroundActivateRunningApp(appName: String, app: NSRunningApplication) th
             return "apple_script_activate_app_name"
         }
     }
-    guard let appURL = applicationURL(for: app, fallbackName: appName) else {
+    guard let appURL = applicationURL(for: app, fallbackBundleId: appName) else {
         return "apple_script_activate_failed"
     }
     _ = try openApplication(at: appURL, named: appName, activates: true)
@@ -2875,7 +2836,7 @@ func withForegroundRecovery(
         recoveryResult = try waitForForegroundRecoveredTarget(resolveTarget: resolveTarget)
     } catch let failure as HelperFailure where failure.code == "window_unavailable" {
         if (activationMethod.contains("apple_script_activate") || activationMethod.hasPrefix("skylight_set_current_space")),
-           let appURL = applicationURL(for: app, fallbackName: appName)
+           let appURL = applicationURL(for: app, fallbackBundleId: appName)
         {
             _ = try openApplication(at: appURL, named: appName, activates: true)
             activationMethod = "workspace_open_application"
@@ -3508,55 +3469,22 @@ func captureAccessibilityElements(
     return (elements, nodeCount, truncationReasons)
 }
 
-func appendAccessibilityFingerprint(_ node: [String: Any], into out: inout String) {
-    out += (node["id"] as? String) ?? ""
-    out += "|"
-    out += (node["role"] as? String) ?? ""
-    if let bounds = node["bounds"] as? [String: Double] {
-        out += "|\(Int(bounds["x"] ?? 0)),\(Int(bounds["y"] ?? 0)),"
-        out += "\(Int(bounds["width"] ?? 0)),\(Int(bounds["height"] ?? 0))"
-    }
-    out += ";"
-    if let children = node["children"] as? [[String: Any]] {
-        for child in children {
-            appendAccessibilityFingerprint(child, into: &out)
-        }
-    }
-}
-
-func accessibilityElementsFingerprint(_ elements: [[String: Any]]) -> String {
-    var out = ""
-    for element in elements {
-        appendAccessibilityFingerprint(element, into: &out)
-    }
-    return out
-}
-
 // Re-capture the accessibility tree until its structure stabilizes. Element ids
 // are positional tree paths, so a snapshot taken while a menu is still animating
 // open returns ids that shift before the agent can act on them. Polling until the
-// fingerprint stops changing keeps post-action snapshots actionable.
+// fingerprint stops changing keeps post-action snapshots actionable. The loop
+// control lives in ComputerUseHelperCore so it can be exercised deterministically
+// in tests.
 func settledAccessibilityElements(
     _ root: AXUIElement
 ) -> (elements: [[String: Any]], nodeCount: Int, truncationReasons: [String]) {
-    let requiredStablePasses = 3
-    let pollInterval: useconds_t = 120_000
-    let deadline = Date().addingTimeInterval(1.6)
-    var latest = captureAccessibilityElements(root)
-    var previousFingerprint = accessibilityElementsFingerprint(latest.elements)
-    var stablePasses = 1
-    while stablePasses < requiredStablePasses, Date() < deadline {
-        usleep(pollInterval)
-        latest = captureAccessibilityElements(root)
-        let fingerprint = accessibilityElementsFingerprint(latest.elements)
-        if fingerprint == previousFingerprint {
-            stablePasses += 1
-        } else {
-            stablePasses = 1
-            previousFingerprint = fingerprint
-        }
-    }
-    return latest
+    return settleCapture(
+        policy: .postAction,
+        now: { Date().timeIntervalSinceReferenceDate },
+        sleep: { usleep($0) },
+        capture: { captureAccessibilityElements(root) },
+        fingerprint: { accessibilityElementsFingerprint($0.elements) }
+    )
 }
 
 func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
@@ -3566,7 +3494,7 @@ func handleAppState(_ request: [String: Any], session: ComputerUseRuntimeSession
     guard let runningApp = findRunningApp(named: appName) else {
         throw HelperFailure(
             code: "app_not_found",
-            message: "App is not running: \(appName)"
+            message: appNotRunningMessage(appName)
         )
     }
 
@@ -3656,30 +3584,26 @@ func handleAppOpen(_ request: [String: Any]) throws -> [String: Any] {
             return (targetPID: runningApp.processIdentifier, result: ["windowReady": true])
         }
 
-        let appURL = runningApp.flatMap { app in
-            applicationURL(for: app, fallbackName: appName)
-        } ?? applicationURL(named: appName)
-
-        var targetApp: NSRunningApplication?
-        if let appURL {
-            targetApp = try openApplication(at: appURL, named: appName, activates: false) ??
-                runningApp ??
-                waitForRunningApp(named: appName)
-        } else {
-            try openWithCommandInBackground(named: appName)
-            targetApp = runningApp ?? waitForRunningApp(named: appName)
+        guard let appURL = runningApp.flatMap({ app in
+            applicationURL(for: app, fallbackBundleId: appName)
+        }) ?? applicationURL(forBundleId: appName) else {
+            throw HelperFailure(
+                code: "app_not_found",
+                message: "No installed app found for bundle id: \(appName). "
+                    + "--app expects a bundle id (e.g. com.google.Chrome); run list-apps to find it."
+            )
         }
+
+        var targetApp = try openApplication(at: appURL, named: appName, activates: false) ??
+            runningApp ??
+            waitForRunningApp(named: appName)
 
         guard let launchedApp = targetApp else {
             throw HelperFailure(code: "app_open_failed", message: "Unable to find launched app: \(appName)")
         }
 
         if waitForWindowTarget(app: launchedApp, timeout: 2) == nil {
-            if let appURL {
-                targetApp = try openApplication(at: appURL, named: appName, activates: true) ?? launchedApp
-            } else {
-                _ = launchedApp.activate(options: [.activateIgnoringOtherApps])
-            }
+            targetApp = try openApplication(at: appURL, named: appName, activates: true) ?? launchedApp
         }
 
         guard let appWithWindow = targetApp else {
@@ -4050,13 +3974,31 @@ func performElementMouseClick(
         }
     }
 
-    if foregroundRecovery != .always {
-        do {
-            return try currentSpaceClick()
-        } catch {
-            guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
-                throw error
+    if foregroundRecovery == .always {
+        return try withForegroundRecovery(
+            appName: appName,
+            policy: foregroundRecovery,
+            reason: foregroundRecoveryReason(policy: foregroundRecovery),
+            preferredScreenPoint: point,
+            dispatchMode: "foreground_mouse_event",
+            dispatchTarget: "element_point",
+            inputRisk: "foreground_app_pointer",
+            resolveTarget: {
+                guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+                    throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
+                }
+                return target
             }
+        ) { target in
+            try foregroundClickResult(target: target)
+        }
+    }
+
+    do {
+        return try currentSpaceClick()
+    } catch {
+        guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
+            throw error
         }
     }
 
@@ -4065,9 +4007,9 @@ func performElementMouseClick(
         policy: foregroundRecovery,
         reason: foregroundRecoveryReason(policy: foregroundRecovery),
         preferredScreenPoint: point,
-        dispatchMode: "foreground_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "element_point",
-        inputRisk: "foreground_app_pointer",
+        inputRisk: "background_app_pointer",
         resolveTarget: {
             guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
                 throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
@@ -4075,7 +4017,7 @@ func performElementMouseClick(
             return target
         }
     ) { target in
-        try foregroundClickResult(target: target)
+        try clickResult(target: target)
     }
 }
 
@@ -4097,7 +4039,8 @@ func postParsedKeyPress(_ parsed: ParsedKeyPress, to target: WindowTarget) throw
 func performBackgroundKeyPress(
     appName: String,
     parsed: ParsedKeyPress,
-    foregroundRecovery: ForegroundRecoveryPolicy
+    foregroundRecovery: ForegroundRecoveryPolicy,
+    resolveTarget: () throws -> WindowTarget
 ) throws -> [String: Any] {
     func currentSpaceKeyPress() throws -> [String: Any] {
         return try withFrontmostPreservation(
@@ -4105,11 +4048,9 @@ func performBackgroundKeyPress(
             dispatchTarget: "app_process",
             inputRisk: "background_app_shortcut"
         ) {
-            let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
-                try postParsedKeyPress(parsed, to: target)
-                return target.pid
-            }
-            return (targetPID: targetPID, result: ["normalizedKey": parsed.normalizedKey])
+            let target = try resolveTarget()
+            try postParsedKeyPress(parsed, to: target)
+            return (targetPID: target.pid, result: ["normalizedKey": parsed.normalizedKey])
         }
     }
 
@@ -4123,7 +4064,6 @@ func performBackgroundKeyPress(
         }
     }
 
-    let app = try resolveRunningApp(named: appName)
     return try withForegroundRecovery(
         appName: appName,
         policy: foregroundRecovery,
@@ -4131,12 +4071,7 @@ func performBackgroundKeyPress(
         dispatchMode: "foreground_keyboard_event",
         dispatchTarget: "app_process",
         inputRisk: "foreground_app_shortcut",
-        resolveTarget: {
-            guard let target = resolveWindowTarget(app: app) else {
-                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
-            }
-            return target
-        }
+        resolveTarget: resolveTarget
     ) { _ in
         try postForegroundParsedKeyPress(parsed)
         return ["normalizedKey": parsed.normalizedKey]
@@ -4146,7 +4081,8 @@ func performBackgroundKeyPress(
 func performBackgroundTextInput(
     appName: String,
     inputText: String,
-    foregroundRecovery: ForegroundRecoveryPolicy
+    foregroundRecovery: ForegroundRecoveryPolicy,
+    resolveTarget: () throws -> WindowTarget
 ) throws -> [String: Any] {
     func currentSpaceTextInput() throws -> [String: Any] {
         return try withFrontmostPreservation(
@@ -4154,12 +4090,10 @@ func performBackgroundTextInput(
             dispatchTarget: "app_process",
             inputRisk: "background_app_text"
         ) {
-            let targetPID = try performWithRequiredBackgroundTarget(appName: appName) { target in
-                let dispatcher = AddressedEventDispatcher(target: target)
-                try dispatcher.postText(inputText)
-                return target.pid
-            }
-            return (targetPID: targetPID, result: ["characterCount": inputText.count])
+            let target = try resolveTarget()
+            let dispatcher = AddressedEventDispatcher(target: target)
+            try dispatcher.postText(inputText)
+            return (targetPID: target.pid, result: ["characterCount": inputText.count])
         }
     }
 
@@ -4173,7 +4107,6 @@ func performBackgroundTextInput(
         }
     }
 
-    let app = try resolveRunningApp(named: appName)
     return try withForegroundRecovery(
         appName: appName,
         policy: foregroundRecovery,
@@ -4181,12 +4114,7 @@ func performBackgroundTextInput(
         dispatchMode: "foreground_keyboard_text",
         dispatchTarget: "app_process",
         inputRisk: "foreground_app_text",
-        resolveTarget: {
-            guard let target = resolveWindowTarget(app: app) else {
-                throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
-            }
-            return target
-        }
+        resolveTarget: resolveTarget
     ) { _ in
         try postForegroundText(inputText)
         return ["characterCount": inputText.count]
@@ -4407,13 +4335,26 @@ func handleElementClickPoint(
         }
     }
 
-    if policy != .always {
-        do {
-            return try currentSpaceClick()
-        } catch {
-            guard shouldAttemptForegroundRecovery(error, policy: policy) else {
-                throw error
-            }
+    if policy == .always {
+        return try withForegroundRecovery(
+            appName: appName,
+            policy: policy,
+            reason: foregroundRecoveryReason(policy: policy),
+            preferredScreenPoint: point,
+            dispatchMode: "foreground_mouse_event",
+            dispatchTarget: "app_process",
+            inputRisk: "foreground_app_pointer",
+            resolveTarget: resolveSnapshotTarget
+        ) { target in
+            try foregroundClickResult(target: target)
+        }
+    }
+
+    do {
+        return try currentSpaceClick()
+    } catch {
+        guard shouldAttemptForegroundRecovery(error, policy: policy) else {
+            throw error
         }
     }
 
@@ -4422,12 +4363,12 @@ func handleElementClickPoint(
         policy: policy,
         reason: foregroundRecoveryReason(policy: policy),
         preferredScreenPoint: point,
-        dispatchMode: "foreground_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "app_process",
-        inputRisk: "foreground_app_pointer",
+        inputRisk: "background_app_pointer",
         resolveTarget: resolveSnapshotTarget
     ) { target in
-        try foregroundClickResult(target: target)
+        try clickResult(target: target)
     }
 }
 
@@ -4491,28 +4432,64 @@ func handleElementPerformAction(_ request: [String: Any], session: ComputerUseRu
     }
 }
 
-func handleTypeText(_ request: [String: Any]) throws -> [String: Any] {
+// type-text dispatches synthesized keystrokes to whatever element currently holds
+// keyboard focus in the target app. When that element is not editable (for example a
+// table or list, as in Things on launch) the keystrokes are consumed as navigation
+// instead of being entered as text, so the input silently disappears. Resolve the
+// focused element up front and refuse with a clear error so the caller knows to focus
+// an editable field before typing.
+func ensureFocusedElementEditable(appName: String) throws {
+    let root = try appElement(named: appName)
+    guard let focused = axElementValue(attribute(root, kAXFocusedUIElementAttribute as CFString)) else {
+        throw HelperFailure(
+            code: "element_not_editable",
+            message:
+                "No element in \(appName) currently has keyboard focus. "
+                + "Click into a text field or editable area before typing."
+        )
+    }
+    guard attributeIsSettable(focused, kAXValueAttribute as CFString) == true else {
+        let roleSuffix = role(focused).map { focusedRole in
+            " The focused element role is \(focusedRole)."
+        } ?? ""
+        throw HelperFailure(
+            code: "element_not_editable",
+            message:
+                "The focused element in \(appName) is not editable.\(roleSuffix) "
+                + "Click into a text field or editable area before typing."
+        )
+    }
+}
+
+func handleTypeText(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let inputText = try requiredString(request, "text")
     let policy = try foregroundRecoveryPolicy(request)
+    let snapshotId = optionalString(request, "snapshotId")
+    try ensureFocusedElementEditable(appName: appName)
     return try performBackgroundTextInput(
         appName: appName,
         inputText: inputText,
         foregroundRecovery: policy
-    )
+    ) {
+        try resolveKeyboardWindowTarget(appName: appName, snapshotId: snapshotId, session: session)
+    }
 }
 
-func handlePressKey(_ request: [String: Any]) throws -> [String: Any] {
+func handlePressKey(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
     let appName = try requiredString(request, "app")
     let key = try requiredString(request, "key")
     let parsed = try parseKeyPress(key)
     let policy = try foregroundRecoveryPolicy(request)
+    let snapshotId = optionalString(request, "snapshotId")
 
     return try performBackgroundKeyPress(
         appName: appName,
         parsed: parsed,
         foregroundRecovery: policy
-    )
+    ) {
+        try resolveKeyboardWindowTarget(appName: appName, snapshotId: snapshotId, session: session)
+    }
 }
 
 func handleScrollElement(_ request: [String: Any], session: ComputerUseRuntimeSession?) throws -> [String: Any] {
@@ -4601,9 +4578,9 @@ func handle(_ request: [String: Any], session: ComputerUseRuntimeSession?) throw
     case "element.perform_action":
         return try handleElementPerformAction(request, session: session)
     case "keyboard.type_text":
-        return try handleTypeText(request)
+        return try handleTypeText(request, session: session)
     case "keyboard.press_key":
-        return try handlePressKey(request)
+        return try handlePressKey(request, session: session)
     case "element.scroll":
         return try handleScrollElement(request, session: session)
     default:

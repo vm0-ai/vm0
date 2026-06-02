@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MODEL_SLUGS } from "../app/[locale]/models/data";
 import { matchesApiBackendRewritePath } from "../api-backend-rewrites.js";
 
 type PathMatchResult =
@@ -489,13 +490,6 @@ const CRON_TELEGRAM_CLEANUP_PATH = "/api/cron/telegram-cleanup";
 const CRON_TELEGRAM_CLEANUP_NEXT_NEGATIVE_PATHS = [
   "/api/cron/telegram-cleanup/extra",
   "/api/cron",
-] as const;
-const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
-const CONNECTORS_AUTHORIZE_PATH = "/api/connectors/github/authorize";
-const CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
-  "/api/connectors/github/authorize/extra",
-  "/api/connectors/authorize",
-  "/api/connectors/github/authorizes",
 ] as const;
 const CONNECTORS_CALLBACK_REWRITE_SOURCE = "/api/connectors/:type/callback";
 const CONNECTORS_CALLBACK_PATH = "/api/connectors/github/callback";
@@ -1640,14 +1634,6 @@ const VOICE_IO_TTS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/voice-io/speech",
   "/api/zero/voice-io/stt",
 ] as const;
-const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/authorize";
-const ZERO_CONNECTORS_AUTHORIZE_PATH = "/api/zero/connectors/github/authorize";
-const ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/authorize/extra",
-  "/api/zero/connectors/authorize",
-  "/api/zero/connectors/github/callback",
-] as const;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_PATH = "/api/zero/connectors";
 const ZERO_CONNECTORS_LIST_NEXT_NEGATIVE_PATHS = [
@@ -1670,12 +1656,13 @@ const ZERO_CONNECTORS_BY_TYPE_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/github/extra",
   "/api/zero/connectors/search",
 ] as const;
-const ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/api-token";
-const ZERO_CONNECTORS_API_TOKEN_PATH = "/api/zero/connectors/github/api-token";
-const ZERO_CONNECTORS_API_TOKEN_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/api-token/extra",
-  "/api/zero/connectors/api-token",
+const ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_PATH =
+  "/api/zero/connectors/github/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_NEXT_NEGATIVE_PATHS = [
+  "/api/zero/connectors/github/manual-grant/extra",
+  "/api/zero/connectors/manual-grant",
   "/api/zero/connectors/github/api",
 ] as const;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
@@ -1686,22 +1673,6 @@ const ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS = [
   "/api/zero/connectors/github/scope-diff/extra",
   "/api/zero/connectors/scope-diff",
   "/api/zero/connectors/github/scope",
-] as const;
-const ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/sessions";
-const ZERO_CONNECTORS_SESSIONS_PATH = "/api/zero/connectors/github/sessions";
-const ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/sessions/00000000-0000-0000-0000-000000000000",
-  "/api/zero/connectors/sessions",
-  "/api/zero/connectors/github/session",
-] as const;
-const ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/sessions/:sessionId([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
-const ZERO_CONNECTORS_SESSION_BY_ID_PATH = `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}`;
-const ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/connectors/github/sessions/not-a-uuid",
-  `/api/zero/connectors/github/sessions/${ZERO_CONNECTOR_SESSION_ID}/extra`,
-  `/api/zero/connectors/sessions/${ZERO_CONNECTOR_SESSION_ID}`,
 ] as const;
 const ZERO_CONNECTORS_OAUTH_DEVICE_AUTHORIZATION_SESSIONS_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/device/sessions";
@@ -1787,6 +1758,12 @@ interface RewriteEntry {
   readonly destination: string;
 }
 
+interface RedirectEntry {
+  readonly source: string;
+  readonly destination: string;
+  readonly permanent?: boolean;
+}
+
 async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
   const configModule = await import("../next.config.js");
   const config = configModule.default;
@@ -1800,6 +1777,17 @@ async function getBeforeFileRewrites(): Promise<RewriteEntry[]> {
     return rewrites;
   }
   return rewrites.beforeFiles ?? [];
+}
+
+async function getRedirects(): Promise<RedirectEntry[]> {
+  const configModule = await import("../next.config.js");
+  const config = configModule.default;
+
+  if (!config.redirects) {
+    throw new Error("redirects() function not found in Next.js config");
+  }
+
+  return await config.redirects();
 }
 
 function findHeader(
@@ -1895,9 +1883,59 @@ describe("Security Response Headers", () => {
   });
 });
 
+describe("Model page redirects", () => {
+  it("should redirect legacy model slugs to existing model pages", async () => {
+    const redirects = await getRedirects();
+    const modelSlugs = new Set(MODEL_SLUGS);
+    const expectedRedirects = [
+      ["kimi-k2.6", "kimi-k2-6"],
+      ["kimi-k2.5", "kimi-k2-5"],
+      ["glm-5.1", "glm-5-1"],
+      ["claude-haiku-4-5", "claude-sonnet-4-6"],
+      ["deepseek-v4-flash", "deepseek-v4-pro"],
+      ["minimax-m2.7", "minimax-m3"],
+      ["minimax-m2-7", "minimax-m3"],
+    ] as const;
+
+    for (const [from, to] of expectedRedirects) {
+      expect(modelSlugs.has(to)).toBe(true);
+      expect(redirects).toContainEqual({
+        source: `/models/${from}`,
+        destination: `/models/${to}`,
+        permanent: true,
+      });
+      expect(redirects).toContainEqual({
+        source: `/:locale/models/${from}`,
+        destination: `/:locale/models/${to}`,
+        permanent: true,
+      });
+    }
+  });
+});
+
 describe("API backend rewrites", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("should use the local API fallback when the backend URL is empty", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "");
+    vi.stubEnv("VERCEL_ENV", undefined);
+
+    const rewrites = await getBeforeFileRewrites();
+
+    expect(rewrites).toEqual(
+      expect.arrayContaining([
+        {
+          source: ZERO_FEATURE_SWITCHES_REWRITE_SOURCE,
+          destination: "http://localhost:3001/api/zero/feature-switches",
+        },
+        {
+          source: REALTIME_TOKEN_REWRITE_SOURCE,
+          destination: "http://localhost:3001/api/zero/realtime/token",
+        },
+      ]),
+    );
   });
 
   it("should proxy migrated API backend routes to apps/api", async () => {
@@ -2092,11 +2130,6 @@ describe("API backend rewrites", () => {
         {
           source: CRON_TELEGRAM_CLEANUP_REWRITE_SOURCE,
           destination: "https://api.example.test/api/cron/telegram-cleanup",
-        },
-        {
-          source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/connectors/:type/authorize",
         },
         {
           source: CONNECTORS_CALLBACK_REWRITE_SOURCE,
@@ -2471,14 +2504,9 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/connectors/:type",
         },
         {
-          source: ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+          source: ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
           destination:
-            "https://api.example.test/api/zero/connectors/:type/api-token",
-        },
-        {
-          source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/zero/connectors/:type/authorize",
+            "https://api.example.test/api/zero/connectors/:type/manual-grant",
         },
         {
           source: ZERO_SLACK_CHANNELS_REWRITE_SOURCE,
@@ -3793,31 +3821,6 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the connector authorize rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === CONNECTORS_AUTHORIZE_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/connectors/:type/authorize",
-    });
-
-    const matcher = getPathMatch(CONNECTORS_AUTHORIZE_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(CONNECTORS_AUTHORIZE_PATH)).toStrictEqual({
-      type: "github",
-    });
-    for (const pathname of CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
   it("should match only the connector callback rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -4236,28 +4239,28 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the zero connector API-token rewrite", async () => {
+  it("should match only the zero connector manual grant rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
     const rewrites = await getBeforeFileRewrites();
     const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE;
+      return entry.source === ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE;
     });
     expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
+      source: ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
       destination:
-        "https://api.example.test/api/zero/connectors/:type/api-token",
+        "https://api.example.test/api/zero/connectors/:type/manual-grant",
     });
 
-    const matcher = getPathMatch(ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE, {
+    const matcher = getPathMatch(ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE, {
       removeUnnamedParams: true,
       strict: true,
     });
 
-    expect(matcher(ZERO_CONNECTORS_API_TOKEN_PATH)).toStrictEqual({
+    expect(matcher(ZERO_CONNECTORS_MANUAL_GRANT_PATH)).toStrictEqual({
       type: "github",
     });
-    for (const pathname of ZERO_CONNECTORS_API_TOKEN_NEXT_NEGATIVE_PATHS) {
+    for (const pathname of ZERO_CONNECTORS_MANUAL_GRANT_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -4284,59 +4287,6 @@ describe("API backend rewrites", () => {
       type: "github",
     });
     for (const pathname of ZERO_CONNECTORS_SCOPE_DIFF_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the zero connector sessions rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/:type/sessions",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_SESSIONS_PATH)).toStrictEqual({
-      type: "github",
-    });
-    for (const pathname of ZERO_CONNECTORS_SESSIONS_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only UUID-shaped zero connector session polling rewrites", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/:type/sessions/:sessionId",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_SESSION_BY_ID_PATH)).toStrictEqual({
-      type: "github",
-      sessionId: ZERO_CONNECTOR_SESSION_ID,
-    });
-    for (const pathname of ZERO_CONNECTORS_SESSION_BY_ID_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -4523,32 +4473,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_SLACK_INTERACTIVE_PATH)).toStrictEqual({});
     for (const pathname of ZERO_SLACK_INTERACTIVE_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the zero connector authorize rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/connectors/:type/authorize",
-    });
-
-    const matcher = getPathMatch(ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(ZERO_CONNECTORS_AUTHORIZE_PATH)).toStrictEqual({
-      type: "github",
-    });
-    for (const pathname of ZERO_CONNECTORS_AUTHORIZE_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

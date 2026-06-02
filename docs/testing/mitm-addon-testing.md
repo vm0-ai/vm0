@@ -84,25 +84,33 @@ def registry_file(tmp_path):
     return path
 ```
 
-### Mock HTTP Flows
+### Real HTTP Flows
 
-Build mock mitmproxy flow objects for testing:
+Use the shared `real_flow` fixture when a test needs an HTTP flow. It builds a
+real `mitmproxy.http.HTTPFlow` with real request, response, headers, and
+metadata semantics, while still letting the test seed metadata for later hook
+phases:
 
 ```python
-def _make_http_flow(client_ip="10.200.0.1", host="example.com", port=443, path="/"):
-    flow = MagicMock()
-    flow.client_conn.peername = (client_ip, 12345)
-    flow.request.pretty_host = host
-    flow.request.port = port
-    flow.request.path = path
-    flow.request.pretty_url = f"https://{host}{path}"
-    flow.request.method = "GET"
-    flow.request.content = b""
-    flow.request.headers = {}
-    flow.metadata = {}
-    flow.response = None
-    return flow
+def test_firewall_response_logs_context(tmp_path, real_flow, mitm_ctx):
+    flow = real_flow(with_response=True, host="api.github.com", path="/repos")
+    flow.metadata.update(
+        {
+            "vm_run_id": "run-abc-123",
+            "vm_network_log_path": str(tmp_path / "network.jsonl"),
+            "original_url": "https://api.github.com/repos",
+            "firewall_action": "ALLOW",
+        }
+    )
+
+    with mitm_ctx():
+        mitm_addon.response(flow)
 ```
+
+Do not hand-build `MagicMock` HTTP flows for addon hook tests. Mocks and stubs
+are still appropriate at real external boundaries such as `mitmproxy.ctx`,
+external HTTP clients, or protocol objects that mitmproxy does not expose
+through test constructors.
 
 ### Module State Reset
 
@@ -110,37 +118,40 @@ The addon uses module-level caches. Reset between tests:
 
 ```python
 import pytest
-import mitm_addon
 import registry
 
 @pytest.fixture(autouse=True)
 def _reset_module_state():
-    mitm_addon._request_start_times.clear()
     registry.reset_cache_for_tests()
     yield
 ```
 
 ### Mocking with patch
 
-Use `unittest.mock.patch` for module-level functions:
+Patch at real external boundaries. For example, request hook tests can use the
+shared `fake_firewall_headers` fixture to stub the auth-service boundary while
+still running the real dispatcher and firewall handler:
 
 ```python
-from unittest.mock import MagicMock, patch
-
-def test_service_match_calls_handler(registry_file):
-    flow = _make_http_flow(host="api.github.com", path="/repos")
+async def test_firewall_request_injects_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(with_response=False, host="api.github.com", path="/repos")
 
     with (
-        patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)),
-        patch.object(mitm_addon, "handle_service_request") as mock_handler,
+        mitm_ctx(registry_path=str(reg_path)),
+        fake_firewall_headers(headers={"Authorization": "Bearer real-token"}),
     ):
-        mitm_addon.request(flow)
+        await mitm_addon.request(flow)
 
-    mock_handler.assert_called_once()
-    call_args = mock_handler.call_args
-    assert call_args[0][0] is flow
-    assert call_args[0][1]["base"] == "https://api.github.com"
+    assert flow.request.headers["Authorization"] == "Bearer real-token"
+    assert flow.metadata["firewall_action"] == "ALLOW"
 ```
+
+Avoid patching internal handlers only to prove they were called. Assert the flow
+state, response, log entry, or other observable behavior produced by the real
+hook path.
 
 ### Asserting Flow State
 
@@ -150,7 +161,7 @@ Check flow metadata and response after handler execution:
 # Service auth injected
 assert flow.request.headers["Authorization"] == "Bearer real-token"
 assert flow.metadata["firewall_action"] == "ALLOW"
-assert flow.metadata["service_base"] == "https://api.github.com"
+assert flow.metadata["firewall_base"] == "https://api.github.com"
 ```
 
 ### Shared Flow Metadata Keys

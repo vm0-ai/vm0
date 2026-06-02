@@ -11,6 +11,10 @@ export const infisical = {
         label: "Token Auth",
         helpText:
           "1. Log in to [Infisical](https://app.infisical.com)\n2. Go to **Access Control > Machine Identities**\n3. Create a new Machine Identity with **Token Auth**\n4. Copy the **Token**\n5. Assign the identity to your project with the desired role",
+        storage: {
+          secrets: ["INFISICAL_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

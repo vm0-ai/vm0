@@ -5,12 +5,14 @@ import {
   zeroOrgLeaveContract,
 } from "@vm0/api-contracts/contracts/zero-org";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach } from "vitest";
@@ -115,6 +117,14 @@ async function deleteOrgComposite(
       ),
     );
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
+  await writeDb
+    .delete(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, fixture.orgId),
+        eq(userFeatureSwitches.userId, fixture.userId),
+      ),
+    );
   await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
@@ -241,6 +251,7 @@ describe("GET /api/zero/org", () => {
     expect(response.body.id).toBe(orgId);
     expect(response.body.slug).toBe(slug);
     expect(response.body.name).toBe("Test Org");
+    expect(response.body.permissionGrantMode).toBe("legacy");
   });
 
   it("returns 404 when no org in session", async () => {
@@ -288,6 +299,41 @@ describe("GET /api/zero/org", () => {
     expect(response.body.id).toBe(orgId);
     expect(response.body.slug).toBe(slug);
     expect(response.body.role).toBe("admin");
+    expect(response.body.permissionGrantMode).toBe("legacy");
+  });
+
+  it("returns user grant permission mode with zero token when enabled", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    const slug = `org-${randomUUID().slice(0, 8)}`;
+    seededFixtures.push(await seedOrg({ orgId, userId, role: "member", slug }));
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroOrgContract);
+    const response = await accept(
+      client.get({ headers: { authorization: `Bearer ${token}` } }),
+      [200],
+    );
+
+    expect(response.body.id).toBe(orgId);
+    expect(response.body.role).toBe("member");
+    expect(response.body.permissionGrantMode).toBe("user-grants");
   });
 });
 

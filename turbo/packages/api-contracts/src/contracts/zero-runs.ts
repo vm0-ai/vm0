@@ -19,7 +19,7 @@ import { sandboxReuseResultSchema } from "./webhooks";
  * Server-side defaults are injected by createZeroRun():
  * artifacts, disallowedTools.
  * Fields not used by zero triggers are omitted:
- * triggerSource, vars, secrets, volumeVersions.
+ * triggerSource, vars, secrets, volumeVersions, permissionPolicies.
  */
 const zeroRunRequestSchema = unifiedRunRequestSchema
   .omit({
@@ -32,6 +32,7 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
     agentComposeId: true,
     appendSystemPrompt: true,
     modelProviderType: true,
+    permissionPolicies: true,
   })
   .extend({
     agentId: z.string().optional(),

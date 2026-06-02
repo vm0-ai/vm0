@@ -41,18 +41,8 @@ describe("zero generate presentation command", () => {
       "presentation",
       "--prompt",
       "API migration plan",
-      "--style",
-      "swiss",
       "--slides",
       "10",
-      "--images",
-      "8",
-      "--image-model",
-      "gpt-image-1.5",
-      "--theme",
-      "ikb",
-      "--audience",
-      "engineering leadership",
       "--title",
       "API Migration Plan",
     ]);
@@ -65,60 +55,18 @@ describe("zero generate presentation command", () => {
     expect(stdout).toContain("API migration plan");
     expect(stdout).toContain("skill:article-magazine");
     expect(stdout).toContain("template:html-ppt-graphify-dark-graph");
+    expect(stdout).not.toContain("template:saas-landing");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/api-migration-plan/`.",
     );
     expect(stdout).toContain(
       "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
     );
-    expect(stdout).toContain("Style: swiss");
     expect(stdout).toContain("Slide count: 10");
-    expect(stdout).toContain("Theme: ikb");
-    expect(stdout).toContain("Audience: engineering leadership");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
   });
 
-  it("should print JSON resource selection metadata when --json is provided", async () => {
-    await generateCommand.parseAsync([
-      "node",
-      "cli",
-      "presentation",
-      "--prompt",
-      "JSON please",
-      "--title",
-      "API Migration Plan",
-      "--json",
-    ]);
-
-    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    const parsed = JSON.parse(stdout) as Record<string, unknown>;
-    expect(parsed).toMatchObject({
-      type: "generation-source-selection",
-      kind: "presentation",
-      prompt: "JSON please",
-      outputDir: "./generated/mockups/api-migration-plan",
-      site: "api-migration-plan",
-      hostCommand:
-        "zero host ./generated/mockups/api-migration-plan --site api-migration-plan",
-    });
-    expect(parsed.registryVersion).toEqual("v1");
-    expect(parsed.selection).toEqual(
-      expect.objectContaining({
-        candidates: expect.objectContaining({
-          skills: expect.arrayContaining([
-            expect.objectContaining({ id: "skill:article-magazine" }),
-          ]),
-          templates: expect.any(Array),
-          designSystems: expect.any(Array),
-        }),
-      }),
-    );
-    expect(parsed.instructions).toEqual(
-      expect.stringContaining("## Stage 2: Resolve Selected Resources"),
-    );
-  });
-
-  it("should describe the default image model in help", () => {
+  it("should expose only base artifact flags plus slides in help", () => {
     let helpOutput = "";
     presentationCommand.configureOutput({
       writeOut: (str: string) => {
@@ -128,8 +76,19 @@ describe("zero generate presentation command", () => {
 
     presentationCommand.outputHelp();
 
-    expect(helpOutput).toContain("Image model for generated visuals (default:");
-    expect(helpOutput).toContain("gpt-image-1): gpt-image-2");
+    expect(helpOutput).toContain("--prompt <text>");
+    expect(helpOutput).toContain("--site-slug <slug>");
+    expect(helpOutput).toContain("--title <text>");
+    expect(helpOutput).toContain("--design-system <id>");
+    expect(helpOutput).toContain("--template <id>");
+    expect(helpOutput).toContain("--slides <count>");
+    expect(helpOutput).not.toContain("--json");
+    expect(helpOutput).not.toContain("--provider");
+    expect(helpOutput).not.toContain("--all");
+    expect(helpOutput).not.toContain("--images");
+    expect(helpOutput).not.toContain("--image-model");
+    expect(helpOutput).not.toContain("--style");
+    expect(helpOutput).not.toContain("--theme");
   });
 
   it("should list presentation templates and design systems in help", () => {

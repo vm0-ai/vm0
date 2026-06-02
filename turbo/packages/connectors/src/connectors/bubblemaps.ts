@@ -11,6 +11,10 @@ export const bubblemaps = {
         label: "API Key",
         helpText:
           "1. Log in to the [Bubblemaps Pro platform](https://pro.bubblemaps.io)\n2. Get your Data API key\n3. Use this key in the `X-ApiKey` request header",
+        storage: {
+          secrets: ["BUBBLEMAPS_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

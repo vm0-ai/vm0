@@ -122,27 +122,11 @@ impl ResourceBudget {
     fn try_reserve_inner(&self, vcpu: u32, memory_mb: u32) -> bool {
         let mut state = self.lock();
 
-        // First-job guarantee: always admit when idle.
-        if state.running_count == 0 {
-            state.running_vcpu += vcpu;
-            state.running_memory_mb += memory_mb;
-            state.running_count += 1;
-            return true;
-        }
-
-        if state.running_vcpu + vcpu > self.effective_vcpu {
-            return false;
-        }
-        if state.running_memory_mb + memory_mb > self.effective_memory_mb {
-            return false;
-        }
-        if self.max_concurrent > 0 && state.running_count >= self.max_concurrent {
+        if !self.can_admit_locked(&state, vcpu, memory_mb) {
             return false;
         }
 
-        state.running_vcpu += vcpu;
-        state.running_memory_mb += memory_mb;
-        state.running_count += 1;
+        Self::reserve_locked(&mut state, vcpu, memory_mb);
         true
     }
 
@@ -167,13 +151,31 @@ impl ResourceBudget {
     /// discovery when resources are exhausted.
     pub fn can_afford(&self, vcpu: u32, memory_mb: u32) -> bool {
         let state = self.lock();
+        self.can_admit_locked(&state, vcpu, memory_mb)
+    }
+
+    fn can_admit_locked(&self, state: &BudgetState, vcpu: u32, memory_mb: u32) -> bool {
         if state.running_count == 0 {
             return true;
         }
-        let vcpu_ok = state.running_vcpu + vcpu <= self.effective_vcpu;
-        let mem_ok = state.running_memory_mb + memory_mb <= self.effective_memory_mb;
+
+        let Some(next_vcpu) = state.running_vcpu.checked_add(vcpu) else {
+            return false;
+        };
+        let Some(next_memory_mb) = state.running_memory_mb.checked_add(memory_mb) else {
+            return false;
+        };
+
+        let vcpu_ok = next_vcpu <= self.effective_vcpu;
+        let mem_ok = next_memory_mb <= self.effective_memory_mb;
         let count_ok = self.max_concurrent == 0 || state.running_count < self.max_concurrent;
         vcpu_ok && mem_ok && count_ok
+    }
+
+    fn reserve_locked(state: &mut BudgetState, vcpu: u32, memory_mb: u32) {
+        state.running_vcpu += vcpu;
+        state.running_memory_mb += memory_mb;
+        state.running_count += 1;
     }
 
     /// Returns the vCPU admission budget after applying the concurrency factor.
@@ -237,6 +239,80 @@ impl ResourceBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct AdmissionParityCase<'a> {
+        name: &'a str,
+        host_vcpu: u32,
+        host_memory_mb: u32,
+        max_concurrent: usize,
+        existing_reservations: &'a [(u32, u32)],
+        request: (u32, u32),
+        expected: bool,
+    }
+
+    fn budget_with_reservations(
+        host_vcpu: u32,
+        host_memory_mb: u32,
+        max_concurrent: usize,
+        reservations: &[(u32, u32)],
+    ) -> ResourceBudget {
+        let budget = ResourceBudget::new(host_vcpu, host_memory_mb, 1.0, max_concurrent);
+        for &(vcpu, memory_mb) in reservations {
+            assert!(budget.try_reserve_inner(vcpu, memory_mb));
+        }
+        budget
+    }
+
+    fn assert_admission_parity(case: AdmissionParityCase<'_>) {
+        let (request_vcpu, request_memory_mb) = case.request;
+
+        let can_afford_budget = budget_with_reservations(
+            case.host_vcpu,
+            case.host_memory_mb,
+            case.max_concurrent,
+            case.existing_reservations,
+        );
+        assert_eq!(
+            can_afford_budget.can_afford(request_vcpu, request_memory_mb),
+            case.expected,
+            "can_afford mismatch for {}",
+            case.name
+        );
+
+        let reserve_budget = budget_with_reservations(
+            case.host_vcpu,
+            case.host_memory_mb,
+            case.max_concurrent,
+            case.existing_reservations,
+        );
+        let before = reserve_budget.allocated();
+        assert_eq!(
+            reserve_budget.try_reserve_inner(request_vcpu, request_memory_mb),
+            case.expected,
+            "reservation mismatch for {}",
+            case.name
+        );
+
+        if case.expected {
+            assert_eq!(
+                reserve_budget.allocated(),
+                (
+                    before.0 + request_vcpu,
+                    before.1 + request_memory_mb,
+                    before.2 + 1
+                ),
+                "successful reservation recorded wrong allocation for {}",
+                case.name
+            );
+        } else {
+            assert_eq!(
+                reserve_budget.allocated(),
+                before,
+                "failed reservation mutated budget for {}",
+                case.name
+            );
+        }
+    }
 
     #[test]
     fn reserve_within_budget() {
@@ -324,12 +400,108 @@ mod tests {
 
     #[test]
     fn can_afford_matches_reserve() {
-        let budget = ResourceBudget::new(4, 4096, 1.0, 0);
-        assert!(budget.can_afford(2, 2048));
-        assert!(budget.try_reserve_inner(2, 2048));
-        assert!(budget.can_afford(2, 2048));
-        assert!(budget.try_reserve_inner(2, 2048));
-        assert!(!budget.can_afford(2, 2048));
+        let cases = [
+            AdmissionParityCase {
+                name: "idle first-job bypass",
+                host_vcpu: 1,
+                host_memory_mb: 1024,
+                max_concurrent: 0,
+                existing_reservations: &[],
+                request: (2, 2048),
+                expected: true,
+            },
+            AdmissionParityCase {
+                name: "over-budget second job",
+                host_vcpu: 1,
+                host_memory_mb: 1024,
+                max_concurrent: 0,
+                existing_reservations: &[(2, 2048)],
+                request: (2, 2048),
+                expected: false,
+            },
+            AdmissionParityCase {
+                name: "within budget",
+                host_vcpu: 4,
+                host_memory_mb: 4096,
+                max_concurrent: 0,
+                existing_reservations: &[(2, 2048)],
+                request: (2, 2048),
+                expected: true,
+            },
+            AdmissionParityCase {
+                name: "vcpu exhausted",
+                host_vcpu: 4,
+                host_memory_mb: 8192,
+                max_concurrent: 0,
+                existing_reservations: &[(2, 2048), (2, 2048)],
+                request: (1, 1024),
+                expected: false,
+            },
+            AdmissionParityCase {
+                name: "memory exhausted",
+                host_vcpu: 8,
+                host_memory_mb: 4096,
+                max_concurrent: 0,
+                existing_reservations: &[(2, 2048), (2, 2048)],
+                request: (1, 1024),
+                expected: false,
+            },
+            AdmissionParityCase {
+                name: "max concurrent exhausted",
+                host_vcpu: 16,
+                host_memory_mb: 32768,
+                max_concurrent: 2,
+                existing_reservations: &[(2, 2048), (2, 2048)],
+                request: (1, 1024),
+                expected: false,
+            },
+            AdmissionParityCase {
+                name: "max concurrent zero has no count cap",
+                host_vcpu: 16,
+                host_memory_mb: 32768,
+                max_concurrent: 0,
+                existing_reservations: &[
+                    (2, 2048),
+                    (2, 2048),
+                    (2, 2048),
+                    (2, 2048),
+                    (2, 2048),
+                    (2, 2048),
+                    (2, 2048),
+                ],
+                request: (2, 2048),
+                expected: true,
+            },
+        ];
+
+        for case in cases {
+            assert_admission_parity(case);
+        }
+    }
+
+    #[test]
+    fn can_afford_matches_reserve_after_lease_drop() {
+        let can_afford_budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&can_afford_budget, 2, 4096).unwrap();
+        assert!(!can_afford_budget.can_afford(2, 4096));
+        drop(lease);
+        assert!(can_afford_budget.can_afford(2, 4096));
+
+        let reserve_budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&reserve_budget, 2, 4096).unwrap();
+        assert!(ResourceBudget::try_reserve_lease(&reserve_budget, 2, 4096).is_none());
+        drop(lease);
+        assert!(ResourceBudget::try_reserve_lease(&reserve_budget, 2, 4096).is_some());
+    }
+
+    #[test]
+    fn admission_rejects_overflow_without_consuming_budget() {
+        let budget = ResourceBudget::new(1, 1, 1.0, 0);
+        assert!(budget.try_reserve_inner(u32::MAX, u32::MAX));
+
+        assert!(!budget.can_afford(1, 1));
+        assert!(!budget.try_reserve_inner(1, 1));
+        assert_eq!(budget.allocated(), (u32::MAX, u32::MAX, 1));
     }
 
     #[test]

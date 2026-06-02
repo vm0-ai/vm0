@@ -1,5 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
+const OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
+
 export const airtable = {
   airtable: {
     label: "Airtable",
@@ -10,15 +12,23 @@ export const airtable = {
       oauth: {
         label: "OAuth (Recommended)",
         helpText: "Sign in with Airtable to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
+          clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["AIRTABLE_ACCESS_TOKEN", "AIRTABLE_REFRESH_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "AIRTABLE_ACCESS_TOKEN",
+            refreshToken: "AIRTABLE_REFRESH_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://airtable.com/oauth2/v1/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "AIRTABLE_OAUTH_CLIENT_ID",
-            clientSecretEnv: "AIRTABLE_OAUTH_CLIENT_SECRET",
-          },
+          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "data.records:read",
             "data.records:write",
@@ -31,8 +41,7 @@ export const airtable = {
         },
         access: {
           kind: "refresh-token",
-          accessToken: "AIRTABLE_ACCESS_TOKEN",
-          refreshToken: "AIRTABLE_REFRESH_TOKEN",
+          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
           },

@@ -74,13 +74,17 @@ function formatFirewallTag(entry: NetworkLogEntry): string {
   return ` ${chalk.cyan(`[${entry.firewall_name}${billable}]`)}`;
 }
 
+function formatBrowserUserAgentTag(entry: NetworkLogEntry): string {
+  return entry.browser_user_agent ? ` ${chalk.magenta("[browser]")}` : "";
+}
+
 /**
  * Format a denied network request (filtered by permission rule)
  */
 function formatNetworkDeny(entry: NetworkLogEntry): string {
   const method = entry.method || "???";
   const url = entry.url || entry.host || "unknown";
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${chalk.red.bold("DENY")} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}`;
 }
 
 /**
@@ -141,7 +145,7 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${error}${formatAuthInfo(entry)}`;
+  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${formatFirewallTag(entry)}${formatBrowserUserAgentTag(entry)}${error}${formatAuthInfo(entry)}`;
 
   line += formatCaptureFields(entry);
 

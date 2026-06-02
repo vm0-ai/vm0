@@ -5,20 +5,25 @@ import { API_BACKEND_REWRITES } from "./api-backend-rewrites.js";
 const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
-// Models whose URL slug was originally published with a dot (e.g.
-// `/models/kimi-k2.6`). The dotted form trips Next.js's "looks like a
-// static asset" matcher in proxy.ts and bypasses Clerk middleware, so the
-// page errors. We migrated to hyphen-only slugs and 301 the old URLs.
+// Model page slug redirects:
+// - dotted slugs were originally published with a dot (e.g. `/models/kimi-k2.6`)
+//   and trip Next.js's "looks like a static asset" matcher in proxy.ts.
+// - removed model pages redirect to their replacement model pages instead of
+//   leaving old public URLs as dead ends.
 const MODEL_SLUG_REDIRECTS = [
   ["kimi-k2.6", "kimi-k2-6"],
   ["kimi-k2.5", "kimi-k2-5"],
   ["glm-5.1", "glm-5-1"],
-  ["minimax-m2.7", "minimax-m2-7"],
+  ["claude-haiku-4-5", "claude-sonnet-4-6"],
+  ["deepseek-v4-flash", "deepseek-v4-pro"],
+  ["minimax-m2.7", "minimax-m3"],
+  ["minimax-m2-7", "minimax-m3"],
 ];
 
 function resolveApiBackendUrl() {
+  const apiBackendUrl = process.env.VM0_API_BACKEND_URL?.trim();
   return (
-    process.env.VM0_API_BACKEND_URL ??
+    apiBackendUrl ||
     (process.env.VERCEL_ENV === "production"
       ? "https://vm0-api.vm6.ai"
       : process.env.VERCEL_ENV === undefined
@@ -104,6 +109,9 @@ const nextConfig = {
     // App URLs
     NEXT_PUBLIC_APP_URL: process.env.APP_URL,
 
+    // Paid-onboarding origin (so.vm0.ai) allowed as a post-auth redirect target
+    NEXT_PUBLIC_PAID_ONBOARDING_URL: process.env.PAID_ONBOARDING_URL,
+
     // Blog configuration
     NEXT_PUBLIC_BASE_URL: process.env.BLOG_BASE_URL,
     NEXT_PUBLIC_STRAPI_URL: process.env.STRAPI_URL,
@@ -152,8 +160,6 @@ const nextConfig = {
     optimizePackageImports: [
       "next-intl",
       "@tabler/icons-react",
-      "@aws-sdk/client-s3",
-      "@aws-sdk/s3-request-presigner",
       "@radix-ui/react-dialog",
       "@radix-ui/react-popover",
       "@radix-ui/react-select",

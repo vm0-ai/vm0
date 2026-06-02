@@ -126,8 +126,8 @@ Encrypted credentials for third-party services.
 - **Storage**: Encrypted at rest (AES-256-GCM).
 - **Sub-types**:
   - `user` — user-defined secrets (e.g., custom API keys)
-  - `connector` — OAuth tokens managed by connector integrations
-  - `model-provider` — LLM provider API keys
+  - `connector` — credentials managed by connector integrations
+  - `model-provider` — LLM provider credentials
 - **Referenced in compose**: `${{ secrets.MY_SECRET }}`
 
 #### Variable

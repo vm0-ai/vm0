@@ -10,15 +10,22 @@ export const intervalsIcu = {
       oauth: {
         label: "OAuth",
         helpText: "Sign in with Intervals.icu to grant access.",
+        client: {
+          clientRegistration: "static",
+          clientType: "confidential",
+          clientIdEnv: "INTERVALS_ICU_OAUTH_CLIENT_ID",
+          clientSecretEnv: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
+        },
+        storage: {
+          secrets: ["INTERVALS_ICU_ACCESS_TOKEN"],
+          variables: [],
+          secretRoles: {
+            accessToken: "INTERVALS_ICU_ACCESS_TOKEN",
+          },
+        },
         grant: {
           kind: "auth-code",
           tokenUrl: "https://intervals.icu/api/oauth/token",
-          client: {
-            clientRegistration: "static",
-            clientType: "confidential",
-            clientIdEnv: "INTERVALS_ICU_OAUTH_CLIENT_ID",
-            clientSecretEnv: "INTERVALS_ICU_OAUTH_CLIENT_SECRET",
-          },
           scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
         },
         access: {

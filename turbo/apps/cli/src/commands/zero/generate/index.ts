@@ -1,6 +1,4 @@
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Command } from "commander";
-import { zeroTokenAllowsFeatureSwitch } from "../../../lib/api/zero-token";
 import { imageCommand } from "./image";
 import {
   dashboardDesignCommand,
@@ -10,16 +8,16 @@ import {
   reportCommand,
 } from "./artifacts";
 import { presentationCommand } from "./presentation";
+import { spriteCommand } from "./sprite";
 import { videoCommand } from "./video";
 import { websiteCommand } from "./website";
 import { voiceCommand } from "./voice";
 import { createListerOnlyCommand } from "./lister-only";
 
-const audioCommand = createListerOnlyCommand({
-  name: "audio",
-  generationType: "audio",
-  description:
-    "List connectors that provide audio generation (alias of voice for non-speech audio)",
+const musicCommand = createListerOnlyCommand({
+  name: "music",
+  generationType: "music",
+  description: "List connectors that provide music generation",
 });
 
 const textCommand = createListerOnlyCommand({
@@ -47,19 +45,20 @@ function buildGenerateHelpText(): string {
     '  Generate report:       zero generate report --prompt "A Q2 usage report"',
     '  Generate docs:         zero generate docs-design --prompt "A setup guide"',
     '  Generate video:        zero generate video --prompt "A cinematic city shot"',
-    ...(zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites)
-      ? [
-          '  Generate site:         zero generate website --prompt "A launch site"',
-        ]
-      : []),
+    '  Generate site:         zero generate website --prompt "A launch site"',
+    '  Generate sprite:       zero generate sprite --prompt "A slime monster idle loop"',
     '  Generate speech:       zero generate voice --prompt "Hello"',
+    "  Show music choices:    zero generate music",
     "",
-    "  List image providers:  zero generate image",
+    "  Show image choices:    zero generate image",
+    "  Show report choices:   zero generate report",
     "  Use a connector:       zero generate video --provider heygen",
     "  Force built-in:        zero generate image --provider built-in --model gpt-image-1.5 --prompt ...",
   ];
 
-  return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "zero generate <type>" with no --prompt to list every provider available for that type.\n  - --provider built-in (default when --prompt is provided) runs the vm0-hosted pipeline.\n  - --provider <connector-name> prints how to invoke that connector's skill instead.`;
+  return `\nExamples:\n${examples.join("\n")}\n\nNotes:\n  - Run "zero generate <type>" with no --prompt to list generation choices for that type.
+  - Media and connector-backed generation types may expose --provider for vm0 or connector execution guidance.
+  - HTML artifact types use registry-backed --design-system and --template selection.`;
 }
 
 export const generateCommand = new Command()
@@ -75,14 +74,10 @@ export const generateCommand = new Command()
   .addCommand(dashboardDesignCommand)
   .addCommand(mobileAppDesignCommand)
   .addCommand(videoCommand)
-  .addCommand(
-    websiteCommand,
-    zeroTokenAllowsFeatureSwitch(FeatureSwitchKey.HostedSites)
-      ? {}
-      : { hidden: true },
-  )
+  .addCommand(websiteCommand)
+  .addCommand(spriteCommand)
   .addCommand(voiceCommand)
-  .addCommand(audioCommand)
+  .addCommand(musicCommand)
   .addCommand(textCommand)
   .addCommand(codeCommand)
   .addCommand(documentCommand)

@@ -24,7 +24,7 @@ async fn budget_full_skips_then_resumes() {
     ));
     // Budget for exactly 1 job (2 vcpu, 4096 MB).
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
 
     // First job: claims the entire budget.
@@ -73,7 +73,7 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
         Arc::clone(&gate),
     ));
     let (config, env) = mock_run_config_with_overrides(test_profiles(), 2, 4096, 1, overrides);
-    let budget = Arc::clone(&config.budget);
+    let budget = Arc::clone(&config.capacity.budget);
     let run_handle = tokio::spawn(run(config));
     wait_discover_entered(&env, Duration::from_secs(5)).await;
 
@@ -133,8 +133,8 @@ async fn budget_exhausted_buffers_discovery_until_budget_frees() {
 #[tokio::test(start_paused = true)]
 async fn cleanup_tick_evicts_expired_entries() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     // Pre-seed: park an entry that is already expired (400s old, 300s timeout).
     seed_idle_pool_expired(&idle_pool, &budget, "sess-exp", "vm0/default", 2, 4096).await;
@@ -173,8 +173,8 @@ async fn cleanup_tick_evicts_expired_entries() {
 async fn budget_exhausted_evicts_idle_and_admits_job() {
     // Budget: exactly 1 default job (2 vcpu, 4096 MB).
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
 
     // Pre-seed: idle VM fills the entire budget.
     seed_idle_pool(&idle_pool, &budget, "sess-evict", "vm0/default", 2, 4096).await;
@@ -205,8 +205,8 @@ async fn budget_exhausted_evicts_idle_and_admits_job() {
 #[tokio::test(start_paused = true)]
 async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
     let (config, env) = mock_run_config(two_profiles(), 6, 12288, 3);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");
     let now = std::time::Instant::now();
 
@@ -276,8 +276,8 @@ async fn budget_exhausted_reclaims_expired_before_oldest_idle() {
 #[tokio::test(start_paused = true)]
 async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
     let (config, env) = mock_run_config(two_profiles(), 7, 13312, 3);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");
     let now = std::time::Instant::now();
 
@@ -364,8 +364,8 @@ async fn budget_exhausted_evicts_oldest_when_expired_reclaim_insufficient() {
 #[tokio::test(start_paused = true)]
 async fn budget_pressure_eviction_clears_status_json_idle_vms() {
     let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
-    let idle_pool = Arc::clone(&config.idle_pool);
-    let budget = Arc::clone(&config.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
     let status_path = env._temp_dir.path().join("status.json");
     let run_handle = tokio::spawn(run(config));
 

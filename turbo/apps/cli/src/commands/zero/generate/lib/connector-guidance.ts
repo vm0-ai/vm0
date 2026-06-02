@@ -11,6 +11,7 @@ function toConnectorGenerationType(
 ): string | null {
   switch (generationType) {
     case "voice":
+    case "music":
       return "audio";
     case "dashboard-design":
     case "docs-design":

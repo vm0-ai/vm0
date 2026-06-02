@@ -71,7 +71,7 @@ describe("zeroConnectorList", () => {
     expect(list.connectorProvidedEnvNames).not.toContain("OPENAI_TOKEN");
   });
 
-  it("returns OAuth connector env names only when the access secret exists", async () => {
+  it("returns connector token env names only when the access secret exists", async () => {
     const orgId = `org_${randomUUID()}`;
     const userWithoutSecret = `user_${randomUUID()}`;
     const userWithSecret = `user_${randomUUID()}`;
@@ -111,6 +111,41 @@ describe("zeroConnectorList", () => {
     );
     expect(withSecret.connectorProvidedEnvNames).toStrictEqual(
       expect.arrayContaining(["GH_TOKEN", "GITHUB_TOKEN"]),
+    );
+  });
+
+  it("does not report platform-backed connector env names from dirty connector secrets", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+
+    await writeDb.insert(connectors).values({
+      orgId,
+      userId,
+      type: "google-ads",
+      authMethod: "oauth",
+    });
+    await writeDb.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "GOOGLE_ADS_ACCESS_TOKEN",
+        encryptedValue: "encrypted_google_ads_access_token",
+        type: "connector",
+      },
+      {
+        orgId,
+        userId,
+        name: "GOOGLE_ADS_DEVELOPER_TOKEN",
+        encryptedValue: "encrypted_google_ads_developer_token",
+        type: "connector",
+      },
+    ]);
+
+    const list = await store.get(zeroConnectorList({ orgId, userId }));
+
+    expect(list.connectorProvidedEnvNames).toContain("GOOGLE_ADS_TOKEN");
+    expect(list.connectorProvidedEnvNames).not.toContain(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
     );
   });
 
@@ -168,7 +203,7 @@ describe("zeroConnectorList", () => {
     expect(list.configuredTypes).toContain("amplitude");
   });
 
-  it("keeps a stored oauth connector visible when another auth method is ungated", async () => {
+  it("keeps a stored connector auth-provider connection visible when another auth method is ungated", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 

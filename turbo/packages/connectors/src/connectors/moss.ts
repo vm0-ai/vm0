@@ -12,6 +12,10 @@ export const moss = {
         label: "Project Credentials",
         helpText:
           "1. Sign in to [Moss](https://www.moss.dev) and open the project portal\n2. Open **Project Settings → API Keys**\n3. Copy the **Project ID** and **Project Key** for your project (both are required and paired)",
+        storage: {
+          secrets: ["MOSS_PROJECT_ID", "MOSS_PROJECT_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

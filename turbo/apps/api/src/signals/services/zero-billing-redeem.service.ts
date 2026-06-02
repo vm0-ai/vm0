@@ -342,7 +342,7 @@ const createOneTimeCheckoutSession$ = command(
 
     const customerId = await set(
       getOrCreateStripeCustomer$,
-      args.orgId,
+      { orgId: args.orgId },
       signal,
     );
     signal.throwIfAborted();
