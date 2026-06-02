@@ -170,11 +170,11 @@ fn run_fixture(content: &str) -> io::Result<()> {
             "fixture missing thread.started/thread_id",
         )
     })?;
+    let path = build_session_path(&codex_home(), Utc::now().date_naive(), &thread_id)?;
 
     let mut stdout = io::stdout().lock();
     emit_events(&mut stdout, &events)?;
 
-    let path = build_session_path(&codex_home(), Utc::now().date_naive(), &thread_id);
     write_session_file(&path, &events)
 }
 
@@ -226,16 +226,32 @@ fn codex_home() -> PathBuf {
 /// Build the session file path, with `today` injected for testability.
 ///
 /// Layout: `<codex_home>/sessions/YYYY/MM/DD/<thread_id>.jsonl`
-fn build_session_path(codex_home: &Path, today: NaiveDate, thread_id: &str) -> PathBuf {
+fn build_session_path(codex_home: &Path, today: NaiveDate, thread_id: &str) -> io::Result<PathBuf> {
+    validate_thread_id(thread_id)?;
     let yyyy = today.format("%Y").to_string();
     let mm = today.format("%m").to_string();
     let dd = today.format("%d").to_string();
-    codex_home
+    Ok(codex_home
         .join("sessions")
         .join(yyyy)
         .join(mm)
         .join(dd)
-        .join(format!("{thread_id}.jsonl"))
+        .join(format!("{thread_id}.jsonl")))
+}
+
+fn validate_thread_id(thread_id: &str) -> io::Result<()> {
+    let parsed = Uuid::parse_str(thread_id).map_err(|_| invalid_thread_id_error(thread_id))?;
+    if parsed.to_string() != thread_id {
+        return Err(invalid_thread_id_error(thread_id));
+    }
+    Ok(())
+}
+
+fn invalid_thread_id_error(thread_id: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("invalid thread id {thread_id:?}: expected canonical UUID"),
+    )
 }
 
 /// Build the three-event sequence the mock emits for a single turn.
@@ -309,11 +325,11 @@ fn append_session_file(path: &Path, new_events: &[Value]) -> io::Result<()> {
 /// to the session file under `$CODEX_HOME`.
 fn run(thread_id: &str, prompt: &str, is_resume: bool) -> io::Result<()> {
     let events = build_events(thread_id, prompt);
+    let path = build_session_path(&codex_home(), Utc::now().date_naive(), thread_id)?;
 
     let mut stdout = io::stdout().lock();
     emit_events(&mut stdout, &events)?;
 
-    let path = build_session_path(&codex_home(), Utc::now().date_naive(), thread_id);
     if is_resume {
         append_session_file(&path, &events)
     } else {
@@ -352,10 +368,11 @@ mod tests {
     fn build_session_path_zero_pads() {
         let home = Path::new("/tmp/.codex");
         let day = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let p = build_session_path(home, day, "abc");
+        let thread_id = "00000000-0000-0000-0000-000000000001";
+        let p = build_session_path(home, day, thread_id).unwrap();
         assert_eq!(
             p,
-            PathBuf::from("/tmp/.codex/sessions/2026/01/05/abc.jsonl")
+            PathBuf::from(format!("/tmp/.codex/sessions/2026/01/05/{thread_id}.jsonl"))
         );
     }
 
@@ -363,11 +380,44 @@ mod tests {
     fn build_session_path_typical() {
         let home = Path::new("/var/codex");
         let day = NaiveDate::from_ymd_opt(2026, 12, 31).unwrap();
-        let p = build_session_path(home, day, "xyz-uuid");
+        let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+        let p = build_session_path(home, day, thread_id).unwrap();
         assert_eq!(
             p,
-            PathBuf::from("/var/codex/sessions/2026/12/31/xyz-uuid.jsonl")
+            PathBuf::from(format!("/var/codex/sessions/2026/12/31/{thread_id}.jsonl"))
         );
+    }
+
+    #[test]
+    fn build_session_path_rejects_absolute_thread_id() {
+        assert_invalid_thread_id("/tmp/escape");
+    }
+
+    #[test]
+    fn build_session_path_rejects_traversal_thread_id() {
+        assert_invalid_thread_id("../escape");
+    }
+
+    #[test]
+    fn build_session_path_rejects_nested_thread_id() {
+        assert_invalid_thread_id("nested/id");
+    }
+
+    #[test]
+    fn build_session_path_rejects_non_uuid_thread_id() {
+        assert_invalid_thread_id("xyz-uuid");
+    }
+
+    #[test]
+    fn build_session_path_rejects_non_canonical_uuid_thread_id() {
+        assert_invalid_thread_id("0199A213-81C0-7800-8AA1-BBAB2A035A53");
+    }
+
+    fn assert_invalid_thread_id(thread_id: &str) {
+        let home = Path::new("/tmp/.codex");
+        let day = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let err = build_session_path(home, day, thread_id).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[test]
