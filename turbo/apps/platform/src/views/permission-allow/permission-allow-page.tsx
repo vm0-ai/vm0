@@ -708,10 +708,9 @@ function DoctorMemberRequestCard({
           <button
             type="button"
             onClick={onSubmit}
-            disabled={submitting}
             className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
           >
-            {submitting ? "Submitting..." : "Request approval"}
+            Request approval
           </button>
         </div>
       </div>
