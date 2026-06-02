@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.106.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.2...runner-rs-v0.106.3) (2026-06-02)
+
+
+### Refactoring
+
+* **runner:** centralize pre-claim admission rollback ([#15821](https://github.com/vm0-ai/vm0/issues/15821)) ([8a6936f](https://github.com/vm0-ai/vm0/commit/8a6936f7207a7d55d5263332ca2ac3af610ec020))
+
 ## [0.106.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.1...runner-rs-v0.106.2) (2026-06-02)
 
 ## [0.106.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.0...runner-rs-v0.106.1) (2026-06-02)

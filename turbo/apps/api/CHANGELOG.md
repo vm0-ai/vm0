@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.91.3](https://github.com/vm0-ai/vm0/compare/api-v1.91.2...api-v1.91.3) (2026-06-02)
+
+
+### Refactoring
+
+* centralize permission grant policy folding ([#15817](https://github.com/vm0-ai/vm0/issues/15817)) ([df5e219](https://github.com/vm0-ai/vm0/commit/df5e2199404af850eba3e4de8c13289724afe4ff))
+* scope legacy manual grant cleanup ([#15814](https://github.com/vm0-ai/vm0/issues/15814)) ([25c59f8](https://github.com/vm0-ai/vm0/commit/25c59f87e561cd71da1678905167de2de7ea8476))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.1
+    * @vm0/connectors bumped to 1.41.1
+    * @vm0/core bumped to 8.305.4
+    * @vm0/db bumped to 1.24.4
+
 ## [1.91.2](https://github.com/vm0-ai/vm0/compare/api-v1.91.1...api-v1.91.2) (2026-06-02)
 
 
