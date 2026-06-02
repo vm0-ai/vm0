@@ -1195,6 +1195,7 @@ async fn claim_failure_rolls_back_budget() {
 
     // Returning to discovery proves the failed claim was processed.
     wait_discover_entered(&env, Duration::from_secs(5)).await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id_1, Duration::from_secs(5)).await;
     assert_eq!(budget.allocated().2, 0);
 
     // Second job: claim succeeds — budget should have been freed.
