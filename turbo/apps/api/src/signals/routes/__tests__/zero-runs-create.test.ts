@@ -936,7 +936,7 @@ describe("POST /api/zero/runs", () => {
     });
     await seedVm0ApiKey({
       vendor: "anthropic",
-      model: "claude-haiku-4-5",
+      model: "claude-opus-4-7",
       apiKey: "sk-vm0-fallback",
     });
     await seedVm0ApiKey({
@@ -1026,7 +1026,7 @@ describe("POST /api/zero/runs", () => {
       userId: ORG_SENTINEL_USER_ID,
       type: "vm0",
       isDefault: true,
-      selectedModel: "MiniMax-M2.7",
+      selectedModel: "MiniMax-M3",
     });
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -1061,7 +1061,7 @@ describe("POST /api/zero/runs", () => {
         "minimax-api-key",
         "MINIMAX_API_KEY",
       ),
-      ANTHROPIC_MODEL: "MiniMax-M2.7",
+      ANTHROPIC_MODEL: "MiniMax-M3",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
     });
     const decrypted = decryptSecretsMapForTests(

@@ -1782,7 +1782,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
     const deepseekProviderId = await seedModelProvider(
       fixture,
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       {
         type: "deepseek-api-key",
         isDefault: false,
@@ -1840,7 +1840,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
     const deepseekProviderId = await seedModelProvider(
       fixture,
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       {
         type: "deepseek-api-key",
         isDefault: false,
@@ -1881,22 +1881,18 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await removeComposeFrameworkApiKey(fixture);
-    await seedModelProvider(fixture, "deepseek-v4-flash", {
+    await seedModelProvider(fixture, "deepseek-v4-pro", {
       type: "deepseek-api-key",
       userId: fixture.userId,
       isDefault: true,
       secretValue: "member-deepseek-key",
     });
-    const orgProviderId = await seedModelProvider(
-      fixture,
-      "deepseek-v4-flash",
-      {
-        type: "deepseek-api-key",
-        userId: ORG_SENTINEL_USER_ID,
-        isDefault: true,
-        secretValue: "org-deepseek-key",
-      },
-    );
+    const orgProviderId = await seedModelProvider(fixture, "deepseek-v4-pro", {
+      type: "deepseek-api-key",
+      userId: ORG_SENTINEL_USER_ID,
+      isDefault: true,
+      secretValue: "org-deepseek-key",
+    });
     await writeDb.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
       model: "deepseek-v4-pro",

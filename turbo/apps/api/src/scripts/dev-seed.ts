@@ -93,12 +93,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.cache_creation", usd(6.25), 1_000_000],
   ]),
-  ...usageGroup("model", "claude-haiku-4-5", [
-    ["tokens.input", usd(1), 1_000_000],
-    ["tokens.output", usd(5), 1_000_000],
-    ["tokens.cache_read", usd(0.1), 1_000_000],
-    ["tokens.cache_creation", usd(1.25), 1_000_000],
-  ]),
   ...usageGroup("model", "kimi-k2.6", [
     ["tokens.input", usd(0.6), 1_000_000],
     ["tokens.output", usd(3), 1_000_000],
@@ -123,22 +117,10 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.12), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
-  ...usageGroup("model", "MiniMax-M2.7", [
-    ["tokens.input", usd(0.3), 1_000_000],
-    ["tokens.output", usd(1.2), 1_000_000],
-    ["tokens.cache_read", usd(0.06), 1_000_000],
-    ["tokens.cache_creation", usd(0.375), 1_000_000],
-  ]),
   ...usageGroup("model", "deepseek-v4-pro", [
     ["tokens.input", usd(1.74), 1_000_000],
     ["tokens.output", usd(3.48), 1_000_000],
     ["tokens.cache_read", usd(0.145), 1_000_000],
-    ["tokens.cache_creation", 0, 1_000_000],
-  ]),
-  ...usageGroup("model", "deepseek-v4-flash", [
-    ["tokens.input", usd(0.14), 1_000_000],
-    ["tokens.output", usd(0.28), 1_000_000],
-    ["tokens.cache_read", usd(0.028), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
   // OpenAI API pricing retrieved 2026-05-06 from:

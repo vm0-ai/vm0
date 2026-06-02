@@ -717,6 +717,30 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("rejects removed model policy updates", async () => {
+    const fixture = await seedFixture({});
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await putRawModelPolicies(
+      JSON.stringify({
+        policies: [
+          {
+            model: "claude-haiku-4-5",
+            isDefault: true,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+          },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
   it("rejects incomplete update payloads", async () => {
     const fixture = await seedFixture({});
     mocks.clerk.session(fixture.userId, fixture.orgId);
