@@ -6,8 +6,13 @@ the low-level HTTP details for that forward path.
 """
 
 import asyncio
+import errno
 import http.client as http_client
+import ipaddress
+import socket
+import sys
 import urllib.parse
+from typing import NamedTuple
 
 from mitmproxy import http
 
@@ -33,6 +38,60 @@ _forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semap
 
 class ForwardedResponseTooLargeError(Exception):
     """Raised when an auth.base upstream response exceeds the local body cap."""
+
+
+class UnsafeAuthBaseDestinationError(Exception):
+    """Raised when an auth.base upstream destination is not public internet."""
+
+
+class _ValidatedAddress(NamedTuple):
+    host: str
+    port: int
+
+
+class _ValidatedHTTPSConnection(http_client.HTTPSConnection):
+    def __init__(
+        self,
+        host: str,
+        port: int | None,
+        *,
+        timeout,
+        validated_addresses: tuple[_ValidatedAddress, ...],
+    ) -> None:
+        super().__init__(host, port=port, timeout=timeout)
+        self._validated_addresses = validated_addresses
+
+    def _connect_to_validated_address(self):
+        last_error: OSError | None = None
+        for address in self._validated_addresses:
+            try:
+                return self._create_connection(
+                    (address.host, address.port),
+                    self.timeout,
+                    self.source_address,
+                )
+            except OSError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        raise OSError("getaddrinfo returns an empty list")
+
+    def connect(self) -> None:
+        sys.audit("http.client.connect", self, self.host, self.port)
+        self.sock = self._connect_to_validated_address()
+        try:
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError as e:
+            if e.errno != errno.ENOPROTOOPT:
+                raise
+
+        if self._tunnel_host:
+            self._tunnel()
+            server_hostname = self._tunnel_host
+        else:
+            server_hostname = self.host
+
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
 
 
 def header_pairs(headers) -> list[tuple[str, str]]:
@@ -129,7 +188,7 @@ def _request_target(parsed: urllib.parse.SplitResult) -> str:
 
 def _connection_cls(scheme: str):
     if scheme == "https":
-        return http_client.HTTPSConnection
+        return _ValidatedHTTPSConnection
     raise ValueError(f"Unsupported URL scheme: {scheme}")
 
 
@@ -157,6 +216,32 @@ def _read_response_body(resp) -> bytes:
     return body
 
 
+def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return address.is_global and not address.is_multicast and not address.is_reserved
+
+
+def _raise_unsafe_destination() -> None:
+    raise UnsafeAuthBaseDestinationError("Unsafe auth.base upstream destination")
+
+
+def _resolve_validated_addresses(host: str, port: int) -> tuple[_ValidatedAddress, ...]:
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    seen: set[str] = set()
+    addresses: list[_ValidatedAddress] = []
+    for _family, _socktype, _proto, _canonname, sockaddr in infos:
+        address = ipaddress.ip_address(sockaddr[0])
+        key = address.compressed
+        if key in seen:
+            continue
+        seen.add(key)
+        if not _is_public_unicast_address(address):
+            _raise_unsafe_destination()
+        addresses.append(_ValidatedAddress(address.compressed, port))
+    if not addresses:
+        raise ValueError("Invalid upstream URL: host did not resolve")
+    return tuple(addresses)
+
+
 def _forward_request_sync(
     url: str,
     method: str,
@@ -178,7 +263,9 @@ def _forward_request_sync(
         port = parsed.port
     except ValueError as exc:
         raise ValueError("Invalid upstream URL: invalid port") from exc
-    conn = conn_cls(host, port=port, timeout=30)
+    effective_port = port if port is not None else DEFAULT_HTTPS_PORT
+    validated_addresses = _resolve_validated_addresses(host, effective_port)
+    conn = conn_cls(host, port=port, timeout=30, validated_addresses=validated_addresses)
     resp = None
     try:
         conn.putrequest(

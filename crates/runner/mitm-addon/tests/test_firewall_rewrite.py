@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 from mitmproxy import http
 
 import auth
+import auth_base_forwarder as forwarder
 import matching
 
 
@@ -719,6 +720,56 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert flow.response is not None
         assert b"super-secret-token" not in flow.response.content
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
+
+    async def test_blocked_forward_destination_returns_502_without_mutating_request(
+        self, headers, real_flow, mitm_ctx, tmp_path
+    ):
+        """Forwarder destination guard failures use the local rewrite failure path."""
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path="/hook?client=visible",
+            request_headers=headers(
+                ("Host", "firewall-placeholder.vm3.ai"),
+                ("Authorization", "Bearer agent"),
+            ),
+            resolved_base="https://127.0.0.1/webhook/super-secret-token",
+            token_overrides={
+                "headers": {
+                    "Authorization": "Bearer real-token",
+                    "X-Custom": "injected-value",
+                },
+                "query": {"api_key": "resolved-key"},
+            },
+        )
+        mock_forward = AsyncMock(
+            side_effect=forwarder.UnsafeAuthBaseDestinationError(
+                "Unsafe auth.base upstream destination"
+            )
+        )
+        mock_log = MagicMock()
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert mock_forward.call_count == 1
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_error"] == "url_rewrite_forward_failed"
+        assert "auth_url_rewrite" not in flow.metadata
+        assert flow.request.headers["Authorization"] == "Bearer agent"
+        assert "X-Custom" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["client"] == "visible"
+        assert "super-secret-token" not in flow.response.text
         for log_call in mock_log.call_args_list:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)

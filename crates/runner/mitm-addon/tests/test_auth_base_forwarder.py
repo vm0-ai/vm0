@@ -16,6 +16,7 @@ class ForwarderConnectionPatch(NamedTuple):
     conn: MagicMock
     resp: MagicMock
     connection_cls: MagicMock
+    resolver: MagicMock
 
 
 @contextlib.contextmanager
@@ -44,11 +45,214 @@ def _patched_forwarder_connection(
     else:
         conn.getresponse.side_effect = getresponse_side_effect
 
-    with patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn) as cls:
-        yield ForwarderConnectionPatch(conn=conn, resp=resp, connection_cls=cls)
+    def resolve_public_addresses(_host: str, port: int) -> tuple[forwarder._ValidatedAddress, ...]:
+        return (forwarder._ValidatedAddress("93.184.216.34", port),)
+
+    with (
+        patch.object(
+            forwarder, "_resolve_validated_addresses", side_effect=resolve_public_addresses
+        ) as resolver,
+        patch.object(forwarder, "_ValidatedHTTPSConnection", return_value=conn) as cls,
+    ):
+        yield ForwarderConnectionPatch(
+            conn=conn,
+            resp=resp,
+            connection_cls=cls,
+            resolver=resolver,
+        )
 
 
 class TestAuthBaseForwarderSecurity:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param("https://127.0.0.1/", id="ipv4-loopback"),
+            pytest.param("https://169.254.169.254/", id="ipv4-link-local-metadata"),
+            pytest.param("https://10.0.0.1/", id="ipv4-rfc1918-10"),
+            pytest.param("https://172.16.0.1/", id="ipv4-rfc1918-172"),
+            pytest.param("https://192.168.0.1/", id="ipv4-rfc1918-192"),
+            pytest.param("https://100.64.0.1/", id="ipv4-cgnat"),
+            pytest.param("https://224.0.0.1/", id="ipv4-multicast"),
+            pytest.param("https://240.0.0.1/", id="ipv4-reserved"),
+            pytest.param("https://[::1]/", id="ipv6-loopback"),
+            pytest.param("https://[fe80::1]/", id="ipv6-link-local"),
+            pytest.param("https://[fc00::1]/", id="ipv6-ula"),
+            pytest.param("https://[2001:db8::1]/", id="ipv6-documentation"),
+            pytest.param("https://[::ffff:100.64.0.1]/", id="ipv6-mapped-cgnat"),
+            pytest.param("https://[::ffff:8.8.8.8]/", id="ipv6-mapped-reserved"),
+            pytest.param("https://[64:ff9b::169.254.169.254]/", id="ipv6-nat64-metadata"),
+            pytest.param("https://[64:ff9b::8.8.8.8]/", id="ipv6-nat64-reserved"),
+        ],
+    )
+    def test_rejects_non_public_literal_destinations_without_opening_connection(self, url):
+        with (
+            patch.object(forwarder, "_ValidatedHTTPSConnection") as connection_cls,
+            pytest.raises(
+                forwarder.UnsafeAuthBaseDestinationError,
+                match=r"Unsafe auth\.base upstream destination",
+            ),
+        ):
+            forwarder._forward_request_sync(url, "GET", [], None)
+
+        connection_cls.assert_not_called()
+
+    def test_rejects_dns_private_destination_without_opening_connection(self):
+        with (
+            patch.object(
+                forwarder.socket,
+                "getaddrinfo",
+                return_value=[
+                    (
+                        forwarder.socket.AF_INET,
+                        forwarder.socket.SOCK_STREAM,
+                        6,
+                        "",
+                        ("10.0.0.1", 443),
+                    )
+                ],
+            ),
+            patch.object(forwarder, "_ValidatedHTTPSConnection") as connection_cls,
+            pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
+        ):
+            forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
+
+        connection_cls.assert_not_called()
+
+    def test_rejects_mixed_dns_answers_without_opening_connection(self):
+        with (
+            patch.object(
+                forwarder.socket,
+                "getaddrinfo",
+                return_value=[
+                    (
+                        forwarder.socket.AF_INET,
+                        forwarder.socket.SOCK_STREAM,
+                        6,
+                        "",
+                        ("93.184.216.34", 443),
+                    ),
+                    (
+                        forwarder.socket.AF_INET,
+                        forwarder.socket.SOCK_STREAM,
+                        6,
+                        "",
+                        ("127.0.0.1", 443),
+                    ),
+                ],
+            ),
+            patch.object(forwarder, "_ValidatedHTTPSConnection") as connection_cls,
+            pytest.raises(forwarder.UnsafeAuthBaseDestinationError),
+        ):
+            forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
+
+        connection_cls.assert_not_called()
+
+    def test_allows_public_dns_destination_with_validated_addresses(self):
+        resp = MagicMock()
+        resp.status = 200
+        resp.read.return_value = b"ok"
+        resp.getheaders.return_value = []
+        conn = MagicMock()
+        conn.getresponse.return_value = resp
+
+        with (
+            patch.object(
+                forwarder.socket,
+                "getaddrinfo",
+                return_value=[
+                    (
+                        forwarder.socket.AF_INET,
+                        forwarder.socket.SOCK_STREAM,
+                        6,
+                        "",
+                        ("93.184.216.34", 443),
+                    ),
+                    (
+                        forwarder.socket.AF_INET6,
+                        forwarder.socket.SOCK_STREAM,
+                        6,
+                        "",
+                        ("2001:4860:4860::8888", 443, 0, 0),
+                    ),
+                ],
+            ),
+            patch.object(
+                forwarder, "_ValidatedHTTPSConnection", return_value=conn
+            ) as connection_cls,
+        ):
+            forwarder._forward_request_sync("https://hooks.example.com/path", "GET", [], None)
+
+        connection_cls.assert_called_once_with(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(
+                forwarder._ValidatedAddress("93.184.216.34", 443),
+                forwarder._ValidatedAddress("2001:4860:4860::8888", 443),
+            ),
+        )
+        assert call("Host", "hooks.example.com") in conn.putheader.call_args_list
+
+    def test_validated_connection_uses_checked_ip_and_original_hostname_for_sni(self):
+        raw_sock = MagicMock()
+        wrapped_sock = MagicMock()
+        context = MagicMock()
+        context.wrap_socket.return_value = wrapped_sock
+        create_connection = MagicMock(return_value=raw_sock)
+        conn = forwarder._ValidatedHTTPSConnection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+        )
+        conn._context = context
+        conn._create_connection = create_connection
+
+        conn.connect()
+
+        create_connection.assert_called_once_with(("93.184.216.34", 443), 30, None)
+        raw_sock.setsockopt.assert_called_once_with(
+            forwarder.socket.IPPROTO_TCP,
+            forwarder.socket.TCP_NODELAY,
+            1,
+        )
+        context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
+        assert conn.sock is wrapped_sock
+
+    def test_validated_connection_retries_checked_addresses_without_new_dns(self):
+        raw_sock = MagicMock()
+        wrapped_sock = MagicMock()
+        context = MagicMock()
+        context.wrap_socket.return_value = wrapped_sock
+        create_connection = MagicMock(side_effect=[OSError("no route"), raw_sock])
+        conn = forwarder._ValidatedHTTPSConnection(
+            "hooks.example.com",
+            port=None,
+            timeout=30,
+            validated_addresses=(
+                forwarder._ValidatedAddress("2001:4860:4860::8888", 443),
+                forwarder._ValidatedAddress("93.184.216.34", 443),
+            ),
+        )
+        conn._context = context
+        conn._create_connection = create_connection
+
+        conn.connect()
+
+        create_connection.assert_has_calls(
+            [
+                call(("2001:4860:4860::8888", 443), 30, None),
+                call(("93.184.216.34", 443), 30, None),
+            ]
+        )
+        raw_sock.setsockopt.assert_called_once_with(
+            forwarder.socket.IPPROTO_TCP,
+            forwarder.socket.TCP_NODELAY,
+            1,
+        )
+        context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
+        assert conn.sock is wrapped_sock
+
     def test_rejects_file_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             forwarder._forward_request_sync("file:///etc/passwd", "GET", [], None)
@@ -295,6 +499,16 @@ class TestAuthBaseForwarderSecurity:
             expected_connection_host,
             port=expected_connection_port,
             timeout=30,
+            validated_addresses=(
+                forwarder._ValidatedAddress(
+                    "93.184.216.34",
+                    expected_connection_port or forwarder.DEFAULT_HTTPS_PORT,
+                ),
+            ),
+        )
+        upstream.resolver.assert_called_once_with(
+            expected_connection_host,
+            expected_connection_port or forwarder.DEFAULT_HTTPS_PORT,
         )
         assert call("Host", expected_host_header) in upstream.conn.putheader.call_args_list
 
@@ -573,10 +787,11 @@ class TestForwardRequestAsyncWrapper:
                 record_forwarding_thread()
 
         class FakeConnection:
-            def __init__(self, host, *, port, timeout):
+            def __init__(self, host, *, port, timeout, validated_addresses):
                 self.host = host
                 self.port = port
                 self.timeout = timeout
+                self.validated_addresses = validated_addresses
 
             def putrequest(self, method, target, *, skip_host, skip_accept_encoding):
                 record_forwarding_thread()
@@ -594,7 +809,14 @@ class TestForwardRequestAsyncWrapper:
             def close(self):
                 record_forwarding_thread()
 
-        with patch.object(forwarder.http_client, "HTTPSConnection", FakeConnection):
+        with (
+            patch.object(forwarder, "_ValidatedHTTPSConnection", FakeConnection),
+            patch.object(
+                forwarder,
+                "_resolve_validated_addresses",
+                return_value=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            ),
+        ):
             status, body, headers = await forwarder.forward_request(
                 "https://example.com",
                 "GET",
@@ -630,7 +852,12 @@ class TestForwardRequestAsyncWrapper:
         conn.putrequest.side_effect = ConnectionError("connect failed")
         conn.close.side_effect = record_close_thread
         with (
-            patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn),
+            patch.object(forwarder, "_ValidatedHTTPSConnection", return_value=conn),
+            patch.object(
+                forwarder,
+                "_resolve_validated_addresses",
+                return_value=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            ),
             pytest.raises(ConnectionError, match="connect failed"),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
@@ -655,7 +882,12 @@ class TestForwardRequestAsyncWrapper:
         conn.close.side_effect = record_close_thread
 
         with (
-            patch.object(forwarder.http_client, "HTTPSConnection", return_value=conn),
+            patch.object(forwarder, "_ValidatedHTTPSConnection", return_value=conn),
+            patch.object(
+                forwarder,
+                "_resolve_validated_addresses",
+                return_value=(forwarder._ValidatedAddress("93.184.216.34", 443),),
+            ),
             pytest.raises(OSError, match="socket closed"),
         ):
             await forwarder.forward_request("https://example.com", "GET", [], None)
