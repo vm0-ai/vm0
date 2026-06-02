@@ -350,7 +350,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(states).toHaveLength(0);
   });
 
-  it("does not create server-side handoff state when OAuth is not configured", async () => {
+  it("does not create server-side handoff state when auth client is not configured", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     orgIds.push(orgId);
@@ -364,7 +364,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toStrictEqual({
       error: {
-        message: "github OAuth not configured",
+        message: "github auth client not configured",
         code: "INTERNAL_SERVER_ERROR",
       },
     });

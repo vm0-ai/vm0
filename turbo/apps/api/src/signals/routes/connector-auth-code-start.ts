@@ -31,7 +31,7 @@ type PrepareResolvedConnectorAuthCodeStartResult<
     }
   | {
       readonly ok: false;
-      readonly reason: "oauth_not_configured";
+      readonly reason: "auth_client_not_configured";
     };
 
 type ResolveConnectorAuthCodeStartMethodResult =
@@ -80,7 +80,7 @@ export function prepareResolvedConnectorAuthCodeStart<
     args.readEnv,
   );
   if (!authClient) {
-    return { ok: false, reason: "oauth_not_configured" };
+    return { ok: false, reason: "auth_client_not_configured" };
   }
 
   return {

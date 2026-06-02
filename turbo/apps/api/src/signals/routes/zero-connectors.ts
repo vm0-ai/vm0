@@ -318,7 +318,7 @@ const startConnectorOauthInner$ = command(
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {
-      return internalServerError(`${type} OAuth not configured`);
+      return internalServerError(`${type} auth client not configured`);
     }
     const authResult = await buildResolvedConnectorAuthCodeAuthUrl({
       type: authCodeStartType.type,

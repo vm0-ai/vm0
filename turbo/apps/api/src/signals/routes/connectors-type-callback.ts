@@ -164,7 +164,7 @@ async function exchangeTokenForConnector<
     optionalEnv,
   );
   if (!authClient) {
-    throw new Error(`${args.connectorType} OAuth not configured`);
+    throw new Error(`${args.connectorType} auth client not configured`);
   }
 
   return await exchangeConnectorAuthCode({
