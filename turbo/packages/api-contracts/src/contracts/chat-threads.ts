@@ -51,6 +51,26 @@ const chatThreadArtifactRunSchema = z.object({
   files: z.array(chatThreadArtifactFileSchema),
 });
 
+const chatThreadGithubPrCheckRunSchema = z.object({
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  url: z.string().nullable(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+});
+
+const chatThreadGithubPrSchema = z.object({
+  repo: z.string(),
+  number: z.number().int(),
+  title: z.string(),
+  url: z.string(),
+  state: z.enum(["open", "closed", "merged"]),
+  headSha: z.string(),
+  rollup: z.enum(["success", "failure", "pending", "none", "unknown"]),
+  checks: z.array(chatThreadGithubPrCheckRunSchema),
+});
+
 /**
  * Attachment metadata persisted in chat_threads.draft_attachments.
  *
@@ -673,6 +693,26 @@ export const chatThreadArtifactsContract = c.router({
   },
 });
 
+export const chatThreadGithubPrsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/github-prs",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    responses: {
+      200: z.object({
+        prs: z.array(chatThreadGithubPrSchema),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary:
+      "List GitHub pull requests mentioned in a chat thread with their current check-run status.",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
@@ -682,6 +722,7 @@ export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
+export type ChatThreadGithubPrsContract = typeof chatThreadGithubPrsContract;
 export type ChatSearchContract = typeof chatSearchContract;
 export type ChatSearchResponse = z.infer<typeof chatSearchResponseSchema>;
 export type ChatSearchResult = z.infer<typeof chatSearchResultSchema>;
@@ -699,6 +740,8 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
+  chatThreadGithubPrCheckRunSchema,
+  chatThreadGithubPrSchema,
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
@@ -717,3 +760,7 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
+export type ChatThreadGithubPrCheckRun = z.infer<
+  typeof chatThreadGithubPrCheckRunSchema
+>;
+export type ChatThreadGithubPr = z.infer<typeof chatThreadGithubPrSchema>;

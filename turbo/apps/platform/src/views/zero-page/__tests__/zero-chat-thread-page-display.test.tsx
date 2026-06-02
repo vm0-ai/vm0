@@ -12,7 +12,11 @@ import {
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
-import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadArtifactsContract,
+  chatThreadGithubPrsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   permissionAccessRequestsCreateContract,
   type PermissionAccessRequestResponse,
@@ -2278,6 +2282,122 @@ describe("zero chat thread page display - artifacts drawer", () => {
       });
       expect(syncSawAuthorize).toBeTruthy();
     });
+  });
+});
+
+describe("zero chat thread page display - GitHub PR tracking", () => {
+  function setConnectedGithubConnector() {
+    setMockConnectors([
+      {
+        id: "00000000-0000-4000-8000-000000000010",
+        type: "github",
+        authMethod: "oauth",
+        externalId: "github-user",
+        externalUsername: "octocat",
+        externalEmail: "octocat@example.com",
+        oauthScopes: ["repo", "workflow"],
+        needsReconnect: false,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+  }
+
+  it("opens a sheet with tracked GitHub PR action status when enabled and authorized", async () => {
+    const user = userEvent.setup();
+    let prsRequests = 0;
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "Created https://github.com/vm0-ai/vm0/pull/15070 and waiting on CI.",
+          runId: "run-github-pr-tracking",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setConnectedGithubConnector();
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: ["github"] });
+      }),
+      mockApi(chatThreadGithubPrsContract.list, ({ params, respond }) => {
+        prsRequests += 1;
+        expect(params.threadId).toBe("thread-test-1");
+        return respond(200, {
+          prs: [
+            {
+              repo: "vm0-ai/vm0",
+              number: 15_070,
+              title: "Add GitHub PR tracking",
+              url: "https://github.com/vm0-ai/vm0/pull/15070",
+              state: "open",
+              headSha: "abc123",
+              rollup: "success",
+              checks: [
+                {
+                  name: "CI",
+                  status: "completed",
+                  conclusion: "success",
+                  url: "https://github.com/vm0-ai/vm0/actions/runs/1",
+                  startedAt: "2026-06-02T00:00:00Z",
+                  completedAt: "2026-06-02T00:01:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open GitHub PR tracking");
+    });
+    expect(prsRequests).toBe(0);
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub PRs")).toBeInTheDocument();
+    });
+    expect(screen.getByText("vm0-ai/vm0 #15070")).toBeInTheDocument();
+    expect(screen.getByText("Add GitHub PR tracking")).toBeInTheDocument();
+    expect(screen.getByText("Passing")).toBeInTheDocument();
+    expect(screen.getByText("CI")).toBeInTheDocument();
+    expect(screen.getByText("success")).toBeInTheDocument();
+    expect(prsRequests).toBeGreaterThan(0);
+  });
+
+  it("hides the GitHub PR tracking button when the agent is not authorized", async () => {
+    let authorizationRequests = 0;
+    mockChatLifecycle();
+    setConnectedGithubConnector();
+    server.use(
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        authorizationRequests += 1;
+        return respond(200, { enabledTypes: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.ChatGithubPrTracking]: true },
+    });
+
+    await waitFor(() => {
+      expect(authorizationRequests).toBeGreaterThan(0);
+    });
+    expect(
+      screen.queryByLabelText("Open GitHub PR tracking"),
+    ).not.toBeInTheDocument();
   });
 });
 

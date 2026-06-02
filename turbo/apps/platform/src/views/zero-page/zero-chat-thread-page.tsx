@@ -54,7 +54,10 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadArtifactFile,
+  ChatThreadGithubPr,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
@@ -127,6 +130,13 @@ import {
   chatShortcutHelpOpen$,
   setChatShortcutHelpOpen$,
 } from "../../signals/chat-page/chat-shortcut-help.ts";
+import {
+  agentGithubPrTrackingAvailable$,
+  githubPrTrackingOpenThreadId$,
+  chatThreadGithubPrs$,
+  reloadGithubPrTracking$,
+  setGithubPrTrackingOpenThreadId$,
+} from "../../signals/chat-page/github-pr-tracking.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
@@ -262,12 +272,268 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function githubPrRollupLabel(rollup: ChatThreadGithubPr["rollup"]): string {
+  switch (rollup) {
+    case "success": {
+      return "Passing";
+    }
+    case "failure": {
+      return "Failing";
+    }
+    case "pending": {
+      return "Pending";
+    }
+    case "none": {
+      return "No actions";
+    }
+    case "unknown": {
+      return "Unknown";
+    }
+  }
+}
+
+function githubPrRollupClassName(rollup: ChatThreadGithubPr["rollup"]): string {
+  switch (rollup) {
+    case "success": {
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    }
+    case "failure": {
+      return "bg-destructive/10 text-destructive";
+    }
+    case "pending": {
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    }
+    case "none": {
+      return "bg-muted text-muted-foreground";
+    }
+    case "unknown": {
+      return "bg-muted text-muted-foreground";
+    }
+  }
+}
+
+function githubCheckStatusText(
+  check: ChatThreadGithubPr["checks"][number],
+): string {
+  if (check.status === "completed") {
+    return check.conclusion ?? "completed";
+  }
+  return check.status;
+}
+
+function GithubPrTrackingContent({ threadId }: { threadId: string }) {
+  const loadable = useLoadable(chatThreadGithubPrs$(threadId));
+
+  if (loadable.state === "loading") {
+    return (
+      <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+        <IconLoader2 size={16} className="animate-spin" />
+        Loading GitHub PR status...
+      </div>
+    );
+  }
+
+  if (loadable.state === "hasError") {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+        <IconAlertCircle size={16} className="mt-0.5 shrink-0" />
+        Failed to load GitHub PR status.
+      </div>
+    );
+  }
+
+  if (loadable.state !== "hasData") {
+    return null;
+  }
+
+  if (loadable.data.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        No GitHub PRs found in this chat.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {loadable.data.map((pr) => {
+        const visibleChecks = pr.checks.slice(0, 6);
+        const hiddenChecks = pr.checks.length - visibleChecks.length;
+        return (
+          <div
+            key={`${pr.repo}#${pr.number}`}
+            className="rounded-md border border-border bg-background p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  {pr.repo} #{pr.number}
+                </div>
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 line-clamp-2 text-sm font-medium text-foreground hover:underline"
+                >
+                  {pr.title}
+                </a>
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
+                  githubPrRollupClassName(pr.rollup),
+                )}
+              >
+                {githubPrRollupLabel(pr.rollup)}
+              </span>
+            </div>
+            <div className="mt-3 flex flex-col gap-2">
+              {visibleChecks.length === 0 ? (
+                <div className="text-xs text-muted-foreground">
+                  No GitHub Actions checks.
+                </div>
+              ) : (
+                visibleChecks.map((check) => {
+                  const statusText = githubCheckStatusText(check);
+                  const content = (
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-md bg-muted/40 px-2 py-1.5 text-xs"
+                      title={check.name}
+                    >
+                      <span className="min-w-0 truncate text-foreground">
+                        {check.name}
+                      </span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {statusText}
+                      </span>
+                    </div>
+                  );
+                  return check.url ? (
+                    <a
+                      key={check.name}
+                      href={check.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block hover:opacity-80"
+                    >
+                      {content}
+                    </a>
+                  ) : (
+                    <div key={check.name}>{content}</div>
+                  );
+                })
+              )}
+              {hiddenChecks > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  +{hiddenChecks} more checks
+                </div>
+              )}
+            </div>
+            <a
+              href={pr.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <IconLink size={13} />
+              Open PR
+            </a>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GithubPrTrackingButton({
+  thread,
+  agentId,
+}: {
+  thread: ChatThreadSignals;
+  agentId: string;
+}) {
+  const availableLoadable = useLastLoadable(
+    agentGithubPrTrackingAvailable$(agentId),
+  );
+  const openThreadId = useGet(githubPrTrackingOpenThreadId$);
+  const setOpenThreadId = useSet(setGithubPrTrackingOpenThreadId$);
+  const reloadGithubPrTracking = useSet(reloadGithubPrTracking$);
+  const open = openThreadId === thread.threadId;
+
+  if (
+    availableLoadable.state !== "hasData" ||
+    availableLoadable.data !== true
+  ) {
+    return null;
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={(value) => {
+        if (value) {
+          reloadGithubPrTracking();
+        }
+        setOpenThreadId(value ? thread.threadId : null);
+      }}
+    >
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => {
+                reloadGithubPrTracking();
+                setOpenThreadId(thread.threadId);
+              }}
+              className={cn(
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
+                open
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+              )}
+              aria-label="Open GitHub PR tracking"
+              aria-pressed={open}
+            >
+              <ConnectorIcon type="github" size={18} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Track GitHub PRs</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <SheetContent
+        side="right"
+        className="flex w-[420px] max-w-[100vw] flex-col"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
+      >
+        <SheetHeader className="shrink-0">
+          <SheetTitle>GitHub PRs</SheetTitle>
+          <SheetDescription>
+            Pull requests mentioned in this chat thread.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
+          {open && <GithubPrTrackingContent threadId={thread.threadId} />}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const githubPrTrackingEnabled =
+    features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
+  const agentId =
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.agentId ?? null)
+      : null;
   const threadTitle =
     threadDataLoadable.state === "hasData"
       ? (threadDataLoadable.data?.title?.trim() ?? "")
@@ -286,6 +552,9 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         <ArtifactsButton thread={thread} />
+        {githubPrTrackingEnabled && agentId && (
+          <GithubPrTrackingButton thread={thread} agentId={agentId} />
+        )}
         {audioOutputEnabled && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>

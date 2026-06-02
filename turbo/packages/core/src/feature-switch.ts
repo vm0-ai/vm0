@@ -284,6 +284,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatGithubPrTracking]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
