@@ -324,8 +324,8 @@ fn append_session_file(path: &Path, new_events: &[Value]) -> io::Result<()> {
 /// Orchestrator: emit the three-event turn on stdout, then persist (or append)
 /// to the session file under `$CODEX_HOME`.
 fn run(thread_id: &str, prompt: &str, is_resume: bool) -> io::Result<()> {
-    let events = build_events(thread_id, prompt);
     let path = build_session_path(&codex_home(), Utc::now().date_naive(), thread_id)?;
+    let events = build_events(thread_id, prompt);
 
     let mut stdout = io::stdout().lock();
     emit_events(&mut stdout, &events)?;
