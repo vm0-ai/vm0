@@ -5814,8 +5814,19 @@ mod tests {
         assert_eq!(diagnostic_calls.len(), 1);
         let call = diagnostic_calls[0];
         assert!(call.cmd.contains("guest-agent-binary"));
-        assert!(!call.cmd.contains("ps aux"));
-        assert!(!call.cmd.contains("printenv"));
+        for forbidden in ["environ", "printenv", "ps aux", "ps -ef", "ps e"] {
+            assert!(
+                !call.cmd.contains(forbidden),
+                "diagnostic command must not collect environment values via {forbidden}"
+            );
+        }
+        assert!(
+            !call.cmd.lines().any(|line| {
+                let trimmed = line.trim_start();
+                trimmed == "env" || trimmed.starts_with("env ")
+            }),
+            "diagnostic command must not collect raw environment output"
+        );
         assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
         assert!(call.env_keys.is_empty());
         assert!(call.sudo);
