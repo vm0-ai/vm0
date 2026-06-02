@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import errno
+import ssl
 import threading
 from collections.abc import Iterator
 from typing import NamedTuple
@@ -260,6 +261,14 @@ class TestAuthBaseForwarderSecurity:
         )
         context.wrap_socket.assert_called_once_with(raw_sock, server_hostname="hooks.example.com")
         assert conn.sock is wrapped_sock
+
+    def test_validated_connection_context_keeps_https_security_defaults(self):
+        context = forwarder._create_https_context()
+
+        assert context.verify_mode is ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        if context.post_handshake_auth is not None:
+            assert context.post_handshake_auth is True
 
     def test_validated_connection_ignores_missing_tcp_nodelay(self):
         raw_sock = MagicMock()

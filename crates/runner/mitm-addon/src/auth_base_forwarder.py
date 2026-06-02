@@ -72,6 +72,8 @@ def _connect_to_validated_addresses(validated_addresses: tuple[_ValidatedAddress
 def _create_https_context() -> ssl.SSLContext:
     context = ssl.create_default_context()
     context.set_alpn_protocols(["http/1.1"])
+    if context.post_handshake_auth is not None:
+        context.post_handshake_auth = True
     return context
 
 
