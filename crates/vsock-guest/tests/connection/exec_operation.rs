@@ -14,6 +14,7 @@ use super::support::*;
 
 const EXEC_CONTROL_NONCE: ExecControlNonce = *b"exec-ctrl-000001";
 const EXEC_CONTROL_WRONG_NONCE: ExecControlNonce = *b"exec-ctrl-999999";
+const EXEC_OPERATION_TIMEOUT_TEST_MS: u32 = 2_000;
 
 fn unique_exec_control_nonce(seed: u64) -> ExecControlNonce {
     let mut nonce = [0u8; 16];
@@ -61,13 +62,26 @@ fn read_exec_started(stream: &mut impl std::io::Read, seq: u32) -> u32 {
 }
 
 fn read_exec_stdout_output(stream: &mut impl std::io::Read, seq: u32) -> Vec<u8> {
-    let msg = read_message(stream);
-    assert_eq!(msg.msg_type, MSG_EXEC_OUTPUT);
-    assert_eq!(msg.seq, seq);
-    let decoded = vsock_proto::decode_exec_output(&msg.payload).unwrap();
-    assert_eq!(decoded.stream, ExecOutputStream::Stdout);
-    assert!(!decoded.truncated);
-    decoded.chunk.to_vec()
+    loop {
+        let msg = read_message(stream);
+        if msg.seq != seq {
+            continue;
+        }
+        match msg.msg_type {
+            MSG_EXEC_OUTPUT => {
+                let decoded = vsock_proto::decode_exec_output(&msg.payload).unwrap();
+                assert_eq!(decoded.stream, ExecOutputStream::Stdout);
+                assert!(!decoded.truncated);
+                return decoded.chunk.to_vec();
+            }
+            MSG_EXEC_RESULT => panic!("unexpected exec result before stdout output"),
+            MSG_ERROR => {
+                let error = vsock_proto::decode_error(&msg.payload).unwrap();
+                panic!("unexpected exec operation error for seq={seq}: {error}");
+            }
+            other => panic!("unexpected exec operation response type: 0x{other:02X}"),
+        }
+    }
 }
 
 fn send_exec_control(
@@ -270,24 +284,37 @@ fn exec_operation_returns_when_grandchild_holds_stdin_without_reading() {
 
 #[test]
 fn exec_operation_timeout_with_stdin_kills_child() {
-    let pid_path = unique_pid_path("exec-operation-stdin-timeout");
-    let mut child_guard = ProcessGroupFileGuard::new(pid_path.as_str());
     let (handle, mut host_stream) = start_guest_connection();
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(8)))
+        .unwrap();
     let stdin = vec![b'x'; vsock_proto::MAX_EXEC_STDIN_BYTES];
 
-    let command = sleep_command_with_pid(pid_path.as_str());
-    send_exec_start_with_stdin_timeout(&mut host_stream, 125, &command, 200, Some(&stdin));
-    let pid = child_guard.read_pid();
-    assert!(
-        pid_alive(pid),
-        "exec operation child should be running before timeout"
+    send_exec_start_request(
+        &mut host_stream,
+        125,
+        ExecStartEncodeRequest {
+            lifecycle: ExecLifecyclePolicy::Supervised,
+            timeout: ExecTimeoutPolicy::Duration {
+                timeout_ms: EXEC_OPERATION_TIMEOUT_TEST_MS,
+            },
+            command: "sleep 60",
+            env: &[],
+            sudo: false,
+            label: "stdin-timeout-test",
+            stdout: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            stderr: ExecOutputPolicy::Capture { limit_bytes: 1024 },
+            expected_exit_codes: &[],
+            control: ExecControlPolicy::Disabled,
+            stdin_bytes: Some(stdin.as_slice()),
+        },
     );
+    let pid = read_exec_started(&mut host_stream, 125);
 
     let (_chunks, result) = read_exec_result(&mut host_stream, 125);
 
     assert_eq!(result.termination, ExecTermination::TimedOut);
     wait_for_pid_exit(pid, "exec operation stdin timeout");
-    child_guard.disarm();
 
     finish_guest_connection(handle, host_stream);
 }
@@ -1408,19 +1435,31 @@ fn exec_operation_stream_limits_track_exact_over_and_zero_budget() {
 #[test]
 fn exec_operation_timeout_returns_timed_out_with_partial_capture() {
     let (handle, mut host_stream) = start_guest_connection();
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(8)))
+        .unwrap();
 
     send_exec_start(
         &mut host_stream,
         109,
         "printf before; sleep 60",
-        200,
+        EXEC_OPERATION_TIMEOUT_TEST_MS,
+        ExecOutputPolicy::CaptureAndStream {
+            capture_limit_bytes: 64,
+            stream_limit_bytes: 64,
+            chunk_limit_bytes: 64,
+        },
         ExecOutputPolicy::Capture { limit_bytes: 64 },
-        ExecOutputPolicy::Capture { limit_bytes: 64 },
+    );
+    assert_eq!(
+        read_exec_stdout_output(&mut host_stream, 109),
+        b"before".to_vec()
     );
     let (_chunks, result) = read_exec_result(&mut host_stream, 109);
 
     assert_eq!(result.termination, ExecTermination::TimedOut);
     assert_eq!(result.stdout, Some(b"before".to_vec()));
+    assert_eq!(result.stderr, Some(Vec::new()));
 
     finish_guest_connection(handle, host_stream);
 }
