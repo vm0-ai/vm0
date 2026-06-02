@@ -106,11 +106,23 @@ WHERE policy.id = replacement.id;
 UPDATE model_providers
 SET
     selected_model = CASE selected_model
-        WHEN 'claude-haiku-4-5' THEN 'claude-sonnet-4-6'
+        WHEN 'claude-haiku-4-5' THEN
+            CASE
+                WHEN type IN ('openrouter-api-key', 'vercel-ai-gateway') THEN 'anthropic/claude-sonnet-4.6'
+                ELSE 'claude-sonnet-4-6'
+            END
         WHEN 'anthropic/claude-haiku-4.5' THEN 'anthropic/claude-sonnet-4.6'
-        WHEN 'deepseek-v4-flash' THEN 'deepseek-v4-pro'
+        WHEN 'deepseek-v4-flash' THEN
+            CASE
+                WHEN type = 'openrouter-api-key' THEN 'deepseek/deepseek-v4-pro'
+                ELSE 'deepseek-v4-pro'
+            END
         WHEN 'deepseek/deepseek-v4-flash' THEN 'deepseek/deepseek-v4-pro'
-        WHEN 'MiniMax-M2.7' THEN 'MiniMax-M3'
+        WHEN 'MiniMax-M2.7' THEN
+            CASE
+                WHEN type IN ('openrouter-api-key', 'vercel-ai-gateway') THEN 'anthropic/claude-sonnet-4.6'
+                ELSE 'MiniMax-M3'
+            END
         WHEN 'minimax/minimax-m2.7' THEN 'anthropic/claude-sonnet-4.6'
     END,
     updated_at = NOW()

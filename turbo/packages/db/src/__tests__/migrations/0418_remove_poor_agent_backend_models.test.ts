@@ -101,6 +101,13 @@ describe("migration 0418 remove poor agent backend models", () => {
     const minimaxVm0OrgId = uniqueId("org-minimax-vm0");
     const minimaxOpenRouterOrgId = uniqueId("org-minimax-openrouter");
     const duplicateReplacementOrgId = uniqueId("org-duplicate-replacement");
+    const canonicalOpenRouterMiniMaxOrgId = uniqueId(
+      "org-openrouter-minimax-canonical",
+    );
+    const canonicalOpenRouterDeepSeekOrgId = uniqueId(
+      "org-openrouter-deepseek-canonical",
+    );
+    const canonicalVercelHaikuOrgId = uniqueId("org-vercel-haiku-canonical");
     const activeOrgId = uniqueId("org-active");
 
     const [minimaxOpenRouterProvider] = await db
@@ -139,6 +146,27 @@ describe("migration 0418 remove poor agent backend models", () => {
         type: "deepseek-api-key",
         authMethod: "api-key",
         selectedModel: "deepseek-v4-flash",
+      },
+      {
+        orgId: canonicalOpenRouterMiniMaxOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "openrouter-api-key",
+        authMethod: "api-key",
+        selectedModel: "MiniMax-M2.7",
+      },
+      {
+        orgId: canonicalOpenRouterDeepSeekOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "openrouter-api-key",
+        authMethod: "api-key",
+        selectedModel: "deepseek-v4-flash",
+      },
+      {
+        orgId: canonicalVercelHaikuOrgId,
+        userId: ORG_SENTINEL_USER_ID,
+        type: "vercel-ai-gateway",
+        authMethod: "api-key",
+        selectedModel: "claude-haiku-4-5",
       },
     ]);
 
@@ -302,6 +330,9 @@ describe("migration 0418 remove poor agent backend models", () => {
         inArray(modelProviders.orgId, [
           minimaxOpenRouterOrgId,
           duplicateReplacementOrgId,
+          canonicalOpenRouterMiniMaxOrgId,
+          canonicalOpenRouterDeepSeekOrgId,
+          canonicalVercelHaikuOrgId,
           activeOrgId,
         ]),
       )
@@ -328,6 +359,21 @@ describe("migration 0418 remove poor agent backend models", () => {
           orgId: activeOrgId,
           type: "deepseek-api-key",
           selectedModel: "deepseek-v4-pro",
+        },
+        {
+          orgId: canonicalOpenRouterMiniMaxOrgId,
+          type: "openrouter-api-key",
+          selectedModel: "anthropic/claude-sonnet-4.6",
+        },
+        {
+          orgId: canonicalOpenRouterDeepSeekOrgId,
+          type: "openrouter-api-key",
+          selectedModel: "deepseek/deepseek-v4-pro",
+        },
+        {
+          orgId: canonicalVercelHaikuOrgId,
+          type: "vercel-ai-gateway",
+          selectedModel: "anthropic/claude-sonnet-4.6",
         },
       ]),
     );

@@ -27,11 +27,29 @@ describe("models page data", () => {
     ).toBe(true);
   });
 
-  it("keeps both official MiniMax M3 and retained M2 entries documented", () => {
+  it("documents MiniMax M3 and omits removed backend models", () => {
     const reasoningIds = MODELS.filter(isReasoningModel).map((m) => {
       return m.modelId;
     });
     expect(reasoningIds).toContain("MiniMax-M3");
-    expect(reasoningIds).toContain("MiniMax-M2.7");
+    expect(reasoningIds).not.toContain("claude-haiku-4-5");
+    expect(reasoningIds).not.toContain("deepseek-v4-flash");
+    expect(reasoningIds).not.toContain("MiniMax-M2.7");
+  });
+
+  it("links only documented model alternatives", () => {
+    const slugs = new Set(
+      MODELS.map((m) => {
+        return m.slug;
+      }),
+    );
+    const linkedSlugs = MODELS.flatMap((m) => {
+      return m.alternativeSlugs;
+    });
+    expect(
+      linkedSlugs.every((slug) => {
+        return slugs.has(slug);
+      }),
+    ).toBe(true);
   });
 });
