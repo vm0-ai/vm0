@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.106.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.4...runner-rs-v0.106.5) (2026-06-02)
+
+
+### Bug Fixes
+
+* add guest-agent abnormal exit diagnostics ([#15829](https://github.com/vm0-ai/vm0/issues/15829)) ([6803f8f](https://github.com/vm0-ai/vm0/commit/6803f8ff73c6d845ea96a80442fb4e08f5562a5a))
+
+
+### Documentation
+
+* clarify browser ua passthrough semantics ([#15848](https://github.com/vm0-ai/vm0/issues/15848)) ([c0c6fa1](https://github.com/vm0-ai/vm0/commit/c0c6fa1b7ff581e7c9f55fd1bd6cdf5fd2232e1a))
+
+
+### Refactoring
+
+* consolidate compiled path traversal ([#15845](https://github.com/vm0-ai/vm0/issues/15845)) ([5604e93](https://github.com/vm0-ai/vm0/commit/5604e93addf767b1f475d8b921f6903ae55898e6))
+* **mitm-addon:** name firewall matcher decision state ([#15847](https://github.com/vm0-ai/vm0/issues/15847)) ([b8c8982](https://github.com/vm0-ai/vm0/commit/b8c8982680725267f640a539773d4fdd6051d2e8))
+
 ## [0.106.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.3...runner-rs-v0.106.4) (2026-06-02)
 
 

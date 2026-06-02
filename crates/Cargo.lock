@@ -2548,7 +2548,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.106.4"
+version = "0.106.5"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2791,7 +2791,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-trait",
  "sandbox",
