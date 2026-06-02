@@ -34,3 +34,36 @@ fn exec_operation_encoders_reject_oversized_payloads() {
     .unwrap_err();
     assert!(matches!(err, ProtocolError::MessageTooLarge(_)));
 }
+
+#[test]
+fn exec_start_rejects_too_long_label_and_result_diagnostic() {
+    let label = "x".repeat(u16::MAX as usize + 1);
+    let err = encode_exec_start(
+        1,
+        "cmd",
+        &[],
+        false,
+        &label,
+        ExecOutputPolicy::Discard,
+        ExecOutputPolicy::Discard,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("label", size) if size == label.len()
+    ));
+
+    let diagnostic = "x".repeat(u16::MAX as usize + 1);
+    let err = encode_exec_result(
+        ExecTermination::Cancelled,
+        1,
+        ExecCapturedOutput::Discarded,
+        ExecCapturedOutput::Discarded,
+        &diagnostic,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        ProtocolError::PayloadTooLarge("diagnostic", size) if size == diagnostic.len()
+    ));
+}
