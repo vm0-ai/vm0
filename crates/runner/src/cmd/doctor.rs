@@ -162,10 +162,10 @@ impl Warning {
                 server_url,
                 server_token,
             } => {
-                let client = match reqwest::Client::builder()
-                    .timeout(Duration::from_secs(5))
-                    .build()
-                {
+                if crate::platform_api_url::validate_platform_api_url(server_url).is_err() {
+                    return true;
+                }
+                let client = match platform_api_probe_client() {
                     Ok(c) => c,
                     Err(_) => return true,
                 };
@@ -810,17 +810,17 @@ fn is_test_tld(url: &str) -> bool {
 }
 
 /// Returns `None` if no server configured or URL uses `.test` TLD (RFC 2606),
-/// `Some(true)` if reachable, `Some(false)` if unreachable.
+/// `Some(true)` if reachable, `Some(false)` if unreachable or invalid.
 async fn check_api(config: &RunnerConfig) -> Option<bool> {
     let server = config.server.as_ref()?;
+    if crate::platform_api_url::validate_platform_api_url(&server.url).is_err() {
+        return Some(false);
+    }
     // Skip connectivity check for .test domains (reserved per RFC 2606, used in CI)
     if is_test_tld(&server.url) {
         return None;
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .ok()?;
+    let client = platform_api_probe_client().ok()?;
     Some(
         client
             .head(&server.url)
@@ -829,6 +829,13 @@ async fn check_api(config: &RunnerConfig) -> Option<bool> {
             .await
             .is_ok(),
     )
+}
+
+fn platform_api_probe_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
 }
 
 // ---------------------------------------------------------------------------
@@ -1213,6 +1220,10 @@ fn format_uptime(started_at: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use crate::config::{FirecrackerConfig, SandboxConfig, ServerConfig};
+
     use super::*;
 
     #[test]
@@ -1444,6 +1455,65 @@ mod tests {
             mitmdumps: vec![],
             dnsmasqs: vec![],
         }
+    }
+
+    fn runner_config_with_server_url(url: &str) -> RunnerConfig {
+        RunnerConfig {
+            name: "test-runner".into(),
+            group: "vm0/test".into(),
+            base_dir: PathBuf::from("/tmp/vm0-runner"),
+            ca_dir: PathBuf::from("/tmp/vm0-ca"),
+            firecracker: FirecrackerConfig {
+                binary: PathBuf::from("/tmp/firecracker"),
+                kernel: PathBuf::from("/tmp/vmlinux"),
+            },
+            sandbox: SandboxConfig::default(),
+            profiles: BTreeMap::new(),
+            server: Some(ServerConfig {
+                url: url.into(),
+                token: "runner-token".into(),
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn check_api_treats_non_loopback_http_as_unreachable() {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            check_api(&runner_config_with_server_url("http://api.vm0.ai")),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, Some(false));
+    }
+
+    #[tokio::test]
+    async fn check_api_treats_non_loopback_http_test_domain_as_unreachable() {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            check_api(&runner_config_with_server_url("http://api.test")),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result, Some(false));
+    }
+
+    #[tokio::test]
+    async fn api_unreachable_warning_persists_for_invalid_transport_without_probe() {
+        let warning = Warning::ApiUnreachable {
+            server_url: "http://api.vm0.ai".into(),
+            server_token: "runner-token".into(),
+        };
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            warning.persists(&empty_fresh()),
+        )
+        .await
+        .unwrap();
+
+        assert!(result);
     }
 
     #[tokio::test]

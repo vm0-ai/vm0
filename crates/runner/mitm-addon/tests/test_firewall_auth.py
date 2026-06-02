@@ -770,7 +770,7 @@ class TestHandleFirewallRequest:
         allow = _allow(api_entry)
 
         with (
-            patch("auth.urllib.request.urlopen", side_effect=network_error),
+            patch("auth._platform_api_opener.open", side_effect=network_error),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -820,7 +820,7 @@ class TestHandleFirewallRequest:
         mock_resp.read.return_value = b"not-json"
 
         with (
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -870,7 +870,7 @@ class TestHandleFirewallRequest:
         mock_resp = _json_response({"headers": []})
 
         with (
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             mitm_ctx(),
         ):
             await auth.handle_firewall_request(flow, allow, vm_info)
@@ -1226,6 +1226,53 @@ class TestMakeApiRequest:
     @pytest.mark.parametrize(
         "url",
         [
+            pytest.param(
+                "http://localhost/api/webhooks/agent/firewall/auth",
+                id="localhost",
+            ),
+            pytest.param(
+                "http://127.0.0.1:3000/api/webhooks/agent/firewall/auth",
+                id="ipv4-loopback",
+            ),
+            pytest.param(
+                "http://127.1.2.3:3000/api/webhooks/agent/firewall/auth",
+                id="ipv4-loopback-range",
+            ),
+            pytest.param(
+                "http://[::1]:3000/api/webhooks/agent/firewall/auth",
+                id="ipv6-loopback",
+            ),
+            pytest.param(
+                "http://[::ffff:127.0.0.1]:3000/api/webhooks/agent/firewall/auth",
+                id="ipv4-mapped-loopback",
+            ),
+        ],
+    )
+    def test_allows_loopback_http_urls(self, url: str):
+        req = auth.make_api_request(url, b"{}", "tok-xyz")
+
+        assert req.full_url == url
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            pytest.param("http://api.vm0.ai/api", id="public-host"),
+            pytest.param("http://10.0.0.1/api", id="private-10"),
+            pytest.param("http://172.16.0.1/api", id="private-172"),
+            pytest.param("http://192.168.1.10/api", id="private-192"),
+            pytest.param("http://169.254.1.1/api", id="link-local"),
+            pytest.param("http://0.0.0.0/api", id="wildcard"),
+            pytest.param("http://localhost.evil.com/api", id="localhost-suffix"),
+            pytest.param("http://[::ffff:10.0.0.1]/api", id="ipv4-mapped-private"),
+        ],
+    )
+    def test_rejects_non_loopback_http_urls(self, url: str):
+        with pytest.raises(ValueError, match="https unless"):
+            auth.make_api_request(url, b"{}", "tok-xyz")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
             pytest.param("file:///etc/passwd", id="file"),
             pytest.param("ftp://example.com/api", id="ftp"),
             pytest.param(
@@ -1250,7 +1297,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             result = auth._fetch_firewall_headers_sync(
@@ -1305,7 +1352,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(ValueError, match=_MALFORMED_SUCCESS_PREFIX),
         ):
@@ -1333,7 +1380,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             result = auth._fetch_firewall_headers_sync(
@@ -1358,12 +1405,45 @@ class TestFetchFirewallHeaders:
 
     def test_invalid_api_url_raises_before_urlopen(self):
         with (
-            patch("auth.urllib.request.urlopen") as mock_urlopen,
+            patch("auth._platform_api_opener.open") as mock_urlopen,
             pytest.raises(ValueError, match="absolute http"),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "file:///etc/passwd")
 
         mock_urlopen.assert_not_called()
+
+    def test_non_loopback_http_api_url_raises_before_open(self):
+        with (
+            patch("auth._platform_api_opener.open") as mock_open,
+            pytest.raises(ValueError, match="https unless"),
+        ):
+            auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                "http://api.vm0.ai",
+            )
+
+        mock_open.assert_not_called()
+
+    def test_firewall_auth_does_not_follow_redirects(self, usage_webhook_server):
+        usage_webhook_server.queue_response(
+            302,
+            headers=(("Location", usage_webhook_server.url("/redirected")),),
+        )
+
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                usage_webhook_server.api_url,
+            )
+
+        assert exc.value.code == 302
+        assert [request.path for request in usage_webhook_server.requests] == [
+            "/api/webhooks/agent/firewall/auth"
+        ]
 
     def test_includes_vercel_bypass_header(self, headers):
         mock_resp = MagicMock()
@@ -1374,7 +1454,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request", return_value=mock_req_instance),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", "secret-bypass-value"),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
@@ -1393,7 +1473,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request", return_value=mock_req_instance),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
@@ -1409,7 +1489,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             result = auth._fetch_firewall_headers_sync(
@@ -1437,7 +1517,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             result = auth._fetch_firewall_headers_sync(
@@ -1467,7 +1547,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             auth._fetch_firewall_headers_sync(
@@ -1502,7 +1582,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             with pytest.raises(auth.ConnectorNotConfiguredError) as exc_info:
@@ -1529,7 +1609,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             with pytest.raises(auth.InsufficientCreditsError) as exc_info:
@@ -1622,7 +1702,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(auth.FirewallAuthApiError) as exc_info,
         ):
@@ -1656,7 +1736,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
@@ -1677,7 +1757,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
@@ -1697,7 +1777,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(urllib.error.HTTPError) as exc_info,
         ):
@@ -1750,7 +1830,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(exception_type) as exc_info,
         ):
@@ -1766,7 +1846,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
@@ -1804,7 +1884,7 @@ class TestFetchFirewallHeaders:
 
         with (
             patch("auth.urllib.request.Request"),
-            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch("auth._platform_api_opener.open", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
             pytest.raises(expected_exception),
         ):
@@ -1821,7 +1901,7 @@ class TestFetchFirewallHeaders:
         with (
             patch.object(auth, "get_api_url", return_value="https://ctx-url.vm0.ai"),
             patch("auth.urllib.request.Request") as mock_req_cls,
-            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch("auth._platform_api_opener.open", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
         ):
             result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")

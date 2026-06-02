@@ -54,6 +54,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     crate::group::validate_or_err(&args.group)?;
     crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
     validate_concurrency_factor(args.concurrency_factor)?;
+    crate::platform_api_url::validate_platform_api_url(&args.api_url)?;
     if args.profile.len() != args.rootfs_hash.len()
         || args.profile.len() != args.snapshot_hash.len()
     {
@@ -279,5 +280,19 @@ mod tests {
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("concurrency_factor"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_non_loopback_http_api_url() {
+        let mut args = args_with_dirname("runner-01");
+        args.api_url = "http://api.vm0.ai".into();
+
+        let err = run_config(args).await.unwrap_err();
+        let msg = err.to_string();
+
+        assert!(
+            msg.contains("platform API URL must use https"),
+            "got: {msg}"
+        );
     }
 }

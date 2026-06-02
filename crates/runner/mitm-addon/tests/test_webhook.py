@@ -72,6 +72,19 @@ class TestUsageWebhookDelivery:
 
         mock_open.assert_not_called()
 
+    def test_post_webhook_rejects_non_loopback_http_before_open(self):
+        with (
+            patch.object(usage.webhook._opener, "open") as mock_open,
+            pytest.raises(ValueError, match="https unless"),
+        ):
+            usage.webhook._post_webhook(
+                "http://api.vm0.ai/webhook",
+                "tok",
+                json.dumps({"runId": "run-1"}).encode(),
+            )
+
+        mock_open.assert_not_called()
+
     def test_succeeds_on_first_attempt(
         self, tmp_path, real_flow, fresh_usage_executor, usage_webhook_api
     ):

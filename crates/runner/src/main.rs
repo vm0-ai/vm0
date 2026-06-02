@@ -20,6 +20,7 @@ mod network_log_drain;
 mod network_log_manager;
 mod network_logs;
 mod paths;
+mod platform_api_url;
 mod prefetch;
 mod process;
 mod profile;

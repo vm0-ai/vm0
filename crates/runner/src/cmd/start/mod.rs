@@ -195,6 +195,7 @@ pub async fn run_start(
             "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),
         ));
     }
+    crate::platform_api_url::validate_platform_api_url(&server.url)?;
 
     let runner_host_env = crate::host_env::read_runner_host_env()?;
     let config::SandboxConfig {

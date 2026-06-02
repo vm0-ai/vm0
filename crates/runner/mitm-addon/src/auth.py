@@ -5,6 +5,7 @@ both standard header injection and auth.base URL rewriting.
 """
 
 import asyncio
+import ipaddress
 import json
 import math
 import os
@@ -71,6 +72,27 @@ _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
     }
 )
 _FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
+_HTTPS_OR_LOOPBACK_HTTP_MESSAGE = (
+    "Platform API URL must use https unless the http host is loopback"
+)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Disable automatic redirect following for platform API requests."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+_platform_api_opener = urllib.request.build_opener(_NoRedirect)
 
 
 @dataclass(frozen=True)
@@ -251,9 +273,14 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     Centralises User-Agent, Authorization, Content-Type, and the optional
     Vercel bypass header so that callers cannot accidentally omit them.
     """
-    parsed_url = urllib.parse.urlsplit(url)
+    try:
+        parsed_url = urllib.parse.urlsplit(url)
+    except ValueError as exc:
+        raise ValueError("Platform API URL must be an absolute http(s) URL") from exc
     if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
         raise ValueError("Platform API URL must be an absolute http(s) URL")
+    if parsed_url.scheme == "http" and not _is_loopback_http_host(parsed_url.hostname):
+        raise ValueError(_HTTPS_OR_LOOPBACK_HTTP_MESSAGE)
 
     # S310 (suspicious-url-open-usage): callers build `url` from the
     # operator-configured platform API URL, and the scheme is validated above
@@ -270,6 +297,21 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     if VERCEL_BYPASS:
         req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
     return req
+
+
+def _is_loopback_http_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        parsed = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if parsed.is_loopback:
+        return True
+    ipv4_mapped = getattr(parsed, "ipv4_mapped", None)
+    return bool(ipv4_mapped and ipv4_mapped.is_loopback)
 
 
 def _firewall_auth_api_error_from_envelope(
@@ -412,7 +454,7 @@ def _fetch_firewall_headers_sync(
     req = make_api_request(url, data, sandbox_token)
     try:
         # nosemgrep: dynamic-urllib-use-detected
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        with _platform_api_opener.open(req, timeout=10) as resp:
             decoded: object = json.loads(resp.read())
             return _parse_firewall_auth_success(decoded)
     except urllib.error.HTTPError as e:
