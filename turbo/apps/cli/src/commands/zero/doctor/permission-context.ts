@@ -42,11 +42,7 @@ export async function resolvePermissionGrantMode(): Promise<PermissionGrantMode>
   try {
     const org = await getZeroOrg();
     return permissionGrantModeFromOrg(org);
-  } catch (error: unknown) {
-    console.debug(
-      "resolvePermissionGrantMode failed, falling back to legacy:",
-      error,
-    );
+  } catch {
     return LEGACY_PERMISSION_GRANT_MODE;
   }
 }
@@ -81,11 +77,7 @@ export async function resolvePermissionChangeContext(
     }
 
     return { role: "unknown", permissionGrantMode };
-  } catch (error: unknown) {
-    console.debug(
-      "resolvePermissionChangeContext failed, falling back to unknown legacy:",
-      error,
-    );
+  } catch {
     return {
       role: "unknown",
       permissionGrantMode: LEGACY_PERMISSION_GRANT_MODE,

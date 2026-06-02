@@ -24,12 +24,16 @@ describe("zero doctor permission-deny command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockConsoleDebug = vi
+    .spyOn(console, "debug")
+    .mockImplementation(() => {});
 
   afterEach(() => {
     vi.unstubAllEnvs();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    mockConsoleDebug.mockClear();
   });
 
   describe("known ref with matching permission", () => {
@@ -53,6 +57,7 @@ describe("zero doctor permission-deny command", () => {
         "zero doctor permission-change slack --permission",
       );
       expect(logCalls).toContain("--enable --reason");
+      expect(mockConsoleDebug).not.toHaveBeenCalled();
     });
   });
 

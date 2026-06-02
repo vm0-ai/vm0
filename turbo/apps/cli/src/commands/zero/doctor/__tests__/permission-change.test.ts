@@ -34,12 +34,16 @@ describe("zero doctor permission-change command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockConsoleDebug = vi
+    .spyOn(console, "debug")
+    .mockImplementation(() => {});
 
   afterEach(() => {
     vi.unstubAllEnvs();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    mockConsoleDebug.mockClear();
   });
 
   describe("admin role", () => {
@@ -441,6 +445,7 @@ describe("zero doctor permission-change command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('To enable the "channels:read" permission');
       expect(logCalls).toContain("[Manage Slack permissions]");
+      expect(mockConsoleDebug).not.toHaveBeenCalled();
     });
   });
 
