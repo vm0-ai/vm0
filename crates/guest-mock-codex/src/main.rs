@@ -20,8 +20,8 @@
 //! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
 //! synthetic 3-event sequence is replaced with a baked JSONL fixture by
 //! that name (see `FIXTURES`). The thread id is taken from the fixture's
-//! `thread.started` event; the fixture's bytes are written verbatim to
-//! stdout and to the session file. Used by
+//! `thread.started` event; the fixture events are emitted to stdout and
+//! persisted to the session file. Used by
 //! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
 //! codex-event-parser branches that the synthetic sequence cannot reach.
 
