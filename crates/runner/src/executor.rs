@@ -770,9 +770,9 @@ async fn post_job_cleanup(
     stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
-    append_stdout_stream_diagnostics_to_system_log(
+    append_stdout_stream_diagnostics_to_stream_log(
         context.run_id,
-        &config.log_paths.system_log(context.run_id),
+        &config.log_paths.system_stream_log(context.run_id),
         stdout_stream_diagnostics,
     )
     .await;
@@ -897,7 +897,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
     //    guest-agent owns the guest-side system log for telemetry; the runner
-    //    separately writes streamed chunks to the host log file in real time.
+    //    separately writes streamed chunks to a host stream log in real time.
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
@@ -926,8 +926,8 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);
 
-    // Spawn background task to drain stdout chunks and write to host log file.
-    let host_log_path = config.log_paths.system_log(context.run_id);
+    // Spawn background task to drain stdout chunks and write to the host stream log file.
+    let host_log_path = config.log_paths.system_stream_log(context.run_id);
     let stream_task = handle
         .take_stdout_receiver()
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
@@ -1342,7 +1342,7 @@ async fn drain_stdout_to_file(
     Ok(report)
 }
 
-async fn append_stdout_stream_diagnostics_to_system_log(
+async fn append_stdout_stream_diagnostics_to_stream_log(
     run_id: RunId,
     path: &Path,
     diagnostics: AgentStdoutStreamDiagnostics,
@@ -1356,7 +1356,7 @@ async fn append_stdout_stream_diagnostics_to_system_log(
             run_id = %run_id,
             path = %path.display(),
             error = %e,
-            "failed to append stdout stream diagnostic marker to host system log"
+            "failed to append stdout stream diagnostic marker to host stream log"
         );
     }
 }
@@ -1404,11 +1404,9 @@ const GUEST_SANDBOX_OPS_LOG_SUFFIX: &str = ".jsonl";
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
-/// The agent phase is streamed to the host in real time via vsock stdout
-/// chunks. The final copy here overwrites with the complete guest-side file,
-/// including setup output written before agent streaming starts. Agent stdout
-/// that is not written by guest-agent's logger is intentionally not part of
-/// the final system log.
+/// The final system log copy keeps `system-*` as the guest-authored log. The
+/// supervised process stdout/stderr stream is written separately to
+/// `system-stream-*` in real time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GuestLogCopyFailureKind {
     Failed,
@@ -2260,7 +2258,7 @@ mod tests {
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, VecDeque};
     use std::fmt;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -4113,12 +4111,10 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        tokio::fs::write(
-            log_paths.system_log(ctx.run_id),
-            b"transient host-streamed stdout\n",
-        )
-        .await
-        .unwrap();
+        let system_stream_log_path = log_paths.system_stream_log(ctx.run_id);
+        tokio::fs::write(&system_stream_log_path, b"transient host-streamed stdout\n")
+            .await
+            .unwrap();
 
         // Queue guest-copy results: system log + metrics log + sandbox ops log.
         sandbox.push_copy_file_result(Ok(b"system log line 1\nsystem log line 2\n".to_vec()));
@@ -4134,7 +4130,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
-        assert!(!system_log.contains("transient host-streamed stdout"));
+        let system_stream_log = tokio::fs::read_to_string(system_stream_log_path)
+            .await
+            .unwrap();
+        assert_eq!(system_stream_log, "transient host-streamed stdout\n");
 
         let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
             .await
@@ -4234,8 +4233,9 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
         let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-        tokio::fs::write(&system_log_path, b"transient host-streamed stdout\n")
+        tokio::fs::write(&system_stream_log_path, b"transient host-streamed stdout\n")
             .await
             .unwrap();
         sandbox.push_copy_file_result(Ok(b"guest system log".to_vec()));
@@ -4254,10 +4254,12 @@ mod tests {
         .await;
 
         let system_log = tokio::fs::read(&system_log_path).await.unwrap();
-        let mut expected = b"guest system log\n".to_vec();
-        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_log, b"guest system log");
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        let mut expected_stream_log = b"transient host-streamed stdout\n".to_vec();
+        expected_stream_log.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        expected_stream_log.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
+        assert_eq!(system_stream_log, expected_stream_log);
     }
 
     // -----------------------------------------------------------------------
@@ -4608,6 +4610,115 @@ mod tests {
         }
     }
 
+    struct QueuedCopyFileSandbox {
+        inner: Box<dyn Sandbox>,
+        copy_file_results: Mutex<VecDeque<Vec<u8>>>,
+    }
+
+    impl QueuedCopyFileSandbox {
+        fn new(inner: Box<dyn Sandbox>, copy_file_results: Vec<Vec<u8>>) -> Self {
+            Self {
+                inner,
+                copy_file_results: Mutex::new(VecDeque::from(copy_file_results)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for QueuedCopyFileSandbox {
+        fn id(&self) -> &str {
+            self.inner.id()
+        }
+
+        fn source_ip(&self) -> &str {
+            self.inner.source_ip()
+        }
+
+        fn process_pid(&self) -> Option<u32> {
+            self.inner.process_pid()
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            self.inner.kill().await
+        }
+
+        async fn park(&mut self) -> sandbox::Result<()> {
+            self.inner.park().await
+        }
+
+        async fn unpark(&mut self) -> sandbox::Result<()> {
+            self.inner.unpark().await
+        }
+
+        async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+            self.inner.exec(request).await
+        }
+
+        async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+            self.inner.read_file(path, max_bytes).await
+        }
+
+        async fn copy_file(
+            &self,
+            path: &str,
+            host_path: &std::path::Path,
+            options: CopyFileOptions,
+        ) -> sandbox::Result<sandbox::CopyFileResult> {
+            let bytes = self
+                .copy_file_results
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .pop_front();
+            let Some(bytes) = bytes else {
+                return self.inner.copy_file(path, host_path, options).await;
+            };
+
+            if bytes.len() as u64 > options.max_bytes {
+                return Err(SandboxError::Operation {
+                    operation: SandboxOperation::CopyFile,
+                    reason: SandboxOperationReason::Other,
+                    message: format!("test copy_file exceeded {} bytes", options.max_bytes),
+                });
+            }
+            if let Some(parent) = host_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(host_path, &bytes)?;
+            Ok(sandbox::CopyFileResult {
+                bytes_copied: bytes.len() as u64,
+            })
+        }
+
+        async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            self.inner.write_file(path, content).await
+        }
+
+        async fn start_process(
+            &self,
+            request: &StartProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+            self.inner.start_process(request).await
+        }
+
+        async fn wait_process(
+            &self,
+            handle: sandbox::GuestProcessHandle,
+            timeout: Duration,
+        ) -> sandbox::Result<ProcessExit> {
+            self.inner.wait_process(handle, timeout).await
+        }
+    }
+
     async fn run_execute_inner(
         factory: &MockSandboxFactory,
         ctx: &ExecutionContext,
@@ -4955,7 +5066,7 @@ mod tests {
         overrides.push_wait_process_exit(exit);
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -4963,8 +5074,8 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
-        assert_eq!(system_log, STDOUT_STREAM_OVERFLOW_MARKER);
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        assert_eq!(system_stream_log, STDOUT_STREAM_OVERFLOW_MARKER);
     }
 
     #[tokio::test]
@@ -4978,7 +5089,7 @@ mod tests {
         }]);
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -4986,10 +5097,10 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
     }
 
     #[tokio::test]
@@ -5010,7 +5121,7 @@ mod tests {
         });
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -5021,10 +5132,60 @@ mod tests {
             error_msg.as_deref(),
             Some("Agent process killed by OOM killer")
         );
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"bootstrap diagnostic\n".to_vec(),
+            truncated: false,
+        }]);
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let ctx = minimal_context();
+        let source_ip = sandbox.source_ip().to_string();
+        let network_log_session = register_proxy(&config, &ctx, &source_ip).await;
+        let sandbox: Box<dyn Sandbox> = Box::new(QueuedCopyFileSandbox::new(
+            sandbox,
+            vec![b"guest system log\n".to_vec()],
+        ));
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_prepared_sandbox_run(
+            PreparedSandboxRun {
+                sandbox,
+                source_ip,
+                network_log_session,
+            },
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 126);
+        assert_eq!(outcome.error(), Some("Agent exited with code 126"));
+        assert!(outcome.sandbox.is_some());
+        assert_proxy_registry_empty(dir.path()).await;
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        assert_eq!(system_log, b"guest system log\n");
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
     }
 
     #[tokio::test]
@@ -5541,7 +5702,7 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
@@ -5552,10 +5713,10 @@ mod tests {
         assert!(reuse_outcome.sandbox.is_some());
         assert!(reuse_outcome.network_log_session.is_some());
         assert_proxy_registry_empty(dir.path()).await;
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"reuse partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
     }
 
     #[tokio::test]
