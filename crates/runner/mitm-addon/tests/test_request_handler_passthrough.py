@@ -65,6 +65,41 @@ async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx,
     assert flow.metadata["firewall_base"] == "https://api.vm0.ai/api/test/oauth-provider"
 
 
+async def test_invalid_vm0_api_url_does_not_auto_allow(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.1",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-platform-api",
+            sandbox_marker="tok-platform",
+            firewall_name="platform-api",
+            api_entry={
+                "base": "https://api.vm0.ai",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy=None,
+            include_encrypted_secrets=False,
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.1",
+        host="api.vm0.ai",
+        path="/api/runners/poll",
+    )
+
+    with mitm_ctx(
+        registry_path=str(reg_path),
+        api_url="http://[::1]@api.vm0.ai",
+    ) as log:
+        await mitm_addon.request(flow)
+
+    assert flow.metadata["firewall_base"] == "https://api.vm0.ai"
+    log.warn.assert_called_once()
+
+
 async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):
     flow = real_flow(with_response=False, host="api.anthropic.com")
 

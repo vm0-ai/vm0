@@ -44,6 +44,7 @@ from auth import (
     clear_cached_firewall_headers,
     handle_firewall_request,
     is_billable_firewall,
+    platform_api_hostname,
     request_force_refresh,
 )
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
@@ -122,6 +123,8 @@ def load(loader: Loader) -> None:
 
 
 def configure(updated: set[str]) -> None:
+    if "vm0_api_url" in updated:
+        platform_api_hostname(ctx.options.vm0_api_url)
     if "vm0_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
             flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
@@ -442,8 +445,11 @@ async def request(flow: http.HTTPFlow) -> None:
         # auto-allow past the thing they're supposed to exercise.
         api_url = get_api_url()
         if api_url:
-            parsed_api = urllib.parse.urlparse(api_url)
-            api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
+            try:
+                api_hostname = platform_api_hostname(api_url).lower()
+            except ValueError as exc:
+                ctx.log.warn(f"Invalid vm0_api_url; platform API auto-allow disabled: {exc}")
+                api_hostname = ""
             if (
                 api_hostname
                 and (hostname == api_hostname or hostname.endswith(f".{api_hostname}"))

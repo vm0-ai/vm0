@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from mitmproxy.addonmanager import Loader
 
 import mitm_addon
@@ -55,9 +56,11 @@ class _Options:
         *,
         usage_state_id: str = "runner-usage-state-id",
         flush_interval_seconds: float = usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
+        api_url: str = "https://api.vm0.ai",
     ) -> None:
         self.vm0_usage_state_id = usage_state_id
         self.vm0_usage_flush_interval_seconds = flush_interval_seconds
+        self.vm0_api_url = api_url
 
 
 class _FakeTimer:
@@ -143,7 +146,7 @@ class TestAddonConfiguration:
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         uuid.UUID(state["usageStateId"])
 
-    def test_configure_ignores_unrelated_option_updates(self, tmp_path):
+    def test_configure_valid_vm0_api_url_does_not_write_pending_state(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
 
         with (
@@ -153,6 +156,18 @@ class TestAddonConfiguration:
             mitm_addon.configure({"vm0_api_url"})
 
         assert not pending_path.exists()
+
+    def test_configure_rejects_invalid_vm0_api_url(self):
+        with (
+            patch.object(
+                mitm_addon.ctx,
+                "options",
+                _Options(api_url="http://api.vm0.ai"),
+                create=True,
+            ),
+            pytest.raises(ValueError, match="https unless"),
+        ):
+            mitm_addon.configure({"vm0_api_url"})
 
     def test_configure_updates_usage_flush_interval(self, tmp_path):
         timers: list[_FakeTimer] = []

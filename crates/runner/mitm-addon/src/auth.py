@@ -265,12 +265,8 @@ def get_api_url() -> str:
     return ctx.options.vm0_api_url
 
 
-def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.request.Request:
-    """Build a Request with standard platform API headers.
-
-    Centralises User-Agent, Authorization, Content-Type, and the optional
-    Vercel bypass header so that callers cannot accidentally omit them.
-    """
+def platform_api_hostname(url: str) -> str:
+    """Return the validated platform API hostname."""
     try:
         parsed_url = urllib.parse.urlsplit(url)
     except ValueError as exc:
@@ -281,8 +277,20 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
         host = parsed_url.hostname
     except ValueError as exc:
         raise ValueError("Platform API URL must be an absolute http(s) URL") from exc
+    if host is None:
+        raise ValueError("Platform API URL must be an absolute http(s) URL")
     if parsed_url.scheme == "http" and not _is_loopback_http_host(host):
         raise ValueError(_HTTPS_OR_LOOPBACK_HTTP_MESSAGE)
+    return host
+
+
+def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.request.Request:
+    """Build a Request with standard platform API headers.
+
+    Centralises User-Agent, Authorization, Content-Type, and the optional
+    Vercel bypass header so that callers cannot accidentally omit them.
+    """
+    platform_api_hostname(url)
 
     # S310 (suspicious-url-open-usage): callers build `url` from the
     # operator-configured platform API URL, and the scheme is validated above
