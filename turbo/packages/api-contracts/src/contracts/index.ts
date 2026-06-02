@@ -709,8 +709,6 @@ export {
 export {
   getConnectorOwnedSecretNames,
   getConnectorEnvBindingEntries,
-  getConnectorStoredSecretDisplayInfo,
-  getDiagnosticConnectorTypeForRuntimeEnvName,
   type ScopeDiff,
 } from "@vm0/connectors/connector-utils";
 export {
