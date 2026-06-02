@@ -1071,18 +1071,15 @@ async function validateModelSelection(params: {
   readonly modelSelection: IncomingModelSelection;
   readonly forceNewSession: boolean;
 }): Promise<ReturnType<typeof badRequestMessage> | undefined> {
-  if (
-    params.modelSelection &&
-    params.modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID
-  ) {
-    const available = await modelProviderPinAvailable({
+  if (params.modelSelection) {
+    const pin = await resolveModelSelectionPin({
       db: params.db,
       orgId: params.orgId,
       userId: params.userId,
-      modelProviderId: params.modelSelection.modelProviderId,
+      modelSelection: params.modelSelection,
     });
-    if (!available) {
-      return badRequestMessage("Unknown model provider for this workspace");
+    if ("status" in pin) {
+      return pin;
     }
   }
 

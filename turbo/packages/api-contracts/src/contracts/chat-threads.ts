@@ -3,11 +3,14 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { runStatusSchema } from "./runs";
 import {
+  isSupportedRunModel,
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
 } from "./model-providers";
 
 const c = initContract();
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 
 /**
  * File attachment metadata stored alongside user messages.
@@ -207,10 +210,23 @@ const chatThreadDetailSchema = z.object({
  * the object is present; pass `null` to clear the thread's override and fall
  * back to the agent/org default; omit to leave the thread's override unchanged.
  */
-const modelSelectionRequestSchema = z.object({
-  modelProviderId: z.string().uuid(),
-  selectedModel: z.string().min(1),
-});
+const modelSelectionRequestSchema = z
+  .object({
+    modelProviderId: z.string().uuid(),
+    selectedModel: z.string().min(1),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.modelProviderId === MODEL_FIRST_SELECTION_PROVIDER_ID &&
+      !isSupportedRunModel(value.selectedModel)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["selectedModel"],
+        message: "Invalid model selection",
+      });
+    }
+  });
 
 /**
  * Chat threads list route contract (/api/chat-threads)
