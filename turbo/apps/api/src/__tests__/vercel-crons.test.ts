@@ -1,7 +1,18 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { cronComputerUseScreenshotCleanupContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  cronAggregateInsightsContract,
+  cronAggregateUsageContract,
+  cronCleanupSandboxesContract,
+  cronComputerUseScreenshotCleanupContract,
+  cronDrainEmailOutboxContract,
+  cronExecuteSchedulesContract,
+  cronProcessUsageEventsContract,
+  cronReconcileBillingEntitlementsContract,
+  cronSyncSkillsContract,
+  cronTelegramCleanupContract,
+} from "@vm0/api-contracts/contracts/cron";
 import { describe, expect, it } from "vitest";
 
 import { ROUTES } from "../signals/route";
@@ -22,14 +33,58 @@ function readVercelConfig(): VercelConfig {
   return JSON.parse(readFileSync(configPath, "utf8")) as VercelConfig;
 }
 
+const expectedVercelCrons = [
+  {
+    path: cronCleanupSandboxesContract.cleanup.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronExecuteSchedulesContract.execute.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronAggregateUsageContract.aggregate.path,
+    schedule: "5 0 * * *",
+  },
+  {
+    path: cronAggregateInsightsContract.aggregate.path,
+    schedule: "0 * * * *",
+  },
+  {
+    path: cronTelegramCleanupContract.cleanup.path,
+    schedule: "0 1 * * *",
+  },
+  {
+    path: cronDrainEmailOutboxContract.drain.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronSyncSkillsContract.sync.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronProcessUsageEventsContract.process.path,
+    schedule: "* * * * *",
+  },
+  {
+    path: cronReconcileBillingEntitlementsContract.reconcile.path,
+    schedule: "0 0,12 * * *",
+  },
+  {
+    path: cronComputerUseScreenshotCleanupContract.cleanup.path,
+    schedule: "30 2 * * *",
+  },
+  {
+    path: "/api/internal/cron/aggregate-model-stats",
+    schedule: "12 * * * *",
+  },
+] satisfies readonly VercelCron[];
+
 describe("vercel cron config", () => {
-  it("schedules computer-use screenshot cleanup", () => {
+  it("matches API-owned cron schedules", () => {
     const crons = readVercelConfig().crons ?? [];
 
-    expect(crons).toContainEqual({
-      path: cronComputerUseScreenshotCleanupContract.cleanup.path,
-      schedule: "30 2 * * *",
-    });
+    expect(crons).toStrictEqual(expectedVercelCrons);
   });
 
   it("targets existing API routes without duplicate paths", () => {

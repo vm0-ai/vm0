@@ -1,43 +1,5 @@
 {
   "buildCommand": "cd ../.. && pnpm run build --filter=web",
   "installCommand": "cd ../.. && pnpm install",
-  "outputDirectory": ".next",
-  "crons": [
-    {
-      "path": "/api/cron/cleanup-sandboxes",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/execute-schedules",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/aggregate-usage",
-      "schedule": "5 0 * * *"
-    },
-    {
-      "path": "/api/cron/aggregate-insights",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/telegram-cleanup",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/cron/drain-email-outbox",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/sync-skills",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/process-usage-events",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/reconcile-billing-entitlements",
-      "schedule": "0 0,12 * * *"
-    }
-  ]
+  "outputDirectory": ".next"
 }
