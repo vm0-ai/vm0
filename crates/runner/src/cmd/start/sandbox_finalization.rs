@@ -32,6 +32,8 @@ use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::status::StatusTracker;
+use crate::workspace_image_cache::{WorkspaceCacheTerminalStatus, WorkspaceImageLease};
+use crate::workspace_mount::flush_and_unmount_workspace_drive;
 
 fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -45,6 +47,8 @@ pub(super) struct FinalizeContext {
     pub(super) guest_session_id: Option<String>,
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
+    pub(super) workspace_image: Option<WorkspaceImageLease>,
+    pub(super) workspace_promotable: bool,
     pub(super) storage_fingerprints: StorageFingerprints,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     pub(super) factory: Arc<Box<dyn SandboxFactory>>,
@@ -80,6 +84,8 @@ pub(super) async fn finalize_sandbox_for_completion(
         guest_session_id,
         source_ip,
         mut network_log_session,
+        workspace_image,
+        workspace_promotable,
         storage_fingerprints,
         device_rate_limits,
         factory,
@@ -110,6 +116,22 @@ pub(super) async fn finalize_sandbox_for_completion(
     };
 
     let budget = if let Some(session_id) = parkable_session {
+        promote_workspace_image_from_active_sandbox(
+            sandbox.as_ref(),
+            run_id,
+            workspace_image.as_ref(),
+            workspace_promotable,
+            workspace_terminal_status(exit_code, cancelled),
+            &storage_fingerprints,
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: &profile_name,
+                session_id: Some(&session_id),
+                reason: "park",
+            },
+        )
+        .await;
+
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
@@ -326,6 +348,27 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable session — stop + destroy.
+        promote_workspace_image_from_active_sandbox(
+            sandbox.as_ref(),
+            run_id,
+            workspace_image.as_ref(),
+            workspace_promotable,
+            workspace_terminal_status(exit_code, cancelled),
+            &storage_fingerprints,
+            &WorkspacePromotionLogContext {
+                sandbox_id,
+                profile_name: &profile_name,
+                session_id: session_id.as_deref().or(guest_session_id.as_deref()),
+                reason: active_cleanup_reason(
+                    exit_code,
+                    cancelled,
+                    parking_gate.is_open(),
+                    session_id.as_deref(),
+                    guest_session_id.as_deref(),
+                ),
+            },
+        )
+        .await;
         let destroy_outcome = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
@@ -388,6 +431,84 @@ fn active_cleanup_reason(
         "no_session"
     } else {
         "not_parkable"
+    }
+}
+
+fn workspace_terminal_status(exit_code: i32, cancelled: bool) -> WorkspaceCacheTerminalStatus {
+    if cancelled {
+        WorkspaceCacheTerminalStatus::Cancelled
+    } else if exit_code == 0 {
+        WorkspaceCacheTerminalStatus::Success
+    } else {
+        WorkspaceCacheTerminalStatus::NonzeroExit
+    }
+}
+
+struct WorkspacePromotionLogContext<'a> {
+    sandbox_id: SandboxId,
+    profile_name: &'a str,
+    session_id: Option<&'a str>,
+    reason: &'static str,
+}
+
+async fn promote_workspace_image_from_active_sandbox(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    workspace_image: Option<&WorkspaceImageLease>,
+    workspace_promotable: bool,
+    terminal_status: WorkspaceCacheTerminalStatus,
+    storage_fingerprints: &StorageFingerprints,
+    log: &WorkspacePromotionLogContext<'_>,
+) -> bool {
+    if !workspace_promotable {
+        return false;
+    }
+    let Some(workspace_image) = workspace_image else {
+        return false;
+    };
+    if !workspace_image.workspace_drive_available() {
+        return false;
+    }
+
+    match flush_and_unmount_workspace_drive(sandbox, run_id).await {
+        Ok(()) => {}
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %log.sandbox_id,
+                profile_name = log.profile_name,
+                session_id = log.session_id.unwrap_or("<none>"),
+                reason = log.reason,
+                error = %e,
+                "workspace image cache promotion skipped because guest unmount failed"
+            );
+            return false;
+        }
+    }
+
+    match workspace_image
+        .promote(
+            run_id,
+            log.session_id,
+            terminal_status,
+            local_completed_at(),
+            storage_fingerprints,
+        )
+        .await
+    {
+        Ok(promoted) => promoted,
+        Err(e) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %log.sandbox_id,
+                profile_name = log.profile_name,
+                session_id = log.session_id.unwrap_or("<none>"),
+                reason = log.reason,
+                error = %e,
+                "workspace image cache promotion failed"
+            );
+            false
+        }
     }
 }
 
@@ -545,6 +666,8 @@ mod tests {
                 guest_session_id: None,
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
+                workspace_image: None,
+                workspace_promotable: false,
                 storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
                 device_rate_limits: None,
                 factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),

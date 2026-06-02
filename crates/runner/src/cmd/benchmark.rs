@@ -157,6 +157,7 @@ pub async fn run_benchmark(
         device_rate_limits: None,
         workspace_drive: Some(sandbox::WorkspaceDriveConfig {
             size_mb: profile_config.workspace_disk_mb,
+            seed_image: None,
         }),
     };
     let (result, timing) = run_sandbox(&args, &env_pairs, &*factory, &mitm, sandbox_config).await;

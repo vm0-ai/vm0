@@ -106,6 +106,10 @@ pub struct DeviceRateLimits {
 pub struct WorkspaceDriveConfig {
     /// Logical size in MiB for newly initialized workspace images.
     pub size_mb: u32,
+    /// Optional host-local ext4 image used to seed this sandbox's active
+    /// workspace image. Providers must copy this image into the active image;
+    /// they must never mount the source image read-write.
+    pub seed_image: Option<PathBuf>,
 }
 
 /// Per-sandbox creation configuration passed to [`crate::SandboxFactory::create`].

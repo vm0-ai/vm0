@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
+use serde::{Deserialize, Serialize};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
@@ -24,7 +25,7 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 /// Used to skip re-downloading unchanged storages on VM reuse.
 ///
 /// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorageFingerprints {
     /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
     pub storages: HashMap<String, (String, String)>,

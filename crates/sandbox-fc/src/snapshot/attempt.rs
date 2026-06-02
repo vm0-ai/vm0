@@ -540,6 +540,7 @@ impl SnapshotAttempt {
             &workspace_image_path,
             &sandbox::WorkspaceDriveConfig {
                 size_mb: config.workspace_disk_mb,
+                seed_image: None,
             },
         )
         .await

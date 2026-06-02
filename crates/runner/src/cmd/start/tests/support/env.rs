@@ -233,6 +233,7 @@ fn build_mock_run_config_with_runtime(
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             home,
+            workspace_cache: None,
         }),
         shutdown: ShutdownHandles {
             kmsg_handle: kmsg_log::KmsgHandle::noop(),

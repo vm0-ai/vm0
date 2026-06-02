@@ -16,6 +16,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+use super::active_sessions::{ActiveSessionGuard, ActiveSessions};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
@@ -67,6 +68,7 @@ pub(super) struct SpawnContext {
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
+    pub(super) active_sessions: ActiveSessions,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
@@ -97,6 +99,8 @@ pub(super) fn spawn_job(
     let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
+    let mut active_session_guard =
+        ActiveSessionGuard::new(ctx.active_sessions.clone(), session_id.clone());
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let active_lease = job_profile.budget_lease;
@@ -183,6 +187,8 @@ pub(super) fn spawn_job(
                 sandbox,
                 source_ip,
                 network_log_session,
+                workspace_image,
+                workspace_promotable,
                 guest_session_id,
                 telemetry,
             ) = match inner.await {
@@ -192,6 +198,9 @@ pub(super) fn spawn_job(
                     }
                     let exit_code = outcome.exit_code();
                     let err = outcome.error().map(ToOwned::to_owned);
+                    if let Some(guest_session_id) = outcome.guest_session_id.as_deref() {
+                        active_session_guard.activate_late(guest_session_id);
+                    }
                     (
                         exit_code,
                         err,
@@ -199,6 +208,8 @@ pub(super) fn spawn_job(
                         outcome.sandbox,
                         outcome.source_ip,
                         outcome.network_log_session,
+                        outcome.workspace_image,
+                        outcome.workspace_promotable,
                         outcome.guest_session_id,
                         telemetry,
                     )
@@ -224,6 +235,8 @@ pub(super) fn spawn_job(
                         None,
                         String::new(),
                         None,
+                        None,
+                        false,
                         None,
                         empty_telemetry,
                     )
@@ -266,6 +279,8 @@ pub(super) fn spawn_job(
                     guest_session_id,
                     source_ip,
                     network_log_session,
+                    workspace_image,
+                    workspace_promotable,
                     storage_fingerprints,
                     device_rate_limits: job_device_rate_limits,
                     factory: factory_for_cleanup,

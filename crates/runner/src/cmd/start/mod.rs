@@ -59,7 +59,9 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
+mod active_sessions;
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
@@ -73,8 +75,12 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
+use active_sessions::new_active_sessions;
 use factory_lifecycle::{shutdown_factories, start_factories};
-use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
+use heartbeat::{
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, collect_heartbeat_state,
+    send_heartbeat,
+};
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
     SharedIdlePool, cleanup_expired_idle_entries, destroy_idle_jobs_and_wait, drain_idle_pool,
@@ -485,6 +491,11 @@ pub async fn run_start(
         network_log_manager,
         network_log_drain,
         home: home.clone(),
+        workspace_cache: Some(SessionWorkspaceCache::shared(
+            paths.clone(),
+            &home,
+            &group_name,
+        )),
     });
 
     let config = RunConfig {
@@ -1018,21 +1029,24 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let (usage_flush_tx, mut usage_flush_rx) = tokio::sync::mpsc::channel(1);
     let orphaned_active_runs = OrphanedActiveRuns::new();
+    let active_sessions = new_active_sessions();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let hb_ctx = HeartbeatContext::new(
-        &shared.idle_pool,
-        &runner.id,
-        &runner.name,
-        &runner.group,
-        &runner.profiles,
-        &capacity.budget,
-        &*provider_state.provider,
-    );
+    let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
+        idle_pool: &shared.idle_pool,
+        runner_id: &runner.id,
+        name: &runner.name,
+        group: &runner.group,
+        profiles: &runner.profiles,
+        budget: &capacity.budget,
+        provider: &*provider_state.provider,
+        workspace_cache: exec_config.workspace_cache.clone(),
+        active_sessions: &active_sessions,
+    });
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1051,6 +1065,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         parking_gate: shared.parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
+        active_sessions: active_sessions.clone(),
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,

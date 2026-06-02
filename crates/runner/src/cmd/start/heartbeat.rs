@@ -4,12 +4,14 @@ use std::time::Duration;
 
 use tracing::{debug, info};
 
+use super::active_sessions::{ActiveSessions, active_session_ids};
 use crate::config::ProfileConfig;
 use crate::idle_pool::IdlePool;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
 use crate::status::RunnerMode;
-use crate::types::HeartbeatState;
+use crate::types::{HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES};
+use crate::workspace_image_cache::SessionWorkspaceCache;
 
 /// Period between routine heartbeat ticks sent to the server. First tick is
 /// deferred by one period via `interval_at`.
@@ -26,26 +28,34 @@ pub(super) struct HeartbeatContext<'a> {
     profiles: &'a BTreeMap<String, ProfileConfig>,
     budget: &'a ResourceBudget,
     provider: &'a dyn JobProvider,
+    workspace_cache: Option<SessionWorkspaceCache>,
+    active_sessions: &'a ActiveSessions,
+}
+
+pub(super) struct HeartbeatContextInit<'a> {
+    pub(super) idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
+    pub(super) runner_id: &'a str,
+    pub(super) name: &'a str,
+    pub(super) group: &'a str,
+    pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
+    pub(super) budget: &'a ResourceBudget,
+    pub(super) provider: &'a dyn JobProvider,
+    pub(super) workspace_cache: Option<SessionWorkspaceCache>,
+    pub(super) active_sessions: &'a ActiveSessions,
 }
 
 impl<'a> HeartbeatContext<'a> {
-    pub(super) fn new(
-        idle_pool: &'a Arc<tokio::sync::Mutex<IdlePool>>,
-        runner_id: &'a str,
-        name: &'a str,
-        group: &'a str,
-        profiles: &'a BTreeMap<String, ProfileConfig>,
-        budget: &'a ResourceBudget,
-        provider: &'a dyn JobProvider,
-    ) -> Self {
+    pub(super) fn new(init: HeartbeatContextInit<'a>) -> Self {
         Self {
-            idle_pool,
-            runner_id,
-            name,
-            group,
-            profiles,
-            budget,
-            provider,
+            idle_pool: init.idle_pool,
+            runner_id: init.runner_id,
+            name: init.name,
+            group: init.group,
+            profiles: init.profiles,
+            budget: init.budget,
+            provider: init.provider,
+            workspace_cache: init.workspace_cache,
+            active_sessions: init.active_sessions,
         }
     }
 }
@@ -54,7 +64,7 @@ impl<'a> HeartbeatContext<'a> {
 /// and send a heartbeat to the server.
 pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
     let pool = hb.idle_pool.lock().await;
-    let state = collect_heartbeat_state(
+    let mut state = collect_heartbeat_state(
         hb.runner_id,
         hb.name,
         hb.group,
@@ -64,6 +74,12 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         mode,
     );
     drop(pool);
+    if let Some(cache) = hb.workspace_cache.as_ref() {
+        let active_sessions = active_session_ids(hb.active_sessions);
+        let cache_states = cache.held_session_states().await;
+        state.held_session_states =
+            merge_held_session_states(state.held_session_states, cache_states, &active_sessions);
+    }
     info!(
         mode = ?mode,
         running = state.running_count,
@@ -75,6 +91,37 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
         .set_held_session_states(state.held_session_states.clone())
         .await;
     hb.provider.heartbeat(&state).await;
+}
+
+fn merge_held_session_states(
+    idle_states: Vec<HeldSessionState>,
+    cache_states: Vec<HeldSessionState>,
+    active_sessions: &std::collections::HashSet<String>,
+) -> Vec<HeldSessionState> {
+    let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
+    for state in idle_states {
+        by_session.insert(state.session_id.clone(), state);
+    }
+    for state in cache_states {
+        if active_sessions.contains(&state.session_id) {
+            continue;
+        }
+        match by_session.get(&state.session_id) {
+            Some(existing) if existing.last_completed_at >= state.last_completed_at => {}
+            _ => {
+                by_session.insert(state.session_id.clone(), state);
+            }
+        }
+    }
+    let mut states: Vec<HeldSessionState> = by_session.into_values().collect();
+    states.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.session_id.cmp(&b.session_id))
+    });
+    states.truncate(MAX_HELD_SESSION_STATES);
+    states.sort_unstable_by(|a, b| a.session_id.cmp(&b.session_id));
+    states
 }
 
 /// Collect current runner state for heartbeat reporting.
@@ -188,6 +235,55 @@ mod tests {
             RunnerMode::Running,
         );
         assert_eq!(state.running_count, 2);
+    }
+
+    #[test]
+    fn merge_held_session_states_filters_active_cache_sessions() {
+        let idle = vec![];
+        let cache = vec![HeldSessionState {
+            session_id: "sess-active".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+        let active = std::collections::HashSet::from(["sess-active".to_string()]);
+
+        let merged = merge_held_session_states(idle, cache, &active);
+
+        assert!(merged.is_empty());
+    }
+
+    #[test]
+    fn merge_held_session_states_keeps_newest_duplicate() {
+        let idle = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+        let cache = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+        }];
+
+        let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].session_id, "sess-1");
+        assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:01.000Z");
+    }
+
+    #[test]
+    fn merge_held_session_states_prefers_idle_on_equal_timestamp() {
+        let idle = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+        let cache = vec![HeldSessionState {
+            session_id: "sess-1".into(),
+            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
+        }];
+
+        let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:00.000Z");
     }
 
     #[test]

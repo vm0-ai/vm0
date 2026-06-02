@@ -8,6 +8,9 @@ use api_contracts::generated::types::runners::storage::StorageManifest;
 
 use crate::ids::RunId;
 
+pub(crate) const MAX_HELD_SESSION_STATES: usize = 100;
+pub(crate) const SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG: &str = "sessionWorkspaceImageCache";
+
 // ---------------------------------------------------------------------------
 // Poll
 // ---------------------------------------------------------------------------
@@ -268,6 +271,14 @@ impl ExecutionContext {
     /// guest filesystem post-execution (see `read_guest_session_id`).
     pub fn session_id(&self) -> Option<&str> {
         self.resume_session.as_ref().map(|r| r.session_id.as_str())
+    }
+
+    pub fn session_workspace_image_cache_enabled(&self) -> bool {
+        self.feature_flags
+            .as_ref()
+            .and_then(|flags| flags.get(SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG))
+            .copied()
+            .unwrap_or(false)
     }
 }
 

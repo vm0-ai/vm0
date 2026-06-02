@@ -48,6 +48,29 @@ pub(crate) fn short_digest(s: &str) -> String {
     hex::encode(prefix)
 }
 
+/// Versioned digest key for host-shared session workspace image baselines.
+///
+/// The raw CLI session id is untrusted and must not be embedded directly in
+/// host paths. The working-dir argument is intentionally ignored: workspace
+/// image cache identity is based on canonical workspace semantics.
+#[cfg(test)]
+pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
+    scoped_session_workspace_cache_key("", session_id, working_dir)
+}
+
+pub(crate) fn scoped_session_workspace_cache_key(
+    cache_scope: &str,
+    session_id: &str,
+    _working_dir: &str,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"session-workspace-cache:v2\0");
+    hasher.update(cache_scope.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(session_id.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 /// Update a directory's mtime to now, so `runner gc` treats it as recently used.
 pub fn touch_mtime(dir: &Path) {
     let Ok(f) = std::fs::File::open(dir) else {
@@ -69,6 +92,7 @@ pub mod guest {
 }
 
 /// Runner-level paths derived from the base directory.
+#[derive(Clone)]
 pub struct RunnerPaths {
     base_dir: PathBuf,
 }
@@ -76,6 +100,11 @@ pub struct RunnerPaths {
 impl RunnerPaths {
     pub fn new(base_dir: PathBuf) -> Self {
         Self { base_dir }
+    }
+
+    #[cfg(test)]
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
     }
 
     pub fn status(&self) -> PathBuf {
@@ -92,6 +121,46 @@ impl RunnerPaths {
 
     pub fn proxy_registry_lock(&self) -> PathBuf {
         self.base_dir.join("proxy-registry.json.lock")
+    }
+
+    pub fn workspaces_dir(&self) -> PathBuf {
+        self.base_dir.join("workspaces")
+    }
+
+    pub fn workspace_dir(&self, sandbox_id: &sandbox::SandboxId) -> PathBuf {
+        self.workspaces_dir().join(sandbox_id.to_string())
+    }
+
+    pub fn active_workspace_image(&self, sandbox_id: &sandbox::SandboxId) -> PathBuf {
+        self.workspace_dir(sandbox_id).join("workspace.ext4")
+    }
+
+    #[cfg(test)]
+    pub fn workspace_image_cache_dir(&self) -> PathBuf {
+        self.base_dir.join("workspace-image-cache")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_dir().join(cache_key)
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_metadata(&self, cache_key: &str) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join("metadata.json")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_current_image(&self, cache_key: &str) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join("current.ext4")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join(format!("current.ext4.tmp.{run_id}"))
     }
 }
 
@@ -148,6 +217,10 @@ impl HomePaths {
 
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
+    }
+
+    pub fn workspace_image_cache_dir(&self) -> PathBuf {
+        self.root.join("workspace-image-cache")
     }
 
     pub fn groups_dir(&self) -> PathBuf {
@@ -233,6 +306,10 @@ impl HomePaths {
         self.locks_dir()
             .join(format!("storage-{name_hash}-{version_hash}.lock"))
     }
+}
+
+pub(crate) fn workspace_image_cache_lock_path(lock_dir: &Path, cache_key: &str) -> PathBuf {
+    lock_dir.join(format!("workspace-image-cache-{cache_key}.lock"))
 }
 
 /// Paths for a rootfs build output, keyed by rootfs hash.

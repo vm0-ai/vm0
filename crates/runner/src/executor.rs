@@ -99,6 +99,10 @@ use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
     ResumeSession, SandboxReuseResult,
 };
+use crate::workspace_image_cache::{
+    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceImageActiveLeaseRequest,
+    WorkspaceImageLease, WorkspaceImagePrepareRequest,
+};
 use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 /// Shared configuration for all executions (profile-independent).
@@ -110,6 +114,7 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub home: HomePaths,
+    pub workspace_cache: Option<SessionWorkspaceCache>,
 }
 
 /// Per-job VM parameters resolved from the profile config.
@@ -130,6 +135,8 @@ pub struct ExecuteOutcome {
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
+    pub workspace_image: Option<WorkspaceImageLease>,
+    pub workspace_promotable: bool,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub guest_session_id: Option<String>,
@@ -484,6 +491,8 @@ pub async fn execute_job(
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
+            workspace_image: None,
+            workspace_promotable: false,
             guest_session_id: None,
         }
     } else {
@@ -504,6 +513,8 @@ pub async fn execute_job(
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,
+                workspace_image: None,
+                workspace_promotable: false,
                 guest_session_id: None,
             },
         }
@@ -532,6 +543,7 @@ pub async fn execute_job_reuse(
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
+    let sandbox_id = idle_sandbox.sandbox_id();
     let idle_parts = idle_sandbox.into_parts();
     let source_ip = idle_parts.source_ip;
     let prev_storage = idle_parts.storage_fingerprints;
@@ -545,10 +557,29 @@ pub async fn execute_job_reuse(
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
+            workspace_image: None,
+            workspace_promotable: false,
             guest_session_id: None,
         }
     } else {
-        execute_reused_sandbox(
+        let workspace_image = match (
+            context.session_workspace_image_cache_enabled(),
+            config.workspace_cache.as_ref(),
+        ) {
+            (true, Some(cache)) => Some(
+                cache
+                    .lease_active(WorkspaceImageActiveLeaseRequest {
+                        run_id,
+                        sandbox_id,
+                        session_id: context.session_id(),
+                        working_dir: CANONICAL_WORKING_DIR,
+                        workspace_drive_available: true,
+                    })
+                    .await,
+            ),
+            _ => None,
+        };
+        let mut outcome = execute_reused_sandbox(
             sandbox,
             &source_ip,
             &context,
@@ -557,7 +588,10 @@ pub async fn execute_job_reuse(
             &mut telemetry,
             cancel,
         )
-        .await
+        .await;
+        outcome.workspace_promotable = workspace_image.is_some();
+        outcome.workspace_image = workspace_image;
+        outcome
     };
 
     (outcome, telemetry)
@@ -579,6 +613,24 @@ fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult)
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::DeviceLimitMismatch
         | SandboxReuseResult::UnparkFailed => "sandbox_reuse_miss",
+    };
+    telemetry.record(action_type, Duration::ZERO, true, None);
+}
+
+fn record_workspace_cache_result(
+    telemetry: &mut JobTelemetry,
+    result: WorkspaceCacheCheckoutResult,
+) {
+    let action_type = match result {
+        WorkspaceCacheCheckoutResult::Hit => "workspace_image_cache_hit",
+        WorkspaceCacheCheckoutResult::Miss => "workspace_image_cache_miss",
+        WorkspaceCacheCheckoutResult::NoSession => "workspace_image_cache_no_session",
+        WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
+            "workspace_image_cache_invalid_working_dir"
+        }
+        WorkspaceCacheCheckoutResult::LockBusy => "workspace_image_cache_lock_busy",
+        WorkspaceCacheCheckoutResult::InvalidMetadata => "workspace_image_cache_invalid_metadata",
+        WorkspaceCacheCheckoutResult::DiskPressure => "workspace_image_cache_disk_pressure",
     };
     telemetry.record(action_type, Duration::ZERO, true, None);
 }
@@ -748,6 +800,115 @@ async fn execute_new_sandbox(
         id: sandbox_id,
         reuse_result,
     } = dispatch;
+    let mut workspace_image = prepare_workspace_image(
+        context,
+        sandbox_id,
+        config,
+        params.workspace_disk_mb,
+        telemetry,
+    )
+    .await;
+    let prepared = match create_started_sandbox(
+        factory,
+        context,
+        sandbox_id,
+        config,
+        params,
+        telemetry,
+        workspace_image.as_ref(),
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(e)
+            if workspace_image
+                .as_ref()
+                .is_some_and(WorkspaceImageLease::is_cache_hit) =>
+        {
+            invalidate_workspace_cache_hit(
+                workspace_image.as_ref(),
+                context.run_id,
+                "sandbox_prepare_failed",
+            )
+            .await;
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                error = %e,
+                "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
+            );
+            workspace_image = None;
+            create_started_sandbox(
+                factory, context, sandbox_id, config, params, telemetry, None,
+            )
+            .await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    let mut outcome = execute_prepared_sandbox_run(
+        prepared,
+        context,
+        config,
+        RunStart {
+            restore_guest_state: params.restore_guest_state,
+            reuse_result,
+            prev_storage: workspace_image
+                .as_ref()
+                .and_then(WorkspaceImageLease::previous_storage),
+        },
+        telemetry,
+        cancel,
+    )
+    .await;
+    outcome.workspace_promotable = workspace_image.is_some();
+    outcome.workspace_image = workspace_image;
+    Ok(outcome)
+}
+
+struct PreparedSandboxRun {
+    sandbox: Box<dyn Sandbox>,
+    source_ip: String,
+    network_log_session: NetworkLogSession,
+}
+
+async fn prepare_workspace_image(
+    context: &ExecutionContext,
+    sandbox_id: SandboxId,
+    config: &ExecutorConfig,
+    workspace_disk_mb: u32,
+    telemetry: &mut JobTelemetry,
+) -> Option<WorkspaceImageLease> {
+    let (true, Some(cache)) = (
+        context.session_workspace_image_cache_enabled(),
+        config.workspace_cache.as_ref(),
+    ) else {
+        return None;
+    };
+
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            run_id: context.run_id,
+            sandbox_id,
+            session_id: context.session_id(),
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+            workspace_drive_required: true,
+        })
+        .await;
+    record_workspace_cache_result(telemetry, lease.result());
+    Some(lease)
+}
+
+async fn create_started_sandbox(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    sandbox_id: SandboxId,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    telemetry: &mut JobTelemetry,
+    workspace_image: Option<&WorkspaceImageLease>,
+) -> RunnerResult<PreparedSandboxRun> {
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -755,12 +916,17 @@ async fn execute_new_sandbox(
             memory_mb: params.memory_mb,
         },
         device_rate_limits: params.device_rate_limits.clone(),
-        workspace_drive: Some(sandbox::WorkspaceDriveConfig {
-            size_mb: params.workspace_disk_mb,
-        }),
+        workspace_drive: workspace_image.map_or_else(
+            || {
+                Some(sandbox::WorkspaceDriveConfig {
+                    size_mb: params.workspace_disk_mb,
+                    seed_image: None,
+                })
+            },
+            WorkspaceImageLease::workspace_drive_config,
+        ),
     };
 
-    // Create and start sandbox
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
     let t = Instant::now();
     let mut sandbox = match factory.create(sandbox_config).await {
@@ -772,8 +938,6 @@ async fn execute_new_sandbox(
     };
 
     let source_ip = sandbox.source_ip().to_string();
-
-    // Register VM in proxy registry BEFORE starting the sandbox.
     let network_log_session = register_proxy(config, context, &source_ip).await;
 
     if let Err(e) = sandbox.start().await {
@@ -804,29 +968,32 @@ async fn execute_new_sandbox(
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
-    Ok(execute_prepared_sandbox_run(
-        PreparedSandboxRun {
-            sandbox,
-            source_ip,
-            network_log_session,
-        },
-        context,
-        config,
-        RunStart {
-            restore_guest_state: params.restore_guest_state,
-            reuse_result,
-            prev_storage: None,
-        },
-        telemetry,
-        cancel,
-    )
-    .await)
+    Ok(PreparedSandboxRun {
+        sandbox,
+        source_ip,
+        network_log_session,
+    })
 }
 
-struct PreparedSandboxRun {
-    sandbox: Box<dyn Sandbox>,
-    source_ip: String,
-    network_log_session: NetworkLogSession,
+async fn invalidate_workspace_cache_hit(
+    workspace_image: Option<&WorkspaceImageLease>,
+    run_id: RunId,
+    reason: &str,
+) {
+    let Some(workspace_image) = workspace_image else {
+        return;
+    };
+    if !workspace_image.is_cache_hit() {
+        return;
+    }
+    if let Err(e) = workspace_image.invalidate(run_id, reason).await {
+        warn!(
+            run_id = %run_id,
+            reason,
+            error = %e,
+            "failed to invalidate workspace image cache entry"
+        );
+    }
 }
 
 async fn destroy_sandbox_panic_safe(factory: &dyn SandboxFactory, sandbox: Box<dyn Sandbox>) {
@@ -874,6 +1041,8 @@ async fn execute_reused_sandbox(
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: Some(network_log_session),
+            workspace_image: None,
+            workspace_promotable: false,
             guest_session_id: None,
         };
     }
@@ -958,6 +1127,8 @@ async fn execute_prepared_sandbox_run(
         sandbox: Some(sandbox),
         source_ip,
         network_log_session: Some(network_log_session),
+        workspace_image: None,
+        workspace_promotable: false,
         guest_session_id,
     }
 }
@@ -2539,9 +2710,12 @@ mod tests {
     use super::*;
     use crate::http::HttpClientConfig;
     use crate::ids::RunId;
+    use crate::paths::RunnerPaths;
     use crate::types::{
-        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry, ResumeSession,
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+        ResumeSession, SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG,
     };
+    use crate::workspace_image_cache::WorkspaceCacheTerminalStatus;
     use api_contracts::generated::types::runners::storage::{
         ArtifactEntry, StorageEntry, StorageManifest,
     };
@@ -4783,6 +4957,7 @@ mod tests {
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             home: HomePaths::with_root(dir.to_path_buf()),
+            workspace_cache: None,
         }
     }
 
@@ -5107,6 +5282,69 @@ mod tests {
             })
             .await
             .unwrap()
+    }
+
+    async fn seed_workspace_image_cache(
+        cache: &SessionWorkspaceCache,
+        runner_paths: &RunnerPaths,
+        session_id: &str,
+        workspace_disk_mb: u32,
+    ) -> PathBuf {
+        let sandbox_id = SandboxId::new_v4();
+        let run_id = RunId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+
+        let active_image = runner_paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        let file = tokio::fs::File::create(&active_image).await.unwrap();
+        file.set_len(u64::from(workspace_disk_mb) * 1024 * 1024)
+            .await
+            .unwrap();
+        drop(file);
+
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    "2026-06-01T00:00:00.000Z".into(),
+                    &crate::idle_pool::StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+        drop(lease);
+
+        let hit = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(hit.result(), WorkspaceCacheCheckoutResult::Hit);
+        let seed = hit
+            .workspace_drive_config()
+            .and_then(|config| config.seed_image)
+            .expect("seeded workspace cache should produce a seed image");
+        drop(hit);
+        seed
     }
 
     fn spawn_run_in_sandbox_test(
@@ -5613,7 +5851,10 @@ mod tests {
         assert_eq!(configs[0].device_rate_limits, Some(limits));
         assert_eq!(
             configs[0].workspace_drive,
-            Some(sandbox::WorkspaceDriveConfig { size_mb: 512 })
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 512,
+                seed_image: None,
+            })
         );
     }
 
@@ -5703,6 +5944,73 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("no free devices"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_create_result(Err(sandbox_create_error("bad seed image")));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-cache-hit".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            true,
+        )]));
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let expected_seed =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-hit", 16).await;
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.workspace_image.is_none());
+        assert!(!outcome.workspace_promotable);
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 2);
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: Some(expected_seed.clone()),
+            })
+        );
+        assert_eq!(
+            configs[1].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: None,
+            })
+        );
+        assert!(
+            !expected_seed.exists(),
+            "failed cache hit should invalidate the unusable baseline"
+        );
     }
 
     #[tokio::test]

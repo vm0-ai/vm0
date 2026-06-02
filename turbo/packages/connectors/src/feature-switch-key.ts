@@ -52,6 +52,7 @@ export enum FeatureSwitchKey {
 
   ZapierConnector = "zapierConnector",
   SandboxIoLimiters = "sandboxIoLimiters",
+  SessionWorkspaceImageCache = "sessionWorkspaceImageCache",
   ChatArtifactSidebar = "chatArtifactSidebar",
   ChatScrollToBottomButton = "chatScrollToBottomButton",
 }

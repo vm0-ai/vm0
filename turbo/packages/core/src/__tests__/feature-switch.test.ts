@@ -114,6 +114,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -124,6 +127,9 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(otherOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {
