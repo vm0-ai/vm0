@@ -260,6 +260,47 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_does_not_treat_preserved_sibling_prefix_as_child() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("workspace");
+        let cleanup_path = parent.join("cache");
+        let preserved_sibling = parent.join("cache-old");
+        fs::create_dir_all(&cleanup_path).unwrap();
+        fs::create_dir_all(&preserved_sibling).unwrap();
+        fs::write(cleanup_path.join("stale.txt"), "old").unwrap();
+        fs::write(preserved_sibling.join("keep.txt"), "keep").unwrap();
+
+        cleanup_stale_paths_with_mount_detector(
+            &[path_string(&cleanup_path)],
+            &[path_string(&preserved_sibling)],
+            |_| false,
+        );
+
+        assert!(!cleanup_path.exists());
+        assert!(preserved_sibling.join("keep.txt").exists());
+    }
+
+    #[test]
+    fn cleanup_does_not_treat_entry_sibling_prefix_as_preserved() {
+        disable_system_log();
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("workspace");
+        let stale_sibling = parent.join("cache");
+        let preserved_child = parent.join("cache-old");
+        fs::create_dir_all(&stale_sibling).unwrap();
+        fs::create_dir_all(&preserved_child).unwrap();
+        fs::write(stale_sibling.join("stale.txt"), "old").unwrap();
+        fs::write(preserved_child.join("keep.txt"), "keep").unwrap();
+
+        cleanup_stale_paths(&[path_string(&parent)], &[path_string(&preserved_child)]);
+
+        assert!(parent.exists());
+        assert!(!stale_sibling.exists());
+        assert!(preserved_child.join("keep.txt").exists());
+    }
+
+    #[test]
     fn cleanup_handles_nonexistent_path() {
         disable_system_log();
         // Should not panic
