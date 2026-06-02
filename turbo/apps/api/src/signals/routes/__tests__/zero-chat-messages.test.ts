@@ -1696,6 +1696,71 @@ describe("POST /api/zero/chat/messages", () => {
     expect(preference).toBeUndefined();
   });
 
+  it("rejects removed model-first selections from web chat", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+
+    for (const selectedModel of [
+      "claude-haiku-4-5",
+      "anthropic/claude-haiku-4.5",
+    ]) {
+      const response = await accept(
+        client().send({
+          headers: authHeaders(),
+          body: {
+            agentId: fixture.agentId,
+            prompt: `removed ${selectedModel}`,
+            modelSelection: {
+              modelProviderId: "00000000-0000-4000-8000-000000000000",
+              selectedModel,
+            },
+          },
+        }),
+        [400],
+      );
+
+      expect(response.body.error).toMatchObject({
+        code: "BAD_REQUEST",
+        message: "modelSelection.selectedModel: Invalid model selection",
+      });
+    }
+
+    const threads = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.userId, fixture.userId));
+    expect(threads).toStrictEqual([]);
+
+    const messages = await writeDb
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        inArray(chatMessages.content, [
+          "removed claude-haiku-4-5",
+          "removed anthropic/claude-haiku-4.5",
+        ]),
+      );
+    expect(messages).toStrictEqual([]);
+
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId));
+    expect(runs).toStrictEqual([]);
+
+    const [preference] = await writeDb
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      )
+      .limit(1);
+    expect(preference).toBeUndefined();
+  });
+
   it("rejects invalid stored model-first thread pins before run creation", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
