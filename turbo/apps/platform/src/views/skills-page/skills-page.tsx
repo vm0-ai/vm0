@@ -4,14 +4,14 @@ import type {
   ZeroAgentSkillDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { IconChevronRight, IconSearch } from "@tabler/icons-react";
+import { IconChevronRight, IconSearch, IconUsers } from "@tabler/icons-react";
 import {
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -39,6 +39,8 @@ import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
 const ALL_AGENTS_FILTER = "all";
 const LIST_AVATAR_LIMIT = 5;
+const SKILL_LIST_GRID =
+  "grid grid-cols-[minmax(10rem,1.1fr)_minmax(16rem,1.8fr)_8rem_2.5rem] gap-x-6 items-center";
 
 function skillTitle(skill: {
   readonly name: string;
@@ -62,17 +64,23 @@ export function SkillsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-end justify-between gap-4">
-          <div className="hidden min-w-0 md:block">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Skills
-            </h1>
+        <div className="mx-auto w-full max-w-[900px]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+            <div className="hidden min-w-0 md:block">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">
+                Skills
+              </h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Browse shared skills and see which agents use them.
+              </p>
+            </div>
+            <SkillsToolbar />
           </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[1180px]">
+        <div className="mx-auto max-w-[900px]">
           <SkillsListPanel
             skills={skills}
             loading={loading}
@@ -103,40 +111,48 @@ function SkillsListPanel({
   readonly skillUsages: ReadonlyMap<string, readonly TeamComposeItem[]>;
 }) {
   return (
-    <section className="zero-card flex min-h-[520px] flex-col overflow-hidden">
-      <SkillsToolbar />
-      <div className="min-h-0 flex-1 overflow-auto p-2">
-        {loading ? (
-          <SkillListSkeleton />
-        ) : skills && skills.length > 0 ? (
-          <div>
-            <div className="hidden grid-cols-[minmax(180px,1.1fr)_minmax(220px,1.7fr)_132px_44px] gap-4 border-b border-border/70 px-4 py-2 text-xs font-medium text-muted-foreground md:grid">
-              <span>Skill</span>
-              <span>Description</span>
-              <span>Used by</span>
-              <span className="sr-only">Open</span>
+    <section className="zero-card min-h-[520px] overflow-hidden pb-3">
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: "820px" }}>
+          {(loading || (skills && skills.length > 0)) && (
+            <div
+              className={cn(
+                SKILL_LIST_GRID,
+                "sticky top-0 z-10 border-b border-border/40 bg-card px-5 py-3 text-sm font-medium text-muted-foreground",
+              )}
+            >
+              <div className="text-left">Skill</div>
+              <div className="text-left">Description</div>
+              <div className="text-left">Used by</div>
+              <div />
             </div>
-            {skills.map((skill) => {
-              return (
-                <SkillListItem
-                  key={skill.name}
-                  skill={skill}
-                  selected={skill.name === selectedSkillName}
-                  agents={skillUsages.get(skill.name) ?? []}
-                />
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
-            <p className="text-sm font-medium text-foreground">
-              No custom skills
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Skills created in Agent Chat will appear here.
-            </p>
-          </div>
-        )}
+          )}
+          {loading ? (
+            <SkillListSkeleton />
+          ) : skills && skills.length > 0 ? (
+            <div>
+              {skills.map((skill) => {
+                return (
+                  <SkillListItem
+                    key={skill.name}
+                    skill={skill}
+                    selected={skill.name === selectedSkillName}
+                    agents={skillUsages.get(skill.name) ?? []}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
+              <p className="text-sm font-medium text-foreground">
+                No custom skills
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Skills created in Agent Chat will appear here.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -154,26 +170,19 @@ function SkillsToolbar() {
   });
 
   return (
-    <div className="flex shrink-0 flex-col gap-3 border-b border-border/70 p-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="relative min-w-0 flex-1">
-        <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
-          placeholder="Search skills"
-          className="h-9 pl-9"
-        />
-      </div>
-      <div className="sm:w-56">
+    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+      <div className="sm:w-48">
         <Select
           value={selectedAgentId ?? ALL_AGENTS_FILTER}
           onValueChange={(value) => {
             setSelectedAgentId(value === ALL_AGENTS_FILTER ? null : value);
           }}
         >
-          <SelectTrigger aria-label="Agent filter" className="h-9 w-full">
+          <SelectTrigger
+            aria-label="Agent filter"
+            className="zero-btn-morandi h-9 w-full gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+          >
+            <IconUsers size={14} stroke={1.5} className="shrink-0" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -187,6 +196,23 @@ function SkillsToolbar() {
             })}
           </SelectContent>
         </Select>
+      </div>
+      <div className="relative w-full sm:w-64">
+        <IconSearch
+          size={15}
+          stroke={1.5}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+        />
+        <input
+          aria-label="Search skills"
+          type="text"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+          }}
+          placeholder="Search skills"
+          className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+        />
       </div>
     </div>
   );
@@ -206,49 +232,47 @@ function SkillListItem({
   return (
     <button
       type="button"
-      className={`grid w-full grid-cols-1 gap-2 border-b border-border/60 px-3 py-3 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(180px,1.1fr)_minmax(220px,1.7fr)_132px_44px] md:items-center md:gap-4 md:px-4 ${
+      className={cn(
+        "block w-full cursor-pointer border-b border-border/40 px-5 py-3 text-left text-inherit transition-colors last:border-b-0",
         selected
-          ? "bg-muted/70 text-foreground"
-          : "text-foreground hover:bg-muted/40"
-      }`}
+          ? "bg-muted/60 text-foreground"
+          : "text-foreground hover:bg-muted/50",
+      )}
       onClick={() => {
         selectSkill(skill.name);
       }}
     >
-      <span className="flex min-w-0 items-center">
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">
+      <div className={cn(SKILL_LIST_GRID)}>
+        <div className="min-w-0 text-left">
+          <span className="block truncate text-sm font-medium text-foreground">
             {skillTitle(skill)}
           </span>
           <span className="block truncate text-xs text-muted-foreground">
             {skill.name}
           </span>
+        </div>
+        <span className="line-clamp-2 min-w-0 text-left text-sm leading-5 text-muted-foreground">
+          {skill.description ?? skill.name}
         </span>
-      </span>
-      <span className="min-w-0 truncate text-sm text-muted-foreground">
-        {skill.description ?? skill.name}
-      </span>
-      <AgentAvatarStack agents={agents} />
-      <span className="hidden justify-self-end text-muted-foreground md:inline-flex">
-        <IconChevronRight size={16} />
-      </span>
+        <AgentAvatarStack agents={agents} />
+        <span className="justify-self-start rounded p-1 text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground">
+          <IconChevronRight size={14} stroke={1.5} />
+        </span>
+      </div>
     </button>
   );
 }
 
 function SkillListSkeleton() {
   return (
-    <div className="flex flex-col gap-2 p-1" data-testid="skills-loading">
+    <div className="divide-y divide-border/40" data-testid="skills-loading">
       {[0, 1, 2, 3].map((index) => {
         return (
-          <div
-            key={index}
-            className="grid gap-3 rounded-lg px-3 py-3 md:grid-cols-[minmax(180px,1.1fr)_minmax(220px,1.7fr)_132px_44px]"
-          >
-            <div className="h-9 w-44 rounded bg-muted" />
-            <div className="h-9 w-full rounded bg-muted" />
-            <div className="h-7 w-20 rounded bg-muted" />
-            <div className="hidden h-5 w-5 rounded bg-muted md:block" />
+          <div key={index} className={cn(SKILL_LIST_GRID, "px-5 py-3")}>
+            <div className="h-9 w-44 rounded bg-muted/50" />
+            <div className="h-4 w-full rounded bg-muted/50" />
+            <div className="h-7 w-20 rounded-full bg-muted/50" />
+            <div className="h-4 w-4 rounded bg-muted/50" />
           </div>
         );
       })}
