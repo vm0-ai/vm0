@@ -52,6 +52,7 @@ function connectorAccessEnvBindings(
   switch (access.kind) {
     case "static":
     case "refresh-token":
+    case "token-exchange":
       return access.envBindings;
     case "none":
       return {};

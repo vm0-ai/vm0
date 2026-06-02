@@ -8,15 +8,18 @@ import {
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
 import {
   getConnectorAuthMethodAccessMetadata,
+  getConnectorManualGrantFieldNamesForAuthMethod,
   getConnectorAuthMethodStorageMetadata,
   resolveConnectorAuthClientForMethod,
   connectorAuthMethodSupportsRefreshTokenAccess,
+  connectorAuthMethodSupportsTokenExchangeAccess,
   type ConnectorAuthMethodAccessMetadata,
   type ConnectorAuthMethodStorageMetadata,
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
   type RefreshTokenAccessConnectorType,
+  type TokenExchangeAccessConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   parseBasicAuthTemplates,
@@ -26,6 +29,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import {
+  exchangeConnectorAuthProviderAccessToken,
   getConnectorAuthProviderClientArgs,
   refreshConnectorAuthProviderAccessToken,
   type ConnectorAuthProviderClientArgs,
@@ -44,6 +48,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
@@ -284,6 +289,11 @@ interface RefreshAccessTokenArgs extends SecretTokenLookupArgs {
 
 interface RefreshTokenContext {
   readonly refreshTokenSecret: string;
+  readonly accessTokenSecret: string;
+  readonly secretUserId: string;
+}
+
+interface TokenExchangeContext {
   readonly accessTokenSecret: string;
   readonly secretUserId: string;
 }
@@ -622,6 +632,27 @@ async function getSecretValue(args: {
     : null;
 }
 
+async function getVariableValue(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+}): Promise<string | null> {
+  const [row] = await args.db
+    .select({ value: variables.value })
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.name, args.name),
+        eq(variables.type, "connector"),
+      ),
+    )
+    .limit(1);
+  return row?.value ?? null;
+}
+
 async function upsertSecretValue(
   db: Db,
   args: {
@@ -695,9 +726,17 @@ function getAccessSecretNameForSource(args: {
   const accessMetadata = args.connectorAccessByType.get(
     args.connectorType,
   )?.accessMetadata;
-  return accessMetadata?.kind === "refresh-token"
-    ? accessMetadata.accessToken
-    : undefined;
+  switch (accessMetadata?.kind) {
+    case "refresh-token":
+    case "token-exchange": {
+      return accessMetadata.accessToken;
+    }
+    case "static":
+    case "none":
+    case undefined: {
+      return undefined;
+    }
+  }
 }
 
 async function getConnectorAccessToken(
@@ -1416,6 +1455,253 @@ async function markRefreshSuccess(
     );
 }
 
+interface ConnectorTokenExchangeGrantValues {
+  readonly secrets: Record<string, string>;
+  readonly variables: Record<string, string>;
+}
+
+async function loadConnectorTokenExchangeGrantValues(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly connectorType: TokenExchangeAccessConnectorType;
+  readonly authMethod: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<ConnectorTokenExchangeGrantValues | null> {
+  const fieldNames = getConnectorManualGrantFieldNamesForAuthMethod(
+    args.connectorType,
+    args.authMethod,
+  );
+  if (!fieldNames) {
+    throw new Error(
+      `${args.connectorType} connector auth method ${args.authMethod} uses token-exchange access without a manual grant`,
+    );
+  }
+
+  const secretEntries = await Promise.all(
+    fieldNames.secrets.map(async (name) => {
+      return {
+        name,
+        value: await getSecretValue({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.userId,
+          name,
+          type: "connector",
+          featureSwitchContext: args.featureSwitchContext,
+        }),
+      };
+    }),
+  );
+  const variableEntries = await Promise.all(
+    fieldNames.variables.map(async (name) => {
+      return {
+        name,
+        value: await getVariableValue({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.userId,
+          name,
+        }),
+      };
+    }),
+  );
+
+  const secrets: Record<string, string> = {};
+  for (const entry of secretEntries) {
+    if (entry.value === null) {
+      return null;
+    }
+    secrets[entry.name] = entry.value;
+  }
+
+  const variablesByName: Record<string, string> = {};
+  for (const entry of variableEntries) {
+    if (entry.value === null) {
+      return null;
+    }
+    variablesByName[entry.name] = entry.value;
+  }
+
+  return { secrets, variables: variablesByName };
+}
+
+async function markTokenExchangeSuccess(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorType: TokenExchangeAccessConnectorType;
+    readonly featureSwitchContext: FeatureSwitchContext;
+  },
+  context: TokenExchangeContext,
+  result: {
+    readonly accessToken: string;
+    readonly expiresIn: number;
+  },
+): Promise<void> {
+  await upsertSecretValue(args.db, {
+    orgId: args.orgId,
+    userId: context.secretUserId,
+    name: context.accessTokenSecret,
+    value: result.accessToken,
+    type: "connector",
+    featureSwitchContext: args.featureSwitchContext,
+  });
+
+  const expiresAt = new Date(
+    nowDate().getTime() + Math.max(result.expiresIn, 1) * 1000,
+  );
+  await args.db
+    .update(connectors)
+    .set({
+      tokenExpiresAt: expiresAt,
+      needsReconnect: false,
+      updatedAt: sql`clock_timestamp()`,
+    })
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.type, args.connectorType),
+      ),
+    );
+}
+
+function shouldUseCurrentTokenExchangeAccess(args: {
+  readonly accessToken: string | null;
+  readonly sourceState: RefreshSourceState;
+  readonly forceRefresh: boolean;
+}): boolean {
+  if (!args.accessToken || args.forceRefresh) {
+    return false;
+  }
+  if (
+    args.sourceState.needsReconnect ||
+    args.sourceState.tokenExpiresAt === null
+  ) {
+    return false;
+  }
+  return (
+    args.sourceState.tokenExpiresAt > currentSecond() + REFRESH_BUFFER_SECS
+  );
+}
+
+async function exchangeAccessTokenForConnectorSource(args: {
+  readonly db: Db;
+  readonly connectorType: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly forceRefresh: boolean;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<RefreshAccessTokenResult> {
+  const parsedConnectorType = connectorTypeSchema.safeParse(args.connectorType);
+  if (!parsedConnectorType.success) {
+    return { ok: false, reason: "not-refreshable" };
+  }
+
+  const connectorAccess = args.connectorAccessByType.get(args.connectorType);
+  if (connectorAccess?.accessMetadata.kind !== "token-exchange") {
+    return { ok: false, reason: "not-refreshable" };
+  }
+  if (
+    !connectorAuthMethodSupportsTokenExchangeAccess(
+      parsedConnectorType.data,
+      connectorAccess.authMethod,
+    )
+  ) {
+    return { ok: false, reason: "not-refreshable" };
+  }
+
+  const context: TokenExchangeContext = {
+    accessTokenSecret: connectorAccess.accessMetadata.accessToken,
+    secretUserId: args.userId,
+  };
+  const currentAccessToken = await getSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: context.secretUserId,
+    name: context.accessTokenSecret,
+    type: "connector",
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  if (
+    currentAccessToken &&
+    shouldUseCurrentTokenExchangeAccess({
+      accessToken: currentAccessToken,
+      sourceState: connectorAccess,
+      forceRefresh: args.forceRefresh,
+    })
+  ) {
+    return {
+      ok: true,
+      status: "current",
+      accessToken: currentAccessToken,
+    };
+  }
+
+  if (connectorAccess.needsReconnect) {
+    return refreshFailedResult("reconnect_required");
+  }
+
+  const grantValues = await loadConnectorTokenExchangeGrantValues({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorType: parsedConnectorType.data,
+    authMethod: connectorAccess.authMethod,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  if (!grantValues) {
+    return sourceMissingResult();
+  }
+
+  const exchangeSignal = firewallAuthRefreshTimeoutSignal();
+  const exchangeResult = await settle(
+    exchangeConnectorAuthProviderAccessToken({
+      type: parsedConnectorType.data,
+      authMethod: connectorAccess.authMethod,
+      secrets: grantValues.secrets,
+      variables: grantValues.variables,
+      signal: exchangeSignal,
+    }),
+  );
+  if (!exchangeResult.ok) {
+    const message =
+      exchangeResult.error instanceof Error
+        ? exchangeResult.error.message
+        : "Unknown error";
+    L.warn(`${args.connectorType} token exchange failed: ${message}`, {
+      connectorType: args.connectorType,
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    return refreshFailedResult(
+      classifyRefreshFailure(exchangeResult.error, exchangeSignal)
+        .failureReason,
+    );
+  }
+
+  await markTokenExchangeSuccess(
+    {
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorType: parsedConnectorType.data,
+      featureSwitchContext: args.featureSwitchContext,
+    },
+    context,
+    exchangeResult.value,
+  );
+  L.debug(`${args.connectorType} access token exchanged successfully`);
+  return {
+    ok: true,
+    status: "refreshed",
+    accessToken: exchangeResult.value.accessToken,
+  };
+}
+
 async function markRefreshFailure(
   args: RefreshAccessTokenArgs,
   context: RefreshTokenContext,
@@ -1709,6 +1995,38 @@ function buildRefreshableMap(
   return refreshable;
 }
 
+function buildTokenExchangeableMap(
+  secretConnectorMap: Record<string, string>,
+  secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined,
+  connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>,
+  referencedKeys: Set<string>,
+): Map<string, string> {
+  const exchangeable = new Map<string, string>();
+  for (const key of referencedKeys) {
+    const connectorType = secretConnectorMap[key];
+    if (!connectorType) {
+      continue;
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "connector") {
+      continue;
+    }
+    const connectorAccess = connectorAccessByType.get(connectorType);
+    if (
+      connectorAccess?.accessMetadata.kind === "token-exchange" &&
+      isSelectedAccessSecretKey(key, connectorAccess)
+    ) {
+      exchangeable.set(key, connectorType);
+    }
+  }
+  return exchangeable;
+}
+
 function getOwnConnectorOwner(
   secretConnectorMap: Record<string, string> | undefined,
   key: string,
@@ -1730,7 +2048,8 @@ function connectorAccessSecretName(
   connectorAccess: ConnectorAccessState,
 ): string | undefined {
   switch (connectorAccess.accessMetadata.kind) {
-    case "refresh-token": {
+    case "refresh-token":
+    case "token-exchange": {
       const secretName = connectorRuntimeSecretName(
         key,
         connectorAccess.storageMetadata,
@@ -1933,7 +2252,10 @@ function canResolveMissingAccessSecret(args: {
   }
 
   const connectorAccess = args.connectorAccessByType.get(connectorType);
-  if (connectorAccess?.accessMetadata.kind !== "refresh-token") {
+  if (
+    connectorAccess?.accessMetadata.kind !== "refresh-token" &&
+    connectorAccess?.accessMetadata.kind !== "token-exchange"
+  ) {
     return false;
   }
   return isSelectedAccessSecretKey(args.key, connectorAccess);
@@ -2303,6 +2625,53 @@ async function refreshSelectedTokens(
   );
 }
 
+async function exchangeSelectedTokenExchangeTokens(
+  context: RefreshBatchContext,
+  connectorTypes: readonly string[],
+): Promise<readonly RefreshExecutionResult[]> {
+  return await Promise.all(
+    connectorTypes.map(async (connectorType) => {
+      L.debug(
+        `[${context.auth.runId}] Exchanging ${connectorType} access token`,
+      );
+      const exchangeResult = await exchangeAccessTokenForConnectorSource({
+        db: context.db,
+        connectorType,
+        orgId: context.orgId,
+        userId: context.userId,
+        forceRefresh: context.forceRefresh,
+        connectorAccessByType: context.connectorAccessByType,
+        featureSwitchContext: context.featureSwitchContext,
+      });
+      if (!exchangeResult.ok) {
+        L.warn(
+          `[${context.auth.runId}] Failed to exchange ${connectorType} token`,
+          { reason: exchangeResult.reason },
+        );
+        if (exchangeResult.reason === "source-missing") {
+          return {
+            connectorType,
+            status: "source-missing",
+          };
+        }
+        return {
+          connectorType,
+          status: "failed",
+          ...(exchangeResult.failureReason
+            ? { failureReason: exchangeResult.failureReason }
+            : {}),
+        };
+      }
+
+      for (const envVar of context.envVarsByConnector.get(connectorType) ??
+        []) {
+        context.secrets[envVar] = exchangeResult.accessToken;
+      }
+      return { connectorType, status: exchangeResult.status };
+    }),
+  );
+}
+
 async function syncSkippedTokens(
   context: RefreshBatchContext,
   skippedTypes: readonly string[],
@@ -2575,6 +2944,95 @@ async function refreshExpiredTokens(
   };
 }
 
+async function resolveTokenExchangeAccess(
+  args: RefreshExpiredTokensArgs,
+): Promise<RefreshResult> {
+  const exchangeable = buildTokenExchangeableMap(
+    args.secretConnectorMap,
+    args.secretConnectorMetadataMap,
+    args.connectorAccessByType,
+    args.referencedKeys,
+  );
+  if (exchangeable.size === 0) {
+    return emptyRefreshResult;
+  }
+
+  const connectorTypes = [...new Set(exchangeable.values())];
+  const metadataByConnector = buildMetadataByConnector(
+    exchangeable,
+    args.secretConnectorMetadataMap,
+  );
+  const currentSnapshot = await loadCurrentSourceStateSnapshot({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    connectorTypes,
+    metadataByConnector,
+  });
+  const toExchange = connectorTypesNeedingRefresh({
+    connectorTypes,
+    sourceStateMap: currentSnapshot.sourceStateMap,
+    forceRefresh: args.forceRefresh,
+  });
+  const envVarsByConnector = buildEnvVarsByConnector(exchangeable);
+  const context = {
+    db: args.db,
+    auth: args.auth,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    secrets: args.secrets,
+    forceRefresh: args.forceRefresh,
+    forceRefreshStartedAtMicros: args.forceRefreshStartedAtMicros,
+    metadataByConnector,
+    connectorAccessByType: currentSnapshot.connectorAccessByType,
+    envVarsByConnector,
+    featureSwitchContext: args.featureSwitchContext,
+  } satisfies RefreshBatchContext;
+  const selectedResults = await exchangeSelectedTokenExchangeTokens(
+    context,
+    toExchange,
+  );
+  const skippedTypes = connectorTypes.filter((connectorType) => {
+    return !toExchange.includes(connectorType);
+  });
+  const skippedResults = await syncSkippedTokens(
+    context,
+    skippedTypes,
+    currentSnapshot.sourceStateMap,
+  );
+  const exchangeResults = [...selectedResults, ...skippedResults];
+  const summary = summarizeRefreshResults(exchangeResults, envVarsByConnector);
+  const hasCurrentOrExchanged = exchangeResults.some((result) => {
+    return result.status === "current" || result.status === "refreshed";
+  });
+  const finalConnectorAccessByType = hasCurrentOrExchanged
+    ? new Map([
+        ...currentSnapshot.connectorAccessByType,
+        ...(await loadConnectorAccessStates(
+          args.db,
+          args.orgId,
+          args.auth.userId,
+          connectorTypes,
+        )),
+      ])
+    : currentSnapshot.connectorAccessByType;
+  const finalSourceStateMap = hasCurrentOrExchanged
+    ? await getSourceStateByProviderKey({
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.auth.userId,
+        connectorTypes,
+        metadataByConnector,
+        connectorAccessByType: finalConnectorAccessByType,
+      })
+    : currentSnapshot.sourceStateMap;
+
+  return {
+    expiresAt: earliestConnectorExpiry(connectorTypes, finalSourceStateMap),
+    ...summary,
+  };
+}
+
 function collectReferencedKeys(
   authHeaders: Record<string, string>,
   authBase?: string,
@@ -2749,6 +3207,95 @@ function resolveTemplates(
   };
 }
 
+interface ConnectorAccessResolutionSummary {
+  readonly expiresAt: number | null;
+  readonly refreshedConnectors: readonly string[];
+  readonly refreshedSecrets: readonly string[];
+}
+
+async function resolveConnectorAccessForFirewall(args: {
+  readonly db: Db;
+  readonly auth: SandboxAuth;
+  readonly body: FirewallAuthBody;
+  readonly orgId: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+  readonly secrets: Record<string, string>;
+  readonly referencedSecrets: Set<string>;
+  readonly connectorAccessByType: ReadonlyMap<string, ConnectorAccessState>;
+  readonly forceRefreshStartedAtMicros: bigint | null;
+}): Promise<
+  | { readonly ok: true; readonly summary: ConnectorAccessResolutionSummary }
+  | { readonly ok: false; readonly response: ResolveFirewallAuthResult }
+> {
+  if (!args.body.secretConnectorMap) {
+    return {
+      ok: true,
+      summary: {
+        expiresAt: null,
+        refreshedConnectors: [],
+        refreshedSecrets: [],
+      },
+    };
+  }
+
+  const commonArgs = {
+    db: args.db,
+    auth: args.auth,
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: args.referencedSecrets,
+    connectorAccessByType: args.connectorAccessByType,
+    orgId: args.orgId,
+    featureSwitchContext: args.featureSwitchContext,
+    forceRefresh: args.body.forceRefresh ?? false,
+    forceRefreshStartedAtMicros: args.forceRefreshStartedAtMicros,
+  };
+
+  const refreshResult = await refreshExpiredTokens(commonArgs);
+  if (refreshResult.unavailableConnectors.length > 0) {
+    return { ok: false, response: connectorNotConfigured() };
+  }
+  if (refreshResult.failedConnectors.length > 0) {
+    return {
+      ok: false,
+      response: tokenRefreshFailed(
+        refreshResult.failedConnectors,
+        refreshResult.failureReason,
+      ),
+    };
+  }
+
+  const exchangeResult = await resolveTokenExchangeAccess(commonArgs);
+  if (exchangeResult.unavailableConnectors.length > 0) {
+    return { ok: false, response: connectorNotConfigured() };
+  }
+  if (exchangeResult.failedConnectors.length > 0) {
+    return {
+      ok: false,
+      response: tokenAccessResolutionFailed(exchangeResult.failedConnectors),
+    };
+  }
+
+  return {
+    ok: true,
+    summary: {
+      expiresAt:
+        exchangeResult.expiresAt === null
+          ? refreshResult.expiresAt
+          : mergeExpiresAt(refreshResult.expiresAt, exchangeResult.expiresAt),
+      refreshedConnectors: [
+        ...refreshResult.refreshedConnectors,
+        ...exchangeResult.refreshedConnectors,
+      ],
+      refreshedSecrets: [
+        ...refreshResult.refreshedSecrets,
+        ...exchangeResult.refreshedSecrets,
+      ],
+    },
+  };
+}
+
 export async function resolveFirewallAuth(
   db: Db,
   auth: SandboxAuth,
@@ -2794,42 +3341,22 @@ export async function resolveFirewallAuth(
     return billableCacheExpiry;
   }
 
-  let expiresAt: number | null = null;
-  let refreshedConnectors: readonly string[] = [];
-  let refreshedSecrets: readonly string[] = [];
-  let failedConnectors: readonly string[] = [];
-  let unavailableConnectors: readonly string[] = [];
-  let failureReason: FirewallAuthFailureReason | undefined;
-
-  if (body.secretConnectorMap) {
-    const result = await refreshExpiredTokens({
-      db,
-      auth,
-      secrets: decryptedSecrets,
-      secretConnectorMap: body.secretConnectorMap,
-      secretConnectorMetadataMap: body.secretConnectorMetadataMap,
-      referencedKeys: referenced.secrets,
-      connectorAccessByType,
-      orgId: decrypted.orgId,
-      featureSwitchContext: decrypted.featureSwitchContext,
-      forceRefresh: body.forceRefresh ?? false,
-      forceRefreshStartedAtMicros,
-    });
-    expiresAt = result.expiresAt;
-    refreshedConnectors = result.refreshedConnectors;
-    refreshedSecrets = result.refreshedSecrets;
-    failedConnectors = result.failedConnectors;
-    unavailableConnectors = result.unavailableConnectors;
-    failureReason = result.failureReason;
+  const accessResolution = await resolveConnectorAccessForFirewall({
+    db,
+    auth,
+    body,
+    orgId: decrypted.orgId,
+    featureSwitchContext: decrypted.featureSwitchContext,
+    secrets: decryptedSecrets,
+    referencedSecrets: referenced.secrets,
+    connectorAccessByType,
+    forceRefreshStartedAtMicros,
+  });
+  if (!accessResolution.ok) {
+    return accessResolution.response;
   }
-
-  if (unavailableConnectors.length > 0) {
-    return connectorNotConfigured();
-  }
-
-  if (failedConnectors.length > 0) {
-    return tokenRefreshFailed(failedConnectors, failureReason);
-  }
+  const { expiresAt, refreshedConnectors, refreshedSecrets } =
+    accessResolution.summary;
 
   if (hasMissingResolvedSecrets(decryptedSecrets, referenced.secrets)) {
     return tokenAccessResolutionFailed(

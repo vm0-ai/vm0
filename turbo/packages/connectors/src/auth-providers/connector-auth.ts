@@ -11,6 +11,7 @@ import {
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
   type RefreshTokenAccessConnectorType,
+  type TokenExchangeAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -27,8 +28,10 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
+  ConnectorTokenExchangeResult,
   DeviceAuthConnectorAuthProvider,
   RefreshTokenAccessProvider,
+  TokenExchangeAccessProvider,
 } from "./types";
 import {
   type AuthUrlResult,
@@ -99,6 +102,7 @@ import {
   testOauthProvider,
 } from "./oauth/providers/test-oauth-provider";
 import { testOauthDeviceProvider } from "./oauth/providers/test-oauth-device-provider";
+import { larkProvider } from "./token-exchange/lark-provider";
 
 export type {
   AuthUrlResult,
@@ -152,6 +156,15 @@ type ConnectorRefreshTokenAccessProviderEntries<Type extends ConnectorType> = {
   };
 };
 
+type ConnectorTokenExchangeAccessProviderEntries<Type extends ConnectorType> = {
+  readonly [Method in ConnectorAuthMethodIdsByAccessKind<
+    Type,
+    "token-exchange"
+  >]: ConnectorAuthMethodProviderEntry<Type> & {
+    readonly access: TokenExchangeAccessProvider;
+  };
+};
+
 type ConnectorTokenRevokeProviderEntries<Type extends ConnectorType> = {
   readonly [Method in ConnectorAuthMethodIdsByRevokeKind<
     Type,
@@ -169,6 +182,7 @@ export interface ConnectorAuthProviderClientArgs {
 type ConnectorProviderBackedType =
   | ConnectorAuthProviderType
   | RefreshTokenAccessConnectorType
+  | TokenExchangeAccessConnectorType
   | TokenRevokeConnectorType;
 
 type ConnectorAuthCodeGrantProvider<Type extends AuthCodeGrantConnectorType> =
@@ -193,9 +207,9 @@ interface ConnectorTokenRevokeProvider {
 
 interface ConnectorAuthMethodProviderEntry<Type extends ConnectorType> {
   readonly grant?: ConnectorAuthMethodGrantProvider<Type>;
-  readonly access?: RefreshTokenAccessProvider<
-    Type & RefreshTokenAccessConnectorType
-  >;
+  readonly access?:
+    | RefreshTokenAccessProvider<Type & RefreshTokenAccessConnectorType>
+    | TokenExchangeAccessProvider;
   readonly revoke?: ConnectorTokenRevokeProvider;
 }
 
@@ -204,6 +218,7 @@ type ConnectorProviderBackedAuthMethodEntries<
 > = ConnectorAuthCodeGrantProviderEntries<Type> &
   ConnectorDeviceAuthGrantProviderEntries<Type> &
   ConnectorRefreshTokenAccessProviderEntries<Type> &
+  ConnectorTokenExchangeAccessProviderEntries<Type> &
   ConnectorTokenRevokeProviderEntries<Type>;
 
 type ConnectorAuthMethodProviderRegistry = {
@@ -283,11 +298,31 @@ function deviceAuthRefreshProviderEntry<
   return { grant: provider.grant, access: provider.access };
 }
 
+function tokenExchangeAccessProviderEntry<
+  Type extends TokenExchangeAccessConnectorType,
+>(
+  provider: TokenExchangeAccessProvider,
+): ConnectorAuthMethodProviderEntry<Type> & {
+  readonly access: TokenExchangeAccessProvider;
+} {
+  return { access: provider };
+}
+
 function connectorRefreshTokenAccessProviderFor<
   T extends RefreshTokenAccessConnectorType,
 >(type: T, authMethod: string): RefreshTokenAccessProvider<T> | undefined {
   const provider = connectorAuthMethodProviderEntryFor(type, authMethod);
   if (provider?.access?.kind === "refresh-token") {
+    return provider.access;
+  }
+  return undefined;
+}
+
+function connectorTokenExchangeAccessProviderFor<
+  T extends TokenExchangeAccessConnectorType,
+>(type: T, authMethod: string): TokenExchangeAccessProvider | undefined {
+  const provider = connectorAuthMethodProviderEntryFor(type, authMethod);
+  if (provider?.access?.kind === "token-exchange") {
     return provider.access;
   }
   return undefined;
@@ -465,6 +500,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDERS = {
   "intervals-icu": {
     oauth: authCodeProviderEntry(intervalsIcuProvider),
   },
+  lark: { "api-token": tokenExchangeAccessProviderEntry(larkProvider) },
   linear: { oauth: authCodeRefreshTokenRevokeProviderEntry(linearProvider) },
   mailchimp: { oauth: authCodeProviderEntry(mailchimpProvider) },
   mercury: { oauth: authCodeRefreshProviderEntry(mercuryProvider) },
@@ -663,6 +699,37 @@ export async function refreshConnectorAuthProviderAccessToken<
       signal: args.signal,
     }),
   );
+}
+
+export async function exchangeConnectorAuthProviderAccessToken<
+  T extends TokenExchangeAccessConnectorType,
+>(args: {
+  readonly type: T;
+  readonly authMethod: string;
+  readonly secrets: Readonly<Record<string, string>>;
+  readonly variables: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}): Promise<ConnectorTokenExchangeResult> {
+  const method = getConnectorAuthMethod(args.type, args.authMethod);
+  if (method?.access.kind !== "token-exchange") {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} does not support token exchange`,
+    );
+  }
+  const access = connectorTokenExchangeAccessProviderFor(
+    args.type,
+    args.authMethod,
+  );
+  if (!access) {
+    throw new Error(
+      `${args.type} connector auth method ${args.authMethod} has no token-exchange access provider`,
+    );
+  }
+  return await access.exchangeToken({
+    secrets: args.secrets,
+    variables: args.variables,
+    signal: args.signal,
+  });
 }
 
 export async function revokeConnectorAuthMethodAccessToken<

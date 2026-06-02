@@ -351,7 +351,11 @@ export type ConnectorGrantConfig =
   | ConnectorDeviceAuthGrantConfig
   | ConnectorManagedGrantConfig;
 
-export type ConnectorAccessKind = "static" | "refresh-token" | "none";
+export type ConnectorAccessKind =
+  | "static"
+  | "refresh-token"
+  | "token-exchange"
+  | "none";
 
 export type ConnectorEnvBindings = Record<string, string>;
 
@@ -391,6 +395,10 @@ export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAc
   readonly tokenUrl: string;
 }
 
+export interface ConnectorTokenExchangeAccessConfig extends ConnectorEnvBindingAccessConfigBase {
+  readonly kind: "token-exchange";
+}
+
 export interface ConnectorNoAccessConfig {
   readonly kind: "none";
 }
@@ -398,6 +406,7 @@ export interface ConnectorNoAccessConfig {
 export type ConnectorAccessConfig =
   | ConnectorStaticAccessConfig
   | ConnectorRefreshTokenAccessConfig
+  | ConnectorTokenExchangeAccessConfig
   | ConnectorNoAccessConfig;
 
 export type ConnectorRevokeKind = "none" | "token-revoke";
@@ -713,6 +722,13 @@ type ConnectorStaticProviderSecretRoles<Storage> =
     readonly accessToken: ConnectorStorageSecretName<Storage>;
   };
 
+type ConnectorTokenExchangeSecretRoles<Storage> = ValidatedConnectorSecretRoles<
+  ConnectorSecretRolesFromStorage<Storage>,
+  Storage
+> & {
+  readonly accessToken: ConnectorStorageSecretName<Storage>;
+};
+
 type ValidatedConnectorStorageSecretRolesProperty<Method, Storage> =
   Method extends {
     readonly access: { readonly kind: "refresh-token" };
@@ -721,20 +737,26 @@ type ValidatedConnectorStorageSecretRolesProperty<Method, Storage> =
         readonly secretRoles: ConnectorRefreshSecretRoles<Storage>;
       }
     : Method extends {
-          readonly grant: { readonly kind: "auth-code" | "device-auth" };
-          readonly access: { readonly kind: "static" };
+          readonly access: { readonly kind: "token-exchange" };
         }
       ? {
-          readonly secretRoles: ConnectorStaticProviderSecretRoles<Storage>;
+          readonly secretRoles: ConnectorTokenExchangeSecretRoles<Storage>;
         }
-      : Storage extends { readonly secretRoles: infer Bindings }
-        ? {
-            readonly secretRoles: ValidatedConnectorSecretRoles<
-              Bindings,
-              Storage
-            >;
+      : Method extends {
+            readonly grant: { readonly kind: "auth-code" | "device-auth" };
+            readonly access: { readonly kind: "static" };
           }
-        : { readonly secretRoles?: ConnectorSecretRolesConfig };
+        ? {
+            readonly secretRoles: ConnectorStaticProviderSecretRoles<Storage>;
+          }
+        : Storage extends { readonly secretRoles: infer Bindings }
+          ? {
+              readonly secretRoles: ValidatedConnectorSecretRoles<
+                Bindings,
+                Storage
+              >;
+            }
+          : { readonly secretRoles?: ConnectorSecretRolesConfig };
 
 type ValidatedConnectorAuthMethod<Method> = Method extends {
   readonly storage: infer Storage;
@@ -1132,6 +1154,8 @@ export type ConnectorDeviceAuthGrantAuthMethodId<
 > = ConnectorAuthMethodIdsByGrantKind<Type, "device-auth">;
 export type RefreshTokenAccessConnectorType =
   ConnectorTypesByAccessKind<"refresh-token">;
+export type TokenExchangeAccessConnectorType =
+  ConnectorTypesByAccessKind<"token-exchange">;
 export type TokenRevokeConnectorType =
   ConnectorTypesByRevokeKind<"token-revoke">;
 type TokenRevokeConnectorTypeWithNonConfidentialClient = {

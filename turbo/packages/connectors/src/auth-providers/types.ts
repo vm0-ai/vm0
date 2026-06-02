@@ -7,6 +7,7 @@ import type {
   ConnectorType,
   DeviceAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
+  TokenExchangeAccessConnectorType,
   TokenRevokeConnectorType,
 } from "../connectors";
 import type {
@@ -74,10 +75,31 @@ export interface RefreshTokenAccessProvider<
   ): Promise<OAuthRefreshResult>;
 }
 
+export interface ConnectorTokenExchangeArgs {
+  readonly secrets: Readonly<Record<string, string>>;
+  readonly variables: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}
+
+export interface ConnectorTokenExchangeResult {
+  readonly accessToken: string;
+  readonly expiresIn: number;
+}
+
+export interface TokenExchangeAccessProvider {
+  readonly kind: "token-exchange";
+  getAccessSecretName(): string;
+  exchangeToken(
+    args: ConnectorTokenExchangeArgs,
+  ): Promise<ConnectorTokenExchangeResult>;
+}
+
 export type ConnectorAuthProviderAccess<T extends ConnectorType> =
   T extends RefreshTokenAccessConnectorType
     ? RefreshTokenAccessProvider<T>
-    : NoneAccessProvider;
+    : T extends TokenExchangeAccessConnectorType
+      ? TokenExchangeAccessProvider
+      : NoneAccessProvider;
 
 interface NoneRevokeProvider {
   readonly kind: "none";

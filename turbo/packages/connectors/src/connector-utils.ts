@@ -31,6 +31,7 @@ import {
   type RefreshTokenAccessConnectorType,
   type StaticConfidentialConnectorAuthClientConfig,
   type StaticPublicConnectorAuthClientConfig,
+  type TokenExchangeAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "./connectors";
 import type { FeatureSwitchKey } from "./feature-switch-key";
@@ -233,6 +234,7 @@ function connectorAccessEnvBindings(
   switch (access.kind) {
     case "static":
     case "refresh-token":
+    case "token-exchange":
       return access.envBindings;
     case "none":
       return {};
@@ -245,6 +247,7 @@ function connectorAccessPlatformSecrets(
   switch (access.kind) {
     case "static":
     case "refresh-token":
+    case "token-exchange":
       return access.platformSecrets ?? [];
     case "none":
       return [];
@@ -262,6 +265,12 @@ export type ConnectorAuthMethodAccessMetadata =
       readonly kind: "refresh-token";
       readonly accessToken: string;
       readonly refreshToken: string;
+      readonly envBindings: ConnectorEnvBindings;
+      readonly platformSecrets: readonly ConnectorPlatformSecretName[];
+    }
+  | {
+      readonly kind: "token-exchange";
+      readonly accessToken: string;
       readonly envBindings: ConnectorEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
@@ -349,6 +358,17 @@ export function getConnectorAuthMethodAccessMetadata(
           type,
           authMethod,
           role: "refreshToken",
+        }),
+        envBindings: method.access.envBindings,
+        platformSecrets: method.access.platformSecrets ?? [],
+      };
+    case "token-exchange":
+      return {
+        kind: "token-exchange",
+        accessToken: requireConnectorSecretRole({
+          type,
+          authMethod,
+          role: "accessToken",
         }),
         envBindings: method.access.envBindings,
         platformSecrets: method.access.platformSecrets ?? [],
@@ -545,6 +565,15 @@ export function connectorAuthMethodSupportsRefreshTokenAccess(
 ): type is RefreshTokenAccessConnectorType {
   return (
     getConnectorAuthMethod(type, authMethod)?.access.kind === "refresh-token"
+  );
+}
+
+export function connectorAuthMethodSupportsTokenExchangeAccess(
+  type: ConnectorType,
+  authMethod: string,
+): type is TokenExchangeAccessConnectorType {
+  return (
+    getConnectorAuthMethod(type, authMethod)?.access.kind === "token-exchange"
   );
 }
 

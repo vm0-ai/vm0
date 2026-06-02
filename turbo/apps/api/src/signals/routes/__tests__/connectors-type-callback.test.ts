@@ -1144,6 +1144,11 @@ function accessTokenSecretNameForAuthCodeMethod(
     case "refresh-token": {
       return accessMetadata.accessToken;
     }
+    case "token-exchange": {
+      throw new Error(
+        `${type}: auth-code auth method should not use token-exchange access`,
+      );
+    }
     case "static": {
       const secretName = staticConnectorOwnedAccessSecretName(
         accessMetadata.envBindings,

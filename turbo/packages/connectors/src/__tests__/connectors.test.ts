@@ -298,6 +298,9 @@ describe("connector auth method lifecycle helpers", () => {
     expect(
       getConnectorAuthMethodIdsForAccessKind("test-oauth", "refresh-token"),
     ).toStrictEqual(["oauth", "api"]);
+    expect(
+      getConnectorAuthMethodIdsForAccessKind("lark", "token-exchange"),
+    ).toStrictEqual(["api-token"]);
 
     expect(
       connectorAuthMethodHasGrantKind("github", "oauth", "auth-code"),
@@ -454,6 +457,10 @@ describe("connector auth method config", () => {
     expect(getConnectorManualGrantFieldNames("gitlab")).toStrictEqual({
       secrets: ["GITLAB_TOKEN"],
       variables: ["GITLAB_HOST"],
+    });
+    expect(getConnectorManualGrantFieldNames("lark")).toStrictEqual({
+      secrets: ["LARK_APP_SECRET"],
+      variables: ["LARK_APP_ID"],
     });
     expect(getConnectorManualGrantFieldNames("github")).toBeNull();
   });
@@ -1780,6 +1787,19 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     });
   });
 
+  it("returns token-exchange access metadata for Lark", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("lark", "api-token"),
+    ).toStrictEqual({
+      kind: "token-exchange",
+      accessToken: "LARK_ACCESS_TOKEN",
+      envBindings: {
+        LARK_TOKEN: "$secrets.LARK_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
+    });
+  });
+
   it("returns platform-owned secret metadata for Google Ads", () => {
     expect(
       getConnectorAuthMethodAccessMetadata("google-ads", "oauth"),
@@ -1842,11 +1862,16 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
             ).toBe(false);
           }
         }
-        if (accessMetadata.kind === "refresh-token") {
+        if (
+          accessMetadata.kind === "refresh-token" ||
+          accessMetadata.kind === "token-exchange"
+        ) {
           expect(
             platformSecretNames.has(accessMetadata.accessToken),
             `${type}/${authMethod}: access token storage must stay connector-owned`,
           ).toBe(false);
+        }
+        if (accessMetadata.kind === "refresh-token") {
           expect(
             platformSecretNames.has(accessMetadata.refreshToken),
             `${type}/${authMethod}: refresh token storage must stay connector-owned`,
@@ -1913,6 +1938,30 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
           source: {
             kind: "connector-secret",
             name: "STRIPE_TOKEN",
+          },
+        },
+      ],
+    });
+  });
+
+  it("represents Lark token exchange storage without exposing grant secrets", () => {
+    expect(
+      getConnectorAuthMethodStorageMetadata("lark", "api-token"),
+    ).toStrictEqual({
+      storage: {
+        secrets: ["LARK_APP_SECRET", "LARK_ACCESS_TOKEN"],
+        variables: ["LARK_APP_ID"],
+      },
+      secretRoles: {
+        accessToken: "LARK_ACCESS_TOKEN",
+      },
+      runtimeBindings: [
+        {
+          envName: "LARK_TOKEN",
+          valueRef: "$secrets.LARK_ACCESS_TOKEN",
+          source: {
+            kind: "connector-secret",
+            name: "LARK_ACCESS_TOKEN",
           },
         },
       ],
@@ -2206,9 +2255,11 @@ describe("getConnectorEnvBindingEntries", () => {
     }
   });
 
-  it("api-token-only connectors expose all secrets via envBindings with same name", () => {
+  it("static api-token-only connectors expose all secrets via envBindings with same name", () => {
     for (const type of connectorTypeSchema.options) {
       if (hasConnectorAuthorizationGrant(type)) continue;
+      const method = getConnectorAuthMethod(type, "api-token");
+      if (method?.access.kind !== "static") continue;
       const fields = getApiTokenManualGrantFields(type);
       if (!fields) continue;
 

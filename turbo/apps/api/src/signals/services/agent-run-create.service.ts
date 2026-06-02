@@ -30,6 +30,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import {
   connectorTypeSchema,
+  type ConnectorAccessKind,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
@@ -1552,7 +1553,7 @@ interface StoredConnectorRuntimeRow {
 interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
-  readonly accessKind: "static" | "refresh-token" | "none";
+  readonly accessKind: ConnectorAccessKind;
   readonly accessTokenSecret: string | undefined;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
   readonly optionalSecretNames: ReadonlySet<string>;
@@ -1790,7 +1791,7 @@ function resolveStoredConnectorState(
 
     // Firewall auth templates can only reference env aliases from envBindings;
     // store the alias that points at the access secret, not the backing secret name.
-    if (accessKind === "refresh-token") {
+    if (accessKind === "refresh-token" || accessKind === "token-exchange") {
       for (const { envName, source } of runtimeBindings) {
         if (
           source.kind === "connector-secret" &&
@@ -3017,22 +3018,24 @@ function buildStoredExecutionSecrets(args: {
       args.customConnectorContext.secrets,
     ],
   });
+  const secretConnectorMap =
+    mergeRecords(
+      filteredConnectorMap,
+      args.modelProvider?.secretConnectorMap,
+    ) ?? null;
+  const mergedSecrets = mergeRecords(
+    args.connectorContext.secrets,
+    args.modelProvider?.secrets,
+    args.bodySecrets,
+    args.customConnectorContext.secrets,
+  );
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
   // auth and environment expansion. Stored connectors and model providers enter
   // this map under env binding aliases; raw DB storage names stay behind the
   // access metadata used during refresh/lookup.
   return {
-    secrets: mergeRecords(
-      args.connectorContext.secrets,
-      args.modelProvider?.secrets,
-      args.bodySecrets,
-      args.customConnectorContext.secrets,
-    ),
-    secretConnectorMap:
-      mergeRecords(
-        filteredConnectorMap,
-        args.modelProvider?.secretConnectorMap,
-      ) ?? null,
+    secrets: mergedSecrets ?? (secretConnectorMap ? {} : undefined),
+    secretConnectorMap,
     secretConnectorMetadataMap:
       args.modelProvider?.secretConnectorMetadataMap ?? null,
   };
