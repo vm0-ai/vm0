@@ -300,6 +300,124 @@ class _CompiledRuleCandidate(NamedTuple):
     params: dict[str, str]
 
 
+class _BaseMatch(NamedTuple):
+    base: str
+    name: str
+    rel_path: str
+    api_entry: dict
+    params: dict[str, str]
+
+
+class _AllowedRuleMatch(NamedTuple):
+    api_entry: dict
+    name: str
+    rel_path: str
+    candidate: _CompiledRuleCandidate
+
+
+class _BlockMatch(NamedTuple):
+    base: str
+    name: str
+    method: str
+    rel_path: str
+
+
+class _FirewallDecisionState:
+    """Mutable decision state for the single-pass compiled firewall matcher."""
+
+    __slots__ = (
+        "allowed_match",
+        "base_match",
+        "best_base_specificity",
+        "best_rule_specificity",
+        "denied_match",
+        "denied_permission_names",
+        "malformed_config_match",
+        "malformed_policy_match",
+    )
+
+    allowed_match: _AllowedRuleMatch | None
+    base_match: _BaseMatch | None
+    best_base_specificity: int | None
+    best_rule_specificity: _PathSpecificity | None
+    denied_match: _BlockMatch | None
+    denied_permission_names: list[str]
+    malformed_config_match: _BlockMatch | None
+    malformed_policy_match: _BlockMatch | None
+
+    def __init__(self) -> None:
+        self.allowed_match = None
+        self.base_match = None
+        self.best_base_specificity = None
+        self.best_rule_specificity = None
+        self.denied_match = None
+        self.denied_permission_names = []
+        self.malformed_config_match = None
+        self.malformed_policy_match = None
+
+    def accept_base_match(
+        self,
+        api_entry: _CompiledApi,
+        *,
+        name: str,
+        rel_path: str,
+        base_params: dict[str, str],
+    ) -> bool:
+        if (
+            self.best_base_specificity is None
+            or api_entry.base.specificity > self.best_base_specificity
+        ):
+            self.best_base_specificity = api_entry.base.specificity
+            self.best_rule_specificity = None
+            self.allowed_match = None
+            self.base_match = None
+            self.denied_match = None
+            self.denied_permission_names = []
+            self.malformed_config_match = None
+            self.malformed_policy_match = None
+        elif api_entry.base.specificity < self.best_base_specificity:
+            return False
+
+        if self.base_match is None:
+            self.base_match = _BaseMatch(
+                api_entry.base.raw,
+                name,
+                rel_path,
+                api_entry.raw_api_entry,
+                base_params,
+            )
+        return True
+
+    def record_malformed_config(self, match: _BlockMatch) -> None:
+        if self.malformed_config_match is None:
+            self.malformed_config_match = match
+
+    def record_malformed_policy(self, match: _BlockMatch) -> None:
+        if self.malformed_policy_match is None:
+            self.malformed_policy_match = match
+
+    def accept_rule_candidate(self, candidate: _CompiledRuleCandidate) -> bool:
+        if self.best_rule_specificity is None or candidate.specificity > self.best_rule_specificity:
+            self.best_rule_specificity = candidate.specificity
+            self.allowed_match = None
+            self.denied_match = None
+            self.denied_permission_names = []
+        elif candidate.specificity < self.best_rule_specificity:
+            return False
+
+        return True
+
+    def record_allowed_rule(self, match: _AllowedRuleMatch) -> None:
+        if self.allowed_match is None:
+            self.allowed_match = match
+
+    def record_denied_rule(self, match: _BlockMatch, permission: str) -> None:
+        if permission not in self.denied_permission_names:
+            self.denied_permission_names.append(permission)
+        if self.denied_match is None:
+            self.denied_match = match
+
+
 def _split_base_match_url(
     value: str,
     *,
@@ -1504,6 +1622,92 @@ class FirewallBlock(NamedTuple):
     reason: FirewallBlockReason
 
 
+def _resolve_firewall_decision(
+    state: _FirewallDecisionState,
+    *,
+    compiled_network_policies: CompiledNetworkPolicies,
+    upper_method: str,
+) -> FirewallAllow | FirewallBlock | None:
+    base_match = state.base_match
+    if base_match is None:
+        return None
+
+    if state.allowed_match is not None:
+        allowed_match = state.allowed_match
+        candidate = allowed_match.candidate
+        return _permission_allow(
+            allowed_match.api_entry,
+            name=allowed_match.name,
+            permission=candidate.permission,
+            params=candidate.params,
+            rule=candidate.rule,
+            rel_path=allowed_match.rel_path,
+        )
+    if state.denied_match is not None:
+        denied_match = state.denied_match
+        return FirewallBlock(
+            denied_match.base,
+            denied_match.name,
+            denied_match.method,
+            denied_match.rel_path,
+            tuple(state.denied_permission_names),
+            "permission_denied",
+        )
+    if state.malformed_policy_match is not None:
+        match = state.malformed_policy_match
+        return FirewallBlock(
+            match.base,
+            match.name,
+            match.method,
+            match.rel_path,
+            (),
+            "malformed_network_policy",
+        )
+    if state.malformed_config_match is not None:
+        match = state.malformed_config_match
+        return FirewallBlock(
+            match.base,
+            match.name,
+            match.method,
+            match.rel_path,
+            (),
+            "malformed_firewall_config",
+        )
+
+    blocked_policy = compiled_network_policies.policies.get(base_match.name)
+    if blocked_policy is None:
+        return _unknown_allow(
+            base_match.api_entry,
+            name=base_match.name,
+            params=base_match.params,
+            rel_path=base_match.rel_path,
+        )
+    if blocked_policy.unknown_policy_malformed:
+        return FirewallBlock(
+            base_match.base,
+            base_match.name,
+            upper_method,
+            base_match.rel_path,
+            (),
+            "malformed_network_policy",
+        )
+    if blocked_policy.unknown_policy == "allow":
+        return _unknown_allow(
+            base_match.api_entry,
+            name=base_match.name,
+            params=base_match.params,
+            rel_path=base_match.rel_path,
+        )
+    return FirewallBlock(
+        base_match.base,
+        base_match.name,
+        upper_method,
+        base_match.rel_path,
+        (),
+        "unknown_endpoint",
+    )
+
+
 def match_compiled_firewall_request(
     url: str,
     method: str,
@@ -1535,14 +1739,7 @@ def match_compiled_firewall_request(
 
     upper_method = method.upper()
 
-    best_base_specificity: int | None = None
-    best_rule_specificity: _PathSpecificity | None = None
-    blocked_match: tuple[str, str, str, dict, dict] | None = None
-    allowed_match: tuple[dict, str, str, _CompiledRuleCandidate] | None = None
-    denied_match: tuple[str, str, str, str] | None = None
-    denied_perm_names: list[str] = []
-    malformed_match: tuple[str, str, str, str] | None = None
-    malformed_policy_match: tuple[str, str, str, str] | None = None
+    decision = _FirewallDecisionState()
 
     for fw_entry in compiled_firewalls.firewalls:
         policy = compiled_network_policies.policies.get(fw_entry.name)
@@ -1564,44 +1761,32 @@ def match_compiled_firewall_request(
                     "unsafe_path",
                 )
 
-            if best_base_specificity is None or api_entry.base.specificity > best_base_specificity:
-                best_base_specificity = api_entry.base.specificity
-                best_rule_specificity = None
-                blocked_match = None
-                allowed_match = None
-                denied_match = None
-                denied_perm_names = []
-                malformed_match = None
-                malformed_policy_match = None
-            elif api_entry.base.specificity < best_base_specificity:
+            if not decision.accept_base_match(
+                api_entry,
+                name=fw_entry.name,
+                rel_path=rel_path,
+                base_params=base_params,
+            ):
                 continue
 
-            if blocked_match is None:
-                blocked_match = (
-                    api_entry.base.raw,
-                    fw_entry.name,
-                    rel_path,
-                    api_entry.raw_api_entry,
-                    base_params,
-                )
+            block_match = _BlockMatch(
+                api_entry.base.raw,
+                fw_entry.name,
+                upper_method,
+                rel_path,
+            )
             if (
                 api_entry.base_malformed
                 or api_entry.auth_malformed
                 or api_entry.has_malformed_rules
-            ) and malformed_match is None:
-                malformed_match = (api_entry.base.raw, fw_entry.name, upper_method, rel_path)
+            ):
+                decision.record_malformed_config(block_match)
             if fw_entry.name_malformed or api_entry.base_malformed or api_entry.auth_malformed:
                 continue
             if compiled_network_policies.top_level_malformed or (
                 policy is not None and policy.permission_malformed
             ):
-                if malformed_policy_match is None:
-                    malformed_policy_match = (
-                        api_entry.base.raw,
-                        fw_entry.name,
-                        upper_method,
-                        rel_path,
-                    )
+                decision.record_malformed_policy(block_match)
                 continue
 
             if not api_entry.permissions:
@@ -1617,89 +1802,24 @@ def match_compiled_firewall_request(
                 continue
 
             for candidate in candidates:
-                if best_rule_specificity is None or candidate.specificity > best_rule_specificity:
-                    best_rule_specificity = candidate.specificity
-                    allowed_match = None
-                    denied_match = None
-                    denied_perm_names = []
-                elif candidate.specificity < best_rule_specificity:
+                if not decision.accept_rule_candidate(candidate):
                     continue
 
                 if policy is None or candidate.permission not in policy.blocked_permissions:
-                    if allowed_match is None:
-                        allowed_match = (
+                    decision.record_allowed_rule(
+                        _AllowedRuleMatch(
                             api_entry.raw_api_entry,
                             fw_entry.name,
                             rel_path,
                             candidate,
                         )
+                    )
                     continue
 
-                if candidate.permission not in denied_perm_names:
-                    denied_perm_names.append(candidate.permission)
-                if denied_match is None:
-                    denied_match = (
-                        api_entry.base.raw,
-                        fw_entry.name,
-                        upper_method,
-                        rel_path,
-                    )
+                decision.record_denied_rule(block_match, candidate.permission)
 
-    if blocked_match is not None:
-        blocked_base, blocked_name, blocked_rel_path, first_matched_api_entry, base_params = (
-            blocked_match
-        )
-        if allowed_match is not None:
-            api_entry, name, rel_path, candidate = allowed_match
-            return _permission_allow(
-                api_entry,
-                name=name,
-                permission=candidate.permission,
-                params=candidate.params,
-                rule=candidate.rule,
-                rel_path=rel_path,
-            )
-        if denied_match is not None:
-            return FirewallBlock(
-                *denied_match,
-                tuple(denied_perm_names),
-                "permission_denied",
-            )
-        if malformed_policy_match is not None:
-            return FirewallBlock(*malformed_policy_match, (), "malformed_network_policy")
-        if malformed_match is not None:
-            return FirewallBlock(*malformed_match, (), "malformed_firewall_config")
-
-        blocked_policy = compiled_network_policies.policies.get(blocked_name)
-        if blocked_policy is None:
-            return _unknown_allow(
-                first_matched_api_entry,
-                name=blocked_name,
-                params=base_params,
-                rel_path=blocked_rel_path,
-            )
-        if blocked_policy.unknown_policy_malformed:
-            return FirewallBlock(
-                blocked_base,
-                blocked_name,
-                upper_method,
-                blocked_rel_path,
-                (),
-                "malformed_network_policy",
-            )
-        if blocked_policy.unknown_policy == "allow":
-            return _unknown_allow(
-                first_matched_api_entry,
-                name=blocked_name,
-                params=base_params,
-                rel_path=blocked_rel_path,
-            )
-        return FirewallBlock(
-            blocked_base,
-            blocked_name,
-            upper_method,
-            blocked_rel_path,
-            (),
-            "unknown_endpoint",
-        )
-    return None
+    return _resolve_firewall_decision(
+        decision,
+        compiled_network_policies=compiled_network_policies,
+        upper_method=upper_method,
+    )
