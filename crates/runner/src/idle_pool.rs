@@ -33,6 +33,9 @@ pub struct StorageFingerprints {
     pub artifacts: HashMap<String, (String, String)>,
 }
 
+const TAINTED_STORAGE_FINGERPRINT_NAME: &str = "\0vm0-tainted-storage\0";
+const TAINTED_STORAGE_FINGERPRINT_VERSION: &str = "\0vm0-tainted-storage\0";
+
 impl StorageFingerprints {
     pub fn from_manifest(manifest: &StorageManifest) -> Self {
         let mut storages = HashMap::new();
@@ -53,6 +56,32 @@ impl StorageFingerprints {
             storages,
             artifacts,
         }
+    }
+
+    pub(crate) fn tainted_paths(&self) -> Self {
+        let tainted = || {
+            (
+                TAINTED_STORAGE_FINGERPRINT_NAME.to_owned(),
+                TAINTED_STORAGE_FINGERPRINT_VERSION.to_owned(),
+            )
+        };
+        Self {
+            storages: self
+                .storages
+                .keys()
+                .map(|path| (path.clone(), tainted()))
+                .collect(),
+            artifacts: self
+                .artifacts
+                .keys()
+                .map(|path| (path.clone(), tainted()))
+                .collect(),
+        }
+    }
+
+    pub(crate) fn fingerprint_is_tainted(fingerprint: &(String, String)) -> bool {
+        fingerprint.0 == TAINTED_STORAGE_FINGERPRINT_NAME
+            && fingerprint.1 == TAINTED_STORAGE_FINGERPRINT_VERSION
     }
 }
 

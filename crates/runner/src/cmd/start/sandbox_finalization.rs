@@ -522,11 +522,12 @@ async fn promote_workspace_image_from_active_sandbox(
         }
     }
 
-    let empty_storage_fingerprints = StorageFingerprints::default();
+    let tainted_storage_fingerprints;
     let promotion_storage_fingerprints = match terminal_status {
         WorkspaceCacheTerminalStatus::Success => storage_fingerprints,
         WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
-            &empty_storage_fingerprints
+            tainted_storage_fingerprints = storage_fingerprints.tainted_paths();
+            &tainted_storage_fingerprints
         }
     };
 
@@ -898,11 +899,18 @@ mod tests {
         let previous_storage = checkout
             .previous_storage()
             .expect("cache hit should expose previous storage fingerprints");
-        assert!(
-            previous_storage.storages.is_empty(),
-            "non-success promotion must not let future runs skip storage downloads"
-        );
-        assert!(previous_storage.artifacts.is_empty());
+        assert!(StorageFingerprints::fingerprint_is_tainted(
+            previous_storage
+                .storages
+                .get(CANONICAL_WORKING_DIR)
+                .expect("storage path should be retained for cleanup")
+        ));
+        assert!(StorageFingerprints::fingerprint_is_tainted(
+            previous_storage
+                .artifacts
+                .get(&format!("{CANONICAL_WORKING_DIR}/artifact"))
+                .expect("artifact path should be retained for cleanup")
+        ));
     }
 
     #[tokio::test]
