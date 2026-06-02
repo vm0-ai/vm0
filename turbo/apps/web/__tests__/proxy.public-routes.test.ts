@@ -107,6 +107,22 @@ describe("proxy middleware: public routes", () => {
     expect(clerkState.protectedPaths).toEqual([]);
   });
 
+  it("keeps locale-prefixed ai-cofounder landing public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/ai-cofounder");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-less ai-cofounder landing public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/ai-cofounder");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
   it("keeps locale-prefixed report gallery public", async () => {
     const request = new NextRequest("https://www.vm0.ai/en/report");
 
