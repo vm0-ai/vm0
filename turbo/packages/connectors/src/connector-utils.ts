@@ -761,8 +761,10 @@ export type ConnectorAuthMethodClientRef<
   readonly authClient: ConnectorAuthClientForMethod<Type, Method>;
 };
 
+export type ConnectorAuthClientGrantKind = "auth-code" | "device-auth";
+
 export type ConnectorAuthMethodClientRefByGrantKind<
-  Kind extends ConnectorGrantKind,
+  Kind extends ConnectorAuthClientGrantKind,
 > = {
   readonly [Type in ConnectorTypesByGrantKind<Kind>]: {
     readonly [Method in ConnectorAuthMethodIdsByGrantKind<
@@ -773,7 +775,7 @@ export type ConnectorAuthMethodClientRefByGrantKind<
 }[ConnectorTypesByGrantKind<Kind>];
 
 export type ConnectorAuthMethodClientRefByAccessKind<
-  Kind extends ConnectorAccessKind,
+  Kind extends "refresh-token",
 > = {
   readonly [Type in ConnectorTypesByAccessKind<Kind>]: {
     readonly [Method in ConnectorAuthMethodIdsByAccessKind<
@@ -927,7 +929,7 @@ export function resolveConnectorAuthMethodClientRefByGrantKind(
   readEnv: ConnectorEnvReader,
 ): ConnectorAuthMethodClientRefByGrantKind<"device-auth"> | undefined;
 export function resolveConnectorAuthMethodClientRefByGrantKind(
-  authMethodRef: ConnectorAuthMethodRefByGrantKind<"auth-code" | "device-auth">,
+  authMethodRef: ConnectorAuthMethodRefByGrantKind<ConnectorAuthClientGrantKind>,
   readEnv: ConnectorEnvReader,
 ): ResolvedConnectorAuthMethodClientRef | undefined {
   return resolveConnectorAuthMethodClientRef(authMethodRef, readEnv);
