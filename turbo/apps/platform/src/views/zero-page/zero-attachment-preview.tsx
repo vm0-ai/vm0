@@ -1,8 +1,4 @@
-import {
-  useState,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import {
   IconChevronDown,
   IconChevronUp,
@@ -220,9 +216,7 @@ function HtmlSitePreviewCard({
 }) {
   const publicUrl = publicAttachmentUrl(url);
   const openDocument = useSet(openDocumentLightboxOrArtifact$);
-  const fallbackTitle = fallbackHtmlPreviewTitle(filename, url);
-  const [iframeTitle, setIframeTitle] = useState<string | null>(null);
-  const title = iframeTitle ?? fallbackTitle;
+  const title = fallbackHtmlPreviewTitle(filename, url);
 
   return (
     <a
@@ -257,17 +251,6 @@ function HtmlSitePreviewCard({
           tabIndex={-1}
           loading="lazy"
           scrolling="no"
-          onLoad={(event) => {
-            try {
-              const loadedTitle =
-                event.currentTarget.contentDocument?.title.trim() ?? "";
-              if (loadedTitle) {
-                setIframeTitle(loadedTitle);
-              }
-            } catch {
-              // Cross-origin hosted sites cannot expose their document title.
-            }
-          }}
           className="pointer-events-none h-full w-full origin-top-left bg-background transition-transform duration-200 group-hover/site-preview:scale-[1.01]"
         />
       </div>
