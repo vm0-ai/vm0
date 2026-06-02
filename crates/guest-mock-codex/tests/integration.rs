@@ -193,7 +193,7 @@ fn resume_with_unknown_id_starts_fresh_with_supplied_id() {
 }
 
 #[test]
-fn resume_rejects_absolute_thread_id_without_writing_events_or_files() {
+fn resume_rejects_absolute_thread_id_without_events_or_artifacts() {
     let codex_dir = TempDir::new().unwrap();
     let outside_dir = TempDir::new().unwrap();
     let outside_target = outside_dir.path().join("escape");
@@ -213,7 +213,7 @@ fn resume_rejects_absolute_thread_id_without_writing_events_or_files() {
 }
 
 #[test]
-fn resume_rejects_traversal_thread_id_without_writing_events_or_files() {
+fn resume_rejects_traversal_thread_id_without_events_or_artifacts() {
     let dir = TempDir::new().unwrap();
 
     let out = run(dir.path(), &["exec", "resume", "../escape", "--", "hi"]).unwrap();
@@ -221,7 +221,7 @@ fn resume_rejects_traversal_thread_id_without_writing_events_or_files() {
 }
 
 #[test]
-fn resume_rejects_nested_thread_id_without_writing_events_or_files() {
+fn resume_rejects_nested_thread_id_without_events_or_artifacts() {
     let dir = TempDir::new().unwrap();
 
     let out = run(dir.path(), &["exec", "resume", "nested/id", "--", "hi"]).unwrap();
@@ -229,7 +229,7 @@ fn resume_rejects_nested_thread_id_without_writing_events_or_files() {
 }
 
 #[test]
-fn resume_rejects_non_uuid_thread_id_without_writing_events_or_files() {
+fn resume_rejects_non_uuid_thread_id_without_events_or_artifacts() {
     let dir = TempDir::new().unwrap();
 
     let out = run(dir.path(), &["exec", "resume", "xyz-uuid", "--", "hi"]).unwrap();
@@ -237,7 +237,7 @@ fn resume_rejects_non_uuid_thread_id_without_writing_events_or_files() {
 }
 
 #[test]
-fn resume_rejects_uppercase_uuid_thread_id_without_writing_events_or_files() {
+fn resume_rejects_uppercase_uuid_thread_id_without_events_or_artifacts() {
     let dir = TempDir::new().unwrap();
 
     let out = run(
@@ -255,7 +255,7 @@ fn resume_rejects_uppercase_uuid_thread_id_without_writing_events_or_files() {
 }
 
 #[test]
-fn resume_rejects_simple_uuid_thread_id_without_writing_events_or_files() {
+fn resume_rejects_simple_uuid_thread_id_without_events_or_artifacts() {
     let dir = TempDir::new().unwrap();
 
     let out = run(
