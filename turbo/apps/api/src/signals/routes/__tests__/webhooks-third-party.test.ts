@@ -28,6 +28,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
+import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -63,6 +64,9 @@ const GITHUB_WEBHOOK_PATH = "/api/webhooks/github";
 const GITHUB_WEBHOOK_SECRET = "github-secret";
 const GITHUB_APP_SLUG = "vm0-agent";
 const GITHUB_APP_ID = "123456";
+const SLACK_CONNECTOR = "slack";
+const SLACK_READ_PERMISSION = "channels:read";
+const SLACK_WRITE_PERMISSION = "chat:write";
 
 interface AppResponse {
   readonly status: number;
@@ -86,6 +90,11 @@ interface StripeFixture {
 interface ClerkFixture {
   readonly orgId: string;
   readonly userId: string;
+}
+
+interface ClerkAgentFixture {
+  readonly agentId: string;
+  readonly ownerUserId: string;
 }
 
 interface GitHubUserPayload {
@@ -978,6 +987,13 @@ const deleteClerkFixture$ = command(
     await db
       .delete(modelProviderAuthSessions)
       .where(eq(modelProviderAuthSessions.orgId, fixture.orgId));
+    await db
+      .delete(userPermissionGrants)
+      .where(eq(userPermissionGrants.orgId, fixture.orgId));
+    await db.delete(zeroAgents).where(eq(zeroAgents.orgId, fixture.orgId));
+    await db
+      .delete(agentComposes)
+      .where(eq(agentComposes.orgId, fixture.orgId));
     await db.delete(storages).where(eq(storages.userId, fixture.userId));
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     await db
@@ -1023,6 +1039,34 @@ const seedClerkFixture$ = command(
     return { orgId, userId };
   },
 );
+
+async function seedClerkAgent(
+  fixture: ClerkFixture,
+  ownerUserId = `user_${randomUUID()}`,
+): Promise<ClerkAgentFixture> {
+  const db = store.set(writeDb$);
+  const name = `clerk-cleanup-${randomUUID().slice(0, 8)}`;
+
+  const [compose] = await db
+    .insert(agentComposes)
+    .values({ userId: ownerUserId, orgId: fixture.orgId, name })
+    .returning({ id: agentComposes.id });
+  if (!compose) {
+    throw new Error("compose insert returned no row");
+  }
+
+  await db.insert(zeroAgents).values({
+    id: compose.id,
+    orgId: fixture.orgId,
+    owner: ownerUserId,
+    name,
+    visibility: "public",
+    displayName: "Clerk cleanup agent",
+    customSkills: [],
+  });
+
+  return { agentId: compose.id, ownerUserId };
+}
 
 async function seedClerkOauthDeviceAuthSession(
   fixture: ClerkFixture,
@@ -3248,6 +3292,15 @@ describe("POST /api/webhooks/clerk", () => {
     );
     await seedClerkOauthDeviceAuthSession(fixture);
     await seedClerkModelProviderAuthSession(fixture);
+    const agent = await seedClerkAgent(fixture, fixture.userId);
+    await store.set(writeDb$).insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId: agent.agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
     context.mocks.clerk.verifyWebhook.mockResolvedValue({
       type: "organization.deleted",
       data: { id: fixture.orgId },
@@ -3286,11 +3339,16 @@ describe("POST /api/webhooks/clerk", () => {
       .select({ id: modelProviderAuthSessions.id })
       .from(modelProviderAuthSessions)
       .where(eq(modelProviderAuthSessions.orgId, fixture.orgId));
+    const grantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(eq(userPermissionGrants.orgId, fixture.orgId));
     expect(cacheRows).toHaveLength(0);
     expect(metadataRows).toHaveLength(0);
     expect(membershipRows).toHaveLength(0);
     expect(deviceSessionRows).toHaveLength(0);
     expect(modelProviderAuthSessionRows).toHaveLength(0);
+    expect(grantRows).toHaveLength(0);
   });
 
   it("does not schedule organization deletion cleanup without an org ID", async () => {
@@ -3398,6 +3456,99 @@ describe("POST /api/webhooks/clerk", () => {
     expect(orgRows).toHaveLength(1);
     expect(deviceSessionRows).toHaveLength(0);
     expect(modelProviderAuthSessionRows).toHaveLength(0);
+  });
+
+  it("removes deleted user permission grants without removing grants for other users", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    const otherUserId = `user_${randomUUID()}`;
+    const agent = await seedClerkAgent(fixture);
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_READ_PERMISSION,
+        action: "allow",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        agentId: agent.agentId,
+        connectorRef: SLACK_CONNECTOR,
+        permission: SLACK_WRITE_PERMISSION,
+        action: "deny",
+      },
+    ]);
+    context.mocks.clerk.verifyWebhook.mockResolvedValue({
+      type: "user.deleted",
+      data: { id: fixture.userId },
+    });
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const response = await postRaw({
+      path: "/api/webhooks/clerk",
+      body: "{}",
+    });
+    await clearAllDetached();
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe("OK");
+
+    const deletedUserGrantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.agentId, agent.agentId),
+          eq(userPermissionGrants.userId, fixture.userId),
+        ),
+      );
+    const otherUserGrantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(
+        and(
+          eq(userPermissionGrants.agentId, agent.agentId),
+          eq(userPermissionGrants.userId, otherUserId),
+        ),
+      );
+    const agentRows = await db
+      .select({ id: zeroAgents.id, owner: zeroAgents.owner })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, agent.agentId));
+    expect(deletedUserGrantRows).toHaveLength(0);
+    expect(otherUserGrantRows).toHaveLength(1);
+    expect(agentRows).toStrictEqual([
+      { id: agent.agentId, owner: agent.ownerUserId },
+    ]);
+  });
+
+  it("removes user permission grants through the agent delete cascade", async () => {
+    const fixture = await trackClerk(
+      store.set(seedClerkFixture$, undefined, context.signal),
+    );
+    const agent = await seedClerkAgent(fixture, fixture.userId);
+    const db = store.set(writeDb$);
+    await db.insert(userPermissionGrants).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      agentId: agent.agentId,
+      connectorRef: SLACK_CONNECTOR,
+      permission: SLACK_READ_PERMISSION,
+      action: "allow",
+    });
+
+    await db.delete(zeroAgents).where(eq(zeroAgents.id, agent.agentId));
+
+    const grantRows = await db
+      .select({ id: userPermissionGrants.id })
+      .from(userPermissionGrants)
+      .where(eq(userPermissionGrants.agentId, agent.agentId));
+    expect(grantRows).toHaveLength(0);
   });
 
   it("does not schedule user deletion cleanup without a user ID", async () => {
