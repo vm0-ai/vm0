@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.406.1](https://github.com/vm0-ai/vm0/compare/web-v12.406.0...web-v12.406.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **api:** move cron schedules to api deployment ([#15784](https://github.com/vm0-ai/vm0/issues/15784)) ([cdcd2f4](https://github.com/vm0-ai/vm0/commit/cdcd2f42802b50b641adf5d6eda1065a1b3ee901))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.0
+  * devDependencies
+    * @vm0/connectors bumped to 1.41.0
+
 ## [12.406.0](https://github.com/vm0-ai/vm0/compare/web-v12.405.6...web-v12.406.0) (2026-06-01)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.91.2](https://github.com/vm0-ai/vm0/compare/api-v1.91.1...api-v1.91.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* **api:** move cron schedules to api deployment ([#15784](https://github.com/vm0-ai/vm0/issues/15784)) ([cdcd2f4](https://github.com/vm0-ai/vm0/commit/cdcd2f42802b50b641adf5d6eda1065a1b3ee901))
+* reject invalid zero chat model selections ([#15796](https://github.com/vm0-ai/vm0/issues/15796)) ([3f053ed](https://github.com/vm0-ai/vm0/commit/3f053ede91dc67ff4ba7f063ac4053275fa97b31))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.0
+    * @vm0/connectors bumped to 1.41.0
+    * @vm0/core bumped to 8.305.3
+    * @vm0/db bumped to 1.24.3
+
 ## [1.91.1](https://github.com/vm0-ai/vm0/compare/api-v1.91.0...api-v1.91.1) (2026-06-02)
 
 

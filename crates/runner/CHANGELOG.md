@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.106.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.0...runner-rs-v0.106.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **runner:** preserve streamed system logs separately ([#15797](https://github.com/vm0-ai/vm0/issues/15797)) ([dd3ce60](https://github.com/vm0-ai/vm0/commit/dd3ce6077557911e505825954858e2b48ed31567))
+
 ## [0.106.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.105.15...runner-rs-v0.106.0) (2026-06-01)
 
 
