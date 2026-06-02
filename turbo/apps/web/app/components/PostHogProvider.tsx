@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { posthog } from "posthog-js";
+import { env } from "../../src/env";
 
 // Marketing-site PostHog is shared with app.vm0.ai via a parent-domain cookie
 // on `.vm0.ai`, so a visitor's anonymous distinct_id carries across vm0.ai →
@@ -10,7 +11,7 @@ import { posthog } from "posthog-js";
 // links the marketing-site session to the resulting user — giving us
 // per-channel signup attribution that Plausible cannot provide on its own.
 
-const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+const POSTHOG_KEY = env().NEXT_PUBLIC_POSTHOG_KEY;
 
 let initialized = false;
 
