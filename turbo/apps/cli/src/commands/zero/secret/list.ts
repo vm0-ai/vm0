@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getConnectorEnvNamesForSecret } from "@vm0/connectors/connector-utils";
+import { getConnectorStoredSecretDisplayInfo } from "@vm0/connectors/connector-utils";
 import { listZeroSecrets } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
@@ -30,7 +30,7 @@ export const listCommand = new Command()
         if (secret.type === "model-provider") {
           typeIndicator = chalk.dim(" [model-provider]");
         } else if (secret.type === "connector") {
-          const derived = getConnectorEnvNamesForSecret(secret.name);
+          const derived = getConnectorStoredSecretDisplayInfo(secret.name);
           if (derived) {
             typeIndicator = chalk.dim(` [${derived.connectorLabel} connector]`);
             derivedLine = chalk.dim(
@@ -40,7 +40,7 @@ export const listCommand = new Command()
             typeIndicator = chalk.dim(" [connector]");
           }
         } else if (secret.type === "user") {
-          const derived = getConnectorEnvNamesForSecret(secret.name);
+          const derived = getConnectorStoredSecretDisplayInfo(secret.name);
           if (derived) {
             typeIndicator = chalk.dim(` [${derived.connectorLabel} connector]`);
             derivedLine = chalk.dim(

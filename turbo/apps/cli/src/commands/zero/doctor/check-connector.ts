@@ -6,7 +6,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getConnectorEnvBindingEntries,
-  getConnectorTypeForSecretName,
+  getConnectorTypeForRuntimeEnvName,
 } from "@vm0/connectors/connector-utils";
 import {
   type FirewallBaseUrlMatch,
@@ -516,7 +516,7 @@ How connectors work:
         console.log(`  Relative path:    ${urlLookup.relativePath}`);
         console.log(`  Environment name:  ${envName}`);
       } else {
-        connectorType = getConnectorTypeForSecretName(
+        connectorType = getConnectorTypeForRuntimeEnvName(
           (envName = opts.envName!),
         )!;
         if (!connectorType) {

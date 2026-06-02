@@ -271,11 +271,6 @@ export type ConnectorAuthMethodAccessMetadata =
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     };
 
-export interface ConnectorOwnedAccessSecretBindingEntry {
-  readonly envName: string;
-  readonly secretName: string;
-}
-
 export type ConnectorRuntimeBindingSource =
   | {
       readonly kind: "connector-secret";
@@ -306,36 +301,6 @@ export interface ConnectorAuthMethodStorageMetadata {
     readonly refreshToken?: string;
   };
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
-}
-
-function connectorOwnedAccessSecretBindingEntries(args: {
-  readonly envBindings: ConnectorEnvBindings;
-  readonly platformSecrets: readonly ConnectorPlatformSecretName[];
-}): ConnectorOwnedAccessSecretBindingEntry[] {
-  const platformSecretNames: ReadonlySet<string> = new Set(
-    args.platformSecrets,
-  );
-  const entries: ConnectorOwnedAccessSecretBindingEntry[] = [];
-  for (const [envName, valueRef] of Object.entries(args.envBindings)) {
-    if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
-      continue;
-    }
-    const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-    if (platformSecretNames.has(secretName)) {
-      continue;
-    }
-    entries.push({ envName, secretName });
-  }
-  return entries;
-}
-
-export function getConnectorOwnedAccessSecretBindingEntries(
-  accessMetadata: ConnectorAuthMethodAccessMetadata,
-): ConnectorOwnedAccessSecretBindingEntry[] {
-  return connectorOwnedAccessSecretBindingEntries({
-    envBindings: accessMetadata.envBindings,
-    platformSecrets: accessMetadata.platformSecrets,
-  });
 }
 
 function requireConnectorSecretRole(args: {
@@ -946,17 +911,21 @@ export function getConnectorEnvBindingEntries(
   return entries;
 }
 
+export interface ConnectorStoredSecretDisplayInfo {
+  readonly connectorLabel: string;
+  readonly envNames: string[];
+}
+
 /**
- * Get connector label and derived environment names for a connector secret.
- * Performs a reverse lookup from secret name to the connector type and
- * env bindings that reference it.
+ * Diagnostic/display lookup for a stored connector secret name.
  *
- * Example: getConnectorEnvNamesForSecret("GITHUB_ACCESS_TOKEN")
- * → { connectorLabel: "GitHub", envNames: ["GH_TOKEN", "GITHUB_TOKEN"] }
+ * This reverse-searches registry metadata to explain which runtime env aliases
+ * can expose a stored secret. Runtime injection must use selected auth method
+ * storage metadata instead.
  */
-export function getConnectorEnvNamesForSecret(
+export function getConnectorStoredSecretDisplayInfo(
   secretName: string,
-): { connectorLabel: string; envNames: string[] } | null {
+): ConnectorStoredSecretDisplayInfo | null {
   const allTypes = CONNECTOR_TYPE_KEYS;
 
   for (const type of allTypes) {
@@ -986,6 +955,26 @@ export function getConnectorEnvNamesForSecret(
     }
   }
 
+  return null;
+}
+
+/**
+ * Diagnostic lookup for a runtime env alias declared by connector env bindings.
+ *
+ * This is for human-facing commands such as CLI doctor; runtime connector
+ * behavior must use selected auth method metadata.
+ */
+export function getConnectorTypeForRuntimeEnvName(
+  envName: string,
+): ConnectorType | null {
+  for (const type of CONNECTOR_TYPE_KEYS) {
+    const hasEnvName = getConnectorEnvBindingEntries(type).some((entry) => {
+      return entry.envName === envName;
+    });
+    if (hasEnvName) {
+      return type;
+    }
+  }
   return null;
 }
 
@@ -1063,37 +1052,4 @@ export function getConnectorAuthMethodScopeDiff(
     getConnectorAuthMethodGrantScopes(connectorType, authMethod),
     storedScopes,
   );
-}
-
-/**
- * Reverse lookup: given a secret/environment name, find which connector type manages it.
- * Checks manual grant fields, access storage names, and env binding names.
- * Returns null if no connector manages this name.
- */
-export function getConnectorTypeForSecretName(
-  name: string,
-): ConnectorType | null {
-  const allTypes = CONNECTOR_TYPE_KEYS;
-  for (const type of allTypes) {
-    const config = CONNECTOR_TYPES[type];
-    for (const method of Object.values(config.authMethods)) {
-      if (name in (getManualGrantFields(method) ?? {})) {
-        return type;
-      }
-    }
-    for (const method of Object.values(config.authMethods)) {
-      if (connectorMethodOwnedSecretNames(method).includes(name)) {
-        return type;
-      }
-    }
-    const hasEnvName = getConnectorEnvBindingEntries(type).some(
-      ({ envName }) => {
-        return envName === name;
-      },
-    );
-    if (hasEnvName) {
-      return type;
-    }
-  }
-  return null;
 }
