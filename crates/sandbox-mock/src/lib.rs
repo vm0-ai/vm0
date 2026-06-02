@@ -2888,6 +2888,94 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_wait_process_lifecycle_gate(gate.clone());
+        let first_sandbox = MockSandbox::with_overrides("first", Arc::clone(&overrides));
+        let first_handle = first_sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+
+        let first_wait = tokio::spawn(async move {
+            first_sandbox
+                .wait_process(first_handle, Duration::from_secs(5))
+                .await
+        });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+
+        overrides.clear_wait_process_lifecycle_gate();
+        assert!(
+            !first_wait.is_finished(),
+            "clearing the gate must not release an already-entered wait_process",
+        );
+
+        let second_sandbox = MockSandbox::with_overrides("second", overrides);
+        let second_handle = second_sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+        let second_result = tokio::time::timeout(
+            test_timeout(),
+            second_sandbox.wait_process(second_handle, Duration::from_secs(5)),
+        )
+        .await
+        .expect("future wait_process calls should bypass a cleared gate")
+        .unwrap();
+        assert_eq!(second_result.exit_code, 0);
+
+        gate.release_one();
+        let first_result = first_wait.await.unwrap().unwrap();
+        assert_eq!(first_result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn process_cancel_releases_wait_process_lifecycle_gate() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_wait_process_lifecycle_gate(gate.clone());
+        let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+        let mut handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+        let cancel = handle
+            .take_cancel_handle()
+            .expect("mock process should expose a cancel handle");
+
+        let wait =
+            tokio::spawn(async move { sandbox.wait_process(handle, Duration::from_secs(5)).await });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+
+        cancel.cancel(Duration::from_secs(1)).await.unwrap();
+        let result = wait.await.unwrap().unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(overrides.process_cancel_calls().len(), 1);
+    }
+
+    #[tokio::test]
     async fn factory_creates_sandbox() {
         let mut factory = MockSandboxFactory::new();
         let sandbox = factory.create(test_sandbox_config()).await.unwrap();
