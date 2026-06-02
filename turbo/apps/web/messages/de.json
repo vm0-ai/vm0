@@ -4084,7 +4084,7 @@
             "body": "Fast Mode bei 2,5× Geschwindigkeit kostete früher dreimal so viel wie heute ($10/$50 pro 1M gegenüber der vorherigen Stufe). Für interaktive Copilots, On-Call-Summarizer oder jeden Schritt, bei dem Wall-Clock-Latenz das Erlebnis dominiert, ist Fast-Mode 4.8 jetzt die Standardwahl in der Claude-Familie."
           }
         ],
-        "avoidFor": "Verzichte auf Opus 4.8 bei Hochvolumen-Routinearbeit, bei der Sonnet 4.6 die gleiche Qualitätsschwelle zu einem Bruchteil der Kosten erreicht, bei latenzkritischen Chat-Antworten, bei denen Haiku 4.5 deutlich schneller ist, bei agentischem Terminal-Coding, wo GPT-5.5 weiterhin Terminal-Bench 2.1 anführt (78,2% vs 74,6% bei 4.8), sowie bei Pipelines, die untrusted Input ohne Sandboxing aufnehmen — die Prompt-Injection-Robustheit von 4.8 ist leicht schwächer als die von 4.7.",
+        "avoidFor": "Verzichte auf Opus 4.8 bei Hochvolumen-Routinearbeit, bei der Sonnet 4.6 die gleiche Qualitätsschwelle zu einem Bruchteil der Kosten erreicht, bei latenzkritischen Chat-Antworten, bei denen Kimi K2.6 deutlich schneller ist, bei agentischem Terminal-Coding, wo GPT-5.5 weiterhin Terminal-Bench 2.1 anführt (78,2% vs 74,6% bei 4.8), sowie bei Pipelines, die untrusted Input ohne Sandboxing aufnehmen — die Prompt-Injection-Robustheit von 4.8 ist leicht schwächer als die von 4.7.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -4092,7 +4092,7 @@
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6 (×1) bleibt das Arbeitspferd-Default für die meisten Agent-Schleifen. Eskaliere zu Opus 4.8, wenn Sonnet bei hartem Reasoning, Langkontext-Recall oder Code-Änderungen im ersten Versuch sichtbar scheitert — meist als Planer, der an Subagenten auf Sonnet- oder Haiku-Niveau delegiert. Mit dynamischen Workflows ist Opus 4.8 als Orchestrator + Sonnet 4.6 als Worker das neue empfohlene Muster."
+            "body": "Sonnet 4.6 (×1) bleibt das Arbeitspferd-Default für die meisten Agent-Schleifen. Eskaliere zu Opus 4.8, wenn Sonnet bei hartem Reasoning, Langkontext-Recall oder Code-Änderungen im ersten Versuch sichtbar scheitert — meist als Planer, der an Subagenten auf Sonnet- oder Kimi K2.6-Niveau delegiert. Mit dynamischen Workflows ist Opus 4.8 als Orchestrator + Sonnet 4.6 als Worker das neue empfohlene Muster."
           },
           {
             "vs": "GPT-5.5",
@@ -4270,7 +4270,7 @@
           },
           {
             "title": "Überdimensioniert für kurze Single-Shot-Aufgaben",
-            "body": "Opus 4.7 bei einfachen Aufgaben einzusetzen verursacht unnötige Latenz und Kosten. Für Klassifikation, kurze Zusammenfassungen oder Q&A liefern Sonnet/Haiku praktisch identische Qualität zu einem Bruchteil der Kosten."
+            "body": "Opus 4.7 bei einfachen Aufgaben einzusetzen verursacht unnötige Latenz und Kosten. Für Klassifikation, kurze Zusammenfassungen oder Q&A liefern Sonnet/Kimi K2.6 praktisch identische Qualität zu einem Bruchteil der Kosten."
           },
           {
             "title": "Breiteste Tool-Routing-Fähigkeiten",
@@ -4295,7 +4295,7 @@
             "body": "1M Token Kontext + starkes Langkontext-Recall: Opus kann eine ganze Repository-Größe an Code in einer Runde lesen und referenzieren."
           }
         ],
-        "avoidFor": "Opus 4.7 standardmäßig für alle Agent-Aktionen zu verwenden. Bei den meisten täglichen Arbeiten (Zusammenfassungen, Klassifikation, Q&A, leichte Reviews) liefern Sonnet 4.6 oder Haiku 4.5 praktisch identische Qualität zu 3–50× niedrigeren Kosten.",
+        "avoidFor": "Opus 4.7 standardmäßig für alle Agent-Aktionen zu verwenden. Bei den meisten täglichen Arbeiten (Zusammenfassungen, Klassifikation, Q&A, leichte Reviews) liefern Sonnet 4.6 oder Kimi K2.6 praktisch identische Qualität zu 3–50× niedrigeren Kosten.",
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
@@ -4451,7 +4451,7 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and Haiku 4.5; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
+            "body": "Slower than Sonnet 4.6 and Kimi K2.6; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
           }
         ],
         "bestForExamples": [
@@ -4495,7 +4495,7 @@
           },
           {
             "q": "Why is Opus 4.6 the default on the Anthropic API key provider?",
-            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Haiku 4.5 in VM0 Settings → Model Providers without changing the API key."
+            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Kimi K2.6 in VM0 Settings → Model Providers without changing the API key."
           },
           {
             "q": "What's adaptive thinking?",
@@ -4647,7 +4647,7 @@
             "body": "Wirf einen Mathematik-Aufgabenkatalog auf Wettbewerbsniveau oder eine Physik-Herleitung auf Graduiertenniveau hinein, und 5.5 arbeitet sie ohne die Off-by-One-Ausrutscher von 5.4 durch. AIME 2025 und GPQA Diamond erfassen genau dieses Verhalten."
           }
         ],
-        "avoidFor": "Verzichte auf GPT-5.5 bei volumenstarker Routine-Arbeit, bei der GPT-5.4 zur halben Credit-Last dieselbe Qualität liefert, bei latenzempfindlichen Chat-Antworten, wo GPT-5.4 Mini deutlich schneller ist, und bei Bulk-Klassifikation oder Extraktionsjobs, wo DeepSeek V4 Flash beim Anbieter ungefähr 35× günstiger ist.",
+        "avoidFor": "Verzichte auf GPT-5.5 bei volumenstarker Routine-Arbeit, bei der GPT-5.4 zur halben Credit-Last dieselbe Qualität liefert, bei latenzempfindlichen Chat-Antworten, wo GPT-5.4 Mini deutlich schneller ist, und bei Bulk-Klassifikation oder Extraktionsjobs, wo GPT-5.4 Mini beim Anbieter ungefähr 35× günstiger ist.",
         "comparisons": [
           {
             "vs": "GPT-5.4",
@@ -4713,9 +4713,9 @@
         "releaseDate": "Verfügbar seit VM0-Launch",
         "familyPosition": "Arbeitstier der Claude 4-Familie. Das Standardmodell für VM0 Managed.",
         "background": [
-          "Claude Sonnet 4.6 ist das Mittelklasse-Modell der Claude 4-Familie — positioniert zwischen dem Flaggschiff Opus und dem leichten Haiku. Es teilt das 1M-Token-Kontextfenster und Prompt Caching mit Opus, verzichtet aber auf Adaptive-Thinking-Effort-Levels zugunsten eines einfacheren, schnelleren Inferenzprofils.",
+          "Claude Sonnet 4.6 ist das Mittelklasse-Modell der Claude 4-Familie — positioniert zwischen dem Flaggschiff Opus und dem leichten Kimi K2.6. Es teilt das 1M-Token-Kontextfenster und Prompt Caching mit Opus, verzichtet aber auf Adaptive-Thinking-Effort-Levels zugunsten eines einfacheren, schnelleren Inferenzprofils.",
           "Auf VM0 ist Sonnet 4.6 das Standardmodell für VM0 Managed Routing. Es ist die ×1 Credit-Basislinie — jedes andere Built-in-Modell wird als Vielfaches des Sonnet-4.6-Preises bepreist. Das macht Sonnet zur natürlichen Einheit für Kostenvergleiche.",
-          "Sonnet 4.6 ist das Schweizer Taschenmesser: gut genug für fast alles, ohne der Beste in einer Kategorie zu sein. Opus 4.7 übertrifft es bei Hard-Reasoning; Haiku 4.5 ist günstiger und schneller für High-Volume-Arbeit. Aber Sonnet ist das Modell, zu dem du zurückkehrst, wenn du nicht sicher bist, welches du wählen sollst."
+          "Sonnet 4.6 ist das Schweizer Taschenmesser: gut genug für fast alles, ohne der Beste in einer Kategorie zu sein. Opus 4.7 übertrifft es bei Hard-Reasoning; Kimi K2.6 ist günstiger und schneller für High-Volume-Arbeit. Aber Sonnet ist das Modell, zu dem du zurückkehrst, wenn du nicht sicher bist, welches du wählen sollst."
         ],
         "architecture": "Sonnet 4.6 teilt die Claude 4-Architektur mit 1M-Token-Kontextfenster und nativer Tool-Use-Unterstützung. Es verwendet keine Adaptive-Thinking-Effort-Levels — der Inferenz-Pfad ist auf konstanten Durchsatz und konsistente Qualität bei Single-Shot- und kurzen Multi-Turn-Aufgaben optimiert.",
         "specs": [
@@ -4769,7 +4769,7 @@
         "performance": [
           {
             "title": "Ausgeglichene Geschwindigkeit und Qualität",
-            "body": "Sonnet 4.6 bietet das beste Verhältnis von Inferenzgeschwindigkeit zu Reasoning-Qualität in der Claude-Familie. Schneller als Opus, leistungsfähiger als Haiku."
+            "body": "Sonnet 4.6 bietet das beste Verhältnis von Inferenzgeschwindigkeit zu Reasoning-Qualität in der Claude-Familie. Schneller als Opus, leistungsfähiger als Kimi K2.6."
           },
           {
             "title": "Das Standard-Orchestrator-Modell",
@@ -4794,15 +4794,11 @@
             "body": "Entwickler, die im Chat-Modus Code iterieren, profitieren von Sonnets schnellerer Inferenz im Vergleich zu Opus."
           }
         ],
-        "avoidFor": "Sonnet 4.6 für absolut jeden Schritt zu verwenden. Bei High-Volume-Hintergrundarbeit (Klassifikation, Vorfilter) nutze Haiku 4.5 oder DeepSeek V4 Flash. Wenn ein Schritt teuer ist, wenn er falsch ist (komplexer Refactor, Sicherheits-Patch), eskaliere an Opus 4.7.",
+        "avoidFor": "Sonnet 4.6 für absolut jeden Schritt zu verwenden. Bei High-Volume-Hintergrundarbeit (Klassifikation, Vorfilter) nutze Kimi K2.6 oder GPT-5.4 Mini. Wenn ein Schritt teuer ist, wenn er falsch ist (komplexer Refactor, Sicherheits-Patch), eskaliere an Opus 4.7.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
             "body": "Sonnet 4.6 ist ~3× günstiger (×1 vs. ×1,7 Credits) und hat einen höheren Durchsatz. Opus 4.7 gewinnt bei Hard-Reasoning und Langschleifen-Kohärenz. Das Standardmuster: Sonnet als Default, Opus für kritische Schritte."
-          },
-          {
-            "vs": "Claude Haiku 4.5",
-            "body": "Sonnet 4.6 ist leistungsfähiger bei Reasoning und Tool-Use, aber Haiku ist ~3× günstiger (×0,3 vs. ×1 Credits) und schneller. Haiku für einfache, latenzkritische Aufgaben; Sonnet für alles, was Planung erfordert."
           },
           {
             "vs": "DeepSeek V4 Pro",
@@ -4825,7 +4821,7 @@
           },
           {
             "q": "Wann sollte ich von Sonnet 4.6 wechseln?",
-            "a": "Wechsle zu Opus 4.7 bei Hard-Reasoning oder langen Schleifen. Wechsle zu Haiku 4.5 oder DeepSeek V4 Flash bei High-Volume-, latenzkritischen oder kostensensitiven Aufgaben."
+            "a": "Wechsle zu Opus 4.7 bei Hard-Reasoning oder langen Schleifen. Wechsle zu Kimi K2.6 oder GPT-5.4 Mini bei High-Volume-, latenzkritischen oder kostensensitiven Aufgaben."
           },
           {
             "q": "Ist Sonnet 4.6 dasselbe wie Sonnet 4.5?",
@@ -5102,7 +5098,7 @@
             "body": "Some agent steps genuinely take five to thirty minutes — deep research, multi-document analysis, long planning passes. VM0 sets a 50-minute API timeout for the Z.AI provider so those long thinking steps don't get cut off mid-thought, which makes GLM-5.1 the safe pick over models routed through providers with shorter default timeouts."
           }
         ],
-        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Haiku 4.5 is much faster.",
+        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Kimi K2.6 is much faster.",
         "comparisons": [
           {
             "vs": "Kimi K2.6",
@@ -5159,14 +5155,14 @@
         "tagline": "OpenAIs kostenoptimiertes Mitglied der GPT-5-Familie. ×0,3 Credits, multimodale Vision und schnell genug für volumenstarkes Routing, Klassifikation und Pre-Filter-Arbeit.",
         "cardIntro": "OpenAIs kostensparendes GPT-5. ×0,3 Credits, schnell und multimodal — die richtige Wahl für Bulk-Pre-Filter-Arbeit auf dem Codex-Framework.",
         "metaTitle": "GPT-5.4 Mini auf VM0: Benchmarks, Preise & Vergleich",
-        "metaDescription": "GPT-5.4 Mini im Test auf VM0. Das kostensparende OpenAI-GPT-5-Modell zu $0,75/$4,5 Anbieterpreisen, ×0,3 Credits, 400K Kontext und multimodaler Vision. Spezifikationen, Verhalten und Vergleich zu Claude Haiku 4.5.",
-        "summary": "GPT-5.4 Mini ist das kostensparende Mitglied der GPT-5-Familie von OpenAI — das Modell, zu dem du greifst, wenn Stückkosten mehr zählen als Spitzen-Reasoning-Qualität. Es behält das 400K-Kontextfenster und die multimodalen Eingaben der Familie, kürzt aber Compute pro Token, was sich in niedrigerem Preis ($0,75 / $4,5 pro 1M) und merklich höherer Geschwindigkeit niederschlägt.\n\nAuf VM0 liegt es bei ×0,3 Credits, demselben Multiplikator wie Claude Haiku 4.5 und Kimi K2.6, was es zur natürlichen OpenAI-seitigen Wahl für Bulk-Klassifikation, Fan-Out-Routing, Pre-Filter und jeden Agent-Schritt macht, bei dem das Drücken auf ein Drittel der GPT-5.4-Kosten der entscheidende Faktor ist.",
+        "metaDescription": "GPT-5.4 Mini im Test auf VM0. Das kostensparende OpenAI-GPT-5-Modell zu $0,75/$4,5 Anbieterpreisen, ×0,3 Credits, 400K Kontext und multimodaler Vision. Spezifikationen, Verhalten und Vergleich zu Kimi K2.6.",
+        "summary": "GPT-5.4 Mini ist das kostensparende Mitglied der GPT-5-Familie von OpenAI — das Modell, zu dem du greifst, wenn Stückkosten mehr zählen als Spitzen-Reasoning-Qualität. Es behält das 400K-Kontextfenster und die multimodalen Eingaben der Familie, kürzt aber Compute pro Token, was sich in niedrigerem Preis ($0,75 / $4,5 pro 1M) und merklich höherer Geschwindigkeit niederschlägt.\n\nAuf VM0 liegt es bei ×0,3 Credits, demselben Multiplikator wie Kimi K2.6 und DeepSeek V4 Pro, was es zur natürlichen OpenAI-seitigen Wahl für Bulk-Klassifikation, Fan-Out-Routing, Pre-Filter und jeden Agent-Schritt macht, bei dem das Drücken auf ein Drittel der GPT-5.4-Kosten der entscheidende Faktor ist.",
         "releaseDate": "April 2026",
-        "familyPosition": "Kostensparende Variante der GPT-5-Familie. Das OpenAI-seitige Pendant zu Claude Haiku 4.5.",
+        "familyPosition": "Kostensparende Variante der GPT-5-Familie. Das OpenAI-seitige Pendant zu Kimi K2.6.",
         "background": [
           "GPT-5.4 Mini ist das kostenoptimierte Mitglied der GPT-5-Generation von OpenAI, veröffentlicht im April 2026 neben GPT-5.5 und GPT-5.4. OpenAI positioniert es als Hochdurchsatz-Stufe — das Modell, das du auf Klassifikations-, Routing- und Pre-Filter-Schritten laufen lässt, wo das größere 5.4 oder 5.5 für Routine-Entscheidungen verschwendet wäre.",
           "Architektonisch teilt es das 400K-Token-Kontextfenster der GPT-5-Familie, den `reasoning_effort`-Parameter, Prompt Caching und die Responses-API-Oberfläche, die codex CLI standardmäßig nutzt. Der Trade-off gegenüber 5.4 ist Reasoning-Tiefe: Mini handhabt Standard-Tool-Calls, kurze Zusammenfassungen und Structured-Output-Workloads gut, fängt aber bei den schwereren mehrstufigen Plänen an zu driften, wo 5.4 noch hält. Der Trade-off gegenüber Konkurrenten im selben Preispunkt ist Ökosystem — wenn du bereits auf Codex bist, hält das Bleiben in der OpenAI-Oberfläche Tool-Definitionen und Structured-Output-Schemas konsistent.",
-          "Auf VM0 liegt Mini beim ×0,3 Credit-Multiplikator, gleich wie Claude Haiku 4.5, Kimi K2.6 und DeepSeek V4 Pro. Innerhalb der kostensparenden Stufe hängt die Wahl meist von Framework und Verhaltens-Fit auf deiner spezifischen Workload ab."
+          "Auf VM0 liegt Mini beim ×0,3 Credit-Multiplikator, gleich wie Kimi K2.6 und DeepSeek V4 Pro. Innerhalb der kostensparenden Stufe hängt die Wahl meist von Framework und Verhaltens-Fit auf deiner spezifischen Workload ab."
         ],
         "architecture": "GPT-5.4 Mini nutzt dieselbe Architektur wie der Rest der GPT-5-Familie: 400K-Token-Kontextfenster, `reasoning_effort`-Parameter auf vier Stufen, Prompt Caching, wobei gecachter Input zu einem Zehntel des Input-Preises berechnet wird, und die Responses-API-Oberfläche. Tool-Use, Structured Outputs und multimodale Vision-Eingaben werden unterstützt. Das Modell ist ein kleinerer, schnellerer Verwandter — weniger Parameter pro Token, mehr Durchsatz pro Dollar.",
         "specs": [
@@ -5203,7 +5199,7 @@
             "value": "$0,75 Input / $4,5 Output pro 1M"
           }
         ],
-        "benchmarksNote": "Vom Anbieter gemeldete Werte aus OpenAIs GPT-5 Mini Release-Materialien. Unabhängige Reviews platzieren 5.4 Mini bei den meisten Agent-Benchmarks im selben kostensparenden Band wie Claude Haiku 4.5. Behandle absolute Prozente als richtungsweisend.",
+        "benchmarksNote": "Vom Anbieter gemeldete Werte aus OpenAIs GPT-5 Mini Release-Materialien. Unabhängige Reviews platzieren 5.4 Mini bei den meisten Agent-Benchmarks im selben kostensparenden Band wie Kimi K2.6. Behandle absolute Prozente als richtungsweisend.",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -5246,7 +5242,7 @@
           },
           {
             "title": "Kosteneffizienz",
-            "body": "×0,3 Credits inklusive multimodaler Vision. Bei diesem Preispunkt liegen Mini, Claude Haiku 4.5 und Kimi K2.6 im selben Band — die Wahl kommt meist auf Framework-Fit und Verhalten auf deiner spezifischen Workload an."
+            "body": "×0,3 Credits inklusive multimodaler Vision. Bei diesem Preispunkt liegen Mini, Kimi K2.6 und DeepSeek V4 Pro im selben Band — die Wahl kommt meist auf Framework-Fit und Verhalten auf deiner spezifischen Workload an."
           },
           {
             "title": "Wann eskalieren",
@@ -5272,14 +5268,6 @@
           {
             "vs": "GPT-5.4",
             "body": "Gleiche Familie, andere Positionierung. 5.4 Mini (×0,3) gewinnt bei Kosten und Geschwindigkeit; 5.4 (×1) gewinnt bei Reasoning-Qualität und Tool-Routing-Genauigkeit in harten Fällen. Das Standardmuster: mit Mini vorfiltern und verbleibende Fälle auf 5.4 eskalieren."
-          },
-          {
-            "vs": "Claude Haiku 4.5",
-            "body": "Gleicher Multiplikator (×0,3). Mini läuft auf dem Codex-Framework; Haiku 4.5 läuft auf Claude Code. Beide sind multimodal und zielen auf denselben kostensparenden Slot. Wähle nach Framework, auf das deine bestehenden Agenten und Tool-Definitionen zielen."
-          },
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "DeepSeek V4 Flash (×0,02) ist beim Anbieter dramatisch günstiger und die richtige Wahl für reine Bulk-Single-Shot-Arbeit. GPT-5.4 Mini (×0,3) trägt mehr Reasoning-Qualität und bleibt im OpenAI-Ökosystem, was zählt, wenn deine Tool-Definitionen und Structured-Output-Schemas bereits auf Codex getunt sind."
           }
         ],
         "verdict": "GPT-5.4 Mini ist der kostensparende Standard auf der OpenAI-Seite. Vorfiltern mit Mini, eskalieren auf GPT-5.4 für Routine-Schritte, eskalieren auf GPT-5.5 nur für das schwerste Reasoning.",
@@ -5293,7 +5281,7 @@
             "a": "Ja. Wie der Rest der GPT-5-Familie akzeptiert es Bildeingaben neben Text und Code."
           },
           {
-            "q": "Wann GPT-5.4 Mini statt Claude Haiku 4.5 wählen?",
+            "q": "Wann GPT-5.4 Mini statt Kimi K2.6 wählen?",
             "a": "Wenn dein Agent bereits auf dem Codex-Framework gebaut ist oder du das OpenAI Structured-Output- / Tool-Call-Ökosystem brauchst. Beide liegen bei ×0,3 Credits, also sind die Kosten identisch und die Wahl hängt von Framework und Verhalten ab."
           },
           {
@@ -5312,7 +5300,7 @@
           }
         ],
         "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
-        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Claude Haiku 4.5, Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
+        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
       },
       "kimi-k2-6": {
         "name": "Kimi K2.6",
@@ -5430,7 +5418,7 @@
             "body": "K2.6 accepts both image and video input through MoonViT, which is unusual outside the Claude family. Useful for screenshot-driven QA agents, document-vision pipelines, and any deployment where you'd otherwise have to splice in a separate vision model just to read images."
           }
         ],
-        "avoidFor": "Skip K2.6 on the hardest tool-routing edge cases where Sonnet 4.6 still leads on production reliability, and on latency-critical chat replies where Haiku 4.5 is meaningfully faster.",
+        "avoidFor": "Verzichte auf K2.6 bei den schwierigsten Tool-Routing-Edge-Cases, in denen Sonnet 4.6 bei Produktionszuverlässigkeit noch führt, sowie bei gepinnten Legacy-Workflows, in denen K2.5s niedrigerer Multiplikator bereits ausreicht.",
         "comparisons": [
           {
             "vs": "GLM-5.1",
@@ -5496,9 +5484,9 @@
         "releaseDate": "24. April 2026",
         "familyPosition": "Flaggschiff der DeepSeek V4-Familie. Pro-Variante mit maximaler Reasoning-Tiefe.",
         "background": [
-          "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation, released April 24, 2026 under the MIT License. It's an open-weight Mixture-of-Experts model with 1.6T total parameters and 49B active per token, paired with V4 Flash (284B / 13B active) for cost-sensitive work.",
-          "Both V4 models share an identical feature set: 1M-token context window, 384K maximum output, three reasoning effort modes (standard, think, think-max), JSON output, tool calls, and FIM completion in non-think mode. The Pro model adds a hybrid attention architecture (Compressed Sparse Attention + Heavily Compressed Attention) for dramatically improved long-context efficiency. 27% of single-token inference FLOPs and 10% of KV cache vs DeepSeek V3.2 at 1M context.",
-          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.3. The same multiplier as Claude Haiku 4.5 but with substantially stronger reasoning behaviour."
+          "DeepSeek V4 Pro ist das Flaggschiff der DeepSeek-V4-Generation, veröffentlicht am 24. April 2026 unter der MIT-Lizenz. Es ist ein Open-Weight-Mixture-of-Experts-Modell mit 1,6T Gesamtparametern und 49B aktiven Parametern pro Token.",
+          "V4 Pro unterstützt ein 1M-Token-Kontextfenster, 384K maximale Ausgabe, drei Reasoning-Effort-Modi (standard, think, think-max), JSON-Ausgabe, Tool Calls und FIM-Completion im Non-Think-Modus. Das Pro-Modell ergänzt eine hybride Attention-Architektur (Compressed Sparse Attention + Heavily Compressed Attention) für deutlich effizienteren Langkontext. 27% Single-Token-Inferenz-FLOPs und 10% KV-Cache gegenüber DeepSeek V3.2 bei 1M Kontext.",
+          "DeepSeek made waves through 2025 by delivering Anthropic-grade reasoning at a fraction of the price. V4 Pro continues that pattern: vendor-reported SWE-bench Verified 80.6% sits within 0.2 points of Claude Opus 4.6, at roughly one-seventh the vendor cost. On VM0 it's exposed via the DeepSeek API-key provider and on VM0 Managed at ×0.3. The same multiplier as Kimi K2.6 but with substantially stronger reasoning behaviour."
         ],
         "architecture": "",
         "specs": [
@@ -5592,7 +5580,7 @@
           },
           {
             "title": "Speed",
-            "body": "Around 36 tokens/sec at max effort per Artificial Analysis. Slower than Haiku, slightly slower than Opus 4.6."
+            "body": "Around 36 tokens/sec at max effort per Artificial Analysis. Slower than Kimi K2.6, slightly slower than Opus 4.6."
           }
         ],
         "bestForExamples": [
@@ -5609,12 +5597,8 @@
             "body": "1M-token context with hybrid attention (Compressed Sparse Attention plus Heavily Compressed Attention) means a mid-sized codebase fits in one prompt and inference cost stays manageable as the window fills up. For cross-file refactors and architecture-level reviews, this is where you get the Opus-style \"see everything at once\" workflow without the Opus-style invoice."
           }
         ],
-        "avoidFor": "Skip V4 Pro on the hardest tool-routing edge cases where Sonnet 4.6 still leads, and on bulk single-shot work where reasoning isn't required and V4 Flash is roughly 12× cheaper.",
+        "avoidFor": "Verzichte auf V4 Pro bei den schwierigsten Tool-Routing-Edge-Cases, in denen Sonnet 4.6 noch führt, sowie bei Bulk-Single-Shot-Arbeit, für die GPT-5.4 Mini oder Kimi K2.6 zu niedrigeren Kosten ausreicht.",
         "comparisons": [
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "Same vendor, different positioning. V4 Pro (×0.3) gives you reasoning; V4 Flash (×0.02) gives you the cheapest possible single-shot model. Vendor-reported SWE-bench Verified shows Flash within 1.6 points of Pro (79.0 vs 80.6). But Pro pulls ahead on Terminal-Bench (67.9 vs 56.9) on multi-step tool use."
-          },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6 (×1) wins on tool-routing edge cases and English-language reasoning. V4 Pro (×0.3) wins on cost and is competitive on coding benchmarks (vendor-reported). Worth A/B-testing on a real agent before committing."
@@ -5628,7 +5612,7 @@
         "faqs": [
           {
             "q": "When was DeepSeek V4 Pro released?",
-            "a": "DeepSeek released V4 Pro and V4 Flash together on April 24, 2026 under the MIT License with open weights."
+            "a": "DeepSeek veröffentlichte V4 Pro am 24. April 2026 unter der MIT-Lizenz mit Open Weights."
           },
           {
             "q": "Why are cache writes free?",
@@ -5798,7 +5782,7 @@
         "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
         "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
         "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.7 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
+        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.1 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
         "releaseDate": "June 1, 2026",
         "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
         "background": [
@@ -5863,7 +5847,7 @@
         "bestForExamples": [
           {
             "title": "The coding agent that must stay on MiniMax",
-            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.7."
+            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.1."
           },
           {
             "title": "The long-context review run",
@@ -5874,12 +5858,8 @@
             "body": "Workflows that mix text with screenshots or diagrams. M3 is marked image-input capable on VM0, while the M2 entries stay text/code only."
           }
         ],
-        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.7 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
+        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
         "comparisons": [
-          {
-            "vs": "MiniMax M2.7",
-            "body": "M3 is the newer, stronger coding and multimodal model at ×0.2, and it is the direct MiniMax provider default. M2.7 remains cheaper at ×0.1 for lower-cost compatibility."
-          },
           {
             "vs": "Kimi K2.6",
             "body": "Both target coding and agentic work at low cost. Kimi has broader existing gateway support on VM0, while M3 uses the official MiniMax route and gives MiniMax users the newer model."
@@ -5889,11 +5869,11 @@
             "body": "Sonnet 4.6 remains the baseline for reliability on complex English tool-use. M3 is much cheaper and attractive for MiniMax-native coding agents, but should be validated on critical workflows."
           }
         ],
-        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.7 when cost and compatibility matter more.",
+        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
         "faqs": [
           {
-            "q": "Is MiniMax M2.7 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.7 and M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
+            "q": "Is MiniMax M2.1 still available?",
+            "a": "Yes. VM0 keeps MiniMax M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
           },
           {
             "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
@@ -5915,7 +5895,7 @@
           }
         ],
         "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.7 and M2.1 selectable."
+        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.1 selectable."
       },
       "gpt-image-2": {
         "name": "GPT Image 2",

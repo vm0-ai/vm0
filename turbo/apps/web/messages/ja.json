@@ -4084,7 +4084,7 @@
             "body": "2.5倍速度のファストモードは、以前は現在の3倍のコストがかかっていました（$10/$50/1M対前ティア）。インタラクティブなコパイロット、オンコール要約、または実時間レイテンシが体験を左右するあらゆるステップで、ファストモードの4.8は今やClaudeファミリーのデフォルト選択肢です。"
           }
         ],
-        "avoidFor": "Sonnet 4.6が一部のコストで同じ品質基準を満たす大量ルーチン作業、Haiku 4.5が遥かに高速なレイテンシ重視のチャット応答、GPT-5.5がTerminal-Bench 2.1で依然としてリードするエージェンティックターミナルコーディング（78.2%対4.8の74.6%）、サンドボックス化なしで信頼できない入力を取り込むパイプライン（4.8のプロンプトインジェクション耐性は4.7よりわずかに弱い）では、Opus 4.8の使用を避けてください。",
+        "avoidFor": "Sonnet 4.6が一部のコストで同じ品質基準を満たす大量ルーチン作業、Kimi K2.6が遥かに高速なレイテンシ重視のチャット応答、GPT-5.5がTerminal-Bench 2.1で依然としてリードするエージェンティックターミナルコーディング（78.2%対4.8の74.6%）、サンドボックス化なしで信頼できない入力を取り込むパイプライン（4.8のプロンプトインジェクション耐性は4.7よりわずかに弱い）では、Opus 4.8の使用を避けてください。",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
@@ -4092,7 +4092,7 @@
           },
           {
             "vs": "Claude Sonnet 4.6",
-            "body": "Sonnet 4.6（×1）は依然としてほとんどのエージェントループのワークホースデフォルトです。Sonnetが難しい推論、長文コンテキスト再現、一発のコード編集で明らかに失敗する場合にOpus 4.8に昇格させてください — 通常はSonnetやHaikuレベルのサブエージェントに委任するプランナーとして使用します。動的ワークフローにより、オーケストレーターとしてのOpus 4.8 + ワーカーとしてのSonnet 4.6が新しい推奨パターンです。"
+            "body": "Sonnet 4.6（×1）は依然としてほとんどのエージェントループのワークホースデフォルトです。Sonnetが難しい推論、長文コンテキスト再現、一発のコード編集で明らかに失敗する場合にOpus 4.8に昇格させてください — 通常はSonnetやKimi K2.6レベルのサブエージェントに委任するプランナーとして使用します。動的ワークフローにより、オーケストレーターとしてのOpus 4.8 + ワーカーとしてのSonnet 4.6が新しい推奨パターンです。"
           },
           {
             "vs": "GPT-5.5",
@@ -4270,7 +4270,7 @@
           },
           {
             "title": "短い単発タスクにはオーバースペック",
-            "body": "単純なタスクにOpus 4.7を使うと不要なレイテンシとコストが発生します。分類や短い要約にはSonnetかHaikuがほぼ同等の品質をわずかなコストで提供します。"
+            "body": "単純なタスクにOpus 4.7を使うと不要なレイテンシとコストが発生します。分類や短い要約にはSonnetかKimi K2.6がほぼ同等の品質をわずかなコストで提供します。"
           },
           {
             "title": "最も広範なツールルーティング能力",
@@ -4295,7 +4295,7 @@
             "body": "1Mトークンコンテキストと強力な長文再現力により、Opusはリポジトリ全体のコードを1ラウンドで読み取り、正確に参照できます。"
           }
         ],
-        "avoidFor": "すべてのエージェントアクションにOpus 4.7をデフォルトで使用すること。日々の作業のほとんど（短い要約、分類、単純なQ&A、軽いコードレビュー）では、Sonnet 4.6かHaiku 4.5が3〜50倍低コストでほぼ同等の品質を提供します。",
+        "avoidFor": "すべてのエージェントアクションにOpus 4.7をデフォルトで使用すること。日々の作業のほとんど（短い要約、分類、単純なQ&A、軽いコードレビュー）では、Sonnet 4.6かKimi K2.6が3〜50倍低コストでほぼ同等の品質を提供します。",
         "comparisons": [
           {
             "vs": "Claude Sonnet 4.6",
@@ -4451,7 +4451,7 @@
           },
           {
             "title": "Speed",
-            "body": "Slower than Sonnet 4.6 and Haiku 4.5; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
+            "body": "Slower than Sonnet 4.6 and Kimi K2.6; comparable to Opus 4.7. Around 41 tokens/sec at max effort per Artificial Analysis."
           }
         ],
         "bestForExamples": [
@@ -4495,7 +4495,7 @@
           },
           {
             "q": "Why is Opus 4.6 the default on the Anthropic API key provider?",
-            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Haiku 4.5 in VM0 Settings → Model Providers without changing the API key."
+            "a": "Historical default from before Opus 4.7 launched. You can switch any agent to Opus 4.7, Sonnet 4.6, or Kimi K2.6 in VM0 Settings → Model Providers without changing the API key."
           },
           {
             "q": "What's adaptive thinking?",
@@ -4647,7 +4647,7 @@
             "body": "競技グレードの数学問題セットや大学院物理学の導出を投げ込むと、5.5は5.4で見られる1つずれのミスなしで作業を進めます。AIME 2025とGPQA Diamondがまさにこの種の挙動を捉えています。"
           }
         ],
-        "avoidFor": "GPT-5.4が半分のクレジットコストで同じ品質バーに達する高ボリュームのルーティン作業、GPT-5.4 Miniがはるかに高速なレイテンシ感応型チャット返信、DeepSeek V4 Flashがベンダーレベルで約35倍安価な大量分類または抽出ジョブではGPT-5.5をスキップしてください。",
+        "avoidFor": "GPT-5.4が半分のクレジットコストで同じ品質バーに達する高ボリュームのルーティン作業、GPT-5.4 Miniがはるかに高速なレイテンシ感応型チャット返信、GPT-5.4 Miniがベンダーレベルで約35倍安価な大量分類または抽出ジョブではGPT-5.5をスキップしてください。",
         "comparisons": [
           {
             "vs": "GPT-5.4",
@@ -4777,7 +4777,7 @@
           },
           {
             "title": "Speed",
-            "body": "Faster than Opus and slower than Haiku. The right speed/quality balance for production agents."
+            "body": "Faster than Opus and slower than Kimi K2.6. The right speed/quality balance for production agents."
           },
           {
             "title": "Cost predictability",
@@ -4802,15 +4802,11 @@
             "body": "Long conversation histories, frequent tool calls into the CRM, the same hefty system prompt and tool schema on every turn. Sonnet's prompt caching turns that fixed prefix into a fraction of the input cost after the first call, which is what keeps per-conversation cost flat as volume grows."
           }
         ],
-        "avoidFor": "Skip Sonnet 4.6 on the hardest reasoning steps where it visibly drops instructions and you should escalate to Opus 4.7, on bulk classification at high volume where DeepSeek V4 Flash is roughly 50× cheaper, and on latency-critical micro-replies where Haiku 4.5 is meaningfully faster.",
+        "avoidFor": "Skip Sonnet 4.6 on the hardest reasoning steps where it visibly drops instructions and you should escalate to Opus 4.7, on bulk classification at high volume where GPT-5.4 Mini is the cheaper supported bulk option, and on latency-critical micro-replies where Kimi K2.6 is meaningfully faster.",
         "comparisons": [
           {
             "vs": "Claude Opus 4.7",
             "body": "Sonnet 4.6 is ×1; Opus 4.7 is ×1.7. Sonnet handles most agents; Opus is the upgrade when reasoning depth matters more than throughput. Many teams use Opus as the planner and Sonnet as the worker."
-          },
-          {
-            "vs": "Claude Haiku 4.5",
-            "body": "Haiku 4.5 is ×0.3. Three times cheaper than Sonnet. Sonnet leads on tool-routing accuracy and long-context coherence; Haiku wins on speed and cost. Use Haiku as a sub-agent or for high-volume simple flows."
           },
           {
             "vs": "DeepSeek V4 Pro",
@@ -4833,7 +4829,7 @@
           },
           {
             "q": "Sonnet 4.6から切り替えるべきタイミングは？",
-            "a": "高度な推論や長ループにはOpus 4.7に。高ボリューム、レイテンシ重視、コスト重視のタスクにはHaiku 4.5またはDeepSeek V4 Flashに切り替え。"
+            "a": "高度な推論や長ループにはOpus 4.7に。高ボリューム、レイテンシ重視、コスト重視のタスクにはKimi K2.6またはGPT-5.4 Miniに切り替え。"
           },
           {
             "q": "Sonnet 4.6はSonnet 4.5と同じですか？",
@@ -5110,7 +5106,7 @@
             "body": "Some agent steps genuinely take five to thirty minutes — deep research, multi-document analysis, long planning passes. VM0 sets a 50-minute API timeout for the Z.AI provider so those long thinking steps don't get cut off mid-thought, which makes GLM-5.1 the safe pick over models routed through providers with shorter default timeouts."
           }
         ],
-        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Haiku 4.5 is much faster.",
+        "avoidFor": "Skip GLM-5.1 on the hardest English-language reasoning where Sonnet 4.6 or Opus 4.7 still leads, and on latency-critical chat replies where Kimi K2.6 is much faster.",
         "comparisons": [
           {
             "vs": "Kimi K2.6",
@@ -5167,14 +5163,14 @@
         "tagline": "OpenAIのGPT-5ファミリーのコスト最適化メンバー。×0.3クレジット、マルチモーダルビジョン、大量のルーティング、分類、事前フィルタ作業に十分な速度。",
         "cardIntro": "OpenAIのコスト削減型GPT-5。×0.3クレジット、高速かつマルチモーダル — Codexフレームワーク上のバルク事前フィルタ作業に対する正しい選択。",
         "metaTitle": "GPT-5.4 Mini on VM0: ベンチマーク、価格、比較",
-        "metaDescription": "VM0上のGPT-5.4 Miniレビュー。コスト削減型OpenAI GPT-5モデル、$0.75/$4.5ベンダー価格、×0.3クレジット、400Kコンテキスト、マルチモーダルビジョン。仕様、挙動、Claude Haiku 4.5との比較。",
-        "summary": "GPT-5.4 MiniはOpenAIのGPT-5ファミリーのコスト削減メンバー — ピーク推論品質よりもユニットコストが重要な場合に手を伸ばすモデルです。ファミリーの残りと同じ400Kコンテキストウィンドウとマルチモーダル入力を維持しますが、トークンあたりの計算を削減しており、それがより低い価格（$0.75/$4.5/1M）と顕著に高い速度に翻訳されます。\n\nVM0では×0.3クレジット — Claude Haiku 4.5やKimi K2.6と同じ乗数 — に位置し、バルク分類、ファンアウトルーティング、事前フィルタ、およびGPT-5.4のコストの3分の1に落とすことが決定要因となるエージェントステップに対する自然なOpenAI側の選択です。",
+        "metaDescription": "VM0上のGPT-5.4 Miniレビュー。コスト削減型OpenAI GPT-5モデル、$0.75/$4.5ベンダー価格、×0.3クレジット、400Kコンテキスト、マルチモーダルビジョン。仕様、挙動、Kimi K2.6との比較。",
+        "summary": "GPT-5.4 MiniはOpenAIのGPT-5ファミリーのコスト削減メンバー — ピーク推論品質よりもユニットコストが重要な場合に手を伸ばすモデルです。ファミリーの残りと同じ400Kコンテキストウィンドウとマルチモーダル入力を維持しますが、トークンあたりの計算を削減しており、それがより低い価格（$0.75/$4.5/1M）と顕著に高い速度に翻訳されます。\n\nVM0では×0.3クレジット — Kimi K2.6やDeepSeek V4 Proと同じ乗数 — に位置し、バルク分類、ファンアウトルーティング、事前フィルタ、およびGPT-5.4のコストの3分の1に落とすことが決定要因となるエージェントステップに対する自然なOpenAI側の選択です。",
         "releaseDate": "2026年4月",
-        "familyPosition": "GPT-5ファミリーのコスト削減バリアント。Claude Haiku 4.5のOpenAI側の同等。",
+        "familyPosition": "GPT-5ファミリーのコスト削減バリアント。Kimi K2.6のOpenAI側の同等。",
         "background": [
           "GPT-5.4 MiniはOpenAIのGPT-5世代のコスト最適化メンバーで、2026年4月にGPT-5.5とGPT-5.4と一緒にリリースされました。OpenAIは、高スループットティアとして位置付けています — より大きな5.4や5.5がルーチンな決定では無駄になる、分類、ルーティング、事前フィルタステップで実行し続けるモデルです。",
           "アーキテクチャ的にはGPT-5ファミリーの400Kトークンコンテキストウィンドウ、`reasoning_effort`パラメーター、プロンプトキャッシュ、codex CLIがデフォルトで使用するResponses APIサーフェスを共有しています。5.4とのトレードオフは推論深度です：Miniは標準的なツール呼び出し、短い要約、構造化出力ワークロードを十分に処理しますが、5.4がまだ持ちこたえるより難しいマルチステッププランでドリフトし始めます。同じ価格帯の競合とのトレードオフはエコシステム — 既にCodex上にいる場合、OpenAIサーフェス内に留まることでツール定義と構造化出力スキーマが一貫したまま保たれます。",
-          "VM0上ではMiniは×0.3クレジット乗数に位置し、Claude Haiku 4.5、Kimi K2.6、DeepSeek V4 Proと同じです。コスト削減ティア内では、選択は主にフレームワークと特定のワークロードでの挙動の適合性に依存します。"
+          "VM0上ではMiniは×0.3クレジット乗数に位置し、Kimi K2.6やDeepSeek V4 Proと同じです。コスト削減ティア内では、選択は主にフレームワークと特定のワークロードでの挙動の適合性に依存します。"
         ],
         "architecture": "GPT-5.4 MiniはGPT-5ファミリーの残りと同じアーキテクチャを使用します：400Kトークンコンテキストウィンドウ、4レベルの`reasoning_effort`パラメーター、キャッシュ入力が入力レートの10分の1で課金されるプロンプトキャッシュ、Responses APIサーフェス。ツール使用、構造化出力、マルチモーダルビジョン入力がサポートされています。モデルはより小さく高速な兄弟 — トークンあたり少ないパラメーター、ドルあたりより多くのスループット。",
         "specs": [
@@ -5211,7 +5207,7 @@
             "value": "入力$0.75 / 出力$4.5 /1M"
           }
         ],
-        "benchmarksNote": "OpenAIのGPT-5 Miniリリース資料からのベンダー報告スコア。独立レビューはほとんどのエージェントベンチマークで5.4 MiniをClaude Haiku 4.5と同じコスト削減帯に位置付けています。絶対パーセンテージは方向性として捉えてください。",
+        "benchmarksNote": "OpenAIのGPT-5 Miniリリース資料からのベンダー報告スコア。独立レビューはほとんどのエージェントベンチマークで5.4 MiniをKimi K2.6と同じコスト削減帯に位置付けています。絶対パーセンテージは方向性として捉えてください。",
         "benchmarks": [
           {
             "name": "SWE-bench Verified",
@@ -5254,7 +5250,7 @@
           },
           {
             "title": "コスト効率",
-            "body": "マルチモーダルビジョンを含む×0.3クレジット。この価格帯では、Mini、Claude Haiku 4.5、Kimi K2.6はすべて同じ帯にあり、選択は通常フレームワークの適合性と特定のワークロードでの挙動に帰着します。"
+            "body": "マルチモーダルビジョンを含む×0.3クレジット。この価格帯では、Mini、Kimi K2.6、DeepSeek V4 Proはすべて同じ帯にあり、選択は通常フレームワークの適合性と特定のワークロードでの挙動に帰着します。"
           },
           {
             "title": "エスカレートするタイミング",
@@ -5280,14 +5276,6 @@
           {
             "vs": "GPT-5.4",
             "body": "同じファミリー、異なるポジショニング。5.4 Mini（×0.3）はコストと速度で勝ち、5.4（×1）は難しいケースでの推論品質とツールルーティング精度で勝ちます。標準パターンはMiniで事前フィルタし、残りのケースを5.4にエスカレートすることです。"
-          },
-          {
-            "vs": "Claude Haiku 4.5",
-            "body": "同じ乗数（×0.3）。MiniはCodexフレームワーク上で実行、Haiku 4.5はClaude Code上で実行。両方ともマルチモーダルで、両方とも同じコスト削減スロットを対象としています。既存のエージェントとツール定義が対象とするフレームワークで選んでください。"
-          },
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "DeepSeek V4 Flash（×0.02）はベンダーレベルで劇的に安価で、純粋なバルク単発作業に対する正しい選択です。GPT-5.4 Mini（×0.3）はより多くの推論品質を運び、OpenAIエコシステム内に留まるため、ツール定義と構造化出力スキーマが既にCodex向けに調整されている場合に重要です。"
           }
         ],
         "verdict": "GPT-5.4 MiniはOpenAI側のコスト削減デフォルト。Miniで事前フィルタし、ルーチンステップにはGPT-5.4にエスカレート、最も難しい推論にのみGPT-5.5にエスカレートしてください。",
@@ -5301,7 +5289,7 @@
             "a": "はい。GPT-5ファミリーの残りと同様にテキストとコードと並んで画像入力を受け付けます。"
           },
           {
-            "q": "GPT-5.4 MiniとClaude Haiku 4.5のどちらを選ぶべき？",
+            "q": "GPT-5.4 MiniとKimi K2.6のどちらを選ぶべき？",
             "a": "エージェントが既にCodexフレームワーク上に構築されている場合、またはOpenAI構造化出力/ツール呼び出しエコシステムが必要な場合。両者とも×0.3クレジットなのでコストは同一で、選択はフレームワークと挙動に帰着します。"
           },
           {
@@ -5320,7 +5308,7 @@
           }
         ],
         "routingNotes": "Routed through the Codex framework on VM0 via OpenAI's Responses API. Available on VM0 Managed and via direct OpenAI API key, ChatGPT (Codex) OAuth, OpenRouter (Codex) and Vercel AI Gateway (Codex).",
-        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Claude Haiku 4.5, Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
+        "vm0Notes": "GPT-5.4 Mini sits at the ×0.3 cost-saving multiplier alongside Kimi K2.6 and DeepSeek V4 Pro. Prompt caching is enabled by default and the high throughput makes Mini a natural pre-filter step in stacked agent designs that escalate to 5.4 or 5.5 only on the residual hard cases."
       },
       "kimi-k2-6": {
         "name": "Kimi K2.6",
@@ -5329,7 +5317,7 @@
         "cardIntro": "Moonshotの最新。社内評価で最高クラスの長文コンテキスト再現率、Claude互換インターフェース。",
         "metaTitle": "Kimi K2.6 on VM0: SWE-bench、価格、長文コンテキスト活用",
         "metaDescription": "VM0でのKimi K2.6レビュー。Moonshotのオープンウェイト1TパラメータMoE。SWE-bench Pro 58.6、×0.3クレジットコスト、256Kコンテキスト。仕様と推奨タスク。",
-        "summary": "Kimi K2.6はMoonshotのオープンウェイトフラッグシップであり、複数の公開ベンチマークで現在最強のオープンソースエージェントモデルです。非常に長い実行でもスレッドを見失わず（Moonshotは12時間以上・4,000回以上のツール呼び出しの無人のセッションを文書化）、画像と動画の入力をネイティブに受け付けます。ベンダー報告のSWE-bench Proは58.6（当該ベンチマークでClaude Opus 4.6とGPT-5.4を上回る）で、ハルシネーション率はK2.5の約65%から約39%に低下しました。\n\nベンダー価格は$0.60/$3/1Mトークン、オープンウェイトはModified MITライセンスで公開、APIはAnthropic互換です。プロダクションのツールルーティング信頼性がベンチマークスコアより重要な場合はSonnet 4.6を、レイテンシが支配的な場合はHaikuを選びましょう。",
+        "summary": "Kimi K2.6はMoonshotのオープンウェイトフラッグシップであり、複数の公開ベンチマークで現在最強のオープンソースエージェントモデルです。非常に長い実行でもスレッドを見失わず（Moonshotは12時間以上・4,000回以上のツール呼び出しの無人のセッションを文書化）、画像と動画の入力をネイティブに受け付けます。ベンダー報告のSWE-bench Proは58.6（当該ベンチマークでClaude Opus 4.6とGPT-5.4を上回る）で、ハルシネーション率はK2.5の約65%から約39%に低下しました。\n\nベンダー価格は$0.60/$3/1Mトークン、オープンウェイトはModified MITライセンスで公開、APIはAnthropic互換です。プロダクションのツールルーティング信頼性がベンチマークスコアより重要な場合はSonnet 4.6を、レイテンシが支配的な場合はKimi K2.6を選びましょう。",
         "releaseDate": "2026年4月20日",
         "familyPosition": "MoonshotのオープンウェイトKimi K2シリーズの最上位。K2.5とK2 Thinkingの後継。",
         "background": [
@@ -5438,7 +5426,7 @@
             "body": "K2.6はMoonViTを通じて画像と動画の両方の入力を受け付けます。これはClaudeファミリー以外では珍しいことです。スクリーンショットベースのQAエージェント、ドキュメントビジョンパイプライン、画像を読むためだけに別のビジョンモデルを組み込む必要があるようなデプロイメントに有用です。"
           }
         ],
-        "avoidFor": "プロダクションの信頼性でSonnet 4.6が依然リードする最も難しいツールルーティングのエッジケースではK2.6をスキップし、レイテンシが重要なチャット応答ではHaiku 4.5の方が有意に高速です。",
+        "avoidFor": "プロダクションの信頼性でSonnet 4.6が依然リードする最も難しいツールルーティングのエッジケースではK2.6をスキップし、K2.5の低いマルチプライヤーで十分な固定済みレガシーワークフローでも避けてください。",
         "comparisons": [
           {
             "vs": "GLM-5.1",
@@ -5500,13 +5488,13 @@
         "cardIntro": "DeepSeekのフラッグシップ。Sonnetの3分の1のクレジットコストで強力な推論、Claude互換API。",
         "metaTitle": "DeepSeek V4 Pro on VM0: ベンチマーク、価格、比較",
         "metaDescription": "VM0でのDeepSeek V4 Proレビュー。SWE-bench Verified 80.6%のオープンウェイト1.6T MoE、×0.3クレジットコスト、1Mコンテキスト。価格、仕様、Claude比較。",
-        "summary": "DeepSeek V4 ProはDeepSeekのV4世代のフラッグシップ — MITライセンスのオープンウェイト1.6TパラメータMoEです。最大の特徴は価格品質比：ベンダー報告のSWE-bench Verifiedは80.6%で、Claude Opus 4.6と小数点以下の差、Anthropicのベンダーコストの約7分の1です。これにより、推論重視のエージェント（バルクPRレビュー、バッチ文書分析、定期要約）を高ボリュームで手頃に実行できます。\n\nベンダー価格は$1.74/$3.48/1Mトークン、キャッシュ読み取り$0.028/1M、キャッシュ書き込み無料（ラインアップで唯一）。1Mトークンコンテキスト、Anthropic互換API。プロダクションのツールルーティング信頼性が決定要因の場合はSonnet 4.6を、単発バルク作業の場合は12倍安いV4 Flashを選びましょう。",
+        "summary": "DeepSeek V4 ProはDeepSeekのV4世代のフラッグシップ — MITライセンスのオープンウェイト1.6TパラメータMoEです。最大の特徴は価格品質比：ベンダー報告のSWE-bench Verifiedは80.6%で、Claude Opus 4.6と小数点以下の差、Anthropicのベンダーコストの約7分の1です。これにより、推論重視のエージェント（バルクPRレビュー、バッチ文書分析、定期要約）を高ボリュームで手頃に実行できます。\n\nベンダー価格は$1.74/$3.48/1Mトークン、キャッシュ読み取り$0.028/1M、キャッシュ書き込み無料（ラインアップで唯一）。1Mトークンコンテキスト、Anthropic互換API。プロダクションのツールルーティング信頼性が決定要因の場合はSonnet 4.6を、単発バルク作業がV4 Proの推論深度を必要としない場合はGPT-5.4 MiniまたはKimi K2.6を選びましょう。",
         "releaseDate": "2026年4月24日",
-        "familyPosition": "DeepSeek V4ファミリーの推論バリアント。コスト用のV4 Flashとペア。",
+        "familyPosition": "DeepSeek V4ファミリーの推論バリアント。最大の推論品質にフォーカス。",
         "background": [
-          "DeepSeek V4 ProはDeepSeekのV4世代のフラッグシップで、2026年4月24日にMITライセンスでリリースされました。1.6T総パラメータ・49Bアクティブ/トークンのオープンウェイトMixture-of-Expertsモデルで、コスト重視の作業用にV4 Flash（284B/13Bアクティブ）とペアになっています。",
-          "両V4モデルは同一の機能セットを共有：1Mトークンコンテキストウィンドウ、384K最大出力、3つの推論努力モード（standard、think、think-max）、JSON出力、ツール呼び出し、非thinkモードでのFIM補完。Proモデルはハイブリッドアテンションアーキテクチャ（Compressed Sparse Attention + Heavily Compressed Attention）を追加し、長文コンテキスト効率を劇的に改善。1MコンテキストでDeepSeek V3.2と比較してシングルトークン推論FLOPの27%、KVキャッシュの10%。",
-          "DeepSeekは2025年を通じて、Anthropic級の推論を数分の一の価格で提供することで波紋を広げました。V4 Proはそのパターンを継承：ベンダー報告のSWE-bench Verified 80.6%はClaude Opus 4.6と0.2ポイント差、ベンダーコストは約7分の1。VM0ではDeepSeek APIキープロバイダーとVM0 Managedで×0.3で利用可能。Claude Haiku 4.5と同じマルチプライヤーですが、大幅に強力な推論動作を持ちます。"
+          "DeepSeek V4 ProはDeepSeekのV4世代のフラッグシップで、2026年4月24日にMITライセンスでリリースされました。1.6T総パラメータ・49Bアクティブ/トークンのオープンウェイトMixture-of-Expertsモデルです。",
+          "V4 Proは1Mトークンコンテキストウィンドウ、384K最大出力、3つの推論努力モード（standard、think、think-max）、JSON出力、ツール呼び出し、非thinkモードでのFIM補完をサポートします。Proモデルはハイブリッドアテンションアーキテクチャ（Compressed Sparse Attention + Heavily Compressed Attention）を追加し、長文コンテキスト効率を劇的に改善。1MコンテキストでDeepSeek V3.2と比較してシングルトークン推論FLOPの27%、KVキャッシュの10%。",
+          "DeepSeekは2025年を通じて、Anthropic級の推論を数分の一の価格で提供することで波紋を広げました。V4 Proはそのパターンを継承：ベンダー報告のSWE-bench Verified 80.6%はClaude Opus 4.6と0.2ポイント差、ベンダーコストは約7分の1。VM0ではDeepSeek APIキープロバイダーとVM0 Managedで×0.3で利用可能。Kimi K2.6と同じマルチプライヤーですが、大幅に強力な推論動作を持ちます。"
         ],
         "architecture": "V4 Proは1.6T総パラメータ・49Bアクティブ/トークンのMixture-of-Expertsモデルで、ハイブリッドアテンションスタック（Compressed Sparse Attention + Heavily Compressed Attention）を備え、長文コンテキスト推論を低コストに保ちます。1Mトークンのコンテキストウィンドウと384Kの最大出力、3つの推論努力モード（standard、think、think-max）をサポートし、安定した信号伝播のためにManifold-Constrained Hyper-Connectionsを使用しています。32T+トークンでMuonオプティマイザを使用して訓練され、MITライセンスでオープンウェイトが公開されています。",
         "specs": [
@@ -5600,7 +5588,7 @@
           },
           {
             "title": "速度",
-            "body": "Artificial Analysisによると最大努力で約36トークン/秒。Haikuより遅く、Opus 4.6よりわずかに遅い。"
+            "body": "Artificial Analysisによると最大努力で約36トークン/秒。Kimi K2.6より遅く、Opus 4.6よりわずかに遅い。"
           }
         ],
         "bestForExamples": [
@@ -5617,12 +5605,8 @@
             "body": "ハイブリッドアテンション（Compressed Sparse Attention + Heavily Compressed Attention）を備えた1Mトークンコンテキストにより、中規模のコードベースが1プロンプトに収まり、ウィンドウが埋まっても推論コストが管理可能です。クロスファイルリファクタリングやアーキテクチャレベルのレビューでは、「すべてを一度に見る」OpusスタイルのワークフローをOpusスタイルの請求書なしで実現できます。"
           }
         ],
-        "avoidFor": "Sonnet 4.6が依然リードする最も難しいツールルーティングのエッジケースではV4 Proをスキップし、推論が不要でV4 Flashが約12倍安いバルク単発作業でもスキップします。",
+        "avoidFor": "Sonnet 4.6が依然リードする最も難しいツールルーティングのエッジケースではV4 Proをスキップし、GPT-5.4 MiniまたはKimi K2.6で低コストに十分なバルク単発作業でもスキップします。",
         "comparisons": [
-          {
-            "vs": "DeepSeek V4 Flash",
-            "body": "同じベンダー、異なるポジショニング。V4 Pro（×0.3）は推論を提供し、V4 Flash（×0.02）は可能な限り安い単発モデルを提供します。ベンダー報告のSWE-bench VerifiedではFlashはProと1.6ポイント差（79.0 vs 80.6）。しかしTerminal-Bench（67.9 vs 56.9）ではマルチステップツール使用でProが引き離します。"
-          },
           {
             "vs": "Claude Sonnet 4.6",
             "body": "Sonnet 4.6（×1）はツールルーティングのエッジケースと英語推論で勝ります。V4 Pro（×0.3）はコストで勝り、コーディングベンチマーク（ベンダー報告）で競争力があります。コミットする前に実際のエージェントでA/Bテストする価値があります。"
@@ -5632,11 +5616,11 @@
             "body": "同じマルチプライヤー（×0.3）。Kimiは長文コンテキスト再現率が強くIntelligence Indexが高い（54 vs 52）。V4 Proはキャッシュ経済性が優れ（書き込み無料）、1Mコンテキストウィンドウ（Kimiは256K）。どちらの特性がより重要かで選択します。"
           }
         ],
-        "verdict": "V4 Flashで事前フィルタリング、推論にはV4 Proにエスカレーション、V4 Proがツールルーティングのエッジケースで止まった場合のみSonnet 4.6にエスカレーション。",
+        "verdict": "GPT-5.4 MiniまたはKimi K2.6で事前フィルタリングし、推論にはV4 Proにエスカレーション、V4 Proがツールルーティングのエッジケースで止まった場合のみSonnet 4.6にエスカレーション。",
         "faqs": [
           {
             "q": "DeepSeek V4 Proはいつリリースされましたか？",
-            "a": "DeepSeekは2026年4月24日にV4 ProとV4 FlashをMITライセンスで同時リリースし、オープンウェイトを公開しました。"
+            "a": "DeepSeekは2026年4月24日にV4 ProをMITライセンスでリリースし、オープンウェイトを公開しました。"
           },
           {
             "q": "なぜキャッシュ書き込みが無料なのですか？",
@@ -5806,7 +5790,7 @@
         "cardIntro": "Official MiniMax M3 routing for coding agents with 1M context, prompt cache reads, and a ×0.2 VM0 multiplier.",
         "metaTitle": "MiniMax M3 on VM0: Pricing, Specs & Official Routing",
         "metaDescription": "MiniMax M3 review on VM0. Official MiniMax coding model with 1M context, multimodal understanding, prompt cache reads, and ×0.2 credits.",
-        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.7 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
+        "summary": "MiniMax M3 is MiniMax's frontier coding and agentic model, exposed on VM0 through the official MiniMax Anthropic-compatible endpoint. It is the right MiniMax choice when an agent needs stronger coding, tool use, long-context reasoning, and native vision understanding than the retained M2 series.\n\nVM0 prices M3 from MiniMax's standard non-promotional pay-as-you-go tier for the base context band: $0.60 / $2.40 per 1M tokens, with prompt cache reads at $0.12 / 1M and no separate cache-write billing in the M3 table. MiniMax M2.1 remains available for lower-cost compatibility, while M3 is the default MiniMax BYOK model.",
         "releaseDate": "June 1, 2026",
         "familyPosition": "Official MiniMax M3 text model alongside the retained M2 series.",
         "background": [
@@ -5871,7 +5855,7 @@
         "bestForExamples": [
           {
             "title": "The coding agent that must stay on MiniMax",
-            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.7."
+            "body": "Repository edits, debugging, and agentic coding flows where your deployment already uses MiniMax keys but needs a stronger coding model than M2.1."
           },
           {
             "title": "The long-context review run",
@@ -5882,12 +5866,8 @@
             "body": "Workflows that mix text with screenshots or diagrams. M3 is marked image-input capable on VM0, while the M2 entries stay text/code only."
           }
         ],
-        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.7 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
+        "avoidFor": "Skip M3 when you need the absolute lowest MiniMax cost and text-only M2.1 is already good enough, or when you need OpenRouter/Vercel routing because this VM0 entry intentionally uses only the official MiniMax path.",
         "comparisons": [
-          {
-            "vs": "MiniMax M2.7",
-            "body": "M3 is the newer, stronger coding and multimodal model at ×0.2, and it is the direct MiniMax provider default. M2.7 remains cheaper at ×0.1 for lower-cost compatibility."
-          },
           {
             "vs": "Kimi K2.6",
             "body": "Both target coding and agentic work at low cost. Kimi has broader existing gateway support on VM0, while M3 uses the official MiniMax route and gives MiniMax users the newer model."
@@ -5897,11 +5877,11 @@
             "body": "Sonnet 4.6 remains the baseline for reliability on complex English tool-use. M3 is much cheaper and attractive for MiniMax-native coding agents, but should be validated on critical workflows."
           }
         ],
-        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.7 when cost and compatibility matter more.",
+        "verdict": "Use MiniMax M3 when you want the official MiniMax coding model with long context and vision support. Keep M2.1 when cost and compatibility matter more.",
         "faqs": [
           {
-            "q": "Is MiniMax M2.7 still available?",
-            "a": "Yes. VM0 keeps MiniMax M2.7 and M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
+            "q": "Is MiniMax M2.1 still available?",
+            "a": "Yes. VM0 keeps MiniMax M2.1 in the direct MiniMax provider. M3 is now the default MiniMax BYOK model."
           },
           {
             "q": "Does VM0 route MiniMax M3 through OpenRouter or Vercel?",
@@ -5923,7 +5903,7 @@
           }
         ],
         "routingNotes": "Routed through MiniMax's official Anthropic-compatible endpoint at `api.minimax.io`. Available on VM0 Managed and MiniMax API-key providers only.",
-        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.7 and M2.1 selectable."
+        "vm0Notes": "VM0 maps `MiniMax-M3` to the existing MiniMax vendor key pool for Built-in routing. The direct MiniMax provider uses M3 as its default model while keeping M2.1 selectable."
       },
       "gpt-image-2": {
         "name": "GPT Image 2",
