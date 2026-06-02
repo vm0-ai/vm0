@@ -92,6 +92,48 @@ class TestResponseHandler:
         assert entry["port"] == 9443
         assert entry["url"] == "https://target.example.com:9443/path"
 
+    def test_response_log_includes_firewall_auth_metadata(self, tmp_path, real_flow, mitm_ctx):
+        flow = real_flow(with_response=False, host="api.example.com", path="/items")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata.update(
+            {
+                metadata_keys.VM_RUN_ID: "run-abc-123",
+                metadata_keys.VM_NETWORK_LOG_PATH: log_path,
+                metadata_keys.ORIGINAL_URL: "https://api.example.com/items",
+                metadata_keys.FIREWALL_ACTION: "ALLOW",
+                metadata_keys.FIREWALL_BASE: "https://api.example.com",
+                metadata_keys.FIREWALL_NAME: "example",
+                metadata_keys.FIREWALL_PERMISSION: "read",
+                metadata_keys.FIREWALL_RULE_MATCH: "GET /items",
+                metadata_keys.FIREWALL_BILLABLE: True,
+                metadata_keys.FIREWALL_PARAMS: {"owner": "vm0-ai", "repo": "vm0"},
+                metadata_keys.FIREWALL_ERROR: "TOKEN_REFRESH_FAILED",
+                metadata_keys.AUTH_RESOLVED_SECRETS: ["GITHUB_TOKEN"],
+                metadata_keys.AUTH_REFRESHED_CONNECTORS: ["github"],
+                metadata_keys.AUTH_REFRESHED_SECRETS: ["GITHUB_TOKEN"],
+                metadata_keys.AUTH_CACHE_HIT: False,
+                metadata_keys.AUTH_URL_REWRITE: True,
+            }
+        )
+        flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["firewall_base"] == "https://api.example.com"
+        assert entry["firewall_name"] == "example"
+        assert entry["firewall_permission"] == "read"
+        assert entry["firewall_rule_match"] == "GET /items"
+        assert entry["firewall_billable"] is True
+        assert entry["firewall_params"] == {"owner": "vm0-ai", "repo": "vm0"}
+        assert entry["firewall_error"] == "TOKEN_REFRESH_FAILED"
+        assert entry["auth_resolved_secrets"] == ["GITHUB_TOKEN"]
+        assert entry["auth_refreshed_connectors"] == ["github"]
+        assert entry["auth_refreshed_secrets"] == ["GITHUB_TOKEN"]
+        assert entry["auth_cache_hit"] is False
+        assert entry["auth_url_rewrite"] is True
+
     @pytest.mark.parametrize(
         ("raw_url", "expected_url"),
         [
