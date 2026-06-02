@@ -300,124 +300,6 @@ class _CompiledRuleCandidate(NamedTuple):
     params: dict[str, str]
 
 
-class _BaseMatch(NamedTuple):
-    base: str
-    name: str
-    rel_path: str
-    api_entry: dict
-    params: dict[str, str]
-
-
-class _AllowedRuleMatch(NamedTuple):
-    api_entry: dict
-    name: str
-    rel_path: str
-    candidate: _CompiledRuleCandidate
-
-
-class _BlockMatch(NamedTuple):
-    base: str
-    name: str
-    method: str
-    rel_path: str
-
-
-class _FirewallDecisionState:
-    """Mutable decision state for the single-pass compiled firewall matcher."""
-
-    __slots__ = (
-        "allowed_match",
-        "base_match",
-        "best_base_specificity",
-        "best_rule_specificity",
-        "denied_match",
-        "denied_permission_names",
-        "malformed_config_match",
-        "malformed_policy_match",
-    )
-
-    allowed_match: _AllowedRuleMatch | None
-    base_match: _BaseMatch | None
-    best_base_specificity: int | None
-    best_rule_specificity: _PathSpecificity | None
-    denied_match: _BlockMatch | None
-    denied_permission_names: list[str]
-    malformed_config_match: _BlockMatch | None
-    malformed_policy_match: _BlockMatch | None
-
-    def __init__(self) -> None:
-        self.allowed_match = None
-        self.base_match = None
-        self.best_base_specificity = None
-        self.best_rule_specificity = None
-        self.denied_match = None
-        self.denied_permission_names = []
-        self.malformed_config_match = None
-        self.malformed_policy_match = None
-
-    def accept_base_match(
-        self,
-        api_entry: _CompiledApi,
-        *,
-        name: str,
-        rel_path: str,
-        base_params: dict[str, str],
-    ) -> bool:
-        if (
-            self.best_base_specificity is None
-            or api_entry.base.specificity > self.best_base_specificity
-        ):
-            self.best_base_specificity = api_entry.base.specificity
-            self.best_rule_specificity = None
-            self.allowed_match = None
-            self.base_match = None
-            self.denied_match = None
-            self.denied_permission_names = []
-            self.malformed_config_match = None
-            self.malformed_policy_match = None
-        elif api_entry.base.specificity < self.best_base_specificity:
-            return False
-
-        if self.base_match is None:
-            self.base_match = _BaseMatch(
-                api_entry.base.raw,
-                name,
-                rel_path,
-                api_entry.raw_api_entry,
-                base_params,
-            )
-        return True
-
-    def record_malformed_config(self, match: _BlockMatch) -> None:
-        if self.malformed_config_match is None:
-            self.malformed_config_match = match
-
-    def record_malformed_policy(self, match: _BlockMatch) -> None:
-        if self.malformed_policy_match is None:
-            self.malformed_policy_match = match
-
-    def accept_rule_candidate(self, candidate: _CompiledRuleCandidate) -> bool:
-        if self.best_rule_specificity is None or candidate.specificity > self.best_rule_specificity:
-            self.best_rule_specificity = candidate.specificity
-            self.allowed_match = None
-            self.denied_match = None
-            self.denied_permission_names = []
-        elif candidate.specificity < self.best_rule_specificity:
-            return False
-
-        return True
-
-    def record_allowed_rule(self, match: _AllowedRuleMatch) -> None:
-        if self.allowed_match is None:
-            self.allowed_match = match
-
-    def record_denied_rule(self, match: _BlockMatch, permission: str) -> None:
-        if permission not in self.denied_permission_names:
-            self.denied_permission_names.append(permission)
-        if self.denied_match is None:
-            self.denied_match = match
-
-
 def _split_base_match_url(
     value: str,
     *,
@@ -1620,6 +1502,124 @@ class FirewallBlock(NamedTuple):
     path: str
     permissions: tuple[str, ...]  # denied/asked permission names only
     reason: FirewallBlockReason
+
+
+class _BaseMatch(NamedTuple):
+    base: str
+    name: str
+    rel_path: str
+    api_entry: dict
+    params: dict[str, str]
+
+
+class _AllowedRuleMatch(NamedTuple):
+    api_entry: dict
+    name: str
+    rel_path: str
+    candidate: _CompiledRuleCandidate
+
+
+class _BlockMatch(NamedTuple):
+    base: str
+    name: str
+    method: str
+    rel_path: str
+
+
+class _FirewallDecisionState:
+    """Mutable decision state for the single-pass compiled firewall matcher."""
+
+    __slots__ = (
+        "allowed_match",
+        "base_match",
+        "best_base_specificity",
+        "best_rule_specificity",
+        "denied_match",
+        "denied_permission_names",
+        "malformed_config_match",
+        "malformed_policy_match",
+    )
+
+    allowed_match: _AllowedRuleMatch | None
+    base_match: _BaseMatch | None
+    best_base_specificity: int | None
+    best_rule_specificity: _PathSpecificity | None
+    denied_match: _BlockMatch | None
+    denied_permission_names: list[str]
+    malformed_config_match: _BlockMatch | None
+    malformed_policy_match: _BlockMatch | None
+
+    def __init__(self) -> None:
+        self.allowed_match = None
+        self.base_match = None
+        self.best_base_specificity = None
+        self.best_rule_specificity = None
+        self.denied_match = None
+        self.denied_permission_names = []
+        self.malformed_config_match = None
+        self.malformed_policy_match = None
+
+    def accept_base_match(
+        self,
+        api_entry: _CompiledApi,
+        *,
+        name: str,
+        rel_path: str,
+        base_params: dict[str, str],
+    ) -> bool:
+        if (
+            self.best_base_specificity is None
+            or api_entry.base.specificity > self.best_base_specificity
+        ):
+            self.best_base_specificity = api_entry.base.specificity
+            self.best_rule_specificity = None
+            self.allowed_match = None
+            self.base_match = None
+            self.denied_match = None
+            self.denied_permission_names = []
+            self.malformed_config_match = None
+            self.malformed_policy_match = None
+        elif api_entry.base.specificity < self.best_base_specificity:
+            return False
+
+        if self.base_match is None:
+            self.base_match = _BaseMatch(
+                api_entry.base.raw,
+                name,
+                rel_path,
+                api_entry.raw_api_entry,
+                base_params,
+            )
+        return True
+
+    def record_malformed_config(self, match: _BlockMatch) -> None:
+        if self.malformed_config_match is None:
+            self.malformed_config_match = match
+
+    def record_malformed_policy(self, match: _BlockMatch) -> None:
+        if self.malformed_policy_match is None:
+            self.malformed_policy_match = match
+
+    def accept_rule_candidate(self, candidate: _CompiledRuleCandidate) -> bool:
+        if self.best_rule_specificity is None or candidate.specificity > self.best_rule_specificity:
+            self.best_rule_specificity = candidate.specificity
+            self.allowed_match = None
+            self.denied_match = None
+            self.denied_permission_names = []
+        elif candidate.specificity < self.best_rule_specificity:
+            return False
+
+        return True
+
+    def record_allowed_rule(self, match: _AllowedRuleMatch) -> None:
+        if self.allowed_match is None:
+            self.allowed_match = match
+
+    def record_denied_rule(self, match: _BlockMatch, permission: str) -> None:
+        if permission not in self.denied_permission_names:
+            self.denied_permission_names.append(permission)
+        if self.denied_match is None:
+            self.denied_match = match
 
 
 def _resolve_firewall_decision(
