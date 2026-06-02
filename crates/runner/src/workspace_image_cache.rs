@@ -311,6 +311,10 @@ impl SessionWorkspaceCache {
         ) == cache_key
     }
 
+    fn can_collect_metadata_scope(&self, metadata: &WorkspaceCacheMetadata) -> bool {
+        self.inner.cache_scope.is_empty() || metadata.cache_scope == self.inner.cache_scope
+    }
+
     pub(crate) async fn lease_active(
         &self,
         request: WorkspaceImageActiveLeaseRequest<'_>,
@@ -1114,11 +1118,16 @@ impl SessionWorkspaceCache {
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
         let current_path = self.session_workspace_cache_current_image(&cache_key);
         let file_metadata = fs::metadata(&current_path).await.ok()?;
-        let last_used_at = self
-            .read_metadata_file(&metadata_path)
-            .await
-            .map(|metadata| metadata.last_used_at)
-            .unwrap_or_default();
+        let last_used_at = match self.read_metadata_file(&metadata_path).await {
+            Ok(metadata) => {
+                if !self.can_collect_metadata_scope(&metadata) {
+                    return None;
+                }
+                metadata.last_used_at
+            }
+            Err(_) if self.inner.cache_scope.is_empty() => String::new(),
+            Err(_) => return None,
+        };
         Some(GcCandidate {
             cache_key,
             allocated_bytes: allocated_bytes(&file_metadata),
@@ -1949,6 +1958,52 @@ mod tests {
         key
     }
 
+    async fn promote_current_cache_entry(
+        cache: &SessionWorkspaceCache,
+        paths: &RunnerPaths,
+        session_id: &str,
+        image: &[u8],
+        last_completed_at: &str,
+    ) -> String {
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image.len() as u64,
+                workspace_drive_required: false,
+            })
+            .await;
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&active_image, image).await.unwrap();
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    last_completed_at.into(),
+                    &StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+        drop(lease);
+        cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            session_id,
+            "/workspace",
+            image.len() as u64,
+        )
+    }
+
     #[test]
     fn budget_uses_automatic_bounds() {
         let budget = CacheBudget::from_fs_stats(FsStats {
@@ -2456,6 +2511,56 @@ mod tests {
         cache_b.gc(false).await.unwrap();
 
         assert_eq!(cache_a.held_session_states().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn scoped_gc_candidates_ignore_other_group_cache_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        tokio::fs::create_dir_all(home.workspace_image_cache_dir().parent().unwrap())
+            .await
+            .unwrap();
+        let runner_a = RunnerPaths::new(dir.path().join("runner-a"));
+        let runner_b = RunnerPaths::new(dir.path().join("runner-b"));
+        tokio::fs::create_dir_all(runner_a.base_dir())
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(runner_b.base_dir())
+            .await
+            .unwrap();
+        let cache_a = SessionWorkspaceCache::shared(runner_a.clone(), &home, "group-a");
+        let cache_b = SessionWorkspaceCache::shared(runner_b.clone(), &home, "group-b");
+
+        let group_a_key = promote_current_cache_entry(
+            &cache_a,
+            &runner_a,
+            "sess-a",
+            b"image-a",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+
+        assert!(
+            cache_a.gc_candidate(group_a_key.clone()).await.is_some(),
+            "own group entries should remain eligible for scoped GC"
+        );
+        assert!(
+            cache_b.gc_candidates().await.unwrap().is_empty(),
+            "scoped GC must not budget-evict entries owned by another group"
+        );
+
+        promote_current_cache_entry(
+            &cache_b,
+            &runner_b,
+            "sess-b",
+            b"image-b",
+            "2026-05-01T00:01:00.000Z",
+        )
+        .await;
+
+        let candidates = cache_b.gc_candidates().await.unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_ne!(candidates[0].cache_key, group_a_key);
     }
 
     #[tokio::test]
