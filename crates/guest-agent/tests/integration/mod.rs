@@ -4,20 +4,12 @@
 #![allow(clippy::await_holding_lock)]
 
 #[macro_use]
-#[path = "integration/support.rs"]
 mod support;
 
-#[path = "integration/checkpoint.rs"]
 mod checkpoint;
-#[path = "integration/complete.rs"]
 mod complete;
-#[path = "integration/events.rs"]
 mod events;
-#[path = "integration/heartbeat.rs"]
 mod heartbeat;
-#[path = "integration/http_client.rs"]
 mod http_client;
-#[path = "integration/presigned_upload.rs"]
 mod presigned_upload;
-#[path = "integration/telemetry.rs"]
 mod telemetry;

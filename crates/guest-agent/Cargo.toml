@@ -35,5 +35,9 @@ vsock-host.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-proto.workspace = true
 
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
+
 [lints]
 workspace = true
