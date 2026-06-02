@@ -5,8 +5,8 @@ import {
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { withErrorHandler } from "../../../lib/command";
+import { resolvePermissionChangeContext } from "./permission-context";
 import { getPlatformOrigin } from "./platform-url";
-import { resolvePermissionChangeContext } from "./resolve-role";
 
 function findPermissionInConfig(ref: string, permissionName: string): boolean {
   if (!isFirewallConnectorType(ref)) return false;

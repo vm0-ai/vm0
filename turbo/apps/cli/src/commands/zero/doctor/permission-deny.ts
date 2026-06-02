@@ -6,7 +6,7 @@ import {
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { withErrorHandler } from "../../../lib/command";
-import { resolvePermissionGrantMode } from "./resolve-role";
+import { resolvePermissionGrantMode } from "./permission-context";
 
 export const permissionDenyCommand = new Command()
   .name("permission-deny")
