@@ -2684,6 +2684,7 @@ interface PermissionActionButtonState {
   hasAgent: boolean;
   hasPermission: boolean;
   loading: boolean;
+  loadError: boolean;
   saving: boolean;
   saveDone: boolean;
   submitDone: boolean;
@@ -2738,6 +2739,9 @@ function permissionActionButtonLabel(
   if (state.loading) {
     return "Checking permissions";
   }
+  if (state.loadError) {
+    return "Failed to load permissions";
+  }
   if (!state.hasPermission) {
     return "Unknown permission";
   }
@@ -2771,6 +2775,7 @@ function permissionActionButtonDisabled(
 ): boolean {
   return (
     state.loading ||
+    state.loadError ||
     state.saving ||
     state.alreadyApplied ||
     state.saveDone ||
@@ -2818,12 +2823,39 @@ function isPermissionActionLoading(params: {
   );
 }
 
+function shouldLoadExistingPermissionRequest(params: {
+  userPermissionGrantsEnabled: boolean;
+  adminLoaded: boolean;
+  canManagePermissions: boolean;
+}): boolean {
+  return (
+    !params.userPermissionGrantsEnabled &&
+    params.adminLoaded &&
+    !params.canManagePermissions
+  );
+}
+
 function isPermissionActionSaving(params: {
   saveLoading: boolean;
   submitLoading: boolean;
   grantLoading: boolean;
 }): boolean {
   return params.saveLoading || params.submitLoading || params.grantLoading;
+}
+
+function isPermissionActionLoadError(params: {
+  userPermissionGrantsEnabled: boolean;
+  agentError: boolean;
+  adminError: boolean;
+  existingRequestError: boolean;
+  userGrantsError: boolean;
+}): boolean {
+  return (
+    params.agentError ||
+    params.adminError ||
+    (!params.userPermissionGrantsEnabled && params.existingRequestError) ||
+    (params.userPermissionGrantsEnabled && params.userGrantsError)
+  );
 }
 
 function isPermissionActionFinished(params: {
@@ -2853,6 +2885,7 @@ function createPermissionActionButtonState(params: {
   hasAgent: boolean;
   hasPermission: boolean;
   loading: boolean;
+  loadError: boolean;
   saving: boolean;
   alreadyApplied: boolean;
   canManagePermissions: boolean;
@@ -2865,6 +2898,7 @@ function createPermissionActionButtonState(params: {
     hasAgent: params.hasAgent,
     hasPermission: params.hasPermission,
     loading: params.loading,
+    loadError: params.loadError,
     saving: params.saving,
     saveDone: params.saveDone,
     submitDone: params.submitDone,
@@ -2892,6 +2926,7 @@ function runPermissionAction(params: {
     !params.focusedPermission ||
     params.existingRequest ||
     params.state.loading ||
+    params.state.loadError ||
     params.state.saving ||
     params.state.alreadyApplied ||
     params.finished
@@ -3057,10 +3092,11 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       connectorRef: block.connectorRef,
       permission: block.permission,
       action: block.action,
-      enabled:
-        !userPermissionGrantsEnabled &&
-        adminLoadable.state === "hasData" &&
-        !canManagePermissions,
+      enabled: shouldLoadExistingPermissionRequest({
+        userPermissionGrantsEnabled,
+        adminLoaded: adminLoadable.state === "hasData",
+        canManagePermissions,
+      }),
     }),
   );
   const userGrantsLoadable = useLoadable(
@@ -3080,6 +3116,13 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     existingRequestLoading: existingRequestLoadable.state === "loading",
     userGrantsLoading: userGrantsLoadable.state === "loading",
   });
+  const loadError = isPermissionActionLoadError({
+    userPermissionGrantsEnabled,
+    agentError: agentLoadable.state === "hasError",
+    adminError: adminLoadable.state === "hasError",
+    existingRequestError: existingRequestLoadable.state === "hasError",
+    userGrantsError: userGrantsLoadable.state === "hasError",
+  });
   const saving = isPermissionActionSaving({
     saveLoading: saveLoadable.state === "loading",
     submitLoading: submitLoadable.state === "loading",
@@ -3090,13 +3133,14 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     !userPermissionGrantsEnabled && existingRequestLoadable.state === "hasData"
       ? existingRequestLoadable.data
       : null;
-  const userGrants =
-    userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
-  const userGrantPolicy = resolveUserPermissionGrantPolicy(
-    userGrants,
-    block.connectorRef,
-    block.permission,
-  );
+  const userGrantPolicy =
+    userPermissionGrantsEnabled && userGrantsLoadable.state === "hasData"
+      ? resolveUserPermissionGrantPolicy(
+          userGrantsLoadable.data,
+          block.connectorRef,
+          block.permission,
+        )
+      : undefined;
   const storedPolicy =
     agent?.permissionPolicies?.[block.connectorRef]?.policies?.[
       block.permission
@@ -3120,6 +3164,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     hasAgent: Boolean(agent),
     hasPermission: Boolean(focusedPermission),
     loading,
+    loadError,
     saving,
     saveDone,
     submitDone,

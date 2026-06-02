@@ -818,6 +818,79 @@ describe("zero chat thread page display - permission action card", () => {
 
     expect(grantCalled).toBeFalsy();
   });
+
+  it("disables chat permission actions when current-user grants fail to load", async () => {
+    let grantCalled = false;
+
+    setMockOrg({ role: "member" });
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=slack&permission=channels%3Aread&action=allow",
+          runId: "run-user-grant-load-failed",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            slack: { policies: { "channels:read": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        });
+      }),
+      mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
+        grantCalled = true;
+        return respond(
+          200,
+          createMockUserPermissionGrantResponse({
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: body.permission,
+            action: body.action,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    const button = queryAllByRoleFast("button", card).find((element) => {
+      return element.textContent === "Failed to load permissions";
+    });
+    expect(button).toBeDefined();
+    expect(button).toBeDisabled();
+
+    click(button!);
+
+    expect(grantCalled).toBeFalsy();
+  });
 });
 
 // CHAT-D-036: Attachment image previews render in ChatMessageRow
