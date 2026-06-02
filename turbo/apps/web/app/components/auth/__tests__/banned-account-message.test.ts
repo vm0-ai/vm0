@@ -4,11 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import RootLayout from "../../../layout";
 import { reloadEnv } from "../../../../src/env";
-import {
-  CLERK_BANNED_ACCOUNT_ERROR_TEXT,
-  CLERK_NOT_ALLOWED_ACCESS_ERROR_TEXT,
-  VM0_CLERK_LOCALIZATION,
-} from "../banned-account-message";
+import { VM0_CLERK_LOCALIZATION } from "../banned-account-message";
 
 const clerkProviderProps = vi.hoisted(() => {
   return {
@@ -113,14 +109,17 @@ describe("VM0_CLERK_LOCALIZATION", () => {
     expect(clerkProviderProps.current?.localization).toBe(
       VM0_CLERK_LOCALIZATION,
     );
-    expect(VM0_CLERK_LOCALIZATION.unstable__errors.user_banned).toBe(
-      CLERK_BANNED_ACCOUNT_ERROR_TEXT,
+    expect(VM0_CLERK_LOCALIZATION.unstable__errors.user_banned).toContain(
+      "support@vm0.ai",
+    );
+    expect(VM0_CLERK_LOCALIZATION.unstable__errors.user_banned).toContain(
+      "violated the vm0 Terms of Use",
     );
     expect(VM0_CLERK_LOCALIZATION.unstable__errors.not_allowed_access).toBe(
-      CLERK_NOT_ALLOWED_ACCESS_ERROR_TEXT,
+      "Access is not allowed.",
     );
-    expect(CLERK_BANNED_ACCOUNT_ERROR_TEXT).not.toBe(
-      CLERK_NOT_ALLOWED_ACCESS_ERROR_TEXT,
+    expect(VM0_CLERK_LOCALIZATION.unstable__errors.user_banned).not.toBe(
+      VM0_CLERK_LOCALIZATION.unstable__errors.not_allowed_access,
     );
   });
 });
