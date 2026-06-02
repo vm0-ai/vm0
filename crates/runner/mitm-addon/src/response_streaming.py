@@ -11,8 +11,9 @@ Lifecycle:
 - ``mitm_addon.error()`` may finalize partial SSE usage before terminal cleanup.
 - ``mitm_addon.websocket_end()`` is terminal for model-provider WebSocket
   upgrades. HTTP 101 responses defer tracked usage release until that hook.
-- terminal hook decorators call ``release_response_stream_state()`` to remove
-  parser callbacks and stream buffer metadata from ``flow.metadata``.
+- hook cleanup paths call ``release_response_stream_state()`` to remove parser
+  callbacks and stream buffer metadata from ``flow.metadata``. This cleanup is
+  separate from tracked usage release.
 """
 
 from collections.abc import Callable
@@ -284,12 +285,14 @@ def finalize_connector_response_state(flow: http.HTTPFlow) -> None:
 def release_response_stream_state(flow: http.HTTPFlow) -> None:
     """Release stream callbacks, buffers, and unfinalized parser state.
 
-    Called by terminal hook decorators after ``response()``, ``error()``, and
-    ``websocket_end()`` cleanup paths. Safe to call repeatedly. Removes
-    ``_RESPONSE_STREAM_CALLBACK``, ``metadata_keys.STREAM_BUFFER``,
-    ``metadata_keys.STREAM_BUFFER_STATE``, and outstanding model or connector
-    finish callbacks. Preserves externally replaced ``flow.response.stream``
-    callbacks and only disables the stream callback installed by this module.
+    Called by ``mitm_addon`` hook cleanup paths after ``response()``,
+    ``error()``, and ``websocket_end()``. Safe to call repeatedly. This releases
+    stream/parser state even when a 101 response keeps usage tracking alive
+    until ``websocket_end()``. Removes ``_RESPONSE_STREAM_CALLBACK``,
+    ``metadata_keys.STREAM_BUFFER``, ``metadata_keys.STREAM_BUFFER_STATE``, and
+    outstanding model or connector finish callbacks. Preserves externally
+    replaced ``flow.response.stream`` callbacks and only disables the stream
+    callback installed by this module.
     """
     stream_callback = flow.metadata.pop(_RESPONSE_STREAM_CALLBACK, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
