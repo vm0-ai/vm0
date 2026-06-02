@@ -102,7 +102,7 @@ class TestResponseHandler:
                 metadata_keys.ORIGINAL_URL: "https://api.example.com/items",
                 metadata_keys.FIREWALL_ACTION: "ALLOW",
                 metadata_keys.FIREWALL_BASE: "https://api.example.com",
-                metadata_keys.FIREWALL_NAME: "example",
+                metadata_keys.FIREWALL_NAME: "model-provider:example",
                 metadata_keys.FIREWALL_PERMISSION: "read",
                 metadata_keys.FIREWALL_RULE_MATCH: "GET /items",
                 metadata_keys.FIREWALL_BILLABLE: True,
@@ -121,7 +121,7 @@ class TestResponseHandler:
 
         entry = json.loads(Path(log_path).read_text().strip())
         assert entry["firewall_base"] == "https://api.example.com"
-        assert entry["firewall_name"] == "example"
+        assert entry["firewall_name"] == "model-provider:example"
         assert entry["firewall_permission"] == "read"
         assert entry["firewall_rule_match"] == "GET /items"
         assert entry["firewall_billable"] is True
