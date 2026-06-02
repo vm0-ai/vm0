@@ -62,9 +62,10 @@ pub(super) struct SpawnContext {
     /// completion so soft-drain/resume races do not depend on a stale
     /// spawn-time mode snapshot.
     pub(super) parking_gate: ParkingGate,
-    /// Notifies the main loop to send an immediate heartbeat after parking a VM.
-    /// This eliminates the up-to-10s blind spot where the server doesn't know
-    /// which runner holds a newly-parked session.
+    /// Notifies the main loop to send an immediate heartbeat after session
+    /// affinity state changes. This eliminates the up-to-10s blind spot where
+    /// the server does not know which runner holds a session VM or workspace
+    /// image cache.
     pub(super) park_notify: Arc<tokio::sync::Notify>,
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
@@ -299,7 +300,7 @@ pub(super) fn spawn_job(
                     factory: factory_for_cleanup,
                     idle_pool,
                     status: Arc::clone(&status),
-                    park_notify,
+                    park_notify: Arc::clone(&park_notify),
                     parking_gate,
                     network_log_drain: exec_config_for_deferred.network_log_drain.clone(),
                     exit_code,
@@ -321,9 +322,15 @@ pub(super) fn spawn_job(
                 }
             }
             let ownership = OwnershipTransitions::new(status.as_ref());
+            let needs_session_affinity_refresh =
+                completion_ready.needs_session_affinity_refresh();
             completion_ready
                 .complete_and_release(provider.as_ref(), &ownership, &cleanup_state_for_body)
                 .await;
+            drop(active_session_guard);
+            if needs_session_affinity_refresh {
+                park_notify.notify_one();
+            }
 
             // Best-effort telemetry, deferred past `provider.complete` so the
             // user-visible run-complete signal isn't blocked on these uploads.

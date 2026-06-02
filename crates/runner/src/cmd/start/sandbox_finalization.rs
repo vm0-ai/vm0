@@ -39,6 +39,20 @@ fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
+fn mark_session_affinity_refresh(
+    completion_ready: CompletionReady,
+    session_affinity_changed: bool,
+    session_affinity_refresh_sent: bool,
+) -> CompletionReady {
+    if session_affinity_refresh_sent {
+        completion_ready.with_session_affinity_refresh_sent()
+    } else if session_affinity_changed {
+        completion_ready.with_session_affinity_changed()
+    } else {
+        completion_ready
+    }
+}
+
 pub(super) struct FinalizeContext {
     pub(super) run_id: RunId,
     pub(super) sandbox_id: SandboxId,
@@ -115,8 +129,10 @@ pub(super) async fn finalize_sandbox_for_completion(
         None
     };
 
+    let mut session_affinity_changed = false;
+    let mut session_affinity_refresh_sent = false;
     let budget = if let Some(session_id) = parkable_session {
-        promote_workspace_image_from_active_sandbox(
+        let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
             sandbox.as_ref(),
             run_id,
             workspace_image.as_ref(),
@@ -131,6 +147,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             },
         )
         .await;
+        session_affinity_changed |= workspace_cache_promoted;
 
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
@@ -184,9 +201,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                     OuterJobPanicPoint::DestroyCompleted,
                     run_id,
                 );
-                return CompletionReady::new(
-                    completion_payload,
-                    BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
+                return mark_session_affinity_refresh(
+                    CompletionReady::new(
+                        completion_payload,
+                        BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
+                            budget_lease,
+                        )),
+                    ),
+                    workspace_cache_promoted,
+                    false,
                 );
             }
         };
@@ -266,9 +289,15 @@ pub(super) async fn finalize_sandbox_for_completion(
                     OuterJobPanicPoint::DestroyCompleted,
                     run_id,
                 );
-                return CompletionReady::new(
-                    completion_payload,
-                    BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease)),
+                return mark_session_affinity_refresh(
+                    CompletionReady::new(
+                        completion_payload,
+                        BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
+                            budget_lease,
+                        )),
+                    ),
+                    workspace_cache_promoted,
+                    false,
                 );
             }
             let candidate = candidate.with_last_completed_at(local_completed_at());
@@ -295,6 +324,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                     ownership
                         .publish_idle_status_after_pool_transfer(snapshot)
                         .await;
+                    session_affinity_changed = true;
+                    session_affinity_refresh_sent = true;
                     park_notify.notify_one();
                     BudgetOwnership::idle_owned()
                 }
@@ -313,8 +344,8 @@ pub(super) async fn finalize_sandbox_for_completion(
                     ownership
                         .publish_idle_status_after_pool_transfer(snapshot)
                         .await;
-                    // Notify immediately — session is already in pool.
-                    // Don't wait for stop_and_destroy which can be slow.
+                    session_affinity_changed = true;
+                    session_affinity_refresh_sent = true;
                     park_notify.notify_one();
                     // The replaced VM was park()ed when it entered the
                     // pool; destroying a parked sandbox is safe — Drop
@@ -348,7 +379,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         }
     } else {
         // No parkable session — stop + destroy.
-        promote_workspace_image_from_active_sandbox(
+        let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
             sandbox.as_ref(),
             run_id,
             workspace_image.as_ref(),
@@ -369,6 +400,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             },
         )
         .await;
+        session_affinity_changed |= workspace_cache_promoted;
         let destroy_outcome = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
@@ -401,7 +433,11 @@ pub(super) async fn finalize_sandbox_for_completion(
         BudgetOwnership::active(active_lease)
     };
 
-    CompletionReady::new(completion_payload, budget)
+    mark_session_affinity_refresh(
+        CompletionReady::new(completion_payload, budget),
+        session_affinity_changed,
+        session_affinity_refresh_sent,
+    )
 }
 
 async fn close_network_log_session(

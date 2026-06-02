@@ -1024,8 +1024,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Main loop
     // -----------------------------------------------------------------------
     // Notification channel: spawned jobs signal the main loop to send an
-    // immediate heartbeat after parking a VM, so the server learns about the
-    // new heldSession without waiting for the next 10-second tick.
+    // immediate heartbeat after session affinity state changes, so the server
+    // learns about a held session VM or workspace image cache without waiting
+    // for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let (usage_flush_tx, mut usage_flush_rx) = tokio::sync::mpsc::channel(1);
     let orphaned_active_runs = OrphanedActiveRuns::new();
@@ -1267,11 +1268,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             _ = heartbeat_tick.tick() => {
                 send_heartbeat(&hb_ctx, current_mode).await;
             }
-            // Immediate heartbeat after a VM is parked — eliminates the
-            // up-to-10s blind spot for session affinity routing.
+            // Immediate heartbeat after session affinity state changes —
+            // eliminates the up-to-10s blind spot for affinity routing.
             _ = park_notify.notified(), if matches!(mode, RunnerMode::Running) => {
                 let source = if can_discover { "main" } else { "budget_exhausted" };
-                info!(source, "park triggered immediate heartbeat");
+                info!(source, "session affinity state triggered immediate heartbeat");
                 send_heartbeat(&hb_ctx, current_mode).await;
             }
         }

@@ -146,11 +146,33 @@ impl CompletionPayload {
 pub(super) struct CompletionReady {
     payload: CompletionPayload,
     budget: BudgetOwnership,
+    session_affinity_changed: bool,
+    session_affinity_refresh_sent: bool,
 }
 
 impl CompletionReady {
     pub(super) fn new(payload: CompletionPayload, budget: BudgetOwnership) -> Self {
-        Self { payload, budget }
+        Self {
+            payload,
+            budget,
+            session_affinity_changed: false,
+            session_affinity_refresh_sent: false,
+        }
+    }
+
+    pub(super) fn with_session_affinity_changed(mut self) -> Self {
+        self.session_affinity_changed = true;
+        self
+    }
+
+    pub(super) fn with_session_affinity_refresh_sent(mut self) -> Self {
+        self.session_affinity_changed = true;
+        self.session_affinity_refresh_sent = true;
+        self
+    }
+
+    pub(super) fn needs_session_affinity_refresh(&self) -> bool {
+        self.session_affinity_changed && !self.session_affinity_refresh_sent
     }
 
     pub(super) async fn complete_and_release(
@@ -159,7 +181,9 @@ impl CompletionReady {
         ownership: &OwnershipTransitions<'_>,
         cleanup_state: &RunCleanupState,
     ) {
-        let Self { payload, budget } = self;
+        let Self {
+            payload, budget, ..
+        } = self;
         let CompletionPayload {
             run_id,
             exit_code,
