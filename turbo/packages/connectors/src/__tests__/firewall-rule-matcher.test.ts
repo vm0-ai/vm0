@@ -1297,6 +1297,11 @@ describe("findMatchingPermissions", () => {
           permissions: [{ name: "bad-auth", rules: ["GET /items/{id}"] }],
         },
         {
+          base: "https://cleartext-auth.example.com",
+          auth: { base: "http://auth.example.com/token" },
+          permissions: [{ name: "cleartext-auth", rules: ["GET /items/{id}"] }],
+        },
+        {
           base: "https://valid.example.com",
           auth: { headers: {} },
           permissions: [{ name: "valid", rules: ["GET /items/{id}"] }],
@@ -1315,6 +1320,11 @@ describe("findMatchingPermissions", () => {
     expect(
       findMatchingPermissions("GET", "/items/1", malformedApiConfig, {
         apiBase: "https://auth.example.com",
+      }),
+    ).toEqual([]);
+    expect(
+      findMatchingPermissions("GET", "/items/1", malformedApiConfig, {
+        apiBase: "https://cleartext-auth.example.com",
       }),
     ).toEqual([]);
   });
