@@ -74,6 +74,7 @@ def _make_validated_https_connection(
     validated_addresses: tuple[_ValidatedAddress, ...],
 ) -> http_client.HTTPSConnection:
     conn = http_client.HTTPSConnection(host, port=port, timeout=timeout)
+    # Keep stdlib TLS/SNI handling while forcing TCP to use validated addresses.
     vars(conn)["_create_connection"] = _connect_to_validated_addresses(validated_addresses)
     return conn
 
