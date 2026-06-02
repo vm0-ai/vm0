@@ -343,8 +343,13 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidApiKey);
     }
-    if matches!(framework, AgentFramework::Codex)
-        && (normalized.contains("usage limit") || normalized.contains("session limit"))
+    // Subscription/usage limits are an expected quota state for both Codex
+    // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
+    // "weekly limit"), so classify them regardless of framework. This lets the
+    // runner log these expected outcomes at info instead of error.
+    if normalized.contains("usage limit")
+        || normalized.contains("session limit")
+        || normalized.contains("weekly limit")
     {
         return Some(FailureReason::UsageLimit);
     }
@@ -1078,23 +1083,33 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_non_codex_usage_limit() {
+    fn cli_failure_reason_classifies_claude_usage_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "Claude usage limit reached. Visit https://claude.ai/settings/usage.",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
-    fn cli_failure_reason_ignores_non_codex_session_limit() {
+    fn cli_failure_reason_classifies_claude_session_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
-            "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage.",
+            "You've hit your session limit · resets 12:50pm (Asia/Shanghai)",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_weekly_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "You've hit your weekly limit · resets 10am (Asia/Shanghai)",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
