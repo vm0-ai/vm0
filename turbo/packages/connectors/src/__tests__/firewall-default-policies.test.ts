@@ -144,6 +144,10 @@ describe("resolveFirewallPolicies", () => {
 });
 
 describe("permissionGrantsToFirewallPolicies", () => {
+  it("should return null for empty grant rows", () => {
+    expect(permissionGrantsToFirewallPolicies([])).toBeNull();
+  });
+
   it("should fold permission grant rows into firewall policies", () => {
     expect(
       permissionGrantsToFirewallPolicies([
