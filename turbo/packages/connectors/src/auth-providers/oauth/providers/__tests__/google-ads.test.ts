@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import {
+  connectorAuthClientIdentity,
   getConnectorAuthMethodAuthCodeGrantConfig,
   resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
@@ -29,7 +30,7 @@ describe("connector/providers/google-ads", () => {
           "google-ads",
           "oauth",
         ),
-        authClient: testAuthClient,
+        authClient: connectorAuthClientIdentity(testAuthClient),
         redirectUri: "https://example.com/callback",
         state: "test-state",
       });

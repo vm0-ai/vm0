@@ -819,6 +819,18 @@ export function isStaticConfidentialConnectorAuthClient(
 }
 
 export function connectorAuthClientIdentity(
+  authClient: StaticConfidentialConnectorAuthClient,
+): StaticConfidentialConnectorAuthClientIdentity;
+export function connectorAuthClientIdentity(
+  authClient: StaticPublicConnectorAuthClient,
+): StaticPublicConnectorAuthClient;
+export function connectorAuthClientIdentity(
+  authClient: DynamicPublicConnectorAuthClient,
+): DynamicPublicConnectorAuthClient;
+export function connectorAuthClientIdentity(
+  authClient: ConnectorAuthClient,
+): ConnectorAuthClientIdentity;
+export function connectorAuthClientIdentity(
   authClient: ConnectorAuthClient,
 ): ConnectorAuthClientIdentity {
   switch (authClient.clientRegistration) {
