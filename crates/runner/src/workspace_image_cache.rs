@@ -610,6 +610,42 @@ impl SessionWorkspaceCache {
                     error = %e,
                     "workspace image cache metadata invalid; using fresh workspace image"
                 );
+                let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+                match fs::remove_dir_all(&entry_dir).await {
+                    Ok(()) => {
+                        info!(
+                            run_id = %request.run_id,
+                            cache_key,
+                            "removed invalid workspace image cache entry before fresh checkout"
+                        );
+                        return workspace_drive(
+                            WorkspaceCacheCheckoutResult::Miss,
+                            None,
+                            None,
+                            Some(lock),
+                            Some(cache_key),
+                            true,
+                        );
+                    }
+                    Err(remove_error) if remove_error.kind() == std::io::ErrorKind::NotFound => {
+                        return workspace_drive(
+                            WorkspaceCacheCheckoutResult::Miss,
+                            None,
+                            None,
+                            Some(lock),
+                            Some(cache_key),
+                            true,
+                        );
+                    }
+                    Err(remove_error) => {
+                        warn!(
+                            run_id = %request.run_id,
+                            cache_key,
+                            error = %remove_error,
+                            "failed to remove invalid workspace image cache entry"
+                        );
+                    }
+                }
                 return workspace_drive(
                     WorkspaceCacheCheckoutResult::InvalidMetadata,
                     None,
@@ -2472,6 +2508,92 @@ mod tests {
             .await;
 
         assert!(err.unwrap_err().to_string().contains("session id mismatch"));
+    }
+
+    #[tokio::test]
+    async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().to_path_buf());
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let image_size = b"old image".len() as u64;
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", image_size);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"old image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "other".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: local_timestamp(),
+                    last_used_at: local_timestamp(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: image_size,
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some("sess-1"),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+                workspace_drive_required: false,
+            })
+            .await;
+
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+        assert!(
+            !paths.session_workspace_cache_entry_dir(&key).exists(),
+            "invalid entry should be removed while the entry lock is held"
+        );
+
+        let active_image = paths.active_workspace_image(&sandbox_id);
+        fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        fs::write(&active_image, b"new image").await.unwrap();
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    "2026-06-01T00:00:00.000Z".into(),
+                    &StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+
+        let metadata = cache
+            .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+        assert_eq!(metadata.session_id, "sess-1");
+        drop(lease);
+        assert_eq!(cache.held_session_states().await.len(), 1);
     }
 
     #[tokio::test]
