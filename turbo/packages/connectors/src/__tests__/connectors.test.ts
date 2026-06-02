@@ -50,6 +50,7 @@ import {
   getConnectorTypeForSecretName,
   getConnectorEnvBindingEntries,
   getConnectorManualGrantFieldNames,
+  getConnectorManualGrantFieldNamesForAuthMethod,
   getRuntimeAvailableConnectorTypes,
   getConnectorOwnedSecretNames,
   getConnectorVariableNames,
@@ -450,6 +451,98 @@ describe("connector auth method config", () => {
       variables: ["GITLAB_HOST"],
     });
     expect(getConnectorManualGrantFieldNames("github")).toBeNull();
+  });
+
+  it("gets manual grant field names for one auth method", () => {
+    const authMethods = CONNECTOR_TYPES.github.authMethods;
+    const apiTokenMethod = {
+      label: "API Token",
+      helpText: "Enter an API token.",
+      grant: {
+        kind: "manual",
+        fields: {
+          GITHUB_API_TOKEN: {
+            label: "Token",
+            required: true,
+          },
+          GITHUB_API_HOST: {
+            label: "Host",
+            required: false,
+            storage: "variable",
+          },
+        },
+      },
+      access: {
+        kind: "static",
+        envBindings: {
+          GITHUB_API_TOKEN: "$secrets.GITHUB_API_TOKEN",
+          GITHUB_API_HOST: "$vars.GITHUB_API_HOST",
+        },
+      },
+      revoke: { kind: "none" },
+    } satisfies ConnectorAuthMethodConfig;
+    const apiMethod = {
+      label: "Secondary API Token",
+      helpText: "Enter a secondary API token.",
+      grant: {
+        kind: "manual",
+        fields: {
+          GITHUB_SECONDARY_TOKEN: {
+            label: "Token",
+            required: true,
+          },
+          GITHUB_SECONDARY_HOST: {
+            label: "Host",
+            required: false,
+            storage: "variable",
+          },
+        },
+      },
+      access: {
+        kind: "static",
+        envBindings: {
+          GITHUB_SECONDARY_TOKEN: "$secrets.GITHUB_SECONDARY_TOKEN",
+          GITHUB_SECONDARY_HOST: "$vars.GITHUB_SECONDARY_HOST",
+        },
+      },
+      revoke: { kind: "none" },
+    } satisfies ConnectorAuthMethodConfig;
+
+    Object.defineProperty(authMethods, "api-token", {
+      value: apiTokenMethod,
+      configurable: true,
+      enumerable: true,
+    });
+    Object.defineProperty(authMethods, "api", {
+      value: apiMethod,
+      configurable: true,
+      enumerable: true,
+    });
+
+    try {
+      expect(
+        getConnectorManualGrantFieldNamesForAuthMethod("github", "oauth"),
+      ).toBeNull();
+      expect(
+        getConnectorManualGrantFieldNamesForAuthMethod("github", "api-token"),
+      ).toStrictEqual({
+        secrets: ["GITHUB_API_TOKEN"],
+        variables: ["GITHUB_API_HOST"],
+      });
+      expect(
+        getConnectorManualGrantFieldNamesForAuthMethod("github", "api"),
+      ).toStrictEqual({
+        secrets: ["GITHUB_SECONDARY_TOKEN"],
+        variables: ["GITHUB_SECONDARY_HOST"],
+      });
+      expect(getConnectorManualGrantFieldNames("github")).toStrictEqual({
+        secrets: ["GITHUB_API_TOKEN", "GITHUB_SECONDARY_TOKEN"],
+        variables: ["GITHUB_API_HOST", "GITHUB_SECONDARY_HOST"],
+      });
+    } finally {
+      Reflect.deleteProperty(authMethods, "api-token");
+      Reflect.deleteProperty(authMethods, "api");
+    }
   });
 
   it("keeps connector-scoped secret and variable names globally unique", () => {

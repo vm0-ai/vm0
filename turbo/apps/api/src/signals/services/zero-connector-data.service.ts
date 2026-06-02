@@ -11,7 +11,7 @@ import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodScopeDiff,
   getConnectorAuthMethod,
-  getConnectorManualGrantFieldNames,
+  getConnectorManualGrantFieldNamesForAuthMethod,
   getConnectorOwnedAccessSecretBindingEntries,
   getConnectorOwnedSecretNames,
   getConnectorVariableNames,
@@ -605,6 +605,36 @@ async function deleteManualGrantConnectorLocalState(args: {
   }
 
   return deleted;
+}
+
+async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: ConnectorType;
+  readonly authMethods: readonly (string | null)[];
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const cleanupAuthMethods = new Set<string>();
+  for (const authMethod of args.authMethods) {
+    if (authMethod) {
+      cleanupAuthMethods.add(authMethod);
+    }
+  }
+
+  for (const authMethod of cleanupAuthMethods) {
+    args.signal.throwIfAborted();
+    await deleteManualGrantConnectorLocalState({
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      fields: getConnectorManualGrantFieldNamesForAuthMethod(
+        args.type,
+        authMethod,
+      ),
+      signal: args.signal,
+    });
+  }
 }
 
 export const deleteZeroConnectorLocalState$ = command(
@@ -1563,7 +1593,6 @@ export const upsertConnectorTokenConnection$ = command(
     );
     signal.throwIfAborted();
 
-    const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
     let postCommitAbort: unknown = null;
     const connectorRow = await writeDb.transaction(async (tx) => {
       await lockConnectorState(tx, {
@@ -1609,11 +1638,12 @@ export const upsertConnectorTokenConnection$ = command(
         signal,
       });
 
-      await deleteManualGrantConnectorLocalState({
+      await deleteManualGrantConnectorLocalStateForAuthMethods({
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        fields: manualGrantFields,
+        type: args.type,
+        authMethods: [existingAuthMethod, args.authMethod],
         signal,
       });
 

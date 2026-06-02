@@ -191,17 +191,27 @@ function manualGrantFieldNames(
   return { secrets: secretNames, variables: variableNames };
 }
 
+export function getConnectorManualGrantFieldNamesForAuthMethod(
+  type: ConnectorType,
+  authMethod: string,
+): ManualGrantFieldNames | null {
+  const fields = getManualGrantFields(getConnectorAuthMethod(type, authMethod));
+  return fields ? manualGrantFieldNames(fields) : null;
+}
+
 export function getConnectorManualGrantFieldNames(
   type: ConnectorType,
 ): ManualGrantFieldNames | null {
   const secretNames = new Set<string>();
   const variableNames = new Set<string>();
   for (const authMethod of getConfiguredConnectorAuthMethods(type)) {
-    const method = getConnectorAuthMethod(type, authMethod);
-    if (method?.grant.kind !== "manual") {
+    const fields = getConnectorManualGrantFieldNamesForAuthMethod(
+      type,
+      authMethod,
+    );
+    if (!fields) {
       continue;
     }
-    const fields = manualGrantFieldNames(method.grant.fields);
     fields.secrets.forEach((name) => {
       secretNames.add(name);
     });

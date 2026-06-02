@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import type {
-  AuthCodeGrantConnectorType,
-  ConnectorAuthMethodId,
-  ConnectorAuthClientConfig,
+import {
+  CONNECTOR_TYPES,
+  type AuthCodeGrantConnectorType,
+  type ConnectorAuthMethodId,
+  type ConnectorAuthClientConfig,
+  type ConnectorAuthMethodConfig,
 } from "@vm0/connectors/connectors";
 import {
   connectorAuthMethodHasGrantKind,
@@ -20,6 +22,7 @@ import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -277,6 +280,71 @@ function configureDynamicTestOAuthExchange(
   return () => {
     mutableMethod.client = originalClient;
     provider.grant.exchangeCode = originalExchangeCode;
+  };
+}
+
+function testManualAuthMethod(args: {
+  readonly secretName: string;
+  readonly variableName: string;
+}): ConnectorAuthMethodConfig {
+  return {
+    label: `Manual ${args.secretName}`,
+    helpText: "Test-only manual grant.",
+    grant: {
+      kind: "manual",
+      fields: {
+        [args.secretName]: {
+          label: "Token",
+          required: true,
+        },
+        [args.variableName]: {
+          label: "Host",
+          required: false,
+          storage: "variable",
+        },
+      },
+    },
+    access: {
+      kind: "static",
+      envBindings: {
+        [args.secretName]: `$secrets.${args.secretName}`,
+        [args.variableName]: `$vars.${args.variableName}`,
+      },
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function configureTestOauthManualGrantAuthMethods(): () => void {
+  const authMethods = CONNECTOR_TYPES["test-oauth"].authMethods;
+  const originalApiDescriptor = Object.getOwnPropertyDescriptor(
+    authMethods,
+    "api",
+  );
+  Object.defineProperty(authMethods, "api-token", {
+    value: testManualAuthMethod({
+      secretName: "TEST_OAUTH_LEGACY_TOKEN",
+      variableName: "TEST_OAUTH_LEGACY_HOST",
+    }),
+    configurable: true,
+    enumerable: true,
+  });
+  Object.defineProperty(authMethods, "api", {
+    value: testManualAuthMethod({
+      secretName: "TEST_OAUTH_OTHER_TOKEN",
+      variableName: "TEST_OAUTH_OTHER_HOST",
+    }),
+    configurable: true,
+    enumerable: true,
+  });
+
+  return () => {
+    Reflect.deleteProperty(authMethods, "api-token");
+    if (originalApiDescriptor) {
+      Object.defineProperty(authMethods, "api", originalApiDescriptor);
+    } else {
+      Reflect.deleteProperty(authMethods, "api");
+    }
   };
 }
 
@@ -990,6 +1058,7 @@ async function findSecret(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
+  readonly type?: "connector" | "user";
 }) {
   const db = store.set(writeDb$);
   const [secret] = await db
@@ -1000,10 +1069,31 @@ async function findSecret(args: {
         eq(secrets.orgId, args.orgId),
         eq(secrets.userId, args.userId),
         eq(secrets.name, args.name),
-        eq(secrets.type, "connector"),
+        eq(secrets.type, args.type ?? "connector"),
       ),
     );
   return secret;
+}
+
+async function findVariable(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly type?: "connector" | "user";
+}) {
+  const db = store.set(writeDb$);
+  const [variable] = await db
+    .select()
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.name, args.name),
+        eq(variables.type, args.type ?? "connector"),
+      ),
+    );
+  return variable;
 }
 
 async function findDecryptedSecret(args: {
@@ -1235,6 +1325,7 @@ describe("GET /api/connectors/:type/callback", () => {
   const orgIds: string[] = [];
   const oauthStateIds: string[] = [];
   let restoreDynamicTestOAuthExchange: (() => void) | undefined;
+  let restoreTestOauthManualGrantAuthMethods: (() => void) | undefined;
 
   beforeEach(() => {
     mockEnv("VM0_WEB_URL", BASE_URL);
@@ -1250,6 +1341,8 @@ describe("GET /api/connectors/:type/callback", () => {
   }
 
   afterEach(async () => {
+    restoreTestOauthManualGrantAuthMethods?.();
+    restoreTestOauthManualGrantAuthMethods = undefined;
     restoreDynamicTestOAuthExchange?.();
     restoreDynamicTestOAuthExchange = undefined;
 
@@ -1264,6 +1357,7 @@ describe("GET /api/connectors/:type/callback", () => {
           .where(eq(githubInstallations.orgId, orgId));
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
+        await db.delete(variables).where(eq(variables.orgId, orgId));
         await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
       }
     }
@@ -2084,6 +2178,118 @@ describe("GET /api/connectors/:type/callback", () => {
         name: "TEST_OAUTH_ACCESS_TOKEN",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("deletes legacy manual grant rows only for the stored auth method", async () => {
+    restoreTestOauthManualGrantAuthMethods =
+      configureTestOauthManualGrantAuthMethods();
+    const dynamicOAuth = useDynamicTestOAuthExchange();
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId,
+      userId,
+      type: "test-oauth",
+      authMethod: "api-token",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_TOKEN",
+        encryptedValue: "encrypted_legacy_token",
+        type: "user",
+      },
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_TOKEN",
+        encryptedValue: "encrypted_other_token",
+        type: "user",
+      },
+    ]);
+    await db.insert(variables).values([
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_HOST",
+        value: "legacy.example.com",
+        type: "user",
+      },
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_HOST",
+        value: "other.example.com",
+        type: "user",
+      },
+    ]);
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    await expect(
+      findConnector({ orgId, userId, type: "test-oauth" }),
+    ).resolves.toMatchObject({
+      type: "test-oauth",
+      authMethod: "oauth",
+      externalId: "dynamic-user-id",
+      needsReconnect: false,
+    });
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_TOKEN",
+        type: "user",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findVariable({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_HOST",
+        type: "user",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_TOKEN",
+        type: "user",
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      findVariable({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_HOST",
+        type: "user",
+      }),
+    ).resolves.toMatchObject({ value: "other.example.com" });
   });
 
   it("uses VM0_WEB_URL for token exchange and success redirects", async () => {
