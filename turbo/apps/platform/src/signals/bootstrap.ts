@@ -29,6 +29,7 @@ import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
 import { setupSkillsPage$ } from "./skills-page/skills-page-setup.ts";
+import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
@@ -150,6 +151,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.skills,
     setup: setupAuthPageWrapper(setupSkillsPage$),
+  },
+  {
+    path: ROUTES.memory,
+    setup: setupAuthPageWrapper(setupMemoryPage$),
   },
   {
     path: ROUTES.settingsSlack,

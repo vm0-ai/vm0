@@ -55,4 +55,5 @@ export enum FeatureSwitchKey {
   SessionWorkspaceImageCache = "sessionWorkspaceImageCache",
   ChatArtifactSidebar = "chatArtifactSidebar",
   ChatScrollToBottomButton = "chatScrollToBottomButton",
+  MemoryViewer = "memoryViewer",
 }

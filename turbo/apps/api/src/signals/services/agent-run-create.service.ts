@@ -65,6 +65,7 @@ import { resolveSkillRef, parseGitHubTreeUrl } from "@vm0/core/github-url";
 import {
   getCustomSkillStorageName,
   getSkillStorageName,
+  MEMORY_ARTIFACT_NAME,
 } from "@vm0/core/storage-names";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import {
@@ -133,7 +134,7 @@ import { recordSandboxOperation } from "../external/sandbox-op-log";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
-const AUTO_MEMORY_ARTIFACT_NAME = "memory";
+const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 const CODEX_AUTO_MEMORY_MOUNT_PATH = "/home/user/.codex/memories";
 
 const TIER_LIMITS = Object.freeze({

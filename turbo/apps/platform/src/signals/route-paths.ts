@@ -2,6 +2,7 @@ export const ROUTES = {
   home: "/",
   agents: "/agents",
   skills: "/skills",
+  memory: "/memory",
   agentDetail: "/agents/:agentId",
   agentChat: "/agents/:agentId/chat",
   agentIdeas: "/agents/:agentId/ideas",

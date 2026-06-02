@@ -782,6 +782,10 @@ export {
   type UpdateFeatureSwitchesRequest,
 } from "./zero-feature-switches";
 export {
+  memoryDetailResponseSchema,
+  type MemoryDetailResponse,
+} from "./zero-memory";
+export {
   orgListItemSchema,
   orgListResponseSchema,
   type OrgListItem,
@@ -1007,6 +1011,7 @@ export {
   zeroFeatureSwitchesContract,
   type ZeroFeatureSwitchesContract,
 } from "./zero-feature-switches";
+export { zeroMemoryContract, type ZeroMemoryContract } from "./zero-memory";
 export {
   zeroSecretsContract,
   zeroSecretsByNameContract,

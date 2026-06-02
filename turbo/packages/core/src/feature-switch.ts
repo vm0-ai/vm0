@@ -307,6 +307,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show a floating scroll-to-bottom button in the bottom-right of the chat thread (above the composer) whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
     enabled: true,
   },
+  [FeatureSwitchKey.MemoryViewer]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the read-only memory viewer page in the Zero sidebar and at /memory, listing the files in the user's memory artifact.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

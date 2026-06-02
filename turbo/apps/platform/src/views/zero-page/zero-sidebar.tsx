@@ -12,6 +12,7 @@ import {
   IconLayoutGrid,
   IconCalendar,
   IconFileText,
+  IconBrain,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -91,6 +92,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     label: "Skills",
     icon: IconFileText as NavIcon,
     featureGate: FeatureSwitchKey.OrgSkills,
+  },
+  {
+    id: "memory",
+    activeKeys: ["memory"],
+    pathname: "/memory",
+    label: "Memory",
+    icon: IconBrain as NavIcon,
+    featureGate: FeatureSwitchKey.MemoryViewer,
   },
   {
     id: "connectors",
