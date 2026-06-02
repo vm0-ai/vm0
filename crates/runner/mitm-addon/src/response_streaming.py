@@ -1,4 +1,19 @@
-"""Response streaming setup and parser state for the mitmproxy addon."""
+"""Response streaming setup and parser state for the mitmproxy addon.
+
+Lifecycle:
+- ``mitm_addon.responseheaders()`` calls ``configure_response_stream()`` to
+  install the streaming callback, capped forensic buffer, and incremental
+  usage parsers.
+- ``mitm_addon.websocket_message()`` calls ``feed_model_websocket_usage()`` for
+  server-side frames on model-provider WebSocket upgrades.
+- ``mitm_addon.response()`` finalizes HTTP model and connector usage before
+  reporting it.
+- ``mitm_addon.error()`` may finalize partial SSE usage before terminal cleanup.
+- ``mitm_addon.websocket_end()`` is terminal for model-provider WebSocket
+  upgrades. HTTP 101 responses defer tracked usage release until that hook.
+- terminal hook decorators call ``release_response_stream_state()`` to remove
+  parser callbacks and stream buffer metadata from ``flow.metadata``.
+"""
 
 from collections.abc import Callable
 
@@ -22,10 +37,23 @@ _SseUsageParseErrorLogger = Callable[[str, str], None]
 
 
 def uses_openai_responses_usage_protocol(flow: http.HTTPFlow) -> bool:
+    """Return whether a flow should use OpenAI Responses usage parsing.
+
+    Read-only predicate used from parser setup and response fallback extraction.
+    Reads ``metadata_keys.CLI_AGENT_TYPE``; Codex flows use the OpenAI Responses
+    usage protocol, while other model-provider flows use the Anthropic protocol.
+    """
     return flow.metadata.get(metadata_keys.CLI_AGENT_TYPE) == "codex"
 
 
 def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
+    """Return whether model-provider WebSocket usage extraction is active.
+
+    Read-only predicate used by ``websocket_message()`` feeding and by the
+    ``response()`` tracking decorator. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED``;
+    true means an HTTP 101 response is not terminal for tracked usage and
+    reporting must wait for ``websocket_end()``.
+    """
     return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
 
 
@@ -166,6 +194,12 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
 
 
 def streamed_response_size(flow: http.HTTPFlow) -> int | None:
+    """Return total bytes observed by the response streaming callback.
+
+    Read-only helper used by ``response()`` network logging. Reads
+    ``metadata_keys.STREAM_BUFFER_STATE`` and returns ``None`` when
+    ``responseheaders()`` did not configure streaming for this flow.
+    """
     state = flow.metadata.get(metadata_keys.STREAM_BUFFER_STATE)
     if state is None:
         return None
@@ -173,6 +207,14 @@ def streamed_response_size(flow: http.HTTPFlow) -> int | None:
 
 
 def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
+    """Finalize incremental JSON model-provider usage extraction.
+
+    Called from ``response()`` before usage reporting. Pops
+    ``_MODEL_JSON_USAGE_FINISH``, so repeated calls after the first are no-ops.
+    On success, writes ``metadata_keys.MODEL_PROVIDER_USAGE``; when a parser was
+    finalized, writes ``metadata_keys.MODEL_JSON_USAGE_FINALIZED`` so fallback
+    body parsing does not run. Parse failures are logged to ``proxy_log_path``.
+    """
     finish = flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
     if finish is None:
         return
@@ -192,12 +234,27 @@ def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
 
 
 def finalize_model_sse_usage(flow: http.HTTPFlow) -> None:
+    """Finalize incremental SSE model-provider usage extraction.
+
+    Called from ``response()`` for normal completion and from ``error()`` to keep
+    partial streamed usage when a connection fails. Pops
+    ``_MODEL_SSE_USAGE_FINISH``, so repeated calls after the first are no-ops.
+    The registered parser finalizer mutates the usage dictionary stored in
+    ``metadata_keys.MODEL_PROVIDER_USAGE`` during response stream setup.
+    """
     finish = flow.metadata.pop(_MODEL_SSE_USAGE_FINISH, None)
     if finish is not None:
         finish()
 
 
 def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> None:
+    """Merge model-provider usage from one server WebSocket frame.
+
+    Called from ``websocket_message()`` only for server-originated frames. Reads
+    ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via ``is_model_websocket_usage_enabled()``
+    and writes or updates ``metadata_keys.MODEL_PROVIDER_USAGE``. This helper is
+    not idempotent for the same frame; callers must feed each server frame once.
+    """
     if not is_model_websocket_usage_enabled(flow):
         return
     body = content.encode() if isinstance(content, str) else content
@@ -212,12 +269,28 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
 
 
 def finalize_connector_response_state(flow: http.HTTPFlow) -> None:
+    """Finalize connector response parser state before connector usage reporting.
+
+    Called from ``response()`` before ``usage.report_connector_usage()``. Pops
+    ``_CONNECTOR_RESPONSE_FINISH``, so repeated calls after the first are
+    no-ops. Connector-specific parser state is owned by the registered finish
+    callback, for example X JSON or NDJSON usage metadata.
+    """
     finish = flow.metadata.pop(_CONNECTOR_RESPONSE_FINISH, None)
     if finish is not None:
         finish()
 
 
 def release_response_stream_state(flow: http.HTTPFlow) -> None:
+    """Release stream callbacks, buffers, and unfinalized parser state.
+
+    Called by terminal hook decorators after ``response()``, ``error()``, and
+    ``websocket_end()`` cleanup paths. Safe to call repeatedly. Removes
+    ``_RESPONSE_STREAM_CALLBACK``, ``metadata_keys.STREAM_BUFFER``,
+    ``metadata_keys.STREAM_BUFFER_STATE``, and outstanding model or connector
+    finish callbacks. Preserves externally replaced ``flow.response.stream``
+    callbacks and only disables the stream callback installed by this module.
+    """
     stream_callback = flow.metadata.pop(_RESPONSE_STREAM_CALLBACK, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
