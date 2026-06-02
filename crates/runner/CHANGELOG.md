@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.106.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.6...runner-rs-v0.106.7) (2026-06-02)
+
+
+### Bug Fixes
+
+* handle concatenated zlib stream members ([#15873](https://github.com/vm0-ai/vm0/issues/15873)) ([1d40f14](https://github.com/vm0-ai/vm0/commit/1d40f14f8bb1f10b1305ce1f3e418352cc0a671b))
+
 ## [0.106.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.106.5...runner-rs-v0.106.6) (2026-06-02)
 
 

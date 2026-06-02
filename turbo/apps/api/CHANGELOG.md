@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.93.0](https://github.com/vm0-ai/vm0/compare/api-v1.92.0...api-v1.93.0) (2026-06-02)
+
+
+### Features
+
+* add org skills library page ([#15816](https://github.com/vm0-ai/vm0/issues/15816)) ([fc7e26f](https://github.com/vm0-ai/vm0/commit/fc7e26f2c38bfa84ed424c5ee38c28487aeed99c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.54.0
+    * @vm0/connectors bumped to 1.42.0
+    * @vm0/core bumped to 8.306.0
+    * @vm0/db bumped to 1.24.7
+
 ## [1.92.0](https://github.com/vm0-ai/vm0/compare/api-v1.91.4...api-v1.92.0) (2026-06-02)
 
 

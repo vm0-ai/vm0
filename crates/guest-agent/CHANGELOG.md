@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.1...guest-agent-v0.34.2) (2026-06-02)
+
+
+### Refactoring
+
+* split guest-agent integration tests ([#15871](https://github.com/vm0-ai/vm0/issues/15871)) ([5c14f9e](https://github.com/vm0-ai/vm0/commit/5c14f9e68f60d9daab881d15568e0891893e44b5))
+
 ## [0.34.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.0...guest-agent-v0.34.1) (2026-06-02)
 
 

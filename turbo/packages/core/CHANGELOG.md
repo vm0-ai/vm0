@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.306.0](https://github.com/vm0-ai/vm0/compare/core-v8.305.6...core-v8.306.0) (2026-06-02)
+
+
+### Features
+
+* add org skills library page ([#15816](https://github.com/vm0-ai/vm0/issues/15816)) ([fc7e26f](https://github.com/vm0-ai/vm0/commit/fc7e26f2c38bfa84ed424c5ee38c28487aeed99c))
+
+
+### Refactoring
+
+* clarify connector diagnostic lookups ([#15863](https://github.com/vm0-ai/vm0/issues/15863)) ([607eaf8](https://github.com/vm0-ai/vm0/commit/607eaf8a5ffa79bdfad7b12a22a8be455727db21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.54.0
+    * @vm0/connectors bumped to 1.42.0
+
 ## [8.305.6](https://github.com/vm0-ai/vm0/compare/core-v8.305.5...core-v8.305.6) (2026-06-02)
 
 

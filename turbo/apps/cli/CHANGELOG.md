@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.178.1](https://github.com/vm0-ai/vm0/compare/cli-v9.178.0...cli-v9.178.1) (2026-06-02)
+
+
+### Refactoring
+
+* clarify connector diagnostic lookups ([#15863](https://github.com/vm0-ai/vm0/issues/15863)) ([607eaf8](https://github.com/vm0-ai/vm0/commit/607eaf8a5ffa79bdfad7b12a22a8be455727db21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.54.0
+    * @vm0/connectors bumped to 1.42.0
+    * @vm0/core bumped to 8.306.0
+
 ## [9.178.0](https://github.com/vm0-ai/vm0/compare/cli-v9.177.19...cli-v9.178.0) (2026-06-02)
 
 
