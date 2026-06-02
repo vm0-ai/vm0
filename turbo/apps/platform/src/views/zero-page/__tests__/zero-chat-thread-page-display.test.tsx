@@ -2224,6 +2224,12 @@ describe("zero chat thread page display - artifacts drawer", () => {
       ],
     });
     server.use(
+      http.get("https://example.com/report.pdf", () => {
+        return new HttpResponse(
+          new Blob(["pdf content"], { type: "application/pdf" }),
+          { headers: { "Content-Type": "application/pdf" } },
+        );
+      }),
       mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
         return respond(200, {
           runs: [
@@ -2258,7 +2264,9 @@ describe("zero chat thread page display - artifacts drawer", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: "Artifacts" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("dialog", { name: "Artifacts" }),
+      ).toBeInTheDocument();
     });
   });
 

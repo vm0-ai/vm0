@@ -1752,9 +1752,7 @@ export function ZeroChatThreadPage() {
           </div>
         )}
       </div>
-      {leftThread && (
-        <ChatArtifactsDrawer thread={leftThread} />
-      )}
+      {leftThread && <ChatArtifactsDrawer thread={leftThread} />}
       {rightThread && (
         <ChatArtifactsDrawer key={rightThread.threadId} thread={rightThread} />
       )}
