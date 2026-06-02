@@ -5,6 +5,7 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -280,6 +281,33 @@ describe("zero job detail page - connector display", () => {
     expect(
       screen.getByLabelText(/Manage Slack permissions/i),
     ).toBeInTheDocument();
+  });
+
+  it("should show an error instead of permission management when user grants fail to load", async () => {
+    mockAPIsWithConnectors();
+    setMockOrg({ role: "member" });
+    server.use(
+      mockApi(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+        return respond(404, {
+          error: { message: "Agent not found", code: "NOT_FOUND" },
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/agents/my-agent",
+      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to load permission grants"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText(/Manage Slack permissions/i),
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -794,7 +794,7 @@ function JobPermissionsTab({
   const features = useLastResolved(featureSwitch$);
   const userPermissionGrantsEnabled =
     features?.[FeatureSwitchKey.UserPermissionGrants] ?? false;
-  const userGrantsLoadable = useLastLoadable(
+  const userGrantsLoadable = useLoadable(
     userPermissionGrantsByAgent({
       agentId,
       enabled: userPermissionGrantsEnabled,
