@@ -13,11 +13,13 @@ import {
   type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  connectorAuthMethodHasGrantKind,
+  connectorAuthMethodRefHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodIdsForGrantKind,
   resolveConnectorAuthClientForMethod,
   type ConnectorAuthClient,
+  type ConnectorAuthMethodRef,
+  type ConnectorAuthMethodRefByGrantKind,
 } from "@vm0/connectors/connector-utils";
 import {
   pollConnectorDeviceAuthorization,
@@ -83,12 +85,7 @@ const encryptedProviderStateSchema = z.object({
 
 type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
 
-type DeviceAuthMethodRef<
-  Type extends DeviceAuthGrantConnectorType = DeviceAuthGrantConnectorType,
-> = {
-  readonly type: Type;
-  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId<Type>;
-};
+type DeviceAuthMethodRef = ConnectorAuthMethodRefByGrantKind<"device-auth">;
 
 type PollClaimedSessionArgs = DeviceAuthMethodRef & {
   readonly writeDb: Db;
@@ -191,13 +188,6 @@ function isFreshPollingSession(
   );
 }
 
-function connectorTypeHasSelectedDeviceAuthGrant(
-  type: ConnectorType,
-  authMethod: string,
-): type is DeviceAuthGrantConnectorType {
-  return getConnectorAuthMethod(type, authMethod)?.grant.kind === "device-auth";
-}
-
 function connectorMissingDeviceAuthGrantMessage(type: ConnectorType): string {
   if (getConnectorAuthMethodIdsForGrantKind(type, "auth-code").length === 0) {
     return `${type} connector does not use an auth-code or device-auth grant`;
@@ -214,6 +204,10 @@ function resolveDeviceAuthMethod(
     return badRequestMessage(`${type} connector auth method is invalid`);
   }
 
+  const authMethodRef: ConnectorAuthMethodRef = {
+    type,
+    authMethod: authMethodResult.data,
+  };
   const method = getConnectorAuthMethod(type, authMethodResult.data);
   if (!method) {
     if (
@@ -225,9 +219,7 @@ function resolveDeviceAuthMethod(
       `${type} connector does not have ${authMethod} auth method`,
     );
   }
-  if (
-    !connectorAuthMethodHasGrantKind(type, authMethodResult.data, "device-auth")
-  ) {
+  if (!connectorAuthMethodRefHasGrantKind(authMethodRef, "device-auth")) {
     if (
       getConnectorAuthMethodIdsForGrantKind(type, "device-auth").length === 0
     ) {
@@ -237,13 +229,8 @@ function resolveDeviceAuthMethod(
       `${type} ${authMethod} auth method does not use a device-auth grant`,
     );
   }
-  if (!connectorTypeHasSelectedDeviceAuthGrant(type, authMethodResult.data)) {
-    return badRequestMessage(
-      `${type} ${authMethod} auth method does not use a device-auth grant`,
-    );
-  }
 
-  return { type, authMethod: authMethodResult.data };
+  return authMethodRef;
 }
 
 function resolveStoredDeviceAuthMethod(
@@ -590,27 +577,24 @@ async function markClaimComplete(args: {
   };
 }
 
-async function completeClaimedSession(args: {
-  readonly writeDb: Db;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly type: DeviceAuthGrantConnectorType;
-  readonly authMethod: ConnectorDeviceAuthGrantAuthMethodId;
-  readonly session: DeviceAuthSessionRow;
-  readonly claimStartedAt: Date;
-  readonly result: OAuthDeviceAuthCompleteResult;
-  readonly signal: AbortSignal;
-  readonly persistConnector: (args: {
+async function completeClaimedSession(
+  args: DeviceAuthMethodRef & {
+    readonly writeDb: Db;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly session: DeviceAuthSessionRow;
+    readonly claimStartedAt: Date;
     readonly result: OAuthDeviceAuthCompleteResult;
-  }) => Promise<ConnectorResponse>;
-}): Promise<PollSuccess> {
+    readonly signal: AbortSignal;
+    readonly persistConnector: (args: {
+      readonly result: OAuthDeviceAuthCompleteResult;
+    }) => Promise<ConnectorResponse>;
+  },
+): Promise<PollSuccess> {
   return await args.writeDb.transaction(async (tx) => {
     await lockDeviceAuthSessionOwner({
+      ...args,
       writeDb: tx,
-      orgId: args.orgId,
-      userId: args.userId,
-      type: args.type,
-      authMethod: args.authMethod,
     });
     if (
       !(await claimStillCurrent({
@@ -703,16 +687,8 @@ async function runClaimedSession(
   }
 
   return await completeClaimedSession({
-    writeDb: args.writeDb,
-    orgId: args.orgId,
-    userId: args.userId,
-    type: args.type,
-    authMethod: args.authMethod,
-    session: args.session,
-    claimStartedAt: args.claimStartedAt,
+    ...args,
     result: pollResult,
-    signal: args.signal,
-    persistConnector: args.persistConnector,
   });
 }
 
@@ -805,18 +781,16 @@ export const startConnectorOauthDeviceAuthSession$ = command(
 
     const [session] = await set(writeDb$).transaction(async (tx) => {
       await lockDeviceAuthSessionOwner({
+        ...resolvedMethod,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
-        type: resolvedMethod.type,
-        authMethod: resolvedMethod.authMethod,
       });
       await markActiveSessionsSuperseded({
+        ...resolvedMethod,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
-        type: resolvedMethod.type,
-        authMethod: resolvedMethod.authMethod,
         now,
       });
       return await tx
@@ -966,11 +940,10 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
     }
 
     return await pollClaimedSession({
+      ...resolvedMethod,
       writeDb,
       orgId: args.orgId,
       userId: args.userId,
-      type: resolvedMethod.type,
-      authMethod: resolvedMethod.authMethod,
       authClient,
       session: claimedSession,
       claimStartedAt,
