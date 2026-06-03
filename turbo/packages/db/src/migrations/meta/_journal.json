@@ -2969,6 +2969,13 @@
       "when": 1780466558000,
       "tag": "0423_tidy_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 424,
+      "version": "7",
+      "when": 1780474201659,
+      "tag": "0424_sleepy_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

@@ -76,6 +76,8 @@ import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-s
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
 import * as bankingSchema from "./schema/banking";
+import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
+import * as memoryChangeItemSchema from "./schema/memory-change-item";
 
 export const schema = {
   ...userSchema,
@@ -156,4 +158,6 @@ export const schema = {
   ...hostedSiteSchema,
   ...builtInGenerationJobSchema,
   ...bankingSchema,
+  ...memoryChangeSummarySchema,
+  ...memoryChangeItemSchema,
 };
