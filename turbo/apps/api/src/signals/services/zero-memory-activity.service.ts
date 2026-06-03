@@ -32,7 +32,9 @@ function toKind(kind: string): MemoryActivityKind {
   if (kind === "learned" || kind === "updated" || kind === "forgotten") {
     return kind;
   }
-  return "updated";
+  // The cron owns this vocabulary; an unknown value is a producer-side data bug
+  // that should surface rather than be silently coerced.
+  throw new Error(`Unexpected memory change item kind: ${kind}`);
 }
 
 /**
@@ -75,6 +77,7 @@ export function zeroMemoryActivity(
 
     const items = await get(db$)
       .select({
+        id: memoryChangeItems.id,
         summaryId: memoryChangeItems.summaryId,
         kind: memoryChangeItems.kind,
         title: memoryChangeItems.title,
@@ -85,7 +88,10 @@ export function zeroMemoryActivity(
       })
       .from(memoryChangeItems)
       .where(inArray(memoryChangeItems.summaryId, summaryIds))
-      .orderBy(asc(memoryChangeItems.createdAt));
+      // `created_at` defaults to the transaction-start `now()`, so all items of
+      // a single batch insert share one timestamp; `id` is a stable secondary
+      // key that gives a fully deterministic order instead of an undefined one.
+      .orderBy(asc(memoryChangeItems.createdAt), asc(memoryChangeItems.id));
 
     const itemsBySummaryId = new Map<string, MemoryActivityItem[]>();
     for (const item of items) {

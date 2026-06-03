@@ -206,6 +206,41 @@ describe("GET /api/zero/memory/activity", () => {
     ]);
   });
 
+  it("returns a summary's items in a deterministic order", async () => {
+    const fixture = await track(
+      store.set(seedMemoryFixture$, undefined, context.signal),
+    );
+    await store.set(
+      seedMemoryActivitySummary$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        date: "2025-07-01",
+        toVersionId: "v-order",
+        summary: "Many changes in one day",
+        items: [
+          { kind: "learned", filePath: "a.md" },
+          { kind: "updated", filePath: "b.md" },
+          { kind: "forgotten", filePath: "c.md" },
+          { kind: "learned", filePath: "d.md" },
+        ],
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      activityClient().get({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(
+      response.body.entries[0]?.items.map((item) => {
+        return item.filePath;
+      }),
+    ).toStrictEqual(["a.md", "b.md", "c.md", "d.md"]);
+  });
+
   it("scopes summaries to the authenticated user and org", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),

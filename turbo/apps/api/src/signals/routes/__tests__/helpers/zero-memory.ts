@@ -98,8 +98,12 @@ export const seedMemoryActivitySummary$ = command(
 
     const items = seed.items ?? [];
     if (items.length > 0) {
+      // Stagger `created_at` per item so the seeded order is preserved by the
+      // service's `ORDER BY created_at, id`. A plain multi-row insert would give
+      // every item the same transaction-start `now()`, leaving order undefined.
+      const base = Date.UTC(2025, 0, 1);
       await db.insert(memoryChangeItems).values(
-        items.map((item) => {
+        items.map((item, index) => {
           return {
             summaryId,
             kind: item.kind,
@@ -108,6 +112,7 @@ export const seedMemoryActivitySummary$ = command(
             filePath: item.filePath,
             beforeSnippet: item.beforeSnippet ?? null,
             afterSnippet: item.afterSnippet ?? null,
+            createdAt: new Date(base + index * 1000),
           };
         }),
       );
