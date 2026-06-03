@@ -39,7 +39,7 @@ import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/e
 import {
   getModelProviderRefreshMetadata,
   isModelProviderRefreshConfigured,
-  refreshModelProviderAccess,
+  refreshPreparedModelProviderAccess,
   isModelProviderRefreshProviderKey,
   type ModelProviderRefreshProviderKey,
 } from "@vm0/connectors/auth-providers/model-provider-auth";
@@ -1749,7 +1749,7 @@ function refreshPreparedModelProviderAccessToken(args: {
   readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }) {
-  return refreshModelProviderAccess({
+  return refreshPreparedModelProviderAccess({
     providerKey: args.prepared.providerKey,
     currentEnv: args.prepared.currentEnv,
     inputs: args.inputs,

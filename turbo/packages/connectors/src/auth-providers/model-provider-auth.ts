@@ -119,7 +119,7 @@ export function isModelProviderRefreshConfigured(args: {
   return Boolean(access.resolveAuthClient(args.currentEnv));
 }
 
-export function refreshModelProviderAccess<
+export async function refreshModelProviderAccess<
   ProviderKey extends ModelProviderRefreshProviderKey,
 >(args: {
   readonly providerKey: ProviderKey;
@@ -130,18 +130,21 @@ export function refreshModelProviderAccess<
   ModelProviderAuthProviderRefreshResult<
     ModelProviderRefreshOutputValues<ProviderKey>
   >
->;
-export function refreshModelProviderAccess(args: {
-  readonly providerKey: ModelProviderRefreshProviderKey;
-  readonly currentEnv: ProviderEnv;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}): Promise<
-  ModelProviderAuthProviderRefreshResult<
-    Readonly<Record<string, string | undefined>>
-  >
->;
-export async function refreshModelProviderAccess(args: {
+> {
+  const access = MODEL_PROVIDER_REFRESH_PROVIDERS[args.providerKey].access;
+  const authClient = access.resolveAuthClient(args.currentEnv);
+  if (!authClient) {
+    throw new Error(`${args.providerKey} auth client not configured`);
+  }
+
+  return await access.refresh({
+    authClient,
+    inputs: args.inputs,
+    signal: args.signal,
+  });
+}
+
+export async function refreshPreparedModelProviderAccess(args: {
   readonly providerKey: ModelProviderRefreshProviderKey;
   readonly currentEnv: ProviderEnv;
   readonly inputs: Readonly<Record<string, string>>;
@@ -153,37 +156,20 @@ export async function refreshModelProviderAccess(args: {
 > {
   switch (args.providerKey) {
     case "codex-oauth-token": {
-      return await refreshCodexModelProviderAccess(args);
+      return await refreshModelProviderAccess({
+        providerKey: args.providerKey,
+        currentEnv: args.currentEnv,
+        inputs: {
+          refreshToken: requiredModelProviderRefreshInput({
+            providerKey: args.providerKey,
+            inputs: args.inputs,
+            inputName: "refreshToken",
+          }),
+        },
+        signal: args.signal,
+      });
     }
   }
-}
-
-async function refreshCodexModelProviderAccess(args: {
-  readonly providerKey: "codex-oauth-token";
-  readonly currentEnv: ProviderEnv;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly signal: AbortSignal;
-}): Promise<
-  ModelProviderAuthProviderRefreshResult<
-    ModelProviderRefreshOutputValues<"codex-oauth-token">
-  >
-> {
-  const access = MODEL_PROVIDER_REFRESH_PROVIDERS[args.providerKey].access;
-  const authClient = access.resolveAuthClient(args.currentEnv);
-  if (!authClient) {
-    throw new Error(`${args.providerKey} auth client not configured`);
-  }
-  return await access.refresh({
-    authClient,
-    inputs: {
-      refreshToken: requiredModelProviderRefreshInput({
-        providerKey: args.providerKey,
-        inputs: args.inputs,
-        inputName: "refreshToken",
-      }),
-    },
-    signal: args.signal,
-  });
 }
 
 function requiredModelProviderRefreshInput(args: {
