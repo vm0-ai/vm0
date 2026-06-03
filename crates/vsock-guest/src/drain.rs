@@ -175,6 +175,7 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::os::unix::io::FromRawFd;
+    use std::path::Path;
     use std::sync::{Arc, mpsc};
     use std::thread;
     use std::time::Duration;
@@ -189,9 +190,58 @@ mod tests {
         unsafe { (File::from_raw_fd(fds[0]), File::from_raw_fd(fds[1])) }
     }
 
+    fn fd_target(fd: i32) -> std::path::PathBuf {
+        std::fs::read_link(format!("/proc/self/fd/{fd}"))
+            .unwrap_or_else(|e| panic!("read fd target for {fd}: {e}"))
+    }
+
+    fn assert_fd_open(fd: i32, message: &str) {
+        // SAFETY: fcntl(F_GETFD) does not mutate memory and accepts any fd value.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+        assert!(flags >= 0, "{message}: {}", io::Error::last_os_error());
+    }
+
+    fn assert_no_current_process_read_end(pipe_target: &Path, writer_fd: i32) {
+        let entries = std::fs::read_dir("/proc/self/fd").expect("read /proc/self/fd");
+        for entry in entries {
+            let entry = entry.expect("read fd entry");
+            let fd_path = entry.path();
+            let Ok(target) = std::fs::read_link(&fd_path) else {
+                continue;
+            };
+            if target != pipe_target {
+                continue;
+            }
+
+            let Some(name) = fd_path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Ok(fd) = name.parse::<i32>() else {
+                continue;
+            };
+            if fd == writer_fd {
+                continue;
+            }
+
+            // SAFETY: fcntl(F_GETFL) does not mutate memory and accepts any fd value.
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            if flags < 0 {
+                continue;
+            }
+            let access_mode = flags & libc::O_ACCMODE;
+            assert_eq!(
+                access_mode,
+                libc::O_WRONLY,
+                "owned reader should close when drain returns; fd {fd} still points to {target:?}"
+            );
+        }
+    }
+
     #[test]
     fn drain_cancel_closes_reader_while_writer_fd_remains_open() {
         let (reader, mut writer) = pipe_pair();
+        let pipe_target = fd_target(reader.as_raw_fd());
+        let writer_fd = writer.as_raw_fd();
         let cancel = Arc::new(AtomicBool::new(false));
         let (chunk_tx, chunk_rx) = mpsc::channel();
         let (done_tx, done_rx) = mpsc::channel();
@@ -224,10 +274,11 @@ mod tests {
         };
 
         assert_eq!(output, b"hello".to_vec());
-        let err = writer
-            .write_all(b"after cancel")
-            .expect_err("owned reader should close when drain returns");
-        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        assert_fd_open(
+            writer_fd,
+            "writer fd should remain open after drain cancellation",
+        );
+        assert_no_current_process_read_end(&pipe_target, writer_fd);
         drop(writer);
         handle.join().unwrap();
     }
