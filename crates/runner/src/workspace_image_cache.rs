@@ -2426,6 +2426,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn promotion_does_not_overwrite_same_completed_at_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let session_id = "sess-same-completed-at";
+        let completed_at = "2026-06-02T00:00:00.000Z";
+        let image_size = b"old image".len() as u64;
+        let key =
+            promote_current_cache_entry(&cache, &paths, session_id, b"old image", completed_at)
+                .await;
+        let competing_run_id = RunId::new_v4();
+        let competing_sandbox_id = sandbox::SandboxId::new_v4();
+        let competing_lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: competing_run_id,
+                sandbox_id: competing_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert!(competing_lease.is_cache_hit());
+        let competing_active_image = paths.active_workspace_image(&competing_sandbox_id);
+        tokio::fs::create_dir_all(competing_active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&competing_active_image, b"new image")
+            .await
+            .unwrap();
+
+        let promoted = competing_lease
+            .promote(
+                competing_run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                completed_at.into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        assert!(!promoted);
+        drop(competing_lease);
+        let metadata = cache
+            .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+        assert_eq!(metadata.last_completed_at, completed_at);
+        let current = tokio::fs::read(paths.session_workspace_cache_current_image(&key))
+            .await
+            .unwrap();
+        assert_eq!(current, b"old image");
+    }
+
+    #[tokio::test]
     async fn promotion_overwrites_older_cache_entry() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
