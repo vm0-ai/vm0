@@ -20,6 +20,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
@@ -61,6 +62,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const ORG_SENTINEL_USER_ID = "__org__";
 
 function modelProviderSecretPlaceholder(
   type: ModelProviderType,
@@ -1372,6 +1374,97 @@ describe("POST /api/agent/runs", () => {
     ).toMatchObject({
       OPENROUTER_API_KEY: "test-secret-value",
     });
+  });
+
+  it("drops model provider refresh metadata for run secret overrides", async () => {
+    const fx = await fixture();
+    await trackModelProviders(Promise.resolve({ orgId: fx.orgId }));
+    const db = store.set(writeDb$);
+    await db.insert(modelProviders).values({
+      orgId: fx.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      type: "codex-oauth-token",
+      authMethod: "auth_json",
+      isDefault: true,
+      selectedModel: "gpt-5.4",
+    });
+    await db.insert(secretsTable).values([
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ACCESS_TOKEN",
+        encryptedValue: encryptSecretForTests("provider-chatgpt-access"),
+        type: "model-provider",
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_REFRESH_TOKEN",
+        encryptedValue: encryptSecretForTests("provider-chatgpt-refresh"),
+        type: "model-provider",
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ACCOUNT_ID",
+        encryptedValue: encryptSecretForTests("workspace-id"),
+        type: "model-provider",
+      },
+      {
+        orgId: fx.orgId,
+        userId: ORG_SENTINEL_USER_ID,
+        name: "CHATGPT_ID_TOKEN",
+        encryptedValue: encryptSecretForTests("provider-id-token"),
+        type: "model-provider",
+      },
+    ]);
+    const compose = await createCompose({
+      fixture: fx,
+      overrides: { framework: "codex", environment: {} },
+    });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use explicit Codex token",
+          modelProviderType: "codex-oauth-token",
+          secrets: { CHATGPT_ACCESS_TOKEN: "explicit-chatgpt-access" },
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+      readonly secretConnectorMap: Record<string, string> | null;
+      readonly secretConnectorMetadataMap: Record<string, unknown> | null;
+    };
+    expect(executionContext.environment).toMatchObject({
+      CHATGPT_ACCESS_TOKEN: modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCESS_TOKEN",
+      ),
+      CHATGPT_ACCOUNT_ID: modelProviderSecretPlaceholder(
+        "codex-oauth-token",
+        "CHATGPT_ACCOUNT_ID",
+      ),
+      OPENAI_MODEL: "gpt-5.4",
+    });
+    expect(
+      decryptSecretsMapForTests(executionContext.encryptedSecrets),
+    ).toMatchObject({
+      CHATGPT_ACCESS_TOKEN: "explicit-chatgpt-access",
+      CHATGPT_ACCOUNT_ID: "workspace-id",
+    });
+    expect(executionContext.secretConnectorMap).toBeNull();
+    expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
   it("persists requested artifacts plus memory on the new session", async () => {

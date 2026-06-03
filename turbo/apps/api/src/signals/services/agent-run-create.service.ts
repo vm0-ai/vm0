@@ -1547,6 +1547,26 @@ function filterSecretConnectorMap(args: {
   return compactRecord(filtered);
 }
 
+function filterSecretConnectorMetadataMap(args: {
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+}): Record<string, SecretConnectorMetadata> | undefined {
+  if (!args.secretConnectorMetadataMap || !args.secretConnectorMap) {
+    return undefined;
+  }
+
+  const filtered: Record<string, SecretConnectorMetadata> = {};
+  for (const key of Object.keys(args.secretConnectorMap)) {
+    const metadata = args.secretConnectorMetadataMap[key];
+    if (metadata) {
+      filtered[key] = metadata;
+    }
+  }
+  return compactRecord(filtered);
+}
+
 interface StoredConnectorRuntimeRow {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
@@ -3027,6 +3047,14 @@ function buildStoredExecutionSecrets(args: {
       args.customConnectorContext.secrets,
     ],
   });
+  const filteredModelProviderMap = filterSecretConnectorMap({
+    secretConnectorMap: args.modelProvider?.secretConnectorMap,
+    overriddenSecrets: [args.bodySecrets, args.customConnectorContext.secrets],
+  });
+  const filteredModelProviderMetadataMap = filterSecretConnectorMetadataMap({
+    secretConnectorMetadataMap: args.modelProvider?.secretConnectorMetadataMap,
+    secretConnectorMap: filteredModelProviderMap,
+  });
   // The merged map is the runtime `secrets.NAME` namespace consumed by firewall
   // auth and environment expansion. Stored connectors and model providers enter
   // this map under env binding aliases; raw DB storage names stay behind the
@@ -3039,12 +3067,8 @@ function buildStoredExecutionSecrets(args: {
       args.customConnectorContext.secrets,
     ),
     secretConnectorMap:
-      mergeRecords(
-        filteredConnectorMap,
-        args.modelProvider?.secretConnectorMap,
-      ) ?? null,
-    secretConnectorMetadataMap:
-      args.modelProvider?.secretConnectorMetadataMap ?? null,
+      mergeRecords(filteredConnectorMap, filteredModelProviderMap) ?? null,
+    secretConnectorMetadataMap: filteredModelProviderMetadataMap ?? null,
   };
 }
 
