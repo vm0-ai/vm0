@@ -37,7 +37,7 @@ import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibilit
 import { escapeAplString } from "../../lib/axiom-apl";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import { now } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import type { RouteEntry } from "../route";
 import { waitUntil } from "../context/wait-until";
 import { getDatasetName, queryAxiomDirect } from "../external/axiom";
@@ -433,6 +433,8 @@ async function insertRunLifecycleMarker(args: {
   readonly event: "completed" | "cancelled";
   readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
+  const markerCreatedAt = nowDate();
+  const recommendedFollowupsCreatedAt = new Date(markerCreatedAt.getTime() + 1);
   const inserted = await args.db.transaction(async (tx) => {
     const marker = await tx
       .insert(chatMessages)
@@ -442,6 +444,7 @@ async function insertRunLifecycleMarker(args: {
         content: null,
         runId: args.runId,
         runLifecycleEvent: args.event,
+        createdAt: markerCreatedAt,
       })
       .onConflictDoNothing({
         target: chatMessages.runId,
@@ -462,6 +465,7 @@ async function insertRunLifecycleMarker(args: {
         content: null,
         runId: args.runId,
         recommendedFollowups: args.recommendedFollowups,
+        createdAt: recommendedFollowupsCreatedAt,
       });
     }
     await touchChatThreadLastMessageAt(tx, args.threadId);

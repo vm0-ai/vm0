@@ -705,6 +705,9 @@ describe("POST /api/internal/callbacks/chat", () => {
     });
     expect(marker?.recommendedFollowups).toBeNull();
     expect(recommender?.content).toBeNull();
+    expect(recommender?.createdAt.getTime()).toBeGreaterThan(
+      marker?.createdAt.getTime() ?? 0,
+    );
     expect(recommender?.recommendedFollowups).toStrictEqual([
       {
         prompt: "Turn this into a checklist",

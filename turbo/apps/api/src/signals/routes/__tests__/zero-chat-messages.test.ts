@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatMessagesContract,
+  chatThreadMessagesContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -2191,19 +2194,50 @@ describe("POST /api/zero/chat/messages", () => {
       createdByUserId: fixture.userId,
       updatedByUserId: fixture.userId,
     });
+    const threadId = randomUUID();
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: null,
+    });
+    const [recommendedFollowup] = await writeDb
+      .insert(chatMessages)
+      .values({
+        chatThreadId: threadId,
+        role: "assistant",
+        content: null,
+        recommendedFollowups: [{ prompt: "blocked by credits", kind: "talk" }],
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: chatMessages.id });
+    const clientMessageId = randomUUID();
+    const body = {
+      agentId: fixture.agentId,
+      prompt: "blocked by credits",
+      threadId,
+      revokesMessageId: recommendedFollowup!.id,
+      clientMessageId,
+    };
 
     const response = await accept(
       client().send({
         headers: authHeaders(),
-        body: {
-          agentId: fixture.agentId,
-          prompt: "blocked by credits",
-        },
+        body,
+      }),
+      [201],
+    );
+    const retry = await accept(
+      client().send({
+        headers: authHeaders(),
+        body,
       }),
       [201],
     );
 
     expect(response.body.runId).toBeNull();
+    expect(response.body.threadId).toBe(threadId);
+    expect(retry.body).toStrictEqual(response.body);
     const [run] = await writeDb
       .select({ id: agentRuns.id })
       .from(agentRuns)
@@ -2215,6 +2249,7 @@ describe("POST /api/zero/chat/messages", () => {
         role: chatMessages.role,
         content: chatMessages.content,
         runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
         error: chatMessages.error,
       })
       .from(chatMessages)
@@ -2222,18 +2257,48 @@ describe("POST /api/zero/chat/messages", () => {
       .orderBy(chatMessages.createdAt);
     expect(messages).toStrictEqual([
       {
+        role: "assistant",
+        content: null,
+        runId: null,
+        revokesMessageId: null,
+        error: null,
+      },
+      {
         role: "user",
         content: "blocked by credits",
         runId: null,
+        revokesMessageId: recommendedFollowup!.id,
         error: "insufficient_credits",
       },
       {
         role: "assistant",
         content: expect.stringContaining("Upgrade to Pro"),
         runId: null,
+        revokesMessageId: null,
         error: "insufficient_credits",
       },
     ]);
+
+    const listResponse = await accept(
+      setupApp({ context })(chatThreadMessagesContract).list({
+        params: { threadId },
+        query: { limit: 50 },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(listResponse.body.messages).toHaveLength(2);
+    expect(listResponse.body.messages[0]).toMatchObject({
+      role: "user",
+      content: "blocked by credits",
+      revokesMessageId: recommendedFollowup!.id,
+      error: "insufficient_credits",
+    });
+    expect(listResponse.body.messages[1]).toMatchObject({
+      role: "assistant",
+      content: expect.stringContaining("Upgrade to Pro"),
+      error: "insufficient_credits",
+    });
   });
 
   it("stores upgrade guidance for pro-suspend workspaces with credits", async () => {

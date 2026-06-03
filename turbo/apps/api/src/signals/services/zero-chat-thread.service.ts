@@ -177,6 +177,8 @@ export function visibleChatMessageCondition() {
       ${chatMessages.role} = 'user'
       AND ${chatMessages.runId} IS NULL
       AND ${chatMessages.revokesMessageId} IS NOT NULL
+      AND ${chatMessages.content} IS NULL
+      AND ${chatMessages.error} IS NULL
     )
     AND NOT (
       ${chatMessages.role} = 'user'

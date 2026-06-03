@@ -239,9 +239,11 @@ interface ExistingClientMessageIdRow {
   readonly chatThreadId: string;
   readonly threadUserId: string;
   readonly role: string;
+  readonly content: string | null;
   readonly runId: string | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
+  readonly error: string | null;
   readonly messageCreatedAt: Date;
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
@@ -284,7 +286,12 @@ function resolveExistingClientMessageIdRow(
   ) {
     return { kind: "conflict" };
   }
-  if (row.revokesMessageId !== null && row.runId === null) {
+  if (
+    row.revokesMessageId !== null &&
+    row.runId === null &&
+    row.content === null &&
+    row.error === null
+  ) {
     return { kind: "conflict" };
   }
   if (row.runId === null) {
@@ -318,9 +325,11 @@ async function resolveClientMessageId(
       chatThreadId: chatMessages.chatThreadId,
       threadUserId: chatThreads.userId,
       role: chatMessages.role,
+      content: chatMessages.content,
       runId: chatMessages.runId,
       revokesMessageId: chatMessages.revokesMessageId,
       interruptsRunId: chatMessages.interruptsRunId,
+      error: chatMessages.error,
       messageCreatedAt: chatMessages.createdAt,
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
@@ -1383,9 +1392,11 @@ function appendUnassociatedUserMessage(params: {
         chatThreadId: chatMessages.chatThreadId,
         threadUserId: chatThreads.userId,
         role: chatMessages.role,
+        content: chatMessages.content,
         runId: chatMessages.runId,
         revokesMessageId: chatMessages.revokesMessageId,
         interruptsRunId: chatMessages.interruptsRunId,
+        error: chatMessages.error,
         messageCreatedAt: chatMessages.createdAt,
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,
@@ -2059,6 +2070,7 @@ async function appendInsufficientCreditsMessages(params: {
         role: "user",
         content: params.body.prompt,
         runId: null,
+        revokesMessageId: params.body.revokesMessageId,
         error: INSUFFICIENT_CREDITS_MARKER,
         sequenceNumber: 0,
         createdAt: userCreatedAt,
