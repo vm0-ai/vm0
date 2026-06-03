@@ -180,6 +180,12 @@ mod tests {
     }
 
     #[test]
+    fn invalid_file_hash_returns_error() {
+        let got = compute_content_hash(STORAGE_A, [("a.txt", "g")]);
+        assert!(matches!(got, Err(ContentHashError::InvalidFileHash(_))));
+    }
+
+    #[test]
     fn old_text_format_collision_inputs_are_separated() {
         let hash_1 = "1111111111111111111111111111111111111111111111111111111111111111";
         let hash_2 = "2222222222222222222222222222222222222222222222222222222222222222";
