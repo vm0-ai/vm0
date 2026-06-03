@@ -1,5 +1,6 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import type { MouseEvent } from "react";
+import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import type { MemoryDetailResponse } from "@vm0/api-contracts/contracts/zero-memory";
 import { cn } from "@vm0/ui";
 
@@ -11,9 +12,77 @@ import {
 import { Markdown } from "../components/markdown.tsx";
 
 const PREFERRED_FILE = "MEMORY.md";
+const LEADING_YAML_FRONTMATTER_PATTERN =
+  /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+
+interface FrontmatterField {
+  readonly key: string;
+  readonly value: string;
+}
+
+interface ParsedMarkdownMemory {
+  readonly body: string;
+  readonly frontmatter: readonly FrontmatterField[];
+}
 
 function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith(".md");
+}
+
+function isString(value: string | null): value is string {
+  return value !== null;
+}
+
+function scalarFrontmatterValueToString(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value.trim() === "" ? null : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+function frontmatterNodeToString(node: unknown): string | null {
+  if (isScalar(node)) {
+    return scalarFrontmatterValueToString(node.value);
+  }
+  if (isSeq(node)) {
+    const items = node.items.map(frontmatterNodeToString).filter(isString);
+    return items.length > 0 ? items.join(", ") : null;
+  }
+  return null;
+}
+
+function parseMarkdownMemory(content: string): ParsedMarkdownMemory {
+  const match = content.match(LEADING_YAML_FRONTMATTER_PATTERN);
+  if (!match) {
+    return { body: content, frontmatter: [] };
+  }
+
+  const rawYaml = match[1] ?? "";
+  const document = parseDocument(rawYaml);
+  if (document.errors.length > 0) {
+    return { body: content, frontmatter: [] };
+  }
+
+  if (!isMap(document.contents)) {
+    return { body: content.slice(match[0].length), frontmatter: [] };
+  }
+
+  const frontmatter: FrontmatterField[] = [];
+  for (const pair of document.contents.items) {
+    const key = frontmatterNodeToString(pair.key);
+    const renderedValue = frontmatterNodeToString(pair.value);
+    if (key !== null && renderedValue !== null) {
+      frontmatter.push({ key, value: renderedValue });
+    }
+  }
+
+  return {
+    body: content.slice(match[0].length),
+    frontmatter,
+  };
 }
 
 /**
@@ -136,6 +205,12 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
 
   const { files, selectedPath, selectedContent, knownPaths } =
     deriveMemoryViewerState(detail, explicitSelected);
+  const selectedMarkdown =
+    selectedPath !== null &&
+    selectedContent !== null &&
+    isMarkdown(selectedPath)
+      ? parseMarkdownMemory(selectedContent)
+      : null;
 
   // Links between memory files render as relative anchors (e.g.
   // `[foo](foo.md)`). Left alone they navigate the browser to a non-existent
@@ -172,13 +247,14 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
             </span>
           </div>
           {selectedPath && selectedContent !== null ? (
-            isMarkdown(selectedPath) ? (
+            selectedMarkdown !== null ? (
               <div
                 aria-label="Memory content"
                 className="min-h-0 flex-1 overflow-auto bg-background px-4 py-3"
                 onClick={handleContentClick}
               >
-                <Markdown source={selectedContent} />
+                <MemoryFrontmatter fields={selectedMarkdown.frontmatter} />
+                <Markdown source={selectedMarkdown.body} />
               </div>
             ) : (
               <pre
@@ -238,6 +314,68 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
         </aside>
       </div>
     </section>
+  );
+}
+
+function fieldByKey(
+  fields: readonly FrontmatterField[],
+  keys: readonly string[],
+): FrontmatterField | null {
+  return (
+    fields.find((field) => {
+      return keys.includes(field.key);
+    }) ?? null
+  );
+}
+
+function MemoryFrontmatter({
+  fields,
+}: {
+  readonly fields: readonly FrontmatterField[];
+}) {
+  if (fields.length === 0) {
+    return null;
+  }
+
+  const title = fieldByKey(fields, ["name", "title"]);
+  const description = fieldByKey(fields, ["description"]);
+  const detailFields = fields.filter((field) => {
+    return field !== title && field !== description;
+  });
+  const hasSummary = title !== null || description !== null;
+
+  return (
+    <header className="mb-4 border-b border-border/70 pb-3">
+      {title ? (
+        <h2 className="text-sm font-semibold leading-5 text-foreground">
+          {title.value}
+        </h2>
+      ) : null}
+      {description ? (
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+          {description.value}
+        </p>
+      ) : null}
+      {detailFields.length > 0 ? (
+        <dl
+          className={cn(
+            "flex flex-wrap gap-x-4 gap-y-1 text-xs leading-5",
+            hasSummary ? "mt-2" : "",
+          )}
+        >
+          {detailFields.map((field) => {
+            return (
+              <div key={field.key} className="flex min-w-0 gap-1.5">
+                <dt className="shrink-0 text-muted-foreground">{field.key}</dt>
+                <dd className="min-w-0 truncate font-medium text-foreground">
+                  {field.value}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      ) : null}
+    </header>
   );
 }
 

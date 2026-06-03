@@ -170,6 +170,66 @@ describe("memory page", () => {
     });
   });
 
+  it("renders leading YAML frontmatter as memory metadata", async () => {
+    setMockMemory({
+      exists: true,
+      name: "memory",
+      size: 180,
+      fileCount: 1,
+      updatedAt: "2024-01-01T00:00:00Z",
+      files: [{ path: "feedback_gh_api_flag.md", size: 180 }],
+      fileContents: [
+        {
+          path: "feedback_gh_api_flag.md",
+          content: [
+            "---",
+            "name: gh api -R Flag Not Supported",
+            "description: gh api does not support the -R flag; use full path format instead",
+            "type: feedback",
+            "---",
+            "",
+            "Wrong:",
+            "",
+            "```sh",
+            "gh api -R vm0-ai/vm0 repos/vm0-ai/vm0/commits/abc123",
+            "```",
+            "",
+            "Correct:",
+            "",
+            "```sh",
+            "gh api /repos/vm0-ai/vm0/commits/abc123",
+            "```",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Memory content")).toHaveTextContent(
+        "Wrong:",
+      );
+    });
+
+    const content = screen.getByLabelText("Memory content");
+    expect(content).toHaveTextContent("gh api -R Flag Not Supported");
+    expect(content).toHaveTextContent(
+      "gh api does not support the -R flag; use full path format instead",
+    );
+    expect(content).toHaveTextContent("type");
+    expect(content).toHaveTextContent("feedback");
+    expect(content).toHaveTextContent("Correct:");
+    expect(content).not.toHaveTextContent("---");
+    expect(content).not.toHaveTextContent("name:");
+    expect(content).not.toHaveTextContent("description:");
+    expect(content).not.toHaveTextContent("type: feedback");
+  });
+
   it("leaves external links untouched so the browser handles them", async () => {
     setMockMemory({
       exists: true,
