@@ -48,7 +48,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     const connectorProvider = `x-${randomUUID()}`;
     const hourSeed = Number.parseInt(randomUUID().slice(0, 8), 16);
     const expectedHourStart = new Date(
-      Date.UTC(2100, 0, 1) + (hourSeed % (24 * 365)) * HOUR_MS,
+      Date.UTC(2001, 0, 1) + (hourSeed % (24 * 365)) * HOUR_MS,
     );
     const expectedWindowEnd = new Date(expectedHourStart.getTime() + HOUR_MS);
     const expectedWindowStart = new Date(
