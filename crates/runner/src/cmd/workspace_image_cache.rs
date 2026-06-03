@@ -21,7 +21,7 @@ enum WorkspaceImageCacheCommand {
     Info(WorkspaceImageCacheInfoArgs),
     /// List workspace image cache entries
     List(WorkspaceImageCacheListArgs),
-    /// Clean up reusable session workspace image cache entries
+    /// Clean up session workspace image cache entries
     Gc(WorkspaceImageCacheGcArgs),
 }
 

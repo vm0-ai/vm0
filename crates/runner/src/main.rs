@@ -79,7 +79,7 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused image directories
     Gc(cmd::GcArgs),
-    /// Inspect and clean up reusable session workspace image cache entries
+    /// Inspect and clean up session workspace image cache entries
     WorkspaceImageCache(cmd::WorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),

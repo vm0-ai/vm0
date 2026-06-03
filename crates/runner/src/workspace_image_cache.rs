@@ -917,7 +917,7 @@ impl SessionWorkspaceCache {
         cache_key: String,
         entry_dir: PathBuf,
     ) -> RunnerResult<WorkspaceImageCacheInspectionEntry> {
-        let temporary = inspect_temporary_files(&entry_dir).await;
+        let temporary = inspect_temporary_files(&entry_dir).await?;
         let lock = match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
             Ok(lock) => lock,
             Err(e) if crate::lock::is_lock_busy_error(&e) => {
@@ -955,7 +955,11 @@ impl SessionWorkspaceCache {
         let metadata = match self.read_metadata_file(&metadata_path).await {
             Ok(metadata) => Some(metadata),
             Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(_) => None,
+            Err(RunnerError::Internal(_)) => None,
+            Err(e) => {
+                drop(lock);
+                return Err(e);
+            }
         };
 
         let entry = match (current_metadata, metadata) {
@@ -1768,15 +1772,20 @@ fn workspace_image_cache_inspection_entry(
     }
 }
 
-async fn inspect_temporary_files(entry_dir: &Path) -> TemporaryFileStats {
+async fn inspect_temporary_files(entry_dir: &Path) -> RunnerResult<TemporaryFileStats> {
     let mut files = match fs::read_dir(entry_dir).await {
         Ok(files) => files,
-        Err(_) => return TemporaryFileStats::default(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(TemporaryFileStats::default());
+        }
+        Err(e) => return Err(e.into()),
     };
     let mut stats = TemporaryFileStats::default();
-    while let Ok(Some(file)) = files.next_entry().await {
-        let Ok(file_type) = file.file_type().await else {
-            continue;
+    while let Some(file) = files.next_entry().await? {
+        let file_type = match file.file_type().await {
+            Ok(file_type) => file_type,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
         };
         if !file_type.is_file() {
             continue;
@@ -1789,14 +1798,16 @@ async fn inspect_temporary_files(entry_dir: &Path) -> TemporaryFileStats {
             continue;
         }
         stats.file_count += 1;
-        stats.allocated_bytes = stats.allocated_bytes.saturating_add(
-            fs::metadata(file.path())
-                .await
-                .map(|metadata| allocated_bytes(&metadata))
-                .unwrap_or(0),
-        );
+        let metadata = match fs::metadata(file.path()).await {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        stats.allocated_bytes = stats
+            .allocated_bytes
+            .saturating_add(allocated_bytes(&metadata));
     }
-    stats
+    Ok(stats)
 }
 
 impl WorkspaceCacheTerminalStatus {
@@ -3104,6 +3115,30 @@ mod tests {
             err.to_string().contains("create lock dir"),
             "unexpected error: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn inspect_propagates_metadata_io_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.session_workspace_cache_current_image(&key), b"image")
+            .await
+            .unwrap();
+        fs::create_dir(paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+
+        let err = cache.inspect().await.unwrap_err();
+
+        match err {
+            RunnerError::Io(e) => assert_eq!(e.kind(), std::io::ErrorKind::IsADirectory),
+            other => panic!("unexpected error: {other}"),
+        }
     }
 
     #[test]
