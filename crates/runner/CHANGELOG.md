@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.107.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.5...runner-rs-v0.107.6) (2026-06-03)
+
+
+### Bug Fixes
+
+* preserve missing auto memory artifact checkpoints ([#15964](https://github.com/vm0-ai/vm0/issues/15964)) ([020dc4a](https://github.com/vm0-ai/vm0/commit/020dc4a62cd90237639396419ccee1ba85d7d4d0))
+
 ## [0.107.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.4...runner-rs-v0.107.5) (2026-06-03)
 
 

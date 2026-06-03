@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.96.1](https://github.com/vm0-ai/vm0/compare/api-v1.96.0...api-v1.96.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* preserve missing auto memory artifact checkpoints ([#15964](https://github.com/vm0-ai/vm0/issues/15964)) ([020dc4a](https://github.com/vm0-ai/vm0/commit/020dc4a62cd90237639396419ccee1ba85d7d4d0))
+* use finicity app secret env ([#15988](https://github.com/vm0-ai/vm0/issues/15988)) ([69f3125](https://github.com/vm0-ai/vm0/commit/69f31251fb459b3edbb905d1f31478cde5c7a969))
+
+
+### Refactoring
+
+* retire legacy zero permission approval paths ([#15978](https://github.com/vm0-ai/vm0/issues/15978)) ([ed43996](https://github.com/vm0-ai/vm0/commit/ed43996269688f9b255ecc6839b5e0496b99ce15))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.57.1
+    * @vm0/connectors bumped to 1.45.1
+    * @vm0/core bumped to 8.309.1
+    * @vm0/db bumped to 1.27.0
+
 ## [1.96.0](https://github.com/vm0-ai/vm0/compare/api-v1.95.4...api-v1.96.0) (2026-06-03)
 
 

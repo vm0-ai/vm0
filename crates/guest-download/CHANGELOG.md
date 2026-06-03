@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.18](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.17...guest-download-v0.20.18) (2026-06-03)
+
+
+### Bug Fixes
+
+* preserve missing auto memory artifact checkpoints ([#15964](https://github.com/vm0-ai/vm0/issues/15964)) ([020dc4a](https://github.com/vm0-ai/vm0/commit/020dc4a62cd90237639396419ccee1ba85d7d4d0))
+
 ## [0.20.17](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.16...guest-download-v0.20.17) (2026-06-02)
 
 

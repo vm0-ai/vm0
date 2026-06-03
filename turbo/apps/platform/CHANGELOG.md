@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.405.0](https://github.com/vm0-ai/vm0/compare/app-v0.404.0...app-v0.405.0) (2026-06-03)
+
+
+### Features
+
+* route platform team and onboarding-status reads to api backend ([#15990](https://github.com/vm0-ai/vm0/issues/15990)) ([d75c27a](https://github.com/vm0-ai/vm0/commit/d75c27a09f5f34891a1438aa5ee30ce82ee22f76))
+
+
+### Bug Fixes
+
+* increase activity detail initial event load ([#15975](https://github.com/vm0-ai/vm0/issues/15975)) ([2a521bc](https://github.com/vm0-ai/vm0/commit/2a521bc08fd27b74e838b28e96b30721bad5bf7c))
+* render memory frontmatter metadata ([#15982](https://github.com/vm0-ai/vm0/issues/15982)) ([77b981b](https://github.com/vm0-ai/vm0/commit/77b981b581df4d9dbc6e45d1ff73490082e42cd2))
+* show skill file count in sidebar ([#15992](https://github.com/vm0-ai/vm0/issues/15992)) ([b4efaa5](https://github.com/vm0-ai/vm0/commit/b4efaa56a4be15ce89f29f2f0bbf58ca646a2ec1))
+
+
+### Refactoring
+
+* retire legacy zero permission approval paths ([#15978](https://github.com/vm0-ai/vm0/issues/15978)) ([ed43996](https://github.com/vm0-ai/vm0/commit/ed43996269688f9b255ecc6839b5e0496b99ce15))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.57.1
+    * @vm0/connectors bumped to 1.45.1
+    * @vm0/core bumped to 8.309.1
+
 ## [0.404.0](https://github.com/vm0-ai/vm0/compare/app-v0.403.2...app-v0.404.0) (2026-06-03)
 
 

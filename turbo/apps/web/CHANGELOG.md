@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.408.5](https://github.com/vm0-ai/vm0/compare/web-v12.408.4...web-v12.408.5) (2026-06-03)
+
+
+### Refactoring
+
+* retire legacy zero permission approval paths ([#15978](https://github.com/vm0-ai/vm0/issues/15978)) ([ed43996](https://github.com/vm0-ai/vm0/commit/ed43996269688f9b255ecc6839b5e0496b99ce15))
+* share presentation template items ([#15987](https://github.com/vm0-ai/vm0/issues/15987)) ([cfe5253](https://github.com/vm0-ai/vm0/commit/cfe52535d6f5e6adcf44400ad733976e178d85a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.57.1
+    * @vm0/core bumped to 8.309.1
+  * devDependencies
+    * @vm0/connectors bumped to 1.45.1
+
 ## [12.408.4](https://github.com/vm0-ai/vm0/compare/web-v12.408.3...web-v12.408.4) (2026-06-03)
 
 
