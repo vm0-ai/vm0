@@ -5,6 +5,64 @@ import pytest
 import matching
 from tests.firewall_helpers import compile_firewalls_or_fail, wrap_firewalls
 
+DEFAULT_AUTH = object()
+BROAD_BASE = "https://api.example.com"
+ADMIN_BASE = "https://api.example.com/admin"
+ADMIN_DELETE_URL = "https://api.example.com/admin/delete"
+
+
+def permission(name, rule):
+    return {"name": name, "rules": [rule]}
+
+
+def api_entry(base, permissions, *, auth_label="fixture", auth=DEFAULT_AUTH):
+    api_auth = (
+        {"headers": {"Authorization": f"Bearer {auth_label}"}} if auth is DEFAULT_AUTH else auth
+    )
+    return {
+        "base": base,
+        "auth": api_auth,
+        "permissions": list(permissions),
+    }
+
+
+def firewall_entry(name, *apis):
+    return {"name": name, "apis": list(apis)}
+
+
+def policy(*, allow=(), deny=(), ask=(), unknown_policy="deny"):
+    network_policy = {
+        "allow": list(allow),
+        "deny": list(deny),
+        "unknownPolicy": unknown_policy,
+    }
+    if ask:
+        network_policy["ask"] = list(ask)
+    return network_policy
+
+
+def match_firewalls(url, firewalls, policies, *, method="GET"):
+    return matching.match_compiled_firewall_request(
+        url,
+        method,
+        compile_firewalls_or_fail(firewalls),
+        policies,
+    )
+
+
+def broad_firewall(*, base=BROAD_BASE):
+    return firewall_entry(
+        "broad",
+        api_entry(
+            base,
+            [permission("broad", "ANY /{path+}")],
+            auth_label="broad",
+        ),
+    )
+
+
+# Permission and cross-firewall ordering precedence
+
 
 def test_compiled_matches_ask_permission_block():
     fws = wrap_firewalls(
@@ -263,152 +321,287 @@ def test_denied_permission_names_collect_across_firewalls():
     assert result.reason == "permission_denied"
 
 
+# Base specificity precedence
+
+
 def test_more_specific_base_deny_blocks_earlier_broad_allow():
     fws = wrap_firewalls(
         [
-            {
-                "base": "https://api.example.com",
-                "auth": {"headers": {"Authorization": "Bearer broad"}},
-                "permissions": [
-                    {"name": "broad", "rules": ["ANY /{path+}"]},
-                ],
-            },
-            {
-                "base": "https://api.example.com/admin",
-                "auth": {"headers": {"Authorization": "Bearer admin"}},
-                "permissions": [
-                    {"name": "admin", "rules": ["GET /delete"]},
-                ],
-            },
+            api_entry(BROAD_BASE, [permission("broad", "ANY /{path+}")], auth_label="broad"),
+            api_entry(ADMIN_BASE, [permission("admin", "GET /delete")], auth_label="admin"),
         ],
         name="example",
     )
-    policies = {
-        "example": {
-            "allow": ["broad"],
-            "deny": ["admin"],
-            "unknownPolicy": "deny",
-        }
-    }
+    policies = {"example": policy(allow=["broad"], deny=["admin"])}
 
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+    result = match_firewalls(ADMIN_DELETE_URL, fws, policies)
 
     assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
+    assert result.base == ADMIN_BASE
     assert result.path == "/delete"
     assert result.permissions == ("admin",)
     assert result.reason == "permission_denied"
 
 
-def test_more_specific_base_unknown_policy_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
+@pytest.mark.parametrize(
+    ("fws", "network_policies", "expected"),
+    [
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry("admin", api_entry(ADMIN_BASE, [], auth_label="admin")),
             ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [],
-                }
+            {
+                "broad": policy(allow=["broad"], unknown_policy="allow"),
+                "admin": policy(unknown_policy="deny"),
+            },
+            {
+                "base": ADMIN_BASE,
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "unknown_endpoint",
+            },
+            id="specific-unknown-deny-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry("admin", api_entry(ADMIN_BASE, [], auth_label="admin")),
             ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-        "admin": {
-            "allow": [],
-            "deny": [],
-            "unknownPolicy": "deny",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+            matching.compile_network_policies(
+                {
+                    "broad": policy(allow=["broad"], unknown_policy="allow"),
+                    "admin": policy(unknown_policy="broken"),
+                }
+            ),
+            {
+                "base": ADMIN_BASE,
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_network_policy",
+            },
+            id="specific-invalid-unknown-policy-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "admin",
+                    api_entry(
+                        ADMIN_BASE,
+                        [permission("admin", "GET /{a}literal{b}")],
+                        auth_label="admin",
+                    ),
+                ),
+            ],
+            {
+                "broad": policy(allow=["broad"], unknown_policy="allow"),
+                "admin": policy(allow=["admin"], unknown_policy="allow"),
+            },
+            {
+                "base": ADMIN_BASE,
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_firewall_config",
+            },
+            id="specific-malformed-rule-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "admin",
+                    api_entry(
+                        ADMIN_BASE,
+                        [permission("admin", "GET /delete")],
+                        auth={"headers": None},
+                    ),
+                ),
+            ],
+            {
+                "broad": policy(allow=["broad"], unknown_policy="allow"),
+                "admin": policy(allow=["admin"], unknown_policy="allow"),
+            },
+            {
+                "base": ADMIN_BASE,
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_firewall_config",
+            },
+            id="specific-malformed-auth-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "",
+                    api_entry(
+                        ADMIN_BASE,
+                        [permission("admin", "GET /delete")],
+                        auth_label="admin",
+                    ),
+                ),
+            ],
+            {"broad": policy(allow=["broad"], unknown_policy="allow")},
+            {
+                "base": ADMIN_BASE,
+                "name": "",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_firewall_config",
+            },
+            id="specific-malformed-firewall-name-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "admin",
+                    api_entry(
+                        f"{ADMIN_BASE}?token=1",
+                        [permission("admin", "GET /delete")],
+                        auth_label="admin",
+                    ),
+                ),
+            ],
+            {
+                "broad": policy(allow=["broad"], unknown_policy="allow"),
+                "admin": policy(allow=["admin"], unknown_policy="allow"),
+            },
+            {
+                "base": f"{ADMIN_BASE}?token=1",
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_firewall_config",
+            },
+            id="specific-malformed-base-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "admin",
+                    api_entry(
+                        ADMIN_BASE,
+                        [permission("admin", "GET /delete")],
+                        auth_label="admin",
+                    ),
+                ),
+            ],
+            {
+                "broad": policy(allow=["broad"], unknown_policy="allow"),
+                "admin": {
+                    "allow": "admin",
+                    "deny": [],
+                    "unknownPolicy": "allow",
+                },
+            },
+            {
+                "base": ADMIN_BASE,
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_network_policy",
+            },
+            id="specific-malformed-policy-blocks-broad-allow",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "admin",
+                    api_entry(
+                        ADMIN_BASE,
+                        [permission("admin", "GET /delete")],
+                        auth_label="admin",
+                    ),
+                ),
+            ],
+            matching.compile_network_policies("broken"),
+            {
+                "base": ADMIN_BASE,
+                "name": "admin",
+                "path": "/delete",
+                "permissions": (),
+                "reason": "malformed_network_policy",
+            },
+            id="top-level-malformed-policy-blocks-broad-allow",
+        ),
+    ],
+)
+def test_more_specific_base_block_precedence_matrix(fws, network_policies, expected):
+    result = match_firewalls(ADMIN_DELETE_URL, fws, network_policies)
 
     assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "unknown_endpoint"
+    assert result.base == expected["base"]
+    assert result.name == expected["name"]
+    assert result.path == expected["path"]
+    assert result.permissions == expected["permissions"]
+    assert result.reason == expected["reason"]
 
 
-def test_more_specific_base_unknown_allow_wins_after_earlier_broad_deny():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://{workspace}.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
+@pytest.mark.parametrize(
+    ("fws", "network_policies", "expected"),
+    [
+        pytest.param(
+            [
+                broad_firewall(base="https://{workspace}.example.com"),
+                firewall_entry("admin", api_entry(ADMIN_BASE, [], auth_label="admin")),
             ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [],
-                }
+            {
+                "broad": policy(deny=["broad"]),
+                "admin": policy(unknown_policy="allow"),
+            },
+            {
+                "authorization": "Bearer admin",
+                "name": "admin",
+                "permission": None,
+                "rule": None,
+                "rel_path": "/delete",
+            },
+            id="specific-unknown-allow-wins-after-broad-deny",
+        ),
+        pytest.param(
+            [
+                broad_firewall(),
+                firewall_entry(
+                    "admin",
+                    api_entry(
+                        ADMIN_BASE,
+                        [permission("admin", "GET /delete")],
+                        auth_label="admin",
+                    ),
+                ),
             ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": [],
-            "deny": ["broad"],
-            "unknownPolicy": "deny",
-        },
-        "admin": {
-            "allow": [],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+            {
+                "broad": policy(deny=["broad"]),
+                "admin": policy(allow=["admin"]),
+            },
+            {
+                "authorization": "Bearer admin",
+                "name": "admin",
+                "permission": "admin",
+                "rule": "GET /delete",
+                "rel_path": "/delete",
+            },
+            id="specific-allow-wins-after-broad-deny",
+        ),
+    ],
+)
+def test_more_specific_base_allow_precedence_matrix(fws, network_policies, expected):
+    result = match_firewalls(ADMIN_DELETE_URL, fws, network_policies)
 
     assert isinstance(result, matching.FirewallAllow)
-    assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer admin"
-    assert result.name == "admin"
-    assert result.permission is None
-    assert result.rule is None
-    assert result.rel_path == "/delete"
+    assert result.api_entry["auth"]["headers"]["Authorization"] == expected["authorization"]
+    assert result.name == expected["name"]
+    assert result.permission == expected["permission"]
+    assert result.rule == expected["rule"]
+    assert result.rel_path == expected["rel_path"]
 
 
 def test_more_specific_parameterized_base_unknown_allow_preserves_params():
@@ -523,427 +716,6 @@ def test_more_specific_parameterized_base_allow_preserves_params_after_broad_den
         "tenant": "customer-1",
         "id": "42",
     }
-
-
-def test_more_specific_base_invalid_unknown_policy_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-        "admin": {
-            "allow": [],
-            "deny": [],
-            "unknownPolicy": "broken",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        matching.compile_network_policies(policies),
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_network_policy"
-
-
-def test_more_specific_base_allow_wins_after_earlier_broad_deny():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /delete"]},
-                    ],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": [],
-            "deny": ["broad"],
-            "unknownPolicy": "deny",
-        },
-        "admin": {
-            "allow": ["admin"],
-            "deny": [],
-            "unknownPolicy": "deny",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
-
-    assert isinstance(result, matching.FirewallAllow)
-    assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer admin"
-    assert result.name == "admin"
-    assert result.permission == "admin"
-    assert result.rule == "GET /delete"
-    assert result.rel_path == "/delete"
-
-
-def test_more_specific_base_malformed_config_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /{a}literal{b}"]},
-                    ],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-        "admin": {
-            "allow": ["admin"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_firewall_config"
-
-
-def test_more_specific_base_malformed_auth_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": None},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /delete"]},
-                    ],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-        "admin": {
-            "allow": ["admin"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_firewall_config"
-
-
-def test_more_specific_base_malformed_firewall_name_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /delete"]},
-                    ],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        }
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == ""
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_firewall_config"
-
-
-def test_more_specific_malformed_base_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin?token=1",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /delete"]},
-                    ],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-        "admin": {
-            "allow": ["admin"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin?token=1"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_firewall_config"
-
-
-def test_more_specific_base_malformed_policy_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /delete"]},
-                    ],
-                }
-            ],
-        },
-    ]
-    policies = {
-        "broad": {
-            "allow": ["broad"],
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-        "admin": {
-            "allow": "admin",
-            "deny": [],
-            "unknownPolicy": "allow",
-        },
-    }
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_network_policy"
-
-
-def test_more_specific_base_top_level_malformed_policy_blocks_earlier_broad_allow():
-    fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [
-                        {"name": "broad", "rules": ["ANY /{path+}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "admin",
-            "apis": [
-                {
-                    "base": "https://api.example.com/admin",
-                    "auth": {"headers": {"Authorization": "Bearer admin"}},
-                    "permissions": [
-                        {"name": "admin", "rules": ["GET /delete"]},
-                    ],
-                }
-            ],
-        },
-    ]
-
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/admin/delete",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        matching.compile_network_policies("broken"),
-    )
-
-    assert isinstance(result, matching.FirewallBlock)
-    assert result.base == "https://api.example.com/admin"
-    assert result.name == "admin"
-    assert result.path == "/delete"
-    assert result.permissions == ()
-    assert result.reason == "malformed_network_policy"
 
 
 def test_parameterized_path_base_deny_blocks_earlier_root_allow():
@@ -1114,6 +886,9 @@ def test_same_base_specific_deny_blocks_earlier_broad_allow():
     assert result.reason == "permission_denied"
 
 
+# Malformed policy precedence
+
+
 def test_later_malformed_policy_wins_after_earlier_unknown_allow():
     fws = [
         {
@@ -1198,6 +973,9 @@ def test_later_allowed_firewall_wins_after_earlier_malformed_policy_match():
     assert isinstance(compiled, matching.FirewallAllow)
     assert compiled.name == "specific"
     assert compiled.permission == "items-read"
+
+
+# Rule specificity and rule ordering precedence
 
 
 def test_preserves_config_rule_order_for_any_before_exact_method():
@@ -1377,6 +1155,9 @@ def test_allowed_parameter_rule_does_not_bypass_more_specific_literal_deny():
     assert isinstance(result, matching.FirewallBlock)
     assert result.permissions == ("community-search",)
     assert result.reason == "permission_denied"
+
+
+# Permission aggregation and deduplication precedence
 
 
 def test_later_allowed_permission_still_wins_after_earlier_denied_match():
