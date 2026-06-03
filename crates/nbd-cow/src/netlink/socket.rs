@@ -184,8 +184,8 @@ mod tests {
         let mut buf = vec![0u8; 4096];
         let n = recv_for_seq(&sock, &mut buf, expected_seq).unwrap();
         assert!(matches!(
-            wire::parse_nl_msg(&buf, n),
-            Ok(wire::NlMsg::Reply)
+            wire::parse_genl_response(&buf, n),
+            Ok(wire::GenlResponse::Reply { .. })
         ));
         assert_eq!(wire::parse_nl_header(&buf, n).unwrap().seq, expected_seq);
     }

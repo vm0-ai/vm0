@@ -292,16 +292,15 @@ fn resolve_nbd_family(sock: &socket::GenlSocket) -> Result<u16> {
 
     let mut buf = vec![0u8; 4096];
     let n = socket::recv_for_seq(sock, &mut buf, seq)?;
-    match wire::parse_nl_msg(&buf, n)? {
-        wire::NlMsg::Reply => {}
-        wire::NlMsg::Ack => {
+    let reply_attrs = match wire::parse_genl_response(&buf, n)? {
+        wire::GenlResponse::Reply { attrs } => attrs,
+        wire::GenlResponse::Ack => {
             return Err(NbdCowError::Netlink(
                 "unexpected ACK while resolving NBD family".into(),
             ));
         }
-    }
+    };
 
-    let reply_attrs = wire::genl_attrs(&buf, n)?;
     wire::find_nla_u16(reply_attrs, CTRL_ATTR_FAMILY_ID, "truncated family id")?
         .ok_or_else(|| NbdCowError::Netlink("NBD family ID not found in response".into()))
 }
@@ -346,10 +345,10 @@ fn classify_connect_completion(
 }
 
 fn parse_genl_completion(buf: &[u8], n: usize) -> Result<()> {
-    match wire::parse_nl_msg(buf, n)? {
+    match wire::parse_genl_response(buf, n)? {
         // NBD connect returns a genetlink reply on success; other commands may
         // complete with a netlink ACK. Non-zero NLMSG_ERROR is handled above.
-        wire::NlMsg::Ack | wire::NlMsg::Reply => Ok(()),
+        wire::GenlResponse::Ack | wire::GenlResponse::Reply { .. } => Ok(()),
     }
 }
 
@@ -368,6 +367,13 @@ fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn raw_nla_header(nla_len: u16, nla_type: u16) -> Vec<u8> {
+        let mut attr = Vec::new();
+        attr.extend_from_slice(&nla_len.to_ne_bytes());
+        attr.extend_from_slice(&nla_type.to_ne_bytes());
+        attr
+    }
 
     #[test]
     fn random_offset_zero_max() {
@@ -401,6 +407,62 @@ mod tests {
         let result = resolve_nbd_family(&sock);
 
         assert_eq!(result.unwrap(), 123);
+    }
+
+    #[test]
+    fn resolve_nbd_family_ignores_family_id_after_declared_length() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        let mut reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &[], 1, false);
+        reply.extend_from_slice(&wire::build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes()));
+        socket::send_test_nl(&peer, &reply);
+
+        let result = resolve_nbd_family(&sock);
+
+        assert!(
+            matches!(result, Err(NbdCowError::Netlink(message)) if message == "NBD family ID not found in response")
+        );
+    }
+
+    #[test]
+    fn resolve_nbd_family_rejects_short_non_target_attr_before_family_id() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        let mut attrs = raw_nla_header(3, 999);
+        attrs.extend_from_slice(&wire::build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes()));
+        let reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, 1, false);
+        socket::send_test_nl(&peer, &reply);
+
+        let result = resolve_nbd_family(&sock);
+
+        assert!(
+            matches!(result, Err(NbdCowError::Netlink(message)) if message == "invalid nla length")
+        );
+    }
+
+    #[test]
+    fn resolve_nbd_family_rejects_overlong_non_target_attr_before_family_id() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        let mut attrs = raw_nla_header(128, 999);
+        attrs.extend_from_slice(&wire::build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes()));
+        let reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, 1, false);
+        socket::send_test_nl(&peer, &reply);
+
+        let result = resolve_nbd_family(&sock);
+
+        assert!(matches!(result, Err(NbdCowError::Netlink(message)) if message == "truncated nla"));
+    }
+
+    #[test]
+    fn resolve_nbd_family_rejects_truncated_family_id_payload() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        let attrs = wire::build_nla(CTRL_ATTR_FAMILY_ID, &[0x7b]);
+        let reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, 1, false);
+        socket::send_test_nl(&peer, &reply);
+
+        let result = resolve_nbd_family(&sock);
+
+        assert!(
+            matches!(result, Err(NbdCowError::Netlink(message)) if message == "truncated family id")
+        );
     }
 
     #[test]

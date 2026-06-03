@@ -31,13 +31,13 @@ pub(super) struct NlHeader {
     pub(super) seq: u32,
 }
 
-/// Result of parsing a single netlink message.
+/// Result of parsing a single generic-netlink response.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum NlMsg {
+pub(super) enum GenlResponse<'a> {
     /// NLMSG_ERROR with error=0 (ACK).
     Ack,
-    /// Non-error message (genetlink reply or broadcast).
-    Reply,
+    /// Non-error generic-netlink reply.
+    Reply { attrs: &'a [u8] },
 }
 
 pub(super) fn build_genl_msg(
@@ -103,9 +103,9 @@ pub(super) fn parse_nl_header(buf: &[u8], n: usize) -> Result<NlHeader> {
     })
 }
 
-/// Parse a single netlink message from the buffer. Returns `NlMsg` on
-/// success, or an error for NLMSG_ERROR with non-zero errno.
-pub(super) fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
+/// Parse a single generic-netlink response from the buffer. Returns
+/// `GenlResponse` on success, or an error for NLMSG_ERROR with non-zero errno.
+pub(super) fn parse_genl_response(buf: &[u8], n: usize) -> Result<GenlResponse<'_>> {
     let received = received_slice(buf, n)?;
     let header = parse_nl_header(buf, n)?;
     if header.len < NLMSG_HEADER_LEN {
@@ -124,7 +124,7 @@ pub(super) fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
             "error code conversion",
         )?;
         if error == 0 {
-            return Ok(NlMsg::Ack);
+            return Ok(GenlResponse::Ack);
         }
         let errno = -error;
         return Err(NbdCowError::NetlinkErrno {
@@ -133,17 +133,14 @@ pub(super) fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
         });
     }
 
-    Ok(NlMsg::Reply)
-}
-
-pub(super) fn genl_attrs(buf: &[u8], n: usize) -> Result<&[u8]> {
-    let received = received_slice(buf, n)?;
-    if received.len() < GENL_ATTR_OFFSET {
+    if msg.len() < GENL_ATTR_OFFSET {
         return Err(NbdCowError::Netlink("response too short".into()));
     }
-    received
+    let attrs = msg
         .get(GENL_ATTR_OFFSET..)
-        .ok_or_else(|| NbdCowError::Netlink("response too short".into()))
+        .ok_or_else(|| NbdCowError::Netlink("response too short".into()))?;
+
+    Ok(GenlResponse::Reply { attrs })
 }
 
 pub(super) fn find_nla_u16(
@@ -152,7 +149,12 @@ pub(super) fn find_nla_u16(
     truncated_value_message: &'static str,
 ) -> Result<Option<u16>> {
     let mut offset = 0usize;
-    while offset + NLA_HEADER_LEN <= attrs.len() {
+    while offset < attrs.len() {
+        let remaining = attrs.len() - offset;
+        if remaining < NLA_HEADER_LEN {
+            return Err(NbdCowError::Netlink("truncated nla".into()));
+        }
+
         let nla_len = read_u16_at(attrs, offset, "truncated nla", "nla len conversion")? as usize;
         let nla_type = read_u16_at(
             attrs,
@@ -161,7 +163,17 @@ pub(super) fn find_nla_u16(
             "nla type conversion",
         )?;
 
-        if nla_type == target_type && nla_len >= NLA_HEADER_LEN + U16_LEN {
+        if nla_len < NLA_HEADER_LEN {
+            return Err(NbdCowError::Netlink("invalid nla length".into()));
+        }
+        if nla_len > remaining {
+            return Err(NbdCowError::Netlink("truncated nla".into()));
+        }
+
+        if nla_type == target_type {
+            if nla_len < NLA_HEADER_LEN + U16_LEN {
+                return Err(NbdCowError::Netlink(truncated_value_message.into()));
+            }
             return read_u16_at(
                 attrs,
                 offset + NLA_HEADER_LEN,
@@ -172,9 +184,6 @@ pub(super) fn find_nla_u16(
         }
 
         let aligned = align_nla_len(nla_len);
-        if aligned == 0 {
-            break;
-        }
         offset = offset
             .checked_add(aligned)
             .ok_or_else(|| NbdCowError::Netlink("nla offset overflow".into()))?;
@@ -406,26 +415,62 @@ mod tests {
     }
 
     #[test]
-    fn parse_nl_msg_ack() {
+    fn parse_genl_response_ack() {
         let msg = build_nlmsg_error_for_test(42, 0);
 
-        assert!(matches!(parse_nl_msg(&msg, msg.len()), Ok(NlMsg::Ack)));
+        assert!(matches!(
+            parse_genl_response(&msg, msg.len()),
+            Ok(GenlResponse::Ack)
+        ));
         assert_eq!(parse_nl_header(&msg, msg.len()).unwrap().seq, 42);
     }
 
     #[test]
-    fn parse_nl_msg_reply() {
+    fn parse_genl_response_reply() {
         let msg = build_genl_msg(0x0019, 1, 1, &[], 43, false);
 
-        assert!(matches!(parse_nl_msg(&msg, msg.len()), Ok(NlMsg::Reply)));
+        assert!(matches!(
+            parse_genl_response(&msg, msg.len()),
+            Ok(GenlResponse::Reply { attrs }) if attrs.is_empty()
+        ));
         assert_eq!(parse_nl_header(&msg, msg.len()).unwrap().seq, 43);
     }
 
     #[test]
-    fn parse_nl_msg_error_errno() {
+    fn parse_genl_response_reply_requires_genl_header() {
+        let mut buf = vec![0u8; NLMSG_HEADER_LEN];
+        write_at(
+            &mut buf,
+            NLMSG_LEN_OFFSET,
+            &(NLMSG_HEADER_LEN as u32).to_ne_bytes(),
+        );
+        write_at(&mut buf, NLMSG_TYPE_OFFSET, &0x19u16.to_ne_bytes());
+
+        let result = parse_genl_response(&buf, buf.len());
+
+        assert!(
+            matches!(result, Err(NbdCowError::Netlink(message)) if message == "response too short")
+        );
+    }
+
+    #[test]
+    fn parse_genl_response_reply_attrs_are_bounded_by_declared_length() {
+        let mut msg = build_genl_msg(0x0019, 1, 1, &[], 43, false);
+        msg.extend_from_slice(&build_nla(1, &123u16.to_ne_bytes()));
+
+        let result = parse_genl_response(&msg, msg.len());
+
+        assert!(matches!(
+            result,
+            Ok(GenlResponse::Reply { attrs }) if attrs.is_empty()
+        ));
+    }
+
+    #[test]
+    fn parse_genl_response_error_errno() {
         let msg = build_nlmsg_error_for_test(2, -libc::EBUSY);
 
-        let result = parse_nl_msg(&msg, msg.len());
+        let result = parse_genl_response(&msg, msg.len());
         assert!(matches!(
             result,
             Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
@@ -433,40 +478,40 @@ mod tests {
     }
 
     #[test]
-    fn parse_nl_msg_too_short() {
+    fn parse_genl_response_too_short() {
         let buf = [0u8; NLMSG_HEADER_LEN - 1];
-        let result = parse_nl_msg(&buf, buf.len());
+        let result = parse_genl_response(&buf, buf.len());
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_nl_msg_error_response_truncated() {
+    fn parse_genl_response_error_response_truncated() {
         let mut buf = vec![0u8; 4096];
         write_at(&mut buf, NLMSG_LEN_OFFSET, &20u32.to_ne_bytes());
         write_at(&mut buf, NLMSG_TYPE_OFFSET, &NLMSG_ERROR.to_ne_bytes());
 
-        let result = parse_nl_msg(&buf, 18);
+        let result = parse_genl_response(&buf, 18);
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_nl_msg_declared_length_too_short() {
+    fn parse_genl_response_declared_length_too_short() {
         let mut buf = vec![0u8; NLMSG_HEADER_LEN + U32_LEN + U32_LEN];
         write_at(&mut buf, NLMSG_LEN_OFFSET, &15u32.to_ne_bytes());
 
-        let result = parse_nl_msg(&buf, buf.len());
+        let result = parse_genl_response(&buf, buf.len());
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn parse_nl_msg_error_body_bounded_by_declared_length() {
+    fn parse_genl_response_error_body_bounded_by_declared_length() {
         let mut buf = build_nlmsg_error_for_test(2, 0);
         write_at(&mut buf, NLMSG_LEN_OFFSET, &18u32.to_ne_bytes());
 
-        let result = parse_nl_msg(&buf, buf.len());
+        let result = parse_genl_response(&buf, buf.len());
 
         assert!(result.is_err());
     }
