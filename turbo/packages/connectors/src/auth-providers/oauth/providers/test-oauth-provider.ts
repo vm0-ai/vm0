@@ -10,21 +10,20 @@ import {
   refreshTestOAuthToken,
 } from "./test-oauth";
 import { oauthRefreshResultToProviderResult } from "../types";
-import type { ConnectorAuthProviderGrantResultFields } from "../../grant-result";
+import type {
+  ConnectorAuthProviderGrantResult,
+  ConnectorAuthProviderGrantUserInfo,
+} from "../../grant-result";
 
-type TestOAuthGrantResult = ConnectorAuthProviderGrantResultFields & {
-  readonly outputs: {
-    readonly accessToken: string;
-    readonly refreshToken: string | null;
-  };
-};
+type TestOAuthGrantResult = ConnectorAuthProviderGrantResult<{
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+}>;
 
-type TestOAuthApiGrantResult = ConnectorAuthProviderGrantResultFields & {
-  readonly outputs: {
-    readonly initialAccessToken: string;
-    readonly initialRefreshToken: string | null;
-  };
-};
+type TestOAuthApiGrantResult = ConnectorAuthProviderGrantResult<{
+  readonly initialAccessToken: string;
+  readonly initialRefreshToken: string | null;
+}>;
 
 interface TestOAuthApiRefreshResult {
   readonly outputs: {
@@ -39,7 +38,7 @@ interface TestOAuthTokenExchange {
   readonly refreshToken: string | null;
   readonly expiresIn: number | undefined;
   readonly scopes: string[];
-  readonly userInfo: ConnectorAuthProviderGrantResultFields["userInfo"];
+  readonly userInfo: ConnectorAuthProviderGrantUserInfo;
 }
 
 async function exchangeTestOauthToken(args: {

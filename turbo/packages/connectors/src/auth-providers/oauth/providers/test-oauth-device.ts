@@ -4,7 +4,7 @@ import type {
   OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
 } from "../types";
-import type { ConnectorAuthProviderGrantResultFields } from "../../grant-result";
+import type { ConnectorAuthProviderGrantResult } from "../../grant-result";
 import { throwOAuthError } from "../error";
 import {
   resolveTestOAuthProviderUrl,
@@ -46,11 +46,9 @@ const tokenErrorResponseSchema = z.object({
   error_description: z.string().optional(),
 });
 
-type TestOAuthDeviceTokenResult = ConnectorAuthProviderGrantResultFields & {
-  readonly outputs: {
-    readonly accessToken: string;
-  };
-};
+type TestOAuthDeviceTokenResult = ConnectorAuthProviderGrantResult<{
+  readonly accessToken: string;
+}>;
 
 type TestOAuthDevicePollResult =
   | OAuthDeviceAuthIncompleteResult
