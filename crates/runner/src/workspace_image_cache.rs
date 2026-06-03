@@ -307,6 +307,13 @@ impl SessionWorkspaceCache {
         Self::with_cache_dirs(paths, cache_dir, lock_dir, "")
     }
 
+    #[cfg(test)]
+    fn new_with_fs_stats(paths: RunnerPaths, fs_stats: FsStats) -> Self {
+        let cache_dir = paths.workspace_image_cache_dir();
+        let lock_dir = paths.base_dir().join("locks");
+        Self::with_cache_dirs_and_fs_stats(paths, cache_dir, lock_dir, "", fs_stats)
+    }
+
     pub(crate) fn shared(paths: RunnerPaths, home: &HomePaths, cache_scope: &str) -> Self {
         Self::with_cache_dirs(
             paths,
@@ -322,17 +329,48 @@ impl SessionWorkspaceCache {
         lock_dir: PathBuf,
         cache_scope: &str,
     ) -> Self {
+        #[cfg(test)]
+        {
+            Self::with_cache_dirs_and_fs_stats(
+                paths,
+                cache_dir,
+                lock_dir,
+                cache_scope,
+                FsStats {
+                    total_bytes: TEST_FS_TOTAL_BYTES,
+                    available_bytes: TEST_FS_AVAILABLE_BYTES,
+                },
+            )
+        }
+
+        #[cfg(not(test))]
+        {
+            Self {
+                inner: Arc::new(SessionWorkspaceCacheInner {
+                    paths,
+                    cache_dir,
+                    lock_dir,
+                    cache_scope: cache_scope.to_owned(),
+                }),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn with_cache_dirs_and_fs_stats(
+        paths: RunnerPaths,
+        cache_dir: PathBuf,
+        lock_dir: PathBuf,
+        cache_scope: &str,
+        fs_stats: FsStats,
+    ) -> Self {
         Self {
             inner: Arc::new(SessionWorkspaceCacheInner {
                 paths,
                 cache_dir,
                 lock_dir,
                 cache_scope: cache_scope.to_owned(),
-                #[cfg(test)]
-                fs_stats_override: FsStats {
-                    total_bytes: TEST_FS_TOTAL_BYTES,
-                    available_bytes: TEST_FS_AVAILABLE_BYTES,
-                },
+                fs_stats_override: fs_stats,
             }),
         }
     }
@@ -1036,7 +1074,15 @@ impl SessionWorkspaceCache {
             .gc_temporary_images(dry_run, &removed_entry_keys)
             .await?;
         let stats = self.fs_stats().await?;
-        let budget = CacheBudget::from_fs_stats(stats);
+        let pre_cleanup_freed = temporary_freed
+            .saturating_add(stale_cleanup.freed_bytes)
+            .saturating_add(unusable_cleanup.freed_bytes);
+        let stats_after_pre_cleanup = if dry_run {
+            fs_stats_with_additional_available(stats, pre_cleanup_freed)
+        } else {
+            stats
+        };
+        let budget = CacheBudget::from_fs_stats(stats_after_pre_cleanup);
         let mut candidates = self.gc_candidates().await?;
         candidates.retain(|candidate| !removed_entry_keys.contains(&candidate.cache_key));
         let mut entry_count = candidates.len();
@@ -1044,28 +1090,24 @@ impl SessionWorkspaceCache {
             .iter()
             .map(|candidate| candidate.allocated_bytes)
             .sum();
-        let needs_budget_gc =
-            total > budget.max_cache_bytes || stats.available_bytes < budget.min_free_bytes;
+        let needs_budget_gc = total > budget.max_cache_bytes
+            || stats_after_pre_cleanup.available_bytes < budget.min_free_bytes;
         if !needs_budget_gc && entry_count <= MAX_HELD_SESSION_STATES {
-            return Ok(temporary_freed
-                .saturating_add(stale_cleanup.freed_bytes)
-                .saturating_add(unusable_cleanup.freed_bytes));
+            return Ok(pre_cleanup_freed);
         }
         candidates.sort_by(|left, right| {
             left.last_used_at
                 .cmp(&right.last_used_at)
                 .then_with(|| left.cache_key.cmp(&right.cache_key))
         });
-        let mut freed = temporary_freed
-            .saturating_add(stale_cleanup.freed_bytes)
-            .saturating_add(unusable_cleanup.freed_bytes);
+        let mut freed = pre_cleanup_freed;
         let mut candidate_freed: u64 = 0;
         for candidate in candidates {
             if gc_budget_satisfied(
                 needs_budget_gc,
                 total,
                 entry_count,
-                stats,
+                stats_after_pre_cleanup,
                 budget,
                 candidate_freed,
             ) {
@@ -2433,6 +2475,16 @@ fn is_workspace_tmp_path_name(name: &str) -> bool {
 
 fn allocated_bytes(metadata: &std::fs::Metadata) -> u64 {
     metadata.blocks().saturating_mul(512)
+}
+
+fn fs_stats_with_additional_available(stats: FsStats, bytes: u64) -> FsStats {
+    FsStats {
+        total_bytes: stats.total_bytes,
+        available_bytes: stats
+            .available_bytes
+            .saturating_add(bytes)
+            .min(stats.total_bytes),
+    }
 }
 
 async fn workspace_cache_path_allocated_bytes(path: &Path) -> u64 {
@@ -4918,6 +4970,55 @@ mod tests {
         assert!(current.exists());
         assert!(tmp.exists());
         assert!(entry_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let setup_cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = write_current_cache_entry(
+            &setup_cache,
+            &paths,
+            run_id,
+            "sess-1",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        let tmp = paths.session_workspace_cache_tmp_image(&key, run_id);
+        tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
+        let temporary_allocated = workspace_cache_path_allocated_bytes(&tmp).await;
+        assert!(temporary_allocated > 0);
+
+        let fs_total = TEST_FS_TOTAL_BYTES;
+        let min_free = CacheBudget::from_fs_stats(FsStats {
+            total_bytes: fs_total,
+            available_bytes: fs_total,
+        })
+        .min_free_bytes;
+        let cache = SessionWorkspaceCache::new_with_fs_stats(
+            paths.clone(),
+            FsStats {
+                total_bytes: fs_total,
+                available_bytes: min_free.saturating_sub(1),
+            },
+        );
+
+        let freed = cache.gc(true).await.unwrap();
+
+        assert_eq!(
+            freed, temporary_allocated,
+            "dry-run should account for pre-cleanup temporary bytes before deciding whether valid cache entries need budget GC"
+        );
+        assert!(tmp.exists());
+        assert!(
+            paths.session_workspace_cache_current_image(&key).exists(),
+            "dry-run must not preview deleting a valid entry when temporary cleanup would relieve disk pressure"
+        );
     }
 
     #[tokio::test]
