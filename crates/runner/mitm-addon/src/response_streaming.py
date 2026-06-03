@@ -179,7 +179,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
     # Buffer cap policy:
     # - stream_buffer is only for forensic logging / capture and is always
     #   capped at STREAM_BUFFER_LIMIT.
-    # - Billing extraction uses the incremental parsers above.
+    # - Token usage extraction uses the incremental parsers above.
     buf_limit = body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:

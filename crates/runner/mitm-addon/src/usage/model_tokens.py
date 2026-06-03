@@ -1,4 +1,4 @@
-"""Model usage_event token categories shared by extraction and reporting."""
+"""Model token usage categories shared by extraction and reporting."""
 
 MODEL_USAGE_CATEGORY_INPUT = "tokens.input"
 MODEL_USAGE_CATEGORY_OUTPUT = "tokens.output"
