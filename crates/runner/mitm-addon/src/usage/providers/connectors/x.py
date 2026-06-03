@@ -75,10 +75,11 @@ def _is_count_path(path: str) -> bool:
 def _strip_request_target_query(request_target: str) -> str:
     query_start = request_target.find("?")
     path_or_url = request_target if query_start == -1 else request_target[:query_start]
-    if path_or_url.startswith(("http://", "https://")):
-        authority_start = path_or_url.find("://") + len("://")
+    scheme_separator = path_or_url.find("://")
+    if scheme_separator != -1 and path_or_url[:scheme_separator].lower() in {"http", "https"}:
+        authority_start = scheme_separator + len("://")
         path_start = path_or_url.find("/", authority_start)
-        return "/" if path_start == -1 else path_or_url[path_start:]
+        return "" if path_start == -1 else path_or_url[path_start:]
     return path_or_url
 
 
@@ -358,8 +359,6 @@ def _decode_request_query_hint_key(raw_key: str) -> str | None:
 def _slice_exceeds_query_hint_byte_limit(value: str, start: int, end: int, max_bytes: int) -> bool:
     if end - start > max_bytes:
         return True
-    if value.isascii():
-        return False
 
     size = 0
     for index in range(start, end):

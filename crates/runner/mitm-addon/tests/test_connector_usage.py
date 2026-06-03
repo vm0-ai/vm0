@@ -47,6 +47,18 @@ class TestXStreamPathRouting:
         assert "x_ndjson_state" in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
+    def test_absolute_form_stream_endpoint_registers_ndjson_parser(self, real_flow):
+        """Absolute-form request targets keep the old urlsplit path behavior."""
+        flow = self._make_x_response_flow(
+            real_flow,
+            "https://api.x.com/2/tweets/search/stream?tweet.fields=id",
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
+
     @pytest.mark.parametrize(
         "path",
         [
