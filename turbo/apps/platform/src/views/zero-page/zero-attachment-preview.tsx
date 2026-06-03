@@ -232,27 +232,34 @@ function HtmlSitePreviewCard({
       }}
       aria-label={`Open html preview for ${filename}`}
       title={title}
-      className="group/site-preview inline-flex w-[min(100%,320px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
+      className="group/site-preview inline-flex w-[min(100%,400px)] flex-col overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200 hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30"
     >
       <div className="flex min-h-10 items-center border-b border-border/60 bg-background/95 px-3 py-2">
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {title}
         </span>
       </div>
-      <div className="relative aspect-[16/10] bg-muted/30">
-        <iframe
-          src={IN_VITEST ? undefined : publicUrl}
-          srcDoc={
-            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
-          }
-          data-preview-src={publicUrl}
-          title={`Site preview for ${title}`}
-          sandbox="allow-scripts"
-          tabIndex={-1}
-          loading="lazy"
-          scrolling="no"
-          className="pointer-events-none h-full w-full origin-top-left bg-background transition-transform duration-200 group-hover/site-preview:scale-[1.01]"
-        />
+      <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
+        <div
+          data-testid="attachment-preview-html-viewport"
+          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
+        >
+          <iframe
+            src={IN_VITEST ? undefined : publicUrl}
+            srcDoc={
+              IN_VITEST
+                ? "<!doctype html><html><body></body></html>"
+                : undefined
+            }
+            data-preview-src={publicUrl}
+            title={`Site preview for ${title}`}
+            sandbox="allow-scripts"
+            tabIndex={-1}
+            loading="lazy"
+            scrolling="no"
+            className="pointer-events-none h-full w-full bg-background"
+          />
+        </div>
       </div>
     </a>
   );
