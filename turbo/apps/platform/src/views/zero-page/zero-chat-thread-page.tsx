@@ -4269,7 +4269,10 @@ function InsufficientCreditsCard() {
   const handleUpgradeClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     if (shouldStartProCheckout) {
       const newTab = event.metaKey || event.ctrlKey;
-      detach(checkout("pro", newTab, pageSignal), Reason.DomCallback);
+      detach(
+        checkout("pro", newTab, undefined, pageSignal),
+        Reason.DomCallback,
+      );
       return;
     }
     openBilling();

@@ -38,7 +38,7 @@ function mockAdminOnboardingDeferred() {
   );
 }
 
-describe("onboarding Pro checkout loading", () => {
+describe("onboarding Pro trial checkout loading", () => {
   it("should show loading after clicking Get Started while checkout is pending", async () => {
     mockAdminOnboardingDeferred();
     const checkoutDeferred = createDeferredPromise<void>(context.signal);
@@ -50,7 +50,7 @@ describe("onboarding Pro checkout loading", () => {
         await checkoutDeferred.promise;
         checkoutCompleted = true;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=checkout",
+          url: "https://checkout.stripe.com/test?mode=trial",
         });
       }),
     );
@@ -91,8 +91,7 @@ describe("onboarding Pro checkout loading", () => {
         "true",
       );
     });
-    expect(checkoutBody).toMatchObject({ tier: "pro" });
-    expect(checkoutBody).not.toHaveProperty("trialDays");
+    expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
 
     checkoutDeferred.resolve();
     await waitFor(() => {

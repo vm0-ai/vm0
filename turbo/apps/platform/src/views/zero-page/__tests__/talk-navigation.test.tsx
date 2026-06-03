@@ -302,7 +302,7 @@ describe("talk navigation", () => {
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=checkout",
+          url: "https://checkout.stripe.com/test?mode=trial",
         });
       }),
     );
@@ -326,7 +326,7 @@ describe("talk navigation", () => {
     });
     click(screen.getByText("Next"));
 
-    // Step 2: choose tools, then move to the Pro checkout step.
+    // Step 2: choose tools, then move to the Pro trial step.
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
@@ -343,8 +343,7 @@ describe("talk navigation", () => {
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(checkoutBody).toMatchObject({ tier: "pro" });
-      expect(checkoutBody).not.toHaveProperty("trialDays");
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 });

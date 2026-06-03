@@ -43,7 +43,8 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-  const { tier, successUrl, cancelUrl, adAttribution } = bodyResult.data;
+  const { tier, successUrl, cancelUrl, trialDays, adAttribution } =
+    bodyResult.data;
 
   if (
     !billingRedirectAllowed(successUrl) ||
@@ -84,12 +85,24 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
+  if (trialDays !== undefined) {
+    if (tier !== "pro") {
+      return badRequestMessage("Trial checkout is only available for Pro tier");
+    }
+    if (metadata?.onboardingPaymentPending !== true) {
+      return badRequestMessage(
+        "Pro trial checkout is only available during onboarding",
+      );
+    }
+  }
+
   const url = await set(
     createCheckoutSession$,
     {
       orgId: auth.orgId,
       tier,
       priceId,
+      trialDays,
       successUrl,
       cancelUrl,
       adAttribution,

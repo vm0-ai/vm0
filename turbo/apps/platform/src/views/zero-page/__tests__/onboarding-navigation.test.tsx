@@ -96,7 +96,7 @@ describe("onboarding navigation", () => {
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=checkout",
+          url: "https://checkout.stripe.com/test?mode=trial",
         });
       }),
     );
@@ -134,8 +134,7 @@ describe("onboarding navigation", () => {
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(checkoutBody).toMatchObject({ tier: "pro" });
-      expect(checkoutBody).not.toHaveProperty("trialDays");
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 

@@ -66,15 +66,15 @@ async function walkAdminToContinue() {
   });
 }
 
-describe("onboarding -> Stripe checkout", () => {
-  it("should start Pro checkout instead of entering chat directly", async () => {
+describe("onboarding → Stripe checkout", () => {
+  it("should start Pro trial checkout instead of entering chat directly", async () => {
     mockAdminOnboarding();
     let checkoutBody: Record<string, unknown> | null = null;
     server.use(
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=checkout",
+          url: "https://checkout.stripe.com/test?mode=trial",
         });
       }),
     );
@@ -85,8 +85,7 @@ describe("onboarding -> Stripe checkout", () => {
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(checkoutBody).toMatchObject({ tier: "pro" });
-      expect(checkoutBody).not.toHaveProperty("trialDays");
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 });

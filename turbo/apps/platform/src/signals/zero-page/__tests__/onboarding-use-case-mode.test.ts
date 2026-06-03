@@ -153,8 +153,8 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     await context.store.set(setupOnboardingPage$, context.signal);
 
     const visible = await context.store.get(onboardingVisibleSteps$);
-    // No use-case link -> regular admin flow: name workspace, pick tools,
-    // then start Pro checkout.
+    // No use-case link → regular admin flow: name workspace, pick tools,
+    // then start the Pro trial checkout.
     expect(visible).toStrictEqual(["1", "2", "4"]);
   });
 
@@ -197,7 +197,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=checkout",
+          url: "https://checkout.stripe.com/test?mode=trial",
         });
       }),
     );
@@ -239,8 +239,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
     context.store.set(setOnboardingPromptDraft$, "edited prompt");
     await context.store.set(onboardingStepNext$, context.signal);
 
-    expect(checkoutBody).toMatchObject({ tier: "pro" });
-    expect(checkoutBody).not.toHaveProperty("trialDays");
+    expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
   });
 
   it("resolved prompt prefers the edited draft over the URL prompt", async () => {
@@ -504,7 +503,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
         mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
           checkoutBody = body as Record<string, unknown>;
           return respond(200, {
-            url: "https://checkout.stripe.com/test?mode=checkout",
+            url: "https://checkout.stripe.com/test?mode=trial",
           });
         }),
       );
@@ -526,8 +525,7 @@ describe("onboarding use-case mode (?prompt=...&connector=...)", () => {
       await context.store.set(onboardingStepNext$, context.signal);
 
       expect(setupCalls).toHaveLength(1);
-      expect(checkoutBody).toMatchObject({ tier: "pro" });
-      expect(checkoutBody).not.toHaveProperty("trialDays");
+      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
     });
   });
 

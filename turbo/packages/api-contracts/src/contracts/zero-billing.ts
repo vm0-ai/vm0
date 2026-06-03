@@ -94,6 +94,7 @@ const checkoutRequestSchema = z.object({
   tier: z.enum(["pro", "team"]),
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
+  trialDays: z.literal(7).optional(),
   adAttribution: adAttributionMetadataSchema.optional(),
 });
 

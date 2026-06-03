@@ -404,11 +404,11 @@ function UseCasePromptComposer() {
 }
 
 // ---------------------------------------------------------------------------
-// Pro checkout step (step 4).
+// Pro trial step (step 4).
 //
 // The benefit list below is a temporary constant. Once billing/Stripe is
-// wired, the entitlements should come from the pricing config rather than
-// being hardcoded here.
+// wired, the entitlements (and the trial dates) should come from the pricing
+// config rather than being hardcoded here.
 // ---------------------------------------------------------------------------
 
 // Pro features below the hero credit card. Phrased as "what your agent
@@ -426,7 +426,7 @@ const PRO_TRIAL_BENEFITS: readonly string[] = [
   "Unlimited workspace members",
 ];
 
-/** Step 4: what Pro unlocks before checkout. */
+/** Step 4: what Pro unlocks + the 7-day trial framing. */
 function TrialStepContent() {
   const selectedConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
@@ -442,7 +442,7 @@ function TrialStepContent() {
         data-testid="onboarding-step-trial"
         className="text-2xl font-semibold tracking-tight"
       >
-        Your Pro workspace is ready
+        Your 7-day Pro trial is ready
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
         Here&apos;s what you get the moment you finish setup.
@@ -473,12 +473,12 @@ function TrialStepContent() {
             $20
           </span>
           <span className="text-base font-medium text-foreground">
-            in monthly credits
+            in credits, on us
           </span>
         </div>
         <p className="text-sm text-foreground mt-3 leading-relaxed">
-          <span className="font-medium">20,000 VM0 credits</span> are included
-          with Pro.
+          <span className="font-medium">20,000 VM0 credits</span> to spend on
+          Zero.
         </p>
       </div>
 
