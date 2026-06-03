@@ -444,6 +444,47 @@ def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_ke
     assert usage.counters._buffered_usage_events == 0
 
 
+def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
+    tmp_path,
+):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    events = [
+        _event(source_key=f"source-{index}", quantity=1)
+        for index in range(usage_buffer.MAX_BUFFERED_SOURCE_EVENTS)
+    ]
+    failed_payloads = []
+
+    def fail_enqueue(url, sandbox_token, payload, path, log_type):
+        failed_payloads.append(payload)
+        raise OSError("threshold enqueue failed")
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=fail_enqueue) as enqueue,
+        pytest.raises(OSError, match="threshold enqueue failed"),
+    ):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-threshold",
+            events,
+            proxy_log_path,
+        )
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
+    failed_key = failed_payloads[0]["events"][0]["idempotencyKey"]
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.call_args.args[2]
+    assert retry_payload["runId"] == "run-threshold"
+    assert retry_payload["events"][0]["quantity"] == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
+    assert retry_payload["events"][0]["idempotencyKey"] == failed_key
+    assert usage.counters._buffered_usage_events == 0
+
+
 def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
