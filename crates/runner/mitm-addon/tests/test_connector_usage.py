@@ -45,7 +45,7 @@ class TestXStreamPathRouting:
         mitm_addon.responseheaders(flow)
 
         assert "x_ndjson_state" in flow.metadata
-        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
     @pytest.mark.parametrize(
         "path",
@@ -1588,7 +1588,7 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
-        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         # 2. Stream chunks (including keep-alives and a mid-line split)
         chunks = [
@@ -1615,6 +1615,40 @@ class TestReportConnectorUsage:
         # 3 users from includes
         assert by_cat["user.read"] == 3
 
+    def test_full_streaming_pipeline_counts_final_line_without_newline(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
+        """End-to-end: response() finalizes a complete NDJSON row without trailing newline."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.headers = header_map({"content-type": "application/json"})
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(b'{"data":{"id":"1"}}\n')
+        callback(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}')
+
+        with self._usage_webhook_api() as webhook:
+            mitm_addon.response(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        payloads = webhook.usage_events()
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert by_cat == {"posts.read": 2, "user.read": 1}
+        assert "connector_response_finish" not in flow.metadata
+
     def test_full_streaming_pipeline_ignores_malformed_include_values(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
@@ -1637,7 +1671,7 @@ class TestReportConnectorUsage:
         mitm_addon.responseheaders(flow)
         callback = response_stream(flow)
         assert "x_ndjson_state" in flow.metadata
-        assert "connector_response_finish" not in flow.metadata
+        assert "connector_response_finish" in flow.metadata
 
         callback(
             b'{"data":{"id":"1"},"includes":'

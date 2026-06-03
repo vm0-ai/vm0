@@ -280,10 +280,11 @@ def feed_model_websocket_usage(flow: http.HTTPFlow, content: bytes | str) -> Non
 def finalize_connector_response_state(flow: http.HTTPFlow) -> None:
     """Finalize connector response parser state before connector usage reporting.
 
-    Called from ``response()`` before ``usage.report_connector_usage()``. Pops
-    ``_CONNECTOR_RESPONSE_FINISH``, so repeated calls after the first are
-    no-ops. Connector-specific parser state is owned by the registered finish
-    callback, for example X JSON or NDJSON usage metadata.
+    Called from ``response()`` before ``usage.report_connector_usage()`` and
+    from selected connector error paths that explicitly keep partial streamed
+    usage. Pops ``_CONNECTOR_RESPONSE_FINISH``, so repeated calls after the
+    first are no-ops. Connector-specific parser state is owned by the
+    registered finish callback, for example X JSON or NDJSON usage metadata.
     """
     finish = flow.metadata.pop(_CONNECTOR_RESPONSE_FINISH, None)
     if finish is not None:

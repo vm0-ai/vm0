@@ -333,6 +333,43 @@ class TestErrorHandler:
         assert by_cat["posts.read"] == 2  # not 3 — partial trailing dropped
         assert by_cat["user.read"] == 1
 
+    def test_full_pipeline_stream_error_counts_complete_final_line_without_newline(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor, usage_webhook_api
+    ):
+        """Connection error finalizes a complete NDJSON row without trailing newline."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        log_path = str(tmp_path / "network.jsonl")
+        proxy_log = tmp_path / "proxy.jsonl"
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["vm_proxy_log_path"] = str(proxy_log)
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/search/stream"
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+
+        mitm_addon.responseheaders(flow)
+        callback = response_stream(flow)
+        callback(b'{"data":{"id":"1"}}\n')
+        callback(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}')
+        flow.error = Error("connection reset by peer")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+
+        with usage_webhook_api() as webhook:
+            mitm_addon.error(flow)
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        payloads = webhook.usage_events()
+        by_cat = {payload["category"]: payload["quantity"] for payload in payloads}
+        assert by_cat == {"posts.read": 2, "user.read": 1}
+        assert "connector_response_finish" not in flow.metadata
+
     def test_full_path_error_to_webhook(
         self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor, usage_webhook_api
     ):

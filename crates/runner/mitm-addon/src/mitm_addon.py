@@ -824,6 +824,7 @@ def error(flow: http.HTTPFlow) -> None:
     # non-streaming JSON errors: partial bodies could otherwise be treated
     # as unparseable successes and billed from request-side hints.
     if flow.metadata.get(metadata_keys.X_NDJSON_STATE) is not None:
+        response_streaming.finalize_connector_response_state(flow)
         usage.report_connector_usage(flow, run_id)
 
     safe_url = network_log_sanitization.sanitize_url_for_network_log(original_url)

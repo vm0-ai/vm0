@@ -16,7 +16,7 @@ _OVERSIZED_NDJSON_LINE_BYTES = body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 class TestNdjsonExtractor:
     """Tests for X NDJSON extraction through responseheaders (issue #9534)."""
 
-    def _stream_parser(self, real_flow):
+    def _stream_flow(self, real_flow):
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_billable"] = True
@@ -28,6 +28,10 @@ class TestNdjsonExtractor:
 
         mitm_addon.responseheaders(flow)
 
+        return flow
+
+    def _stream_parser(self, real_flow):
+        flow = self._stream_flow(real_flow)
         return response_stream(flow), flow.metadata["x_ndjson_state"]
 
     def test_single_line(self, real_flow):
@@ -100,6 +104,71 @@ class TestNdjsonExtractor:
         parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')  # no trailing \n
         assert state["data_count"] == 1
         assert state["lines_parsed"] == 1
+
+    def test_complete_trailing_line_without_newline_counted_on_finish(self, real_flow):
+        flow = self._stream_flow(real_flow)
+        parse = response_stream(flow)
+        state = flow.metadata["x_ndjson_state"]
+
+        parse(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}')
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert state["data_count"] == 1
+        assert state["includes"] == {"users": 1}
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 0
+
+    def test_incomplete_trailing_line_without_newline_fails_on_finish(self, real_flow):
+        flow = self._stream_flow(real_flow)
+        parse = response_stream(flow)
+        state = flow.metadata["x_ndjson_state"]
+
+        parse(b'{"data":{"id":"1"}}\n{"data":{"id":"2"}')
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 1
+
+    @pytest.mark.parametrize("tail", [b"", b"\r", b"\r\r"])
+    def test_blank_trailing_line_ignored_on_finish(self, real_flow, tail):
+        flow = self._stream_flow(real_flow)
+        parse = response_stream(flow)
+        state = flow.metadata["x_ndjson_state"]
+
+        parse(b'{"data":{"id":"1"}}\n' + tail)
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 0
+
+    def test_trailing_line_finish_is_idempotent(self, real_flow):
+        flow = self._stream_flow(real_flow)
+        parse = response_stream(flow)
+        state = flow.metadata["x_ndjson_state"]
+
+        parse(b'{"data":{"id":"1"}}')
+        response_streaming.finalize_connector_response_state(flow)
+        finalized = dict(state)
+        finalized["includes"] = dict(state["includes"])
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert state == finalized
+
+    def test_oversized_line_tail_not_counted_on_finish(self, real_flow):
+        flow = self._stream_flow(real_flow)
+        parse = response_stream(flow)
+        state = flow.metadata["x_ndjson_state"]
+        big = b"x" * _OVERSIZED_NDJSON_LINE_BYTES
+
+        parse(big)
+        parse(b'{"data":{"id":"tail"}}')
+        response_streaming.finalize_connector_response_state(flow)
+
+        assert state["data_count"] == 0
+        assert state["lines_parsed"] == 0
+        assert state["lines_failed"] == 1
 
     def test_empty_chunks_safe(self, real_flow):
         parse, state = self._stream_parser(real_flow)
@@ -523,6 +592,18 @@ class TestReleaseResponseStreamState:
                 },
                 "connector_response_finish",
                 id="x-json",
+            ),
+            pytest.param(
+                "api.x.com",
+                "/2/tweets/search/stream",
+                "application/json",
+                {
+                    "firewall_name": "x",
+                    "firewall_billable": True,
+                    "original_url": "https://api.x.com/2/tweets/search/stream",
+                },
+                "connector_response_finish",
+                id="x-ndjson",
             ),
         ],
     )

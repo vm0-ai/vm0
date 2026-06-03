@@ -139,9 +139,8 @@ def _parse_x_json_response_fields_from_body(body: bytes) -> dict | None:
 class _NdjsonState(TypedDict):
     """Accumulated parser state for an X NDJSON stream.
 
-    Populated by :func:`_create_ndjson_extractor`'s ``parse_chunk`` and
-    read by :func:`_parse_response_metadata` when emitting the billing
-    log entry.
+    Populated by :class:`_NdjsonExtractor` and read by
+    :func:`_parse_response_metadata` when emitting the billing log entry.
     """
 
     data_count: int
@@ -154,8 +153,8 @@ class _NdjsonState(TypedDict):
     """Lines that failed JSON decoding or exceeded the single-line safety cap."""
 
 
-def _create_ndjson_extractor() -> tuple[Callable[[bytes], None], _NdjsonState]:
-    """Create an incremental NDJSON parser for X v2 streaming responses.
+class _NdjsonExtractor:
+    """Incremental NDJSON parser for X v2 streaming responses.
 
     X v2 streaming endpoints deliver one JSON object per line separated by
     ``\\n`` (or ``\\r\\n``), with blank lines as keep-alives.  Each tweet
@@ -163,9 +162,8 @@ def _create_ndjson_extractor() -> tuple[Callable[[bytes], None], _NdjsonState]:
 
         {"data": {...tweet...}, "includes": {...}, "matching_rules": [...]}
 
-    Returns ``(parse_chunk, state)`` where *parse_chunk* processes raw
-    response bytes incrementally (so we never buffer the full body) and
-    *state* is a dict that accumulates:
+    ``feed`` processes raw response bytes incrementally so we never buffer the
+    full body. ``state`` is a dict that accumulates:
 
     - ``data_count``: int — number of lines whose top-level ``data`` is a
       dict (one tweet per line).  Lines whose ``data`` is an array or
@@ -179,76 +177,89 @@ def _create_ndjson_extractor() -> tuple[Callable[[bytes], None], _NdjsonState]:
     The parser keeps a ``line_buf`` holding the in-flight partial line
     across chunk boundaries.  If a single line ever exceeds
     :data:`_MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
-    terminating newline (malformed / hostile upstream).  A truncated
-    trailing line at connection close (no final ``\\n``) stays in the buffer
-    uncounted — worst-case under-count is 1.
+    terminating newline (malformed / hostile upstream). ``finish`` finalizes a
+    complete trailing line that arrived without a final ``\\n`` and treats
+    malformed or incomplete trailing data as a failed, unbilled line.
     """
-    state: _NdjsonState = {
-        "data_count": 0,
-        "includes": {},
-        "lines_parsed": 0,
-        "lines_failed": 0,
-    }
-    # Mutate in-place (``line_buf[:] = ...``, ``extend(...)``) throughout
-    # ``parse_chunk`` — captured by the closure.  Rebinding via
-    # ``line_buf = ...`` would create a new local and lose cross-call state.
-    line_buf = bytearray()
-    discarding_overlong_line = False
 
-    def parse_chunk(chunk: bytes) -> None:
-        nonlocal discarding_overlong_line
+    def __init__(self) -> None:
+        self.state: _NdjsonState = {
+            "data_count": 0,
+            "includes": {},
+            "lines_parsed": 0,
+            "lines_failed": 0,
+        }
+        self._line_buf = bytearray()
+        self._discarding_overlong_line = False
+        self._finished = False
 
+    def feed(self, chunk: bytes) -> None:
+        """Process one decoded response-body chunk."""
         start = 0
         while start < len(chunk):
             newline = chunk.find(b"\n", start)
             end = len(chunk) if newline == -1 else newline
             fragment_len = end - start
 
-            if discarding_overlong_line:
+            if self._discarding_overlong_line:
                 if newline == -1:
                     return
-                discarding_overlong_line = False
+                self._discarding_overlong_line = False
                 start = newline + 1
                 continue
 
-            if len(line_buf) + fragment_len > _MAX_NDJSON_LINE_BYTES:
-                line_buf[:] = b""
-                state["lines_failed"] += 1
+            if len(self._line_buf) + fragment_len > _MAX_NDJSON_LINE_BYTES:
+                self._line_buf.clear()
+                self.state["lines_failed"] += 1
                 if newline == -1:
-                    discarding_overlong_line = True
+                    self._discarding_overlong_line = True
                     return
                 start = newline + 1
                 continue
 
-            line_buf.extend(chunk[start:end])
+            self._line_buf.extend(chunk[start:end])
             if newline == -1:
                 return
 
-            line = bytes(line_buf).rstrip(b"\r")
-            line_buf[:] = b""
-            if not line:
-                start = newline + 1
-                continue  # keep-alive blank line
-            try:
-                obj = json.loads(line)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                state["lines_failed"] += 1
-                start = newline + 1
-                continue
-            state["lines_parsed"] += 1
-            if not isinstance(obj, dict):
-                start = newline + 1
-                continue
-            if isinstance(obj.get("data"), dict):
-                state["data_count"] += 1
-            inc = obj.get("includes")
-            if isinstance(inc, dict):
-                for k, v in inc.items():
-                    if isinstance(v, list):
-                        state["includes"][k] = state["includes"].get(k, 0) + len(v)
+            line = bytes(self._line_buf)
+            self._line_buf.clear()
+            self._parse_line(line)
             start = newline + 1
 
-    return parse_chunk, state
+    def finish(self) -> None:
+        """Finalize a complete trailing line that was not newline-terminated."""
+        if self._finished:
+            return
+        self._finished = True
+        if self._discarding_overlong_line:
+            self._line_buf.clear()
+            self._discarding_overlong_line = False
+            return
+        if not self._line_buf:
+            return
+        line = bytes(self._line_buf)
+        self._line_buf.clear()
+        self._parse_line(line)
+
+    def _parse_line(self, raw_line: bytes) -> None:
+        line = raw_line.rstrip(b"\r")
+        if not line:
+            return  # keep-alive blank line
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.state["lines_failed"] += 1
+            return
+        self.state["lines_parsed"] += 1
+        if not isinstance(obj, dict):
+            return
+        if isinstance(obj.get("data"), dict):
+            self.state["data_count"] += 1
+        inc = obj.get("includes")
+        if isinstance(inc, dict):
+            for k, v in inc.items():
+                if isinstance(v, list):
+                    self.state["includes"][k] = self.state["includes"].get(k, 0) + len(v)
 
 
 class _XJsonResponseExtractor:
@@ -287,12 +298,12 @@ def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | Non
         # before ``responseheaders`` fires.
         stream_path = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, "")).path
         if _is_stream_path(stream_path):
-            parser_fn, ndjson_state = _create_ndjson_extractor()
+            extractor = _NdjsonExtractor()
             # Deliberately NOT "model_provider_usage" — that key routes through
             # report_model_provider_usage and triggers the model-provider webhook.
             # x_ndjson_state is only consumed by report_connector_usage.
-            flow.metadata[metadata_keys.X_NDJSON_STATE] = ndjson_state
-            return ConnectorResponseParser(feed=parser_fn)
+            flow.metadata[metadata_keys.X_NDJSON_STATE] = extractor.state
+            return ConnectorResponseParser(feed=extractor.feed, finish=extractor.finish)
 
     if not (_HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN):
         return None

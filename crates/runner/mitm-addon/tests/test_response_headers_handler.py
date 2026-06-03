@@ -169,6 +169,7 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         assert "x_ndjson_state" in flow.metadata
+        assert "connector_response_finish" in flow.metadata
         callback = response_stream(flow)
         callback(b'{"data":{"id":"1"},"includes":{"users":[{"id":"u1"}]}}\n')
         callback(b'{"data":{"id":"2"},"includes":{"users":[{"id":"u2"}]}}\n')
@@ -195,6 +196,7 @@ class TestResponseHeadersHandler:
         assert len(flow.metadata["stream_buffer"]) <= body_utils.STREAM_BUFFER_LIMIT
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert flow.metadata["x_ndjson_state"]["data_count"] == 1
+        assert "connector_response_finish" in flow.metadata
 
     def test_x_non_stream_endpoint_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
         """Non-stream X requests parse billing JSON without unbounded buffering."""
@@ -297,6 +299,7 @@ class TestResponseHeadersHandler:
         state = flow.metadata["x_ndjson_state"]
         assert state["data_count"] == 3
         assert state["includes"] == {"users": 3}
+        assert "connector_response_finish" in flow.metadata
 
     def test_model_provider_gzip_json_extractor(self, real_flow, headers):
         """Gzip-encoded non-streaming model JSON feeds the selective extractor."""
