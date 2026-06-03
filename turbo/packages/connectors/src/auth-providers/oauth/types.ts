@@ -19,18 +19,13 @@ import type {
   ConnectorAuthProviderGrantResultBase,
 } from "../grant-result";
 
-export interface OAuthTokenUserInfo {
-  readonly id: string;
-  readonly username: string | null;
-  readonly email: string | null;
-}
+export type OAuthTokenUserInfo =
+  ConnectorAuthProviderGrantResultBase["userInfo"];
 
-export interface OAuthTokenResultFields {
-  expiresIn?: number; // seconds until access token expires
-  scopes: string[];
-  userInfo: OAuthTokenUserInfo;
-  extraConnectorSecrets?: Readonly<Record<string, string>>;
-}
+export type OAuthTokenResultFields = Pick<
+  ConnectorAuthProviderGrantResultBase,
+  "expiresIn" | "scopes" | "userInfo" | "extraConnectorSecrets"
+>;
 
 /**
  * Result from buildAuthUrl when PKCE is required.
