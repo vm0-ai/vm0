@@ -1082,9 +1082,6 @@ impl SessionWorkspaceCache {
                 }
             };
             while let Some(file) = files.next_entry().await? {
-                if !entry_file_type_is_file(&file).await? {
-                    continue;
-                }
                 let file_name = file.file_name();
                 let Some(file_name) = file_name.to_str() else {
                     continue;
@@ -1093,32 +1090,33 @@ impl SessionWorkspaceCache {
                     continue;
                 }
                 let path = file.path();
-                let allocated = fs::metadata(&path)
-                    .await
-                    .map(|metadata| allocated_bytes(&metadata))
-                    .unwrap_or(0);
+                let allocated = workspace_cache_path_allocated_bytes(&path).await;
                 if dry_run {
                     info!(
                         cache_key,
                         path = %path.display(),
                         allocated_bytes = allocated,
-                        "[dry-run] would delete temporary workspace image cache file"
+                        "[dry-run] would delete temporary workspace image cache path"
                     );
-                } else if let Err(e) = fs::remove_file(&path).await {
-                    warn!(
-                        cache_key,
-                        path = %path.display(),
-                        error = %e,
-                        "failed to delete temporary workspace image cache file"
-                    );
-                    continue;
                 } else {
-                    info!(
-                        cache_key,
-                        path = %path.display(),
-                        allocated_bytes = allocated,
-                        "deleted temporary workspace image cache file"
-                    );
+                    match remove_workspace_cache_path_if_exists(&path).await {
+                        Ok(true) => info!(
+                            cache_key,
+                            path = %path.display(),
+                            allocated_bytes = allocated,
+                            "deleted temporary workspace image cache path"
+                        ),
+                        Ok(false) => continue,
+                        Err(e) => {
+                            warn!(
+                                cache_key,
+                                path = %path.display(),
+                                error = %e,
+                                "failed to delete temporary workspace image cache path"
+                            );
+                            continue;
+                        }
+                    }
                 }
                 freed = freed.saturating_add(allocated);
             }
@@ -1253,11 +1251,11 @@ impl SessionWorkspaceCache {
         let bytes = serde_json::to_vec_pretty(&metadata)
             .map_err(|e| RunnerError::Internal(format!("serialize workspace metadata: {e}")))?;
         if let Err(e) = fs::write(&tmp, bytes).await {
-            let _ = fs::remove_file(&tmp).await;
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
         }
         if let Err(e) = fs::rename(&tmp, &metadata_path).await {
-            let _ = fs::remove_file(&tmp).await;
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
         }
         Ok(())
@@ -1385,17 +1383,28 @@ impl SessionWorkspaceCache {
         let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
         fs::create_dir_all(&cache_dir).await?;
         let tmp = self.session_workspace_cache_tmp_image(input.cache_key, input.run_id);
-        if fs::try_exists(&tmp).await.unwrap_or(false) {
-            let _ = fs::remove_file(&tmp).await;
-        }
+        let _ = remove_workspace_cache_path_if_exists(&tmp).await;
         if let Err(e) = sparse_copy(input.active_image, &tmp).await {
-            let _ = fs::remove_file(&tmp).await;
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e);
         }
-        let tmp_metadata = fs::metadata(&tmp).await?;
+        let tmp_metadata = match fs::metadata(&tmp).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+                return Err(e.into());
+            }
+        };
+        if !tmp_metadata.is_file() {
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+            return Err(RunnerError::Internal(format!(
+                "workspace image cache temporary image is not a file: {}",
+                tmp.display()
+            )));
+        }
         let tmp_allocated = allocated_bytes(&tmp_metadata);
         if tmp_allocated > budget.max_entry_bytes {
-            let _ = fs::remove_file(&tmp).await;
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             info!(
                 run_id = %input.run_id,
                 cache_key = input.cache_key,
@@ -1406,11 +1415,32 @@ impl SessionWorkspaceCache {
             return Ok(false);
         }
         let current = self.session_workspace_cache_current_image(input.cache_key);
+        match fs::symlink_metadata(&current).await {
+            Ok(metadata) if metadata.is_dir() => {
+                remove_workspace_cache_path_if_exists(&current).await?;
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
         if let Err(e) = fs::rename(&tmp, &current).await {
-            let _ = fs::remove_file(&tmp).await;
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
         }
-        let current_metadata = fs::metadata(&current).await?;
+        let current_metadata = match fs::metadata(&current).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                let _ = remove_workspace_cache_path_if_exists(&current).await;
+                return Err(e.into());
+            }
+        };
+        if !current_metadata.is_file() {
+            let _ = remove_workspace_cache_path_if_exists(&current).await;
+            return Err(RunnerError::Internal(format!(
+                "workspace image cache current image is not a file: {}",
+                current.display()
+            )));
+        }
         let logical_image_size_bytes = current_metadata.len();
         let allocated = allocated_bytes(&current_metadata);
         let metadata = WorkspaceCacheMetadata {
@@ -1438,7 +1468,7 @@ impl SessionWorkspaceCache {
             .write_metadata(input.cache_key, input.run_id, metadata)
             .await
         {
-            let _ = fs::remove_file(&current).await;
+            let _ = remove_workspace_cache_path_if_exists(&current).await;
             return Err(e);
         }
         info!(
@@ -1976,6 +2006,11 @@ fn validate_current_image_identity(
     metadata: &WorkspaceCacheMetadata,
     current: &std::fs::Metadata,
 ) -> RunnerResult<()> {
+    if !current.is_file() {
+        return Err(RunnerError::Internal(
+            "workspace metadata current image is not a file".into(),
+        ));
+    }
     let current_image = WorkspaceImageFileIdentity::from_metadata(current);
     if metadata.current_image != current_image {
         return Err(RunnerError::Internal(
@@ -1998,6 +2033,31 @@ fn is_workspace_tmp_file_name(name: &str) -> bool {
 
 fn allocated_bytes(metadata: &std::fs::Metadata) -> u64 {
     metadata.blocks().saturating_mul(512)
+}
+
+async fn workspace_cache_path_allocated_bytes(path: &Path) -> u64 {
+    let Ok(metadata) = fs::symlink_metadata(path).await else {
+        return 0;
+    };
+    if metadata.is_dir() {
+        flat_directory_allocated_bytes(path).await
+    } else {
+        allocated_bytes(&metadata)
+    }
+}
+
+async fn remove_workspace_cache_path_if_exists(path: &Path) -> std::io::Result<bool> {
+    let metadata = match fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    if metadata.is_dir() {
+        fs::remove_dir_all(path).await?;
+    } else {
+        fs::remove_file(path).await?;
+    }
+    Ok(true)
 }
 
 fn has_copy_headroom(stats: FsStats, budget: CacheBudget, allocated_bytes: u64) -> bool {
@@ -2102,10 +2162,6 @@ async fn statvfs_bytes(path: &Path) -> RunnerResult<FsStats> {
 
 async fn entry_file_type_is_dir(entry: &fs::DirEntry) -> RunnerResult<bool> {
     entry_file_type_matches(entry, std::fs::FileType::is_dir).await
-}
-
-async fn entry_file_type_is_file(entry: &fs::DirEntry) -> RunnerResult<bool> {
-    entry_file_type_matches(entry, std::fs::FileType::is_file).await
 }
 
 async fn entry_file_type_matches(
@@ -3826,6 +3882,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_removes_current_directory_even_when_metadata_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-1";
+        let working_dir = "/workspace";
+        let probe = dir.path().join("current-probe");
+        tokio::fs::create_dir_all(&probe).await.unwrap();
+        let image_size_bytes = fs::metadata(&probe).await.unwrap().len();
+        tokio::fs::remove_dir_all(&probe).await.unwrap();
+        let key =
+            cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, working_dir, image_size_bytes);
+        let current = paths.session_workspace_cache_current_image(&key);
+        tokio::fs::create_dir_all(&current).await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: cache.inner.cache_scope.clone(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: session_id.into(),
+                    working_dir: working_dir.into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: image_size_bytes,
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(
+            !paths.session_workspace_cache_entry_dir(&key).exists(),
+            "current directories must not remain as reusable workspace cache entries"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_keeps_unusable_current_entry_when_entry_lock_is_held() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
@@ -3912,6 +4021,48 @@ mod tests {
         assert!(freed > 0);
         assert!(!tmp.exists());
         assert!(!metadata_tmp.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_removes_orphan_temporary_workspace_cache_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let cache_key = write_current_cache_entry(
+            &cache,
+            &paths,
+            run_id,
+            "sess-1",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+        let metadata_tmp = paths
+            .session_workspace_cache_metadata(&cache_key)
+            .with_file_name(format!("metadata.json.tmp.{run_id}"));
+        tokio::fs::create_dir_all(&tmp).await.unwrap();
+        tokio::fs::write(tmp.join("partial-image"), b"partial image")
+            .await
+            .unwrap();
+        tokio::fs::create_dir_all(&metadata_tmp).await.unwrap();
+        tokio::fs::write(metadata_tmp.join("partial-metadata"), b"partial metadata")
+            .await
+            .unwrap();
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(!tmp.exists());
+        assert!(!metadata_tmp.exists());
+        assert!(
+            paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
     }
 
     #[tokio::test]
@@ -4019,6 +4170,104 @@ mod tests {
                 .with_file_name(format!("metadata.json.tmp.{run_id}"))
                 .exists()
         );
+    }
+
+    #[tokio::test]
+    async fn promote_removes_stale_temporary_directory_before_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let cache_key = session_workspace_cache_key("sess-1", "/workspace");
+        let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+        tokio::fs::create_dir_all(&tmp).await.unwrap();
+        tokio::fs::write(tmp.join("stale"), b"stale").await.unwrap();
+
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    Some("sess-1"),
+                    WorkspaceCacheTerminalStatus::Success,
+                    "2026-05-01T00:00:00.000Z".into(),
+                    &StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+
+        let current = paths.session_workspace_cache_current_image(&cache_key);
+        assert!(!tmp.exists());
+        assert!(fs::metadata(&current).await.unwrap().is_file());
+        assert_eq!(fs::read(current).await.unwrap(), b"image");
+    }
+
+    #[tokio::test]
+    async fn promote_replaces_stale_current_directory_before_rename() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let cache_key = session_workspace_cache_key("sess-1", "/workspace");
+        let current = paths.session_workspace_cache_current_image(&cache_key);
+        tokio::fs::create_dir_all(&current).await.unwrap();
+        tokio::fs::write(current.join("stale"), b"stale")
+            .await
+            .unwrap();
+
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    Some("sess-1"),
+                    WorkspaceCacheTerminalStatus::Success,
+                    "2026-05-01T00:00:00.000Z".into(),
+                    &StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+
+        assert!(fs::metadata(&current).await.unwrap().is_file());
+        assert_eq!(fs::read(current).await.unwrap(), b"image");
     }
 
     #[tokio::test]
