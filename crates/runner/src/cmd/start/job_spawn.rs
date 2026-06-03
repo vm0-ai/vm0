@@ -20,7 +20,7 @@ use super::active_sessions::{ActiveSessionGuard, ActiveSessions};
 use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
-    ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
+    ActiveBudgetLease, CompletionPayload, CompletionReady, RunCleanupDisposition, RunCleanupState,
 };
 use super::orphan_reap::OrphanedActiveRuns;
 use super::ownership::{OwnershipTransitions, RunSandbox};
@@ -28,14 +28,15 @@ use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completi
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{self, ExecutorConfig};
-use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
+use crate::idle_pool::{ParkingGate, ReusableIdleSandbox, StorageFingerprints};
 use crate::ids::RunId;
+use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
-use crate::provider::{ClaimedJob, JobProvider};
+use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
 use crate::status::StatusTracker;
 use crate::telemetry::JobTelemetry;
-use crate::types::SandboxReuseResult;
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
 /// Per-job profile parameters resolved from the profile config.
 pub(super) struct JobProfile {
@@ -86,6 +87,311 @@ pub(super) struct SpawnJobRequest {
     pub(super) active_session_guard: ActiveSessionGuard,
 }
 
+struct ExecutorInvocation {
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    context: ExecutionContext,
+    exec_config: Arc<ExecutorConfig>,
+    params: executor::JobParams,
+    factory: SharedFactory,
+    reuse_entry: Option<ReusableIdleSandbox>,
+    reuse_result: SandboxReuseResult,
+    cancel: CancellationToken,
+    sandbox_token: String,
+}
+
+struct ExecutorPhaseOutcome {
+    outcome: executor::ExecuteOutcome,
+    exit_code: i32,
+    err: Option<String>,
+    telemetry: JobTelemetry,
+}
+
+impl ExecutorInvocation {
+    async fn execute(self) -> ExecutorPhaseOutcome {
+        let Self {
+            run_id,
+            sandbox_id,
+            context,
+            exec_config,
+            params,
+            factory,
+            reuse_entry,
+            reuse_result,
+            cancel,
+            sandbox_token,
+        } = self;
+        let exec_config_for_panic = Arc::clone(&exec_config);
+        let cancel_for_executor = cancel.clone();
+
+        // Inner spawn isolates panics: if execute_job panics, the outer task
+        // still reports completion and releases budget.
+        let inner = tokio::spawn(async move {
+            if let Some(idle_entry) = reuse_entry {
+                executor::execute_job_reuse(
+                    idle_entry,
+                    context,
+                    &exec_config,
+                    &params,
+                    cancel_for_executor,
+                )
+                .await
+            } else {
+                executor::execute_job(
+                    &**factory,
+                    context,
+                    executor::NewSandboxDispatch {
+                        id: sandbox_id,
+                        reuse_result,
+                    },
+                    &exec_config,
+                    &params,
+                    cancel_for_executor,
+                )
+                .await
+            }
+        });
+
+        match inner.await {
+            Ok((mut outcome, telemetry)) => {
+                if cancel.is_cancelled() {
+                    outcome.mark_cancelled();
+                }
+                let exit_code = outcome.exit_code();
+                let err = outcome.error().map(ToOwned::to_owned);
+                ExecutorPhaseOutcome {
+                    outcome,
+                    exit_code,
+                    err,
+                    telemetry,
+                }
+            }
+            Err(e) => {
+                // Panic lost the in-flight telemetry buffer; substitute an
+                // empty collector so the post-complete flush path stays
+                // unconditional. `flush` early-returns on empty pending_ops.
+                let telemetry =
+                    JobTelemetry::new(exec_config_for_panic.http.clone(), run_id, sandbox_token);
+                let failure =
+                    executor::ExecutionFailure::from_error(format!("executor task panicked: {e}"));
+                let exit_code = failure.exit_code;
+                let err = Some(failure.error.clone());
+                ExecutorPhaseOutcome {
+                    outcome: executor::ExecuteOutcome {
+                        failure: Some(failure),
+                        sandbox: None,
+                        source_ip: String::new(),
+                        network_log_session: None,
+                        workspace_image: None,
+                        workspace_promotable: false,
+                        guest_session_id: None,
+                    },
+                    exit_code,
+                    err,
+                    telemetry,
+                }
+            }
+        }
+    }
+}
+
+struct FinalizationPhase {
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    completion_auth: CompletionAuth,
+    active_lease: BudgetLease,
+    reuse_result: SandboxReuseResult,
+    profile_name: String,
+    session_id: Option<String>,
+    storage_fingerprints: StorageFingerprints,
+    device_rate_limits: Option<sandbox::DeviceRateLimits>,
+    factory: SharedFactory,
+    idle_pool: SharedIdlePool,
+    status: Arc<StatusTracker>,
+    park_notify: Arc<tokio::sync::Notify>,
+    parking_gate: ParkingGate,
+    network_log_drain: NetworkLogDrainCoordinator,
+    cancel: CancellationToken,
+    cleanup_state: RunCleanupState,
+    #[cfg(test)]
+    outer_job_panic: Option<OuterJobPanicPoint>,
+    #[cfg(test)]
+    test_observer: StartLoopTestObserver,
+}
+
+struct FinalizedJob {
+    completion_ready: CompletionReady,
+    telemetry: JobTelemetry,
+}
+
+impl FinalizationPhase {
+    async fn finalize(self, executor_result: ExecutorPhaseOutcome) -> FinalizedJob {
+        let Self {
+            run_id,
+            sandbox_id,
+            completion_auth,
+            active_lease,
+            reuse_result,
+            profile_name,
+            session_id,
+            storage_fingerprints,
+            device_rate_limits,
+            factory,
+            idle_pool,
+            status,
+            park_notify,
+            parking_gate,
+            network_log_drain,
+            cancel,
+            cleanup_state,
+            #[cfg(test)]
+            outer_job_panic,
+            #[cfg(test)]
+            test_observer,
+        } = self;
+        let ExecutorPhaseOutcome {
+            outcome,
+            exit_code,
+            err,
+            telemetry,
+        } = executor_result;
+        let executor::ExecuteOutcome {
+            failure: _,
+            sandbox,
+            source_ip,
+            network_log_session,
+            workspace_image,
+            workspace_promotable,
+            guest_session_id,
+        } = outcome;
+
+        let completion_payload = CompletionPayload::new(
+            run_id,
+            exit_code,
+            err,
+            sandbox_id,
+            reuse_result,
+            completion_auth,
+        );
+        // Cancellation can arrive after terminal logging or while
+        // `sandbox.park()` is in flight. Pass the live token so finalization
+        // can re-check immediately before idle-pool ownership transfer.
+        let completion_ready = finalize_sandbox_for_completion(
+            sandbox,
+            ActiveBudgetLease::new(active_lease),
+            completion_payload,
+            FinalizeContext {
+                run_id,
+                sandbox_id,
+                profile_name,
+                session_id,
+                guest_session_id,
+                source_ip,
+                network_log_session,
+                workspace_image,
+                workspace_promotable,
+                storage_fingerprints,
+                device_rate_limits,
+                factory,
+                idle_pool,
+                status,
+                park_notify,
+                parking_gate,
+                network_log_drain,
+                exit_code,
+                cancel,
+                cleanup_state,
+                #[cfg(test)]
+                outer_job_panic,
+                #[cfg(test)]
+                test_observer,
+            },
+        )
+        .await;
+
+        FinalizedJob {
+            completion_ready,
+            telemetry,
+        }
+    }
+}
+
+struct CompletionPhase {
+    run_id: RunId,
+    provider: Arc<dyn JobProvider>,
+    status: Arc<StatusTracker>,
+    usage_flush_tx: mpsc::Sender<()>,
+    park_notify: Arc<tokio::sync::Notify>,
+    active_session_guard: ActiveSessionGuard,
+    cleanup_state: RunCleanupState,
+}
+
+impl CompletionPhase {
+    async fn complete(self, completion_ready: CompletionReady) {
+        let Self {
+            run_id,
+            provider,
+            status,
+            usage_flush_tx,
+            park_notify,
+            active_session_guard,
+            cleanup_state,
+        } = self;
+
+        // Structural guarantee: claim (in provider) is always paired with complete.
+        signal_usage_flush(run_id, &usage_flush_tx);
+        let ownership = OwnershipTransitions::new(status.as_ref());
+        let needs_session_affinity_refresh = completion_ready.needs_session_affinity_refresh();
+        completion_ready
+            .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
+            .await;
+        drop(active_session_guard);
+        if needs_session_affinity_refresh {
+            park_notify.notify_one();
+        }
+    }
+}
+
+struct DeferredUploadPhase {
+    run_id: RunId,
+    sandbox_token: String,
+    exec_config: Arc<ExecutorConfig>,
+}
+
+impl DeferredUploadPhase {
+    async fn flush(self, telemetry: JobTelemetry) {
+        let Self {
+            run_id,
+            sandbox_token,
+            exec_config,
+        } = self;
+
+        // Best-effort telemetry, deferred past `provider.complete` so the
+        // user-visible run-complete signal isn't blocked on these uploads.
+        // They're still awaited (not spawned) so the surrounding `jobs`
+        // JoinSet drains them on graceful shutdown: no data loss on SIGTERM.
+        // Telemetry flush runs concurrently with best-effort network-log upload.
+        // The job finalizer already closed the local Rust-side DNS/kmsg
+        // session before sandbox reuse/release. Keep this flush as a
+        // defensive no-op for any accepted writes still finishing.
+        let network_log_path = exec_config.log_paths.network_log(run_id);
+        let network_log_upload = async {
+            exec_config
+                .network_log_manager
+                .flush_path(&network_log_path)
+                .await;
+            network_logs::upload_network_logs(
+                &exec_config.http,
+                run_id,
+                &sandbox_token,
+                &network_log_path,
+            )
+            .await;
+        };
+        tokio::join!(telemetry.flush(), network_log_upload,);
+    }
+}
+
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
@@ -108,7 +414,7 @@ pub(super) fn spawn_job(
         job_profile,
         reuse_entry,
         reuse_result,
-        mut active_session_guard,
+        active_session_guard,
     } = request;
     let (context, completion_auth) = claimed.into_parts();
     let run_id = context.run_id;
@@ -142,7 +448,6 @@ pub(super) fn spawn_job(
     let park_notify = Arc::clone(&ctx.park_notify);
     let usage_flush_tx = ctx.usage_flush_tx.clone();
     let parking_gate = ctx.parking_gate.clone();
-    let factory_for_cleanup = Arc::clone(&factory);
     let cleanup_state = RunCleanupState::new();
     let cleanup_state_for_body = cleanup_state.clone();
     let cleanup_state_for_panic = cleanup_state.clone();
@@ -155,206 +460,87 @@ pub(super) fn spawn_job(
     #[cfg(test)]
     let test_observer = ctx.test_observer.clone();
 
-    // Captured for the post-complete deferred work below: the panic-arm
-    // empty `JobTelemetry` construction, the final `telemetry.flush()`, and
-    // the network-log upload. `context` gets moved into the inner executor
-    // task and `exec_config` with it, so we snapshot the token and bump the
-    // Arc before spawning.
+    // Captured for the executor panic-arm empty `JobTelemetry`, the final
+    // `telemetry.flush()`, and the network-log upload. `context` gets moved
+    // into the executor phase, so snapshot the token before spawning.
     let sandbox_token = context.sandbox_token.clone();
-    let exec_config_for_deferred = Arc::clone(&exec_config);
-
     let reused = reuse_entry.is_some();
+    let executor = ExecutorInvocation {
+        run_id,
+        sandbox_id,
+        context,
+        exec_config: Arc::clone(&exec_config),
+        params,
+        factory: Arc::clone(&factory),
+        reuse_entry,
+        reuse_result,
+        cancel: job_cancel.clone(),
+        sandbox_token: sandbox_token.clone(),
+    };
+    let finalization = FinalizationPhase {
+        run_id,
+        sandbox_id,
+        completion_auth,
+        active_lease,
+        reuse_result,
+        profile_name,
+        session_id,
+        storage_fingerprints,
+        device_rate_limits: job_device_rate_limits,
+        factory,
+        idle_pool: Arc::clone(&idle_pool),
+        status: Arc::clone(&status),
+        park_notify: Arc::clone(&park_notify),
+        parking_gate,
+        network_log_drain: exec_config.network_log_drain.clone(),
+        cancel: job_cancel.clone(),
+        cleanup_state: cleanup_state_for_body.clone(),
+        #[cfg(test)]
+        outer_job_panic,
+        #[cfg(test)]
+        test_observer,
+    };
+    let deferred_upload = DeferredUploadPhase {
+        run_id,
+        sandbox_token,
+        exec_config: Arc::clone(&exec_config),
+    };
 
     jobs.spawn(async move {
+        let mut active_session_guard = active_session_guard;
         let body = async move {
             #[cfg(test)]
             maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
-            // Inner spawn isolates panics: if execute_job panics, the outer task
-            // still reports completion and releases budget.
-            let cancel = job_cancel.clone();
-
-            let inner = tokio::spawn(async move {
-                if let Some(idle_entry) = reuse_entry {
-                    executor::execute_job_reuse(idle_entry, context, &exec_config, &params, cancel)
-                        .await
-                } else {
-                    executor::execute_job(
-                        &**factory,
-                        context,
-                        executor::NewSandboxDispatch {
-                            id: sandbox_id,
-                            reuse_result,
-                        },
-                        &exec_config,
-                        &params,
-                        cancel,
-                    )
-                    .await
-                }
-            });
-
-            let (
-                exit_code,
-                err,
-                failure,
-                sandbox,
-                source_ip,
-                network_log_session,
-                workspace_image,
-                workspace_promotable,
-                guest_session_id,
-                telemetry,
-            ) = match inner.await {
-                Ok((mut outcome, telemetry)) => {
-                    if job_cancel.is_cancelled() {
-                        outcome.mark_cancelled();
-                    }
-                    let exit_code = outcome.exit_code();
-                    let err = outcome.error().map(ToOwned::to_owned);
-                    if let Some(guest_session_id) = outcome.guest_session_id.as_deref() {
-                        active_session_guard.activate_late(guest_session_id);
-                    }
-                    (
-                        exit_code,
-                        err,
-                        outcome.failure,
-                        outcome.sandbox,
-                        outcome.source_ip,
-                        outcome.network_log_session,
-                        outcome.workspace_image,
-                        outcome.workspace_promotable,
-                        outcome.guest_session_id,
-                        telemetry,
-                    )
-                }
-                Err(e) => {
-                    // Panic lost the in-flight telemetry buffer; substitute an
-                    // empty collector so the post-complete flush path stays
-                    // unconditional. `flush` early-returns on empty pending_ops.
-                    let empty_telemetry = JobTelemetry::new(
-                        exec_config_for_deferred.http.clone(),
-                        run_id,
-                        sandbox_token.clone(),
-                    );
-                    let failure = executor::ExecutionFailure::from_error(format!(
-                        "executor task panicked: {e}"
-                    ));
-                    let exit_code = failure.exit_code;
-                    let err = Some(failure.error.clone());
-                    (
-                        exit_code,
-                        err,
-                        Some(failure),
-                        None,
-                        String::new(),
-                        None,
-                        None,
-                        false,
-                        None,
-                        empty_telemetry,
-                    )
-                }
-            };
-
-            // Single sink for any claimed job's terminal state. Cancellation gets
-            // its own info marker; every other failure is represented by a
-            // single object carrying the exit code, error, and optional
-            // guest-authored diagnostic.
+            let executor_result = executor.execute().await;
+            if let Some(guest_session_id) = executor_result.outcome.guest_session_id.as_deref() {
+                active_session_guard.activate_late(guest_session_id);
+            }
             let cancelled_for_log = job_cancel.is_cancelled();
-            match (cancelled_for_log, failure.as_ref()) {
-                (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
-                (false, Some(failure)) => {
-                    log_job_execution_failed(run_id, exit_code, reused, failure);
-                }
-                (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
-            }
-
-            let completion_payload = CompletionPayload::new(
+            log_terminal_job_outcome(
                 run_id,
-                exit_code,
-                err,
-                sandbox_id,
-                reuse_result,
-                completion_auth,
+                executor_result.exit_code,
+                reused,
+                cancelled_for_log,
+                executor_result.outcome.failure.as_ref(),
             );
-            // Cancellation can arrive after terminal logging or while
-            // `sandbox.park()` is in flight. Pass the live token so finalization
-            // can re-check immediately before idle-pool ownership transfer.
-            let completion_ready = finalize_sandbox_for_completion(
-                sandbox,
-                ActiveBudgetLease::new(active_lease),
-                completion_payload,
-                FinalizeContext {
-                    run_id,
-                    sandbox_id,
-                    profile_name,
-                    session_id,
-                    guest_session_id,
-                    source_ip,
-                    network_log_session,
-                    workspace_image,
-                    workspace_promotable,
-                    storage_fingerprints,
-                    device_rate_limits: job_device_rate_limits,
-                    factory: factory_for_cleanup,
-                    idle_pool,
-                    status: Arc::clone(&status),
-                    park_notify: Arc::clone(&park_notify),
-                    parking_gate,
-                    network_log_drain: exec_config_for_deferred.network_log_drain.clone(),
-                    exit_code,
-                    cancel: job_cancel,
-                    cleanup_state: cleanup_state_for_body.clone(),
-                    #[cfg(test)]
-                    outer_job_panic,
-                    #[cfg(test)]
-                    test_observer,
-                },
-            )
+
+            let FinalizedJob {
+                completion_ready,
+                telemetry,
+            } = finalization.finalize(executor_result).await;
+            CompletionPhase {
+                run_id,
+                provider,
+                status,
+                usage_flush_tx,
+                park_notify,
+                active_session_guard,
+                cleanup_state: cleanup_state_for_body,
+            }
+            .complete(completion_ready)
             .await;
-
-            // Structural guarantee: claim (in provider) is always paired with complete.
-            match usage_flush_tx.try_send(()) {
-                Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
-                Err(mpsc::error::TrySendError::Closed(())) => {
-                    warn!(run_id = %run_id, "proxy usage flush signal channel closed before completion");
-                }
-            }
-            let ownership = OwnershipTransitions::new(status.as_ref());
-            let needs_session_affinity_refresh =
-                completion_ready.needs_session_affinity_refresh();
-            completion_ready
-                .complete_and_release(provider.as_ref(), &ownership, &cleanup_state_for_body)
-                .await;
-            drop(active_session_guard);
-            if needs_session_affinity_refresh {
-                park_notify.notify_one();
-            }
-
-            // Best-effort telemetry, deferred past `provider.complete` so the
-            // user-visible run-complete signal isn't blocked on these uploads.
-            // They're still awaited (not spawned) so the surrounding `jobs`
-            // JoinSet drains them on graceful shutdown: no data loss on SIGTERM.
-            // Telemetry flush runs concurrently with best-effort network-log upload.
-            // The job finalizer already closed the local Rust-side DNS/kmsg
-            // session before sandbox reuse/release. Keep this flush as a
-            // defensive no-op for any accepted writes still finishing.
-            let network_log_path = exec_config_for_deferred.log_paths.network_log(run_id);
-            let network_log_upload = async {
-                exec_config_for_deferred
-                    .network_log_manager
-                    .flush_path(&network_log_path)
-                    .await;
-                network_logs::upload_network_logs(
-                    &exec_config_for_deferred.http,
-                    run_id,
-                    &sandbox_token,
-                    &network_log_path,
-                )
-                .await;
-            };
-            tokio::join!(telemetry.flush(), network_log_upload,);
+            deferred_upload.flush(telemetry).await;
 
             Some(run_id)
         };
@@ -382,6 +568,34 @@ pub(super) fn spawn_job(
             }
         }
     });
+}
+
+fn log_terminal_job_outcome(
+    run_id: RunId,
+    exit_code: i32,
+    reused: bool,
+    cancelled: bool,
+    failure: Option<&executor::ExecutionFailure>,
+) {
+    // Single sink for any claimed job's terminal state. Cancellation gets
+    // its own info marker; every other failure is represented by a single
+    // object carrying the exit code, error, and optional guest-authored diagnostic.
+    match (cancelled, failure) {
+        (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
+        (false, Some(failure)) => {
+            log_job_execution_failed(run_id, exit_code, reused, failure);
+        }
+        (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
+    }
+}
+
+fn signal_usage_flush(run_id: RunId, usage_flush_tx: &mpsc::Sender<()>) {
+    match usage_flush_tx.try_send(()) {
+        Ok(()) | Err(mpsc::error::TrySendError::Full(())) => {}
+        Err(mpsc::error::TrySendError::Closed(())) => {
+            warn!(run_id = %run_id, "proxy usage flush signal channel closed before completion");
+        }
+    }
 }
 
 fn log_job_execution_failed(
