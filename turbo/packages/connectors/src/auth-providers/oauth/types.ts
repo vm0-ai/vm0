@@ -156,8 +156,7 @@ export type ConnectorAuthProviderRefreshArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = OAuthRefreshFlowArgs &
-  ConnectorAuthMethodClientArgs<T, Method>;
+> = OAuthRefreshFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;
 
 export type ConnectorAuthProviderRevokeArgs<
   T extends TokenRevokeConnectorType,
@@ -176,5 +175,4 @@ export type ConnectorDeviceAuthorizationPollArgs<
   T extends DeviceAuthGrantConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
     ConnectorDeviceAuthGrantAuthMethodId<T>,
-> = OAuthDeviceAuthPollFlowArgs &
-  ConnectorAuthMethodClientArgs<T, Method>;
+> = OAuthDeviceAuthPollFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;
