@@ -1904,7 +1904,7 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     ).toStrictEqual({
       kind: "refresh-token",
       inputs: {
-        refreshToken: {
+        apiRefreshToken: {
           valueRef: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
           source: {
             kind: "connector-secret",
@@ -1920,11 +1920,11 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
         },
       },
       outputs: {
-        accessToken: {
+        refreshedAccessToken: {
           valueRef: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
           secretName: "TEST_OAUTH_API_ACCESS_TOKEN",
         },
-        refreshToken: {
+        refreshedRefreshToken: {
           valueRef: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
           secretName: "TEST_OAUTH_API_REFRESH_TOKEN",
         },

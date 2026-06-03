@@ -155,17 +155,12 @@ export type ModelProviderAuthClient = StaticConnectorAuthClient;
 
 interface ModelProviderAuthProviderRefreshArgs {
   readonly authClient: ModelProviderAuthClient;
-  readonly inputs: {
-    readonly refreshToken: string;
-  };
+  readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }
 
 export interface ModelProviderAuthProviderRefreshResult {
-  readonly outputs: {
-    readonly accessToken: string;
-    readonly refreshToken?: string;
-  };
+  readonly outputs: Readonly<Record<string, string | undefined>>;
   readonly expiresIn?: number;
 }
 

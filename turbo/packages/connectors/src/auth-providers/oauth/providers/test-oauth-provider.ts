@@ -28,6 +28,14 @@ type TestOAuthApiGrantResult = OAuthTokenResultFields & {
   };
 };
 
+interface TestOAuthApiRefreshResult {
+  readonly outputs: {
+    readonly refreshedAccessToken: string;
+    readonly refreshedRefreshToken?: string;
+  };
+  readonly expiresIn?: number;
+}
+
 interface TestOAuthTokenExchange {
   readonly accessToken: string;
   readonly refreshToken: string | null;
@@ -170,14 +178,25 @@ function createTestOauthApiAccess(): RefreshTokenAccessProvider<
     kind: "refresh-token",
     refresh: async (refreshArgs) => {
       const { clientId, clientSecret } = refreshArgs.authClient;
-      const refreshToken = refreshArgs.inputs.refreshToken;
+      const refreshToken = refreshArgs.inputs.apiRefreshToken;
       const result = await refreshTestOAuthToken(
         clientId,
         clientSecret,
         refreshToken,
         refreshArgs.signal,
       );
-      return oauthRefreshResultToProviderResult(result);
+      const providerResult: TestOAuthApiRefreshResult = {
+        outputs: {
+          refreshedAccessToken: result.accessToken,
+          ...(result.refreshToken
+            ? { refreshedRefreshToken: result.refreshToken }
+            : {}),
+        },
+        ...(result.expiresIn === undefined
+          ? {}
+          : { expiresIn: result.expiresIn }),
+      };
+      return providerResult;
     },
   };
 }

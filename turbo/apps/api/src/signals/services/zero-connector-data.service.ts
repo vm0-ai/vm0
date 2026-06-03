@@ -1393,12 +1393,7 @@ async function encryptConnectorTokenSecretSet(args: {
       await encryptedConnectorTokenSecret({
         name: secretName,
         value,
-        description:
-          outputName === "accessToken"
-            ? `Connector access token for ${args.type}`
-            : outputName === "refreshToken"
-              ? `Connector refresh token for ${args.type}`
-              : `Connector token output for ${args.type}: ${secretName}`,
+        description: `Connector token output for ${args.type}: ${secretName}`,
         featureSwitchContext: args.featureSwitchContext,
       }),
     );

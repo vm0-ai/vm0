@@ -22,10 +22,14 @@ export const codexOauthProvider: ModelProviderAuthProvider = {
       };
     },
     refresh: async (args) => {
+      const refreshToken = args.inputs.refreshToken;
+      if (!refreshToken) {
+        throw new Error("codex-oauth-token refreshToken input missing");
+      }
       return oauthRefreshResultToProviderResult(
         await refreshChatgptToken(
           args.authClient.clientId,
-          args.inputs.refreshToken,
+          refreshToken,
           args.signal,
         ),
       );

@@ -26,13 +26,8 @@ const MODEL_PROVIDER_OAUTH_PROVIDERS = {
 
 export interface ModelProviderOAuthSecretMetadata {
   readonly isRefreshable: true;
-  readonly inputs: {
-    readonly refreshToken: string;
-  };
-  readonly outputs: {
-    readonly accessToken: string;
-    readonly refreshToken: string;
-  };
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly outputs: Readonly<Record<string, string>>;
   readonly refreshableSecrets: readonly string[];
 }
 
@@ -93,9 +88,7 @@ export function isModelProviderOAuthRefreshConfigured(args: {
 export async function refreshModelProviderOAuthToken(args: {
   readonly providerKey: ModelProviderOAuthProviderKey;
   readonly currentEnv: ProviderEnv;
-  readonly inputs: {
-    readonly refreshToken: string;
-  };
+  readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }): Promise<ModelProviderAuthProviderRefreshResult> {
   const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;

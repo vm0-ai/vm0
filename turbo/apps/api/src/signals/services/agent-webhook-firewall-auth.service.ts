@@ -1754,14 +1754,10 @@ function refreshPreparedAccessToken(args: {
     });
   }
 
-  const refreshToken = args.inputs.refreshToken;
-  if (!refreshToken) {
-    throw new Error(`${args.prepared.providerKey} refreshToken input missing`);
-  }
   return refreshModelProviderOAuthToken({
     providerKey: args.prepared.providerKey,
     currentEnv: args.prepared.currentEnv,
-    inputs: { refreshToken },
+    inputs: args.inputs,
     signal: args.signal,
   });
 }

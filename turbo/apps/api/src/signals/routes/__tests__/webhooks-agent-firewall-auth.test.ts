@@ -660,12 +660,12 @@ function configureDynamicTestOAuthApiRefresh(
         args.authClient.clientType === "confidential"
           ? args.authClient.clientSecret
           : undefined,
-      refreshToken: args.inputs.refreshToken,
+      refreshToken: args.inputs.apiRefreshToken,
       tenantId: args.inputs.tenantId,
     });
     return Promise.resolve({
       outputs: {
-        accessToken: "fresh-test-oauth-api-token",
+        refreshedAccessToken: "fresh-test-oauth-api-token",
         secondaryToken: "fresh-test-oauth-api-secondary-token",
       },
       expiresIn: 3600,

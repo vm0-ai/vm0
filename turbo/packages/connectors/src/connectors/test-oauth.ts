@@ -84,12 +84,12 @@ export const testOauth = {
         access: {
           kind: "refresh-token",
           inputs: {
-            refreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
+            apiRefreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
             tenantId: "$vars.TEST_OAUTH_API_TENANT_ID",
           },
           outputs: {
-            accessToken: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
-            refreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
+            refreshedAccessToken: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+            refreshedRefreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
             secondaryToken: "$secrets.TEST_OAUTH_API_SECONDARY_TOKEN",
           },
           refreshableSecrets: ["TEST_OAUTH_API_ACCESS_TOKEN"],
