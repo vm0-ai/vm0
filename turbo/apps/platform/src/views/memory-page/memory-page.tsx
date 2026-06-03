@@ -2,12 +2,20 @@ import { useGet, useLoadable, useSet } from "ccstate-react";
 import type { MouseEvent } from "react";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import type { MemoryDetailResponse } from "@vm0/api-contracts/contracts/zero-memory";
+import type { MemoryActivityResponse } from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { cn } from "@vm0/ui";
+import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 
 import {
+  expandedMemoryItems$,
+  memoryActivity$,
   memoryDetail$,
+  memoryTab$,
   selectedMemoryFilePath$,
+  setMemoryTab$,
   setSelectedMemoryFilePath$,
+  toggleMemoryItemExpanded$,
+  type MemoryTab,
 } from "../../signals/memory-page/memory-signals.ts";
 import { Markdown } from "../components/markdown.tsx";
 
@@ -161,13 +169,13 @@ function deriveMemoryViewerState(
   return { files, selectedPath, selectedContent, knownPaths };
 }
 
+function isMemoryTab(value: string): value is MemoryTab {
+  return value === "updates" || value === "raw";
+}
+
 export function MemoryPage() {
-  const detailLoadable = useLoadable(memoryDetail$);
-  const detail =
-    detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const loading = detailLoadable.state === "loading" && !detail;
-  const errored = detailLoadable.state === "hasError";
-  const hasFiles = detail !== null && detail.exists && detail.files.length > 0;
+  const activeTab = useGet(memoryTab$);
+  const setTab = useSet(setMemoryTab$);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -181,22 +189,57 @@ export function MemoryPage() {
               What Zero remembers across runs. Read-only.
             </p>
           </div>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              if (isMemoryTab(value)) {
+                setTab(value);
+              }
+            }}
+            className="mt-3"
+          >
+            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+              <TabsTrigger
+                value="updates"
+                className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+              >
+                Updates
+              </TabsTrigger>
+              <TabsTrigger
+                value="raw"
+                className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+              >
+                Raw files
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-8 pt-3 sm:px-6">
         <div className="mx-auto flex min-h-0 w-full max-w-[900px] flex-1 flex-col">
-          {loading ? (
-            <MemorySkeleton />
-          ) : hasFiles && detail ? (
-            <MemoryViewer detail={detail} />
-          ) : (
-            <MemoryEmptyState errored={errored} />
-          )}
+          {activeTab === "updates" ? <MemoryUpdates /> : <MemoryRawFiles />}
         </div>
       </main>
     </div>
   );
+}
+
+function MemoryRawFiles() {
+  const detailLoadable = useLoadable(memoryDetail$);
+  const detail =
+    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+  const loading = detailLoadable.state === "loading" && !detail;
+  const errored = detailLoadable.state === "hasError";
+  const hasFiles = detail !== null && detail.exists && detail.files.length > 0;
+
+  if (loading) {
+    return <MemorySkeleton />;
+  }
+  if (hasFiles && detail) {
+    return <MemoryViewer detail={detail} />;
+  }
+  return <MemoryEmptyState errored={errored} />;
 }
 
 function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
@@ -376,6 +419,262 @@ function MemoryFrontmatter({
         </dl>
       ) : null}
     </header>
+  );
+}
+
+type MemoryActivityEntry = MemoryActivityResponse["entries"][number];
+type MemoryActivityItem = MemoryActivityEntry["items"][number];
+type MemoryItemKind = MemoryActivityItem["kind"];
+
+const KIND_ORDER: readonly MemoryItemKind[] = [
+  "learned",
+  "updated",
+  "forgotten",
+];
+
+const KIND_LABEL = {
+  learned: "Learned",
+  updated: "Updated",
+  forgotten: "Forgotten",
+} as const satisfies Record<MemoryItemKind, string>;
+
+const KIND_BADGE_CLASS = {
+  learned:
+    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  updated:
+    "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  forgotten:
+    "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+} as const satisfies Record<MemoryItemKind, string>;
+
+function isMarkdownPath(path: string): boolean {
+  return path.toLowerCase().endsWith(".md");
+}
+
+/**
+ * Deterministic fallback line shown when the LLM narrative is null. Mirrors the
+ * "N changes — A learned, B updated, C forgotten" shape so a failed generation
+ * still reads as a real summary rather than a broken card.
+ */
+function buildFallbackSummary(items: readonly MemoryActivityItem[]): string {
+  const counts = new Map<MemoryItemKind, number>();
+  for (const item of items) {
+    counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+  }
+  const parts = KIND_ORDER.filter((kind) => {
+    return (counts.get(kind) ?? 0) > 0;
+  }).map((kind) => {
+    return `${counts.get(kind)} ${kind}`;
+  });
+  const total = items.length;
+  const noun = total === 1 ? "change" : "changes";
+  if (parts.length === 0) {
+    return `${total} ${noun}`;
+  }
+  return `${total} ${noun} — ${parts.join(", ")}`;
+}
+
+function formatActivityDate(date: string): string {
+  // `date` is a local YYYY-MM-DD label produced server-side. Parse it as a
+  // local date (not UTC) so the displayed day matches the stored label exactly.
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (match === null) {
+    return date;
+  }
+  const [, year, month, day] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  if (Number.isNaN(parsed.getTime())) {
+    return date;
+  }
+  return parsed.toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function MemoryUpdates() {
+  const activityLoadable = useLoadable(memoryActivity$);
+
+  if (activityLoadable.state === "loading") {
+    return <MemorySkeleton />;
+  }
+  if (activityLoadable.state === "hasError") {
+    return <MemoryEmptyState errored />;
+  }
+
+  const entries = activityLoadable.data.entries;
+  if (entries.length === 0) {
+    return <MemoryUpdatesEmptyState />;
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-2">
+      {entries.map((entry) => {
+        return <MemoryUpdateCard key={entry.toVersionId} entry={entry} />;
+      })}
+    </div>
+  );
+}
+
+function MemoryUpdateCard({ entry }: { readonly entry: MemoryActivityEntry }) {
+  const summary = entry.summary ?? buildFallbackSummary(entry.items);
+  const grouped = KIND_ORDER.map((kind) => {
+    return {
+      kind,
+      items: entry.items.filter((item) => {
+        return item.kind === kind;
+      }),
+    };
+  }).filter((group) => {
+    return group.items.length > 0;
+  });
+
+  return (
+    <section className="zero-card flex flex-col overflow-hidden">
+      <header className="border-b border-border/70 px-4 py-3">
+        <h2 className="text-sm font-semibold tracking-tight text-foreground">
+          {formatActivityDate(entry.date)}
+        </h2>
+        <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-muted-foreground">
+          {summary}
+        </p>
+      </header>
+      <div className="flex flex-col gap-4 px-4 py-3">
+        {grouped.map((group) => {
+          return (
+            <div key={group.kind} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+                    KIND_BADGE_CLASS[group.kind],
+                  )}
+                >
+                  {KIND_LABEL[group.kind]}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {group.items.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {group.items.map((item) => {
+                  const itemKey = `${entry.toVersionId}:${item.kind}:${item.filePath}`;
+                  return (
+                    <MemoryUpdateItem
+                      key={itemKey}
+                      itemKey={itemKey}
+                      item={item}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function MemoryUpdateItem({
+  itemKey,
+  item,
+}: {
+  readonly itemKey: string;
+  readonly item: MemoryActivityItem;
+}) {
+  const expandedByKey = useGet(expandedMemoryItems$);
+  const toggleExpanded = useSet(toggleMemoryItemExpanded$);
+  const expanded = expandedByKey[itemKey] ?? false;
+  const title = item.title ?? item.filePath;
+  const hasEvidence = item.beforeSnippet !== null || item.afterSnippet !== null;
+
+  return (
+    <div className="rounded-md border border-border/70 bg-background">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        disabled={!hasEvidence}
+        onClick={() => {
+          toggleExpanded(itemKey);
+        }}
+        className={cn(
+          "flex w-full min-w-0 flex-col items-start gap-0.5 px-3 py-2 text-left",
+          hasEvidence
+            ? "transition-colors hover:bg-accent/40"
+            : "cursor-default",
+        )}
+      >
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+          {title}
+        </span>
+        {item.description !== null ? (
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {item.description}
+          </span>
+        ) : null}
+        <span className="truncate font-mono text-[11px] text-muted-foreground/80">
+          {item.filePath}
+        </span>
+      </button>
+      {expanded && hasEvidence ? (
+        <div className="border-t border-border/70 px-3 py-2">
+          <MemorySnippet
+            label="Before"
+            filePath={item.filePath}
+            snippet={item.beforeSnippet}
+          />
+          <MemorySnippet
+            label="After"
+            filePath={item.filePath}
+            snippet={item.afterSnippet}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MemorySnippet({
+  label,
+  filePath,
+  snippet,
+}: {
+  readonly label: string;
+  readonly filePath: string;
+  readonly snippet: string | null;
+}) {
+  return (
+    <div className="mt-2 first:mt-0">
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      {snippet === null ? (
+        <p className="text-xs italic text-muted-foreground">None</p>
+      ) : isMarkdownPath(filePath) ? (
+        <div className="overflow-auto rounded bg-muted/30 px-3 py-2 text-sm">
+          <Markdown source={snippet} />
+        </div>
+      ) : (
+        <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/30 px-3 py-2 font-mono text-xs leading-5 text-foreground">
+          {snippet}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function MemoryUpdatesEmptyState() {
+  return (
+    <section className="zero-card flex min-h-[420px] flex-1 flex-col items-center justify-center px-6 text-center">
+      <p className="text-sm font-medium text-foreground">No updates yet</p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        Memory-change tracking starts from when this feature launched. As your
+        agents run and Zero learns, daily updates will appear here.
+      </p>
+    </section>
   );
 }
 

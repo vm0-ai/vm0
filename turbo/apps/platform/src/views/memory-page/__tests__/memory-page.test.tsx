@@ -8,10 +8,22 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { setMockMemory } from "../../../mocks/handlers/api-memory.ts";
+import { setMockMemoryActivity } from "../../../mocks/handlers/api-memory-activity.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { pathname$ } from "../../../signals/route.ts";
 
 const context = testContext();
+
+async function clickTab(name: string): Promise<void> {
+  const tab = await waitFor(() => {
+    const found = queryAllByRoleFast("tab").find((element) => {
+      return element.textContent?.includes(name);
+    });
+    expect(found).toBeDefined();
+    return found!;
+  });
+  click(tab);
+}
 
 function setupMemoryPage(): void {
   setMockMemory({
@@ -62,12 +74,146 @@ describe("memory page", () => {
     });
 
     await waitFor(() => {
+      expect(screen.getByText("No updates yet")).toBeInTheDocument();
+    });
+
+    await clickTab("Raw files");
+
+    await waitFor(() => {
       expect(screen.getByText("No memory yet")).toBeInTheDocument();
     });
   });
 
+  it("defaults to the Updates tab and renders the daily activity timeline", async () => {
+    setMockMemoryActivity({
+      entries: [
+        {
+          date: "2024-03-02",
+          summary: "Zero learned how you prefer to deploy.",
+          fromVersionId: "v1",
+          toVersionId: "v2",
+          items: [
+            {
+              kind: "learned",
+              title: "Deploy preference",
+              description: "Use blue-green deploys",
+              filePath: "deploy.md",
+              beforeSnippet: null,
+              afterSnippet: "Use blue-green deploys",
+            },
+            {
+              kind: "updated",
+              title: "Project setup",
+              description: null,
+              filePath: "setup.md",
+              beforeSnippet: "old setup",
+              afterSnippet: "new setup",
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero learned how you prefer to deploy."),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Deploy preference")).toBeInTheDocument();
+    expect(screen.getByText("Learned")).toBeInTheDocument();
+    expect(screen.getByText("Updated")).toBeInTheDocument();
+
+    // Evidence is hidden until the item is expanded.
+    expect(screen.queryByText("new setup")).not.toBeInTheDocument();
+
+    const updatedItem = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.includes("Project setup");
+    });
+    expect(updatedItem).toBeDefined();
+    click(updatedItem!);
+
+    await waitFor(() => {
+      expect(screen.getByText("new setup")).toBeInTheDocument();
+    });
+    expect(screen.getByText("old setup")).toBeInTheDocument();
+  });
+
+  it("falls back to a deterministic summary line when the LLM summary is null", async () => {
+    setMockMemoryActivity({
+      entries: [
+        {
+          date: "2024-03-02",
+          summary: null,
+          fromVersionId: "v1",
+          toVersionId: "v2",
+          items: [
+            {
+              kind: "learned",
+              title: "Fact A",
+              description: null,
+              filePath: "a.md",
+              beforeSnippet: null,
+              afterSnippet: "a",
+            },
+            {
+              kind: "learned",
+              title: "Fact B",
+              description: null,
+              filePath: "b.md",
+              beforeSnippet: null,
+              afterSnippet: "b",
+            },
+            {
+              kind: "updated",
+              title: "Fact C",
+              description: null,
+              filePath: "c.md",
+              beforeSnippet: "old",
+              afterSnippet: "new",
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("3 changes — 2 learned, 1 updated"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows a friendly empty state on the Updates tab when there is no activity", async () => {
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("No updates yet")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/Memory-change tracking starts/i),
+    ).toBeInTheDocument();
+  });
+
   it("lists memory files and shows selected file content read-only", async () => {
     setupMemoryPage();
+    await clickTab("Raw files");
 
     // Defaults to MEMORY.md (rendered as markdown).
     await waitFor(() => {
@@ -101,6 +247,7 @@ describe("memory page", () => {
 
   it("pins MEMORY.md to the top of the file list", async () => {
     setupMemoryPage();
+    await clickTab("Raw files");
 
     await waitFor(() => {
       expect(screen.getAllByText("MEMORY.md").length).toBeGreaterThan(0);
@@ -148,6 +295,8 @@ describe("memory page", () => {
       path: "/memory",
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
+
+    await clickTab("Raw files");
 
     // Defaults to MEMORY.md, which renders the relative link to other-note.md.
     await waitFor(() => {
@@ -210,6 +359,8 @@ describe("memory page", () => {
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
 
+    await clickTab("Raw files");
+
     await waitFor(() => {
       expect(screen.getByLabelText("Memory content")).toHaveTextContent(
         "Wrong:",
@@ -259,6 +410,8 @@ describe("memory page", () => {
       path: "/memory",
       featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
     });
+
+    await clickTab("Raw files");
 
     // Defaults to MEMORY.md, which renders an absolute external link.
     await waitFor(() => {
