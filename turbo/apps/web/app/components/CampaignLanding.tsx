@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { posthog } from "posthog-js";
 import { getAppUrl } from "../../src/lib/zero/url";
 import { Footer } from "./Footer";
@@ -198,8 +199,62 @@ function ConnectorCard({
   );
 }
 
+// Competitor comparison, lifted verbatim from the homepage (LandingPage.tsx)
+// so every campaign page inherits the same "Why Zero" differentiation. The
+// items, icons, markup, and copy (t("comparison.*") in messages/*.json) are
+// shared with the homepage, so this matches it by construction across locales.
+interface ComparisonItem {
+  key: string;
+  iconBg: string;
+  iconSrc?: string;
+  initial?: string;
+}
+
+const COMPARISON_ITEMS: ComparisonItem[] = [
+  { key: "manus", iconSrc: "/assets/connectors/manus.svg", iconBg: "#F3F4F6" },
+  {
+    key: "openclaw",
+    iconSrc: "/assets/connectors/openclaw.svg",
+    iconBg: "#F3F4F6",
+  },
+  {
+    key: "zapier",
+    iconSrc: "/assets/connectors/zapier.svg",
+    iconBg: "#F3F4F6",
+  },
+  {
+    key: "claudeCode",
+    iconSrc: "/assets/connectors/anthropic.svg",
+    iconBg: "#F3F4F6",
+  },
+];
+
+function CompetitorIcon({ item }: { item: ComparisonItem }) {
+  return (
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
+      style={{ backgroundColor: item.iconBg }}
+    >
+      {item.iconSrc ? (
+        <Image
+          src={item.iconSrc}
+          alt=""
+          width={24}
+          height={24}
+          className="h-6 w-6"
+        />
+      ) : (
+        <span className="text-base font-semibold text-[hsl(var(--foreground))]">
+          {item.initial}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
+  const t = useTranslations("landing");
   const isSignedIn = isLoaded ? (clerkIsSignedIn ?? false) : false;
   const revealRef = useScrollReveal();
 
@@ -503,6 +558,44 @@ export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
                     </h3>
                     <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                       {item.desc}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== COMPARISON SECTION ===== */}
+        {/* Reused verbatim from the homepage (LandingPage.tsx): same items,
+            icons, markup, tokens, and t("comparison.*") copy. Shared across all
+            campaign segments (not per-segment config). */}
+        <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
+          <div className="mx-auto max-w-[1152px]">
+            <div className="reveal flex flex-col items-center">
+              <h2 className="landing-heading text-center text-[22px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[28px] md:whitespace-nowrap md:text-[36px]">
+                {t("comparison.heading")}
+              </h2>
+            </div>
+
+            <div className="mt-12 grid gap-6 sm:mt-16 md:grid-cols-2">
+              {COMPARISON_ITEMS.map((item) => {
+                return (
+                  <div
+                    key={item.key}
+                    className="reveal flex flex-col gap-3 rounded-[20px] bg-white p-8 sm:p-10"
+                  >
+                    <div className="flex items-center gap-3">
+                      <CompetitorIcon item={item} />
+                      <span className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#ed4e01]">
+                        {t(`comparison.${item.key}.label`)}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-medium leading-7 text-[hsl(var(--foreground))] sm:text-2xl sm:leading-8">
+                      {t(`comparison.${item.key}.heading`)}
+                    </h3>
+                    <p className="text-[15px] leading-6 text-[hsl(var(--muted-foreground))]">
+                      {t(`comparison.${item.key}.body`)}
                     </p>
                   </div>
                 );

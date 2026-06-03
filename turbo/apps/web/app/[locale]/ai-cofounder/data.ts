@@ -24,5 +24,5 @@ export const aiCofounderConfig: CampaignLandingConfig = {
     { name: "Slack", icon: "/assets/mockup/slack.svg" },
     { name: "Gmail", icon: "/assets/connectors/gmail.svg" },
   ],
-  ctaText: "Start your 7-day free trial",
+  ctaText: "Get started free",
 };
