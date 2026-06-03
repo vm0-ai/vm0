@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.98.1](https://github.com/vm0-ai/vm0/compare/api-v1.98.0...api-v1.98.1) (2026-06-03)
+
+
+### Refactoring
+
+* generalize model-provider refresh boundary ([#16032](https://github.com/vm0-ai/vm0/issues/16032)) ([3bdb4c3](https://github.com/vm0-ai/vm0/commit/3bdb4c3978e70f2f7403e35dbcdd7101adf9cd58))
+* generalize refreshable access mappings ([#15984](https://github.com/vm0-ai/vm0/issues/15984)) ([f844436](https://github.com/vm0-ai/vm0/commit/f8444365caa37d90e92bdcaeb14fb38b7cb01b49))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.1
+    * @vm0/connectors bumped to 1.45.2
+    * @vm0/core bumped to 8.309.4
+    * @vm0/db bumped to 1.28.2
+
 ## [1.98.0](https://github.com/vm0-ai/vm0/compare/api-v1.97.0...api-v1.98.0) (2026-06-03)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.407.0](https://github.com/vm0-ai/vm0/compare/app-v0.406.1...app-v0.407.0) (2026-06-03)
+
+
+### Features
+
+* migrate all remaining first-party platform routes to api backend ([#16026](https://github.com/vm0-ai/vm0/issues/16026)) ([e057ab9](https://github.com/vm0-ai/vm0/commit/e057ab91c9e7118fac81489efe11fe2ce7203f63))
+
+
+### Bug Fixes
+
+* disable permission apply without changes ([#16027](https://github.com/vm0-ai/vm0/issues/16027)) ([e343c83](https://github.com/vm0-ai/vm0/commit/e343c83092fcbf29cd050675ae5d92839c12aa8a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.1
+    * @vm0/connectors bumped to 1.45.2
+    * @vm0/core bumped to 8.309.4
+
 ## [0.406.1](https://github.com/vm0-ai/vm0/compare/app-v0.406.0...app-v0.406.1) (2026-06-03)
 
 

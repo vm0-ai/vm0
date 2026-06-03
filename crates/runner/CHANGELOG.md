@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.107.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.8...runner-rs-v0.107.9) (2026-06-03)
+
+
+### Bug Fixes
+
+* cache workspace images only on destroy ([#15974](https://github.com/vm0-ai/vm0/issues/15974)) ([8423fd5](https://github.com/vm0-ai/vm0/commit/8423fd583bc96329b04da13b66be6975e932de91))
+* guard malformed firewall metadata in usage paths ([#16038](https://github.com/vm0-ai/vm0/issues/16038)) ([65bcc9b](https://github.com/vm0-ai/vm0/commit/65bcc9b661fd2d42d4466c1006875e5526b9bf32))
+* **mitm-addon:** require original url for connector usage ([#16023](https://github.com/vm0-ai/vm0/issues/16023)) ([e99e382](https://github.com/vm0-ai/vm0/commit/e99e3820d4d3b6fd9b0418e2036350fab538876d))
+
+
+### Performance Improvements
+
+* avoid X query parsing on billable responses ([#16028](https://github.com/vm0-ai/vm0/issues/16028)) ([52a166b](https://github.com/vm0-ai/vm0/commit/52a166bf511fcc80926152458040fa07fb3ecf3a))
+
 ## [0.107.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.7...runner-rs-v0.107.8) (2026-06-03)
 
 ## [0.107.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.6...runner-rs-v0.107.7) (2026-06-03)
