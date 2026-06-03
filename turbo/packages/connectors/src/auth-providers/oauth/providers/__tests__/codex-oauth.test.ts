@@ -19,11 +19,7 @@ function testRefreshSignal(): AbortSignal {
 }
 
 function getCodexRefreshAccess() {
-  const access = codexOauthProvider.access;
-  if (access.kind !== "refresh-token") {
-    throw new Error("codexOauthProvider must expose refresh-token access");
-  }
-  return access;
+  return codexOauthProvider.access;
 }
 
 describe("connector/providers/codex-oauth", () => {

@@ -17,7 +17,7 @@ import {
 import {
   connectorAuthClientIdentityForMethod,
   connectorAuthMethodRefHasRevokeKind,
-  getConnectorAuthMethod,
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodAuthCodeGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
@@ -649,12 +649,10 @@ export async function refreshConnectorAuthProviderAccessToken<
   readonly inputs: ConnectorRefreshInputValues<T, Method>;
   readonly signal: AbortSignal;
 }): Promise<ConnectorAuthProviderRefreshResult<T, Method>> {
-  const method = getConnectorAuthMethod(args.type, args.authMethod);
-  if (method?.access.kind !== "refresh-token") {
-    throw new Error(
-      `${args.type} connector auth method ${args.authMethod} does not support token refresh`,
-    );
-  }
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    args.type,
+    args.authMethod,
+  );
   const access = connectorRefreshTokenAccessProviderFor(
     args.type,
     args.authMethod,
@@ -664,7 +662,7 @@ export async function refreshConnectorAuthProviderAccessToken<
     inputs: args.inputs,
     signal: args.signal,
   });
-  const declaredOutputs = new Set(Object.keys(method.access.outputs));
+  const declaredOutputs = new Set(Object.keys(accessMetadata.outputs));
   for (const outputName of Object.keys(result.outputs)) {
     if (!declaredOutputs.has(outputName)) {
       throw new Error(

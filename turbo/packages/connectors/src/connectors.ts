@@ -360,8 +360,20 @@ export const CONNECTOR_PLATFORM_SECRET_NAMES = [
 export type ConnectorPlatformSecretName =
   (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
 
-export type ConnectorGrantOutputBindings = Record<string, string>;
-export type ConnectorRevokeInputBindings = Record<string, string>;
+export type ConnectorSecretValueRef = `$secrets.${string}`;
+export type ConnectorVariableValueRef = `$vars.${string}`;
+export type ConnectorRefreshTokenInputValueRef =
+  | ConnectorSecretValueRef
+  | ConnectorVariableValueRef;
+
+export type ConnectorGrantOutputBindings = Record<
+  string,
+  ConnectorSecretValueRef
+>;
+export type ConnectorRevokeInputBindings = Record<
+  string,
+  ConnectorSecretValueRef
+>;
 
 export interface ConnectorStorageConfig {
   readonly secrets: readonly string[];
@@ -381,8 +393,14 @@ export interface ConnectorStaticAccessConfig extends ConnectorEnvBindingAccessCo
   readonly kind: "static";
 }
 
-export type ConnectorRefreshTokenInputBindings = Record<string, string>;
-export type ConnectorRefreshTokenOutputBindings = Record<string, string>;
+export type ConnectorRefreshTokenInputBindings = Record<
+  string,
+  ConnectorRefreshTokenInputValueRef
+>;
+export type ConnectorRefreshTokenOutputBindings = Record<
+  string,
+  ConnectorSecretValueRef
+>;
 
 export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
   readonly kind: "refresh-token";
