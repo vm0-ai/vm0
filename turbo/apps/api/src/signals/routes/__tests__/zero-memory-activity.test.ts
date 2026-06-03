@@ -134,15 +134,9 @@ describe("GET /api/zero/memory/activity", () => {
           summary: null,
           fromVersionId: "v1",
           toVersionId: "v2",
+          // Items are ordered by `kind` then `file_path`, so `forgotten`
+          // precedes `updated` regardless of the seeded insertion order.
           items: [
-            {
-              kind: "updated",
-              title: "Project uses pnpm",
-              description: null,
-              filePath: "preferences/pnpm.md",
-              beforeSnippet: "Use pnpm for all package operations",
-              afterSnippet: "Use pnpm 9 for all package operations",
-            },
             {
               kind: "forgotten",
               title: null,
@@ -150,6 +144,14 @@ describe("GET /api/zero/memory/activity", () => {
               filePath: "notes/stale.md",
               beforeSnippet: "Old note",
               afterSnippet: null,
+            },
+            {
+              kind: "updated",
+              title: "Project uses pnpm",
+              description: null,
+              filePath: "preferences/pnpm.md",
+              beforeSnippet: "Use pnpm for all package operations",
+              afterSnippet: "Use pnpm 9 for all package operations",
             },
           ],
         },
@@ -206,10 +208,15 @@ describe("GET /api/zero/memory/activity", () => {
     ]);
   });
 
-  it("returns a summary's items in a deterministic order", async () => {
+  it("orders a summary's items deterministically by kind then file_path", async () => {
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
+    // Seeded out of the expected order and with a `file_path`-only order
+    // (b, a, d, c) that differs from the kind-then-path order, so a pass
+    // can only come from sorting on `kind` first and `file_path` second.
+    // All items share one batch-insert `created_at`, mirroring the cron, so
+    // the previous `created_at` ordering would leave this order undefined.
     await store.set(
       seedMemoryActivitySummary$,
       {
@@ -219,10 +226,10 @@ describe("GET /api/zero/memory/activity", () => {
         toVersionId: "v-order",
         summary: "Many changes in one day",
         items: [
-          { kind: "learned", filePath: "a.md" },
           { kind: "updated", filePath: "b.md" },
-          { kind: "forgotten", filePath: "c.md" },
           { kind: "learned", filePath: "d.md" },
+          { kind: "learned", filePath: "a.md" },
+          { kind: "forgotten", filePath: "c.md" },
         ],
       },
       context.signal,
@@ -236,9 +243,14 @@ describe("GET /api/zero/memory/activity", () => {
 
     expect(
       response.body.entries[0]?.items.map((item) => {
-        return item.filePath;
+        return { kind: item.kind, filePath: item.filePath };
       }),
-    ).toStrictEqual(["a.md", "b.md", "c.md", "d.md"]);
+    ).toStrictEqual([
+      { kind: "forgotten", filePath: "c.md" },
+      { kind: "learned", filePath: "a.md" },
+      { kind: "learned", filePath: "d.md" },
+      { kind: "updated", filePath: "b.md" },
+    ]);
   });
 
   it("scopes summaries to the authenticated user and org", async () => {

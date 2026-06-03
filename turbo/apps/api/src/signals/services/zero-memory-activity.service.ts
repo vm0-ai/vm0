@@ -88,10 +88,12 @@ export function zeroMemoryActivity(
       })
       .from(memoryChangeItems)
       .where(inArray(memoryChangeItems.summaryId, summaryIds))
-      // `created_at` defaults to the transaction-start `now()`, so all items of
-      // a single batch insert share one timestamp; `id` is a stable secondary
-      // key that gives a fully deterministic order instead of an undefined one.
-      .orderBy(asc(memoryChangeItems.createdAt), asc(memoryChangeItems.id));
+      // The cron batch-inserts every item of a summary in one transaction, so
+      // they all share the transaction-start `now()` `created_at`; ordering by
+      // it would leave intra-day order undefined across page loads. Order by
+      // `kind` then `file_path` instead: both are stable, non-null columns, so
+      // the result is fully deterministic and matches the kind-grouped UI.
+      .orderBy(asc(memoryChangeItems.kind), asc(memoryChangeItems.filePath));
 
     const itemsBySummaryId = new Map<string, MemoryActivityItem[]>();
     for (const item of items) {
