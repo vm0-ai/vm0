@@ -545,7 +545,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(checkpoint?.artifactSnapshots).toBeNull();
   });
 
-  it("persists canonical array-shape artifact snapshots verbatim", async () => {
+  it("persists artifact snapshots and strips unsupported provenance", async () => {
     const fixture = await track(seedFixture());
     const artifactSnapshots = [
       {
@@ -558,6 +558,30 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         version: "version-bbb",
         mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
         generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "artifact-c",
+        version: "version-ccc",
+        mountPath: "/workspace/c",
+        generatedBy: "apiAutoMemory" as const,
+      },
+    ];
+    const persistedArtifactSnapshots = [
+      {
+        name: "artifact-a",
+        version: "version-aaa",
+        mountPath: "/workspace/a",
+      },
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "artifact-c",
+        version: "version-ccc",
+        mountPath: "/workspace/c",
       },
     ];
     const body = {
@@ -581,7 +605,9 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
-    expect(checkpoint?.artifactSnapshots).toStrictEqual(artifactSnapshots);
+    expect(checkpoint?.artifactSnapshots).toStrictEqual(
+      persistedArtifactSnapshots,
+    );
   });
 
   it("creates independent sessions for separate runs", async () => {

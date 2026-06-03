@@ -3,6 +3,8 @@ import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
 } from "@vm0/api-contracts/contracts/webhooks";
+import { CANONICAL_CLAUDE_MEMORY_MOUNT_PATH } from "@vm0/api-contracts/contracts/runners";
+import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
@@ -50,6 +52,7 @@ interface EnrichedVolumeVersionsSnapshot {
 }
 
 const L = logger("webhooks:agent:checkpoints");
+const CODEX_AUTO_MEMORY_MOUNT_PATH = "/home/user/.codex/memories";
 
 function recordOfStringsOrUndefined(
   value: unknown,
@@ -78,11 +81,16 @@ function artifactSnapshotsForDb(
   }
 
   return snapshots.map((snapshot) => {
+    const preserveGeneratedBy =
+      snapshot.generatedBy === "apiAutoMemory" &&
+      snapshot.name === MEMORY_ARTIFACT_NAME &&
+      (snapshot.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH ||
+        snapshot.mountPath === CODEX_AUTO_MEMORY_MOUNT_PATH);
     return {
       name: snapshot.name,
       version: snapshot.version,
       mountPath: snapshot.mountPath,
-      ...(snapshot.generatedBy ? { generatedBy: snapshot.generatedBy } : {}),
+      ...(preserveGeneratedBy ? { generatedBy: snapshot.generatedBy } : {}),
     };
   });
 }
