@@ -921,7 +921,7 @@ impl SessionWorkspaceCache {
             };
 
             let entry_dir = entry.path();
-            let allocated = flat_directory_allocated_bytes(&entry_dir).await;
+            let allocated = directory_tree_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
                     cache_key,
@@ -1019,7 +1019,7 @@ impl SessionWorkspaceCache {
                 }
             }
             let entry_dir = entry.path();
-            let allocated = flat_directory_allocated_bytes(&entry_dir).await;
+            let allocated = directory_tree_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
                     cache_key,
@@ -2200,28 +2200,6 @@ fn statvfs_bytes_sync(path: &Path) -> RunnerResult<FsStats> {
         total_bytes: stats.f_blocks.saturating_mul(block_size),
         available_bytes: stats.f_bavail.saturating_mul(block_size),
     })
-}
-
-async fn flat_directory_allocated_bytes(path: &Path) -> u64 {
-    let mut entries = match fs::read_dir(path).await {
-        Ok(entries) => entries,
-        Err(_) => return 0,
-    };
-    let mut total: u64 = 0;
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let Ok(file_type) = entry.file_type().await else {
-            continue;
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        let allocated = fs::metadata(entry.path())
-            .await
-            .map(|metadata| allocated_bytes(&metadata))
-            .unwrap_or(0);
-        total = total.saturating_add(allocated);
-    }
-    total
 }
 
 async fn directory_tree_allocated_bytes(path: &Path) -> u64 {
@@ -4097,6 +4075,63 @@ mod tests {
             !paths.session_workspace_cache_entry_dir(&key).exists(),
             "current directories must not remain as reusable workspace cache entries"
         );
+    }
+
+    #[tokio::test]
+    async fn gc_counts_nested_current_directory_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-1";
+        let working_dir = "/workspace";
+        let image_size_bytes = 1024 * 1024;
+        let key =
+            cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, working_dir, image_size_bytes);
+        let current = paths.session_workspace_cache_current_image(&key);
+        let nested = current.join("nested");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+        tokio::fs::write(
+            nested.join("payload"),
+            vec![1_u8; image_size_bytes as usize],
+        )
+        .await
+        .unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: cache.inner.cache_scope.clone(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: session_id.into(),
+                    working_dir: working_dir.into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(
+            freed >= image_size_bytes,
+            "GC must report nested current directory bytes so callers refresh disk stats after cleanup"
+        );
+        assert!(!paths.session_workspace_cache_entry_dir(&key).exists());
     }
 
     #[tokio::test]
