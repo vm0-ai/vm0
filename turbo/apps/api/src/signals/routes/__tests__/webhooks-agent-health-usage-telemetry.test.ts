@@ -673,6 +673,52 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     });
   });
 
+  it("uses Zero model context before the agent run fallback", async () => {
+    const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({
+        modelProvider: "vm0",
+        selectedModel: "anthropic/claude-sonnet-4.6",
+      })
+      .where(eq(agentRuns.id, fixture.runId));
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: "anthropic-api-key",
+        selectedModel: "claude-sonnet-4-6",
+      })
+      .where(eq(zeroRuns.id, fixture.runId));
+    const idempotencyKey = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          idempotencyKey,
+          kind: "model",
+          provider: "anthropic/claude-sonnet-4.6",
+          category: "tokens.input",
+          quantity: 13,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
+    await expect(observationRowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey,
+        model: "claude-sonnet-4-6",
+        modelProviderType: "anthropic-api-key",
+        category: "tokens.input",
+        quantity: 13,
+      },
+    ]);
+  });
+
   it("skips BYOK ranking observations for custom selected models", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
