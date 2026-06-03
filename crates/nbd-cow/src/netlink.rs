@@ -410,6 +410,19 @@ mod tests {
     }
 
     #[test]
+    fn resolve_nbd_family_skips_padded_non_target_attr_before_family_id() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        let mut attrs = wire::build_nla(999, &[0x01]);
+        attrs.extend_from_slice(&wire::build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes()));
+        let reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, 1, false);
+        socket::send_test_nl(&peer, &reply);
+
+        let result = resolve_nbd_family(&sock);
+
+        assert_eq!(result.unwrap(), 123);
+    }
+
+    #[test]
     fn resolve_nbd_family_ignores_family_id_after_declared_length() {
         let (sock, peer) = socket::test_genl_socket_pair();
         let mut reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &[], 1, false);
