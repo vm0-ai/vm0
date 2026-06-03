@@ -15,7 +15,7 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   exchangeConnectorAuthCode,
-  type OAuthTokenResult,
+  type OAuthTokenResultBase,
 } from "@vm0/connectors/auth-providers";
 
 import { request$ } from "../context/hono";
@@ -157,7 +157,7 @@ async function exchangeTokenForConnector<
     readonly codeVerifier: string | undefined;
     readonly oauthContext: string | undefined;
   },
-): Promise<OAuthTokenResult> {
+): Promise<OAuthTokenResultBase> {
   const authClient = resolveConnectorAuthClientForMethod(
     args.connectorType,
     args.authMethod,
@@ -331,7 +331,7 @@ async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
   readonly connectorType: AuthCodeGrantConnectorType;
   readonly identity: CallbackIdentity;
-  readonly token: OAuthTokenResult;
+  readonly token: OAuthTokenResultBase;
   readonly signal: AbortSignal;
 }): Promise<void> {
   if (args.connectorType !== "github") {
@@ -399,13 +399,12 @@ const completeOAuthCallback$ = command(
         userId: args.identity.userId,
         type: args.connectorType,
         authMethod: args.authMethod,
-        accessToken: token.accessToken,
+        outputs: token.outputs,
         userInfo: token.userInfo,
         oauthScopes: getRequestedScopes({
           connectorType: args.connectorType,
           authMethod: args.authMethod,
         }),
-        refreshToken: token.refreshToken,
         expiresIn: token.expiresIn,
         extraConnectorSecrets: token.extraConnectorSecrets,
       },

@@ -2,9 +2,10 @@ import { z } from "zod";
 
 import type {
   OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
-  OAuthTokenResult,
+  OAuthTokenUserInfo,
 } from "../types";
 import { throwOAuthError } from "../error";
 
@@ -59,7 +60,7 @@ function parseScopes(scope: string | undefined): string[] {
 function devicePollErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult {
+}): OAuthDeviceAuthIncompleteResult {
   if (args.error === "authorization_pending") {
     return { status: "pending" };
   }
@@ -133,7 +134,7 @@ export async function startBase44DeviceAuth(args: {
 export async function pollBase44DeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult> {
+}): Promise<OAuthDeviceAuthPollResult<"base44", "oauth">> {
   const response = await fetch(BASE44_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -173,8 +174,10 @@ export async function pollBase44DeviceAuth(args: {
   return {
     status: "complete",
     token: {
-      accessToken,
-      refreshToken: data.refresh_token ?? null,
+      outputs: {
+        accessToken,
+        refreshToken: data.refresh_token ?? null,
+      },
       expiresIn: data.expires_in,
       scopes: parseScopes(data.scope),
       userInfo,
@@ -214,7 +217,7 @@ export async function refreshBase44Token(args: {
 
 async function fetchBase44UserInfo(
   accessToken: string,
-): Promise<OAuthTokenResult["userInfo"]> {
+): Promise<OAuthTokenUserInfo> {
   const response = await fetch(BASE44_USERINFO_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,

@@ -391,7 +391,7 @@ const connectGithubUserAfterSetup$ = command(
           userId: vm0UserId,
           type: GITHUB_CONNECTOR_TYPE,
           authMethod,
-          accessToken,
+          outputs: { accessToken },
           userInfo,
           oauthScopes:
             scopes.length > 0
@@ -776,7 +776,7 @@ const callbackGithubUserOauth$ = command(
         userId: state.vm0UserId,
         type: GITHUB_CONNECTOR_TYPE,
         authMethod,
-        accessToken: token.accessToken,
+        outputs: token.outputs,
         userInfo: token.userInfo,
         oauthScopes: getConnectorAuthMethodGrantScopes(
           GITHUB_CONNECTOR_TYPE,

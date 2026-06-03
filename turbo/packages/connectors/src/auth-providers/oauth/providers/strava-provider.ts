@@ -27,8 +27,10 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
         code,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {

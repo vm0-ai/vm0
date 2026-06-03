@@ -34,8 +34,10 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
           redirectUri,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {

@@ -248,14 +248,16 @@ const createTestConnector$ = command(
         userId,
         type: connectorType,
         authMethod,
-        accessToken: bodyResult.data.accessToken,
+        outputs: {
+          accessToken: bodyResult.data.accessToken,
+          refreshToken: bodyResult.data.refreshToken,
+        },
         userInfo: {
           id: `e2e-test-${connectorType}`,
           username: `e2e-${connectorType}`,
           email: `e2e-${connectorType}@test.vm0.ai`,
         },
         oauthScopes: [],
-        refreshToken: bodyResult.data.refreshToken,
         expiresIn: bodyResult.data.expiresIn,
       },
       signal,

@@ -33,8 +33,10 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {

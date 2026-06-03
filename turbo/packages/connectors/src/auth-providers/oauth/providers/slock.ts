@@ -3,9 +3,10 @@ import { z } from "zod";
 import { throwOAuthError } from "../error";
 import type {
   OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
-  OAuthTokenResult,
+  OAuthTokenUserInfo,
 } from "../types";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
@@ -106,7 +107,7 @@ function absoluteVerificationUri(uri: string): string {
 function devicePollErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult {
+}): OAuthDeviceAuthIncompleteResult {
   if (args.error === "authorization_pending") {
     return { status: "pending" };
   }
@@ -137,7 +138,7 @@ function devicePollErrorResult(args: {
 function deviceCompletionErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult {
+}): OAuthDeviceAuthIncompleteResult {
   return {
     status: "error",
     error: args.error,
@@ -248,7 +249,7 @@ function selectSlockServer(
 async function fetchSlockUserInfo(
   accessToken: string,
   fallbackUserId: string | undefined,
-): Promise<OAuthTokenResult["userInfo"]> {
+): Promise<OAuthTokenUserInfo> {
   const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -275,7 +276,8 @@ async function fetchSlockUserInfo(
 async function fetchSlockServerId(
   accessToken: string,
 ): Promise<
-  { readonly ok: true; readonly serverId: string } | OAuthDeviceAuthPollResult
+  | { readonly ok: true; readonly serverId: string }
+  | OAuthDeviceAuthIncompleteResult
 > {
   const response = await fetch(`${SLOCK_API_BASE_URL}/api/servers`, {
     headers: {
@@ -326,7 +328,7 @@ export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult
 
 export async function pollSlockDeviceAuth(args: {
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult> {
+}): Promise<OAuthDeviceAuthPollResult<"slock", "oauth">> {
   const response = await fetch(SLOCK_DEVICE_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -367,7 +369,7 @@ export async function pollSlockDeviceAuth(args: {
 
   let serverIdResult:
     | { readonly ok: true; readonly serverId: string }
-    | OAuthDeviceAuthPollResult;
+    | OAuthDeviceAuthIncompleteResult;
   try {
     serverIdResult = await fetchSlockServerId(accessToken);
   } catch {
@@ -379,7 +381,7 @@ export async function pollSlockDeviceAuth(args: {
   if (!("ok" in serverIdResult)) {
     return serverIdResult;
   }
-  let userInfo: OAuthTokenResult["userInfo"];
+  let userInfo: OAuthTokenUserInfo;
   try {
     userInfo = await fetchSlockUserInfo(accessToken, data.data.userId);
   } catch {
@@ -392,8 +394,10 @@ export async function pollSlockDeviceAuth(args: {
   return {
     status: "complete",
     token: {
-      accessToken,
-      refreshToken,
+      outputs: {
+        accessToken,
+        refreshToken,
+      },
       expiresIn: accessTokenExpiresIn(accessToken),
       scopes: [],
       userInfo,

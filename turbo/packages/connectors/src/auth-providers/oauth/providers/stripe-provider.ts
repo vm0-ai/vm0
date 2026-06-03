@@ -27,8 +27,10 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
         code,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,

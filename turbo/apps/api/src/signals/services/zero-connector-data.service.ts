@@ -93,6 +93,10 @@ interface ConnectorTokenOutputMetadata {
   readonly isRefreshable: boolean;
 }
 
+type ConnectorTokenOutputValues = Readonly<
+  Record<string, string | null | undefined>
+>;
+
 interface PreparedManualGrantConnect {
   readonly secretValues: readonly PreparedManualGrantField[];
   readonly variableValues: readonly PreparedManualGrantField[];
@@ -1281,12 +1285,6 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
           return [outputName, output.secretName];
         }),
       );
-      const accessSecretName = outputSecretNames.accessToken;
-      if (!accessSecretName) {
-        throw new Error(
-          `${args.type} connector auth method ${args.authMethod} is missing accessToken grant output`,
-        );
-      }
       return {
         outputSecretNames,
         isRefreshable: method.access.kind === "refresh-token",
@@ -1375,18 +1373,16 @@ async function encryptExtraConnectorTokenSecrets(args: {
 async function encryptConnectorTokenSecretSet(args: {
   readonly type: ConnectorAuthProviderType;
   readonly outputSecretNames: Readonly<Record<string, string>>;
-  readonly accessToken: string;
-  readonly refreshToken: string | null | undefined;
+  readonly outputs: ConnectorTokenOutputValues;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<readonly EncryptedConnectorTokenSecret[]> {
-  const outputValues: Record<string, string> = {
-    accessToken: args.accessToken,
-    ...(args.refreshToken ? { refreshToken: args.refreshToken } : {}),
-  };
   const encryptedConnectorTokenSecrets: EncryptedConnectorTokenSecret[] = [];
-  for (const [outputName, value] of Object.entries(outputValues)) {
+  for (const [outputName, value] of Object.entries(args.outputs)) {
+    if (!value) {
+      continue;
+    }
     const secretName = args.outputSecretNames[outputName];
     if (!secretName) {
       throw new Error(
@@ -1582,10 +1578,9 @@ export const upsertConnectorTokenConnection$ = command(
       readonly userId: string;
       readonly type: ConnectorAuthProviderType;
       readonly authMethod: ConnectorAuthMethodId;
-      readonly accessToken: string;
+      readonly outputs: ConnectorTokenOutputValues;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
-      readonly refreshToken?: string | null;
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
@@ -1601,7 +1596,7 @@ export const upsertConnectorTokenConnection$ = command(
     });
     if (!outputMetadata) {
       throw new Error(
-        `${args.type} connector auth method ${args.authMethod} does not expose an access token secret`,
+        `${args.type} connector auth method ${args.authMethod} does not expose token outputs`,
       );
     }
     const tokenExpiresAt = connectorTokenExpiresAt({
@@ -1623,8 +1618,7 @@ export const upsertConnectorTokenConnection$ = command(
       {
         type: args.type,
         outputSecretNames: outputMetadata.outputSecretNames,
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
+        outputs: args.outputs,
         extraSecrets,
         featureSwitchContext,
         signal,

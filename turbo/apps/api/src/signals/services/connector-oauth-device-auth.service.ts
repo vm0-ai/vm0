@@ -25,8 +25,8 @@ import {
   startConnectorDeviceAuthorization,
 } from "@vm0/connectors/auth-providers";
 import type {
-  OAuthDeviceAuthCompleteResult,
-  OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthCompleteResultBase,
+  OAuthDeviceAuthPollResultBase,
 } from "@vm0/connectors/auth-providers/oauth/types";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
@@ -96,7 +96,7 @@ type PollClaimedSessionArgs = DeviceAuthMethodClientRef & {
   readonly claimStartedAt: Date;
   readonly signal: AbortSignal;
   readonly persistConnector: (args: {
-    readonly result: OAuthDeviceAuthCompleteResult;
+    readonly result: OAuthDeviceAuthCompleteResultBase;
   }) => Promise<ConnectorResponse>;
 };
 
@@ -500,7 +500,7 @@ async function markClaimTerminal(args: {
   readonly session: DeviceAuthSessionRow;
   readonly claimStartedAt: Date;
   readonly result: Extract<
-    OAuthDeviceAuthPollResult,
+    OAuthDeviceAuthPollResultBase,
     { readonly status: "denied" | "expired" | "error" }
   >;
   readonly signal: AbortSignal;
@@ -582,10 +582,10 @@ async function completeClaimedSession(
     readonly userId: string;
     readonly session: DeviceAuthSessionRow;
     readonly claimStartedAt: Date;
-    readonly result: OAuthDeviceAuthCompleteResult;
+    readonly result: OAuthDeviceAuthCompleteResultBase;
     readonly signal: AbortSignal;
     readonly persistConnector: (args: {
-      readonly result: OAuthDeviceAuthCompleteResult;
+      readonly result: OAuthDeviceAuthCompleteResultBase;
     }) => Promise<ConnectorResponse>;
   },
 ): Promise<PollSuccess> {
@@ -941,10 +941,9 @@ export const pollConnectorOauthDeviceAuthSession$ = command(
             userId: args.userId,
             type: resolvedMethod.type,
             authMethod: resolvedMethod.authMethod,
-            accessToken: result.token.accessToken,
+            outputs: result.token.outputs,
             userInfo: result.token.userInfo,
             oauthScopes: result.token.scopes,
-            refreshToken: result.token.refreshToken,
             expiresIn: result.token.expiresIn,
             extraConnectorSecrets: result.token.extraConnectorSecrets,
           },

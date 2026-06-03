@@ -6,6 +6,7 @@ import type {
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
+  ConnectorGrantOutputValues,
   ConnectorRefreshInputValues,
   ConnectorRefreshOutputValues,
   ConnectorRevokeInputValues,
@@ -19,14 +20,29 @@ import type {
   ConnectorAuthClientIdentityForMethod,
 } from "@vm0/connectors/connector-utils";
 
-export interface OAuthTokenResult {
-  accessToken: string;
-  refreshToken?: string | null;
+export interface OAuthTokenUserInfo {
+  readonly id: string;
+  readonly username: string | null;
+  readonly email: string | null;
+}
+
+export interface OAuthTokenResultFields {
   expiresIn?: number; // seconds until access token expires
   scopes: string[];
-  userInfo: { id: string; username: string | null; email: string | null };
+  userInfo: OAuthTokenUserInfo;
   extraConnectorSecrets?: Readonly<Record<string, string>>;
 }
+
+export type OAuthTokenResultBase = OAuthTokenResultFields & {
+  readonly outputs: Readonly<Record<string, string | null | undefined>>;
+};
+
+export type OAuthTokenResult<
+  T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
+  Method extends ConnectorAuthMethodIds<T>,
+> = OAuthTokenResultFields & {
+  readonly outputs: ConnectorGrantOutputValues<T, Method>;
+};
 
 /**
  * Result from buildAuthUrl when PKCE is required.
@@ -101,9 +117,17 @@ export interface OAuthDeviceAuthSlowDownResult {
   readonly status: "slow_down";
 }
 
-export interface OAuthDeviceAuthCompleteResult {
+export interface OAuthDeviceAuthCompleteResultBase {
   readonly status: "complete";
-  readonly token: OAuthTokenResult;
+  readonly token: OAuthTokenResultBase;
+}
+
+export interface OAuthDeviceAuthCompleteResult<
+  T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
+> {
+  readonly status: "complete";
+  readonly token: OAuthTokenResult<T, Method>;
 }
 
 export interface OAuthDeviceAuthDeniedResult {
@@ -124,10 +148,26 @@ export interface OAuthDeviceAuthErrorResult {
   readonly errorDescription?: string;
 }
 
-export type OAuthDeviceAuthPollResult =
+export type OAuthDeviceAuthPollResultBase =
   | OAuthDeviceAuthPendingResult
   | OAuthDeviceAuthSlowDownResult
-  | OAuthDeviceAuthCompleteResult
+  | OAuthDeviceAuthCompleteResultBase
+  | OAuthDeviceAuthDeniedResult
+  | OAuthDeviceAuthExpiredResult
+  | OAuthDeviceAuthErrorResult;
+
+export type OAuthDeviceAuthIncompleteResult = Exclude<
+  OAuthDeviceAuthPollResultBase,
+  OAuthDeviceAuthCompleteResultBase
+>;
+
+export type OAuthDeviceAuthPollResult<
+  T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
+> =
+  | OAuthDeviceAuthPendingResult
+  | OAuthDeviceAuthSlowDownResult
+  | OAuthDeviceAuthCompleteResult<T, Method>
   | OAuthDeviceAuthDeniedResult
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;

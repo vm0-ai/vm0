@@ -360,9 +360,7 @@ export const CONNECTOR_PLATFORM_SECRET_NAMES = [
 export type ConnectorPlatformSecretName =
   (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
 
-export type ConnectorGrantOutputBindings = Record<string, string> & {
-  readonly accessToken: string;
-};
+export type ConnectorGrantOutputBindings = Record<string, string>;
 export type ConnectorRevokeInputBindings = Record<string, string>;
 
 export interface ConnectorStorageConfig {
@@ -1095,6 +1093,18 @@ type ConnectorRefreshMappingFor<
     }
   : never;
 
+type ConnectorGrantOutputsFor<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = ConnectorAuthMethodsOf<Type>[Method] extends {
+  readonly grant: {
+    readonly kind: "auth-code" | "device-auth";
+    readonly outputs: infer Outputs;
+  };
+}
+  ? Outputs
+  : never;
+
 type ConnectorRefreshInputsFor<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
@@ -1132,6 +1142,16 @@ export type ConnectorRefreshInputValues<
   Method extends ConnectorAuthMethodIds<Type>,
 > = {
   readonly [InputName in keyof ConnectorRefreshInputsFor<Type, Method>]: string;
+};
+
+export type ConnectorGrantOutputValues<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = {
+  readonly [OutputName in keyof ConnectorGrantOutputsFor<Type, Method>]:
+    | string
+    | null
+    | undefined;
 };
 
 export type ConnectorRefreshOutputValues<

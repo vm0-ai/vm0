@@ -24,8 +24,10 @@ export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: null,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: null,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,

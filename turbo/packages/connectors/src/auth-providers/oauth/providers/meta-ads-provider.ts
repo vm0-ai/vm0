@@ -24,8 +24,10 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {

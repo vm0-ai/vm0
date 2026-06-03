@@ -146,8 +146,10 @@ describe("connector/providers/google-ads", () => {
       });
 
       expect(result).toEqual({
-        accessToken: "google-ads-access-token",
-        refreshToken: "google-ads-refresh-token",
+        outputs: {
+          accessToken: "google-ads-access-token",
+          refreshToken: "google-ads-refresh-token",
+        },
         expiresIn: 3600,
         scopes: [
           "https://www.googleapis.com/auth/adwords",

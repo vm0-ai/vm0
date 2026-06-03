@@ -34,8 +34,10 @@ export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-cal
           redirectUri,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {

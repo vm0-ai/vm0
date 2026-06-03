@@ -36,8 +36,10 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
         state,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {

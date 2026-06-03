@@ -23,7 +23,9 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
+        outputs: {
+          accessToken: result.accessToken,
+        },
         scopes: [],
         userInfo: {
           id: result.userInfo.id,

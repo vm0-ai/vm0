@@ -38,9 +38,11 @@ import {
   type ConnectorAuthProviderRefreshResultBase,
   type ConnectorAuthProviderRefreshResult,
   type OAuthDeviceAuthPollResult,
+  type OAuthDeviceAuthPollResultBase,
   type OAuthDeviceAuthStartResult,
   type OAuthRefreshResult,
   type OAuthTokenResult,
+  type OAuthTokenResultBase,
 } from "./oauth/types";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
 import { ahrefsProvider } from "./oauth/providers/ahrefs-provider";
@@ -103,9 +105,11 @@ export type {
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthPollResultBase,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
   OAuthTokenResult,
+  OAuthTokenResultBase,
 };
 export type { ProviderEnv };
 export { providerEnvFromObject };
@@ -526,10 +530,10 @@ export function exchangeConnectorAuthCode<
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<OAuthTokenResult>;
+}): Promise<OAuthTokenResult<T, Method>>;
 export function exchangeConnectorAuthCode(
   args: ConnectorAuthCodeExchangeCallArgs,
-): Promise<OAuthTokenResult>;
+): Promise<OAuthTokenResultBase>;
 export async function exchangeConnectorAuthCode<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T>,
@@ -542,7 +546,7 @@ export async function exchangeConnectorAuthCode<
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<OAuthTokenResult> {
+}): Promise<OAuthTokenResult<T, Method>> {
   const provider = connectorAuthCodeGrantProviderFor(
     args.type,
     args.authMethod,
@@ -599,10 +603,10 @@ export function pollConnectorDeviceAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult>;
+}): Promise<OAuthDeviceAuthPollResult<T, Method>>;
 export function pollConnectorDeviceAuthorization(
   args: ConnectorDeviceAuthorizationPollCallArgs,
-): Promise<OAuthDeviceAuthPollResult>;
+): Promise<OAuthDeviceAuthPollResultBase>;
 export async function pollConnectorDeviceAuthorization<
   T extends DeviceAuthGrantConnectorType,
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
@@ -611,7 +615,7 @@ export async function pollConnectorDeviceAuthorization<
   readonly authMethod: Method;
   readonly authClient: ConnectorAuthClientForMethod<T, Method>;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult> {
+}): Promise<OAuthDeviceAuthPollResult<T, Method>> {
   const provider = connectorDeviceAuthGrantProviderFor(
     args.type,
     args.authMethod,

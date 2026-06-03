@@ -226,6 +226,20 @@ type DynamicTestOAuthExchangeOptions<
   readonly provider: AuthCodeConnectorAuthProvider<"test-oauth", Method>;
 };
 
+type DynamicTestOAuthExchangeResult = {
+  readonly outputs: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+  };
+  readonly expiresIn: number;
+  readonly scopes: string[];
+  readonly userInfo: {
+    readonly id: string;
+    readonly username: string;
+    readonly email: string;
+  };
+};
+
 const defaultDynamicTestOAuthExchangeOptions = {
   authMethod: "oauth",
   provider: testOauthProvider,
@@ -235,18 +249,22 @@ function useDynamicTestOAuthExchange(): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
 };
-function useDynamicTestOAuthExchange<
-  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
->(
-  args: DynamicTestOAuthExchangeOptions<Method>,
+function useDynamicTestOAuthExchange(
+  args: DynamicTestOAuthExchangeOptions<"oauth">,
 ): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
 };
-function useDynamicTestOAuthExchange<
-  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
->(
-  args?: DynamicTestOAuthExchangeOptions<Method>,
+function useDynamicTestOAuthExchange(
+  args: DynamicTestOAuthExchangeOptions<"api">,
+): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+};
+function useDynamicTestOAuthExchange(
+  args?:
+    | DynamicTestOAuthExchangeOptions<"oauth">
+    | DynamicTestOAuthExchangeOptions<"api">,
 ): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
@@ -264,11 +282,61 @@ function useDynamicTestOAuthExchange<
   };
 }
 
-function configureDynamicTestOAuthExchange<
-  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
->(
+function dynamicTestOAuthExchangeResult(): DynamicTestOAuthExchangeResult {
+  return {
+    outputs: {
+      accessToken: "dynamic-access-token",
+      refreshToken: "dynamic-refresh-token",
+    },
+    expiresIn: 3600,
+    scopes: ["read"],
+    userInfo: {
+      id: "dynamic-user-id",
+      username: "dynamic-user",
+      email: "dynamic@example.com",
+    },
+  };
+}
+
+function captureDynamicTestOAuthExchange(
   exchanges: CapturedOAuthExchange[],
-  args: DynamicTestOAuthExchangeOptions<Method>,
+  args:
+    | Parameters<
+        AuthCodeConnectorAuthProvider<
+          "test-oauth",
+          "oauth"
+        >["grant"]["exchangeCode"]
+      >[0]
+    | Parameters<
+        AuthCodeConnectorAuthProvider<
+          "test-oauth",
+          "api"
+        >["grant"]["exchangeCode"]
+      >[0],
+): void {
+  exchanges.push({
+    clientId:
+      args.authClient.clientRegistration === "static"
+        ? args.authClient.clientId
+        : undefined,
+    clientSecret:
+      args.authClient.clientRegistration === "static" &&
+      args.authClient.clientType === "confidential"
+        ? args.authClient.clientSecret
+        : undefined,
+    code: args.code,
+    redirectUri: args.redirectUri,
+    state: args.state,
+    codeVerifier: args.codeVerifier,
+    oauthContext: args.oauthContext,
+  });
+}
+
+function configureDynamicTestOAuthExchange(
+  exchanges: CapturedOAuthExchange[],
+  args:
+    | DynamicTestOAuthExchangeOptions<"oauth">
+    | DynamicTestOAuthExchangeOptions<"api">,
 ): () => void {
   const method = getConnectorAuthMethod("test-oauth", args.authMethod);
   if (method?.grant.kind !== "auth-code") {
@@ -277,40 +345,26 @@ function configureDynamicTestOAuthExchange<
 
   const mutableMethod = method as { client: ConnectorAuthClientConfig };
   const originalClient = mutableMethod.client;
+  mutableMethod.client = dynamicPublicClient;
+  if (args.authMethod === "oauth") {
+    const provider = args.provider;
+    const originalExchangeCode = provider.grant.exchangeCode;
+    provider.grant.exchangeCode = (exchangeArgs) => {
+      captureDynamicTestOAuthExchange(exchanges, exchangeArgs);
+      return Promise.resolve(dynamicTestOAuthExchangeResult());
+    };
+    return () => {
+      mutableMethod.client = originalClient;
+      provider.grant.exchangeCode = originalExchangeCode;
+    };
+  }
+
   const provider = args.provider;
   const originalExchangeCode = provider.grant.exchangeCode;
-
-  mutableMethod.client = dynamicPublicClient;
-  provider.grant.exchangeCode = (args) => {
-    exchanges.push({
-      clientId:
-        args.authClient.clientRegistration === "static"
-          ? args.authClient.clientId
-          : undefined,
-      clientSecret:
-        args.authClient.clientRegistration === "static" &&
-        args.authClient.clientType === "confidential"
-          ? args.authClient.clientSecret
-          : undefined,
-      code: args.code,
-      redirectUri: args.redirectUri,
-      state: args.state,
-      codeVerifier: args.codeVerifier,
-      oauthContext: args.oauthContext,
-    });
-    return Promise.resolve({
-      accessToken: "dynamic-access-token",
-      refreshToken: "dynamic-refresh-token",
-      expiresIn: 3600,
-      scopes: ["read"],
-      userInfo: {
-        id: "dynamic-user-id",
-        username: "dynamic-user",
-        email: "dynamic@example.com",
-      },
-    });
+  provider.grant.exchangeCode = (exchangeArgs) => {
+    captureDynamicTestOAuthExchange(exchanges, exchangeArgs);
+    return Promise.resolve(dynamicTestOAuthExchangeResult());
   };
-
   return () => {
     mutableMethod.client = originalClient;
     provider.grant.exchangeCode = originalExchangeCode;

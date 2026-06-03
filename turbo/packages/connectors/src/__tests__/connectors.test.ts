@@ -1119,10 +1119,11 @@ describe("connector selected auth method capability checks", () => {
     ).resolves.toStrictEqual({
       status: "complete",
       token: {
-        accessToken:
-          "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+        outputs: {
+          accessToken:
+            "test-device-access:test-oauth-device-client:test-device:test-oauth-device-client:read",
+        },
         expiresIn: 3600,
-        refreshToken: null,
         scopes: ["read"],
         userInfo: {
           id: "test-oauth-device-user",
@@ -1330,8 +1331,10 @@ describe("connector selected auth method capability checks", () => {
     ).resolves.toStrictEqual({
       status: "complete",
       token: {
-        accessToken: "base44-access-token",
-        refreshToken: "base44-refresh-token",
+        outputs: {
+          accessToken: "base44-access-token",
+          refreshToken: "base44-refresh-token",
+        },
         expiresIn: 3600,
         scopes: ["apps:read", "apps:write", "offline"],
         userInfo: {
@@ -1655,8 +1658,10 @@ describe("connector selected auth method capability checks", () => {
     expect(completeResult).toMatchObject({
       status: "complete",
       token: {
-        accessToken: slockAccessToken,
-        refreshToken: "slock-refresh-token",
+        outputs: {
+          accessToken: slockAccessToken,
+          refreshToken: "slock-refresh-token",
+        },
         expiresIn: expect.any(Number),
         scopes: [],
         userInfo: {
@@ -1690,8 +1695,10 @@ describe("connector selected auth method capability checks", () => {
     expect(malformedCompleteResult).toMatchObject({
       status: "complete",
       token: {
-        accessToken: slockMalformedAccessToken,
-        refreshToken: "slock-refresh-malformed",
+        outputs: {
+          accessToken: slockMalformedAccessToken,
+          refreshToken: "slock-refresh-malformed",
+        },
         expiresIn: undefined,
       },
     });

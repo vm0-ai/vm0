@@ -26,8 +26,10 @@ export const mailchimpProvider: AuthCodeConnectorAuthProvider<"mailchimp"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: null,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: null,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,

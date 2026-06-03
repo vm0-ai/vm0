@@ -29,8 +29,10 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {

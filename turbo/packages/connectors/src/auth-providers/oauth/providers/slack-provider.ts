@@ -33,7 +33,9 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
         slackResult.accessToken,
       );
       return {
-        accessToken: slackResult.accessToken,
+        outputs: {
+          accessToken: slackResult.accessToken,
+        },
         scopes: slackResult.scopes,
         userInfo: {
           id: slackUser.id,

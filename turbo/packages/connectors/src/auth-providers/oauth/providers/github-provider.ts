@@ -29,7 +29,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
         redirectUri,
       );
       const userInfo = await fetchGitHubUserInfo(accessToken);
-      return { accessToken, scopes, userInfo };
+      return { outputs: { accessToken }, scopes, userInfo };
     },
   },
   access: {

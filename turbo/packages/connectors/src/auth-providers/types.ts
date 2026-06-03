@@ -42,7 +42,7 @@ export interface AuthCodeGrantProvider<
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
     args: ConnectorAuthCodeExchangeArgs<T, Method>,
-  ): Promise<OAuthTokenResult>;
+  ): Promise<OAuthTokenResult<T, Method>>;
 }
 
 export interface DeviceAuthGrantProvider<
@@ -56,7 +56,7 @@ export interface DeviceAuthGrantProvider<
   ): Promise<OAuthDeviceAuthStartResult>;
   pollDeviceAuth(
     args: ConnectorDeviceAuthorizationPollArgs<T, Method>,
-  ): Promise<OAuthDeviceAuthPollResult>;
+  ): Promise<OAuthDeviceAuthPollResult<T, Method>>;
 }
 
 export interface NoneAccessProvider {

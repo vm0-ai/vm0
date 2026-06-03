@@ -34,8 +34,10 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
           redirectUri,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {
