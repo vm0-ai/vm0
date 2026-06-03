@@ -756,6 +756,14 @@ const AGENT_USAGE_EVENT_NEXT_NEGATIVE_PATHS = [
   "/api/webhooks/agent/usage-event/extra",
   "/api/webhooks/agent",
 ] as const;
+const AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE =
+  "/api/webhooks/agent/model-usage-observation";
+const AGENT_MODEL_USAGE_OBSERVATION_PATH =
+  "/api/webhooks/agent/model-usage-observation";
+const AGENT_MODEL_USAGE_OBSERVATION_NEXT_NEGATIVE_PATHS = [
+  "/api/webhooks/agent/model-usage-observation/extra",
+  "/api/webhooks/agent",
+] as const;
 const AGENT_STORAGES_COMMIT_REWRITE_SOURCE =
   "/api/webhooks/agent/storages/commit";
 const AGENT_STORAGES_COMMIT_PATH = "/api/webhooks/agent/storages/commit";
@@ -2268,6 +2276,11 @@ describe("API backend rewrites", () => {
           source: AGENT_USAGE_EVENT_REWRITE_SOURCE,
           destination:
             "https://api.example.test/api/webhooks/agent/usage-event",
+        },
+        {
+          source: AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+          destination:
+            "https://api.example.test/api/webhooks/agent/model-usage-observation",
         },
         {
           source: AGENT_STORAGES_COMMIT_REWRITE_SOURCE,
@@ -5041,6 +5054,30 @@ describe("API backend rewrites", () => {
 
     expect(matcher(AGENT_USAGE_EVENT_PATH)).toStrictEqual({});
     for (const pathname of AGENT_USAGE_EVENT_NEXT_NEGATIVE_PATHS) {
+      expect(matcher(pathname)).toBe(false);
+    }
+  });
+
+  it("should match only the exact agent model usage observation webhook rewrite", async () => {
+    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
+
+    const rewrites = await getBeforeFileRewrites();
+    const rewrite = rewrites.find((entry) => {
+      return entry.source === AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE;
+    });
+    expect(rewrite).toStrictEqual({
+      source: AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE,
+      destination:
+        "https://api.example.test/api/webhooks/agent/model-usage-observation",
+    });
+
+    const matcher = getPathMatch(AGENT_MODEL_USAGE_OBSERVATION_REWRITE_SOURCE, {
+      removeUnnamedParams: true,
+      strict: true,
+    });
+
+    expect(matcher(AGENT_MODEL_USAGE_OBSERVATION_PATH)).toStrictEqual({});
+    for (const pathname of AGENT_MODEL_USAGE_OBSERVATION_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });

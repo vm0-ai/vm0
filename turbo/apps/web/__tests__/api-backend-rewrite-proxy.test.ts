@@ -1749,6 +1749,20 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
   });
 
+  it("matches the agent model usage observation webhook rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/model-usage-observation",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/webhooks/agent/model-usage-observation/extra",
+      ),
+    ).toBe(false);
+    expect(matchesApiBackendRewritePath("/api/webhooks/agent")).toBe(false);
+  });
+
   it("matches the agent storages commit webhook rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath("/api/webhooks/agent/storages/commit"),
@@ -3742,6 +3756,52 @@ describe("API backend rewrite proxy behavior", () => {
         expect(payload.method).toBe("POST");
         expect(payload.url).toBe(
           "/api/webhooks/agent/usage-event?from=usage-event",
+        );
+        expect(payload.headers.authorization).toBe("Bearer sandbox-token");
+        expect(payload.headers["content-type"]).toContain("application/json");
+        expect(payload.body).toBe(webhookBody);
+      },
+    );
+  });
+
+  it("forwards agent model usage observation webhook POST bodies and sandbox auth", async () => {
+    await withRewriteProxy(
+      async (request) => {
+        return Response.json({
+          method: request.method,
+          url: request.url,
+          headers: request.headers,
+          body: await readRequestBody(request),
+        });
+      },
+      async (origin) => {
+        const webhookBody = JSON.stringify({
+          runId: "run_model_usage_observation_1",
+          events: [
+            {
+              idempotencyKey: "550e8400-e29b-41d4-a716-446655440000",
+              model: "claude-sonnet-4-6",
+              category: "tokens.input",
+              quantity: 5,
+            },
+          ],
+        });
+        const response = await fetch(
+          `${origin}/api/webhooks/agent/model-usage-observation?from=model-usage-observation`,
+          {
+            method: "POST",
+            headers: {
+              authorization: "Bearer sandbox-token",
+              "content-type": "application/json",
+            },
+            body: webhookBody,
+          },
+        );
+
+        const payload = (await response.json()) as EchoPayload;
+        expect(payload.method).toBe("POST");
+        expect(payload.url).toBe(
+          "/api/webhooks/agent/model-usage-observation?from=model-usage-observation",
         );
         expect(payload.headers.authorization).toBe("Bearer sandbox-token");
         expect(payload.headers["content-type"]).toContain("application/json");
