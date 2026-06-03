@@ -21,12 +21,27 @@ type TestOAuthGrantResult = OAuthTokenResultFields & {
   };
 };
 
-async function exchangeTestOauthGrant(args: {
+type TestOAuthApiGrantResult = OAuthTokenResultFields & {
+  readonly outputs: {
+    readonly initialAccessToken: string;
+    readonly initialRefreshToken: string | null;
+  };
+};
+
+interface TestOAuthTokenExchange {
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly expiresIn: number | undefined;
+  readonly scopes: string[];
+  readonly userInfo: OAuthTokenResultFields["userInfo"];
+}
+
+async function exchangeTestOauthToken(args: {
   readonly clientId: string;
   readonly clientSecret: string;
   readonly code: string;
   readonly redirectUri: string;
-}): Promise<TestOAuthGrantResult> {
+}): Promise<TestOAuthTokenExchange> {
   const token = await exchangeTestOAuthCode(
     args.clientId,
     args.clientSecret,
@@ -35,13 +50,47 @@ async function exchangeTestOauthGrant(args: {
   );
   const user = await fetchTestOAuthUserInfo(token.accessToken);
   return {
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    expiresIn: token.expiresIn,
+    scopes: token.scopes,
+    userInfo: user,
+  };
+}
+
+async function exchangeTestOauthGrant(args: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly code: string;
+  readonly redirectUri: string;
+}): Promise<TestOAuthGrantResult> {
+  const token = await exchangeTestOauthToken(args);
+  return {
     outputs: {
       accessToken: token.accessToken,
       refreshToken: token.refreshToken,
     },
     expiresIn: token.expiresIn,
     scopes: token.scopes,
-    userInfo: user,
+    userInfo: token.userInfo,
+  };
+}
+
+async function exchangeTestOauthApiGrant(args: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+  readonly code: string;
+  readonly redirectUri: string;
+}): Promise<TestOAuthApiGrantResult> {
+  const token = await exchangeTestOauthToken(args);
+  return {
+    outputs: {
+      initialAccessToken: token.accessToken,
+      initialRefreshToken: token.refreshToken,
+    },
+    expiresIn: token.expiresIn,
+    scopes: token.scopes,
+    userInfo: token.userInfo,
   };
 }
 
@@ -83,7 +132,7 @@ function createTestOauthApiGrant(): AuthCodeGrantProvider<"test-oauth", "api"> {
     },
     exchangeCode: async (exchangeArgs) => {
       const { clientId, clientSecret } = exchangeArgs.authClient;
-      return await exchangeTestOauthGrant({
+      return await exchangeTestOauthApiGrant({
         clientId,
         clientSecret,
         code: exchangeArgs.code,

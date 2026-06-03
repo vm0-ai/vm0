@@ -240,6 +240,16 @@ type DynamicTestOAuthExchangeResult = {
   };
 };
 
+type DynamicTestOAuthApiExchangeResult = Omit<
+  DynamicTestOAuthExchangeResult,
+  "outputs"
+> & {
+  readonly outputs: {
+    readonly initialAccessToken: string;
+    readonly initialRefreshToken: string;
+  };
+};
+
 const defaultDynamicTestOAuthExchangeOptions = {
   authMethod: "oauth",
   provider: testOauthProvider,
@@ -287,6 +297,22 @@ function dynamicTestOAuthExchangeResult(): DynamicTestOAuthExchangeResult {
     outputs: {
       accessToken: "dynamic-access-token",
       refreshToken: "dynamic-refresh-token",
+    },
+    expiresIn: 3600,
+    scopes: ["read"],
+    userInfo: {
+      id: "dynamic-user-id",
+      username: "dynamic-user",
+      email: "dynamic@example.com",
+    },
+  };
+}
+
+function dynamicTestOAuthApiExchangeResult(): DynamicTestOAuthApiExchangeResult {
+  return {
+    outputs: {
+      initialAccessToken: "dynamic-access-token",
+      initialRefreshToken: "dynamic-refresh-token",
     },
     expiresIn: 3600,
     scopes: ["read"],
@@ -363,7 +389,7 @@ function configureDynamicTestOAuthExchange(
   const originalExchangeCode = provider.grant.exchangeCode;
   provider.grant.exchangeCode = (exchangeArgs) => {
     captureDynamicTestOAuthExchange(exchanges, exchangeArgs);
-    return Promise.resolve(dynamicTestOAuthExchangeResult());
+    return Promise.resolve(dynamicTestOAuthApiExchangeResult());
   };
   return () => {
     mutableMethod.client = originalClient;
@@ -2188,7 +2214,7 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
-  it("stores tokens under the selected non-default auth method", async () => {
+  it("stores tokens through method-specific grant output names", async () => {
     const dynamicOAuth = useDynamicTestOAuthExchange({
       authMethod: "api",
       provider: testOauthApiProvider,
@@ -2233,6 +2259,13 @@ describe("GET /api/connectors/:type/callback", () => {
         name: "TEST_OAUTH_API_ACCESS_TOKEN",
       }),
     ).resolves.toBe("dynamic-access-token");
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_REFRESH_TOKEN",
+      }),
+    ).resolves.toBe("dynamic-refresh-token");
     await expect(
       findSecret({
         orgId,

@@ -26,8 +26,8 @@ const TEST_OAUTH_API_AUTH_CODE_GRANT = {
   kind: "auth-code",
   scopes: ["read"],
   outputs: {
-    accessToken: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
-    refreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
+    initialAccessToken: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+    initialRefreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
   },
 } as const satisfies ConnectorAuthCodeGrantConfig;
 
