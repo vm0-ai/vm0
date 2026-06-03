@@ -614,19 +614,11 @@ function configureDynamicTestOAuthRefresh(
   refreshes: CapturedOAuthRefresh[],
 ): () => void {
   const method = getConnectorAuthMethod("test-oauth", "oauth");
-  if (method?.grant.kind !== "auth-code") {
-    throw new Error("test-oauth OAuth config is missing");
-  }
-
-  const mutableMethod = method as { client: ConnectorAuthClientConfig };
-  const originalClient = mutableMethod.client;
+  const originalClient = method.client;
   const access = testOauthProvider.access;
-  if (access.kind !== "refresh-token") {
-    throw new Error("test-oauth provider should support refresh");
-  }
   const originalRefresh = access.refresh;
 
-  mutableMethod.client = dynamicPublicClient;
+  Object.assign(method, { client: dynamicPublicClient });
   access.refresh = (args) => {
     refreshes.push({
       clientId:
@@ -650,7 +642,7 @@ function configureDynamicTestOAuthRefresh(
   };
 
   return () => {
-    mutableMethod.client = originalClient;
+    Object.assign(method, { client: originalClient });
     access.refresh = originalRefresh;
   };
 }
@@ -663,19 +655,11 @@ function configureDynamicTestOAuthApiRefresh(
   },
 ): () => void {
   const method = getConnectorAuthMethod("test-oauth", "api");
-  if (method?.grant.kind !== "auth-code") {
-    throw new Error("test-oauth API config is missing");
-  }
-
-  const mutableMethod = method as { client: ConnectorAuthClientConfig };
-  const originalClient = mutableMethod.client;
+  const originalClient = method.client;
   const access = testOauthApiProvider.access;
-  if (access.kind !== "refresh-token") {
-    throw new Error("test-oauth API provider should support refresh");
-  }
   const originalRefresh = access.refresh;
 
-  mutableMethod.client = dynamicPublicClient;
+  Object.assign(method, { client: dynamicPublicClient });
   access.refresh = (args) => {
     refreshes.push({
       clientId:
@@ -697,7 +681,7 @@ function configureDynamicTestOAuthApiRefresh(
   };
 
   return () => {
-    mutableMethod.client = originalClient;
+    Object.assign(method, { client: originalClient });
     access.refresh = originalRefresh;
   };
 }
@@ -707,19 +691,11 @@ function configureMalformedTestOAuthApiRefresh(
   outputs: Readonly<Record<string, string | undefined>>,
 ): () => void {
   const method = getConnectorAuthMethod("test-oauth", "api");
-  if (method?.grant.kind !== "auth-code") {
-    throw new Error("test-oauth API config is missing");
-  }
-
-  const mutableMethod = method as { client: ConnectorAuthClientConfig };
-  const originalClient = mutableMethod.client;
+  const originalClient = method.client;
   const access = testOauthApiProvider.access;
-  if (access.kind !== "refresh-token") {
-    throw new Error("test-oauth API provider should support refresh");
-  }
   const originalRefresh = access.refresh;
 
-  mutableMethod.client = dynamicPublicClient;
+  Object.assign(method, { client: dynamicPublicClient });
   const malformedRefresh = (
     args: Parameters<typeof originalRefresh>[0],
   ): Promise<unknown> => {
@@ -746,7 +722,7 @@ function configureMalformedTestOAuthApiRefresh(
   access.refresh = malformedRefresh as typeof originalRefresh;
 
   return () => {
-    mutableMethod.client = originalClient;
+    Object.assign(method, { client: originalClient });
     access.refresh = originalRefresh;
   };
 }

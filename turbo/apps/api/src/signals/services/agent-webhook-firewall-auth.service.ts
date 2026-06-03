@@ -520,14 +520,12 @@ function modelProviderTypeForMetadata(
 }
 
 function currentProviderEnv(): ProviderEnv {
-  return new Proxy(
-    {},
-    {
-      get: (_target, property) => {
-        return typeof property === "string" ? optionalEnv(property) : undefined;
-      },
+  const env: ProviderEnv = {};
+  return new Proxy(env, {
+    get: (_target, property) => {
+      return typeof property === "string" ? optionalEnv(property) : undefined;
     },
-  ) as ProviderEnv;
+  });
 }
 
 function refreshFailureReasonFromError(
