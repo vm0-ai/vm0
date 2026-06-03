@@ -119,6 +119,28 @@ export function isModelProviderRefreshConfigured(args: {
   return Boolean(access.resolveAuthClient(args.currentEnv));
 }
 
+export function refreshModelProviderAccess<
+  ProviderKey extends ModelProviderRefreshProviderKey,
+>(args: {
+  readonly providerKey: ProviderKey;
+  readonly currentEnv: ProviderEnv;
+  readonly inputs: ModelProviderRefreshInputValues<ProviderKey>;
+  readonly signal: AbortSignal;
+}): Promise<
+  ModelProviderAuthProviderRefreshResult<
+    ModelProviderRefreshOutputValues<ProviderKey>
+  >
+>;
+export function refreshModelProviderAccess(args: {
+  readonly providerKey: ModelProviderRefreshProviderKey;
+  readonly currentEnv: ProviderEnv;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}): Promise<
+  ModelProviderAuthProviderRefreshResult<
+    Readonly<Record<string, string | undefined>>
+  >
+>;
 export async function refreshModelProviderAccess(args: {
   readonly providerKey: ModelProviderRefreshProviderKey;
   readonly currentEnv: ProviderEnv;
