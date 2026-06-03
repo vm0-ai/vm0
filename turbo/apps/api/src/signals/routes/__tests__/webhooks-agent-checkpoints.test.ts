@@ -554,9 +554,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         mountPath: "/workspace/a",
       },
       {
-        name: "artifact-b",
+        name: "memory",
         version: "version-bbb",
-        mountPath: "/workspace/b",
+        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        generatedBy: "apiAutoMemory" as const,
       },
     ];
     const body = {

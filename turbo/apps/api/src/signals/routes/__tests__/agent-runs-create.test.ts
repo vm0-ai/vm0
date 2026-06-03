@@ -32,7 +32,7 @@ import { variables } from "@vm0/db/schema/variable";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore, command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -2278,6 +2278,7 @@ describe("POST /api/agent/runs", () => {
           {
             name: "memory",
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            generatedBy: "apiAutoMemory",
           },
         ],
       })
@@ -2358,6 +2359,112 @@ describe("POST /api/agent/runs", () => {
           {
             name: "memory",
             mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+          },
+        ],
+      })
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("checkpoint insert returned no row");
+    }
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { checkpointId: checkpoint.id, prompt: "resume" },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return (
+          artifact.vasStorageName === "memory" &&
+          artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+        );
+      })?.missingRootPolicy,
+    ).toBeUndefined();
+  });
+
+  it("keeps continued canonical body memory checkpoint artifacts strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const firstConversationId = await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+    const continued = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          sessionId: first.body.sessionId,
+          prompt: "continue",
+          artifacts: [
+            {
+              name: "memory",
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, continued.body.runId));
+    const [memoryStorage] = await db
+      .select({ headVersionId: storages.headVersionId })
+      .from(storages)
+      .where(
+        and(
+          eq(storages.orgId, fx.orgId),
+          eq(storages.userId, fx.userId),
+          eq(storages.type, "artifact"),
+          eq(storages.name, "memory"),
+        ),
+      );
+    if (!memoryStorage?.headVersionId) {
+      throw new Error("memory storage has no head version");
+    }
+    const [checkpoint] = await db
+      .insert(checkpoints)
+      .values({
+        runId: continued.body.runId,
+        conversationId: firstConversationId,
+        agentComposeSnapshot: { agentComposeVersionId: compose.versionId },
+        artifactSnapshots: [
+          {
+            name: "memory",
+            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            version: memoryStorage.headVersionId,
           },
         ],
       })

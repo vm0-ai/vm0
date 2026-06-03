@@ -82,6 +82,7 @@ function artifactSnapshotsForDb(
       name: snapshot.name,
       version: snapshot.version,
       mountPath: snapshot.mountPath,
+      ...(snapshot.generatedBy ? { generatedBy: snapshot.generatedBy } : {}),
     };
   });
 }

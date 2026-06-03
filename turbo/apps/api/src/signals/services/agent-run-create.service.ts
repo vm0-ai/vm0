@@ -632,31 +632,6 @@ function isAutoMemoryArtifact(
   );
 }
 
-function mergeArtifactGenerationMetadata(args: {
-  readonly artifacts: readonly ContextArtifact[];
-  readonly sourceArtifacts: readonly ContextArtifact[];
-}): readonly ContextArtifact[] {
-  const generatedByByIdentity = new Map<
-    string,
-    ContextArtifact["generatedBy"]
-  >();
-  for (const artifact of args.sourceArtifacts) {
-    if (artifact.generatedBy) {
-      generatedByByIdentity.set(
-        `${artifact.name}\u0000${artifact.mountPath}`,
-        artifact.generatedBy,
-      );
-    }
-  }
-
-  return args.artifacts.map((artifact) => {
-    const generatedBy = generatedByByIdentity.get(
-      `${artifact.name}\u0000${artifact.mountPath}`,
-    );
-    return generatedBy ? { ...artifact, generatedBy } : artifact;
-  });
-}
-
 function storageArtifactsForRun(
   artifacts: readonly ContextArtifact[],
   autoMemoryPolicyArtifactIndex: number | undefined,
@@ -2512,7 +2487,6 @@ function resolveByCheckpointId(
         .select({
           snapshot: checkpoints.agentComposeSnapshot,
           artifacts: checkpoints.artifactSnapshots,
-          sessionArtifacts: agentSessions.artifacts,
           volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
           conversationId: checkpoints.conversationId,
           runUserId: agentRuns.userId,
@@ -2520,7 +2494,6 @@ function resolveByCheckpointId(
         })
         .from(checkpoints)
         .leftJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
-        .leftJoin(agentSessions, eq(agentRuns.sessionId, agentSessions.id))
         .where(eq(checkpoints.id, checkpointId))
         .limit(1);
 
@@ -2548,10 +2521,7 @@ function resolveByCheckpointId(
 
       return {
         ...resolved,
-        artifacts: mergeArtifactGenerationMetadata({
-          artifacts: row.artifacts ?? [],
-          sourceArtifacts: row.sessionArtifacts ?? [],
-        }),
+        artifacts: row.artifacts ?? [],
         vars: snapshot.vars ?? {},
         volumeVersions: parseVolumeVersionsSnapshot(row.volumeVersionsSnapshot),
         additionalVolumes: parseAdditionalVolumesSnapshot(
