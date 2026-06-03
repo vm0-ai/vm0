@@ -12,7 +12,9 @@ use nix::fcntl::Flock;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::io::AsyncReadExt;
-use tracing::{debug, info, warn};
+#[cfg(test)]
+use tracing::debug;
+use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::StorageFingerprints;
@@ -119,6 +121,45 @@ pub(crate) struct WorkspaceImageLease {
     result: WorkspaceCacheCheckoutResult,
     previous_storage: Option<StorageFingerprints>,
     entry_lock: Option<Flock<std::fs::File>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct WorkspaceImagePromotionContext {
+    cache: SessionWorkspaceCache,
+    cache_key: String,
+    run_id: RunId,
+    sandbox_id: sandbox::SandboxId,
+    profile_name: String,
+    session_id: String,
+    working_dir: String,
+    active_image: PathBuf,
+    image_size_bytes: u64,
+    terminal_status: WorkspaceCacheTerminalStatus,
+    completed_at: String,
+    storage_fingerprints: StorageFingerprints,
+}
+
+pub(crate) struct WorkspaceImagePromotionRequest<'a> {
+    pub(crate) run_id: RunId,
+    pub(crate) sandbox_id: sandbox::SandboxId,
+    pub(crate) session_id_override: Option<&'a str>,
+    pub(crate) terminal_status: WorkspaceCacheTerminalStatus,
+    pub(crate) completed_at: String,
+    pub(crate) storage_fingerprints: StorageFingerprints,
+    pub(crate) promotable: bool,
+}
+
+struct WorkspaceImagePromotionInput<'a> {
+    run_id: RunId,
+    cache_key: &'a str,
+    profile_name: &'a str,
+    session_id: &'a str,
+    working_dir: &'a str,
+    active_image: &'a Path,
+    image_size_bytes: u64,
+    terminal_status: WorkspaceCacheTerminalStatus,
+    completed_at: &'a str,
+    storage_fingerprints: &'a StorageFingerprints,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1243,6 +1284,179 @@ impl SessionWorkspaceCache {
             Err(e) => Err(e.into()),
         }
     }
+
+    async fn promote_locked(&self, input: WorkspaceImagePromotionInput<'_>) -> RunnerResult<bool> {
+        let metadata_path = self.session_workspace_cache_metadata(input.cache_key);
+        match self
+            .read_valid_metadata(
+                &metadata_path,
+                input.profile_name,
+                input.session_id,
+                input.working_dir,
+                input.image_size_bytes,
+            )
+            .await
+        {
+            Ok(Some(metadata)) if metadata.last_completed_at.as_str() >= input.completed_at => {
+                info!(
+                    run_id = %input.run_id,
+                    cache_key = input.cache_key,
+                    existing_last_completed_at = %metadata.last_completed_at,
+                    promotion_completed_at = %input.completed_at,
+                    "workspace image cache promotion skipped because existing cache is newer"
+                );
+                return Ok(false);
+            }
+            Ok(_) => {}
+            Err(e) => warn!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                error = %e,
+                "workspace image cache existing metadata invalid during promotion; overwriting"
+            ),
+        }
+
+        let mut stats = self.fs_stats().await?;
+        let mut budget = CacheBudget::from_fs_stats(stats);
+        if stats.available_bytes < budget.min_free_bytes {
+            match self.gc(false).await {
+                Ok(freed) if freed > 0 => {
+                    stats = self.fs_stats().await?;
+                    budget = CacheBudget::from_fs_stats(stats);
+                }
+                Ok(_) => {}
+                Err(e) => warn!(
+                    run_id = %input.run_id,
+                    cache_key = input.cache_key,
+                    error = %e,
+                    "workspace image cache GC failed before promotion"
+                ),
+            }
+        }
+        if stats.available_bytes < budget.min_free_bytes {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                available_bytes = stats.available_bytes,
+                min_free_bytes = budget.min_free_bytes,
+                "workspace image cache promotion skipped due to free-space pressure"
+            );
+            return Ok(false);
+        }
+        let image_metadata = fs::metadata(input.active_image).await?;
+        let active_allocated = allocated_bytes(&image_metadata);
+        if active_allocated > budget.max_entry_bytes {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                allocated_bytes = active_allocated,
+                max_entry_bytes = budget.max_entry_bytes,
+                "workspace image cache promotion skipped because image is too large"
+            );
+            return Ok(false);
+        }
+        if !has_copy_headroom(stats, budget, active_allocated) {
+            match self.gc(false).await {
+                Ok(freed) if freed > 0 => {
+                    stats = self.fs_stats().await?;
+                    budget = CacheBudget::from_fs_stats(stats);
+                }
+                Ok(_) => {}
+                Err(e) => warn!(
+                    run_id = %input.run_id,
+                    cache_key = input.cache_key,
+                    error = %e,
+                    "workspace image cache GC failed before promotion copy"
+                ),
+            }
+        }
+        if !has_copy_headroom(stats, budget, active_allocated) {
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                allocated_bytes = active_allocated,
+                available_bytes = stats.available_bytes,
+                min_free_bytes = budget.min_free_bytes,
+                "workspace image cache promotion skipped due to copy free-space pressure"
+            );
+            return Ok(false);
+        }
+
+        let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
+        fs::create_dir_all(&cache_dir).await?;
+        let tmp = self.session_workspace_cache_tmp_image(input.cache_key, input.run_id);
+        if fs::try_exists(&tmp).await.unwrap_or(false) {
+            let _ = fs::remove_file(&tmp).await;
+        }
+        if let Err(e) = sparse_copy(input.active_image, &tmp).await {
+            let _ = fs::remove_file(&tmp).await;
+            return Err(e);
+        }
+        let tmp_metadata = fs::metadata(&tmp).await?;
+        let tmp_allocated = allocated_bytes(&tmp_metadata);
+        if tmp_allocated > budget.max_entry_bytes {
+            let _ = fs::remove_file(&tmp).await;
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                allocated_bytes = tmp_allocated,
+                max_entry_bytes = budget.max_entry_bytes,
+                "workspace image cache promotion skipped because copied image is too large"
+            );
+            return Ok(false);
+        }
+        let current = self.session_workspace_cache_current_image(input.cache_key);
+        if let Err(e) = fs::rename(&tmp, &current).await {
+            let _ = fs::remove_file(&tmp).await;
+            return Err(e.into());
+        }
+        let current_metadata = fs::metadata(&current).await?;
+        let logical_image_size_bytes = current_metadata.len();
+        let allocated = allocated_bytes(&current_metadata);
+        let metadata = WorkspaceCacheMetadata {
+            format_version: CACHE_FORMAT_VERSION,
+            key_version: CACHE_KEY_VERSION,
+            cache_scope: self.inner.cache_scope.clone(),
+            profile_name: input.profile_name.to_owned(),
+            session_id: input.session_id.to_owned(),
+            working_dir: input.working_dir.to_owned(),
+            last_completed_at: input.completed_at.to_owned(),
+            last_used_at: local_timestamp(),
+            last_terminal_status: input.terminal_status,
+            workspace_trust: WorkspaceTrust::Clean,
+            logical_image_size_bytes,
+            allocated_bytes: allocated,
+            current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+            drive_layout: WORKSPACE_DRIVE_LAYOUT.to_owned(),
+            storage_fingerprints: filter_storage_fingerprints_for_working_dir(
+                input.storage_fingerprints,
+                input.working_dir,
+            ),
+            state: WorkspaceCacheState::Current,
+        };
+        if let Err(e) = self
+            .write_metadata(input.cache_key, input.run_id, metadata)
+            .await
+        {
+            let _ = fs::remove_file(&current).await;
+            return Err(e);
+        }
+        info!(
+            run_id = %input.run_id,
+            cache_key = input.cache_key,
+            allocated_bytes = allocated,
+            "workspace image cache promoted"
+        );
+        if let Err(e) = self.gc(false).await {
+            warn!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                error = %e,
+                "workspace image cache GC failed after promotion"
+            );
+        }
+        Ok(true)
+    }
 }
 
 impl WorkspaceImageLease {
@@ -1269,10 +1483,6 @@ impl WorkspaceImageLease {
                 size_mb: workspace_image_size_mb(self.image_size_bytes),
                 seed_image: self.source_image.clone(),
             })
-    }
-
-    pub(crate) fn workspace_drive_available(&self) -> bool {
-        self.workspace_drive_enabled
     }
 
     pub(crate) fn can_attempt_promotion(&self, session_id_override: Option<&str>) -> bool {
@@ -1304,6 +1514,7 @@ impl WorkspaceImageLease {
             .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn promote(
         &self,
         run_id: RunId,
@@ -1383,145 +1594,122 @@ impl WorkspaceImageLease {
             return Ok(false);
         };
 
-        let mut stats = self.cache.fs_stats().await?;
-        let mut budget = CacheBudget::from_fs_stats(stats);
-        if stats.available_bytes < budget.min_free_bytes {
-            match self.cache.gc(false).await {
-                Ok(freed) if freed > 0 => {
-                    stats = self.cache.fs_stats().await?;
-                    budget = CacheBudget::from_fs_stats(stats);
-                }
-                Ok(_) => {}
-                Err(e) => warn!(
-                    run_id = %run_id,
-                    cache_key,
-                    error = %e,
-                    "workspace image cache GC failed before promotion"
-                ),
-            }
-        }
-        if stats.available_bytes < budget.min_free_bytes {
-            info!(
-                run_id = %run_id,
+        self.cache
+            .promote_locked(WorkspaceImagePromotionInput {
+                run_id,
                 cache_key,
-                available_bytes = stats.available_bytes,
-                min_free_bytes = budget.min_free_bytes,
-                "workspace image cache promotion skipped due to free-space pressure"
-            );
-            return Ok(false);
+                profile_name: &self.profile_name,
+                session_id,
+                working_dir: &self.working_dir,
+                active_image: &self.active_image,
+                image_size_bytes: self.image_size_bytes,
+                terminal_status,
+                completed_at: &completed_at,
+                storage_fingerprints,
+            })
+            .await
+    }
+
+    pub(crate) fn into_promotion_context(
+        self,
+        request: WorkspaceImagePromotionRequest<'_>,
+    ) -> Option<WorkspaceImagePromotionContext> {
+        if !request.promotable {
+            return None;
         }
-        let image_metadata = fs::metadata(&self.active_image).await?;
-        let active_allocated = allocated_bytes(&image_metadata);
-        if active_allocated > budget.max_entry_bytes {
-            info!(
-                run_id = %run_id,
-                cache_key,
-                allocated_bytes = active_allocated,
-                max_entry_bytes = budget.max_entry_bytes,
-                "workspace image cache promotion skipped because image is too large"
-            );
-            return Ok(false);
-        }
-        if !has_copy_headroom(stats, budget, active_allocated) {
-            match self.cache.gc(false).await {
-                Ok(freed) if freed > 0 => {
-                    stats = self.cache.fs_stats().await?;
-                    budget = CacheBudget::from_fs_stats(stats);
-                }
-                Ok(_) => {}
-                Err(e) => warn!(
-                    run_id = %run_id,
-                    cache_key,
-                    error = %e,
-                    "workspace image cache GC failed before promotion copy"
-                ),
-            }
-        }
-        if !has_copy_headroom(stats, budget, active_allocated) {
-            info!(
-                run_id = %run_id,
-                cache_key,
-                allocated_bytes = active_allocated,
-                available_bytes = stats.available_bytes,
-                min_free_bytes = budget.min_free_bytes,
-                "workspace image cache promotion skipped due to copy free-space pressure"
-            );
-            return Ok(false);
+        if !self.workspace_drive_enabled || !is_safe_guest_working_dir(&self.working_dir) {
+            return None;
         }
 
-        let cache_dir = self.cache.session_workspace_cache_entry_dir(cache_key);
-        fs::create_dir_all(&cache_dir).await?;
-        let tmp = self
-            .cache
-            .session_workspace_cache_tmp_image(cache_key, run_id);
-        if fs::try_exists(&tmp).await.unwrap_or(false) {
-            let _ = fs::remove_file(&tmp).await;
-        }
-        if let Err(e) = sparse_copy(&self.active_image, &tmp).await {
-            let _ = fs::remove_file(&tmp).await;
-            return Err(e);
-        }
-        let tmp_metadata = fs::metadata(&tmp).await?;
-        let tmp_allocated = allocated_bytes(&tmp_metadata);
-        if tmp_allocated > budget.max_entry_bytes {
-            let _ = fs::remove_file(&tmp).await;
-            info!(
-                run_id = %run_id,
-                cache_key,
-                allocated_bytes = tmp_allocated,
-                max_entry_bytes = budget.max_entry_bytes,
-                "workspace image cache promotion skipped because copied image is too large"
-            );
-            return Ok(false);
-        }
-        let current = self.cache.session_workspace_cache_current_image(cache_key);
-        if let Err(e) = fs::rename(&tmp, &current).await {
-            let _ = fs::remove_file(&tmp).await;
-            return Err(e.into());
-        }
-        let current_metadata = fs::metadata(&current).await?;
-        let logical_image_size_bytes = current_metadata.len();
-        let allocated = allocated_bytes(&current_metadata);
-        let metadata = WorkspaceCacheMetadata {
-            format_version: CACHE_FORMAT_VERSION,
-            key_version: CACHE_KEY_VERSION,
-            cache_scope: self.cache.inner.cache_scope.clone(),
-            profile_name: self.profile_name.clone(),
-            session_id: session_id.to_owned(),
-            working_dir: self.working_dir.clone(),
-            last_completed_at: completed_at,
-            last_used_at: local_timestamp(),
-            last_terminal_status: terminal_status,
-            workspace_trust: WorkspaceTrust::Clean,
-            logical_image_size_bytes,
-            allocated_bytes: allocated,
-            current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
-            drive_layout: WORKSPACE_DRIVE_LAYOUT.to_owned(),
-            storage_fingerprints: filter_storage_fingerprints_for_working_dir(
-                storage_fingerprints,
-                &self.working_dir,
-            ),
-            state: WorkspaceCacheState::Current,
+        let session_id = match self.result {
+            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
+                self.session_id.clone()?
+            }
+            WorkspaceCacheCheckoutResult::NoSession => request.session_id_override?.to_owned(),
+            WorkspaceCacheCheckoutResult::InvalidWorkingDir
+            | WorkspaceCacheCheckoutResult::LockBusy
+            | WorkspaceCacheCheckoutResult::InvalidMetadata
+            | WorkspaceCacheCheckoutResult::DiskPressure => return None,
         };
-        if let Err(e) = self.cache.write_metadata(cache_key, run_id, metadata).await {
-            let _ = fs::remove_file(&current).await;
-            return Err(e);
-        }
-        info!(
-            run_id = %run_id,
+
+        let cache_key = match self.result {
+            WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
+                self.entry_lock.as_ref()?;
+                self.cache_key.clone()?
+            }
+            WorkspaceCacheCheckoutResult::NoSession => self.cache.scoped_cache_key(
+                &self.profile_name,
+                &session_id,
+                &self.working_dir,
+                self.image_size_bytes,
+            ),
+            WorkspaceCacheCheckoutResult::InvalidWorkingDir
+            | WorkspaceCacheCheckoutResult::LockBusy
+            | WorkspaceCacheCheckoutResult::InvalidMetadata
+            | WorkspaceCacheCheckoutResult::DiskPressure => return None,
+        };
+
+        Some(WorkspaceImagePromotionContext {
+            cache: self.cache.clone(),
             cache_key,
-            allocated_bytes = allocated,
-            "workspace image cache promoted"
-        );
-        if let Err(e) = self.cache.gc(false).await {
-            warn!(
-                run_id = %run_id,
-                cache_key,
-                error = %e,
-                "workspace image cache GC failed after promotion"
-            );
-        }
-        Ok(true)
+            run_id: request.run_id,
+            sandbox_id: request.sandbox_id,
+            profile_name: self.profile_name.clone(),
+            session_id,
+            working_dir: self.working_dir.clone(),
+            active_image: self.active_image.clone(),
+            image_size_bytes: self.image_size_bytes,
+            terminal_status: request.terminal_status,
+            completed_at: request.completed_at,
+            storage_fingerprints: request.storage_fingerprints,
+        })
+    }
+}
+
+impl WorkspaceImagePromotionContext {
+    pub(crate) fn run_id(&self) -> RunId {
+        self.run_id
+    }
+
+    pub(crate) fn sandbox_id(&self) -> sandbox::SandboxId {
+        self.sandbox_id
+    }
+
+    pub(crate) fn profile_name(&self) -> &str {
+        &self.profile_name
+    }
+
+    pub(crate) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    pub(crate) async fn promote(&self) -> RunnerResult<bool> {
+        let tainted_storage_fingerprints;
+        let promotion_storage_fingerprints = match self.terminal_status {
+            WorkspaceCacheTerminalStatus::Success => &self.storage_fingerprints,
+            WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
+                tainted_storage_fingerprints = self.storage_fingerprints.tainted_paths();
+                &tainted_storage_fingerprints
+            }
+        };
+
+        let _entry_lock_guard =
+            crate::lock::acquire(self.cache.entry_lock_path(&self.cache_key)).await?;
+
+        self.cache
+            .promote_locked(WorkspaceImagePromotionInput {
+                run_id: self.run_id,
+                cache_key: &self.cache_key,
+                profile_name: &self.profile_name,
+                session_id: &self.session_id,
+                working_dir: &self.working_dir,
+                active_image: &self.active_image,
+                image_size_bytes: self.image_size_bytes,
+                terminal_status: self.terminal_status,
+                completed_at: &self.completed_at,
+                storage_fingerprints: promotion_storage_fingerprints,
+            })
+            .await
     }
 }
 
@@ -2000,6 +2188,130 @@ mod tests {
             "/workspace",
             image.len() as u64,
         )
+    }
+
+    #[tokio::test]
+    async fn promotion_does_not_overwrite_newer_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let session_id = "sess-race";
+        let image_size = b"new image".len() as u64;
+        let key = promote_current_cache_entry(
+            &cache,
+            &paths,
+            session_id,
+            b"new image",
+            "2026-06-02T00:00:00.000Z",
+        )
+        .await;
+        let stale_run_id = RunId::new_v4();
+        let stale_sandbox_id = sandbox::SandboxId::new_v4();
+        let stale_lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: stale_run_id,
+                sandbox_id: stale_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert!(stale_lease.is_cache_hit());
+        let stale_active_image = paths.active_workspace_image(&stale_sandbox_id);
+        tokio::fs::create_dir_all(stale_active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&stale_active_image, b"old image")
+            .await
+            .unwrap();
+
+        let promoted = stale_lease
+            .promote(
+                stale_run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-06-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        assert!(!promoted);
+        drop(stale_lease);
+        let metadata = cache
+            .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+        assert_eq!(metadata.last_completed_at, "2026-06-02T00:00:00.000Z");
+        let current = tokio::fs::read(paths.session_workspace_cache_current_image(&key))
+            .await
+            .unwrap();
+        assert_eq!(current, b"new image");
+    }
+
+    #[tokio::test]
+    async fn promotion_overwrites_older_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let session_id = "sess-newer";
+        let image_size = b"old image".len() as u64;
+        let key = promote_current_cache_entry(
+            &cache,
+            &paths,
+            session_id,
+            b"old image",
+            "2026-06-01T00:00:00.000Z",
+        )
+        .await;
+        let newer_run_id = RunId::new_v4();
+        let newer_sandbox_id = sandbox::SandboxId::new_v4();
+        let newer_lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: newer_run_id,
+                sandbox_id: newer_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes: image_size,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert!(newer_lease.is_cache_hit());
+        let newer_active_image = paths.active_workspace_image(&newer_sandbox_id);
+        tokio::fs::create_dir_all(newer_active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&newer_active_image, b"new image")
+            .await
+            .unwrap();
+
+        let promoted = newer_lease
+            .promote(
+                newer_run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-06-02T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap();
+
+        assert!(promoted);
+        drop(newer_lease);
+        let metadata = cache
+            .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
+            .await
+            .unwrap();
+        assert_eq!(metadata.last_completed_at, "2026-06-02T00:00:00.000Z");
+        let current = tokio::fs::read(paths.session_workspace_cache_current_image(&key))
+            .await
+            .unwrap();
+        assert_eq!(current, b"new image");
     }
 
     #[test]

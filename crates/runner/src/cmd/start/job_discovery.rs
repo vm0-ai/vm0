@@ -307,7 +307,7 @@ async fn try_reuse_from_pool(
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
-                    spawn_idle_destroy_job(ctx.destroy_tasks, destroy_job, "reuse_unpark_failed");
+                    spawn_idle_destroy_job(ctx.destroy_tasks, *destroy_job, "reuse_unpark_failed");
                     (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
                 }
             }

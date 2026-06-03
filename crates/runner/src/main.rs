@@ -38,6 +38,7 @@ mod telemetry;
 mod types;
 mod workspace_image_cache;
 mod workspace_mount;
+mod workspace_promotion;
 
 use std::path::Path;
 use std::process::ExitCode;

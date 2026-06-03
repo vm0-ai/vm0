@@ -32,8 +32,10 @@ use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::status::StatusTracker;
-use crate::workspace_image_cache::{WorkspaceCacheTerminalStatus, WorkspaceImageLease};
-use crate::workspace_mount::flush_and_unmount_workspace_drive;
+use crate::workspace_image_cache::{
+    WorkspaceCacheTerminalStatus, WorkspaceImageLease, WorkspaceImagePromotionRequest,
+};
+use crate::workspace_promotion::promote_workspace_image_from_active_sandbox;
 
 fn local_completed_at() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -118,6 +120,8 @@ pub(super) async fn finalize_sandbox_for_completion(
     } = ctx;
 
     let cancelled = cancel.is_cancelled();
+    let terminal_status = workspace_terminal_status(exit_code, cancelled);
+    let completed_at = local_completed_at();
     let parkable_session = if exit_code == 0 && !cancelled && parking_gate.is_open() {
         // Prefer context session_id (from resume_session), fall back to
         // guest-reported session ID (first run — CLI generated it).
@@ -128,27 +132,22 @@ pub(super) async fn finalize_sandbox_for_completion(
     } else {
         None
     };
+    let promotion_session_id = session_id.as_deref().or(guest_session_id.as_deref());
+    let workspace_promotion = workspace_image.and_then(|workspace_image| {
+        workspace_image.into_promotion_context(WorkspaceImagePromotionRequest {
+            run_id,
+            sandbox_id,
+            session_id_override: promotion_session_id,
+            terminal_status,
+            completed_at: completed_at.clone(),
+            storage_fingerprints: storage_fingerprints.clone(),
+            promotable: workspace_promotable,
+        })
+    });
 
     let mut session_affinity_changed = false;
     let mut session_affinity_refresh_sent = false;
     let budget = if let Some(session_id) = parkable_session {
-        let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
-            sandbox.as_ref(),
-            run_id,
-            workspace_image.as_ref(),
-            workspace_promotable,
-            workspace_terminal_status(exit_code, cancelled),
-            &storage_fingerprints,
-            &WorkspacePromotionLogContext {
-                sandbox_id,
-                profile_name: &profile_name,
-                session_id: Some(&session_id),
-                reason: "park",
-            },
-        )
-        .await;
-        session_affinity_changed |= workspace_cache_promoted;
-
         // Inflate the guest balloon BEFORE acquiring the pool lock —
         // the HTTP call to Firecracker can take milliseconds, and we
         // must not block other take/park operations on it.
@@ -162,6 +161,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             budget_lease: active_lease.into_idle_park_lease(),
             source_ip,
             storage_fingerprints,
+            workspace_promotion,
         });
         let candidate = match park_request.park_for_idle().await {
             Ok(candidate) => candidate,
@@ -208,38 +208,21 @@ pub(super) async fn finalize_sandbox_for_completion(
                             budget_lease,
                         )),
                     ),
-                    workspace_cache_promoted,
+                    false,
                     false,
                 );
             }
         };
         if cancel.is_cancelled() {
-            let IdleParkActiveParts {
-                sandbox,
-                factory: candidate_factory,
-                budget_lease,
-            } = candidate.into_active_parts();
+            let (payload, budget_lease) = candidate.into_active_destroy_parts();
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
                 session_id,
                 "job cancelled while parking, destroying VM"
             );
-            let destroy_outcome = stop_and_destroy_sandbox(
-                sandbox,
-                &**candidate_factory,
-                ActiveCleanupContext {
-                    run_id,
-                    sandbox_id,
-                    profile_name: &profile_name,
-                    session_id: Some(&session_id),
-                    reason: "cancelled",
-                    network_log_session: None,
-                    network_log_drain: network_log_drain.clone(),
-                },
-            )
-            .await;
-            if destroy_outcome == DestroyOutcome::Completed {
+            let destroy_result = destroy_idle_payload_and_wait(payload, "cancelled").await;
+            if destroy_result.outcome == DestroyOutcome::Completed {
                 cleanup_state.mark_destroy_completed();
             }
             #[cfg(test)]
@@ -248,6 +231,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                 OuterJobPanicPoint::DestroyCompleted,
                 run_id,
             );
+            session_affinity_changed |= destroy_result.workspace_cache_promoted;
             BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(budget_lease))
         } else {
             close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
@@ -261,26 +245,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                     "job cancelled before idle pool ownership transfer, destroying VM"
                 );
                 drop(pool);
-                let IdleParkActiveParts {
-                    sandbox,
-                    factory: candidate_factory,
-                    budget_lease,
-                } = candidate.into_active_parts();
-                let destroy_outcome = stop_and_destroy_sandbox(
-                    sandbox,
-                    &**candidate_factory,
-                    ActiveCleanupContext {
-                        run_id,
-                        sandbox_id,
-                        profile_name: &profile_name,
-                        session_id: Some(&session_id),
-                        reason: "cancelled",
-                        network_log_session: None,
-                        network_log_drain: network_log_drain.clone(),
-                    },
-                )
-                .await;
-                if destroy_outcome == DestroyOutcome::Completed {
+                let (payload, budget_lease) = candidate.into_active_destroy_parts();
+                let destroy_result = destroy_idle_payload_and_wait(payload, "cancelled").await;
+                if destroy_result.outcome == DestroyOutcome::Completed {
                     cleanup_state.mark_destroy_completed();
                 }
                 #[cfg(test)]
@@ -296,11 +263,11 @@ pub(super) async fn finalize_sandbox_for_completion(
                             budget_lease,
                         )),
                     ),
-                    workspace_cache_promoted,
+                    destroy_result.workspace_cache_promoted,
                     false,
                 );
             }
-            let candidate = candidate.with_last_completed_at(local_completed_at());
+            let candidate = candidate.with_last_completed_at(completed_at.clone());
             match pool.park(candidate) {
                 ParkResult::Parked => {
                     info!(run_id = %run_id, session_id, "VM parked for reuse");
@@ -362,9 +329,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                     // park()ed above; destroying a parked sandbox is
                     // safe — see Replaced arm for rationale.
                     let (payload, lease) = rejected.into_active_destroy_parts();
-                    let destroy_outcome =
+                    let destroy_result =
                         destroy_idle_payload_and_wait(payload, "park_rejected").await;
-                    if destroy_outcome == DestroyOutcome::Completed {
+                    if destroy_result.outcome == DestroyOutcome::Completed {
                         cleanup_state.mark_destroy_completed();
                     }
                     #[cfg(test)]
@@ -373,6 +340,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                         OuterJobPanicPoint::DestroyCompleted,
                         run_id,
                     );
+                    session_affinity_changed |= destroy_result.workspace_cache_promoted;
                     BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(lease))
                 }
             }
@@ -381,23 +349,14 @@ pub(super) async fn finalize_sandbox_for_completion(
         // No parkable session — stop + destroy.
         let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
             sandbox.as_ref(),
-            run_id,
-            workspace_image.as_ref(),
-            workspace_promotable,
-            workspace_terminal_status(exit_code, cancelled),
-            &storage_fingerprints,
-            &WorkspacePromotionLogContext {
-                sandbox_id,
-                profile_name: &profile_name,
-                session_id: session_id.as_deref().or(guest_session_id.as_deref()),
-                reason: active_cleanup_reason(
-                    exit_code,
-                    cancelled,
-                    parking_gate.is_open(),
-                    session_id.as_deref(),
-                    guest_session_id.as_deref(),
-                ),
-            },
+            workspace_promotion.as_ref(),
+            active_cleanup_reason(
+                exit_code,
+                cancelled,
+                parking_gate.is_open(),
+                session_id.as_deref(),
+                guest_session_id.as_deref(),
+            ),
         )
         .await;
         session_affinity_changed |= workspace_cache_promoted;
@@ -477,83 +436,6 @@ fn workspace_terminal_status(exit_code: i32, cancelled: bool) -> WorkspaceCacheT
         WorkspaceCacheTerminalStatus::Success
     } else {
         WorkspaceCacheTerminalStatus::NonzeroExit
-    }
-}
-
-struct WorkspacePromotionLogContext<'a> {
-    sandbox_id: SandboxId,
-    profile_name: &'a str,
-    session_id: Option<&'a str>,
-    reason: &'static str,
-}
-
-async fn promote_workspace_image_from_active_sandbox(
-    sandbox: &dyn Sandbox,
-    run_id: RunId,
-    workspace_image: Option<&WorkspaceImageLease>,
-    workspace_promotable: bool,
-    terminal_status: WorkspaceCacheTerminalStatus,
-    storage_fingerprints: &StorageFingerprints,
-    log: &WorkspacePromotionLogContext<'_>,
-) -> bool {
-    if !workspace_promotable {
-        return false;
-    }
-    let Some(workspace_image) = workspace_image else {
-        return false;
-    };
-    if !workspace_image.workspace_drive_available() {
-        return false;
-    }
-
-    match flush_and_unmount_workspace_drive(sandbox, run_id).await {
-        Ok(()) => {}
-        Err(e) => {
-            warn!(
-                run_id = %run_id,
-                sandbox_id = %log.sandbox_id,
-                profile_name = log.profile_name,
-                session_id = log.session_id.unwrap_or("<none>"),
-                reason = log.reason,
-                error = %e,
-                "workspace image cache promotion skipped because guest unmount failed"
-            );
-            return false;
-        }
-    }
-
-    let tainted_storage_fingerprints;
-    let promotion_storage_fingerprints = match terminal_status {
-        WorkspaceCacheTerminalStatus::Success => storage_fingerprints,
-        WorkspaceCacheTerminalStatus::NonzeroExit | WorkspaceCacheTerminalStatus::Cancelled => {
-            tainted_storage_fingerprints = storage_fingerprints.tainted_paths();
-            &tainted_storage_fingerprints
-        }
-    };
-
-    match workspace_image
-        .promote(
-            run_id,
-            log.session_id,
-            terminal_status,
-            local_completed_at(),
-            promotion_storage_fingerprints,
-        )
-        .await
-    {
-        Ok(promoted) => promoted,
-        Err(e) => {
-            warn!(
-                run_id = %run_id,
-                sandbox_id = %log.sandbox_id,
-                profile_name = log.profile_name,
-                session_id = log.session_id.unwrap_or("<none>"),
-                reason = log.reason,
-                error = %e,
-                "workspace image cache promotion failed"
-            );
-            false
-        }
     }
 }
 
@@ -638,7 +520,10 @@ mod tests {
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{ActiveBudgetLease, CompletionPayload, RunCleanupState};
-    use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
+    use crate::idle_pool::{
+        IdlePool, IdlePoolConfig, ParkedIdleCandidate, ParkingGate,
+        SyntheticParkedIdleCandidateParts,
+    };
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::network_log_manager::NetworkLogManager;
@@ -646,7 +531,9 @@ mod tests {
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::types::SandboxReuseResult;
-    use crate::workspace_image_cache::{SessionWorkspaceCache, WorkspaceImagePrepareRequest};
+    use crate::workspace_image_cache::{
+        SessionWorkspaceCache, WorkspaceImagePrepareRequest, WorkspaceImagePromotionContext,
+    };
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
@@ -664,6 +551,10 @@ mod tests {
 
     impl FinalizeTestFixture {
         async fn new() -> Self {
+            Self::new_with_max_idle(10).await
+        }
+
+        async fn new_with_max_idle(max_idle: usize) -> Self {
             let dir = tempfile::tempdir().unwrap();
             let status = Arc::new(StatusTracker::new(
                 dir.path().join("status.json"),
@@ -677,7 +568,7 @@ mod tests {
                 Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
                     IdlePoolConfig {
                         default_timeout: Duration::from_secs(300),
-                        max_idle: 10,
+                        max_idle,
                     },
                     parking_gate.clone(),
                 )));
@@ -760,6 +651,27 @@ mod tests {
         lease
     }
 
+    fn test_promotion_context(
+        lease: WorkspaceImageLease,
+        run_id: RunId,
+        sandbox_id: SandboxId,
+        session_id: &str,
+        terminal_status: WorkspaceCacheTerminalStatus,
+        storage_fingerprints: crate::idle_pool::StorageFingerprints,
+    ) -> WorkspaceImagePromotionContext {
+        lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status,
+                completed_at: local_completed_at(),
+                storage_fingerprints,
+                promotable: true,
+            })
+            .expect("test workspace image should be promotable")
+    }
+
     #[tokio::test]
     async fn finalizer_closes_network_log_session_before_parking() {
         let (_budget, lease) = test_budget_lease();
@@ -814,25 +726,19 @@ mod tests {
             prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, "sess-promote")
                 .await;
         let sandbox = MockSandbox::new("workspace-promotion");
-
-        let promoted = promote_workspace_image_from_active_sandbox(
-            &sandbox,
+        let promotion = test_promotion_context(
+            lease,
             run_id,
-            Some(&lease),
-            true,
+            sandbox_id,
+            "sess-promote",
             WorkspaceCacheTerminalStatus::Success,
-            &crate::idle_pool::StorageFingerprints::default(),
-            &WorkspacePromotionLogContext {
-                sandbox_id,
-                profile_name: "vm0/default",
-                session_id: Some("sess-promote"),
-                reason: "test",
-            },
-        )
-        .await;
+            crate::idle_pool::StorageFingerprints::default(),
+        );
+
+        let promoted =
+            promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
 
         assert!(promoted);
-        drop(lease);
         let states = cache.held_session_states().await;
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].session_id, "sess-promote");
@@ -864,25 +770,19 @@ mod tests {
                 ("artifact".to_owned(), "v1".to_owned()),
             )]),
         };
-
-        let promoted = promote_workspace_image_from_active_sandbox(
-            &sandbox,
+        let promotion = test_promotion_context(
+            lease,
             run_id,
-            Some(&lease),
-            true,
+            sandbox_id,
+            "sess-nonzero",
             WorkspaceCacheTerminalStatus::NonzeroExit,
-            &storage_fingerprints,
-            &WorkspacePromotionLogContext {
-                sandbox_id,
-                profile_name: "vm0/default",
-                session_id: Some("sess-nonzero"),
-                reason: "test",
-            },
-        )
-        .await;
+            storage_fingerprints,
+        );
+
+        let promoted =
+            promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
 
         assert!(promoted);
-        drop(lease);
         let checkout = cache
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),
@@ -926,25 +826,19 @@ mod tests {
                 .await;
         let sandbox = MockSandbox::new("workspace-promotion-fail");
         sandbox.push_exec_result(Ok(ExecResult::new(64, Vec::new(), b"not mounted".to_vec())));
-
-        let promoted = promote_workspace_image_from_active_sandbox(
-            &sandbox,
+        let promotion = test_promotion_context(
+            lease,
             run_id,
-            Some(&lease),
-            true,
+            sandbox_id,
+            "sess-failed",
             WorkspaceCacheTerminalStatus::Success,
-            &crate::idle_pool::StorageFingerprints::default(),
-            &WorkspacePromotionLogContext {
-                sandbox_id,
-                profile_name: "vm0/default",
-                session_id: Some("sess-failed"),
-                reason: "test",
-            },
-        )
-        .await;
+            crate::idle_pool::StorageFingerprints::default(),
+        );
+
+        let promoted =
+            promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
 
         assert!(!promoted);
-        drop(lease);
         assert!(
             cache.held_session_states().await.is_empty(),
             "unmount failure must not advertise an unflushed workspace image"
@@ -953,7 +847,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn finalizer_promotes_workspace_cache_with_guest_session_id_without_context_session() {
+    async fn finalizer_parks_workspace_cache_promotion_without_publishing_cache() {
         let (_budget, lease) = test_budget_lease();
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
@@ -1012,8 +906,89 @@ mod tests {
         assert_eq!(idle_states.len(), 1);
         assert_eq!(idle_states[0].session_id, "sess-guest");
         let cache_states = cache.held_session_states().await;
+        assert!(
+            cache_states.is_empty(),
+            "parked sandboxes keep the live workspace mounted and must not publish a separate cache image"
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_promotes_workspace_cache_when_parked_candidate_is_rejected() {
+        let fixture = FinalizeTestFixture::new_with_max_idle(1).await;
+        let (_existing_budget, existing_lease) = test_budget_lease();
+        let existing = ParkedIdleCandidate::synthetic_for_test(SyntheticParkedIdleCandidateParts {
+            sandbox: Box::new(MockSandbox::new("existing-idle")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            session_id: "sess-existing".into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            device_rate_limits: None,
+            budget_lease: existing_lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        })
+        .with_last_completed_at(local_completed_at());
+        assert!(matches!(
+            fixture.idle_pool.lock().await.park(existing),
+            ParkResult::Parked
+        ));
+
+        let (_budget, lease) = test_budget_lease();
+        let network_log_session = fixture.network_log_session().await;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some("sess-new"),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: b"image".len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let mut context = fixture.finalize_context(
+            run_id,
+            sandbox_id,
+            "sess-new",
+            network_log_session,
+            CancellationToken::new(),
+        );
+        context.workspace_image = Some(workspace_image);
+        context.workspace_promotable = true;
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("rejected-workspace-promotion"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        )
+        .await;
+
+        let idle_states = fixture.idle_pool.lock().await.held_session_states();
+        assert_eq!(idle_states.len(), 1);
+        assert_eq!(idle_states[0].session_id, "sess-existing");
+        let cache_states = cache.held_session_states().await;
         assert_eq!(cache_states.len(), 1);
-        assert_eq!(cache_states[0].session_id, "sess-guest");
+        assert_eq!(cache_states[0].session_id, "sess-new");
     }
 
     #[tokio::test]

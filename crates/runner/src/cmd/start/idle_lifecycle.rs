@@ -7,7 +7,8 @@ use tokio::task::JoinSet;
 use tracing::{info, warn};
 
 use crate::idle_pool::{
-    DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdlePool, IdlePoolSnapshot,
+    DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdleDestroyResult, IdlePool,
+    IdlePoolSnapshot,
 };
 use crate::ids::RunId;
 use crate::status::StatusTracker;
@@ -149,20 +150,23 @@ pub(super) async fn destroy_idle_jobs_and_wait(jobs: Vec<IdleDestroyJob>, contex
 }
 
 /// Destroy an idle sandbox entry. Its budget lease is released by Drop.
-async fn destroy_idle_job(job: IdleDestroyJob, _context: &'static str) {
-    job.run().await;
+async fn destroy_idle_job(job: IdleDestroyJob, context: &'static str) {
+    job.run_with_context(context).await;
 }
 
 pub(super) async fn destroy_idle_payload_and_wait(
     payload: IdleDestroyPayload,
     context: &'static str,
-) -> DestroyOutcome {
-    let handle = tokio::spawn(payload.stop_and_destroy());
+) -> IdleDestroyResult {
+    let handle = tokio::spawn(payload.promote_then_stop_and_destroy(context));
     match handle.await {
         Ok(outcome) => outcome,
         Err(e) => {
             warn!(context, error = %e, "idle payload destroy task panicked");
-            DestroyOutcome::Uncertain
+            IdleDestroyResult {
+                outcome: DestroyOutcome::Uncertain,
+                workspace_cache_promoted: false,
+            }
         }
     }
 }
