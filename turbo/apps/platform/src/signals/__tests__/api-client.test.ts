@@ -12,6 +12,10 @@ import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-sch
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -462,7 +466,7 @@ describe("zeroClient$ apiBackend routing", () => {
     expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
-  it("keeps same-path org mutation on www when apiBackend is off", async () => {
+  it("routes allowlisted org mutation to api host when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
@@ -488,7 +492,7 @@ describe("zeroClient$ apiBackend routing", () => {
     const result = await client.update({ body: { name: "Renamed" } });
 
     expect(result.status).toBe(200);
-    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
   it("routes policy allowlisted voice-io quota contract requests to api host when apiBackend is off", async () => {
@@ -587,6 +591,61 @@ describe("zeroClient$ apiBackend routing", () => {
     const result = await client.list();
 
     expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes allowlisted mutation contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(chatThreadsContract.create, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(201, {
+          id: "thread_1",
+          title: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(chatThreadsContract);
+    const result = await client.create({ body: { agentId: "agent_1" } });
+
+    expect(result.status).toBe(201);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes allowlisted dynamic-path requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(chatThreadByIdContract.delete, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(204);
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(chatThreadByIdContract);
+    const result = await client.delete({
+      params: { id: "00000000-0000-0000-0000-000000000001" },
+    });
+
+    expect(result.status).toBe(204);
+    // The :id template segment must match a concrete id, not just an exact path.
     expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 

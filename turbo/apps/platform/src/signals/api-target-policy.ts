@@ -7,57 +7,121 @@ interface ApiTargetRequest {
   readonly pathname: string;
 }
 
-interface ApiTargetPolicyEntry {
+interface ApiRouteAllowlistEntry {
   readonly methods: readonly ApiRouteMethod[];
+  // Exact pathname, or a template with `:param` segments (each `:param`
+  // matches exactly one non-empty path segment, e.g. "/api/zero/runs/:id").
   readonly pathname: string;
-  readonly target: ApiHostTarget;
 }
 
-const API_ROUTE_TARGET_POLICY: readonly ApiTargetPolicyEntry[] = [
+// First-party apps/platform routes that resolve to the dedicated `api` host
+// while the global `apiBackend` switch is off. Everything not listed here
+// defaults to `www`. Routes are method-aware: a path's mutations are migrated
+// only when their method is listed. OAuth, connector/integration, billing,
+// bootstrap feature-switches, and web-origin flows are intentionally absent
+// and stay on `www`.
+const API_ROUTE_ALLOWLIST: readonly ApiRouteAllowlistEntry[] = [
+  { methods: ["GET", "POST"], pathname: "/api/zero/agents" },
   {
-    methods: ["GET"],
-    pathname: "/api/zero/me/model-providers",
-    target: "api",
+    methods: ["GET", "PUT", "PATCH", "DELETE"],
+    pathname: "/api/zero/agents/:id",
   },
+  { methods: ["GET", "PUT"], pathname: "/api/zero/agents/:id/instructions" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/api-keys" },
+  { methods: ["DELETE"], pathname: "/api/zero/api-keys/:id" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/chat-threads" },
   {
-    methods: ["GET"],
-    pathname: "/api/zero/model-providers",
-    target: "api",
+    methods: ["GET", "PATCH", "DELETE"],
+    pathname: "/api/zero/chat-threads/:id",
   },
-  {
-    methods: ["GET"],
-    pathname: "/api/zero/onboarding/status",
-    target: "api",
-  },
-  {
-    methods: ["GET"],
-    pathname: "/api/zero/org",
-    target: "api",
-  },
-  {
-    methods: ["GET"],
-    pathname: "/api/zero/schedules",
-    target: "api",
-  },
-  {
-    methods: ["GET"],
-    pathname: "/api/zero/team",
-    target: "api",
-  },
+  { methods: ["POST"], pathname: "/api/zero/chat-threads/:id/mark-read" },
+  { methods: ["POST"], pathname: "/api/zero/chat-threads/:id/pin" },
+  { methods: ["POST"], pathname: "/api/zero/chat-threads/:id/rename" },
+  { methods: ["POST"], pathname: "/api/zero/chat-threads/:id/unpin" },
   {
     methods: ["GET", "POST"],
-    pathname: "/api/zero/user-preferences",
-    target: "api",
+    pathname: "/api/zero/chat-threads/:threadId/artifacts",
   },
+  { methods: ["GET"], pathname: "/api/zero/chat-threads/:threadId/messages" },
+  { methods: ["POST"], pathname: "/api/zero/chat/messages" },
+  { methods: ["GET"], pathname: "/api/zero/chat/search" },
+  { methods: ["GET"], pathname: "/api/zero/composes" },
+  { methods: ["GET", "DELETE"], pathname: "/api/zero/composes/:id" },
+  { methods: ["PATCH"], pathname: "/api/zero/composes/:id/metadata" },
+  { methods: ["GET"], pathname: "/api/zero/composes/list" },
+  { methods: ["PUT"], pathname: "/api/zero/default-agent" },
+  { methods: ["GET"], pathname: "/api/zero/insights" },
+  { methods: ["GET"], pathname: "/api/zero/insights/range" },
+  { methods: ["GET"], pathname: "/api/zero/logs" },
+  { methods: ["GET"], pathname: "/api/zero/logs/:id" },
+  { methods: ["GET"], pathname: "/api/zero/logs/search" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/me/model-providers" },
+  { methods: ["DELETE"], pathname: "/api/zero/me/model-providers/:type" },
+  { methods: ["GET"], pathname: "/api/zero/memory" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/model-providers" },
+  { methods: ["DELETE"], pathname: "/api/zero/model-providers/:type" },
+  { methods: ["GET"], pathname: "/api/zero/onboarding/status" },
+  { methods: ["GET", "PUT"], pathname: "/api/zero/org" },
+  { methods: ["POST"], pathname: "/api/zero/org/delete" },
+  { methods: ["POST", "DELETE"], pathname: "/api/zero/org/invite" },
+  { methods: ["POST"], pathname: "/api/zero/org/leave" },
+  { methods: ["GET", "PATCH", "DELETE"], pathname: "/api/zero/org/members" },
   {
-    methods: ["GET"],
-    pathname: "/api/zero/voice-io/quota",
-    target: "api",
+    methods: ["POST", "DELETE"],
+    pathname: "/api/zero/org/membership-requests",
   },
+  { methods: ["GET"], pathname: "/api/zero/queue-position" },
+  { methods: ["POST"], pathname: "/api/zero/realtime/token" },
+  { methods: ["POST"], pathname: "/api/zero/report-error" },
+  { methods: ["POST"], pathname: "/api/zero/runs" },
+  { methods: ["GET"], pathname: "/api/zero/runs/:id" },
+  { methods: ["POST"], pathname: "/api/zero/runs/:id/cancel" },
+  { methods: ["GET"], pathname: "/api/zero/runs/:id/context" },
+  { methods: ["GET"], pathname: "/api/zero/runs/:id/network" },
+  { methods: ["GET"], pathname: "/api/zero/runs/:id/runner" },
+  { methods: ["GET"], pathname: "/api/zero/runs/:id/telemetry/agent" },
+  { methods: ["GET"], pathname: "/api/zero/runs/queue" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/schedules" },
+  { methods: ["DELETE"], pathname: "/api/zero/schedules/:name" },
+  { methods: ["POST"], pathname: "/api/zero/schedules/:name/disable" },
+  { methods: ["POST"], pathname: "/api/zero/schedules/:name/enable" },
+  { methods: ["POST"], pathname: "/api/zero/schedules/run" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/secrets" },
+  { methods: ["DELETE"], pathname: "/api/zero/secrets/:name" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/skills" },
+  { methods: ["GET", "PUT", "DELETE"], pathname: "/api/zero/skills/:name" },
+  { methods: ["GET"], pathname: "/api/zero/team" },
+  { methods: ["POST"], pathname: "/api/zero/uploads/complete" },
+  { methods: ["POST"], pathname: "/api/zero/uploads/prepare" },
+  { methods: ["GET"], pathname: "/api/zero/usage/insight" },
+  { methods: ["GET"], pathname: "/api/zero/usage/members" },
+  { methods: ["GET", "PUT"], pathname: "/api/zero/user-permission-grants" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/user-preferences" },
+  { methods: ["GET", "POST"], pathname: "/api/zero/variables" },
+  { methods: ["DELETE"], pathname: "/api/zero/variables/:name" },
+  { methods: ["GET"], pathname: "/api/zero/voice-io/quota" },
 ];
 
 function normalizeMethod(method: string): string {
   return method.toUpperCase();
+}
+
+// Matches an allowlist pathname template against a concrete request pathname.
+// A `:param` template segment matches exactly one non-empty segment; all other
+// segments must match literally and the segment counts must be equal.
+function pathnameMatches(template: string, pathname: string): boolean {
+  const templateSegments = template.split("/");
+  const pathnameSegments = pathname.split("/");
+  if (templateSegments.length !== pathnameSegments.length) {
+    return false;
+  }
+  return templateSegments.every((segment, index) => {
+    const actual = pathnameSegments[index];
+    if (segment.startsWith(":")) {
+      return actual.length > 0;
+    }
+    return segment === actual;
+  });
 }
 
 export function resolveApiTarget(
@@ -69,13 +133,13 @@ export function resolveApiTarget(
   }
 
   const method = normalizeMethod(request.method);
-  const entry = API_ROUTE_TARGET_POLICY.find((candidate) => {
+  const allowed = API_ROUTE_ALLOWLIST.some((entry) => {
     return (
-      candidate.pathname === request.pathname &&
-      candidate.methods.some((candidateMethod) => {
-        return candidateMethod === method;
+      pathnameMatches(entry.pathname, request.pathname) &&
+      entry.methods.some((entryMethod) => {
+        return entryMethod === method;
       })
     );
   });
-  return entry?.target ?? "www";
+  return allowed ? "api" : "www";
 }

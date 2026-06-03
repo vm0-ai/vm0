@@ -522,6 +522,58 @@ describe("apiBackend routing", () => {
     expect(postHosts).toStrictEqual(["www.vm0.ai"]);
   });
 
+  it("is method-aware: routes an allowlisted GET to api but a non-allowlisted method on the same path to www", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const getHosts: string[] = [];
+    const postHosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/voice-io/quota", ({ request }) => {
+        getHosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+      http.post("*/api/zero/voice-io/quota", ({ request }) => {
+        postHosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/voice-io/quota");
+    await fch("/api/zero/voice-io/quota", { method: "POST" });
+
+    // Only GET is allowlisted for this path; POST falls through to www.
+    expect(getHosts).toStrictEqual(["api.vm0.ai"]);
+    expect(postHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("routes allowlisted dynamic :id paths to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/runs/:id", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/runs/00000000-0000-0000-0000-000000000001");
+
+    expect(hosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
   it("routes policy allowlisted user preferences string paths to api host when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
