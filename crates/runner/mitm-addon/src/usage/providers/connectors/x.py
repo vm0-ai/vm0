@@ -588,6 +588,9 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     req_meta = _parse_request_metadata(flow)
     resp_meta = _parse_response_metadata(flow)
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    audit_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(audit_url, str) or not audit_url:
+        audit_url = flow.request.url
 
     # Structured context common to every billing-side proxy log entry
     # for this flow — threaded into the helper so the log firing at the
@@ -598,7 +601,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         "firewall_name": firewall_name,
         "permission": permission,
         "method": flow.request.method,
-        "url": flow.request.url,
+        "url": audit_url,
     }
 
     def _log_warn(message: str, extra: dict) -> None:

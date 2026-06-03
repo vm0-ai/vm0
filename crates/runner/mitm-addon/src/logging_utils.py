@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from mitmproxy import ctx, http
 
 import flow_metadata_keys as metadata_keys
+import network_log_sanitization
 
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 
@@ -48,6 +49,12 @@ def log_network_entry(log_path: str, entry: dict) -> None:
     _write_jsonl_entry(log_path, log_entry, "network")
 
 
+def _proxy_log_extra_value(key: str, value: object) -> object:
+    if key == "url" and isinstance(value, str):
+        return network_log_sanitization.sanitize_url_for_network_log(value)
+    return value
+
+
 def log_proxy_entry(
     proxy_log_path: str,
     log_level: str,
@@ -63,7 +70,7 @@ def log_proxy_entry(
     }
     for key, value in extra.items():
         if key not in _PROXY_LOG_RESERVED_FIELDS:
-            entry[key] = value
+            entry[key] = _proxy_log_extra_value(key, value)
     _write_jsonl_entry(proxy_log_path, entry, "proxy")
 
 

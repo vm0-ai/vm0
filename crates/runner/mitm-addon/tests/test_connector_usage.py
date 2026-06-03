@@ -352,6 +352,7 @@ class TestReportConnectorUsage:
         """Unknown includes.<key> types emit a synthetic ``includes.<key>``
         category (the billing processor applies a server-side fallback
         price) and emit a warn log at the decision point."""
+        sensitive_query = "vm0-sensitive-unknown-includes"
         body = json.dumps(
             {
                 "data": [{"id": "1"}],
@@ -361,7 +362,12 @@ class TestReportConnectorUsage:
                 },
             }
         ).encode()
-        flow = self._make_x_flow(real_flow, tmp_path, query="expansions=author_id", body=body)
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path=f"/2/tweets?expansions=author_id&query={sensitive_query}",
+            body=body,
+        )
         payloads = self._call_and_get_billing(flow)
         by_cat = {p["category"]: p["quantity"] for p in payloads}
         # 1 primary (posts.read) + 1 users include (mapped to user.read)
@@ -377,6 +383,9 @@ class TestReportConnectorUsage:
         assert "future_widget" in content
         assert "unrecognised" in content.lower()
         assert '"level":"warn"' in content or '"level": "warn"' in content
+        assert sensitive_query not in content
+        entry = json.loads(content.splitlines()[0])
+        assert entry["url"] == "https://api.x.com/2/tweets"
 
     def test_logs_search_meta_result_count(self, tmp_path, real_flow):
         """Search response with meta.result_count -> quantity=20."""
@@ -1266,20 +1275,27 @@ class TestReportConnectorUsage:
     def test_unparseable_no_hints_writes_error_to_proxy_log(self, tmp_path, real_flow):
         """Operators must be able to audit the lost-visibility case —
         the proxy log receives a structured error entry."""
+        sensitive_query = "vm0-sensitive-unparseable"
         flow = self._make_x_flow(
             real_flow,
             tmp_path,
-            path="/2/tweets/search/recent",
+            path=f"/2/tweets/search/recent?query={sensitive_query}",
             body=b"not json",
             rule="GET /2/tweets/search/recent",
+        )
+        flow.metadata["original_url"] = (
+            f"https://api.x.com:8443/2/tweets/search/recent?query={sensitive_query}"
         )
         proxy_log = tmp_path / "proxy.jsonl"
         assert self._call_and_get_billing(flow) == []
         assert proxy_log.exists()
-        entry = json.loads(proxy_log.read_text().splitlines()[0])
+        content = proxy_log.read_text()
+        assert sensitive_query not in content
+        entry = json.loads(content.splitlines()[0])
         assert entry["level"] == "error"
         assert "unparseable" in entry["message"].lower()
         assert entry["permission"] == "tweet.read"
+        assert entry["url"] == "https://api.x.com:8443/2/tweets/search/recent"
         assert "parse_error" not in entry
 
     def test_unparseable_x_json_state_logs_parse_error(self, tmp_path, real_flow):

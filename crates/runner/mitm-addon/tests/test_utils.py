@@ -114,6 +114,23 @@ class TestLogProxyEntry:
         assert entry["extra_field"] == "value"
         assert_utc_millisecond_timestamp(entry["timestamp"])
 
+    def test_sanitizes_structured_url_field(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        raw_url = "https://user:pass@example.com/v1/search?token=secret#fragment"
+
+        logging_utils.log_proxy_entry(
+            str(proxy_path),
+            "warn",
+            "url diagnostic",
+            url=raw_url,
+            raw_url_copy=raw_url,
+        )
+
+        entry = json.loads(proxy_path.read_text().strip())
+        assert entry["message"] == "url diagnostic"
+        assert entry["url"] == "https://example.com/v1/search"
+        assert entry["raw_url_copy"] == raw_url
+
     def test_appends_multiple_entries(self, tmp_path):
         proxy_path = str(tmp_path / "proxy-test.jsonl")
         logging_utils.log_proxy_entry(proxy_path, "info", "first")
