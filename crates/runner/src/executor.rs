@@ -552,6 +552,51 @@ pub async fn execute_job_reuse(
     let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
 
+    let workspace_image = match (
+        context.session_workspace_image_cache_enabled(),
+        config.workspace_cache.as_ref(),
+    ) {
+        (true, Some(cache)) => {
+            let active_request = WorkspaceImageActiveLeaseRequest {
+                run_id,
+                sandbox_id,
+                profile_name: &params.profile_name,
+                session_id: context.session_id(),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_available: true,
+            };
+            Some(match workspace_promotion {
+                Some(promotion) => promotion.into_active_lease(active_request),
+                None => cache.lease_active(active_request).await,
+            })
+        }
+        _ => {
+            if let Some(promotion) = workspace_promotion
+                && let Err(error) = promotion
+                    .invalidate_current("reused sandbox ran without workspace image cache")
+                    .await
+            {
+                let failure = ExecutionFailure::from_error(format!(
+                    "failed to invalidate workspace image cache before disabled-cache reuse: {error}"
+                ));
+                return (
+                    ExecuteOutcome {
+                        failure: Some(failure),
+                        sandbox: Some(sandbox),
+                        source_ip,
+                        network_log_session: None,
+                        workspace_image: None,
+                        workspace_promotable: false,
+                        guest_session_id: None,
+                    },
+                    telemetry,
+                );
+            }
+            None
+        }
+    };
+
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
     let outcome = if let Err(error) = validate_execution_context_before_sandbox(&context) {
@@ -560,55 +605,15 @@ pub async fn execute_job_reuse(
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
-            workspace_image: None,
-            workspace_promotable: false,
+            workspace_promotable: workspace_image_promotable(
+                workspace_image.as_ref(),
+                &context,
+                None,
+            ),
+            workspace_image,
             guest_session_id: None,
         }
     } else {
-        let workspace_image = match (
-            context.session_workspace_image_cache_enabled(),
-            config.workspace_cache.as_ref(),
-        ) {
-            (true, Some(cache)) => {
-                let active_request = WorkspaceImageActiveLeaseRequest {
-                    run_id,
-                    sandbox_id,
-                    profile_name: &params.profile_name,
-                    session_id: context.session_id(),
-                    working_dir: CANONICAL_WORKING_DIR,
-                    image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
-                    workspace_drive_available: true,
-                };
-                Some(match workspace_promotion {
-                    Some(promotion) => promotion.into_active_lease(active_request),
-                    None => cache.lease_active(active_request).await,
-                })
-            }
-            _ => {
-                if let Some(promotion) = workspace_promotion
-                    && let Err(error) = promotion
-                        .invalidate_current("reused sandbox ran without workspace image cache")
-                        .await
-                {
-                    let failure = ExecutionFailure::from_error(format!(
-                        "failed to invalidate workspace image cache before disabled-cache reuse: {error}"
-                    ));
-                    return (
-                        ExecuteOutcome {
-                            failure: Some(failure),
-                            sandbox: Some(sandbox),
-                            source_ip,
-                            network_log_session: None,
-                            workspace_image: None,
-                            workspace_promotable: false,
-                            guest_session_id: None,
-                        },
-                        telemetry,
-                    );
-                }
-                None
-            }
-        };
         let mut outcome = execute_reused_sandbox(
             sandbox,
             &source_ip,
@@ -6789,6 +6794,72 @@ mod tests {
         assert!(
             current_image.exists(),
             "lock-busy invalidation must not remove a cache image it could not lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let session_id = "sess-cache-reuse-validation-failure";
+        let (idle_sandbox, _current_image, overrides) =
+            reusable_idle_sandbox_with_workspace_promotion(
+                &cache,
+                &runner_paths,
+                &params,
+                session_id,
+            )
+            .await;
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            true,
+        )]));
+        ctx.environment = Some(HashMap::from([(
+            "OPENAI_API_KEY".into(),
+            "sk-proj-real-openai-secret".into(),
+        )]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 1);
+        assert!(reuse_outcome.sandbox.is_some());
+        assert!(reuse_outcome.workspace_promotable);
+        assert!(reuse_outcome.workspace_image.is_some());
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "reused sandbox must not start a process after env validation failure"
+        );
+
+        let checkout = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(
+            checkout.result(),
+            WorkspaceCacheCheckoutResult::LockBusy,
+            "pre-run validation failure must not release the hidden cache baseline before finalization can promote or invalidate the live workspace"
         );
     }
 
