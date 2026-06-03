@@ -469,6 +469,32 @@ describe("POST /api/zero/skills", () => {
     expect(response.body.error.message).toContain("Duplicate file path");
   });
 
+  it("returns 400 when create files contain non-canonical paths", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "non-canonical-path-skill",
+          files: [
+            { path: "SKILL.md", content: "# Skill" },
+            { path: "templates/./prompt.md", content: "Use the tool" },
+          ],
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain(
+      "Path must not contain empty or . segments",
+    );
+  });
+
   it("stores the skill row and uploads a custom skill volume", async () => {
     const fixture = await track(
       store.set(seedSkillsFixture$, undefined, context.signal),

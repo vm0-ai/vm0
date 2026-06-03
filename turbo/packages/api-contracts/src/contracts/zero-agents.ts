@@ -240,6 +240,24 @@ export const skillFileEntrySchema = z.object({
       {
         message: "Path must not contain ..",
       },
+    )
+    .refine(
+      (p) => {
+        return !p.includes("\0");
+      },
+      {
+        message: "Path must not contain NUL",
+      },
+    )
+    .refine(
+      (p) => {
+        return p.split("/").every((segment) => {
+          return segment.length > 0 && segment !== ".";
+        });
+      },
+      {
+        message: "Path must not contain empty or . segments",
+      },
     ),
   content: z.string(),
 });
