@@ -55,6 +55,7 @@ pub(crate) enum WalkFilesError {
     Checkpoint {
         message: String,
         root_not_found: bool,
+        elapsed: std::time::Duration,
     },
 }
 
@@ -72,7 +73,10 @@ impl WalkFilesError {
     pub(crate) fn into_agent_error(self) -> AgentError {
         match self {
             Self::Execution(message) => AgentError::Execution(message),
-            Self::Checkpoint { message, .. } => {
+            Self::Checkpoint {
+                message, elapsed, ..
+            } => {
+                record_sandbox_op("artifact_hash_compute", elapsed, false, Some(&message));
                 log_error!(LOG_TAG, "{message}");
                 AgentError::Checkpoint(message)
             }
@@ -105,15 +109,10 @@ pub(crate) async fn walk_files_for_checkpoint(
         Err(e) => {
             let root_not_found = e.is_root_not_found();
             let message = format!("Failed to walk artifact files: {e}");
-            record_sandbox_op(
-                "artifact_hash_compute",
-                hash_start.elapsed(),
-                false,
-                Some(&message),
-            );
             return Err(WalkFilesError::Checkpoint {
                 message,
                 root_not_found,
+                elapsed: hash_start.elapsed(),
             });
         }
     };

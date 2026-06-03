@@ -54,6 +54,7 @@ impl RunPlan {
             "storage",
             "storage_download",
             false,
+            false,
         );
 
         // Artifacts: 404 is non-fatal (may not exist on first run)
@@ -62,6 +63,7 @@ impl RunPlan {
             &manifest.artifacts,
             "artifact",
             "artifact_download",
+            true,
             true,
         );
 
@@ -85,13 +87,20 @@ fn append_download_tasks(
     label_prefix: &str,
     op_name: &'static str,
     allow_404: bool,
+    include_missing_root_policy: bool,
 ) {
     for (idx, entry) in entries.iter().enumerate() {
         if is_valid_url(&entry.archive_url)
             && let Some(url) = entry.archive_url.clone()
         {
             tasks.push(DownloadTask::new(
-                format_entry_label(entry, label_prefix, idx + 1, &url),
+                format_entry_label(
+                    entry,
+                    label_prefix,
+                    idx + 1,
+                    &url,
+                    include_missing_root_policy,
+                ),
                 op_name,
                 url,
                 entry.mount_path.clone(),
@@ -106,6 +115,7 @@ fn format_entry_label(
     label_prefix: &str,
     index: usize,
     archive_url: &str,
+    include_missing_root_policy: bool,
 ) -> String {
     let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
     let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
@@ -113,7 +123,7 @@ fn format_entry_label(
         .split_once("://")
         .map(|(scheme, _)| scheme)
         .unwrap_or("unknown");
-    let missing_root_policy = if label_prefix == "artifact" {
+    let missing_root_policy = if include_missing_root_policy {
         format!(
             " missingRootPolicy={}",
             entry.missing_root_policy.as_deref().unwrap_or("fail")

@@ -111,6 +111,8 @@ export const storageEntrySchema = z.object({
 /**
  * Artifact entry in manifest
  */
+// Optional internal checkpoint behavior for a missing artifact root. Absence
+// is equivalent to "fail".
 export const artifactMissingRootPolicySchema = z.enum([
   "fail",
   "preserveParentVersion",
