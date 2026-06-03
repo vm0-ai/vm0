@@ -21,12 +21,27 @@ const API_ROUTE_TARGET_POLICY: readonly ApiTargetPolicyEntry[] = [
   },
   {
     methods: ["GET"],
+    pathname: "/api/zero/org",
+    target: "api",
+  },
+  {
+    methods: ["GET"],
+    pathname: "/api/zero/schedules",
+    target: "api",
+  },
+  {
+    methods: ["GET"],
     pathname: "/api/zero/team",
     target: "api",
   },
   {
     methods: ["GET", "POST"],
     pathname: "/api/zero/user-preferences",
+    target: "api",
+  },
+  {
+    methods: ["GET"],
+    pathname: "/api/zero/voice-io/quota",
     target: "api",
   },
 ];
