@@ -948,7 +948,7 @@ impl SessionWorkspaceCache {
         let temporary = inspect_temporary_files(&entry_dir).await?;
 
         let current = self.session_workspace_cache_current_image(&cache_key);
-        let current_metadata = match fs::metadata(&current).await {
+        let current_metadata = match fs::symlink_metadata(&current).await {
             Ok(metadata) => Some(metadata),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => {
@@ -3020,6 +3020,67 @@ mod tests {
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
         assert_eq!(entry.reason.as_deref(), Some("cache key mismatch"));
+    }
+
+    #[tokio::test]
+    async fn inspect_rejects_symlink_current_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let image = b"image";
+        let key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "sess-1",
+            "/workspace",
+            image.len() as u64,
+        );
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let target = dir.path().join("target.ext4");
+        fs::write(&target, image).await.unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        std::os::unix::fs::symlink(&target, &current).unwrap();
+        let current_target_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_target_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_target_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(
+                        &current_target_metadata,
+                    ),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(
+            entry.reason.as_deref(),
+            Some("current image identity mismatch")
+        );
     }
 
     #[tokio::test]
