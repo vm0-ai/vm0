@@ -44,38 +44,84 @@ pub enum ExecOwnedCapturedOutput {
     /// The stream was discarded by policy and therefore has no captured bytes.
     Discarded,
     /// The stream was captured, possibly with protocol-level truncation.
-    Captured { bytes: Vec<u8>, truncated: bool },
+    Captured {
+        /// Owned stdout or stderr bytes returned in the terminal exec result.
+        bytes: Vec<u8>,
+        /// Whether the guest truncated captured bytes to satisfy the requested
+        /// capture output policy.
+        truncated: bool,
+    },
 }
 
 /// Terminal result for a host exec operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecOperationResult {
+    /// Terminal process state reported by the guest.
     pub termination: ExecTermination,
+    /// Guest-reported wall-clock duration in milliseconds.
     pub duration_ms: u32,
+    /// Stdout output state according to the requested stdout output policy.
     pub stdout: ExecOwnedCapturedOutput,
+    /// Stderr output state according to the requested stderr output policy.
     pub stderr: ExecOwnedCapturedOutput,
+    /// Guest-provided terminal diagnostic text.
+    ///
+    /// This may be empty when the guest has no additional diagnostic to
+    /// report for the terminal state.
     pub diagnostic: String,
+    /// Whether the host-side bounded stream queue overflowed.
+    ///
+    /// This is separate from guest-side capture or stream truncation. When
+    /// true, some streamed output events may have been dropped even though the
+    /// terminal result was still received.
     pub stream_overflowed: bool,
 }
 
 /// Streamed output event for a host exec operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecOutputEvent {
+    /// Output stream that produced this event.
     pub stream: ExecOutputStream,
+    /// Per-operation output sequence number validated by the host.
+    ///
+    /// The sequence orders stdout and stderr events together for the exec
+    /// operation.
     pub output_seq: u32,
+    /// Output bytes emitted for this event.
+    ///
+    /// This may be empty only when the event marks stream truncation.
     pub chunk: Vec<u8>,
+    /// Whether the guest truncated this stream to satisfy the requested stream
+    /// output policy.
+    ///
+    /// Host-side stream queue overflow is reported separately on
+    /// `ExecOperationResult::stream_overflowed`.
     pub truncated: bool,
 }
 
 /// Request parameters for starting an exec operation.
 pub struct ExecOperationRequest<'a> {
+    /// Positive guest-side process timeout in milliseconds.
+    ///
+    /// A zero timeout is rejected before the request is sent. Use supervised
+    /// exec for operations that should not have a one-shot process timeout.
     pub timeout_ms: u32,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Stdout output policy requested from the guest.
     pub stdout: ExecOutputPolicy,
+    /// Stderr output policy requested from the guest.
     pub stderr: ExecOutputPolicy,
+    /// Exit codes sent to the guest for expected-exit handling and diagnostics.
+    ///
+    /// The host still preserves the terminal state reported by the guest in
+    /// `ExecOperationResult::termination`.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
@@ -90,28 +136,56 @@ pub struct ExecOperationRequest<'a> {
 
 /// Request parameters for a capture-only exec operation helper.
 pub struct ExecCaptureRequest<'a> {
+    /// Positive guest-side process timeout in milliseconds.
+    ///
+    /// A zero timeout is rejected before the request is sent.
     pub timeout_ms: u32,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Maximum stdout bytes to retain in the terminal exec result.
     pub stdout_limit_bytes: u32,
+    /// Maximum stderr bytes to retain in the terminal exec result.
     pub stderr_limit_bytes: u32,
+    /// Exit codes sent to the guest for expected-exit handling and diagnostics.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
+    /// Maximum host-side wait for the terminal result after the request starts.
+    ///
+    /// This is separate from `timeout_ms`, which is the guest-side process
+    /// timeout encoded in the exec request.
     pub wait_timeout: Duration,
 }
 
 /// Request parameters for a streaming exec operation helper.
 pub struct ExecStreamRequest<'a> {
+    /// Positive guest-side process timeout in milliseconds.
+    ///
+    /// A zero timeout is rejected before the request is sent.
     pub timeout_ms: u32,
+    /// Shell command to run in the guest.
     pub command: &'a str,
+    /// Environment variables injected into the guest shell command.
     pub env: &'a [(&'a str, &'a str)],
+    /// Whether to run the command with guest-side sudo handling.
     pub sudo: bool,
+    /// Human-readable label used for diagnostics and logs.
     pub label: &'a str,
+    /// Stdout output policy requested from the guest.
+    ///
+    /// At least one of stdout or stderr must use a streaming output policy.
     pub stdout: ExecOutputPolicy,
+    /// Stderr output policy requested from the guest.
+    ///
+    /// At least one of stdout or stderr must use a streaming output policy.
     pub stderr: ExecOutputPolicy,
+    /// Exit codes sent to the guest for expected-exit handling and diagnostics.
     pub expected_exit_codes: &'a [i32],
     /// Optional bounded stdin payload written to the child and then closed.
     pub stdin_bytes: Option<&'a [u8]>,
@@ -183,26 +257,40 @@ pub struct SupervisedExecRequest<'a> {
 /// Host-side acknowledgement for a delivered exec-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecControlAck {
+    /// Sequence number of the supervised exec operation that received control.
     pub target_seq: u32,
+    /// Control message identifier echoed by the guest.
     pub message_id: String,
 }
 
 /// Guest-side terminal status for an exec-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecControlGuestStatus {
+    /// Guest-reported control status other than delivered.
     pub status: ExecControlStatus,
+    /// Guest-provided diagnostic text for the status.
+    ///
+    /// This may be empty when the guest has no additional diagnostic to
+    /// report.
     pub diagnostic: String,
 }
 
 /// Terminal guest response for an exec-control request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecControlOutcome {
+    /// The guest delivered the request to the control sink and accepted it.
     Delivered(ExecControlAck),
+    /// The guest responded with a control status other than delivered.
     GuestStatus(ExecControlGuestStatus),
+    /// The guest returned an error response for the pending control request.
     GuestError(String),
 }
 
 impl ExecControlOutcome {
+    /// Return the delivered acknowledgement or convert guest failures to an error.
+    ///
+    /// Only `ExecControlOutcome::Delivered` yields `Ok`. Guest statuses and
+    /// guest error responses become `io::Error` values.
     pub fn into_ack(self) -> io::Result<ExecControlAck> {
         match self {
             Self::Delivered(ack) => Ok(ack),
