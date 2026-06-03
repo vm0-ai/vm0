@@ -56,6 +56,7 @@ WHERE "kind" = 'model'
 		'tokens.cache_read',
 		'tokens.cache_creation'
 	)
+	AND "quantity" > 0
 	AND "provider" IN (
 		'claude-opus-4-8',
 		'claude-opus-4-7',

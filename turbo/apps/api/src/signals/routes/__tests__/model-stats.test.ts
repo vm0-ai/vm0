@@ -104,7 +104,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         model,
         modelProviderType: "vm0",
         category: "tokens.total",
-        quantity: 1_000,
+        quantity: 1000,
         observedAt: createdAt,
       },
       {
