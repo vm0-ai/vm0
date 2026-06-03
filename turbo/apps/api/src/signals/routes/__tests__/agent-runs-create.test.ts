@@ -1411,6 +1411,11 @@ describe("POST /api/agent/runs", () => {
         );
       }),
     ).toBe(false);
+    expect(
+      session?.artifacts.find((artifact) => {
+        return artifact.name === "memory";
+      })?.generatedBy,
+    ).toBe("apiAutoMemory");
 
     const [job] = await db
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -1568,6 +1573,70 @@ describe("POST /api/agent/runs", () => {
     });
     expect(
       executionContext.storageManifest.artifacts[0]?.missingRootPolicy,
+    ).toBeUndefined();
+  });
+
+  it("keeps continued user-authored canonical memory artifacts strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use canonical user memory artifact",
+          artifacts: [
+            {
+              name: "memory",
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const db = store.set(writeDb$);
+    await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+
+    const continued = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { sessionId: first.body.sessionId, prompt: "continue" },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, continued.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return (
+          artifact.vasStorageName === "memory" &&
+          artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+        );
+      })?.missingRootPolicy,
     ).toBeUndefined();
   });
 
@@ -2112,5 +2181,156 @@ describe("POST /api/agent/runs", () => {
       .from(agentRuns)
       .where(eq(agentRuns.id, response.body.runId));
     expect(run?.resumedFromCheckpointId).toBe(checkpoint.id);
+  });
+
+  it("preserves auto memory policy when resuming checkpoint artifacts", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const conversationId = await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+    const [checkpoint] = await db
+      .insert(checkpoints)
+      .values({
+        runId: first.body.runId,
+        conversationId,
+        agentComposeSnapshot: { agentComposeVersionId: compose.versionId },
+        artifactSnapshots: [
+          {
+            name: "memory",
+            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+          },
+        ],
+      })
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("checkpoint insert returned no row");
+    }
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { checkpointId: checkpoint.id, prompt: "resume" },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return (
+          artifact.vasStorageName === "memory" &&
+          artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+        );
+      })?.missingRootPolicy,
+    ).toBe("preserveParentVersion");
+  });
+
+  it("keeps user-authored canonical memory checkpoint artifacts strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "first",
+          artifacts: [
+            {
+              name: "memory",
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const conversationId = await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+    const [checkpoint] = await db
+      .insert(checkpoints)
+      .values({
+        runId: first.body.runId,
+        conversationId,
+        agentComposeSnapshot: { agentComposeVersionId: compose.versionId },
+        artifactSnapshots: [
+          {
+            name: "memory",
+            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+          },
+        ],
+      })
+      .returning({ id: checkpoints.id });
+    if (!checkpoint) {
+      throw new Error("checkpoint insert returned no row");
+    }
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { checkpointId: checkpoint.id, prompt: "resume" },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return (
+          artifact.vasStorageName === "memory" &&
+          artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+        );
+      })?.missingRootPolicy,
+    ).toBeUndefined();
   });
 });
