@@ -572,7 +572,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(checkpoint?.artifactSnapshots).toBeNull();
   });
 
-  it("persists artifact snapshots and strips unsupported provenance", async () => {
+  it("persists artifact snapshots without overwriting session artifact declarations", async () => {
     const fixture = await track(seedFixture());
     const artifactSnapshots = [
       {
@@ -634,21 +634,22 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .where(eq(agentRuns.id, fixture.runId))
       .limit(1);
     expect(run).toBeDefined();
+    const originalSessionArtifacts = [
+      {
+        name: "memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "memory",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+    ];
     await db
       .update(agentSessions)
       .set({
-        artifacts: [
-          {
-            name: "memory",
-            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
-            generatedBy: "apiAutoMemory" as const,
-          },
-          {
-            name: "memory",
-            mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
-            generatedBy: "apiAutoMemory" as const,
-          },
-        ],
+        artifacts: originalSessionArtifacts,
       })
       .where(eq(agentSessions.id, run!.sessionId));
 
@@ -675,7 +676,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .from(agentSessions)
       .where(eq(agentSessions.id, run!.sessionId))
       .limit(1);
-    expect(session?.artifacts).toStrictEqual(persistedArtifactSnapshots);
+    expect(session?.artifacts).toStrictEqual(originalSessionArtifacts);
   });
 
   it("strips canonical memory provenance unless the session expects api auto memory", async () => {
