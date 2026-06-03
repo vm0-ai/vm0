@@ -764,64 +764,71 @@ mod tests {
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = SessionWorkspaceCache::new(paths.clone());
-        let run_id = RunId::new_v4();
-        let sandbox_id = SandboxId::new_v4();
-        let lease =
-            prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, "sess-nonzero")
+
+        for (session_id, terminal_status) in [
+            ("sess-nonzero", WorkspaceCacheTerminalStatus::NonzeroExit),
+            ("sess-cancelled", WorkspaceCacheTerminalStatus::Cancelled),
+        ] {
+            let run_id = RunId::new_v4();
+            let sandbox_id = SandboxId::new_v4();
+            let lease =
+                prepare_test_workspace_image_lease(&paths, &cache, run_id, sandbox_id, session_id)
+                    .await;
+            let sandbox = MockSandbox::new(format!("workspace-promotion-{session_id}"));
+            let storage_fingerprints = crate::idle_pool::StorageFingerprints {
+                storages: std::collections::HashMap::from([(
+                    CANONICAL_WORKING_DIR.to_owned(),
+                    ("repo".to_owned(), "v1".to_owned()),
+                )]),
+                artifacts: std::collections::HashMap::from([(
+                    format!("{CANONICAL_WORKING_DIR}/artifact"),
+                    ("artifact".to_owned(), "v1".to_owned()),
+                )]),
+            };
+            let promotion = test_promotion_context(
+                lease,
+                run_id,
+                sandbox_id,
+                session_id,
+                terminal_status,
+                storage_fingerprints,
+            );
+
+            let promoted =
+                promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test")
+                    .await;
+
+            assert!(promoted);
+            drop(promotion);
+            let checkout = cache
+                .prepare(WorkspaceImagePrepareRequest {
+                    run_id: RunId::new_v4(),
+                    sandbox_id: SandboxId::new_v4(),
+                    profile_name: "vm0/default",
+                    session_id: Some(session_id),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: b"image".len() as u64,
+                    workspace_drive_required: true,
+                })
                 .await;
-        let sandbox = MockSandbox::new("workspace-promotion-nonzero");
-        let storage_fingerprints = crate::idle_pool::StorageFingerprints {
-            storages: std::collections::HashMap::from([(
-                CANONICAL_WORKING_DIR.to_owned(),
-                ("repo".to_owned(), "v1".to_owned()),
-            )]),
-            artifacts: std::collections::HashMap::from([(
-                format!("{CANONICAL_WORKING_DIR}/artifact"),
-                ("artifact".to_owned(), "v1".to_owned()),
-            )]),
-        };
-        let promotion = test_promotion_context(
-            lease,
-            run_id,
-            sandbox_id,
-            "sess-nonzero",
-            WorkspaceCacheTerminalStatus::NonzeroExit,
-            storage_fingerprints,
-        );
 
-        let promoted =
-            promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
-
-        assert!(promoted);
-        drop(promotion);
-        let checkout = cache
-            .prepare(WorkspaceImagePrepareRequest {
-                run_id: RunId::new_v4(),
-                sandbox_id: SandboxId::new_v4(),
-                profile_name: "vm0/default",
-                session_id: Some("sess-nonzero"),
-                working_dir: CANONICAL_WORKING_DIR,
-                image_size_bytes: b"image".len() as u64,
-                workspace_drive_required: true,
-            })
-            .await;
-
-        assert!(checkout.is_cache_hit());
-        let previous_storage = checkout
-            .previous_storage()
-            .expect("cache hit should expose previous storage fingerprints");
-        assert!(StorageFingerprints::fingerprint_is_tainted(
-            previous_storage
-                .storages
-                .get(CANONICAL_WORKING_DIR)
-                .expect("storage path should be retained for cleanup")
-        ));
-        assert!(StorageFingerprints::fingerprint_is_tainted(
-            previous_storage
-                .artifacts
-                .get(&format!("{CANONICAL_WORKING_DIR}/artifact"))
-                .expect("artifact path should be retained for cleanup")
-        ));
+            assert!(checkout.is_cache_hit());
+            let previous_storage = checkout
+                .previous_storage()
+                .expect("cache hit should expose previous storage fingerprints");
+            assert!(StorageFingerprints::fingerprint_is_tainted(
+                previous_storage
+                    .storages
+                    .get(CANONICAL_WORKING_DIR)
+                    .expect("storage path should be retained for cleanup")
+            ));
+            assert!(StorageFingerprints::fingerprint_is_tainted(
+                previous_storage
+                    .artifacts
+                    .get(&format!("{CANONICAL_WORKING_DIR}/artifact"))
+                    .expect("artifact path should be retained for cleanup")
+            ));
+        }
     }
 
     #[tokio::test]
