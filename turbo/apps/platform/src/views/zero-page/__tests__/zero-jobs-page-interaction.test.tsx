@@ -114,7 +114,6 @@ describe("zero jobs page - create agent dialog", () => {
           displayName: "Marketing Bot",
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -126,7 +125,6 @@ describe("zero jobs page - create agent dialog", () => {
           displayName: "Marketing Bot",
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -157,7 +155,6 @@ describe("zero jobs page - create agent dialog", () => {
           displayName: "Private Bot",
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -169,7 +166,6 @@ describe("zero jobs page - create agent dialog", () => {
           displayName: "Private Bot",
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),

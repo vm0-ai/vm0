@@ -72,7 +72,6 @@ function mockAPIs({
         description: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

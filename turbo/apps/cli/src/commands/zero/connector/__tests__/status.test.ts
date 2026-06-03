@@ -48,7 +48,6 @@ function stubAgent(id: string, displayName: string | null) {
       displayName,
       sound: null,
       avatarUrl: null,
-      permissionPolicies: null,
       customSkills: [],
     });
   });

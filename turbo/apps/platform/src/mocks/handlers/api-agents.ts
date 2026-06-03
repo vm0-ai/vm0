@@ -112,7 +112,6 @@ export const apiAgentsHandlers = [
       displayName: null,
       sound: null,
       avatarUrl: null,
-      permissionPolicies: null,
       customSkills: [],
       modelProviderId: null,
       selectedModel: null,

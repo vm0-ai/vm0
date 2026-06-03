@@ -53,7 +53,6 @@ function mockAgentResponse() {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    permissionPolicies: null,
     customSkills: [],
     modelProviderId: null,
     selectedModel: null,
@@ -515,7 +514,6 @@ describe("zero-job-detail signals", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            permissionPolicies: null,
             customSkills: [],
           });
         }),
@@ -560,7 +558,6 @@ describe("zero-job-detail signals", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            permissionPolicies: null,
             customSkills: [],
           });
         }),

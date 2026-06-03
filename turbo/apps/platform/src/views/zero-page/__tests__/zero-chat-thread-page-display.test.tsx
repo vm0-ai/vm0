@@ -99,7 +99,6 @@ describe("zero chat thread page display - permission action card", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
           modelProviderId: null,
           selectedModel: null,

@@ -46,7 +46,6 @@ function agentDetail(overrides: Record<string, unknown> = {}) {
     displayName: "My Agent",
     sound: "professional",
     avatarUrl: "preset:0",
-    permissionPolicies: null,
     customSkills: [] as string[],
     ...overrides,
   };
@@ -189,7 +188,6 @@ describe("zero settings tab - display", () => {
           displayName: "Zero",
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),

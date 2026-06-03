@@ -66,7 +66,6 @@ function mockAgentWith(params: {
         description: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [] as string[],
         modelProviderId: params.modelProviderId,
         selectedModel: params.selectedModel,

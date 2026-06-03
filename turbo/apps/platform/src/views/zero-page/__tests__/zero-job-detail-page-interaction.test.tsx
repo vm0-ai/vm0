@@ -80,7 +80,6 @@ function mockAPIs() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

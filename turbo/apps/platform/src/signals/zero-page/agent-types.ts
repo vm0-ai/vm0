@@ -1,5 +1,3 @@
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
-
 export interface AgentDetail {
   agentId: string;
   ownerId: string;
@@ -7,7 +5,6 @@ export interface AgentDetail {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
-  permissionPolicies: FirewallPolicies | null;
   modelProviderId: string | null;
   selectedModel: string | null;
   preferPersonalProvider: boolean;

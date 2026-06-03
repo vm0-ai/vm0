@@ -53,7 +53,6 @@ function mockAPIs() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: "preset:2",
-        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -169,7 +168,6 @@ describe("zero job detail page - display", () => {
             displayName: "Zero",
             sound: null,
             avatarUrl: null,
-            permissionPolicies: null,
             customSkills: [],
             modelProviderId: null,
             selectedModel: null,

@@ -114,7 +114,6 @@ export function mockSubagentThread(threadId: string) {
           description: null;
           sound: null;
           avatarUrl: string | null;
-          permissionPolicies: null;
           customSkills: string[];
         }
       > = {
@@ -125,7 +124,6 @@ export function mockSubagentThread(threadId: string) {
           description: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         },
         [SUB_AGENT_ID]: {
@@ -135,7 +133,6 @@ export function mockSubagentThread(threadId: string) {
           description: null,
           sound: null,
           avatarUrl: "https://example.com/avatar.png",
-          permissionPolicies: null,
           customSkills: [],
         },
       };

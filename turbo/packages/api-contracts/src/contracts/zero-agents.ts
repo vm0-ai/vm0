@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 
 const c = initContract();
 
@@ -29,7 +28,6 @@ export const zeroAgentResponseSchema = z.object({
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  permissionPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),

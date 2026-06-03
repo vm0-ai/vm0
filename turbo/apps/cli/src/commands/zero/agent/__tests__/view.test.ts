@@ -18,7 +18,6 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
-  permissionPolicies: null,
 };
 
 function mockConnectorListHandler(
@@ -195,22 +194,10 @@ describe("zero agent view command", () => {
       expect(logCalls).not.toContain("Avatar:");
     });
 
-    it("should ignore legacy agent permission policies in connector summary", async () => {
+    it("should resolve connector summary from connector defaults", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json({
-            ...mockAgent,
-            permissionPolicies: {
-              slack: {
-                policies: {
-                  "channels:read": "allow",
-                  "chat:write": "deny",
-                  "reactions:read": "allow",
-                  admin: "deny",
-                },
-              },
-            },
-          });
+          return HttpResponse.json(mockAgent);
         }),
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
@@ -300,7 +287,6 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            permissionPolicies: null,
           });
         }),
         http.get(

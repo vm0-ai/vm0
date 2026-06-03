@@ -29,7 +29,6 @@ function mockAgent() {
         displayName: "Research agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

@@ -76,7 +76,6 @@ function mockAPIs() {
         description: "Finds and summarizes information",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
         modelProviderId: null,
         selectedModel: null,
