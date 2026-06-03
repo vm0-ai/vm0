@@ -912,7 +912,7 @@ async fn delete_iptables_from_table(table: &str, comment: &str) -> NamespaceDele
 async fn delete_namespace_resources(ns_name: &str, host_device: &str) -> NamespaceDeleteOutcome {
     info!(name = %ns_name, "deleting namespace");
     let iptables = delete_iptables_rules_by_comment(ns_name).await;
-    let outcome = delete_namespace_kernel_resources(ns_name, host_device).await;
+    let outcome = delete_namespace_link_and_netns(ns_name, host_device).await;
     if matches!(iptables, NamespaceDeleteOutcome::Deleted)
         && matches!(outcome, NamespaceDeleteOutcome::Deleted)
     {
@@ -928,7 +928,7 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) -> Namespa
     }
 }
 
-async fn delete_namespace_kernel_resources(
+async fn delete_namespace_link_and_netns(
     ns_name: &str,
     host_device: &str,
 ) -> NamespaceDeleteOutcome {
@@ -2106,7 +2106,7 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
                     NamespaceDeleteOutcome::Deleted => {
                         info!(name = %ns_name, "deleting namespace");
                         let outcome =
-                            delete_namespace_kernel_resources(&ns_name, &host_device).await;
+                            delete_namespace_link_and_netns(&ns_name, &host_device).await;
                         if matches!(outcome, NamespaceDeleteOutcome::Deleted) {
                             info!(name = %ns_name, "namespace deleted");
                         } else {
