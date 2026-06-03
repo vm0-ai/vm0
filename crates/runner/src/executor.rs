@@ -549,6 +549,7 @@ pub async fn execute_job_reuse(
     let idle_parts = idle_sandbox.into_parts();
     let source_ip = idle_parts.source_ip;
     let prev_storage = idle_parts.storage_fingerprints;
+    let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
@@ -568,19 +569,21 @@ pub async fn execute_job_reuse(
             context.session_workspace_image_cache_enabled(),
             config.workspace_cache.as_ref(),
         ) {
-            (true, Some(cache)) => Some(
-                cache
-                    .lease_active(WorkspaceImageActiveLeaseRequest {
-                        run_id,
-                        sandbox_id,
-                        profile_name: &params.profile_name,
-                        session_id: context.session_id(),
-                        working_dir: CANONICAL_WORKING_DIR,
-                        image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
-                        workspace_drive_available: true,
-                    })
-                    .await,
-            ),
+            (true, Some(cache)) => {
+                let active_request = WorkspaceImageActiveLeaseRequest {
+                    run_id,
+                    sandbox_id,
+                    profile_name: &params.profile_name,
+                    session_id: context.session_id(),
+                    working_dir: CANONICAL_WORKING_DIR,
+                    image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                    workspace_drive_available: true,
+                };
+                Some(match workspace_promotion {
+                    Some(promotion) => promotion.into_active_lease(active_request),
+                    None => cache.lease_active(active_request).await,
+                })
+            }
             _ => None,
         };
         let mut outcome = execute_reused_sandbox(
@@ -5051,7 +5054,7 @@ mod tests {
             IdleUnparkResult::Reused {
                 sandbox,
                 budget_lease,
-            } => (sandbox, budget_lease),
+            } => (*sandbox, budget_lease),
             IdleUnparkResult::Failed { error, .. } => {
                 panic!("test idle entry should unpark: {error}");
             }
@@ -6793,7 +6796,7 @@ mod tests {
             crate::idle_pool::IdleUnparkResult::Reused {
                 sandbox,
                 budget_lease,
-            } => (sandbox, budget_lease),
+            } => (*sandbox, budget_lease),
             crate::idle_pool::IdleUnparkResult::Failed { error, .. } => {
                 panic!("test idle entry should unpark: {error}");
             }

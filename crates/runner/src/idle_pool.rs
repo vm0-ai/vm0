@@ -498,12 +498,14 @@ pub struct ReusableIdleSandbox {
     sandbox_id: SandboxId,
     source_ip: String,
     storage_fingerprints: StorageFingerprints,
+    workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
 pub struct ReusableIdleSandboxParts {
     pub sandbox: Box<dyn Sandbox>,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
+    pub workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
 impl ReusableIdleSandbox {
@@ -517,12 +519,14 @@ impl ReusableIdleSandbox {
             sandbox_id: _,
             source_ip,
             storage_fingerprints,
+            workspace_promotion,
         } = self;
 
         ReusableIdleSandboxParts {
             sandbox,
             source_ip,
             storage_fingerprints,
+            workspace_promotion,
         }
     }
 }
@@ -657,7 +661,7 @@ impl RejectedParkedIdleCandidate {
 
 pub enum IdleUnparkResult {
     Reused {
-        sandbox: ReusableIdleSandbox,
+        sandbox: Box<ReusableIdleSandbox>,
         budget_lease: BudgetLease,
     },
     Failed {
@@ -693,7 +697,7 @@ impl IdleEntry {
             Ok(Ok(())) => {
                 let (sandbox, budget_lease) = self.into_reuse_parts();
                 IdleUnparkResult::Reused {
-                    sandbox,
+                    sandbox: Box::new(sandbox),
                     budget_lease,
                 }
             }
@@ -714,6 +718,7 @@ impl IdleEntry {
             sandbox_id,
             source_ip,
             storage_fingerprints,
+            workspace_promotion,
             budget_lease,
             ..
         } = self;
@@ -724,6 +729,7 @@ impl IdleEntry {
                 sandbox_id,
                 source_ip,
                 storage_fingerprints,
+                workspace_promotion,
             },
             budget_lease,
         )
@@ -1226,6 +1232,7 @@ mod tests {
         else {
             panic!("unpark should succeed");
         };
+        let sandbox = *sandbox;
         assert_eq!(sandbox.sandbox_id(), sandbox_id);
         let reused_parts = sandbox.into_parts();
         assert_eq!(reused_parts.source_ip, source_ip);

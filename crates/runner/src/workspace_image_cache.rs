@@ -123,10 +123,10 @@ pub(crate) struct WorkspaceImageLease {
     entry_lock: Option<Flock<std::fs::File>>,
 }
 
-#[derive(Clone)]
 pub(crate) struct WorkspaceImagePromotionContext {
     cache: SessionWorkspaceCache,
     cache_key: String,
+    entry_lock: Option<Flock<std::fs::File>>,
     run_id: RunId,
     sandbox_id: sandbox::SandboxId,
     profile_name: String,
@@ -1611,7 +1611,7 @@ impl WorkspaceImageLease {
     }
 
     pub(crate) fn into_promotion_context(
-        self,
+        mut self,
         request: WorkspaceImagePromotionRequest<'_>,
     ) -> Option<WorkspaceImagePromotionContext> {
         if !request.promotable {
@@ -1652,6 +1652,7 @@ impl WorkspaceImageLease {
         Some(WorkspaceImagePromotionContext {
             cache: self.cache.clone(),
             cache_key,
+            entry_lock: self.entry_lock.take(),
             run_id: request.run_id,
             sandbox_id: request.sandbox_id,
             profile_name: self.profile_name.clone(),
@@ -1693,8 +1694,11 @@ impl WorkspaceImagePromotionContext {
             }
         };
 
-        let _entry_lock_guard =
-            crate::lock::acquire(self.cache.entry_lock_path(&self.cache_key)).await?;
+        let _late_entry_lock_guard = if self.entry_lock.is_some() {
+            None
+        } else {
+            Some(crate::lock::acquire(self.cache.entry_lock_path(&self.cache_key)).await?)
+        };
 
         self.cache
             .promote_locked(WorkspaceImagePromotionInput {
@@ -1710,6 +1714,46 @@ impl WorkspaceImagePromotionContext {
                 storage_fingerprints: promotion_storage_fingerprints,
             })
             .await
+    }
+
+    pub(crate) fn into_active_lease(
+        self,
+        request: WorkspaceImageActiveLeaseRequest<'_>,
+    ) -> WorkspaceImageLease {
+        let Self {
+            cache,
+            cache_key,
+            entry_lock,
+            run_id: _,
+            sandbox_id,
+            profile_name,
+            session_id,
+            working_dir,
+            active_image,
+            image_size_bytes,
+            terminal_status: _,
+            completed_at: _,
+            storage_fingerprints: _,
+        } = self;
+        debug_assert_eq!(request.sandbox_id, sandbox_id);
+        debug_assert_eq!(request.profile_name, profile_name.as_str());
+        debug_assert_eq!(request.session_id, Some(session_id.as_str()));
+        debug_assert_eq!(request.working_dir, working_dir.as_str());
+        debug_assert_eq!(request.image_size_bytes, image_size_bytes);
+        WorkspaceImageLease {
+            cache,
+            cache_key: Some(cache_key),
+            profile_name,
+            session_id: Some(session_id),
+            working_dir,
+            active_image,
+            source_image: None,
+            image_size_bytes,
+            workspace_drive_enabled: request.workspace_drive_available,
+            result: WorkspaceCacheCheckoutResult::Miss,
+            previous_storage: None,
+            entry_lock,
+        }
     }
 }
 
@@ -3454,6 +3498,99 @@ mod tests {
         assert!(cache.held_session_states().await.is_empty());
         drop(lease);
         assert_eq!(cache.held_session_states().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn promotion_context_keeps_entry_locked_until_reused_active_lease_drops() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-locked-context";
+        let image_size_bytes = 16 * 1024 * 1024;
+
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+
+        let promotion = lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: local_timestamp(),
+                storage_fingerprints: StorageFingerprints::default(),
+                promotable: true,
+            })
+            .unwrap();
+
+        let blocked_by_context = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert_eq!(
+            blocked_by_context.result(),
+            WorkspaceCacheCheckoutResult::LockBusy
+        );
+
+        let active_lease = promotion.into_active_lease(WorkspaceImageActiveLeaseRequest {
+            run_id: RunId::new_v4(),
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            session_id: Some(session_id),
+            working_dir: "/workspace",
+            image_size_bytes,
+            workspace_drive_available: true,
+        });
+
+        let blocked_by_active_lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert_eq!(
+            blocked_by_active_lease.result(),
+            WorkspaceCacheCheckoutResult::LockBusy
+        );
+
+        drop(active_lease);
+        let after_drop = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some(session_id),
+                working_dir: "/workspace",
+                image_size_bytes,
+                workspace_drive_required: false,
+            })
+            .await;
+        assert_eq!(after_drop.result(), WorkspaceCacheCheckoutResult::Miss);
     }
 
     #[tokio::test]

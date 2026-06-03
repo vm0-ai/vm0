@@ -746,6 +746,7 @@ mod tests {
             promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
 
         assert!(promoted);
+        drop(promotion);
         let states = cache.held_session_states().await;
         assert_eq!(states.len(), 1);
         assert_eq!(states[0].session_id, "sess-promote");
@@ -790,6 +791,7 @@ mod tests {
             promote_workspace_image_from_active_sandbox(&sandbox, Some(&promotion), "test").await;
 
         assert!(promoted);
+        drop(promotion);
         let checkout = cache
             .prepare(WorkspaceImagePrepareRequest {
                 run_id: RunId::new_v4(),

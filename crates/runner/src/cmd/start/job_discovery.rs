@@ -294,7 +294,7 @@ async fn try_reuse_from_pool(
                     // task before handing the sandbox to the executor.
                     drop(job_lease);
                     (
-                        Some(sandbox),
+                        Some(*sandbox),
                         budget_lease,
                         SandboxReuseResult::Reused,
                         snapshot,
