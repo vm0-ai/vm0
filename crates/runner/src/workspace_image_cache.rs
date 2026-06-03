@@ -1773,14 +1773,16 @@ impl WorkspaceImagePromotionContext {
             None => match crate::lock::try_acquire(cache.entry_lock_path(&cache_key)).await {
                 Ok(lock) => Some(lock),
                 Err(e) => {
-                    info!(
+                    warn!(
                         run_id = %run_id,
                         cache_key,
                         reason,
                         error = %e,
-                        "workspace image cache baseline invalidation skipped: late entry lock unavailable"
+                        "workspace image cache baseline invalidation failed: late entry lock unavailable"
                     );
-                    return Ok(false);
+                    return Err(RunnerError::Internal(format!(
+                        "workspace image cache baseline invalidation lock unavailable: {e}"
+                    )));
                 }
             },
         };
