@@ -265,6 +265,20 @@ export const zeroAgentSkillFilesRequestSchema = z.object({
       SKILL_FILES_MAX_COUNT,
       `Maximum ${SKILL_FILES_MAX_COUNT} files allowed`,
     )
+    .superRefine((files, ctx) => {
+      const paths = new Set<string>();
+      for (const [index, file] of files.entries()) {
+        if (paths.has(file.path)) {
+          ctx.addIssue({
+            code: "custom",
+            path: [index, "path"],
+            message: `Duplicate file path "${file.path}"`,
+          });
+          continue;
+        }
+        paths.add(file.path);
+      }
+    })
     .refine(
       (files) => {
         return files.some((f) => {

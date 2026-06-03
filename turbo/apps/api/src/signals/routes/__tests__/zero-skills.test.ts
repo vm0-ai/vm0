@@ -98,6 +98,13 @@ function skillFiles(content: string) {
   return [{ path: "SKILL.md", content }];
 }
 
+function duplicateSkillFiles() {
+  return [
+    { path: "SKILL.md", content: "# First" },
+    { path: "SKILL.md", content: "# Second" },
+  ];
+}
+
 function s3CommandInput(command: unknown): Record<string, unknown> {
   if (
     typeof command === "object" &&
@@ -439,6 +446,27 @@ describe("POST /api/zero/skills", () => {
     );
 
     expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when create files contain duplicate paths", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      listClient().create({
+        headers: authHeaders(),
+        body: {
+          name: "duplicate-path-skill",
+          files: duplicateSkillFiles(),
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Duplicate file path");
   });
 
   it("stores the skill row and uploads a custom skill volume", async () => {
@@ -1054,6 +1082,25 @@ describe("PUT /api/zero/skills/:name", () => {
     );
 
     expect(response.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("returns 400 when update files contain duplicate paths", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const response = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { name: "any" },
+        body: { files: duplicateSkillFiles() },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Duplicate file path");
   });
 
   it("updates skill content and stores a new volume version", async () => {
