@@ -574,6 +574,32 @@ describe("apiBackend routing", () => {
     expect(hosts).toStrictEqual(["api.vm0.ai"]);
   });
 
+  it("does not let a :param template over-match a shorter parent path", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    // `/api/zero/runs/:id` is allowlisted for GET, but the bare parent
+    // `/api/zero/runs` is only allowlisted for POST. A GET to the parent must
+    // not be absorbed by the `:id` template (segment counts differ), so it
+    // falls through to www.
+    const hosts: string[] = [];
+    server.use(
+      http.get("*/api/zero/runs", ({ request }) => {
+        hosts.push(new URL(request.url).host);
+        return new Response(null, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    await fch("/api/zero/runs");
+
+    expect(hosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
   it("routes policy allowlisted user preferences string paths to api host when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
