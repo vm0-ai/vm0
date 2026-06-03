@@ -194,11 +194,118 @@ const GAMMA: ConnectorRef = {
   icon: "/assets/connectors/gamma.svg",
 };
 
+const VERCEL: ConnectorRef = {
+  id: "vercel",
+  label: "Vercel",
+  icon: "/assets/connectors/vercel.svg",
+  dark: true,
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
 
 export const USE_CASES: UseCase[] = [
+  {
+    slug: "landing-page-builder",
+    color: "#3aa6a0",
+    avatar: {
+      rotation: 3,
+      skin: 4,
+      hairStyle: 5,
+      hairColor: 2,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["marketing"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, VERCEL, PLAUSIBLE],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: VERCEL, required: true },
+      { connector: PLAUSIBLE, required: false },
+    ],
+    relatedSlugs: [
+      "build-with-v0",
+      "publish-use-case-pages",
+      "marketing-performance-report",
+    ],
+    stepCount: 4,
+    nextActionCount: 3,
+    integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "support-driven-bug-fixes",
+    color: "#c25b5b",
+    avatar: {
+      rotation: 2,
+      skin: 2,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 2,
+      intensity: "d",
+    },
+    roles: ["support", "engineering"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GITHUB, VERCEL, GMAIL],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: GITHUB, required: true },
+      { connector: VERCEL, required: true },
+      { connector: GMAIL, required: false },
+    ],
+    relatedSlugs: [
+      "file-bugs-from-slack",
+      "gmail-poll-dm",
+      "developer-support-triage",
+    ],
+    stepCount: 4,
+    nextActionCount: 3,
+    integrationCount: 4,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "smart-deadline-guardian",
+    color: "#e85d4e",
+    avatar: {
+      rotation: 1,
+      skin: 3,
+      hairStyle: 2,
+      hairColor: 2,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["product", "engineering"],
+    capability: "scheduled",
+    model: "Claude 4 Sonnet",
+    connectors: [LINEAR, GITHUB, GOOGLE_CALENDAR, SLACK],
+    integrations: [
+      { connector: LINEAR, required: true },
+      { connector: GITHUB, required: true },
+      { connector: GOOGLE_CALENDAR, required: true },
+      { connector: SLACK, required: true },
+    ],
+    relatedSlugs: [
+      "daily-engineering-brief",
+      "product-health-briefing",
+      "morning-brief",
+    ],
+    stepCount: 4,
+    nextActionCount: 3,
+    integrationCount: 4,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
   {
     slug: "error-triage-daily",
     color: "#9abe7c",
