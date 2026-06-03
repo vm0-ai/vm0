@@ -64,9 +64,6 @@ async function exchangeLarkTenantAccessToken(args: {
 
 export const larkProvider: TokenExchangeAccessProvider = {
   kind: "token-exchange",
-  getAccessSecretName: () => {
-    return "LARK_ACCESS_TOKEN";
-  },
   exchangeToken: async (args) => {
     return await exchangeLarkTenantAccessToken({
       appId: requireValue(args.variables, "LARK_APP_ID"),

@@ -88,7 +88,6 @@ export interface ConnectorTokenExchangeResult {
 
 export interface TokenExchangeAccessProvider {
   readonly kind: "token-exchange";
-  getAccessSecretName(): string;
   exchangeToken(
     args: ConnectorTokenExchangeArgs,
   ): Promise<ConnectorTokenExchangeResult>;
