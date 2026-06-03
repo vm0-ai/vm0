@@ -1803,12 +1803,12 @@ async fn inspect_temporary_files(entry_dir: &Path) -> RunnerResult<TemporaryFile
         if !is_workspace_tmp_file_name(file_name) {
             continue;
         }
-        stats.file_count += 1;
         let metadata = match fs::metadata(file.path()).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e.into()),
         };
+        stats.file_count += 1;
         stats.allocated_bytes = stats
             .allocated_bytes
             .saturating_add(allocated_bytes(&metadata));
