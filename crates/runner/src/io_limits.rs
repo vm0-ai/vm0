@@ -18,6 +18,8 @@ pub(crate) const SANDBOX_IO_LIMITERS_FEATURE_FLAG: &str = "sandboxIoLimiters";
 // filesystem metadata bursts, and other non-sandbox traffic.
 const IO_CAPACITY_PERCENT: u128 = 100;
 const IO_RESERVE_PERCENT: u128 = 20;
+const MIN_POSITIVE_SANDBOX_RATE: u64 = 1;
+const MIN_WRITABLE_BLOCK_DRIVES_PER_SANDBOX: u64 = 2;
 const MAX_DENOMINATOR_DP_CELLS: usize = 1_000_000;
 const MAX_DENOMINATOR_DP_STEPS: usize = 5_000_000;
 
@@ -126,27 +128,44 @@ fn resolve_io_limits_from_values(
     };
 
     let denominator = admitted_sandbox_denominator(profiles, budget);
-    let Some(block_bandwidth_bytes_per_sec) =
-        per_sandbox_capacity(disk_bandwidth_bytes_per_sec, denominator)
-    else {
+    let Some(block_bandwidth_bytes_per_sec) = per_sandbox_capacity(
+        disk_bandwidth_bytes_per_sec,
+        denominator,
+        MIN_WRITABLE_BLOCK_DRIVES_PER_SANDBOX,
+    ) else {
         return insufficient_capacity_resolution(
             host_env::RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,
             denominator,
+            MIN_WRITABLE_BLOCK_DRIVES_PER_SANDBOX,
         );
     };
-    let Some(block_ops_per_sec) = per_sandbox_capacity(disk_ops_per_sec, denominator) else {
-        return insufficient_capacity_resolution(host_env::RUNNER_DISK_IOPS_ENV, denominator);
+    let Some(block_ops_per_sec) = per_sandbox_capacity(
+        disk_ops_per_sec,
+        denominator,
+        MIN_WRITABLE_BLOCK_DRIVES_PER_SANDBOX,
+    ) else {
+        return insufficient_capacity_resolution(
+            host_env::RUNNER_DISK_IOPS_ENV,
+            denominator,
+            MIN_WRITABLE_BLOCK_DRIVES_PER_SANDBOX,
+        );
     };
-    let Some(net_rx_bytes_per_sec) = per_sandbox_capacity(net_rx_bytes_per_sec, denominator) else {
+    let Some(net_rx_bytes_per_sec) =
+        per_sandbox_capacity(net_rx_bytes_per_sec, denominator, MIN_POSITIVE_SANDBOX_RATE)
+    else {
         return insufficient_capacity_resolution(
             host_env::RUNNER_NET_RX_MIB_PER_SEC_ENV,
             denominator,
+            MIN_POSITIVE_SANDBOX_RATE,
         );
     };
-    let Some(net_tx_bytes_per_sec) = per_sandbox_capacity(net_tx_bytes_per_sec, denominator) else {
+    let Some(net_tx_bytes_per_sec) =
+        per_sandbox_capacity(net_tx_bytes_per_sec, denominator, MIN_POSITIVE_SANDBOX_RATE)
+    else {
         return insufficient_capacity_resolution(
             host_env::RUNNER_NET_TX_MIB_PER_SEC_ENV,
             denominator,
+            MIN_POSITIVE_SANDBOX_RATE,
         );
     };
 
@@ -171,10 +190,19 @@ fn invalid_value_resolution(key: &'static str) -> IoLimitResolution {
     }
 }
 
-fn insufficient_capacity_resolution(key: &'static str, denominator: u64) -> IoLimitResolution {
+fn insufficient_capacity_resolution(
+    key: &'static str,
+    denominator: u64,
+    minimum_per_sandbox: u64,
+) -> IoLimitResolution {
+    let unit = if minimum_per_sandbox == 1 {
+        "unit"
+    } else {
+        "units"
+    };
     IoLimitResolution::Misconfigured {
         reason: format!(
-            "{key} is too small to allocate at least 1 unit per admitted sandbox after reserve (denominator: {denominator})"
+            "{key} is too small to allocate at least {minimum_per_sandbox} {unit} per admitted sandbox after reserve (denominator: {denominator})"
         ),
     }
 }
@@ -303,12 +331,16 @@ fn denominator_table_index(count: usize, cpu: usize, width: usize) -> Option<usi
     count.checked_mul(width)?.checked_add(cpu)
 }
 
-fn per_sandbox_capacity(host_capacity: u64, denominator: u64) -> Option<u64> {
+fn per_sandbox_capacity(
+    host_capacity: u64,
+    denominator: u64,
+    minimum_per_sandbox: u64,
+) -> Option<u64> {
     let usable = ((host_capacity as u128) * (IO_CAPACITY_PERCENT - IO_RESERVE_PERCENT))
         / IO_CAPACITY_PERCENT;
     let usable = u64::try_from(usable).ok()?;
     let capacity = usable / denominator.max(1);
-    (capacity > 0).then_some(capacity)
+    (capacity >= minimum_per_sandbox).then_some(capacity)
 }
 
 #[cfg(test)]
@@ -455,6 +487,40 @@ mod tests {
         assert!(reason.contains(host_env::RUNNER_DISK_IOPS_ENV));
         assert!(reason.contains("too small"));
         assert!(reason.contains("denominator: 64"));
+    }
+
+    #[test]
+    fn block_iops_too_small_for_drive_split_disables_limits_as_misconfigured() {
+        let profiles = profiles(&[("vm0/default", 1, 1024)]);
+        let budget = ResourceBudget::new(1, 1024, 1.0, 1);
+        let mut values = full_values();
+        values.disk_iops = Some(value("2"));
+
+        let resolution = resolve_io_limits_from_values(&values, &profiles, &budget);
+
+        let IoLimitResolution::Misconfigured { reason } = resolution else {
+            panic!("expected misconfigured resolution");
+        };
+        assert!(reason.contains(host_env::RUNNER_DISK_IOPS_ENV));
+        assert!(reason.contains("too small"));
+        assert!(reason.contains("denominator: 1"));
+    }
+
+    #[test]
+    fn block_bandwidth_too_small_for_drive_split_disables_limits_as_misconfigured() {
+        let profiles = profiles(&[("vm0/default", 1, 1024)]);
+        let budget = ResourceBudget::new(1, 1024, 1.0, 1);
+        let mut values = full_values();
+        values.disk_bandwidth_mib_per_sec = Some(value("0.000002"));
+
+        let resolution = resolve_io_limits_from_values(&values, &profiles, &budget);
+
+        let IoLimitResolution::Misconfigured { reason } = resolution else {
+            panic!("expected misconfigured resolution");
+        };
+        assert!(reason.contains(host_env::RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV));
+        assert!(reason.contains("too small"));
+        assert!(reason.contains("denominator: 1"));
     }
 
     #[test]
