@@ -928,6 +928,7 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) -> Namespa
     }
 }
 
+/// Delete the host veth and netns only; callers handle host iptables separately.
 async fn delete_namespace_link_and_netns(
     ns_name: &str,
     host_device: &str,
