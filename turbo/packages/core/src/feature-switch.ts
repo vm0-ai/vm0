@@ -166,13 +166,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Reveal activity debug surfaces, activity log navigation, appended system prompts, and Debug preferences",
     enabled: false,
   },
-  [FeatureSwitchKey.UserPermissionGrants]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Gate the per-user Zero firewall permission grant rollout. Staff-only while the grant backfill and rollout verification complete.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable remote desktop host registration",

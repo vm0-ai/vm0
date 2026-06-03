@@ -21,12 +21,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
   });
 
-  it("should return false for user permission grants by default", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.UserPermissionGrants, {})).toBe(
-      false,
-    );
-  });
-
   it("should return false for disabled switch with non-matching userId", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {
@@ -109,7 +103,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       true,
     );
@@ -119,7 +112,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       false,
     );
