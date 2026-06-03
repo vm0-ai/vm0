@@ -360,7 +360,9 @@ export const CONNECTOR_PLATFORM_SECRET_NAMES = [
 export type ConnectorPlatformSecretName =
   (typeof CONNECTOR_PLATFORM_SECRET_NAMES)[number];
 
-export type ConnectorGrantOutputBindings = Record<string, string>;
+export type ConnectorGrantOutputBindings = Record<string, string> & {
+  readonly accessToken: string;
+};
 export type ConnectorRevokeInputBindings = Record<string, string>;
 
 export interface ConnectorStorageConfig {
