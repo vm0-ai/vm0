@@ -1405,6 +1405,18 @@ impl SessionWorkspaceCache {
                 tmp.display()
             )));
         }
+        let logical_image_size_bytes = tmp_metadata.len();
+        if logical_image_size_bytes != input.image_size_bytes {
+            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+            info!(
+                run_id = %input.run_id,
+                cache_key = input.cache_key,
+                actual_image_size_bytes = logical_image_size_bytes,
+                expected_image_size_bytes = input.image_size_bytes,
+                "workspace image cache promotion skipped because copied image size does not match cache key"
+            );
+            return Ok(false);
+        }
         let tmp_allocated = allocated_bytes(&tmp_metadata);
         if tmp_allocated > budget.max_entry_bytes {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
@@ -1444,7 +1456,6 @@ impl SessionWorkspaceCache {
                 current.display()
             )));
         }
-        let logical_image_size_bytes = current_metadata.len();
         let allocated = allocated_bytes(&current_metadata);
         let metadata = WorkspaceCacheMetadata {
             format_version: CACHE_FORMAT_VERSION,
@@ -4506,6 +4517,53 @@ mod tests {
 
         assert!(fs::metadata(&current).await.unwrap().is_file());
         assert_eq!(fs::read(current).await.unwrap(), b"image");
+    }
+
+    #[tokio::test]
+    async fn promote_skips_copied_image_with_unexpected_logical_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: Some("sess-size-mismatch"),
+                working_dir: "/workspace",
+                image_size_bytes: 16 * 1024 * 1024,
+                workspace_drive_required: false,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"truncated")
+            .await
+            .unwrap();
+        let cache_key = session_workspace_cache_key("sess-size-mismatch", "/workspace");
+
+        assert!(
+            !lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    "2026-05-01T00:00:00.000Z".into(),
+                    &StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+        assert!(
+            !paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
+        assert!(cache.held_session_states().await.is_empty());
     }
 
     #[tokio::test]
