@@ -882,7 +882,6 @@ class TestHandleFirewallRequest:
                 auth,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body) - 1,
-                create=True,
             ),
             patch("auth.urllib.request.urlopen", return_value=mock_resp),
             mitm_ctx(),
@@ -1387,7 +1386,6 @@ class TestFetchFirewallHeaders:
                 auth,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body),
-                create=True,
             ),
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", return_value=mock_resp),
@@ -1413,12 +1411,14 @@ class TestFetchFirewallHeaders:
                 auth,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(response_body) - 1,
-                create=True,
             ),
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", return_value=mock_resp),
             patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(Exception, match="Firewall auth response body too large"),
+            pytest.raises(
+                auth.FirewallAuthResponseTooLargeError,
+                match="Firewall auth response body too large",
+            ),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
@@ -1768,7 +1768,6 @@ class TestFetchFirewallHeaders:
                 auth,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(error_body),
-                create=True,
             ),
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
@@ -1802,12 +1801,14 @@ class TestFetchFirewallHeaders:
                 auth,
                 "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
                 len(error_body) - 1,
-                create=True,
             ),
             patch("auth.urllib.request.Request"),
             patch("auth.urllib.request.urlopen", side_effect=http_error),
             patch.object(auth, "VERCEL_BYPASS", ""),
-            pytest.raises(Exception, match="Firewall auth response body too large"),
+            pytest.raises(
+                auth.FirewallAuthResponseTooLargeError,
+                match="Firewall auth response body too large",
+            ),
         ):
             auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 

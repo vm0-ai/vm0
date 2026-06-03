@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from mitmproxy import ctx, http
 
@@ -61,6 +62,10 @@ class FirewallAuthApiError(Exception):
         self.code = code
         self.connectors = connectors
         self.failure_reason = failure_reason
+
+
+class _ResponseBodyReader(Protocol):
+    def read(self, n: int = -1) -> bytes: ...
 
 
 # Vercel bypass secret (still from environment as it's a secret)
@@ -277,7 +282,7 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     return req
 
 
-def _read_firewall_auth_response_body(resp) -> bytes:
+def _read_firewall_auth_response_body(resp: _ResponseBodyReader) -> bytes:
     body = resp.read(MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES + 1)
     if len(body) > MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES:
         raise FirewallAuthResponseTooLargeError("Firewall auth response body too large")
