@@ -702,7 +702,7 @@ export const webhookUsageEventContract = c.router({
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Receive usage event data from sandbox",
+    summary: "Receive billing usage event data from sandbox",
   },
 });
 
