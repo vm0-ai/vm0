@@ -4,6 +4,10 @@ import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
 } from "@vm0/api-contracts/contracts/webhooks";
+import {
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
@@ -556,7 +560,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       {
         name: "memory",
         version: "version-bbb",
-        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "memory",
+        version: "version-codex",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
         generatedBy: "apiAutoMemory" as const,
       },
       {
@@ -575,7 +585,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       {
         name: "memory",
         version: "version-bbb",
-        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "memory",
+        version: "version-codex",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
         generatedBy: "apiAutoMemory" as const,
       },
       {
