@@ -26,7 +26,6 @@ import {
   IconCheck,
   IconDots,
   IconVolume2,
-  IconArrowBarToUp,
   IconArrowDown,
   IconBrandGoogleDrive,
   IconChevronRight,
@@ -2700,14 +2699,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const skeletonVisible = useGet(thread.skeletonVisible$);
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
-  const features = useLastResolved(featureSwitch$);
-  const scrollToBottomButtonEnabled =
-    features?.[FeatureSwitchKey.ChatScrollToBottomButton] ?? false;
   const showScrollToBottomButton =
-    scrollToBottomButtonEnabled &&
-    awayFromBottom &&
-    !skeletonVisible &&
-    !sessionError;
+    awayFromBottom && !skeletonVisible && !sessionError;
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onLoadHistory = onDomEventFn(() => {
@@ -5033,17 +5026,7 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions
-        group={group}
-        content={fullContent}
-        thread={thread}
-        onScrollToMessageStart={() => {
-          document.getElementById(groupElementId)?.scrollIntoView({
-            block: "start",
-            behavior: "smooth",
-          });
-        }}
-      />
+      <PagedGroupActions group={group} content={fullContent} thread={thread} />
     </div>
   );
 }
@@ -5172,36 +5155,14 @@ function PagedGroupPrimaryActions({
   );
 }
 
-function MessageStartButton({ onClick }: { onClick: () => void }) {
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={onClick}
-            className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-            aria-label="Scroll to message start"
-          >
-            <IconArrowBarToUp size={18} stroke={1.5} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Scroll to start</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function PagedGroupActions({
   group,
   content,
   thread,
-  onScrollToMessageStart,
 }: {
   group: GroupedChatMessageGroup;
   content: string;
   thread: ChatThreadSignals;
-  onScrollToMessageStart: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const copiedId = useGet(thread.copiedMessageId$);
@@ -5210,8 +5171,6 @@ function PagedGroupActions({
 
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
-  const messageStartButtonEnabled =
-    features?.[FeatureSwitchKey.ChatMessageStartButton] ?? false;
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
@@ -5262,9 +5221,6 @@ function PagedGroupActions({
           onCopy={handleCopy}
           onTts={handleTts}
         />
-        {messageStartButtonEnabled && (
-          <MessageStartButton onClick={onScrollToMessageStart} />
-        )}
       </div>
     </div>
   );

@@ -40,8 +40,6 @@ export enum FeatureSwitchKey {
   OrgSkills = "orgSkills",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
-
-  ChatMessageStartButton = "chatMessageStartButton",
   ChatThreadRename = "chatThreadRename",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
@@ -54,6 +52,5 @@ export enum FeatureSwitchKey {
   SessionWorkspaceImageCache = "sessionWorkspaceImageCache",
   ChatArtifactSidebar = "chatArtifactSidebar",
   ChatGithubPrTracking = "chatGithubPrTracking",
-  ChatScrollToBottomButton = "chatScrollToBottomButton",
   MemoryViewer = "memoryViewer",
 }

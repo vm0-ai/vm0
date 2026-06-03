@@ -227,12 +227,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatMessageStartButton]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatThreadRename]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -302,12 +296,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatScrollToBottomButton]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread (above the composer) whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
-    enabled: true,
   },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
