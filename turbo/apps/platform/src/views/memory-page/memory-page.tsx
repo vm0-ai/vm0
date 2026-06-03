@@ -44,6 +44,54 @@ function formatBytes(bytes: number): string {
   return `${(kib / 1024).toFixed(1)} MiB`;
 }
 
+interface MemoryViewerState {
+  readonly files: MemoryDetailResponse["files"];
+  readonly selectedPath: string | null;
+  readonly selectedContent: string | null;
+  readonly knownPaths: ReadonlySet<string>;
+}
+
+function deriveMemoryViewerState(
+  detail: MemoryDetailResponse,
+  explicitSelected: string | null,
+): MemoryViewerState {
+  // MEMORY.md is the index of all memory, so pin it to the top; the rest stay
+  // sorted alphabetically.
+  const files = [...detail.files].sort((a, b) => {
+    if (a.path === PREFERRED_FILE) {
+      return -1;
+    }
+    if (b.path === PREFERRED_FILE) {
+      return 1;
+    }
+    return a.path.localeCompare(b.path);
+  });
+  const preferredPath =
+    files.find((file) => {
+      return file.path === PREFERRED_FILE;
+    })?.path ??
+    files[0]?.path ??
+    null;
+  const selectedPath =
+    explicitSelected !== null &&
+    files.some((file) => {
+      return file.path === explicitSelected;
+    })
+      ? explicitSelected
+      : preferredPath;
+  const selectedContent = selectedPath
+    ? (detail.fileContents.find((file) => {
+        return file.path === selectedPath;
+      })?.content ?? null)
+    : null;
+  const knownPaths = new Set(
+    files.map((file) => {
+      return file.path;
+    }),
+  );
+  return { files, selectedPath, selectedContent, knownPaths };
+}
+
 export function MemoryPage() {
   const detailLoadable = useLoadable(memoryDetail$);
   const detail =
@@ -86,41 +134,8 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
   const explicitSelected = useGet(selectedMemoryFilePath$);
   const setSelected = useSet(setSelectedMemoryFilePath$);
 
-  // MEMORY.md is the index of all memory, so pin it to the top; the rest stay
-  // sorted alphabetically.
-  const files = [...detail.files].sort((a, b) => {
-    if (a.path === PREFERRED_FILE) {
-      return -1;
-    }
-    if (b.path === PREFERRED_FILE) {
-      return 1;
-    }
-    return a.path.localeCompare(b.path);
-  });
-  const preferredPath =
-    files.find((file) => {
-      return file.path === PREFERRED_FILE;
-    })?.path ??
-    files[0]?.path ??
-    null;
-  const selectedPath =
-    explicitSelected !== null &&
-    files.some((file) => {
-      return file.path === explicitSelected;
-    })
-      ? explicitSelected
-      : preferredPath;
-  const selectedContent = selectedPath
-    ? (detail.fileContents.find((file) => {
-        return file.path === selectedPath;
-      })?.content ?? null)
-    : null;
-
-  const knownPaths = new Set(
-    files.map((file) => {
-      return file.path;
-    }),
-  );
+  const { files, selectedPath, selectedContent, knownPaths } =
+    deriveMemoryViewerState(detail, explicitSelected);
 
   // Links between memory files render as relative anchors (e.g.
   // `[foo](foo.md)`). Left alone they navigate the browser to a non-existent
