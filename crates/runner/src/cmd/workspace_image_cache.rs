@@ -271,28 +271,6 @@ fn human_bytes(bytes: u64) -> String {
     }
 }
 
-impl WorkspaceImageCacheInspectionStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Reusable => "reusable",
-            Self::Invalid => "invalid",
-            Self::Stale => "stale",
-            Self::TemporaryOnly => "temporaryOnly",
-            Self::Locked => "locked",
-        }
-    }
-}
-
-impl crate::workspace_image_cache::WorkspaceCacheTerminalStatus {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Success => "success",
-            Self::NonzeroExit => "nonzeroExit",
-            Self::Cancelled => "cancelled",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -918,24 +918,28 @@ impl SessionWorkspaceCache {
         entry_dir: PathBuf,
     ) -> RunnerResult<WorkspaceImageCacheInspectionEntry> {
         let temporary = inspect_temporary_files(&entry_dir).await;
-        let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
-            return Ok(WorkspaceImageCacheInspectionEntry {
-                cache_key,
-                status: WorkspaceImageCacheInspectionStatus::Locked,
-                reason: Some("entry lock is held".into()),
-                cache_scope: None,
-                profile_name: None,
-                working_dir: None,
-                last_completed_at: None,
-                last_used_at: None,
-                last_terminal_status: None,
-                allocated_bytes: 0,
-                logical_image_size_bytes: 0,
-                temporary_file_count: temporary.file_count,
-                temporary_allocated_bytes: temporary.allocated_bytes,
-                storage_count: 0,
-                artifact_count: 0,
-            });
+        let lock = match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
+            Ok(lock) => lock,
+            Err(e) if crate::lock::is_lock_busy_error(&e) => {
+                return Ok(WorkspaceImageCacheInspectionEntry {
+                    cache_key,
+                    status: WorkspaceImageCacheInspectionStatus::Locked,
+                    reason: Some("entry lock is held".into()),
+                    cache_scope: None,
+                    profile_name: None,
+                    working_dir: None,
+                    last_completed_at: None,
+                    last_used_at: None,
+                    last_terminal_status: None,
+                    allocated_bytes: 0,
+                    logical_image_size_bytes: 0,
+                    temporary_file_count: temporary.file_count,
+                    temporary_allocated_bytes: temporary.allocated_bytes,
+                    storage_count: 0,
+                    artifact_count: 0,
+                });
+            }
+            Err(e) => return Err(e),
         };
 
         let current = self.session_workspace_cache_current_image(&cache_key);
@@ -1793,6 +1797,28 @@ async fn inspect_temporary_files(entry_dir: &Path) -> TemporaryFileStats {
         );
     }
     stats
+}
+
+impl WorkspaceCacheTerminalStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::NonzeroExit => "nonzeroExit",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl WorkspaceImageCacheInspectionStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Reusable => "reusable",
+            Self::Invalid => "invalid",
+            Self::Stale => "stale",
+            Self::TemporaryOnly => "temporaryOnly",
+            Self::Locked => "locked",
+        }
+    }
 }
 
 impl WorkspaceImageLease {
@@ -3057,6 +3083,27 @@ mod tests {
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Locked);
         assert_eq!(entry.reason.as_deref(), Some("entry lock is held"));
+    }
+
+    #[tokio::test]
+    async fn inspect_propagates_lock_path_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        fs::write(paths.base_dir().join("locks"), b"not a directory")
+            .await
+            .unwrap();
+
+        let err = cache.inspect().await.unwrap_err();
+
+        assert!(
+            err.to_string().contains("create lock dir"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

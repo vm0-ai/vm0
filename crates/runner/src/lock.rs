@@ -6,6 +6,8 @@ use nix::fcntl::{Flock, FlockArg};
 
 use crate::error::{RunnerError, RunnerResult};
 
+const LOCK_BUSY_ERROR: &str = "lock is already held by another process";
+
 /// Open (or create) the lock file, creating parent directories as needed.
 pub(crate) fn open_lock_file(path: &Path) -> RunnerResult<File> {
     if let Some(parent) = path.parent() {
@@ -54,11 +56,15 @@ impl LockMode {
 
     fn map_error(self, path: &Path, e: nix::errno::Errno) -> RunnerError {
         if matches!(self, Self::TryExclusive) && e == nix::errno::Errno::EWOULDBLOCK {
-            RunnerError::Config("lock is already held by another process".into())
+            RunnerError::Config(LOCK_BUSY_ERROR.into())
         } else {
             RunnerError::Internal(format!("flock {}: {e}", path.display()))
         }
     }
+}
+
+pub(crate) fn is_lock_busy_error(error: &RunnerError) -> bool {
+    matches!(error, RunnerError::Config(message) if message == LOCK_BUSY_ERROR)
 }
 
 async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
