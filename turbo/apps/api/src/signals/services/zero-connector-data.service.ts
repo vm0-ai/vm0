@@ -90,6 +90,8 @@ interface PreparedManualGrantField {
 
 interface ConnectorTokenOutputMetadata {
   readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly requiredOutputNames: readonly string[];
+  readonly requiredExtraSecretNames: readonly string[];
   readonly isRefreshable: boolean;
 }
 
@@ -126,6 +128,11 @@ interface EncryptedConnectorTokenSecret {
   readonly name: string;
   readonly encryptedValue: string;
   readonly description: string;
+}
+
+interface ConnectorTokenSecretRequirements {
+  readonly requiredOutputNames: readonly string[];
+  readonly requiredExtraSecretNames: readonly string[];
 }
 
 type TokenRevokeMethodRef = ConnectorAuthMethodRefByRevokeKind<"token-revoke">;
@@ -1285,8 +1292,15 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
           return [outputName, output.secretName];
         }),
       );
+      const secretRequirements = requiredConnectorTokenSecretRequirements({
+        type: args.type,
+        authMethod: args.authMethod,
+        outputSecretNames,
+      });
       return {
         outputSecretNames,
+        requiredOutputNames: secretRequirements.requiredOutputNames,
+        requiredExtraSecretNames: secretRequirements.requiredExtraSecretNames,
         isRefreshable: method.access.kind === "refresh-token",
       };
     }
@@ -1295,6 +1309,76 @@ function connectorTokenOutputMetadataForAuthMethod(args: {
     case "managed": {
       return undefined;
     }
+  }
+}
+
+function requiredConnectorTokenSecretRequirements(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly outputSecretNames: Readonly<Record<string, string>>;
+}): ConnectorTokenSecretRequirements {
+  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+    args.type,
+    args.authMethod,
+  );
+  if (!storageMetadata) {
+    return { requiredOutputNames: [], requiredExtraSecretNames: [] };
+  }
+
+  const outputNameBySecretName = new Map(
+    Object.entries(args.outputSecretNames).map(([outputName, secretName]) => {
+      return [secretName, outputName];
+    }),
+  );
+  const requiredOutputNames = new Set<string>();
+  const requiredExtraSecretNames = new Set<string>();
+  for (const binding of storageMetadata.runtimeBindings) {
+    if (binding.source.kind !== "connector-secret") {
+      continue;
+    }
+    const outputName = outputNameBySecretName.get(binding.source.name);
+    if (outputName) {
+      requiredOutputNames.add(outputName);
+    } else {
+      requiredExtraSecretNames.add(binding.source.name);
+    }
+  }
+  return {
+    requiredOutputNames: [...requiredOutputNames],
+    requiredExtraSecretNames: [...requiredExtraSecretNames],
+  };
+}
+
+function validateRequiredConnectorTokenSecrets(args: {
+  readonly type: ConnectorAuthProviderType;
+  readonly outputs: ConnectorTokenOutputValues;
+  readonly requiredOutputNames: readonly string[];
+  readonly extraSecrets: readonly (readonly [string, string])[];
+  readonly requiredExtraSecretNames: readonly string[];
+}): void {
+  const missingOutputNames = args.requiredOutputNames.filter((outputName) => {
+    return !args.outputs[outputName];
+  });
+  if (missingOutputNames.length > 0) {
+    throw new Error(
+      `${args.type} connector provider did not return required token output(s): ${formatManualGrantFieldList(
+        missingOutputNames,
+      )}`,
+    );
+  }
+
+  const extraSecretValues = new Map(args.extraSecrets);
+  const missingExtraSecretNames = args.requiredExtraSecretNames.filter(
+    (secretName) => {
+      return !extraSecretValues.get(secretName);
+    },
+  );
+  if (missingExtraSecretNames.length > 0) {
+    throw new Error(
+      `${args.type} connector provider did not return required connector secret(s): ${formatManualGrantFieldList(
+        missingExtraSecretNames,
+      )}`,
+    );
   }
 }
 
@@ -1373,11 +1457,21 @@ async function encryptExtraConnectorTokenSecrets(args: {
 async function encryptConnectorTokenSecretSet(args: {
   readonly type: ConnectorAuthProviderType;
   readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly requiredOutputNames: readonly string[];
+  readonly requiredExtraSecretNames: readonly string[];
   readonly outputs: ConnectorTokenOutputValues;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<readonly EncryptedConnectorTokenSecret[]> {
+  validateRequiredConnectorTokenSecrets({
+    type: args.type,
+    outputs: args.outputs,
+    requiredOutputNames: args.requiredOutputNames,
+    extraSecrets: args.extraSecrets,
+    requiredExtraSecretNames: args.requiredExtraSecretNames,
+  });
+
   const encryptedConnectorTokenSecrets: EncryptedConnectorTokenSecret[] = [];
   for (const [outputName, value] of Object.entries(args.outputs)) {
     if (!value) {
@@ -1613,6 +1707,8 @@ export const upsertConnectorTokenConnection$ = command(
       {
         type: args.type,
         outputSecretNames: outputMetadata.outputSecretNames,
+        requiredOutputNames: outputMetadata.requiredOutputNames,
+        requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
         outputs: args.outputs,
         extraSecrets,
         featureSwitchContext,

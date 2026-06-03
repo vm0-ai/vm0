@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { slockProvider } from "@vm0/connectors/auth-providers/oauth/providers/slock-provider";
 import { testOauthDeviceProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-device-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
@@ -33,6 +34,7 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const originalPollDeviceAuth = testOauthDeviceProvider.grant.pollDeviceAuth;
+const originalSlockPollDeviceAuth = slockProvider.grant.pollDeviceAuth;
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
@@ -416,6 +418,7 @@ describe("OAuth device authorization connector routes", () => {
     clearMockedEnv();
     resetSecretKmsClientForTests();
     testOauthDeviceProvider.grant.pollDeviceAuth = originalPollDeviceAuth;
+    slockProvider.grant.pollDeviceAuth = originalSlockPollDeviceAuth;
     while (users.length > 0) {
       const user = users.pop();
       if (user) {
@@ -1177,6 +1180,72 @@ describe("OAuth device authorization connector routes", () => {
     expect(tokenExpiresAt.getTime()).toBeLessThanOrEqual(
       nowDate().getTime() + SLOCK_ACCESS_TOKEN_TTL_SECONDS * 1000,
     );
+  });
+
+  it("rejects complete Slock sessions missing required runtime secrets", async () => {
+    mockSlockOAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    slockProvider.grant.pollDeviceAuth = async (args) => {
+      const result = await originalSlockPollDeviceAuth(args);
+      if (result.status !== "complete") {
+        return result;
+      }
+      return {
+        ...result,
+        token: {
+          ...result.token,
+          extraConnectorSecrets: {},
+        },
+      };
+    };
+
+    const start = await accept(
+      client.create({
+        params: { type: "slock" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await client.poll({
+      params: {
+        type: "slock",
+        sessionId: start.body.sessionId,
+      },
+      body: { sessionToken: start.body.sessionToken },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(500);
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_ACCESS_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_REFRESH_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_SERVER_ID"),
+    ).resolves.toBeNull();
+
+    const stored = await store
+      .set(writeDb$)
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "slock"),
+        ),
+      );
+    expect(stored).toStrictEqual([]);
   });
 
   it("marks Slock post-token lookup failures as terminal errors", async () => {

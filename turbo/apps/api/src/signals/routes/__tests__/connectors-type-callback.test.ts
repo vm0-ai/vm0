@@ -19,6 +19,7 @@ import {
   testOauthProvider,
 } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import type { AuthCodeConnectorAuthProvider } from "@vm0/connectors/auth-providers/types";
+import type { OAuthTokenResultBase } from "@vm0/connectors/auth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -2271,6 +2272,68 @@ describe("GET /api/connectors/:type/callback", () => {
         orgId,
         userId,
         name: "TEST_OAUTH_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects method-specific grant responses missing runtime token outputs", async () => {
+    const originalExchangeCode = testOauthApiProvider.grant.exchangeCode;
+    const malformedResult = {
+      ...dynamicTestOAuthApiExchangeResult(),
+      outputs: {
+        initialRefreshToken: "dynamic-refresh-token",
+      },
+    } satisfies OAuthTokenResultBase;
+    testOauthApiProvider.grant.exchangeCode = () => {
+      return Promise.resolve(
+        malformedResult as DynamicTestOAuthApiExchangeResult,
+      );
+    };
+    restoreDynamicTestOAuthExchange = () => {
+      testOauthApiProvider.grant.exchangeCode = originalExchangeCode;
+    };
+
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "api",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "test-oauth",
+      message: "OAuth authorization failed. Please try again.",
+    });
+    await expect(
+      findConnector({
+        orgId,
+        userId,
+        type: "test-oauth",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_REFRESH_TOKEN",
       }),
     ).resolves.toBeUndefined();
   });
