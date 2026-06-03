@@ -384,7 +384,14 @@ class TestReportConnectorUsage:
         assert "unrecognised" in content.lower()
         assert '"level":"warn"' in content or '"level": "warn"' in content
         assert sensitive_query not in content
-        entry = json.loads(content.splitlines()[0])
+        entries = [json.loads(line) for line in content.splitlines()]
+        matching_entries = [
+            entry
+            for entry in entries
+            if entry.get("level") == "warn" and "unrecognised" in entry.get("message", "").lower()
+        ]
+        assert len(matching_entries) == 1
+        entry = matching_entries[0]
         assert entry["url"] == "https://api.x.com/2/tweets"
 
     def test_logs_search_meta_result_count(self, tmp_path, real_flow):
@@ -1291,7 +1298,14 @@ class TestReportConnectorUsage:
         assert proxy_log.exists()
         content = proxy_log.read_text()
         assert sensitive_query not in content
-        entry = json.loads(content.splitlines()[0])
+        entries = [json.loads(line) for line in content.splitlines()]
+        matching_entries = [
+            entry
+            for entry in entries
+            if entry.get("level") == "error" and "unparseable" in entry.get("message", "").lower()
+        ]
+        assert len(matching_entries) == 1
+        entry = matching_entries[0]
         assert entry["level"] == "error"
         assert "unparseable" in entry["message"].lower()
         assert entry["permission"] == "tweet.read"
