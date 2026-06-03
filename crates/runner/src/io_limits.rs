@@ -524,6 +524,50 @@ mod tests {
     }
 
     #[test]
+    fn block_capacity_equal_to_drive_split_minimum_stays_configured() {
+        let profiles = profiles(&[("vm0/default", 1, 1024)]);
+        let budget = ResourceBudget::new(1, 1024, 1.0, 1);
+        let mut values = full_values();
+        values.disk_bandwidth_mib_per_sec = Some(value("0.000003"));
+        values.disk_iops = Some(value("3"));
+
+        let resolution = resolve_io_limits_from_values(&values, &profiles, &budget);
+
+        let IoLimitResolution::Configured {
+            limits,
+            denominator,
+        } = resolution
+        else {
+            panic!("expected configured resolution");
+        };
+        assert_eq!(denominator, 1);
+        assert_eq!(limits.block.bandwidth_bytes_per_sec, 2);
+        assert_eq!(limits.block.ops_per_sec, 2);
+    }
+
+    #[test]
+    fn network_capacity_equal_to_positive_minimum_stays_configured() {
+        let profiles = profiles(&[("vm0/default", 1, 1024)]);
+        let budget = ResourceBudget::new(1, 1024, 1.0, 1);
+        let mut values = full_values();
+        values.net_rx_mib_per_sec = Some(value("0.000002"));
+        values.net_tx_mib_per_sec = Some(value("0.000002"));
+
+        let resolution = resolve_io_limits_from_values(&values, &profiles, &budget);
+
+        let IoLimitResolution::Configured {
+            limits,
+            denominator,
+        } = resolution
+        else {
+            panic!("expected configured resolution");
+        };
+        assert_eq!(denominator, 1);
+        assert_eq!(limits.network.rx_bytes_per_sec, 1);
+        assert_eq!(limits.network.tx_bytes_per_sec, 1);
+    }
+
+    #[test]
     fn complete_env_computes_reserved_per_sandbox_limits() {
         let profiles = profiles(&[("vm0/default", 2, 4096)]);
         let budget = ResourceBudget::new(8, 16_384, 1.0, 4);
