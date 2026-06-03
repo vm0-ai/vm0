@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { getConnectorAuthMethodDeviceAuthGrantConfig } from "@vm0/connectors/connector-utils";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testOauthDeviceProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-device-provider";
 import { connectors } from "@vm0/db/schema/connector";
@@ -1304,10 +1303,6 @@ describe("OAuth device authorization connector routes", () => {
           clientType: "public",
           clientId: "test-oauth-device-client",
         },
-        deviceAuthGrant: getConnectorAuthMethodDeviceAuthGrantConfig(
-          "test-oauth-device",
-          "oauth",
-        ),
         deviceCode: "test-device:test-oauth-device-client:read",
       });
     };

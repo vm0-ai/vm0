@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
+
 const REDDIT_AUTHORIZATION_URL = "https://www.reddit.com/api/v1/authorize";
 
 const REDDIT_USER_INFO_URL = "https://oauth.reddit.com/api/v1/me";
@@ -63,7 +65,7 @@ export async function exchangeRedditCode(
   code: string,
   redirectUri: string,
 ): Promise<RedditTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(REDDIT_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,
@@ -157,13 +159,12 @@ interface RedditRefreshResult {
  * Access token expires_in: 3600s (1 hour). Ref: https://github.com/reddit-archive/reddit/wiki/oauth2
  */
 export async function refreshRedditToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<RedditRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(REDDIT_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const DROPBOX_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
+
 const DROPBOX_AUTHORIZATION_URL = "https://www.dropbox.com/oauth2/authorize";
 
 const DROPBOX_CURRENT_ACCOUNT_URL =
@@ -61,7 +63,7 @@ export async function exchangeDropboxCode(
   code: string,
   redirectUri: string,
 ): Promise<DropboxTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DROPBOX_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -115,13 +117,12 @@ export async function exchangeDropboxCode(
  * Access token expires_in: 14400s (4 hours). Ref: https://developers.dropbox.com/oauth-guide
  */
 export async function refreshDropboxToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<DropboxRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(DROPBOX_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

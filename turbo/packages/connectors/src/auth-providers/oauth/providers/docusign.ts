@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const DOCUSIGN_TOKEN_URL = "https://account-d.docusign.com/oauth/token";
+
 const DOCUSIGN_AUTHORIZATION_URL = "https://account-d.docusign.com/oauth/auth";
 
 const DOCUSIGN_USERINFO_URL = "https://account-d.docusign.com/oauth/userinfo";
@@ -102,7 +104,7 @@ export async function exchangeDocuSignCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DOCUSIGN_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -157,7 +159,6 @@ export async function exchangeDocuSignCode(
  * Access token expires_in: 28800s (8 hours) for auth code grant. Ref: https://developers.docusign.com/platform/auth/reference/obtain-access-token/
  */
 export async function refreshDocuSignToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -167,7 +168,7 @@ export async function refreshDocuSignToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(DOCUSIGN_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

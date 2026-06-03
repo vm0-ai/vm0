@@ -50,7 +50,6 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshPosthogToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

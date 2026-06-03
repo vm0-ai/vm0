@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const WEBFLOW_TOKEN_URL = "https://api.webflow.com/oauth/access_token";
+
 const WEBFLOW_AUTHORIZATION_URL = "https://webflow.com/oauth/authorize";
 
 interface WebflowTokenResult {
@@ -46,7 +48,7 @@ export async function exchangeWebflowCode(
   code: string,
   redirectUri: string,
 ): Promise<WebflowTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(WEBFLOW_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const GUMROAD_TOKEN_URL = "https://gumroad.com/oauth/token";
+
 const GUMROAD_AUTHORIZATION_URL = "https://gumroad.com/oauth/authorize";
 
 const GUMROAD_USER_URL = "https://api.gumroad.com/v2/user";
@@ -51,7 +53,7 @@ export async function exchangeGumroadCode(
   code: string,
   redirectUri: string,
 ): Promise<GumroadTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GUMROAD_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -100,13 +102,12 @@ export async function exchangeGumroadCode(
 }
 
 export async function refreshGumroadToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<GumroadRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(GUMROAD_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

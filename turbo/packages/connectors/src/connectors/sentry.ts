@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://sentry.io/oauth/token/";
-
 export const sentry = {
   sentry: {
     label: "Sentry",
@@ -28,7 +26,6 @@ export const sentry = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "org:read",
             "project:read",
@@ -40,7 +37,6 @@ export const sentry = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
           },

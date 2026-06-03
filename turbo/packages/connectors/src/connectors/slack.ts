@@ -25,7 +25,6 @@ export const slack = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://slack.com/api/oauth.v2.access",
           scopes: [
             // Channels
             "channels:read",

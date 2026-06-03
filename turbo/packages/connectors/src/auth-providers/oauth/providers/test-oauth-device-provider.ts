@@ -19,7 +19,6 @@ function createTestOauthDeviceGrant<
       const { clientId } = args.authClient;
       return await startTestOAuthDeviceAuth({
         clientId,
-        deviceAuthGrant: args.deviceAuthGrant,
         scopes: args.scopes,
       });
     },
@@ -27,7 +26,6 @@ function createTestOauthDeviceGrant<
       const { clientId } = args.authClient;
       return await pollTestOAuthDeviceAuth({
         clientId,
-        deviceAuthGrant: args.deviceAuthGrant,
         deviceCode: args.deviceCode,
       });
     },

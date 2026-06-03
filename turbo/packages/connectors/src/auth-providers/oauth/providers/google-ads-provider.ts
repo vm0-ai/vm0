@@ -56,7 +56,6 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       const { clientId, clientSecret } = args.authClient;
       const refreshToken = args.refreshToken;
       return refreshGoogleToken(
-        args.tokenUrl,
         "google-ads",
         clientId,
         clientSecret,

@@ -1,8 +1,6 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
-
 export const neon = {
   neon: {
     label: "Neon",
@@ -30,7 +28,6 @@ export const neon = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "openid",
             "offline_access",
@@ -42,7 +39,6 @@ export const neon = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
           },

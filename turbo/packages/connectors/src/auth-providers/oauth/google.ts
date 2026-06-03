@@ -4,6 +4,8 @@ import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import type { GoogleOAuthConnectorType } from "./google-connectors";
 import { throwOAuthError } from "./error";
 
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 const GOOGLE_OAUTH_AUTHORIZATION_URL =
   "https://accounts.google.com/o/oauth2/v2/auth";
 
@@ -65,7 +67,7 @@ export async function exchangeGoogleOAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<GoogleTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -120,14 +122,13 @@ export async function exchangeGoogleOAuthCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.google.com/identity/protocols/oauth2/web-server
  */
 export async function refreshGoogleToken(
-  tokenUrl: string,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<GoogleRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

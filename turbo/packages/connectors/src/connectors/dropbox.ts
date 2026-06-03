@@ -1,8 +1,6 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
-
 export const dropbox = {
   dropbox: {
     label: "Dropbox",
@@ -29,7 +27,6 @@ export const dropbox = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "account_info.read",
             "files.metadata.read",
@@ -38,7 +35,6 @@ export const dropbox = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
           },

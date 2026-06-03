@@ -26,8 +26,6 @@ export const testOauthDevice = {
         },
         grant: {
           kind: "device-auth",
-          deviceAuthUrl: "/api/test/oauth-provider/device/code",
-          tokenUrl: "/api/test/oauth-provider/token",
           scopes: ["read"],
         },
         access: {
@@ -57,8 +55,6 @@ export const testOauthDevice = {
         },
         grant: {
           kind: "device-auth",
-          deviceAuthUrl: "/api/test/oauth-provider/device/code",
-          tokenUrl: "/api/test/oauth-provider/token",
           scopes: ["read"],
         },
         access: {

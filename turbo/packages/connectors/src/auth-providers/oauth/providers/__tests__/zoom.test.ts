@@ -146,7 +146,6 @@ describe("connector/providers/zoom", () => {
       server.use(handler);
 
       const result = await refreshZoomToken(
-        authCodeGrant().tokenUrl,
         "client-id",
         "client-secret",
         "old-refresh-token",
@@ -169,7 +168,6 @@ describe("connector/providers/zoom", () => {
 
       await expect(
         refreshZoomToken(
-          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "bad-refresh-token",
@@ -186,7 +184,6 @@ describe("connector/providers/zoom", () => {
 
       await expect(
         refreshZoomToken(
-          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "refresh-token",
@@ -203,7 +200,6 @@ describe("connector/providers/zoom", () => {
 
       await expect(
         refreshZoomToken(
-          authCodeGrant().tokenUrl,
           "client-id",
           "client-secret",
           "refresh-token",

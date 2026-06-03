@@ -26,7 +26,6 @@ export const github = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://github.com/login/oauth/access_token",
           scopes: ["repo", "project", "workflow"],
         },
         access: {

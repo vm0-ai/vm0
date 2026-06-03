@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const TODOIST_TOKEN_URL = "https://todoist.com/oauth/access_token";
+
 const TODOIST_AUTHORIZATION_URL = "https://todoist.com/oauth/authorize";
 
 const TODOIST_USER_URL = "https://api.todoist.com/api/v1/user";
@@ -49,7 +51,7 @@ export async function exchangeTodoistCode(
   code: string,
   redirectUri: string,
 ): Promise<TodoistTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(TODOIST_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

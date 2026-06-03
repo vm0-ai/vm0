@@ -23,6 +23,7 @@ export {
 } from "./test-oauth-constants";
 
 const TEST_OAUTH_AUTHORIZATION_URL = "/api/test/oauth-provider/authorize";
+const TEST_OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
 
 interface TokenResponse {
   accessToken: string;
@@ -139,8 +140,8 @@ function getAuthorizationUrl(): string {
   );
 }
 
-function getTestOAuthTokenUrl(tokenUrl: string): string {
-  return resolveTestOAuthProviderUrl("tokenUrl", tokenUrl);
+function getTestOAuthTokenUrl(): string {
+  return resolveTestOAuthProviderUrl("tokenUrl", TEST_OAUTH_TOKEN_URL);
 }
 
 export function buildTestOAuthAuthorizationUrl(
@@ -168,12 +169,11 @@ const tokenResponseSchema = z.object({
 });
 
 async function postToken(
-  tokenUrl: string,
   body: URLSearchParams,
   operation: "exchange" | "refresh",
   signal: AbortSignal | undefined,
 ): Promise<TokenResponse> {
-  const response = await fetch(getTestOAuthTokenUrl(tokenUrl), {
+  const response = await fetch(getTestOAuthTokenUrl(), {
     signal,
     method: "POST",
     headers: {
@@ -198,14 +198,12 @@ async function postToken(
 }
 
 export async function exchangeTestOAuthCode(
-  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<TokenResponse> {
   return postToken(
-    authCodeGrant.tokenUrl,
     new URLSearchParams({
       grant_type: "authorization_code",
       client_id: clientId,
@@ -219,14 +217,12 @@ export async function exchangeTestOAuthCode(
 }
 
 export async function refreshTestOAuthToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<TokenResponse> {
   return postToken(
-    tokenUrl,
     new URLSearchParams({
       grant_type: "refresh_token",
       client_id: clientId,

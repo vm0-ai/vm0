@@ -1,9 +1,6 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL =
-  "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-
 export const outlookMail = {
   "outlook-mail": {
     label: "Outlook Mail",
@@ -30,7 +27,6 @@ export const outlookMail = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "Mail.ReadWrite",
             "Mail.Send",
@@ -40,7 +36,6 @@ export const outlookMail = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
           },

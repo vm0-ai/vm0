@@ -57,7 +57,6 @@ export const outlookCalendarProvider: AuthCodeConnectorAuthProvider<"outlook-cal
         const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.refreshToken;
         return refreshMicrosoftToken(
-          args.tokenUrl,
           "outlook-calendar",
           clientId,
           clientSecret,

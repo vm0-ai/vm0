@@ -47,7 +47,6 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshStripeToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

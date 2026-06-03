@@ -50,7 +50,6 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshMercuryToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

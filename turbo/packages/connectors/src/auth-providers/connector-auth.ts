@@ -17,7 +17,6 @@ import {
   connectorAuthMethodRefHasRevokeKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodAuthCodeGrantConfig,
-  getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodGrantScopes,
   isStaticConfidentialConnectorAuthClient,
   resolveConnectorAuthClientForMethod,
@@ -578,13 +577,8 @@ export async function startConnectorDeviceAuthorization<
     args.type,
     args.authMethod,
   );
-  const deviceAuthGrant = getConnectorAuthMethodDeviceAuthGrantConfig(
-    args.type,
-    args.authMethod,
-  );
   return await provider.startDeviceAuth({
     authClient: connectorAuthClientIdentityForMethod(args.authClient),
-    deviceAuthGrant,
     scopes: getConnectorAuthMethodGrantScopes(args.type, args.authMethod),
   });
 }
@@ -614,13 +608,8 @@ export async function pollConnectorDeviceAuthorization<
     args.type,
     args.authMethod,
   );
-  const deviceAuthGrant = getConnectorAuthMethodDeviceAuthGrantConfig(
-    args.type,
-    args.authMethod,
-  );
   return await provider.pollDeviceAuth({
     authClient: args.authClient,
-    deviceAuthGrant,
     deviceCode: args.deviceCode,
   });
 }
@@ -660,7 +649,6 @@ export async function refreshConnectorAuthProviderAccessToken<
   );
   return await access.refreshToken({
     authClient: args.authClient,
-    tokenUrl: method.access.tokenUrl,
     refreshToken: args.refreshToken,
     signal: args.signal,
   });

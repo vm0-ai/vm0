@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
+
 const LINEAR_AUTHORIZATION_URL = "https://linear.app/oauth/authorize";
 
 // User info URL is not part of the auth-code grant config since it uses GraphQL (POST), not a standard
@@ -62,7 +64,7 @@ export async function exchangeLinearCode(
   code: string,
   redirectUri: string,
 ): Promise<LinearTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(LINEAR_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -116,13 +118,12 @@ export async function exchangeLinearCode(
  * Access token expires_in: 86399s (24 hours). Ref: https://developers.linear.app/docs/oauth/authentication
  */
 export async function refreshLinearToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<LinearRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(LINEAR_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

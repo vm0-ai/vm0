@@ -57,7 +57,6 @@ export const googleMeetProvider: AuthCodeConnectorAuthProvider<"google-meet"> =
         const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
-          args.tokenUrl,
           "google-meet",
           clientId,
           clientSecret,

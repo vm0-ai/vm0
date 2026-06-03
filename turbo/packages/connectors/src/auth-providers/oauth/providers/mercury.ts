@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
+
 const MERCURY_AUTHORIZATION_URL = "https://oauth2.mercury.com/oauth2/auth";
 
 const MERCURY_ACCOUNTS_URL = "https://api.mercury.com/api/v1/accounts";
@@ -58,7 +60,7 @@ export async function exchangeMercuryCode(
   code: string,
   redirectUri: string,
 ): Promise<MercuryTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MERCURY_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -112,13 +114,12 @@ export async function exchangeMercuryCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://docs.mercury.com/reference/obtain-the-tokens
  */
 export async function refreshMercuryToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MercuryRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(MERCURY_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
+
 const GITHUB_AUTHORIZATION_URL = "https://github.com/login/oauth/authorize";
 
 const GITHUB_API_BASE = "https://api.github.com";
@@ -51,7 +53,7 @@ export async function exchangeGitHubCode(
     body.set("redirect_uri", redirectUri);
   }
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GITHUB_TOKEN_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",

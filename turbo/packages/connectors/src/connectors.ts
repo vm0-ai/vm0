@@ -330,14 +330,11 @@ export interface ConnectorManualGrantConfig {
 
 export interface ConnectorAuthCodeGrantConfig {
   readonly kind: "auth-code";
-  readonly tokenUrl: string;
   readonly scopes: string[];
 }
 
 export interface ConnectorDeviceAuthGrantConfig {
   readonly kind: "device-auth";
-  readonly deviceAuthUrl: string;
-  readonly tokenUrl: string;
   readonly scopes: string[];
 }
 
@@ -388,7 +385,6 @@ export interface ConnectorStaticAccessConfig extends ConnectorEnvBindingAccessCo
 
 export interface ConnectorRefreshTokenAccessConfig extends ConnectorEnvBindingAccessConfigBase {
   readonly kind: "refresh-token";
-  readonly tokenUrl: string;
 }
 
 export interface ConnectorNoAccessConfig {

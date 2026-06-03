@@ -6,6 +6,9 @@ import { z } from "zod";
 
 import { throwOAuthError } from "./error";
 
+const MICROSOFT_TOKEN_URL =
+  "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+
 const MICROSOFT_AUTHORIZATION_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 
@@ -71,7 +74,7 @@ export async function exchangeMicrosoftOAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<MicrosoftTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MICROSOFT_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -126,14 +129,13 @@ export async function exchangeMicrosoftOAuthCode(
  * Access token expires_in: 3600-5400s (~75 min). Ref: https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow
  */
 export async function refreshMicrosoftToken(
-  tokenUrl: string,
   connectorType: MicrosoftOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MicrosoftRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(MICROSOFT_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const NEON_TOKEN_URL = "https://oauth2.neon.tech/oauth2/token";
+
 const NEON_AUTHORIZATION_URL = "https://oauth2.neon.tech/oauth2/auth";
 
 const NEON_USER_INFO_URL = "https://console.neon.tech/api/v2/users/me";
@@ -59,7 +61,7 @@ export async function exchangeNeonCode(
   code: string,
   redirectUri: string,
 ): Promise<NeonTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(NEON_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -113,13 +115,12 @@ export async function exchangeNeonCode(
  * Access token expires_in: expected (OIDC-compliant) but not explicitly documented. Ref: https://neon.com/docs/guides/oauth-integration
  */
 export async function refreshNeonToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<NeonRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(NEON_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

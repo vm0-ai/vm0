@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
-
 export const googleDocs = {
   "google-docs": {
     label: "Google Docs",
@@ -27,7 +25,6 @@ export const googleDocs = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/documents",
             "https://www.googleapis.com/auth/userinfo.email",
@@ -35,7 +32,6 @@ export const googleDocs = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
           },

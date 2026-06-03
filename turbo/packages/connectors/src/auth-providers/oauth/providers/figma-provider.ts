@@ -50,7 +50,6 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshFigmaToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

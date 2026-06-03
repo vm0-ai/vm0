@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
+
 const CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize";
 
 const CANVA_ME_URL = "https://api.canva.com/rest/v1/users/me";
@@ -92,7 +94,6 @@ export async function buildCanvaAuthorizationUrl(
  * Access token expires_in: 14400s (4 hours). Ref: https://www.canva.dev/docs/connect/authentication/
  */
 export async function refreshCanvaToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +103,7 @@ export async function refreshCanvaToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(CANVA_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {
@@ -160,7 +161,7 @@ export async function exchangeCanvaCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(CANVA_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

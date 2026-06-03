@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
+
 const HUBSPOT_AUTHORIZATION_URL = "https://app.hubspot.com/oauth/authorize";
 
 const HUBSPOT_TOKEN_INFO_URL = "https://api.hubapi.com/oauth/v1/access-tokens";
@@ -56,7 +58,7 @@ export async function exchangeHubSpotCode(
   code: string,
   redirectUri: string,
 ): Promise<HubSpotTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(HUBSPOT_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -108,13 +110,12 @@ export async function exchangeHubSpotCode(
  * Access token expires_in: 1800s (30 min). Ref: https://developers.hubspot.com/docs/api-reference/auth-oauth-v1/guide
  */
 export async function refreshHubSpotToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<HubSpotRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(HUBSPOT_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

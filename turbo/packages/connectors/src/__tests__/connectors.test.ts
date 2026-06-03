@@ -465,8 +465,8 @@ describe("connector auth method config", () => {
       ).toStrictEqual(["oauth", "api"]);
       expect(hasConnectorAuthCodeGrant("github")).toBe(true);
       expect(
-        getConnectorAuthMethodAuthCodeGrantConfig("github", "api")?.tokenUrl,
-      ).toBe(authMethods.oauth.grant.tokenUrl);
+        getConnectorAuthMethodAuthCodeGrantConfig("github", "api"),
+      ).toStrictEqual(authMethods.oauth.grant);
     } finally {
       Reflect.deleteProperty(authMethods, "api");
     }
@@ -2513,9 +2513,9 @@ describe("connector OAuth lifecycle grant helpers", () => {
     expect(grant).toStrictEqual(method?.grant);
     expect(grant).toMatchObject({
       kind: "auth-code",
-      tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project", "workflow"],
     });
+    expect("tokenUrl" in grant).toBe(false);
     expect("client" in grant).toBe(false);
     expect(method).toMatchObject({
       client: {
@@ -2535,8 +2535,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("test-oauth-device", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "/api/test/oauth-provider/device/code",
-      tokenUrl: "/api/test/oauth-provider/token",
       scopes: ["read"],
     });
     expect(getConnectorAuthMethod("test-oauth-device", "oauth")).toMatchObject({
@@ -2550,8 +2548,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("test-oauth-device", "api"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "/api/test/oauth-provider/device/code",
-      tokenUrl: "/api/test/oauth-provider/token",
       scopes: ["read"],
     });
     expect(getConnectorAuthMethod("test-oauth-device", "api")).toMatchObject({
@@ -2565,8 +2561,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("base44", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "https://app.base44.com/oauth/device/code",
-      tokenUrl: "https://app.base44.com/oauth/token",
       scopes: ["apps:read", "apps:write", "offline"],
     });
     expect(getConnectorAuthMethod("base44", "oauth")).toMatchObject({
@@ -2580,8 +2574,6 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("slock", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
-      tokenUrl: "https://api.slock.ai/api/auth/device/token",
       scopes: [],
     });
     expect(getConnectorAuthMethod("slock", "oauth")).toMatchObject({
@@ -2618,7 +2610,7 @@ describe("connector authorization-code grant config", () => {
     }
   });
 
-  it("keeps provider authorization URLs out of connector OAuth grants", () => {
+  it("keeps provider endpoint URLs out of connector OAuth grants", () => {
     for (const type of connectorTypeSchema.options) {
       for (const authMethod of getConnectorAuthMethodIdsForGrantKind(
         type,
@@ -2638,6 +2630,10 @@ describe("connector authorization-code grant config", () => {
         expect(
           "authorizationUrl" in grant,
           `${type}:${authMethod}: authorization URL should be provider-owned`,
+        ).toBe(false);
+        expect(
+          "tokenUrl" in grant,
+          `${type}:${authMethod}: token URL should be provider-owned`,
         ).toBe(false);
       }
       for (const authMethod of getConnectorAuthMethodIdsForGrantKind(
@@ -2659,6 +2655,14 @@ describe("connector authorization-code grant config", () => {
           "authorizationUrl" in grant,
           `${type}:${authMethod}: authorization URL should be provider-owned`,
         ).toBe(false);
+        expect(
+          "deviceAuthUrl" in grant,
+          `${type}:${authMethod}: device authorization URL should be provider-owned`,
+        ).toBe(false);
+        expect(
+          "tokenUrl" in grant,
+          `${type}:${authMethod}: token URL should be provider-owned`,
+        ).toBe(false);
       }
     }
   });
@@ -2671,8 +2675,6 @@ describe("connector OAuth device authorization config", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("test-oauth-device", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "/api/test/oauth-provider/device/code",
-      tokenUrl: "/api/test/oauth-provider/token",
       scopes: ["read"],
     });
     expect(getConnectorAuthMethod("test-oauth-device", "oauth")).toMatchObject({
@@ -2685,8 +2687,6 @@ describe("connector OAuth device authorization config", () => {
     expect(getConnectorAuthMethod("test-oauth-device", "api")).toMatchObject({
       grant: {
         kind: "device-auth",
-        deviceAuthUrl: "/api/test/oauth-provider/device/code",
-        tokenUrl: "/api/test/oauth-provider/token",
         scopes: ["read"],
       },
       client: {
@@ -2703,8 +2703,6 @@ describe("connector OAuth device authorization config", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("base44", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "https://app.base44.com/oauth/device/code",
-      tokenUrl: "https://app.base44.com/oauth/token",
       scopes: ["apps:read", "apps:write", "offline"],
     });
     expect(getConnectorAuthMethod("base44", "oauth")).toMatchObject({
@@ -2722,8 +2720,6 @@ describe("connector OAuth device authorization config", () => {
       getConnectorAuthMethodDeviceAuthGrantConfig("slock", "oauth"),
     ).toMatchObject({
       kind: "device-auth",
-      deviceAuthUrl: "https://api.slock.ai/api/auth/device/authorize",
-      tokenUrl: "https://api.slock.ai/api/auth/device/token",
       scopes: [],
     });
     expect(getConnectorAuthMethod("slock", "oauth")).toMatchObject({

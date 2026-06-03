@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const META_ADS_TOKEN_URL =
+  "https://graph.facebook.com/v22.0/oauth/access_token";
+
 const META_ADS_AUTHORIZATION_URL =
   "https://www.facebook.com/v22.0/dialog/oauth";
 
@@ -55,7 +58,7 @@ export async function exchangeMetaAdsCode(
   redirectUri: string,
 ): Promise<MetaAdsTokenResult> {
   // Step 1: Exchange code for short-lived token
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(META_ADS_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

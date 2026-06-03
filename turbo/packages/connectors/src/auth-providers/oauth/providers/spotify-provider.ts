@@ -50,7 +50,6 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshSpotifyToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

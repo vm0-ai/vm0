@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const AIRTABLE_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
+
 const AIRTABLE_AUTHORIZATION_URL = "https://airtable.com/oauth2/v1/authorize";
 
 const AIRTABLE_WHOAMI_URL = "https://api.airtable.com/v0/meta/whoami";
@@ -99,7 +101,7 @@ export async function exchangeAirtableCode(
 
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(AIRTABLE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -153,7 +155,6 @@ export async function exchangeAirtableCode(
  * Access token expires_in: 3600s (1 hour). Ref: https://airtable.com/developers/web/api/oauth-reference
  */
 export async function refreshAirtableToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -161,7 +162,7 @@ export async function refreshAirtableToken(
 ): Promise<AirtableRefreshResult> {
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(AIRTABLE_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

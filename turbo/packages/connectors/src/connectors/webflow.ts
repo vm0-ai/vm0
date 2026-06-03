@@ -27,7 +27,6 @@ export const webflow = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.webflow.com/oauth/access_token",
           scopes: [
             "authorized_user:read",
             "sites:read",

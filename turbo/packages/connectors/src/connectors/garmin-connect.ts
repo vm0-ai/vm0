@@ -1,9 +1,6 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL =
-  "https://diauth.garmin.com/di-oauth2-service/oauth/token";
-
 export const garminConnect = {
   "garmin-connect": {
     label: "Garmin Connect",
@@ -34,12 +31,10 @@ export const garminConnect = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [],
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
           },

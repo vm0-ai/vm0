@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const SENTRY_TOKEN_URL = "https://sentry.io/oauth/token/";
+
 const SENTRY_AUTHORIZATION_URL = "https://sentry.io/oauth/authorize/";
 
 interface SentryUserInfo {
@@ -56,7 +58,7 @@ export async function exchangeSentryCode(
   code: string,
   redirectUri: string,
 ): Promise<SentryTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(SENTRY_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -123,13 +125,12 @@ export async function exchangeSentryCode(
  * Access token expires_in: ~2592000s (30 days). Ref: https://docs.sentry.io/api/auth/
  */
 export async function refreshSentryToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<SentryRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(SENTRY_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

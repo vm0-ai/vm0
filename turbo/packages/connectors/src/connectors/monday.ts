@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://auth.monday.com/oauth2/token";
-
 export const monday = {
   monday: {
     label: "Monday.com",
@@ -28,7 +26,6 @@ export const monday = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "me:read",
             "boards:read",
@@ -48,7 +45,6 @@ export const monday = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },

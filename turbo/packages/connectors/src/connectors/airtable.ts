@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
-
 export const airtable = {
   airtable: {
     label: "Airtable",
@@ -28,7 +26,6 @@ export const airtable = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "data.records:read",
             "data.records:write",
@@ -41,7 +38,6 @@ export const airtable = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
           },

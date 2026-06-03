@@ -25,7 +25,6 @@ export const intervalsIcu = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://intervals.icu/api/oauth/token",
           scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
         },
         access: {

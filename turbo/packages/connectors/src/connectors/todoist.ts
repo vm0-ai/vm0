@@ -25,7 +25,6 @@ export const todoist = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://todoist.com/oauth/access_token",
           scopes: ["data:read_write", "data:delete", "project:delete"],
         },
         access: {

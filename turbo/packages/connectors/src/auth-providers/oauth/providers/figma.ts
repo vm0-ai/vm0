@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const FIGMA_TOKEN_URL = "https://api.figma.com/v1/oauth/token";
+
 const FIGMA_AUTHORIZATION_URL = "https://www.figma.com/oauth";
 
 const FIGMA_ME_URL = "https://api.figma.com/v1/me";
@@ -62,7 +64,7 @@ export async function exchangeFigmaCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(FIGMA_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -115,7 +117,6 @@ export async function exchangeFigmaCode(
  * Access token expires_in: ~7776000s (90 days). Ref: https://developers.figma.com/docs/rest-api/authentication/
  */
 export async function refreshFigmaToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -125,7 +126,7 @@ export async function refreshFigmaToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(FIGMA_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

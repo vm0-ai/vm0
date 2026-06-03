@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const MAILCHIMP_TOKEN_URL = "https://login.mailchimp.com/oauth2/token";
+
 const MAILCHIMP_AUTHORIZATION_URL =
   "https://login.mailchimp.com/oauth2/authorize";
 
@@ -49,7 +51,7 @@ export async function exchangeMailchimpCode(
   code: string,
   redirectUri: string,
 ): Promise<MailchimpTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MAILCHIMP_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

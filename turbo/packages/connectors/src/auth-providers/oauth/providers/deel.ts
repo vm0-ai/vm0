@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
+
 const DEEL_AUTHORIZATION_URL = "https://app.deel.com/oauth2/authorize";
 
 const DEEL_PEOPLE_ME_URL = "https://api.letsdeel.com/rest/v2/people/me";
@@ -92,7 +94,6 @@ export async function buildDeelAuthorizationUrl(
  * Access token expires_in: 2592000s (30 days). Ref: https://developer.deel.com/docs/oauth2
  */
 export async function refreshDeelToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +103,7 @@ export async function refreshDeelToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(DEEL_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {
@@ -160,7 +161,7 @@ export async function exchangeDeelCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DEEL_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

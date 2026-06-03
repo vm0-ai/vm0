@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const AHREFS_TOKEN_URL = "https://app.ahrefs.com/api/token";
+
 const AHREFS_AUTHORIZATION_URL = "https://app.ahrefs.com/api/auth";
 
 const AHREFS_SUBSCRIPTION_URL =
@@ -58,7 +60,7 @@ export async function exchangeAhrefsCode(
   code: string,
   redirectUri: string,
 ): Promise<AhrefsTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(AHREFS_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -112,13 +114,12 @@ export async function exchangeAhrefsCode(
  * Access token expires_in: returned but value undocumented. Ref: https://docs.ahrefs.com/docs/ahrefs-connect/developers/oauth-guide
  */
 export async function refreshAhrefsToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<AhrefsRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(AHREFS_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

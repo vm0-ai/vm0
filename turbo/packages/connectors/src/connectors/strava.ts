@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://www.strava.com/oauth/token";
-
 export const strava = {
   strava: {
     label: "Strava",
@@ -28,7 +26,6 @@ export const strava = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "read",
             "profile:read_all",
@@ -38,7 +35,6 @@ export const strava = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
           },

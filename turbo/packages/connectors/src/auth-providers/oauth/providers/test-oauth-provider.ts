@@ -37,7 +37,6 @@ function createTestOauthGrant<
       const code = exchangeArgs.code;
       const redirectUri = exchangeArgs.redirectUri;
       const token = await exchangeTestOAuthCode(
-        exchangeArgs.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -76,7 +75,6 @@ function createTestOauthAccess<
       const { clientId, clientSecret } = refreshArgs.authClient;
       const refreshToken = refreshArgs.refreshToken;
       const result = await refreshTestOAuthToken(
-        refreshArgs.tokenUrl,
         clientId,
         clientSecret,
         refreshToken,

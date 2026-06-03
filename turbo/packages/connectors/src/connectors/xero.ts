@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://identity.xero.com/connect/token";
-
 export const xero = {
   xero: {
     label: "Xero",
@@ -28,7 +26,6 @@ export const xero = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "openid",
             "profile",
@@ -56,7 +53,6 @@ export const xero = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
           },

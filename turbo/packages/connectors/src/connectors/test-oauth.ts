@@ -6,8 +6,6 @@ import type {
 } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL = "/api/test/oauth-provider/token";
-
 const TEST_OAUTH_CLIENT = {
   clientRegistration: "static",
   clientType: "confidential",
@@ -17,7 +15,6 @@ const TEST_OAUTH_CLIENT = {
 
 const TEST_OAUTH_AUTH_CODE_GRANT = {
   kind: "auth-code",
-  tokenUrl: OAUTH_TOKEN_URL,
   scopes: ["read"],
 } satisfies ConnectorAuthCodeGrantConfig;
 
@@ -46,7 +43,6 @@ export const testOauth = {
         grant: TEST_OAUTH_AUTH_CODE_GRANT,
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
           },
@@ -73,7 +69,6 @@ export const testOauth = {
         grant: TEST_OAUTH_AUTH_CODE_GRANT,
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
           },

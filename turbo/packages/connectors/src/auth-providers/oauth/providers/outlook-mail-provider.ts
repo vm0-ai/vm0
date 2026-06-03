@@ -57,7 +57,6 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.refreshToken;
         return refreshMicrosoftToken(
-          args.tokenUrl,
           "outlook-mail",
           clientId,
           clientSecret,

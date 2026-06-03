@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const POSTHOG_TOKEN_URL = "https://us.posthog.com/oauth/token";
+
 const POSTHOG_AUTHORIZATION_URL = "https://us.posthog.com/oauth/authorize";
 
 const POSTHOG_USER_INFO_URL = "https://us.posthog.com/api/users/@me/";
@@ -57,7 +59,7 @@ export async function exchangePosthogCode(
   code: string,
   redirectUri: string,
 ): Promise<PosthogTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(POSTHOG_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -110,13 +112,12 @@ export async function exchangePosthogCode(
  * Access token expires_in: 36000s (10 hours). Ref: https://posthog.com/handbook/engineering/oauth-development-guide
  */
 export async function refreshPosthogToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<PosthogRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(POSTHOG_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

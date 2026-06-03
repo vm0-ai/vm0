@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const GARMIN_CONNECT_TOKEN_URL =
+  "https://diauth.garmin.com/di-oauth2-service/oauth/token";
+
 const GARMIN_CONNECT_AUTHORIZATION_URL =
   "https://connect.garmin.com/oauth2Confirm";
 
@@ -98,7 +101,7 @@ export async function exchangeGarminConnectCode(
 ): Promise<GarminConnectTokenResult> {
   const codeVerifier = await deriveCodeVerifier(state);
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GARMIN_CONNECT_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -153,13 +156,12 @@ export async function exchangeGarminConnectCode(
  * Access token expires_in: 86400s (1 day). Ref: https://developerportal.garmin.com
  */
 export async function refreshGarminConnectToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<GarminConnectRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(GARMIN_CONNECT_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

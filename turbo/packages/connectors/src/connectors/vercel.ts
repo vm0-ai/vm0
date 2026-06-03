@@ -25,7 +25,6 @@ export const vercel = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
           scopes: [],
         },
         access: {

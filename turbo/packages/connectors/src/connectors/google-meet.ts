@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
-
 export const googleMeet = {
   "google-meet": {
     label: "Google Meet",
@@ -28,7 +26,6 @@ export const googleMeet = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "https://www.googleapis.com/auth/meetings.space.created",
             // Use meetings.space.readonly (not meetings.conferencerecords.readonly) — confirmed
@@ -41,7 +38,6 @@ export const googleMeet = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             GOOGLE_MEET_TOKEN: "$secrets.GOOGLE_MEET_ACCESS_TOKEN",
           },

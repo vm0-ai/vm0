@@ -27,7 +27,6 @@ export const metaAds = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
           scopes: ["ads_management", "ads_read", "business_management"],
         },
         access: {

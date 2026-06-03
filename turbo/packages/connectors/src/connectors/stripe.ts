@@ -1,8 +1,6 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL = "https://connect.stripe.com/oauth/token";
-
 export const stripe = {
   stripe: {
     label: "Stripe",
@@ -31,12 +29,10 @@ export const stripe = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["read_write"],
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
           },

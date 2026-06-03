@@ -51,7 +51,6 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshLinearToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

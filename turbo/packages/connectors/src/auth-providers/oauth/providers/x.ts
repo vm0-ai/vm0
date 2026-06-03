@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
+
 const X_AUTHORIZATION_URL = "https://x.com/i/oauth2/authorize";
 
 const X_USERS_ME_URL =
@@ -92,7 +94,6 @@ export async function buildXAuthorizationUrl(
  * Access token expires_in: 7200s (2 hours). Ref: https://developer.x.com/en/docs/authentication/oauth-2-0/authorization-code
  */
 export async function refreshXToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +103,7 @@ export async function refreshXToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(X_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {
@@ -160,7 +161,7 @@ export async function exchangeXCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(X_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

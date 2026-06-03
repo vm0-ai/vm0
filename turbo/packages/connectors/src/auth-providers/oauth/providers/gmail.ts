@@ -4,6 +4,8 @@ import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { buildGoogleAuthorizationUrl } from "../google";
 import { throwOAuthError } from "../error";
 
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
+
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
 
@@ -51,7 +53,7 @@ export async function exchangeGmailCode(
   code: string,
   redirectUri: string,
 ): Promise<GmailTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

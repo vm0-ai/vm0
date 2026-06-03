@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const ZOOM_TOKEN_URL = "https://zoom.us/oauth/token";
+
 const ZOOM_AUTHORIZATION_URL = "https://zoom.us/oauth/authorize";
 
 const ZOOM_ME_URL = "https://api.zoom.us/v2/users/me";
@@ -64,7 +66,7 @@ export async function exchangeZoomCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(ZOOM_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -117,7 +119,6 @@ export async function exchangeZoomCode(
  * Ref: https://developers.zoom.us/docs/integrations/oauth/
  */
 export async function refreshZoomToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -127,7 +128,7 @@ export async function refreshZoomToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(ZOOM_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

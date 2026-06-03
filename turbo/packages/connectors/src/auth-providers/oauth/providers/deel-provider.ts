@@ -57,7 +57,6 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshDeelToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

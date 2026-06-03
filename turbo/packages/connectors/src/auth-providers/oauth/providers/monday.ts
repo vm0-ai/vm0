@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const MONDAY_TOKEN_URL = "https://auth.monday.com/oauth2/token";
+
 const MONDAY_AUTHORIZATION_URL = "https://auth.monday.com/oauth2/authorize";
 
 interface MondayUserInfo {
@@ -58,7 +60,7 @@ export async function exchangeMondayCode(
   code: string,
   redirectUri: string,
 ): Promise<MondayTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MONDAY_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -111,13 +113,12 @@ export async function exchangeMondayCode(
  * Note: Monday.com tokens reportedly do not expire. expires_in may not be returned. Ref: https://developer.monday.com/apps/docs/oauth
  */
 export async function refreshMondayToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<MondayRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(MONDAY_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

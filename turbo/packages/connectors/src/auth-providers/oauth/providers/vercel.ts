@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const VERCEL_TOKEN_URL = "https://api.vercel.com/v2/oauth/access_token";
+
 interface VercelUserInfo {
   id: string;
   username: string | null;
@@ -44,7 +46,7 @@ export async function exchangeVercelCode(
   code: string,
   redirectUri: string,
 ): Promise<VercelTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(VERCEL_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

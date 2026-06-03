@@ -1,8 +1,6 @@
 import type { ConnectorConfig } from "../connectors";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
-const OAUTH_TOKEN_URL = "https://api.close.com/oauth2/token/";
-
 export const close = {
   close: {
     label: "Close",
@@ -30,12 +28,10 @@ export const close = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["all.full_access", "offline_access"],
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
           },

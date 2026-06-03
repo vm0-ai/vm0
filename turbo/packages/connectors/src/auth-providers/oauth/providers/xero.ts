@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
+
 const XERO_AUTHORIZATION_URL =
   "https://login.xero.com/identity/connect/authorize";
 
@@ -59,7 +61,7 @@ export async function exchangeXeroCode(
   code: string,
   redirectUri: string,
 ): Promise<XeroTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(XERO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -114,13 +116,12 @@ export async function exchangeXeroCode(
  * Access token expires_in: 1800s (30 min). Ref: https://developer.xero.com/documentation/guides/oauth2/auth-flow/
  */
 export async function refreshXeroToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<XeroRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(XERO_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

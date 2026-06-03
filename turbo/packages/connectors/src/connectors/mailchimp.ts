@@ -27,7 +27,6 @@ export const mailchimp = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://login.mailchimp.com/oauth2/token",
           scopes: [],
         },
         access: {

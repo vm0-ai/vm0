@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import type { ConnectorDeviceAuthGrantConfig } from "@vm0/connectors/connectors";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -20,6 +19,8 @@ export const TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME =
 export const TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME =
   "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN";
 
+const TEST_OAUTH_DEVICE_AUTH_URL = "/api/test/oauth-provider/device/code";
+const TEST_OAUTH_DEVICE_TOKEN_URL = "/api/test/oauth-provider/token";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 const deviceAuthResponseSchema = z.object({
@@ -44,27 +45,22 @@ const tokenErrorResponseSchema = z.object({
   error_description: z.string().optional(),
 });
 
-function getDeviceAuthUrl(
-  deviceAuthGrant: ConnectorDeviceAuthGrantConfig,
-): string {
+function getDeviceAuthUrl(): string {
   return resolveTestOAuthProviderUrl(
     "deviceAuthUrl",
-    deviceAuthGrant.deviceAuthUrl,
+    TEST_OAUTH_DEVICE_AUTH_URL,
   );
 }
 
-function getDeviceTokenUrl(
-  deviceAuthGrant: ConnectorDeviceAuthGrantConfig,
-): string {
-  return resolveTestOAuthProviderUrl("tokenUrl", deviceAuthGrant.tokenUrl);
+function getDeviceTokenUrl(): string {
+  return resolveTestOAuthProviderUrl("tokenUrl", TEST_OAUTH_DEVICE_TOKEN_URL);
 }
 
 export async function startTestOAuthDeviceAuth(args: {
   readonly clientId: string;
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(getDeviceAuthUrl(args.deviceAuthGrant), {
+  const response = await fetch(getDeviceAuthUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -127,10 +123,9 @@ function devicePollErrorResult(args: {
 
 export async function pollTestOAuthDeviceAuth(args: {
   readonly clientId: string;
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(getDeviceTokenUrl(args.deviceAuthGrant), {
+  const response = await fetch(getDeviceTokenUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

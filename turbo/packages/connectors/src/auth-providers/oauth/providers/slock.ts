@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import type { ConnectorDeviceAuthGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 import type {
   OAuthDeviceAuthPollResult,
@@ -10,6 +9,9 @@ import type {
 } from "../types";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
+const SLOCK_DEVICE_AUTH_URL = `${SLOCK_API_BASE_URL}/api/auth/device/authorize`;
+const SLOCK_DEVICE_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/device/token`;
+const SLOCK_REFRESH_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/refresh`;
 const DEFAULT_DEVICE_AUTH_EXPIRES_IN_SECONDS = 600;
 const POST_TOKEN_LOOKUP_FAILED_DESCRIPTION =
   "Unable to load Slock account metadata after authorization.";
@@ -296,10 +298,8 @@ async function fetchSlockServerId(
   return { ok: true, serverId: server.id };
 }
 
-export async function startSlockDeviceAuth(args: {
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
-}): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(args.deviceAuthGrant.deviceAuthUrl, {
+export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult> {
+  const response = await fetch(SLOCK_DEVICE_AUTH_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -325,10 +325,9 @@ export async function startSlockDeviceAuth(args: {
 }
 
 export async function pollSlockDeviceAuth(args: {
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(args.deviceAuthGrant.tokenUrl, {
+  const response = await fetch(SLOCK_DEVICE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -406,11 +405,10 @@ export async function pollSlockDeviceAuth(args: {
 }
 
 export async function refreshSlockToken(args: {
-  readonly tokenUrl: string;
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(args.tokenUrl, {
+  const response = await fetch(SLOCK_REFRESH_TOKEN_URL, {
     signal: args.signal,
     method: "POST",
     headers: {

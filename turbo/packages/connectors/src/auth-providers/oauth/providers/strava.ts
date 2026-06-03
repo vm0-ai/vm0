@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
+
 const STRAVA_AUTHORIZATION_URL = "https://www.strava.com/oauth/authorize";
 
 const STRAVA_ATHLETE_URL = "https://www.strava.com/api/v3/athlete";
@@ -59,7 +61,7 @@ export async function exchangeStravaCode(
   clientSecret: string,
   code: string,
 ): Promise<StravaTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(STRAVA_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -130,13 +132,12 @@ export async function exchangeStravaCode(
  * Access token expires_in: 21600s (6 hours). Ref: https://developers.strava.com/docs/authentication/
  */
 export async function refreshStravaToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<StravaRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(STRAVA_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

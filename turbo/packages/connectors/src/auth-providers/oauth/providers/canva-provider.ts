@@ -57,7 +57,6 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshCanvaToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

@@ -57,7 +57,6 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
         const { clientId, clientSecret } = args.authClient;
         const refreshToken = args.refreshToken;
         return refreshGoogleToken(
-          args.tokenUrl,
           "google-sheets",
           clientId,
           clientSecret,

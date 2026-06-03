@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const INTERVALS_ICU_TOKEN_URL = "https://intervals.icu/api/oauth/token";
+
 const INTERVALS_ICU_AUTHORIZATION_URL = "https://intervals.icu/oauth/authorize";
 
 interface IntervalsIcuTokenResult {
@@ -47,7 +49,7 @@ export async function exchangeIntervalsIcuCode(
   clientSecret: string,
   code: string,
 ): Promise<IntervalsIcuTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(INTERVALS_ICU_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -50,7 +50,6 @@ export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
     refreshToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
       return refreshNeonToken(
-        args.tokenUrl,
         clientId,
         clientSecret,
         args.refreshToken,

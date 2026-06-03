@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import type { ConnectorDeviceAuthGrantConfig } from "@vm0/connectors/connectors";
 import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
@@ -9,6 +8,8 @@ import type {
 } from "../types";
 import { throwOAuthError } from "../error";
 
+const BASE44_DEVICE_AUTH_URL = "https://app.base44.com/oauth/device/code";
+const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 export const BASE44_ACCESS_SECRET_NAME = "BASE44_ACCESS_TOKEN";
@@ -101,10 +102,9 @@ function requireAccessToken(
 
 export async function startBase44DeviceAuth(args: {
   readonly clientId: string;
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(args.deviceAuthGrant.deviceAuthUrl, {
+  const response = await fetch(BASE44_DEVICE_AUTH_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -132,10 +132,9 @@ export async function startBase44DeviceAuth(args: {
 
 export async function pollBase44DeviceAuth(args: {
   readonly clientId: string;
-  readonly deviceAuthGrant: ConnectorDeviceAuthGrantConfig;
   readonly deviceCode: string;
 }): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(args.deviceAuthGrant.tokenUrl, {
+  const response = await fetch(BASE44_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -185,11 +184,10 @@ export async function pollBase44DeviceAuth(args: {
 
 export async function refreshBase44Token(args: {
   readonly clientId: string;
-  readonly tokenUrl: string;
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(args.tokenUrl, {
+  const response = await fetch(BASE44_TOKEN_URL, {
     signal: args.signal,
     method: "POST",
     headers: {

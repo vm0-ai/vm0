@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const ASANA_TOKEN_URL = "https://app.asana.com/-/oauth_token";
+
 const ASANA_AUTHORIZATION_URL = "https://app.asana.com/-/oauth_authorize";
 
 const ASANA_USER_URL = "https://app.asana.com/api/1.0/users/me";
@@ -54,7 +56,7 @@ export async function exchangeAsanaCode(
   code: string,
   redirectUri: string,
 ): Promise<AsanaTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(ASANA_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -156,13 +158,12 @@ async function fetchAsanaUserInfo(accessToken: string): Promise<{
  * Access token expires_in: 3600s (1 hour). Ref: https://developers.asana.com/docs/oauth
  */
 export async function refreshAsanaToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<AsanaRefreshResult> {
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(ASANA_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

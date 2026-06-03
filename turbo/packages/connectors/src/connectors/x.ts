@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://api.x.com/2/oauth2/token";
-
 export const x = {
   x: {
     label: "X",
@@ -28,7 +26,6 @@ export const x = {
         },
         grant: {
           kind: "auth-code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: [
             "tweet.read", // All the Tweets you can view, including Tweets from protected accounts.
             "tweet.write", // Tweet and Retweet for you.
@@ -56,7 +53,6 @@ export const x = {
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             X_TOKEN: "$secrets.X_ACCESS_TOKEN",
           },

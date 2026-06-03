@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const OAUTH_TOKEN_URL = "https://app.base44.com/oauth/token";
-
 export const base44 = {
   base44: {
     label: "Base44",
@@ -27,13 +25,10 @@ export const base44 = {
         },
         grant: {
           kind: "device-auth",
-          deviceAuthUrl: "https://app.base44.com/oauth/device/code",
-          tokenUrl: OAUTH_TOKEN_URL,
           scopes: ["apps:read", "apps:write", "offline"],
         },
         access: {
           kind: "refresh-token",
-          tokenUrl: OAUTH_TOKEN_URL,
           envBindings: {
             BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
           },

@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const SUPABASE_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
+
 const SUPABASE_AUTHORIZATION_URL =
   "https://api.supabase.com/v1/oauth/authorize";
 
@@ -92,7 +94,6 @@ export async function buildSupabaseAuthorizationUrl(
  * Access token expires_in: 3600s (1 hour, configurable). Ref: https://supabase.com/docs/guides/auth/oauth-server/oauth-flows
  */
 export async function refreshSupabaseToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -102,7 +103,7 @@ export async function refreshSupabaseToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(SUPABASE_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {
@@ -161,7 +162,7 @@ export async function exchangeSupabaseCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(SUPABASE_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

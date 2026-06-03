@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
+
 const SPOTIFY_AUTHORIZATION_URL = "https://accounts.spotify.com/authorize";
 
 const SPOTIFY_ME_URL = "https://api.spotify.com/v1/me";
@@ -62,7 +64,7 @@ export async function exchangeSpotifyCode(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(SPOTIFY_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -114,7 +116,6 @@ export async function exchangeSpotifyCode(
  * Uses Basic auth header (base64 of clientId:clientSecret).
  */
 export async function refreshSpotifyToken(
-  tokenUrl: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
@@ -124,7 +125,7 @@ export async function refreshSpotifyToken(
     "base64",
   );
 
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(SPOTIFY_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {

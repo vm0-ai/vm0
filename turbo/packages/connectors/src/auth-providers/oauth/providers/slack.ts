@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
 
+const SLACK_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
+
 const SLACK_AUTHORIZATION_URL = "https://slack.com/oauth/v2/authorize";
 
 interface SlackTokenResult {
@@ -48,7 +50,7 @@ export async function exchangeSlackCode(
   code: string,
   redirectUri: string,
 ): Promise<SlackTokenResult> {
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(SLACK_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

@@ -10,14 +10,11 @@ import {
 export const slockProvider: DeviceAuthConnectorAuthProvider<"slock"> = {
   grant: {
     kind: "device-auth",
-    startDeviceAuth: async (args) => {
-      return await startSlockDeviceAuth({
-        deviceAuthGrant: args.deviceAuthGrant,
-      });
+    startDeviceAuth: async () => {
+      return await startSlockDeviceAuth();
     },
     pollDeviceAuth: async (args) => {
       return await pollSlockDeviceAuth({
-        deviceAuthGrant: args.deviceAuthGrant,
         deviceCode: args.deviceCode,
       });
     },
@@ -32,7 +29,6 @@ export const slockProvider: DeviceAuthConnectorAuthProvider<"slock"> = {
     },
     refreshToken: async (args) => {
       return await refreshSlockToken({
-        tokenUrl: args.tokenUrl,
         refreshToken: args.refreshToken,
         signal: args.signal,
       });
