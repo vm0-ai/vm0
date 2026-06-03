@@ -7,6 +7,7 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { posthog } from "posthog-js";
 import { getAppUrl } from "../../src/lib/zero/url";
+import { AvatarCustomizer } from "./AvatarCustomizer";
 import { Footer } from "./Footer";
 import { ACQUISITION_ATTRIBUTION_COOKIE } from "@vm0/api-contracts/contracts/zero-attribution";
 
@@ -447,6 +448,9 @@ export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
           </div>
 
           <div className="relative z-10 mx-auto flex w-full max-w-[1060px] flex-col items-center gap-10 pb-10 pt-[96px] sm:gap-[50px] sm:pt-[120px]">
+            {/* Interactive avatar customizer — matches the homepage hero */}
+            <AvatarCustomizer />
+
             <div className="flex w-full flex-col items-center gap-6 text-center">
               <h1 className="w-full text-[32px] font-medium leading-[1.3] tracking-[-1.12px] text-[hsl(var(--foreground))] sm:text-[42px] sm:leading-[1.4] md:text-[51px]">
                 {config.h1}
