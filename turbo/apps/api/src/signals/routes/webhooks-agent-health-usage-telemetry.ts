@@ -109,7 +109,6 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     ? await db
         .select({
           modelProvider: zeroRuns.modelProvider,
-          selectedModel: zeroRuns.selectedModel,
         })
         .from(zeroRuns)
         .where(eq(zeroRuns.id, body.runId))
