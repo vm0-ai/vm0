@@ -29,18 +29,17 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
+  ConnectorAuthProviderRefreshResultBase,
+  ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
   RefreshTokenAccessProvider,
   TokenRevokeProvider,
 } from "./types";
 import {
   type AuthUrlResult,
-  type ConnectorAuthProviderRefreshResultBase,
-  type ConnectorAuthProviderRefreshResult,
   type OAuthDeviceAuthPollResult,
   type OAuthDeviceAuthPollResultBase,
   type OAuthDeviceAuthStartResult,
-  type OAuthRefreshResult,
   type OAuthTokenResult,
   type OAuthTokenResultBase,
 } from "./oauth/types";
@@ -107,7 +106,6 @@ export type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthPollResultBase,
   OAuthDeviceAuthStartResult,
-  OAuthRefreshResult,
   OAuthTokenResult,
   OAuthTokenResultBase,
 };
