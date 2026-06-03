@@ -1104,15 +1104,17 @@ mod tests {
             .wait_entered(1, Duration::from_secs(5))
             .await
             .expect("replaced idle destroy should reach destroy gate");
-        tokio::time::timeout(Duration::from_secs(1), park_notify.notified())
-            .await
-            .expect("newly parked replacement should notify before replaced destroy finishes");
+        assert!(
+            park_notify.notified().now_or_never().is_some(),
+            "newly parked replacement should notify before replaced destroy finishes"
+        );
 
         destroy_gate.release_one();
         let _completion_ready = finalize_task.await.expect("finalizer task should join");
-        tokio::time::timeout(Duration::from_secs(1), park_notify.notified())
-            .await
-            .expect("replaced idle workspace cache promotion should notify after destroy");
+        assert!(
+            park_notify.notified().now_or_never().is_some(),
+            "replaced idle workspace cache promotion should notify after destroy"
+        );
         assert!(
             cache
                 .held_session_states()
