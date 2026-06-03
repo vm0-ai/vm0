@@ -681,6 +681,11 @@ async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<void> {
+  if (subscription.status === "canceled") {
+    await cancelSubscription(db, subscription.id);
+    return;
+  }
+
   const priceId = subscription.items.data[0]?.price?.id;
   const canSyncPaidEntitlement =
     subscriptionCanRefreshPaidThrough(subscription);
@@ -706,6 +711,13 @@ async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
 ): Promise<void> {
+  await cancelSubscription(db, subscription.id);
+}
+
+async function cancelSubscription(
+  db: Db,
+  subscriptionId: string,
+): Promise<void> {
   await db
     .update(orgMetadata)
     .set({
@@ -713,9 +725,10 @@ async function handleSubscriptionDeleted(
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
       cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
       updatedAt: nowDate(),
     })
-    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
+    .where(eq(orgMetadata.stripeSubscriptionId, subscriptionId));
 }
 
 export const handleStripeWebhookEvent$ = command(

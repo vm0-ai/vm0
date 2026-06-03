@@ -140,7 +140,7 @@ describe("zero onboarding - step 2: choose tools", () => {
     });
   });
 
-  it("step 2 advances into the Pro trial step", async () => {
+  it("step 2 advances into the Pro checkout step", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -166,11 +166,11 @@ describe("zero onboarding - step 2: choose tools", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pro trial step (step 4)
+// Pro checkout step (step 4)
 // ---------------------------------------------------------------------------
 
-describe("zero onboarding - Pro trial step", () => {
-  it("appends the trial step after connectors", async () => {
+describe("zero onboarding - Pro checkout step", () => {
+  it("appends the checkout step after connectors", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -183,8 +183,8 @@ describe("zero onboarding - Pro trial step", () => {
     });
     click(screen.getByText("Next"));
 
-    // Step 2: connectors. The trial step adds a third progress segment, and
-    // step 2 advances ("Next") into the terminal trial step.
+    // Step 2: connectors. The checkout step adds a third progress segment, and
+    // step 2 advances ("Next") into the terminal checkout step.
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
@@ -199,13 +199,13 @@ describe("zero onboarding - Pro trial step", () => {
       );
     });
 
-    // Advance into the trial step.
+    // Advance into the checkout step.
     click(screen.getByTestId("onboarding-next-button"));
 
     await waitFor(() => {
       expect(screen.getByTestId("onboarding-step-trial")).toBeInTheDocument();
     });
-    // The benefit checklist renders, and the trial step is now terminal.
+    // The benefit checklist renders, and the checkout step is now terminal.
     expect(screen.getByTestId("onboarding-trial-benefits")).toBeInTheDocument();
     expect(
       screen.getByText("All multimodal models for image, video and voice"),
@@ -245,7 +245,7 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
       ).toBeInTheDocument();
     });
 
-    // Admin flow: name workspace + pick tools + Pro trial.
+    // Admin flow: name workspace + pick tools + Pro checkout.
     expect(screen.getAllByTestId("progress-step")).toHaveLength(3);
 
     // Selecting a connector on step 2 doesn't change the step count.

@@ -121,7 +121,6 @@ export const startCheckout$ = command(
     { get },
     tier: "pro" | "team",
     newTab: boolean,
-    options: { readonly trialDays?: 7 } | undefined,
     signal: AbortSignal,
   ) => {
     const currentUrl = window.location.href;
@@ -148,9 +147,6 @@ export const startCheckout$ = command(
           tier,
           successUrl: stripeSuccessUrl,
           cancelUrl: cancelUrl.toString(),
-          ...(options?.trialDays === undefined
-            ? {}
-            : { trialDays: options.trialDays }),
           ...(adAttribution === undefined ? {} : { adAttribution }),
         },
         fetchOptions: { signal },

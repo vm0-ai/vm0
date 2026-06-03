@@ -500,7 +500,7 @@ export function onboardingStatus(
 
     // Existing free workspaces never have onboardingPaymentPending set, so
     // they do not re-enter onboarding. New onboarding remains active until the
-    // Pro trial checkout succeeds.
+    // Pro checkout succeeds.
     return {
       needsOnboarding: isAdmin && (!defaultAgent || paymentPending),
       isAdmin,

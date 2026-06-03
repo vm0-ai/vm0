@@ -2864,6 +2864,39 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.subscriptionStatus).toBe("past_due");
       expect(billing.currentPeriodEnd).toStrictEqual(paidThrough);
     });
+
+    it("downgrades when subscription update is canceled", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: new Date("2099-01-01T00:00:00.000Z"),
+        tier: "pro",
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "canceled",
+          cancel_at_period_end: false,
+          items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("pro-suspend");
+      expect(billing.subscriptionStatus).toBe("canceled");
+      expect(billing.stripeSubscriptionId).toBeNull();
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.currentPeriodEnd).toBeNull();
+    });
   });
 
   describe("invoice.paid credit expiry", () => {
@@ -3218,6 +3251,7 @@ describe("POST /api/webhooks/stripe", () => {
         stripeSubscriptionId: subId,
         subscriptionStatus: "active",
         cancelAtPeriodEnd: true,
+        currentPeriodEnd: new Date("2099-01-01T00:00:00.000Z"),
         tier: "team",
       });
 
@@ -3232,6 +3266,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.subscriptionStatus).toBe("canceled");
       expect(billing.stripeSubscriptionId).toBeNull();
       expect(billing.cancelAtPeriodEnd).toBeFalsy();
+      expect(billing.currentPeriodEnd).toBeNull();
     });
   });
 });

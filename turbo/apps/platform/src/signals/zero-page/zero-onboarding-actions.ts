@@ -86,7 +86,7 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
 
 /**
  * Steps shown in the progress bar. The regular admin flow is step 1
- * (workspace) + step 2 (connectors) + step 4 (Pro features + 7-day trial).
+ * (workspace) + step 2 (connectors) + step 4 (Pro features + checkout).
  * A use-case deep link collapses to step 3 (plus step 1 when the admin still
  * has to create the workspace).
  */
@@ -170,7 +170,7 @@ export const onboardingNextDisabled$ = computed(async (get) => {
 
 /**
  * Label on the primary forward button. "Try It" finishes a use-case flow,
- * "Get Started" finishes the regular admin flow on the terminal trial step,
+ * "Get Started" finishes the regular admin flow on the terminal checkout step,
  * "Next" advances earlier steps.
  */
 export const onboardingNextLabel$ = computed(async (get) => {
@@ -215,7 +215,7 @@ export const onboardingStepNext$ = command(
       }
       case "3":
       case "4": {
-        // Admin use-case step 3 and regular step 4 start the Stripe Pro trial;
+        // Admin use-case step 3 and regular step 4 start Stripe Pro checkout;
         // onboarding completes only after the subscription checkout webhook
         // clears the pending-payment marker. Already-onboarded/non-admin
         // use-case step 3 can continue straight into the prompt flow.
@@ -228,11 +228,11 @@ export const onboardingStepNext$ = command(
             await set(authorizeStep2Connectors$, signal);
             signal.throwIfAborted();
           }
-          await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
+          await set(startCheckout$, "pro", false, signal);
           break;
         }
         if (isUseCase && isAdmin) {
-          await set(startCheckout$, "pro", false, { trialDays: 7 }, signal);
+          await set(startCheckout$, "pro", false, signal);
           break;
         }
         await set(onboardingContinueWeb$, signal);

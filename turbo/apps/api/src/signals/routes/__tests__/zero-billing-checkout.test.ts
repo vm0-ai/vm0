@@ -417,14 +417,14 @@ describe("POST /api/zero/billing/checkout", () => {
     );
   });
 
-  it("returns Pro trial checkout URL during onboarding payment", async () => {
+  it("returns Pro checkout URL during onboarding payment without a trial", async () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     context.mocks.stripe.customers.create.mockResolvedValue({ id: customerId });
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
-      url: "https://checkout.stripe.com/session/trial",
+      url: "https://checkout.stripe.com/session/pro",
     });
 
     const client = setupApp({ context })(zeroBillingCheckoutContract);
@@ -433,7 +433,6 @@ describe("POST /api/zero/billing/checkout", () => {
       client.create({
         body: {
           tier: "pro",
-          trialDays: 7,
           successUrl: `${APP_ORIGIN}/onboarding?billing=pro`,
           cancelUrl: `${APP_ORIGIN}/onboarding?billing=canceled`,
         },
@@ -443,7 +442,7 @@ describe("POST /api/zero/billing/checkout", () => {
     );
 
     expect(response.body).toStrictEqual({
-      url: "https://checkout.stripe.com/session/trial",
+      url: "https://checkout.stripe.com/session/pro",
     });
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
       mode: "subscription",
@@ -463,61 +462,6 @@ describe("POST /api/zero/billing/checkout", () => {
           tier: "pro",
           priceId: TEST_PRICE_PRO,
         },
-        trial_period_days: 7,
-      },
-    });
-  });
-
-  it("rejects Pro trial checkout outside onboarding payment", async () => {
-    const fixture = await trackedSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "pro",
-          trialDays: 7,
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Pro trial checkout is only available during onboarding",
-        code: "BAD_REQUEST",
-      },
-    });
-  });
-
-  it("rejects trial checkout for non-Pro tiers", async () => {
-    const fixture = await trackedPendingSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.create({
-        body: {
-          tier: "team",
-          trialDays: 7,
-          successUrl: `${APP_ORIGIN}/billing?billing=success`,
-          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Trial checkout is only available for Pro tier",
-        code: "BAD_REQUEST",
       },
     });
   });
@@ -564,7 +508,6 @@ describe("POST /api/zero/billing/checkout", () => {
       client.create({
         body: {
           tier: "pro",
-          trialDays: 7,
           successUrl: "https://so.vm0.ai/onboarding?billing=pro",
           cancelUrl: "https://so.vm0.ai/onboarding?billing=canceled",
         },

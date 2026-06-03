@@ -13,7 +13,6 @@ interface CreateCheckoutSessionArgs {
   readonly orgId: string;
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
-  readonly trialDays?: 7;
   readonly successUrl: string;
   readonly cancelUrl: string;
   readonly adAttribution?: Readonly<Record<string, string | undefined>>;
@@ -228,9 +227,6 @@ export const createCheckoutSession$ = command(
       metadata,
       subscription_data: {
         metadata,
-        ...(args.trialDays === undefined
-          ? {}
-          : { trial_period_days: args.trialDays }),
       },
     });
     signal.throwIfAborted();

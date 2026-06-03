@@ -39,7 +39,7 @@ function mockAdminOnboarding() {
 }
 
 // Step 1 (name workspace) → step 2 (choose tools, pick a connector) → step 4
-// (Pro trial). "Get Started" on step 4 starts Stripe checkout.
+// (Pro checkout). "Get Started" on step 4 starts Stripe checkout.
 async function walkAdminToContinue() {
   await waitFor(() => {
     expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
@@ -68,15 +68,15 @@ async function walkAdminToContinue() {
   });
 }
 
-describe("onboarding Pro trial checkout", () => {
-  it("starts Pro trial checkout after admin completes onboarding setup", async () => {
+describe("onboarding Pro checkout", () => {
+  it("starts Pro checkout after admin completes onboarding setup", async () => {
     mockAdminOnboarding();
     let checkoutBody: Record<string, unknown> | null = null;
     server.use(
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=trial",
+          url: "https://checkout.stripe.com/test?mode=checkout",
         });
       }),
     );
@@ -87,7 +87,8 @@ describe("onboarding Pro trial checkout", () => {
     click(screen.getByText(/Get Started/));
 
     await waitFor(() => {
-      expect(checkoutBody).toMatchObject({ tier: "pro", trialDays: 7 });
+      expect(checkoutBody).toMatchObject({ tier: "pro" });
+      expect(checkoutBody).not.toHaveProperty("trialDays");
     });
   });
 
@@ -103,7 +104,7 @@ describe("onboarding Pro trial checkout", () => {
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=trial",
+          url: "https://checkout.stripe.com/test?mode=checkout",
         });
       }),
     );
@@ -198,7 +199,7 @@ describe("prompt param forwarding", () => {
       mockApi(zeroBillingCheckoutContract.create, ({ body, respond }) => {
         checkoutBody = body as Record<string, unknown>;
         return respond(200, {
-          url: "https://checkout.stripe.com/test?mode=trial",
+          url: "https://checkout.stripe.com/test?mode=checkout",
         });
       }),
     );
