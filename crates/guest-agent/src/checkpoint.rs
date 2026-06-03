@@ -193,8 +193,8 @@ async fn upload_session_history(
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
 /// there is no longer a separate memory arm. Payload shape is
-/// `Array<{name, version, mountPath}>` per #10911 — the receiver tolerates the
-/// legacy `Record<name, version>` form too (#10919).
+/// `Array<{name, version, mountPath, generatedBy?}>`, matching the webhook
+/// receiver's canonical artifact snapshot schema.
 async fn snapshot_artifact_entries(
     http: &HttpClient,
     entries: &[env::ArtifactEnv],
