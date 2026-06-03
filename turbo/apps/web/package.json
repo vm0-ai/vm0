@@ -20,6 +20,7 @@
     "@t3-oss/env-nextjs": "^0.13.8",
     "@tabler/icons-react": "^3.36.1",
     "@vm0/api-contracts": "workspace:*",
+    "@vm0/core": "workspace:*",
     "@vm0/ui": "workspace:*",
     "next": "^16.2.6",
     "next-intl": "^4.11.0",
