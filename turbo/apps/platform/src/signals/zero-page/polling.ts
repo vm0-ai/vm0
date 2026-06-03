@@ -10,7 +10,8 @@ import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-que
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
-const AGENT_EVENTS_PAGE_LIMIT = 30;
+const INITIAL_AGENT_EVENTS_PAGE_LIMIT = 100;
+const POLLED_AGENT_EVENTS_PAGE_LIMIT = 30;
 
 function isTerminalStatus(status: string | null): boolean {
   return (
@@ -29,22 +30,25 @@ interface PagedRunEvents {
 async function fetchEvents(
   client: ZeroClientFactory,
   runId: string,
-  since?: number,
-  signal?: AbortSignal,
-) {
+  options: {
+    limit: number;
+    since?: number;
+    signal?: AbortSignal;
+  },
+): Promise<PagedRunEvents> {
   const query: { limit: number; order: "asc"; since?: number } = {
-    limit: AGENT_EVENTS_PAGE_LIMIT,
+    limit: options.limit,
     order: "asc",
   };
-  if (since !== undefined) {
-    query.since = since;
+  if (options.since !== undefined) {
+    query.since = options.since;
   }
   const result = await accept(
     client(zeroRunAgentEventsContract).getAgentEvents({
       params: { id: runId },
       query,
       fetchOptions: {
-        signal,
+        signal: options.signal,
       },
     }),
     [200],
@@ -54,11 +58,13 @@ async function fetchEvents(
 
 function createEventPageComputed(
   runId: string,
+  limit: number,
   since?: number,
 ): Computed<Promise<PagedRunEvents>> {
   return computed(async (get) => {
     const client = get(zeroClient$);
-    return await fetchEvents(client, runId, since);
+    const options = since === undefined ? { limit } : { limit, since };
+    return await fetchEvents(client, runId, options);
   });
 }
 
@@ -147,7 +153,9 @@ async function findLastEventSequence(
 
 function createRunPagedEvents(runId: string) {
   const initialPagedEventsList$ = computed(async (get) => {
-    const pages = [createEventPageComputed(runId)];
+    const pages = [
+      createEventPageComputed(runId, INITIAL_AGENT_EVENTS_PAGE_LIMIT),
+    ];
 
     while (true) {
       const lastPage = await get(pages[pages.length - 1]);
@@ -156,7 +164,9 @@ function createRunPagedEvents(runId: string) {
       }
 
       const since = await findLastEventSequence(pages, get);
-      pages.push(createEventPageComputed(runId, since));
+      pages.push(
+        createEventPageComputed(runId, INITIAL_AGENT_EVENTS_PAGE_LIMIT, since),
+      );
     }
   });
 
@@ -210,7 +220,11 @@ export function createRunLoop(runId: string) {
     const since = await findLastEventSequence(allPages, get);
     signal.throwIfAborted();
 
-    const nextPage$ = createEventPageComputed(runId, since);
+    const nextPage$ = createEventPageComputed(
+      runId,
+      POLLED_AGENT_EVENTS_PAGE_LIMIT,
+      since,
+    );
     set(internalLoopedPagedEvents$, (prev) => {
       return [...prev, nextPage$];
     });
