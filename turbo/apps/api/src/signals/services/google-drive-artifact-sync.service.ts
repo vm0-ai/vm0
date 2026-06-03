@@ -384,6 +384,11 @@ interface ArtifactFileRow {
   readonly metadata: Record<string, unknown>;
 }
 
+interface ArtifactS3Object {
+  readonly bucketName: string;
+  readonly key: string;
+}
+
 async function loadArtifactFile(
   db: ReadonlyDb,
   args: {
@@ -439,18 +444,27 @@ async function loadArtifactFile(
   return row ?? null;
 }
 
-function resolveArtifactS3Key(
+function resolveArtifactS3Object(
   metadata: Record<string, unknown>,
   userId: string,
-): string | null {
+): ArtifactS3Object | null {
   const value = metadata.s3Key;
   if (typeof value !== "string") {
     return null;
   }
+  if (value.startsWith(`artifacts/${encodeURIComponent(userId)}/`)) {
+    return {
+      bucketName: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+      key: value,
+    };
+  }
   if (!value.startsWith(`uploads/${userId}/`)) {
     return null;
   }
-  return value;
+  return {
+    bucketName: env("R2_USER_STORAGES_BUCKET_NAME"),
+    key: value,
+  };
 }
 
 type DriveTokenResult<T> =
@@ -679,7 +693,7 @@ type BadRequestResponse = ReturnType<typeof badRequestMessage>;
  *  - 400 "Connect Google Drive before syncing artifacts" — connector
  *    absent or `needsReconnect`.
  *  - 400 "This artifact file cannot be synced to Google Drive" — file
- *    metadata.s3Key is missing or doesn't match the caller's user prefix.
+ *    metadata.s3Key is missing or doesn't match a caller-owned artifact prefix.
  *  - 400 "Google Drive upload failed with HTTP <status>" — upload error
  *    after refresh-token retry exhausted.
  *  - 200 with `{ id, name, webViewLink }`.
@@ -727,8 +741,8 @@ export const syncArtifactToGoogleDrive$ = command(
       return notFound("Artifact file not found");
     }
 
-    const s3Key = resolveArtifactS3Key(artifact.metadata, args.userId);
-    if (!s3Key) {
+    const s3Object = resolveArtifactS3Object(artifact.metadata, args.userId);
+    if (!s3Object) {
       return badRequestMessage(
         "This artifact file cannot be synced to Google Drive",
       );
@@ -736,9 +750,7 @@ export const syncArtifactToGoogleDrive$ = command(
 
     const filename = artifact.filename ?? artifact.externalId;
     const contentType = artifact.contentType ?? inferMimetype(filename);
-    const file = await get(
-      downloadS3Buffer(env("R2_USER_STORAGES_BUCKET_NAME"), s3Key),
-    );
+    const file = await get(downloadS3Buffer(s3Object.bucketName, s3Object.key));
     signal.throwIfAborted();
 
     let result = await uploadArtifactWithToken({
