@@ -610,79 +610,9 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     ]);
   });
 
-  it("writes non-Zero BYOK model usage only to ranking observations", async () => {
+  it("uses Zero model context for BYOK billing decisions", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
-    await db.delete(zeroRuns).where(eq(zeroRuns.id, fixture.runId));
-    await db
-      .update(agentRuns)
-      .set({
-        modelProvider: "anthropic-api-key",
-        selectedModel: "claude-sonnet-4-6",
-      })
-      .where(eq(agentRuns.id, fixture.runId));
-    const inputIdempotencyKey = randomUUID();
-    const outputIdempotencyKey = randomUUID();
-    const client = setupApp({ context })(webhookUsageEventContract);
-
-    await accept(
-      client.send({
-        body: {
-          runId: fixture.runId,
-          events: [
-            {
-              idempotencyKey: inputIdempotencyKey,
-              kind: "model",
-              provider: "claude-sonnet-4-6",
-              category: "tokens.input",
-              quantity: 12,
-            },
-            {
-              idempotencyKey: outputIdempotencyKey,
-              kind: "model",
-              provider: "claude-sonnet-4-6",
-              category: "tokens.output",
-              quantity: 7,
-            },
-          ],
-        },
-        headers: authHeaders(fixture),
-      }),
-      [200],
-    );
-
-    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
-    const observationsByCategory = Object.fromEntries(
-      (await observationRowsForRun(fixture.runId)).map((row) => {
-        return [row.category, row];
-      }),
-    );
-    expect(observationsByCategory).toMatchObject({
-      "tokens.input": {
-        idempotencyKey: inputIdempotencyKey,
-        model: "claude-sonnet-4-6",
-        modelProviderType: "anthropic-api-key",
-        quantity: 12,
-      },
-      "tokens.output": {
-        idempotencyKey: outputIdempotencyKey,
-        model: "claude-sonnet-4-6",
-        modelProviderType: "anthropic-api-key",
-        quantity: 7,
-      },
-    });
-  });
-
-  it("uses Zero model context before the agent run fallback", async () => {
-    const fixture = await track(seedFixture());
-    const db = store.set(writeDb$);
-    await db
-      .update(agentRuns)
-      .set({
-        modelProvider: "vm0",
-        selectedModel: "anthropic/claude-sonnet-4.6",
-      })
-      .where(eq(agentRuns.id, fixture.runId));
     await db
       .update(zeroRuns)
       .set({

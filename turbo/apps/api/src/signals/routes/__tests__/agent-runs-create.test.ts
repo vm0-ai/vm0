@@ -1320,18 +1320,6 @@ describe("POST /api/agent/runs", () => {
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
     expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
-
-    const [run] = await db
-      .select({
-        modelProvider: agentRuns.modelProvider,
-        selectedModel: agentRuns.selectedModel,
-      })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, response.body.runId));
-    expect(run).toStrictEqual({
-      modelProvider: "anthropic-api-key",
-      selectedModel: "claude-sonnet-4-6",
-    });
   });
 
   it("injects a Codex gateway provider with the OPENAI_API_KEY placeholder", async () => {

@@ -107,29 +107,17 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   const [runModelContext] = hasModelEvents
     ? await db
         .select({
-          runModelProvider: agentRuns.modelProvider,
-          runSelectedModel: agentRuns.selectedModel,
-          zeroModelProvider: zeroRuns.modelProvider,
-          zeroSelectedModel: zeroRuns.selectedModel,
+          modelProvider: zeroRuns.modelProvider,
+          selectedModel: zeroRuns.selectedModel,
         })
-        .from(agentRuns)
-        .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-        .where(eq(agentRuns.id, body.runId))
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, body.runId))
         .limit(1)
     : [];
   signal.throwIfAborted();
 
-  const modelProviderType =
-    // Zero workflows can update model routing after the base agent_run row is
-    // created. Keep zero_runs authoritative when present; agent_runs is the
-    // fallback for non-Zero and legacy rows.
-    runModelContext?.zeroModelProvider ??
-    runModelContext?.runModelProvider ??
-    null;
-  const selectedModel =
-    runModelContext?.zeroSelectedModel ??
-    runModelContext?.runSelectedModel ??
-    null;
+  const modelProviderType = runModelContext?.modelProvider ?? null;
+  const selectedModel = runModelContext?.selectedModel ?? null;
   const fallbackModel = body.events.find((event) => {
     return event.kind === MODEL_USAGE_KIND;
   })?.provider;
