@@ -303,6 +303,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatScrollToBottomButton]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ChatRecommendedFollowups]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Generate and show recommended follow-up prompts after completed chat runs.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

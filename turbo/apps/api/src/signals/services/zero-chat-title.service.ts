@@ -1,5 +1,10 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageRecommendedFollowup,
+  type ChatMessageRecommendedFollowupGenerationType,
+  type ChatMessageRecommendedFollowups,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
@@ -18,7 +23,14 @@ const TITLE_CONTEXT_CHAR_CAP = 150;
 const TITLE_PRIOR_MESSAGE_CAP = 10;
 const FOLLOWUP_CONTEXT_CHAR_CAP = 700;
 const FOLLOWUP_CONTEXT_MESSAGE_CAP = 8;
-const FOLLOWUP_LIMIT = 4;
+const FOLLOWUP_LIMIT = 3;
+const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
+  "Supported VM0 built-in generation tasks:",
+  "- image: create or edit images and visual assets.",
+  "- video: create short generated videos.",
+  "- presentation: create slide decks or presentation documents.",
+  "- website: create hosted websites or web pages.",
+].join("\n");
 
 interface TitleContextMessage {
   readonly role: "user" | "assistant";
@@ -296,7 +308,51 @@ function sanitizeFollowup(raw: string): string | null {
   return text.length > 120 ? `${text.slice(0, 117).trim()}...` : text;
 }
 
-function parseRecommendedFollowups(text: string): string[] {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecommendedFollowupGenerationType(
+  value: unknown,
+): value is ChatMessageRecommendedFollowupGenerationType {
+  return (
+    value === "image" ||
+    value === "video" ||
+    value === "presentation" ||
+    value === "website"
+  );
+}
+
+function recommendedFollowupFromUnknown(
+  value: unknown,
+): ChatMessageRecommendedFollowup | null {
+  const prompt = sanitizeFollowup(
+    typeof value === "string"
+      ? value
+      : isRecord(value) && typeof value.prompt === "string"
+        ? value.prompt
+        : "",
+  );
+  if (prompt === null) {
+    return null;
+  }
+
+  if (!isRecord(value) || value.kind !== "generate") {
+    return { prompt, kind: "talk" };
+  }
+
+  return {
+    prompt,
+    kind: "generate",
+    ...(isRecommendedFollowupGenerationType(value.generationType)
+      ? { generationType: value.generationType }
+      : {}),
+  };
+}
+
+function parseRecommendedFollowups(
+  text: string,
+): ChatMessageRecommendedFollowups {
   const unfenced = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -306,22 +362,20 @@ function parseRecommendedFollowups(text: string): string[] {
   const fromJson = (() => {
     const parsed = safeJsonParse(unfenced);
     if (Array.isArray(parsed)) {
-      return parsed.flatMap((item) => {
-        return typeof item === "string" ? [item] : [];
-      });
+      return parsed;
     }
     return null;
   })();
 
   const candidates = fromJson ?? unfenced.split("\n");
   const seen = new Set<string>();
-  const suggestions: string[] = [];
+  const suggestions: ChatMessageRecommendedFollowups = [];
   for (const candidate of candidates) {
-    const suggestion = sanitizeFollowup(candidate);
-    if (suggestion === null || seen.has(suggestion)) {
+    const suggestion = recommendedFollowupFromUnknown(candidate);
+    if (suggestion === null || seen.has(suggestion.prompt)) {
       continue;
     }
-    seen.add(suggestion);
+    seen.add(suggestion.prompt);
     suggestions.push(suggestion);
     if (suggestions.length >= FOLLOWUP_LIMIT) {
       break;
@@ -366,7 +420,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly TitleContextMessage[],
-): Promise<string[]> {
+): Promise<ChatMessageRecommendedFollowups> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
     return [];
@@ -382,15 +436,21 @@ async function generateRecommendedFollowups(
     [
       {
         role: "system",
-        content:
-          "Generate exactly four concise follow-up prompts the user may ask next in this chat. Make them specific to the latest assistant reply, actionable, and useful. Match the user's language. Return only a JSON array of strings, with no markdown or extra text.",
+        content: [
+          "Generate up to three concise follow-up prompts the user may ask next in this chat.",
+          "Make them specific to the latest assistant reply, actionable, and useful. Match the user's language.",
+          'Classify each item as kind "talk" for normal discussion, planning, analysis, or refinement, or kind "generate" when the prompt asks VM0 to create one of the supported built-in generation outputs.',
+          BUILT_IN_GENERATION_FOLLOWUP_CONTEXT,
+          "For generate items, include generationType as one of: image, video, presentation, website.",
+          'Return only a JSON array of objects like {"prompt":"...","kind":"talk"} or {"prompt":"...","kind":"generate","generationType":"website"}. No markdown or extra text.',
+        ].join("\n"),
       },
       {
         role: "user",
         content: `Recent conversation:\n${context}`,
       },
     ],
-    180,
+    260,
     { stripMarkdown: false },
   );
 
@@ -400,7 +460,7 @@ async function generateRecommendedFollowups(
 export async function generateChatThreadRecommendedFollowups(args: {
   readonly db: SelectDb;
   readonly threadId: string;
-}): Promise<string[]> {
+}): Promise<ChatMessageRecommendedFollowups> {
   const result = await settle(
     (async () => {
       const messages = await getLatestFollowupContextMessages(

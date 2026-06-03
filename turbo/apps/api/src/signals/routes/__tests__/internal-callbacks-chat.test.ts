@@ -17,8 +17,10 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { pushSubscriptions } from "@vm0/db/schema/push-subscription";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -219,6 +221,14 @@ async function deleteFixture(fixture: ChatCallbackFixture): Promise<void> {
   await db
     .delete(pushSubscriptions)
     .where(eq(pushSubscriptions.userId, fixture.userId));
+  await db
+    .delete(userFeatureSwitches)
+    .where(
+      and(
+        eq(userFeatureSwitches.orgId, fixture.orgId),
+        eq(userFeatureSwitches.userId, fixture.userId),
+      ),
+    );
   await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
@@ -518,6 +528,19 @@ function mockOpenRouter(
   );
 }
 
+async function enableRecommendedFollowups(
+  fixture: ChatCallbackFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
+    });
+}
+
 describe("POST /api/internal/callbacks/chat", () => {
   it("returns 200 for progress status without querying Axiom", async () => {
     const fixture = await track(seedChatCallbackFixture());
@@ -621,6 +644,78 @@ describe("POST /api/internal/callbacks/chat", () => {
         );
       }),
     ).toBeTruthy();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${fixture.threadId}`,
+      null,
+    );
+    await clearAllDetached();
+  });
+
+  it("persists recommended follow-ups as an immutable assistant message when enabled", async () => {
+    const fixture = await track(seedChatCallbackFixture());
+    await enableRecommendedFollowups(fixture);
+    completedAssistantOutput("final answer");
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    mockOpenRouter((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Completed Thread";
+      }
+      if (
+        systemContent.includes("Generate up to three concise follow-up prompts")
+      ) {
+        return JSON.stringify([
+          {
+            prompt: "Turn this into a checklist",
+            kind: "talk",
+          },
+          {
+            prompt: "Generate a landing page for this plan",
+            kind: "generate",
+            generationType: "website",
+          },
+        ]);
+      }
+      return "Generated summary";
+    });
+
+    const response = await postSignedCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: { threadId: fixture.threadId, agentId: fixture.agentId },
+    });
+
+    expect(response.status).toBe(200);
+    const messages = await listMessages(fixture.threadId);
+    const marker = messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === fixture.runId &&
+        message.runLifecycleEvent === "completed"
+      );
+    });
+    const recommender = messages.find((message) => {
+      return (
+        message.role === "assistant" &&
+        message.runId === fixture.runId &&
+        message.runLifecycleEvent === null &&
+        (message.recommendedFollowups?.length ?? 0) > 0
+      );
+    });
+    expect(marker?.recommendedFollowups).toBeNull();
+    expect(recommender?.content).toBeNull();
+    expect(recommender?.recommendedFollowups).toStrictEqual([
+      {
+        prompt: "Turn this into a checklist",
+        kind: "talk",
+      },
+      {
+        prompt: "Generate a landing page for this plan",
+        kind: "generate",
+        generationType: "website",
+      },
+    ]);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${fixture.threadId}`,
       null,

@@ -225,6 +225,10 @@ import { PersonalProviderDialog } from "./components/settings/personal-provider-
 import { PersonalClaudeCodeDeviceAuthDialog } from "./components/settings/claude-code-device-auth-dialog.tsx";
 import { PersonalCodexDeviceAuthDialog } from "./components/settings/codex-device-auth-dialog.tsx";
 
+type RecommendedFollowup = NonNullable<
+  Extract<PagedChatMessage, { role: "assistant" }>["recommendedFollowups"]
+>[number];
+
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
   "Connect Google Drive to upload artifacts";
 const GOOGLE_DRIVE_ARTIFACT_SYNC_AUTH_METHOD =
@@ -762,7 +766,10 @@ function GithubPrTrackingContent({ thread }: { thread: ChatThreadSignals }) {
     if (modelSelection === undefined) {
       return;
     }
-    detach(sendAction(prompt, modelSelection, rootSignal), Reason.DomCallback);
+    detach(
+      sendAction(prompt, modelSelection, undefined, rootSignal),
+      Reason.DomCallback,
+    );
   };
   const prs = loadable.state === "hasData" ? loadable.data : lastResolvedPrs;
 
@@ -2595,7 +2602,6 @@ function ChatThreadMessagesMain({
           );
         })}
         <ThinkingIndicator thread={thread} groups={activeGroups} />
-        <RecommendedFollowups thread={thread} />
       </div>
     </main>
   );
@@ -2700,10 +2706,6 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const { activeGroups } = splitQueuedMessagesForThinkingIndicator(groups);
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const awayFromBottom = useGet(thread.awayFromBottom$);
-  const scrollToBottom = useSet(thread.scrollToBottom$);
-  const showScrollToBottomButton =
-    awayFromBottom && !skeletonVisible && !sessionError;
   const loadingHistory = loadHistoryLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onLoadHistory = onDomEventFn(() => {
@@ -2746,19 +2748,11 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
               sessionError={sessionError}
               skeletonVisible={skeletonVisible}
             />
-            {showScrollToBottomButton && (
-              <button
-                type="button"
-                data-scroll-to-bottom
-                aria-label="Scroll to bottom"
-                onClick={() => {
-                  scrollToBottom();
-                }}
-                className="absolute bottom-4 right-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <IconArrowDown size={18} />
-              </button>
-            )}
+            <ChatScrollToBottomButton
+              thread={thread}
+              skeletonVisible={skeletonVisible}
+              sessionError={sessionError}
+            />
           </div>
 
           <ChatThreadComposer thread={thread} />
@@ -2770,58 +2764,143 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function RecommendedFollowups({ thread }: { thread: ChatThreadSignals }) {
-  const followupsLoadable = useLastLoadable(thread.recommendedFollowups$);
-  const setInput = useSet(thread.draft.setInput$);
-  const focusInput = useSet(thread.focusInput$);
-  const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
-  const pageSignal = useGet(pageSignal$);
+function ChatScrollToBottomButton({
+  thread,
+  skeletonVisible,
+  sessionError,
+}: {
+  thread: ChatThreadSignals;
+  skeletonVisible: boolean;
+  sessionError: string | null;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  const enabled =
+    features?.[FeatureSwitchKey.ChatScrollToBottomButton] ?? false;
+  const awayFromBottom = useGet(thread.awayFromBottom$);
+  const scrollToBottom = useSet(thread.scrollToBottom$);
 
-  if (
-    followupsLoadable.state !== "hasData" ||
-    followupsLoadable.data.length === 0
-  ) {
+  if (!enabled || !awayFromBottom || skeletonVisible || sessionError) {
     return null;
   }
 
-  const handleSelect = (suggestion: string) => {
-    setInput(suggestion);
-    detach(scheduleDraftSync(pageSignal), Reason.DomCallback);
-    focusInput();
+  return (
+    <button
+      type="button"
+      data-scroll-to-bottom
+      aria-label="Scroll to bottom"
+      onClick={() => {
+        scrollToBottom();
+      }}
+      className="absolute bottom-4 right-[calc(var(--github-pr-tracking-content-inset,0px)_+_1rem)] z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-accent hover:text-foreground"
+    >
+      <IconArrowDown size={18} />
+    </button>
+  );
+}
+
+interface RecommendedFollowupSource {
+  readonly messageId: string;
+  readonly followups: readonly RecommendedFollowup[];
+}
+
+function latestRecommendedFollowups(
+  groups: readonly GroupedChatMessageGroup[],
+): RecommendedFollowupSource | null {
+  const lastGroup = groups[groups.length - 1];
+  if (lastGroup?.role !== "assistant") {
+    return null;
+  }
+  const lastMessage = lastGroup.messages[lastGroup.messages.length - 1];
+  if (!lastMessage || lastMessage.role !== "assistant") {
+    return null;
+  }
+  if (lastMessage.runLifecycleEvent !== undefined) {
+    return null;
+  }
+  const followups = lastMessage.recommendedFollowups ?? [];
+  if (followups.length === 0) {
+    return null;
+  }
+  return { messageId: lastMessage.id, followups };
+}
+
+function RecommendedFollowupIcon({
+  followup,
+}: {
+  followup: RecommendedFollowup;
+}) {
+  if (followup.kind !== "generate") {
+    return <IconMessageCircle size={14} stroke={1.8} />;
+  }
+
+  if (followup.generationType === "image") {
+    return <IconPhoto size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "video") {
+    return <IconVideo size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "presentation") {
+    return <IconChartLine size={14} stroke={1.8} />;
+  }
+  if (followup.generationType === "website") {
+    return <IconLink size={14} stroke={1.8} />;
+  }
+  return <IconPackage size={14} stroke={1.8} />;
+}
+
+function RecommendedFollowupList({
+  thread,
+  source,
+}: {
+  thread: ChatThreadSignals;
+  source: RecommendedFollowupSource;
+}) {
+  const [, sendMessage] = useLoadableSet(thread.sendMessage$);
+  const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
+  const rootSignal = useGet(rootSignal$);
+
+  const handleSelect = (followup: RecommendedFollowup) => {
+    detach(
+      sendMessage(
+        followup.prompt,
+        modelSelection,
+        {
+          revokesMessageId: source.messageId,
+          includeDraftAttachments: false,
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   return (
-    <section className="pt-1">
-      <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-        Recommended follow-ups
-      </h2>
-      <div className="divide-y divide-border/70 border-y border-border/70">
-        {followupsLoadable.data.map((suggestion) => {
-          return (
-            <button
-              key={suggestion}
-              type="button"
-              className="group flex min-h-12 w-full items-center gap-3 py-3 text-left transition-colors hover:bg-muted/30"
-              onClick={() => {
-                handleSelect(suggestion);
-              }}
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground">
-                <IconMessageCircle size={18} stroke={1.8} />
-              </span>
-              <span className="min-w-0 flex-1 break-words text-base font-medium leading-snug text-muted-foreground group-hover:text-foreground">
-                {suggestion}
-              </span>
-              <IconArrowRight
-                size={20}
-                stroke={1.8}
-                className="mr-1 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
-              />
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    <div className="-mx-2 divide-y divide-border/60">
+      {source.followups.map((followup) => {
+        return (
+          <button
+            key={followup.prompt}
+            type="button"
+            className="group flex min-h-10 w-full items-center gap-2 px-2 py-2 text-left transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-muted/40"
+            onClick={() => {
+              handleSelect(followup);
+            }}
+          >
+            <span className="shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground">
+              <RecommendedFollowupIcon followup={followup} />
+            </span>
+            <span className="min-w-0 flex-1 break-words text-xs font-medium leading-5 text-muted-foreground group-hover:text-foreground">
+              {followup.prompt}
+            </span>
+            <IconArrowRight
+              size={14}
+              stroke={1.8}
+              className="shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+            />
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -3087,7 +3166,10 @@ function ChatThreadComposer({
     setInput("");
     // Use rootSignal so in-run page navigation (e.g. IPA internal nav) doesn't
     // cancel the pending send.
-    detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
+    detach(
+      send(text, modelSelection, undefined, rootSignal),
+      Reason.DomCallback,
+    );
   };
 
   const handleQueue = (text: string) => {
@@ -3245,6 +3327,95 @@ function ThinkingLabel({
   return <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>;
 }
 
+function InlineThinkingRow({
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+}: {
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 h-5">
+      <span className="zero-blocks shrink-0" style={blockStyle}>
+        <span />
+        <span />
+        <span />
+      </span>
+      <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+    </div>
+  );
+}
+
+function FinishedRunRow({
+  thread,
+  label,
+  source,
+}: {
+  thread: ChatThreadSignals;
+  label: string;
+  source: RecommendedFollowupSource | null;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-5 flex-col justify-center gap-1.5">
+        <div className="h-px w-full bg-border/40" />
+        <div className="flex items-center gap-2">
+          <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
+            {label}
+          </p>
+          <div className="h-px flex-1 bg-border/40" />
+        </div>
+      </div>
+      {source ? (
+        <RecommendedFollowupList thread={thread} source={source} />
+      ) : null}
+    </div>
+  );
+}
+
+function WaitingForAssistantResponse({
+  thread,
+  blockStyle,
+  isQueued,
+  rotatingLabel,
+}: {
+  thread: ChatThreadSignals;
+  blockStyle: CSSProperties;
+  isQueued: boolean;
+  rotatingLabel: string;
+}) {
+  return (
+    <div
+      data-thinking-indicator
+      data-role="assistant"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <AssistantBubbleAvatar thread={thread} />
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="zero-blocks shrink-0" style={blockStyle}>
+              <span />
+              <span />
+              <span />
+            </span>
+            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+          </div>
+        </div>
+      </div>
+      <div
+        aria-hidden
+        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
+      >
+        <div className="hidden @[900px]:block" />
+        <div className="flex items-center py-2 gap-1 -ml-1" />
+      </div>
+    </div>
+  );
+}
+
 function ThinkingIndicator({
   thread,
   groups,
@@ -3284,6 +3455,15 @@ function ThinkingIndicator({
   const donePhrase = useGet(thread.donePhrase$);
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
+  const features = useLastResolved(featureSwitch$);
+  const recommendedFollowupsEnabled =
+    features?.[FeatureSwitchKey.ChatRecommendedFollowups] ?? false;
+  const recommendedFollowupSource = recommendedFollowupsEnabled
+    ? latestRecommendedFollowups(groups)
+    : null;
+  const doneLabel = recommendedFollowupSource
+    ? "Recommended follow-ups"
+    : donePhrase;
 
   if (
     !shouldRenderThinkingIndicator({
@@ -3307,27 +3487,17 @@ function ThinkingIndicator({
         <div className="hidden @[900px]:block" />
         <div className="min-w-0">
           {running ? (
-            <div className="flex items-center gap-2 h-5">
-              <span className="zero-blocks shrink-0" style={blockStyle}>
-                <span />
-                <span />
-                <span />
-              </span>
-              <ThinkingLabel
-                isQueued={isQueued}
-                rotatingLabel={rotatingLabel}
-              />
-            </div>
+            <InlineThinkingRow
+              blockStyle={blockStyle}
+              isQueued={isQueued}
+              rotatingLabel={rotatingLabel}
+            />
           ) : (
-            <div className="flex flex-col gap-1.5 h-5 justify-center">
-              <div className="h-px w-full bg-border/40" />
-              <div className="flex items-center gap-2">
-                <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
-                  {donePhrase}
-                </p>
-                <div className="h-px flex-1 bg-border/40" />
-              </div>
-            </div>
+            <FinishedRunRow
+              thread={thread}
+              label={doneLabel}
+              source={recommendedFollowupSource}
+            />
           )}
         </div>
       </div>
@@ -3336,32 +3506,12 @@ function ThinkingIndicator({
 
   // Waiting for first assistant response — show bubble with avatar
   return (
-    <div
-      data-thinking-indicator
-      data-role="assistant"
-      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
-    >
-      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="zero-blocks shrink-0" style={blockStyle}>
-              <span />
-              <span />
-              <span />
-            </span>
-            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
-          </div>
-        </div>
-      </div>
-      <div
-        aria-hidden
-        className="@[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px]"
-      >
-        <div className="hidden @[900px]:block" />
-        <div className="flex items-center py-2 gap-1 -ml-1" />
-      </div>
-    </div>
+    <WaitingForAssistantResponse
+      thread={thread}
+      blockStyle={blockStyle}
+      isQueued={isQueued}
+      rotatingLabel={rotatingLabel}
+    />
   );
 }
 

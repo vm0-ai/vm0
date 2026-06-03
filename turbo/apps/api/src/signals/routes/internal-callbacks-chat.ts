@@ -10,7 +10,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -56,9 +59,11 @@ import {
 import { sendUserPushNotifications } from "../services/zero-push-notifications.service";
 import {
   generateAndPersistChatThreadTitleFromCallback,
+  generateChatThreadRecommendedFollowups,
   generateChatNotificationSummary,
 } from "../services/zero-chat-title.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle, tapError } from "../utils";
 
 const log = logger("callback:chat");
@@ -137,6 +142,7 @@ interface AgentForAutoSend {
 interface ChatThreadForRunRow {
   readonly chatThreadId: string;
   readonly userId: string;
+  readonly orgId: string;
 }
 
 interface ChatRunInfo {
@@ -425,31 +431,81 @@ async function insertRunLifecycleMarker(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly event: "completed" | "cancelled";
+  readonly recommendedFollowups?: ChatMessageRecommendedFollowups;
 }): Promise<boolean> {
-  const inserted = await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "assistant",
-      content: null,
-      runId: args.runId,
-      runLifecycleEvent: args.event,
-    })
-    .onConflictDoNothing({
-      target: chatMessages.runId,
-      where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
-    })
-    .returning({ id: chatMessages.id });
-  if (inserted.length === 0) {
+  const inserted = await args.db.transaction(async (tx) => {
+    const marker = await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        runLifecycleEvent: args.event,
+      })
+      .onConflictDoNothing({
+        target: chatMessages.runId,
+        where: sql`${chatMessages.runLifecycleEvent} IS NOT NULL`,
+      })
+      .returning({ id: chatMessages.id });
+    if (marker.length === 0) {
+      return false;
+    }
+    if (
+      args.event === "completed" &&
+      args.recommendedFollowups &&
+      args.recommendedFollowups.length > 0
+    ) {
+      await tx.insert(chatMessages).values({
+        chatThreadId: args.threadId,
+        role: "assistant",
+        content: null,
+        runId: args.runId,
+        recommendedFollowups: args.recommendedFollowups,
+      });
+    }
+    await touchChatThreadLastMessageAt(tx, args.threadId);
+    return true;
+  });
+  if (!inserted) {
     return false;
   }
-  await touchChatThreadLastMessageAt(args.db, args.threadId);
   await publishUserSignal(
     [args.userId],
     `chatThreadMessageCreated:${args.threadId}`,
   );
   await publishThreadListChanged(args.userId);
   return true;
+}
+
+async function generateRecommendedFollowupsForCompletedRun(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly signal: AbortSignal;
+}): Promise<ChatMessageRecommendedFollowups | undefined> {
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    args.db,
+    args.orgId,
+    args.userId,
+  );
+  args.signal.throwIfAborted();
+  if (
+    !isFeatureEnabled(
+      FeatureSwitchKey.ChatRecommendedFollowups,
+      featureSwitchContext,
+    )
+  ) {
+    return undefined;
+  }
+
+  const suggestions = await generateChatThreadRecommendedFollowups({
+    db: args.db,
+    threadId: args.threadId,
+  });
+  args.signal.throwIfAborted();
+  return suggestions.length > 0 ? suggestions : undefined;
 }
 
 async function handleCompletedChatCallback(args: {
@@ -517,12 +573,23 @@ async function handleCompletedChatCallback(args: {
   });
   args.signal.throwIfAborted();
 
+  const recommendedFollowups =
+    await generateRecommendedFollowupsForCompletedRun({
+      db: args.db,
+      threadId: args.chatThread.chatThreadId,
+      orgId: args.chatThread.orgId,
+      userId: args.chatThread.userId,
+      signal: args.signal,
+    });
+  args.signal.throwIfAborted();
+
   await insertRunLifecycleMarker({
     db: args.db,
     runId: args.runId,
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
     event: "completed",
+    recommendedFollowups,
   });
   args.signal.throwIfAborted();
 
@@ -882,8 +949,10 @@ async function chatThreadForRunFromDb(
     .select({
       chatThreadId: zeroRuns.chatThreadId,
       userId: chatThreads.userId,
+      orgId: agentRuns.orgId,
     })
     .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
     .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
     .where(eq(zeroRuns.id, runId))
     .limit(1);
@@ -891,7 +960,11 @@ async function chatThreadForRunFromDb(
   if (!row?.chatThreadId) {
     return null;
   }
-  return { chatThreadId: row.chatThreadId, userId: row.userId };
+  return {
+    chatThreadId: row.chatThreadId,
+    userId: row.userId,
+    orgId: row.orgId,
+  };
 }
 
 function hasAgentSessionId(

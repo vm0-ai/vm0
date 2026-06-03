@@ -113,6 +113,12 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
@@ -121,6 +127,12 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.UserPermissionGrants]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
+      true,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
       false,
     );
   });

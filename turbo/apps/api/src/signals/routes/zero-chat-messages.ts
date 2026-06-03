@@ -91,6 +91,7 @@ interface NormalSendBody {
   readonly forceNewSession?: boolean;
   readonly debugNoMockClaude?: boolean;
   readonly debugNoMockCodex?: boolean;
+  readonly revokesMessageId?: string;
 }
 
 interface RecallSendBody {
@@ -279,9 +280,11 @@ function resolveExistingClientMessageIdRow(
     row.chatThreadId !== params.threadId ||
     row.threadUserId !== params.userId ||
     row.role !== "user" ||
-    row.revokesMessageId !== null ||
     row.interruptsRunId !== null
   ) {
+    return { kind: "conflict" };
+  }
+  if (row.revokesMessageId !== null && row.runId === null) {
     return { kind: "conflict" };
   }
   if (row.runId === null) {
@@ -371,7 +374,11 @@ function isCancelResult(value: unknown): value is CancelRunResult {
 }
 
 function isRecallSendBody(body: SendBody): body is RecallSendBody {
-  return "revokesMessageId" in body && body.revokesMessageId !== undefined;
+  return (
+    "revokesMessageId" in body &&
+    body.revokesMessageId !== undefined &&
+    !("prompt" in body && body.prompt !== undefined)
+  );
 }
 
 function isInterruptSendBody(body: SendBody): body is InterruptSendBody {
@@ -1404,6 +1411,7 @@ async function appendAssociatedUserMessage(params: {
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly revokesMessageId: string | undefined;
   readonly appendQueueMarker: boolean;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
@@ -1427,6 +1435,7 @@ async function appendAssociatedUserMessage(params: {
         role: "user",
         content: params.prompt,
         runId: params.runId,
+        revokesMessageId: params.revokesMessageId,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
       })
@@ -1528,6 +1537,49 @@ function appendRecallUserMessage(params: {
     }
     return { ok: true, createdAt: resolved.createdAt };
   });
+}
+
+async function validateNormalRevocationTarget(params: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly revokesMessageId: string | undefined;
+}): Promise<NormalSendFailure | undefined> {
+  if (!params.revokesMessageId) {
+    return undefined;
+  }
+
+  const [target] = await params.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.id, params.revokesMessageId),
+        eq(chatMessages.chatThreadId, params.threadId),
+        eq(chatMessages.role, "assistant"),
+        isNull(chatMessages.runLifecycleEvent),
+        isNotNull(chatMessages.recommendedFollowups),
+      ),
+    )
+    .limit(1);
+  if (!target) {
+    return badRequestMessage("Recommended follow-up is no longer available");
+  }
+
+  const [existingRevoker] = await params.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.chatThreadId, params.threadId),
+        eq(chatMessages.revokesMessageId, params.revokesMessageId),
+      ),
+    )
+    .limit(1);
+  if (existingRevoker) {
+    return conflict("Recommended follow-up has already been used");
+  }
+
+  return undefined;
 }
 
 function appendInterruptUserMessage(params: {
@@ -1904,6 +1956,7 @@ function scheduleAssociatedUserMessage(params: {
         runId: params.runId,
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
+        revokesMessageId: params.body.revokesMessageId,
         appendQueueMarker: params.appendQueueMarker,
       });
       await publishUserSignal(
@@ -2194,6 +2247,16 @@ const sendNormalMessage$ = command(
       return clientMessageResolution;
     }
 
+    const revocationError = await validateNormalRevocationTarget({
+      db: prepared.db,
+      threadId: prepared.thread.threadId,
+      revokesMessageId: args.body.revokesMessageId,
+    });
+    signal.throwIfAborted();
+    if (revocationError) {
+      return revocationError;
+    }
+
     if (prepared.thread.isClientThreadRetry) {
       const existingRun = await resolveClientThreadRetryRun(
         prepared.db,
@@ -2207,6 +2270,9 @@ const sendNormalMessage$ = command(
     }
 
     if (await activeRunExistsForThread(prepared.db, prepared.thread.threadId)) {
+      if (args.body.revokesMessageId) {
+        return badRequestMessage("Recommended follow-up cannot be queued");
+      }
       const response = await queueUnassociatedNormalMessage({
         prepared,
         body: args.body,

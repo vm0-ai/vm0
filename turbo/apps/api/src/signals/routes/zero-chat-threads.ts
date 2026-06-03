@@ -5,7 +5,6 @@ import {
   chatThreadArtifactsContract,
   chatThreadGithubPrsContract,
   chatThreadMessagesContract,
-  chatThreadRecommendedFollowupsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -16,20 +15,17 @@ import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import { db$ } from "../external/db";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
   applyGoogleDriveArtifactSyncStatuses,
   googleDriveArtifactStatusLookup,
 } from "../services/google-drive-artifact-sync.service";
-import { generateChatThreadRecommendedFollowups } from "../services/zero-chat-title.service";
 import {
   zeroChatSearch,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
-  ownedChatThreadById,
 } from "../services/zero-chat-thread.service";
 import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
@@ -109,28 +105,6 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
       messages: [...page.messages],
       hasHistoryBefore: page.hasHistoryBefore,
     },
-  };
-});
-
-const listChatThreadRecommendedFollowupsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(pathParamsOf(chatThreadRecommendedFollowupsContract.list));
-
-  const thread = await get(
-    ownedChatThreadById({ threadId: params.threadId, userId: auth.userId }),
-  );
-  if (!thread) {
-    return chatThreadNotFound();
-  }
-
-  const suggestions = await generateChatThreadRecommendedFollowups({
-    db: get(db$),
-    threadId: params.threadId,
-  });
-
-  return {
-    status: 200 as const,
-    body: { suggestions },
   };
 });
 
@@ -292,10 +266,6 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadMessagesContract.list,
     handler: authRoute({}, listChatThreadMessagesInner$),
-  },
-  {
-    route: chatThreadRecommendedFollowupsContract.list,
-    handler: authRoute({}, listChatThreadRecommendedFollowupsInner$),
   },
   {
     route: chatSearchContract.search,

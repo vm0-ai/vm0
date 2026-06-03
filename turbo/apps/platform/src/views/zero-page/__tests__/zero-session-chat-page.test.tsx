@@ -9,11 +9,12 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
+  chatMessagesContract,
   chatThreadMessagesContract,
   chatThreadByIdContract,
-  chatThreadRecommendedFollowupsContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -101,7 +102,8 @@ describe("userMessage line break rendering", () => {
 });
 
 describe("recommended follow-ups", () => {
-  it("should render follow-ups and fill the composer when selected", async () => {
+  it("should send a user message that revokes the selected follow-up", async () => {
+    let sendBody: unknown;
     makeThreadMocks("thread-followups", [
       {
         id: "msg-1",
@@ -115,25 +117,54 @@ describe("recommended follow-ups", () => {
         content: "Here is a launch outline with milestones and owners.",
         runId: MOCK_RUN_ID,
         status: "completed",
-        runLifecycleEvent: "completed",
         createdAt: "2026-03-10T00:00:01Z",
       },
+      {
+        id: "msg-3",
+        role: "assistant",
+        content: null,
+        runId: MOCK_RUN_ID,
+        status: "completed",
+        runLifecycleEvent: "completed",
+        createdAt: "2026-03-10T00:00:02Z",
+      },
+      {
+        id: "msg-4",
+        role: "assistant",
+        content: null,
+        runId: MOCK_RUN_ID,
+        status: "completed",
+        recommendedFollowups: [
+          {
+            prompt: "Turn this into a week-by-week checklist",
+            kind: "talk",
+          },
+          {
+            prompt: "Generate a launch landing page",
+            kind: "generate",
+            generationType: "website",
+          },
+        ],
+        createdAt: "2026-03-10T00:00:03Z",
+      },
     ]);
-    server.use(
-      mockApi(chatThreadRecommendedFollowupsContract.list, ({ respond }) => {
-        return respond(200, {
-          suggestions: [
-            "Turn this into a week-by-week checklist",
-            "Identify the highest-risk launch tasks",
-          ],
-        });
-      }),
-    );
 
     detachedSetupPage({
       context,
       path: "/chats/thread-followups",
+      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: true },
     });
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        sendBody = body;
+        return respond(201, {
+          runId: MOCK_RUN_ID,
+          threadId: "thread-followups",
+          status: "pending",
+          createdAt: "2026-03-10T00:00:03Z",
+        });
+      }),
+    );
 
     await screen.findByText("Recommended follow-ups");
     const followupButton = queryAllByRoleFast("button").find((button) => {
@@ -146,9 +177,55 @@ describe("recommended follow-ups", () => {
     }
     await userEvent.click(followupButton);
 
-    expect(screen.getByRole("textbox")).toHaveValue(
-      "Turn this into a week-by-week checklist",
-    );
+    await waitFor(() => {
+      expect(sendBody).toMatchObject({
+        prompt: "Turn this into a week-by-week checklist",
+        revokesMessageId: "msg-4",
+      });
+    });
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("should hide follow-ups when the feature switch is off", async () => {
+    makeThreadMocks("thread-followups-disabled", [
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: "Assistant complete",
+        runId: MOCK_RUN_ID,
+        status: "completed",
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: null,
+        runId: MOCK_RUN_ID,
+        status: "completed",
+        runLifecycleEvent: "completed",
+        createdAt: "2026-03-10T00:00:01Z",
+      },
+      {
+        id: "msg-3",
+        role: "assistant",
+        content: null,
+        runId: MOCK_RUN_ID,
+        status: "completed",
+        recommendedFollowups: [{ prompt: "Draft a follow-up", kind: "talk" }],
+        createdAt: "2026-03-10T00:00:02Z",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-followups-disabled",
+      featureSwitches: { [FeatureSwitchKey.ChatRecommendedFollowups]: false },
+    });
+
+    await screen.findByText("Assistant complete");
+    await waitFor(() => {
+      expect(screen.queryByText("Recommended follow-ups")).toBeNull();
+    });
   });
 });
 

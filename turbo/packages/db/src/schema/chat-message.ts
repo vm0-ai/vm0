@@ -15,6 +15,20 @@ import { agentRuns } from "./agent-run";
 
 /** attach_files stores legacy file IDs. */
 export type ChatMessageAttachFiles = string[];
+export type ChatMessageRecommendedFollowupKind = "talk" | "generate";
+export type ChatMessageRecommendedFollowupGenerationType =
+  | "image"
+  | "video"
+  | "presentation"
+  | "website";
+
+export interface ChatMessageRecommendedFollowup {
+  readonly prompt: string;
+  readonly kind: ChatMessageRecommendedFollowupKind;
+  readonly generationType?: ChatMessageRecommendedFollowupGenerationType;
+}
+
+export type ChatMessageRecommendedFollowups = ChatMessageRecommendedFollowup[];
 
 export interface ChatMessageAttachFileMetadata {
   readonly id: string;
@@ -91,6 +105,9 @@ export const chatMessages = pgTable(
     attachFileMetadata: jsonb(
       "attach_file_metadata",
     ).$type<ChatMessageAttachFileMetadataList>(),
+    recommendedFollowups: jsonb(
+      "recommended_followups",
+    ).$type<ChatMessageRecommendedFollowups>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
