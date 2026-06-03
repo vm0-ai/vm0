@@ -6,6 +6,8 @@ pub mod runners {
     pub mod storage {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         pub enum ArtifactEntryMissingRootPolicy {
+            #[serde(rename = "fail")]
+            Fail,
             #[serde(rename = "preserveParentVersion")]
             PreserveParentVersion,
         }

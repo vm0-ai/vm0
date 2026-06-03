@@ -92,6 +92,24 @@ describe("runner storage manifest contract", () => {
     );
   });
 
+  it("accepts explicit fail missing-root policy on artifact entries", () => {
+    const manifest = storageManifestSchema.parse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: "https://storage.example/artifact.tar.gz",
+          missingRootPolicy: "fail",
+        },
+      ],
+    });
+
+    expect(manifest.artifacts[0]?.missingRootPolicy).toBe("fail");
+  });
+
   it("rejects unknown artifact missing-root policies", () => {
     const result = storageManifestSchema.safeParse({
       storages: [],

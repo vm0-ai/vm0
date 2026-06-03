@@ -615,6 +615,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn artifact_snapshot_explicit_fail_policy_missing_mount_fails() {
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let missing_mount = dir.path().join("missing");
+        let entries = vec![env::ArtifactEnv {
+            name: "workspace".to_string(),
+            mount_path: missing_mount.to_string_lossy().into_owned(),
+            storage_id: "storage-id".to_string(),
+            version_id: "parent-version".to_string(),
+            missing_root_policy: Some(ArtifactEntryMissingRootPolicy::Fail),
+        }];
+
+        let err = snapshot_artifact_entries(&http, &entries)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("Failed to walk artifact files"),
+            "got: {err}"
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
+    #[tokio::test]
     async fn artifact_snapshot_later_missing_mount_fails_before_any_storage_api_calls() {
         let server = MockServer::start();
         let prepare = server.mock(|when, then| {

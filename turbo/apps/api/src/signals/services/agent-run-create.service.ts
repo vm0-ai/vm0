@@ -2,6 +2,7 @@ import { command, computed, type Computed } from "ccstate";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
+  type ArtifactEntry,
   type SecretConnectorMetadata,
   type StorageManifest,
   type StoredExecutionContext,
@@ -190,7 +191,7 @@ interface AutoMemoryContextArtifact {
 }
 
 interface StorageContextArtifact extends ContextArtifact {
-  readonly missingRootPolicy?: "preserveParentVersion";
+  readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
 }
 
 interface RunArtifacts {

@@ -128,6 +128,8 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
     expect(firstRender).toContain("pub artifacts: Vec<ArtifactEntry>,");
     expect(firstRender).toContain("pub enum ArtifactEntryMissingRootPolicy {");
+    expect(firstRender).toContain("Fail,");
+    expect(firstRender).toContain("PreserveParentVersion,");
     expect(firstRender).toContain(
       "pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,",
     );

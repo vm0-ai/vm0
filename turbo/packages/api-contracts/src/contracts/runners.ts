@@ -112,6 +112,7 @@ export const storageEntrySchema = z.object({
  * Artifact entry in manifest
  */
 export const artifactMissingRootPolicySchema = z.enum([
+  "fail",
   "preserveParentVersion",
 ]);
 

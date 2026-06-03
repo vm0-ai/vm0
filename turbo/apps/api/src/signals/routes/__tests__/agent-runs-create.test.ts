@@ -4,6 +4,7 @@ import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   CANONICAL_WORKING_DIR,
+  type ArtifactEntry,
 } from "@vm0/api-contracts/contracts/runners";
 import { MOUNT_PATH_TEMPLATE } from "@vm0/api-contracts/contracts/composes";
 import {
@@ -1423,7 +1424,7 @@ describe("POST /api/agent/runs", () => {
           readonly vasStorageName: string;
           readonly archiveUrl: string;
           readonly manifestUrl?: string;
-          readonly missingRootPolicy?: "preserveParentVersion";
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
         }[];
       };
     };
@@ -1501,7 +1502,7 @@ describe("POST /api/agent/runs", () => {
         readonly artifacts: readonly {
           readonly mountPath: string;
           readonly vasStorageName: string;
-          readonly missingRootPolicy?: "preserveParentVersion";
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
         }[];
       };
     };
@@ -1555,7 +1556,7 @@ describe("POST /api/agent/runs", () => {
         readonly artifacts: readonly {
           readonly mountPath: string;
           readonly vasStorageName: string;
-          readonly missingRootPolicy?: "preserveParentVersion";
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
         }[];
       };
     };
@@ -1957,7 +1958,7 @@ describe("POST /api/agent/runs", () => {
         readonly artifacts: readonly {
           readonly vasStorageName: string;
           readonly mountPath: string;
-          readonly missingRootPolicy?: "preserveParentVersion";
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
         }[];
       };
     };
