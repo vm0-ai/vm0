@@ -98,62 +98,6 @@ export const firewallPoliciesSchema = z.record(
 export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
 
 /**
- * Raw DB format for permission_policies column (flat permission map).
- * Used only for DB column type annotations — application code uses FirewallPolicies.
- */
-export type RawPermissionPolicies = Record<
-  string,
-  Record<string, FirewallPolicyValue>
->;
-
-/**
- * Merge two DB columns into a unified FirewallPolicies object.
- * Call at DB read boundaries.
- */
-export function toFirewallPolicies(
-  raw: RawPermissionPolicies | null | undefined,
-  unknownPermissionPolicies:
-    | Record<string, FirewallPolicyValue>
-    | null
-    | undefined,
-): FirewallPolicies | null {
-  if (!raw && !unknownPermissionPolicies) return null;
-  const result: FirewallPolicies = {};
-  const allRefs = new Set([
-    ...Object.keys(raw ?? {}),
-    ...Object.keys(unknownPermissionPolicies ?? {}),
-  ]);
-  for (const ref of allRefs) {
-    result[ref] = {
-      policies: raw?.[ref] ?? {},
-      ...(unknownPermissionPolicies?.[ref] !== undefined && {
-        unknownPolicy: unknownPermissionPolicies[ref],
-      }),
-    };
-  }
-  return Object.keys(result).length > 0 ? result : null;
-}
-
-/**
- * Split a unified FirewallPolicies back into two DB column values.
- * Call at DB write boundaries.
- */
-export function fromFirewallPolicies(policies: FirewallPolicies): {
-  permissionPolicies: RawPermissionPolicies;
-  unknownPermissionPolicies: Record<string, FirewallPolicyValue>;
-} {
-  const permissionPolicies: RawPermissionPolicies = {};
-  const unknownPermissionPolicies: Record<string, FirewallPolicyValue> = {};
-  for (const [ref, config] of Object.entries(policies)) {
-    permissionPolicies[ref] = config.policies;
-    if (config.unknownPolicy !== undefined) {
-      unknownPermissionPolicies[ref] = config.unknownPolicy;
-    }
-  }
-  return { permissionPolicies, unknownPermissionPolicies };
-}
-
-/**
  * Per-firewall grant configuration — which permissions are granted and
  * what policy applies to unknown endpoints (not matching any permission rule).
  * Refs absent from the map are fully permissive (all granted + allow unknown).

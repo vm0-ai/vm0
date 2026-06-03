@@ -9,10 +9,6 @@ import {
   jsonb,
   boolean,
 } from "drizzle-orm/pg-core";
-import type {
-  RawPermissionPolicies,
-  FirewallPolicyValue,
-} from "@vm0/connectors/firewall-types";
 import { agentComposes } from "./agent-compose";
 import { modelProviders } from "./model-provider";
 
@@ -45,12 +41,6 @@ export const zeroAgents = pgTable(
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
     avatarUrl: varchar("avatar_url", { length: 1024 }),
-    permissionPolicies: jsonb(
-      "permission_policies",
-    ).$type<RawPermissionPolicies>(),
-    unknownPermissionPolicies: jsonb("unknown_permission_policies").$type<
-      Record<string, FirewallPolicyValue>
-    >(),
     customSkills: jsonb("custom_skills")
       .$type<string[]>()
       .notNull()

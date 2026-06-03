@@ -6,11 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
-import {
-  type FirewallPolicyValue,
-  type RawPermissionPolicies,
-  UNKNOWN_PERMISSION_GRANT,
-} from "@vm0/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
@@ -124,8 +120,6 @@ interface ZeroAgentSeed {
   readonly customSkills?: readonly string[];
   readonly framework?: "claude-code" | "codex";
   readonly environment?: Record<string, string>;
-  readonly permissionPolicies?: RawPermissionPolicies;
-  readonly unknownPermissionPolicies?: Record<string, FirewallPolicyValue>;
   readonly modelProviderId?: string | null;
   readonly selectedModel?: string | null;
 }
@@ -188,8 +182,6 @@ const seedRunnableZeroAgent$ = command(
       displayName: args.displayName ?? null,
       description: args.description ?? null,
       sound: args.sound ?? null,
-      permissionPolicies: args.permissionPolicies,
-      unknownPermissionPolicies: args.unknownPermissionPolicies,
       customSkills: args.customSkills ? [...args.customSkills] : [],
       modelProviderId: args.modelProviderId ?? null,
       selectedModel: args.selectedModel ?? null,
@@ -1685,14 +1677,7 @@ describe("POST /api/zero/runs", () => {
   it("injects authorized connector token secrets and refresh metadata", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        x: {
-          "tweet.read": "allow",
-        },
-      },
-    });
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
     await db.insert(userConnectors).values({
       orgId: fx.orgId,
       userId: fx.userId,
@@ -1822,14 +1807,7 @@ describe("POST /api/zero/runs", () => {
   it("ignores orphaned connector secrets for removed connector types", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        x: {
-          "tweet.read": "allow",
-        },
-      },
-    });
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
     await db.insert(userConnectors).values({
       orgId: fx.orgId,
       userId: fx.userId,
@@ -2537,78 +2515,6 @@ describe("POST /api/zero/runs", () => {
     ).toBeFalsy();
   });
 
-  it("ignores stored zero agent permission policies", async () => {
-    const fx = await fixture();
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        x: {
-          "tweet.write": "deny",
-          "tweet.read": "allow",
-        },
-      },
-    });
-    const db = store.set(writeDb$);
-    await db.insert(userConnectors).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      agentId: agent.agentId,
-      connectorType: "x",
-    });
-    await db.insert(connectors).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      type: "x",
-      authMethod: "oauth",
-    });
-    await db.insert(secrets).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      name: "X_ACCESS_TOKEN",
-      encryptedValue: encryptSecretForTests("x-policy-token"),
-      type: "connector",
-    });
-
-    const response = await accept(
-      zeroRunsClient().create({
-        headers: { authorization: "Bearer clerk-session" },
-        body: { prompt: "use x policy", agentId: agent.agentId },
-      }),
-      [201],
-    );
-
-    const [job] = await db
-      .select({ executionContext: runnerJobQueue.executionContext })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, response.body.runId));
-    const executionContext = job?.executionContext as {
-      readonly firewalls?: readonly { readonly name: string }[];
-      readonly networkPolicies?: Record<
-        string,
-        {
-          readonly allow: readonly string[];
-          readonly deny: readonly string[];
-          readonly ask: readonly string[];
-          readonly unknownPolicy: string;
-        }
-      >;
-    };
-
-    expect(
-      executionContext.firewalls?.map((firewall) => {
-        return firewall.name;
-      }),
-    ).toContain("x");
-    const xPolicy = executionContext.networkPolicies?.x;
-    if (!xPolicy) {
-      throw new Error("Expected x network policy");
-    }
-    expect(xPolicy.allow).toContain("tweet.read");
-    expect(xPolicy.allow).toContain("tweet.write");
-    expect(xPolicy.deny).not.toContain("tweet.write");
-    expect(xPolicy.unknownPolicy).toBe("allow");
-  });
-
   it("uses connector defaults with no grants", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -2733,24 +2639,6 @@ describe("POST /api/zero/runs", () => {
     expect(policy.unknownPolicy).toBe("deny");
     expect(policy.allow).toContain(SLACK_READ_PERMISSION);
     expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
-  });
-
-  it("ignores legacy agent permission policies", async () => {
-    const fx = await fixture();
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        [SLACK_CONNECTOR]: {
-          [SLACK_WRITE_PERMISSION]: "allow",
-        },
-      },
-    });
-    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
-
-    const policy = await createZeroRunNetworkPolicy(agent.agentId);
-
-    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
-    expect(policy.allow).not.toContain(SLACK_WRITE_PERMISSION);
   });
 
   it("resolves user grants for zero integration runs", async () => {

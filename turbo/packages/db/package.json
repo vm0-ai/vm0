@@ -31,7 +31,6 @@
   "dependencies": {
     "@clerk/backend": "^3.4.13",
     "@vm0/api-contracts": "workspace:*",
-    "@vm0/connectors": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },
