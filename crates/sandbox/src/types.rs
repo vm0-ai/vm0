@@ -382,7 +382,7 @@ impl Drop for GuestProcessHandle {
 pub enum ProcessOutputMode {
     /// Capture stdout and stderr into the final [`ProcessExit`].
     Buffered {
-        /// Maximum captured stdout and stderr bytes retained in
+        /// Capture limits for stdout and stderr bytes retained in
         /// [`ProcessExit`].
         output_limits: ExecOutputLimits,
     },
@@ -416,9 +416,9 @@ pub enum ProcessControlMode {
     None,
     /// Request a provider-backed process-control sink.
     ///
-    /// Providers may still return a handle without a usable control sink.
-    /// Callers must check [`GuestProcessHandle::control_handle`] on the
-    /// returned process handle before sending control messages.
+    /// Providers may still return a process handle without a control handle.
+    /// Callers must check [`GuestProcessHandle::control_handle`] on the returned
+    /// process handle before sending control messages.
     Enabled,
 }
 
@@ -485,8 +485,7 @@ pub struct ProcessExit {
     ///
     /// This is separate from ordinary process stderr.
     pub diagnostic: String,
-    /// True when streamed output could not be fully delivered to the host
-    /// receiver.
+    /// True when streamed output overflowed the host delivery queue.
     ///
     /// This is separate from captured-output truncation and from the
     /// per-chunk `truncated` flag on [`ProcessOutputChunk`].
