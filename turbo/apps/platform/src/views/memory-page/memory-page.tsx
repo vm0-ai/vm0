@@ -49,8 +49,8 @@ export function MemoryPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[900px]">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-8 pt-3 sm:px-6">
+        <div className="mx-auto flex min-h-0 w-full max-w-[900px] flex-1 flex-col">
           {loading ? (
             <MemorySkeleton />
           ) : hasFiles && detail ? (
@@ -99,10 +99,41 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
     : null;
 
   return (
-    <section className="zero-card min-h-[520px] overflow-hidden">
-      <div className="grid min-h-[520px] gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <aside className="min-h-0 border-b border-border/70 bg-muted/20 lg:border-b-0 lg:border-r">
-          <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
+    <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Content (left) — scrolls independently of the file panel. */}
+        <div className="order-1 flex min-h-0 flex-1 flex-col">
+          <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-4 text-xs font-medium text-muted-foreground">
+            <span className="truncate">
+              {selectedPath ?? "No file selected"}
+            </span>
+          </div>
+          {selectedPath && selectedContent !== null ? (
+            isMarkdown(selectedPath) ? (
+              <div
+                aria-label="Memory content"
+                className="min-h-0 flex-1 overflow-auto bg-background px-4 py-3"
+              >
+                <Markdown source={selectedContent} />
+              </div>
+            ) : (
+              <pre
+                aria-label="Memory content"
+                className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
+              >
+                {selectedContent}
+              </pre>
+            )
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
+              No content available for this file.
+            </div>
+          )}
+        </div>
+
+        {/* File panel (right) — fixed; its own scroll, doesn't move with content. */}
+        <aside className="order-2 flex min-h-0 flex-col border-t border-border/70 bg-muted/20 lg:w-[240px] lg:shrink-0 lg:border-l lg:border-t-0">
+          <div className="flex h-9 shrink-0 items-center justify-between border-b border-border/70 px-3">
             <span className="text-xs font-medium text-muted-foreground">
               Files
             </span>
@@ -110,7 +141,7 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
               {files.length}
             </span>
           </div>
-          <div className="max-h-[240px] overflow-auto p-2 lg:max-h-none">
+          <div className="max-h-[240px] min-h-0 flex-1 overflow-auto p-2 lg:max-h-none">
             <div className="flex flex-col gap-1">
               {files.map((file) => {
                 const selected = file.path === selectedPath;
@@ -141,35 +172,6 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
             </div>
           </div>
         </aside>
-
-        <div className="flex min-h-0 flex-col">
-          <div className="flex h-9 shrink-0 items-center border-b border-border/70 px-4 text-xs font-medium text-muted-foreground">
-            <span className="truncate">
-              {selectedPath ?? "No file selected"}
-            </span>
-          </div>
-          {selectedPath && selectedContent !== null ? (
-            isMarkdown(selectedPath) ? (
-              <div
-                aria-label="Memory content"
-                className="min-h-[420px] flex-1 overflow-auto bg-background px-4 py-3"
-              >
-                <Markdown source={selectedContent} />
-              </div>
-            ) : (
-              <pre
-                aria-label="Memory content"
-                className="min-h-[420px] flex-1 overflow-auto whitespace-pre-wrap bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground"
-              >
-                {selectedContent}
-              </pre>
-            )
-          ) : (
-            <div className="flex min-h-[420px] flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
-              No content available for this file.
-            </div>
-          )}
-        </div>
       </div>
     </section>
   );
@@ -177,7 +179,7 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
 
 function MemoryEmptyState({ errored }: { readonly errored: boolean }) {
   return (
-    <section className="zero-card flex min-h-[520px] flex-col items-center justify-center px-6 text-center">
+    <section className="zero-card flex min-h-[420px] flex-1 flex-col items-center justify-center px-6 text-center">
       <p className="text-sm font-medium text-foreground">
         {errored ? "Couldn't load memory" : "No memory yet"}
       </p>
@@ -192,10 +194,13 @@ function MemoryEmptyState({ errored }: { readonly errored: boolean }) {
 
 function MemorySkeleton() {
   return (
-    <section className="zero-card min-h-[520px] overflow-hidden">
-      <div className="grid min-h-[520px] gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
+    <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div className="order-1 flex min-h-0 flex-1 flex-col p-4">
+          <div className="min-h-[260px] flex-1 rounded bg-muted/50" />
+        </div>
         <div
-          className="border-b border-border/70 bg-muted/20 p-2 lg:border-b-0 lg:border-r"
+          className="order-2 border-t border-border/70 bg-muted/20 p-2 lg:w-[240px] lg:shrink-0 lg:border-l lg:border-t-0"
           data-testid="memory-loading"
         >
           <div className="flex flex-col gap-1">
@@ -205,9 +210,6 @@ function MemorySkeleton() {
               );
             })}
           </div>
-        </div>
-        <div className="p-4">
-          <div className="h-[420px] rounded bg-muted/50" />
         </div>
       </div>
     </section>
