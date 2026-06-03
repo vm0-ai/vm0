@@ -133,9 +133,6 @@ pub(super) fn parse_genl_response(buf: &[u8], n: usize) -> Result<GenlResponse<'
         });
     }
 
-    if msg.len() < GENL_ATTR_OFFSET {
-        return Err(NbdCowError::Netlink("response too short".into()));
-    }
     let attrs = msg
         .get(GENL_ATTR_OFFSET..)
         .ok_or_else(|| NbdCowError::Netlink("response too short".into()))?;
