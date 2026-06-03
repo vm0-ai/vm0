@@ -21,7 +21,7 @@ const entries =
 const rewrites =
   (vercelConfig as { rewrites?: VercelRewriteEntry[] }).rewrites ?? [];
 const appPermissionsPolicy =
-  "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(), microphone=(self), bluetooth=(self), clipboard-read=(self), clipboard-write=(self), fullscreen=(self)";
+  "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)";
 
 function findHeaderEntry(source: string): VercelHeaderEntry | undefined {
   return entries.find((e) => {
