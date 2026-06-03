@@ -717,21 +717,24 @@ function artifactsForRun(args: {
     };
   }
 
-  const autoMemoryPolicyArtifactIndex = artifacts.findIndex(
-    (artifact, index) => {
-      return (
-        index >= persistedArtifactStart &&
-        index < persistedArtifactEnd &&
-        isAutoMemoryArtifact(artifact, args.framework)
-      );
-    },
-  );
+  let autoMemoryPolicyArtifactIndex: number | undefined;
+  for (let index = artifacts.length - 1; index >= 0; index -= 1) {
+    const artifact = artifacts[index];
+    if (!artifact || artifact.name !== AUTO_MEMORY_ARTIFACT_NAME) {
+      continue;
+    }
+    if (
+      index >= persistedArtifactStart &&
+      index < persistedArtifactEnd &&
+      isAutoMemoryArtifact(artifact, args.framework)
+    ) {
+      autoMemoryPolicyArtifactIndex = index;
+    }
+    break;
+  }
   return {
     artifacts,
-    autoMemoryPolicyArtifactIndex:
-      autoMemoryPolicyArtifactIndex >= 0
-        ? autoMemoryPolicyArtifactIndex
-        : undefined,
+    autoMemoryPolicyArtifactIndex,
   };
 }
 

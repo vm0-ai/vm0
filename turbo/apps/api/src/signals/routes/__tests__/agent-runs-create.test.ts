@@ -1410,7 +1410,7 @@ describe("POST /api/agent/runs", () => {
           "missingRootPolicy",
         );
       }),
-    ).toBe(false);
+    ).toBeFalsy();
     expect(
       session?.artifacts.find((artifact) => {
         return artifact.name === "memory";
@@ -2050,6 +2050,71 @@ describe("POST /api/agent/runs", () => {
       sessionId: `session-${first.body.runId}`,
     });
     expect(conversationId).toBeDefined();
+  });
+
+  it("keeps continued body memory overrides strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const db = store.set(writeDb$);
+    await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+
+    const continued = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          sessionId: first.body.sessionId,
+          prompt: "continue",
+          artifacts: [{ name: "memory", mountPath: "/mnt/user-memory" }],
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, continued.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.map((artifact) => {
+        return {
+          mountPath: artifact.mountPath,
+          name: artifact.vasStorageName,
+          missingRootPolicy: artifact.missingRootPolicy,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        mountPath: "/mnt/user-memory",
+        name: "memory",
+        missingRootPolicy: undefined,
+      },
+    ]);
   });
 
   it("continues a session whose history is stored only in R2 (hash-only conversation)", async () => {
