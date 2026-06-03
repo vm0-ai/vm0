@@ -12,6 +12,7 @@ from mitmproxy.flow import Error
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
+import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
@@ -250,6 +251,52 @@ class TestRunnerUsageFlushSignal:
         message = log.warn.call_args.args[0]
         assert "RuntimeError" in message
         assert "secret-token" not in message
+
+    def test_runner_flush_failure_snapshot_includes_retryable_buffered_usage(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                {
+                    "idempotencyKey": "source-1",
+                    "kind": "model",
+                    "provider": "claude-sonnet-4-6",
+                    "category": "tokens.input",
+                    "quantity": 1,
+                }
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        try:
+            with (
+                patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("no threads")),
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                mitm_addon._flush_usage_for_runner_request()
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=1,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.set_pending_path("")
 
     def test_signal_during_active_flush_runs_follow_up_flush(self):
         reset_runner_usage_flush_state()
