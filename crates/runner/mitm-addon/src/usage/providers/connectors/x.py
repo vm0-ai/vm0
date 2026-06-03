@@ -72,6 +72,16 @@ def _is_count_path(path: str) -> bool:
     return path in _COUNT_ENDPOINTS
 
 
+def _strip_request_target_query(request_target: str) -> str:
+    query_start = request_target.find("?")
+    path_or_url = request_target if query_start == -1 else request_target[:query_start]
+    if path_or_url.startswith(("http://", "https://")):
+        authority_start = path_or_url.find("://") + len("://")
+        path_start = path_or_url.find("/", authority_start)
+        return "/" if path_start == -1 else path_or_url[path_start:]
+    return path_or_url
+
+
 # Single NDJSON line cap — matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT`` in
 # ``body_utils.py``.  A real X tweet line (``data`` + ``includes`` +
 # ``matching_rules`` with full expansion) should never approach this size;
@@ -79,6 +89,12 @@ def _is_count_path(path: str) -> bool:
 # discards that row through its terminating newline to protect memory.
 _MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
 _REQUEST_BODY_REFINEMENT_LIMIT = body_utils.STREAM_BUFFER_LIMIT
+_REQUEST_QUERY_HINT_MAX_BYTES = 64 * 1024
+_REQUEST_QUERY_HINT_KEY_MAX_CHARS = 128
+_REQUEST_QUERY_HINT_VALUE_MAX_BYTES = 16 * 1024
+_REQUEST_ID_LIKE_QUERY_KEYS = frozenset({"ids", "usernames"})
+_REQUEST_MAX_RESULTS_QUERY_KEY = "max_results"
+_ASCII_CODEPOINT_LIMIT = 128
 
 _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
@@ -291,12 +307,9 @@ def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | Non
 
     status_code = flow.response.status_code
     if _HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN:
-        # Reads ``original_url`` with no fallback — kept consistent with
-        # ``_parse_request_metadata`` so the log entry's ``is_stream`` field
-        # cannot diverge from the parser registration decision.  For any x
-        # firewall flow, ``request()`` has already populated ``original_url``
-        # before ``responseheaders`` fires.
-        stream_path = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, "")).path
+        # Use the request target path so the hot path never needs to split or
+        # decode the original URL query just to detect streaming endpoints.
+        stream_path = _strip_request_target_query(flow.request.path)
         if _is_stream_path(stream_path):
             extractor = _NdjsonExtractor()
             # Deliberately NOT "model_provider_usage" — that key routes through
@@ -324,47 +337,112 @@ def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:
     return count or None
 
 
-def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
-    """Extract billing-relevant query params from an X API request.
+def _empty_request_query_fallback_hints() -> dict:
+    return {"request_ids_count": None, "max_results": None}
 
-    Returns a dict with:
-      - ``request_ids_count``: int | None — total comma-separated count
-        across all ``?ids=`` and ``?usernames=`` params (None when both
-        are absent or contain no non-empty segments).  ``usernames`` is
-        folded in because ``GET /2/users/by`` uses it instead of ``ids`` for
-        batch user lookup; both signal the same "this many resources" billing
-        dimension.
-      - ``has_expansions``: bool — whether ``?expansions=`` is present.
-      - ``max_results``: int | None — value of ``?max_results=``, used
-        as an upper-bound fallback when the response body cannot be parsed.
-      - ``is_stream``: bool — True when the request path is one of the X v2
-        NDJSON streaming endpoints (see :data:`_STREAM_ENDPOINTS`).
-      - ``is_count_endpoint``: bool — True when the request path is an X Post
-        Counts endpoint whose ``data`` array contains time buckets instead of
-        returned posts.
 
-    Reads from ``flow.metadata[metadata_keys.ORIGINAL_URL]`` (set by the request handler
-    via ``url_utils.get_original_url``) rather than ``pretty_url`` to stay
-    consistent with the rest of the addon.
+def _decode_request_query_hint_key(raw_key: str) -> str | None:
+    if len(raw_key) > _REQUEST_QUERY_HINT_KEY_MAX_CHARS:
+        return None
+    if raw_key in _REQUEST_ID_LIKE_QUERY_KEYS or raw_key == _REQUEST_MAX_RESULTS_QUERY_KEY:
+        return raw_key
+    if "%" not in raw_key and "+" not in raw_key:
+        return None
+
+    decoded_key = urllib.parse.unquote_plus(raw_key)
+    if decoded_key in _REQUEST_ID_LIKE_QUERY_KEYS or decoded_key == _REQUEST_MAX_RESULTS_QUERY_KEY:
+        return decoded_key
+    return None
+
+
+def _slice_exceeds_query_hint_byte_limit(value: str, start: int, end: int, max_bytes: int) -> bool:
+    if end - start > max_bytes:
+        return True
+    if value.isascii():
+        return False
+
+    size = 0
+    for index in range(start, end):
+        char = value[index]
+        size += 1 if ord(char) < _ASCII_CODEPOINT_LIMIT else len(char.encode("utf-8"))
+        if size > max_bytes:
+            return True
+    return False
+
+
+def _exceeds_query_hint_byte_limit(value: str, max_bytes: int) -> bool:
+    return _slice_exceeds_query_hint_byte_limit(value, 0, len(value), max_bytes)
+
+
+def _get_bounded_original_request_query(flow: http.HTTPFlow) -> str | None:
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL, "")
+    query_start = original_url.find("?")
+    if query_start == -1:
+        return ""
+
+    value_start = query_start + 1
+    fragment_start = original_url.find("#", value_start)
+    value_end = len(original_url) if fragment_start == -1 else fragment_start
+    if _slice_exceeds_query_hint_byte_limit(
+        original_url, value_start, value_end, _REQUEST_QUERY_HINT_MAX_BYTES
+    ):
+        return None
+
+    if fragment_start == -1:
+        return original_url[value_start:]
+    return original_url[value_start:fragment_start]
+
+
+def _parse_request_query_fallback_hints(flow: http.HTTPFlow) -> dict:
+    """Extract request-side count hints only for unparseable GET responses.
+
+    This intentionally does not call ``parse_qs``.  Successful X responses
+    normally bill from the parsed response body, so query hints are only a
+    fallback for lost response visibility.  The scanner therefore looks only
+    for the small key set that can affect billing, preserves ``parse_qs``'
+    blank-value and ``+`` behavior for those keys, and caps work on hostile
+    query strings instead of materializing every parameter.
     """
-    parsed = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, ""))
-    qs = urllib.parse.parse_qs(parsed.query)
-    id_like_values = qs.get("ids", []) + qs.get("usernames", [])
-    ids_count = _count_non_empty_comma_segments(id_like_values)
-    max_values = qs.get("max_results", [])
+    query = _get_bounded_original_request_query(flow)
+    if query is None:
+        return _empty_request_query_fallback_hints()
+
+    ids_count = 0
     max_results: int | None = None
-    if max_values:
-        try:
-            max_results = int(max_values[0])
-        except ValueError:
-            max_results = None
-    return {
-        "request_ids_count": ids_count,
-        "has_expansions": "expansions" in qs,
-        "max_results": max_results,
-        "is_stream": _is_stream_path(parsed.path),
-        "is_count_endpoint": _is_count_path(parsed.path),
-    }
+    max_results_seen = False
+    start = 0
+    while start <= len(query):
+        end = query.find("&", start)
+        if end == -1:
+            end = len(query)
+        raw_pair = query[start:end]
+        if raw_pair:
+            raw_key, separator, raw_value = raw_pair.partition("=")
+            if separator and raw_value:
+                hint_key = _decode_request_query_hint_key(raw_key)
+                if hint_key is not None:
+                    if _exceeds_query_hint_byte_limit(
+                        raw_value, _REQUEST_QUERY_HINT_VALUE_MAX_BYTES
+                    ):
+                        return _empty_request_query_fallback_hints()
+
+                    decoded_value = urllib.parse.unquote_plus(raw_value)
+                    if hint_key in _REQUEST_ID_LIKE_QUERY_KEYS:
+                        value_count = _count_non_empty_comma_segments((decoded_value,))
+                        if value_count is not None:
+                            ids_count += value_count
+                    elif hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen:
+                        max_results_seen = True
+                        try:
+                            max_results = int(decoded_value)
+                        except ValueError:
+                            max_results = None
+
+        if end == len(query):
+            break
+        start = end + 1
+
+    return {"request_ids_count": ids_count or None, "max_results": max_results}
 
 
 def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
@@ -575,10 +653,10 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     if not permission:
         return
     # mitmproxy's ``flow.request.path`` is the raw request-target — it
-    # includes the query string.  Strip it via ``urlsplit`` so
-    # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``)
-    # still match requests that carry ``?max_results=10`` or similar.
-    request_path = urllib.parse.urlsplit(flow.request.path).path
+    # includes the query string.  Strip it without parsing query params so
+    # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``) still
+    # match requests that carry ``?max_results=10`` or similar.
+    request_path = _strip_request_target_query(flow.request.path)
     endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
     if endpoint_bucket is None:
         return
@@ -596,8 +674,17 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
             request_body,
         )
 
-    req_meta = _parse_request_metadata(flow)
+    req_meta = {"is_count_endpoint": _is_count_path(request_path)}
     resp_meta = _parse_response_metadata(flow)
+    req_meta.update(
+        _parse_request_query_fallback_hints(flow)
+        if (
+            flow.request.method == "GET"
+            and not req_meta["is_count_endpoint"]
+            and not resp_meta.get("body_parsed")
+        )
+        else _empty_request_query_fallback_hints()
+    )
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     audit_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
     if not isinstance(audit_url, str) or not audit_url:

@@ -1369,6 +1369,88 @@ class TestReportConnectorUsage:
         assert p["category"] == "posts.read"
         assert p["quantity"] == 3
 
+    def test_parsed_response_ignores_oversized_fallback_query(self, tmp_path, real_flow):
+        """Parsed responses bill from the body and do not need query fallback hints."""
+        body = json.dumps({"data": [{"id": "1"}, {"id": "2"}]}).encode()
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            query=f"ignored={'x' * 200_000}",
+            body=body,
+        )
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 2
+
+    def test_unparseable_response_scans_relevant_fallback_query_hints(self, tmp_path, real_flow):
+        """Fallback query scanning ignores unrelated params without materializing them."""
+        irrelevant_params = "&".join(f"noise{i}=value{i}" for i in range(500))
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            query=f"{irrelevant_params}&ids=1,2,3",
+            body=b"not json",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 3
+
+    def test_unparseable_response_accumulates_repeated_id_like_fallback_hints(
+        self, tmp_path, real_flow
+    ):
+        """Repeated ids/usernames keep the same aggregate count behavior as parse_qs."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            path="/2/users/by",
+            query="ids=1,2&ids=3&usernames=a,b",
+            body=b"not json",
+            permission="users.read",
+            rule="GET /2/users/by",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "user.read"
+        assert p["quantity"] == 5
+
+    def test_unparseable_response_does_not_treat_semicolon_as_query_separator(
+        self, tmp_path, real_flow
+    ):
+        """Semicolons stay inside values, matching Python 3.12 parse_qs behavior."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            query="ids=1;max_results=50",
+            body=b"not json",
+        )
+
+        p = self._call_and_get_single_billing(flow)
+
+        assert p["category"] == "posts.read"
+        assert p["quantity"] == 1
+
+    def test_oversized_fallback_query_suppresses_request_hints(self, tmp_path, real_flow):
+        """Oversized fallback queries are treated as having no reliable count hints."""
+        flow = self._make_x_flow(
+            real_flow,
+            tmp_path,
+            query=f"ids=1,2,3&ignored={'x' * 200_000}",
+            body=b"not json",
+        )
+        proxy_log = tmp_path / "proxy.jsonl"
+
+        assert self._call_and_get_billing(flow) == []
+
+        assert proxy_log.exists()
+        content = proxy_log.read_text()
+        assert "unparseable" in content.lower()
+        assert '"level":"error"' in content or '"level": "error"' in content
+
     @pytest.mark.parametrize(
         ("path", "query", "permission", "rule", "expected_category", "expected_quantity"),
         [
