@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 #[cfg(not(test))]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
@@ -1028,12 +1028,17 @@ impl SessionWorkspaceCache {
     }
 
     pub(crate) async fn gc(&self, dry_run: bool) -> RunnerResult<u64> {
-        let temporary_freed = self.gc_temporary_images(dry_run).await?;
-        let stale_entry_freed = self.gc_entries_without_current_image(dry_run).await?;
-        let unusable_current_freed = self.gc_unusable_current_entries(dry_run).await?;
+        let stale_cleanup = self.gc_entries_without_current_image(dry_run).await?;
+        let unusable_cleanup = self.gc_unusable_current_entries(dry_run).await?;
+        let mut removed_entry_keys = stale_cleanup.removed_entry_keys;
+        removed_entry_keys.extend(unusable_cleanup.removed_entry_keys);
+        let temporary_freed = self
+            .gc_temporary_images(dry_run, &removed_entry_keys)
+            .await?;
         let stats = self.fs_stats().await?;
         let budget = CacheBudget::from_fs_stats(stats);
         let mut candidates = self.gc_candidates().await?;
+        candidates.retain(|candidate| !removed_entry_keys.contains(&candidate.cache_key));
         let mut entry_count = candidates.len();
         let mut total: u64 = candidates
             .iter()
@@ -1043,8 +1048,8 @@ impl SessionWorkspaceCache {
             total > budget.max_cache_bytes || stats.available_bytes < budget.min_free_bytes;
         if !needs_budget_gc && entry_count <= MAX_HELD_SESSION_STATES {
             return Ok(temporary_freed
-                .saturating_add(stale_entry_freed)
-                .saturating_add(unusable_current_freed));
+                .saturating_add(stale_cleanup.freed_bytes)
+                .saturating_add(unusable_cleanup.freed_bytes));
         }
         candidates.sort_by(|left, right| {
             left.last_used_at
@@ -1052,8 +1057,8 @@ impl SessionWorkspaceCache {
                 .then_with(|| left.cache_key.cmp(&right.cache_key))
         });
         let mut freed = temporary_freed
-            .saturating_add(stale_entry_freed)
-            .saturating_add(unusable_current_freed);
+            .saturating_add(stale_cleanup.freed_bytes)
+            .saturating_add(unusable_cleanup.freed_bytes);
         let mut candidate_freed: u64 = 0;
         for candidate in candidates {
             if gc_budget_satisfied(
@@ -1112,14 +1117,16 @@ impl SessionWorkspaceCache {
         Ok(freed)
     }
 
-    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<u64> {
+    async fn gc_unusable_current_entries(&self, dry_run: bool) -> RunnerResult<GcEntryCleanup> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(GcEntryCleanup::default());
+            }
             Err(e) => return Err(e.into()),
         };
-        let mut freed: u64 = 0;
+        let mut cleanup = GcEntryCleanup::default();
         while let Some(entry) = entries.next_entry().await? {
             if !entry_file_type_is_dir(&entry).await? {
                 continue;
@@ -1200,10 +1207,11 @@ impl SessionWorkspaceCache {
                     "deleted unusable workspace image cache entry"
                 );
             }
-            freed = freed.saturating_add(allocated);
+            cleanup.freed_bytes = cleanup.freed_bytes.saturating_add(allocated);
+            cleanup.removed_entry_keys.insert(cache_key);
             drop(lock);
         }
-        Ok(freed)
+        Ok(cleanup)
     }
 
     fn unusable_current_entry_reason(
@@ -1241,14 +1249,19 @@ impl SessionWorkspaceCache {
         None
     }
 
-    async fn gc_entries_without_current_image(&self, dry_run: bool) -> RunnerResult<u64> {
+    async fn gc_entries_without_current_image(
+        &self,
+        dry_run: bool,
+    ) -> RunnerResult<GcEntryCleanup> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(GcEntryCleanup::default());
+            }
             Err(e) => return Err(e.into()),
         };
-        let mut freed: u64 = 0;
+        let mut cleanup = GcEntryCleanup::default();
         while let Some(entry) = entries.next_entry().await? {
             if !entry_file_type_is_dir(&entry).await? {
                 continue;
@@ -1302,13 +1315,18 @@ impl SessionWorkspaceCache {
                     "deleted stale workspace image cache entry"
                 );
             }
-            freed = freed.saturating_add(allocated);
+            cleanup.freed_bytes = cleanup.freed_bytes.saturating_add(allocated);
+            cleanup.removed_entry_keys.insert(cache_key);
             drop(lock);
         }
-        Ok(freed)
+        Ok(cleanup)
     }
 
-    async fn gc_temporary_images(&self, dry_run: bool) -> RunnerResult<u64> {
+    async fn gc_temporary_images(
+        &self,
+        dry_run: bool,
+        skip_entry_keys: &BTreeSet<String>,
+    ) -> RunnerResult<u64> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
@@ -1324,6 +1342,9 @@ impl SessionWorkspaceCache {
                 continue;
             };
             if !is_cache_key_name(&cache_key) {
+                continue;
+            }
+            if skip_entry_keys.contains(&cache_key) {
                 continue;
             }
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
@@ -2241,6 +2262,12 @@ struct GcCandidate {
     file_dev: u64,
     file_ino: u64,
     last_used_at: String,
+}
+
+#[derive(Default)]
+struct GcEntryCleanup {
+    freed_bytes: u64,
+    removed_entry_keys: BTreeSet<String>,
 }
 
 impl GcCandidate {
@@ -4842,6 +4869,55 @@ mod tests {
             !paths.session_workspace_cache_entry_dir(&key).exists(),
             "current images without metadata are not reusable and should not accumulate"
         );
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_counts_temporary_only_entry_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
+        let expected = directory_tree_allocated_bytes(&entry_dir).await;
+
+        let freed = cache.gc(true).await.unwrap();
+
+        assert_eq!(
+            freed, expected,
+            "dry-run should count temporary-only entries once, matching actual full-entry cleanup"
+        );
+        assert!(tmp.exists());
+        assert!(entry_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn gc_dry_run_counts_unusable_entry_with_temporary_path_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        tokio::fs::create_dir_all(&entry_dir).await.unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        tokio::fs::write(&current, b"orphan image").await.unwrap();
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
+        let expected = directory_tree_allocated_bytes(&entry_dir).await;
+
+        let freed = cache.gc(true).await.unwrap();
+
+        assert_eq!(
+            freed, expected,
+            "dry-run should not count temporary paths again after an unusable entry is already selected for cleanup"
+        );
+        assert!(current.exists());
+        assert!(tmp.exists());
+        assert!(entry_dir.exists());
     }
 
     #[tokio::test]
