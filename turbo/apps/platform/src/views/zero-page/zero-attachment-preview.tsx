@@ -239,20 +239,27 @@ function HtmlSitePreviewCard({
           {title}
         </span>
       </div>
-      <div className="relative aspect-[16/10] bg-muted/30">
-        <iframe
-          src={IN_VITEST ? undefined : publicUrl}
-          srcDoc={
-            IN_VITEST ? "<!doctype html><html><body></body></html>" : undefined
-          }
-          data-preview-src={publicUrl}
-          title={`Site preview for ${title}`}
-          sandbox="allow-scripts"
-          tabIndex={-1}
-          loading="lazy"
-          scrolling="no"
-          className="pointer-events-none h-full w-full origin-top-left bg-background transition-transform duration-200 group-hover/site-preview:scale-[1.01]"
-        />
+      <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
+        <div
+          data-testid="attachment-preview-html-viewport"
+          className="pointer-events-none absolute left-0 top-0 h-[400%] w-[400%] origin-top-left scale-[0.25]"
+        >
+          <iframe
+            src={IN_VITEST ? undefined : publicUrl}
+            srcDoc={
+              IN_VITEST
+                ? "<!doctype html><html><body></body></html>"
+                : undefined
+            }
+            data-preview-src={publicUrl}
+            title={`Site preview for ${title}`}
+            sandbox="allow-scripts"
+            tabIndex={-1}
+            loading="lazy"
+            scrolling="no"
+            className="pointer-events-none h-full w-full bg-background"
+          />
+        </div>
       </div>
     </a>
   );

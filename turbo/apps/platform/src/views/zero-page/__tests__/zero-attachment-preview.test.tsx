@@ -545,6 +545,29 @@ describe("document thumbnail preview", () => {
     expect(iframe).toHaveAttribute("tabindex", "-1");
   });
 
+  it("renders HTML site previews from a desktop-sized viewport", () => {
+    render(
+      <StoreProvider value={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "page.html",
+            url: "https://example.com/page.html",
+          }}
+        />
+      </StoreProvider>,
+    );
+
+    const preview = screen.getByTestId("attachment-preview-html");
+    const viewport = within(preview).getByTestId(
+      "attachment-preview-html-viewport",
+    );
+
+    expect(viewport).toHaveClass("h-[400%]", "w-[400%]", "scale-[0.25]");
+    expect(
+      within(viewport).getByTitle("Site preview for page.html"),
+    ).toHaveAttribute("scrolling", "no");
+  });
+
   it("uses the hosted site slug as the fallback site preview card title", () => {
     const url = "https://tabby-cat-guide-35a4112d.sites.vm7.io";
     render(
