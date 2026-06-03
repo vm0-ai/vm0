@@ -1,4 +1,5 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import type { MouseEvent } from "react";
 import type { MemoryDetailResponse } from "@vm0/api-contracts/contracts/zero-memory";
 import { cn } from "@vm0/ui";
 
@@ -13,6 +14,23 @@ const PREFERRED_FILE = "MEMORY.md";
 
 function isMarkdown(path: string): boolean {
   return path.toLowerCase().endsWith(".md");
+}
+
+/**
+ * Resolve a markdown link href to a memory file path, or null when the link
+ * points outside the memory tree (absolute URL, in-page anchor, or root path).
+ * Memory files reference each other with plain relative paths in MEMORY.md, so
+ * we only intercept those and let the browser handle everything else.
+ */
+function resolveMemoryLinkPath(href: string): string | null {
+  if (
+    /^[a-z][a-z0-9+.-]*:/i.test(href) ||
+    href.startsWith("#") ||
+    href.startsWith("/")
+  ) {
+    return null;
+  }
+  return href.replace(/[?#].*$/, "").replace(/^\.\//, "");
 }
 
 function formatBytes(bytes: number): string {
@@ -98,6 +116,36 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
       })?.content ?? null)
     : null;
 
+  const knownPaths = new Set(
+    files.map((file) => {
+      return file.path;
+    }),
+  );
+
+  // Links between memory files render as relative anchors (e.g.
+  // `[foo](foo.md)`). Left alone they navigate the browser to a non-existent
+  // route and 404, so intercept clicks that resolve to a known file and switch
+  // the viewer instead. External links fall through to the browser.
+  const handleContentClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const anchor = event.target.closest("a");
+    if (anchor === null) {
+      return;
+    }
+    const href = anchor.getAttribute("href");
+    if (href === null) {
+      return;
+    }
+    const targetPath = resolveMemoryLinkPath(href);
+    if (targetPath === null || !knownPaths.has(targetPath)) {
+      return;
+    }
+    event.preventDefault();
+    setSelected(targetPath);
+  };
+
   return (
     <section className="zero-card flex min-h-[420px] flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -113,6 +161,7 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
               <div
                 aria-label="Memory content"
                 className="min-h-0 flex-1 overflow-auto bg-background px-4 py-3"
+                onClick={handleContentClick}
               >
                 <Markdown source={selectedContent} />
               </div>

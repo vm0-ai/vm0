@@ -119,4 +119,54 @@ describe("memory page", () => {
     expect(fileButtons[1]?.textContent).toContain("context.md");
     expect(fileButtons[2]?.textContent).toContain("scratch.txt");
   });
+
+  it("switches files when a relative link to another memory file is clicked", async () => {
+    setMockMemory({
+      exists: true,
+      name: "memory",
+      size: 90,
+      fileCount: 2,
+      updatedAt: "2024-01-01T00:00:00Z",
+      files: [
+        { path: "MEMORY.md", size: 60 },
+        { path: "other-note.md", size: 30 },
+      ],
+      fileContents: [
+        {
+          path: "MEMORY.md",
+          content: "# Memory Index\n\n- [Other note](other-note.md) — details",
+        },
+        {
+          path: "other-note.md",
+          content: "# Other Note\n\nDeep content here.",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/memory",
+      featureSwitches: { [FeatureSwitchKey.MemoryViewer]: true },
+    });
+
+    // Defaults to MEMORY.md, which renders the relative link to other-note.md.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Memory content")).toHaveTextContent(
+        "Other note",
+      );
+    });
+
+    const internalLink = queryAllByRoleFast("link").find((link) => {
+      return link.textContent?.includes("Other note");
+    });
+    expect(internalLink).toBeDefined();
+    click(internalLink!);
+
+    // Clicking switches the viewer instead of navigating away to a 404.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Memory content")).toHaveTextContent(
+        "Deep content here.",
+      );
+    });
+  });
 });
