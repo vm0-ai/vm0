@@ -7,6 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -513,6 +514,7 @@ describe("POST /api/zero/chat/messages", () => {
       triggerSource: "web",
       chatThreadId: response.body.threadId,
     });
+    expect(run?.appendSystemPrompt).not.toContain("# Generation Style");
 
     const message = await firstUserMessage(response.body.threadId);
     expect(message).toMatchObject({
@@ -553,6 +555,113 @@ describe("POST /api/zero/chat/messages", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadRunCreated:${response.body.threadId}`,
       null,
+    );
+  });
+
+  it("adds generation style guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a launch deck",
+      generationStyle: {
+        target: "presentation",
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({ appendSystemPrompt: agentRuns.appendSystemPrompt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.appendSystemPrompt).toContain("# Generation Style");
+    expect(run?.appendSystemPrompt).toContain(
+      "Use the following registered resources for this run.",
+    );
+    expect(run?.appendSystemPrompt).toContain("Target: presentation");
+    expect(run?.appendSystemPrompt).toContain(
+      `Design system ID: ${item.designSystemId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `Template ID: ${item.templateId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain("Instructions:");
+    expect(run?.appendSystemPrompt).toContain(
+      "- Keep the user's prompt as the source of the requested content.",
+    );
+  });
+
+  it("rejects unknown generation style resources", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const unknownTemplate = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationStyle: {
+            target: "presentation",
+            designSystemId: item.designSystemId,
+            templateId: "template:missing",
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownTemplate.body.error.message).toBe(
+      "Unknown generation style template",
+    );
+
+    const unknownDesignSystem = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationStyle: {
+            target: "presentation",
+            designSystemId: "design-system:missing",
+            templateId: item.templateId,
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownDesignSystem.body.error.message).toBe(
+      "Unknown generation style design system",
+    );
+  });
+
+  it("rejects generation style templates that do not support presentation", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationStyle: {
+            target: "presentation",
+            designSystemId: item.designSystemId,
+            templateId: "template:web-prototype-taste-editorial",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Generation style template does not support the requested target",
     );
   });
 

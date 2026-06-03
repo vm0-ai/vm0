@@ -4,7 +4,9 @@ import { command } from "ccstate";
 import {
   chatMessagesContract,
   type AttachFile,
+  type GenerationStyleRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { findDesignSystem, findTemplate } from "@vm0/core/resource-registry";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
@@ -85,6 +87,7 @@ interface NormalSendBody {
     readonly modelProviderId: string;
     readonly selectedModel: string;
   } | null;
+  readonly generationStyle?: GenerationStyleRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
   readonly clientMessageId?: string;
@@ -159,6 +162,7 @@ interface IncompleteRoundRow extends WebChatIncompleteRoundMessage {
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
+type IncomingGenerationStyle = NormalSendBody["generationStyle"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
 interface NormalSendArgs {
@@ -175,6 +179,7 @@ interface PreparedNormalSend {
   readonly forceNewSession: boolean;
   readonly thread: ResolvedThread;
   readonly priorContext: string;
+  readonly generationStylePrompt: string;
   readonly persistedExplicitSelection: boolean;
 }
 
@@ -439,11 +444,55 @@ function buildWebAttachFilesPrompt(
     .join("\n");
 }
 
+function buildGenerationStylePrompt(
+  generationStyle: IncomingGenerationStyle,
+): string | ReturnType<typeof badRequestMessage> {
+  if (!generationStyle) {
+    return "";
+  }
+
+  const template = findTemplate(generationStyle.templateId);
+  if (!template) {
+    return badRequestMessage("Unknown generation style template");
+  }
+  if (!(template.targets?.includes(generationStyle.target) ?? false)) {
+    return badRequestMessage(
+      "Generation style template does not support the requested target",
+    );
+  }
+
+  const designSystem = findDesignSystem(generationStyle.designSystemId);
+  if (!designSystem) {
+    return badRequestMessage("Unknown generation style design system");
+  }
+
+  return [
+    "# Generation Style",
+    "Use the following registered resources for this run.",
+    `Target: ${generationStyle.target}`,
+    `Design system ID: ${designSystem.id}`,
+    `Design system name: ${designSystem.name}`,
+    `Template ID: ${template.id}`,
+    `Template name: ${template.name}`,
+    "",
+    "Instructions:",
+    "- Resolve the design system and template from the resource registry.",
+    "- Apply them as generation constraints for the artifact.",
+    "- Keep the user's prompt as the source of the requested content.",
+  ].join("\n");
+}
+
 function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
+  generationStylePrompt: string,
 ): string {
-  return [buildWebChatPrompt(), priorContext, incompleteContext]
+  return [
+    buildWebChatPrompt(),
+    priorContext,
+    incompleteContext,
+    generationStylePrompt,
+  ]
     .filter((part) => {
       return part.length > 0;
     })
@@ -1841,6 +1890,12 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
+    const generationStylePrompt = buildGenerationStylePrompt(
+      args.body.generationStyle,
+    );
+    if (typeof generationStylePrompt !== "string") {
+      return generationStylePrompt;
+    }
 
     const thread = await resolveThread({
       db,
@@ -1888,6 +1943,7 @@ const prepareNormalSend$ = command(
       forceNewSession,
       thread,
       priorContext,
+      generationStylePrompt,
       persistedExplicitSelection,
     };
   },
@@ -2189,6 +2245,7 @@ const createNormalChatRun$ = command(
         appendSystemPrompt: buildAppendSystemPrompt(
           prepared.thread.incompleteContext,
           prepared.priorContext,
+          prepared.generationStylePrompt,
         ),
       },
       signal,
