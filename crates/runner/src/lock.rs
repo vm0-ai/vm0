@@ -63,8 +63,13 @@ impl LockMode {
     }
 }
 
-pub(crate) fn is_lock_busy_error(error: &RunnerError) -> bool {
+fn is_lock_busy_error(error: &RunnerError) -> bool {
     matches!(error, RunnerError::Config(message) if message == LOCK_BUSY_ERROR)
+}
+
+pub(crate) enum TryLock {
+    Acquired(Flock<File>),
+    Busy,
 }
 
 async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
@@ -102,6 +107,14 @@ pub async fn acquire_shared(path: PathBuf) -> RunnerResult<Flock<File>> {
 /// The returned guard holds the lock until dropped.
 pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
     acquire_with(path, LockMode::TryExclusive).await
+}
+
+pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
+    match try_acquire(path).await {
+        Ok(lock) => Ok(TryLock::Acquired(lock)),
+        Err(e) if is_lock_busy_error(&e) => Ok(TryLock::Busy),
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]
@@ -181,6 +194,26 @@ mod tests {
         let guard = try_acquire(path.clone()).await.unwrap();
         assert!(path.exists());
         drop(guard);
+    }
+
+    #[tokio::test]
+    async fn try_acquire_or_busy_reports_busy_when_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+        let _guard = acquire(path.clone()).await.unwrap();
+
+        let result = try_acquire_or_busy(path).await.unwrap();
+
+        assert!(matches!(result, TryLock::Busy));
+    }
+
+    #[tokio::test]
+    async fn try_acquire_or_busy_propagates_lock_path_errors() {
+        let path = PathBuf::from("/dev/null/impossible/test.lock");
+
+        let result = try_acquire_or_busy(path).await;
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]

@@ -919,9 +919,9 @@ impl SessionWorkspaceCache {
         cache_key: String,
         entry_dir: PathBuf,
     ) -> RunnerResult<Option<WorkspaceImageCacheInspectionEntry>> {
-        let lock = match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
-            Ok(lock) => lock,
-            Err(e) if crate::lock::is_lock_busy_error(&e) => {
+        let lock = match crate::lock::try_acquire_or_busy(self.entry_lock_path(&cache_key)).await? {
+            crate::lock::TryLock::Acquired(lock) => lock,
+            crate::lock::TryLock::Busy => {
                 return Ok(Some(WorkspaceImageCacheInspectionEntry {
                     cache_key,
                     status: WorkspaceImageCacheInspectionStatus::Locked,
@@ -940,7 +940,6 @@ impl SessionWorkspaceCache {
                     artifact_count: 0,
                 }));
             }
-            Err(e) => return Err(e),
         };
         if !fs::try_exists(&entry_dir).await? {
             drop(lock);
