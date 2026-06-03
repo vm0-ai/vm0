@@ -21,6 +21,7 @@ export interface ConnectorAuthProviderGrantResult<
     ConnectorAuthProviderGrantOutputValues,
 > {
   readonly outputs: Outputs;
+  /** Seconds until the granted credentials expire. */
   readonly expiresIn?: number;
   readonly scopes: readonly string[];
   readonly userInfo: ConnectorAuthProviderGrantUserInfo;
