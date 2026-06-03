@@ -18,7 +18,6 @@ from typing import TypeGuard
 
 from mitmproxy import http
 
-import flow_metadata
 import flow_metadata_keys as metadata_keys
 from auth import get_api_url
 from logging_utils import log_proxy_entry
@@ -59,8 +58,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     writes a proxy warning because that indicates an environment/reporting setup
     problem.
     """
-    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
-    if not (firewall_name.startswith("model-provider:") and run_id):
+    if not run_id:
         return False
     if not is_model_provider_usage_observable(flow):
         return False
