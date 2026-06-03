@@ -39,7 +39,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 const context = testContext();
 const store = createStore();
 
-const FINICITY_BASE_URL = "https://finicity.test";
+const FINICITY_BASE_URL = "https://api.finicity.com";
 const FINICITY_AUTH_URL = `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`;
 
 interface BankingFixture extends UsageInsightFixture {
@@ -266,10 +266,9 @@ describe("POST /api/zero/banking/*", () => {
   const track = createFixtureTracker(deleteBankingFixture);
 
   beforeEach(() => {
-    mockEnv("FINICITY_API_BASE_URL", FINICITY_BASE_URL);
     mockEnv("FINICITY_APP_KEY", "test-app-key");
+    mockEnv("FINICITY_APP_SECRET", "test-secret");
     mockEnv("FINICITY_PARTNER_ID", "test-partner");
-    mockEnv("FINICITY_PARTNER_SECRET", "test-secret");
   });
 
   it("rejects banking requests when the banking feature switch is disabled", async () => {

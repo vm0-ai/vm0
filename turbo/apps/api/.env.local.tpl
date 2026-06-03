@@ -111,6 +111,11 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_I
 # Optional: Google Maps API
 ZERO_MAPS_GOOGLE_MAPS_TOKEN=op://Development/google/ZERO_MAPS_GOOGLE_MAPS_TOKEN
 
+# Optional: Finicity Open Banking
+FINICITY_APP_KEY=op://Development/finicity/FINICITY_APP_KEY
+FINICITY_APP_SECRET=op://Development/finicity/FINICITY_APP_SECRET
+FINICITY_PARTNER_ID=op://Development/finicity/FINICITY_PARTNER_ID
+
 # Optional: Microsoft OAuth Connector (Outlook Calendar, etc.)
 MICROSOFT_OAUTH_CLIENT_ID=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_ID
 MICROSOFT_OAUTH_CLIENT_SECRET=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_SECRET

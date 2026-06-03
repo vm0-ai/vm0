@@ -36,8 +36,9 @@ import type { ZeroAuthContext } from "../../types/auth";
 import { type Db, writeDb$ } from "../external/db";
 import { safeJsonParse } from "../utils";
 
-const PROVIDER = "finicity";
 const APP_TOKEN_REFRESH_MS = 90 * 60 * 1000;
+const FINICITY_BASE_URL = "https://api.finicity.com";
+const PROVIDER = "finicity";
 
 type ZeroBankingAuth = Extract<ZeroAuthContext, { readonly orgId: string }>;
 type BankingAccountRow = InferSelectModel<typeof bankingAccounts>;
@@ -172,29 +173,20 @@ function finicityErrorMessage(body: unknown): string {
   return "Finicity request failed";
 }
 
-function finicityBaseUrl(): string | BankingErrorResponse {
-  const baseUrl = env("FINICITY_API_BASE_URL");
-  return baseUrl
-    ? baseUrl.replace(/\/+$/, "")
-    : serviceUnavailable("Finicity API base URL is not configured");
-}
-
 function finicityCredentials():
   | {
       readonly appKey: string;
+      readonly appSecret: string;
       readonly partnerId: string;
-      readonly partnerSecret: string;
     }
   | BankingErrorResponse {
   const appKey = env("FINICITY_APP_KEY");
+  const appSecret = env("FINICITY_APP_SECRET");
   const partnerId = env("FINICITY_PARTNER_ID");
-  const partnerSecret = env("FINICITY_PARTNER_SECRET");
-  if (!appKey || !partnerId || !partnerSecret) {
-    return serviceUnavailable(
-      "Finicity partner credentials are not configured",
-    );
+  if (!appKey || !appSecret || !partnerId) {
+    return serviceUnavailable("Finicity app credentials are not configured");
   }
-  return { appKey, partnerId, partnerSecret };
+  return { appKey, appSecret, partnerId };
 }
 
 async function getFinicityAppToken(
@@ -205,17 +197,13 @@ async function getFinicityAppToken(
     return cache.value.token;
   }
 
-  const baseUrl = finicityBaseUrl();
-  if (typeof baseUrl !== "string") {
-    return baseUrl;
-  }
   const credentials = finicityCredentials();
   if ("status" in credentials) {
     return credentials;
   }
 
   const response = await fetch(
-    `${baseUrl}/aggregation/v2/partners/authentication`,
+    `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`,
     {
       method: "POST",
       signal,
@@ -226,7 +214,7 @@ async function getFinicityAppToken(
       },
       body: JSON.stringify({
         partnerId: credentials.partnerId,
-        partnerSecret: credentials.partnerSecret,
+        partnerSecret: credentials.appSecret,
       }),
     },
   );
@@ -249,10 +237,6 @@ async function fetchFinicityJson(
   path: string,
   signal: AbortSignal,
 ): Promise<unknown | BankingErrorResponse> {
-  const baseUrl = finicityBaseUrl();
-  if (typeof baseUrl !== "string") {
-    return baseUrl;
-  }
   const credentials = finicityCredentials();
   if ("status" in credentials) {
     return credentials;
@@ -262,7 +246,7 @@ async function fetchFinicityJson(
     return appToken;
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${FINICITY_BASE_URL}${path}`, {
     method: "GET",
     signal,
     headers: {
