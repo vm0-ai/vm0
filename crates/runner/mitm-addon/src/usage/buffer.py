@@ -100,6 +100,7 @@ class _FlushSummary:
     source_event_count: int = 0
     aggregate_event_count: int = 0
     webhook_batch_count: int = 0
+    dropped_webhook_batch_count: int = 0
     run_ids: set[str] = field(default_factory=set)
     destinations: set[tuple[str, str]] = field(default_factory=set)
 
@@ -208,7 +209,7 @@ class UsageEventBuffer:
         started_at = time.monotonic()
         try:
             _log_flush_summaries("started", trigger, flush_sequence, summaries)
-            _enqueue_batches(batches)
+            _apply_dropped_batch_counts(summaries, _enqueue_batches(batches))
             _log_flush_summaries(
                 "completed",
                 trigger,
@@ -416,15 +417,29 @@ class UsageEventBuffer:
         return threading.Timer(delay, callback)
 
 
-def _enqueue_batches(batches: Iterable[_FlushBatch]) -> None:
+def _enqueue_batches(batches: Iterable[_FlushBatch]) -> dict[str, int]:
+    dropped_counts: dict[str, int] = {}
     for batch in batches:
-        _enqueue_webhook(
+        admitted = _enqueue_webhook(
             batch.url,
             batch.sandbox_token,
             batch.payload,
             batch.proxy_log_path,
             "usage_event",
         )
+        if admitted is False:
+            dropped_counts[batch.proxy_log_path] = dropped_counts.get(batch.proxy_log_path, 0) + 1
+    return dropped_counts
+
+
+def _apply_dropped_batch_counts(
+    summaries: Iterable[_FlushSummary],
+    dropped_counts: dict[str, int],
+) -> None:
+    if not dropped_counts:
+        return
+    for summary in summaries:
+        summary.dropped_webhook_batch_count = dropped_counts.get(summary.proxy_log_path, 0)
 
 
 def _build_flush_summaries(
@@ -476,6 +491,7 @@ def _log_flush_summaries(
             "source_event_count": summary.source_event_count,
             "aggregate_event_count": summary.aggregate_event_count,
             "webhook_batch_count": summary.webhook_batch_count,
+            "dropped_webhook_batch_count": summary.dropped_webhook_batch_count,
             "run_count": len(summary.run_ids),
             "destination_count": len(summary.destinations),
         }
@@ -483,10 +499,15 @@ def _log_flush_summaries(
             extra["duration_ms"] = duration_ms
         if error_type is not None:
             extra["error_type"] = error_type
+        level = "error" if phase == "failed" else "info"
+        message = f"Usage event buffer flush {phase}"
+        if phase == "completed" and summary.dropped_webhook_batch_count:
+            level = "warn"
+            message = "Usage event buffer flush completed with dropped webhook batches"
         log_proxy_entry(
             summary.proxy_log_path,
-            "error" if phase == "failed" else "info",
-            f"Usage event buffer flush {phase}",
+            level,
+            message,
             **extra,
         )
 

@@ -3,6 +3,7 @@
 import json
 import urllib.error
 import uuid
+from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,16 @@ import pytest
 
 import auth
 import usage
+
+
+class _QueuedUsageExecutor:
+    def __init__(self) -> None:
+        self.submissions: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+
+    def submit(self, fn, *args, **kwargs) -> Future:
+        future: Future = Future()
+        self.submissions.append((fn, args, kwargs))
+        return future
 
 
 def _assert_body_free_webhook_entry(
@@ -270,6 +281,7 @@ class TestUsageWebhookDelivery:
         )
 
         assert usage.counters._pending_reports == 1
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         assert "non-retryable" in proxy_log.read_text()
         with pytest.raises(ValueError, match="absolute http"):
             sync_usage_executor.shutdown(wait=True)
@@ -373,3 +385,85 @@ class TestUsageWebhookDelivery:
         assert body["runId"] == "run-1"
         assert body["events"][0]["quantity"] == 42
         assert body["events"][0]["category"] == "tokens.input"
+
+    def test_drops_when_delivery_capacity_is_saturated(self, tmp_path):
+        proxy_log = tmp_path / "proxy.jsonl"
+        executor = _QueuedUsageExecutor()
+
+        with patch.object(usage.webhook, "usage_executor", executor):
+            for index in range(usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS):
+                assert usage.webhook._enqueue_webhook(
+                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                    "tok",
+                    {"runId": f"run-{index}", "events": []},
+                    str(proxy_log),
+                    "usage_event",
+                )
+
+            dropped = usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {
+                    "runId": "run-drop",
+                    "events": [{"idempotencyKey": "secret-key", "quantity": 1}],
+                    "payload": "secret-payload",
+                },
+                str(proxy_log),
+                "usage_event",
+            )
+
+        assert dropped is False
+        assert len(executor.submissions) == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+        assert usage.counters._pending_reports == usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+
+        entries = [json.loads(line) for line in proxy_log.read_text().splitlines()]
+        dropped_entry = entries[-1]
+        assert dropped_entry["level"] == "warn"
+        assert "saturated" in dropped_entry["message"]
+        assert dropped_entry["webhook_delivery_capacity"] == (
+            usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+        )
+        assert dropped_entry["webhook_delivery_pending"] == (
+            usage.webhook.MAX_PENDING_WEBHOOK_PAYLOADS
+        )
+        _assert_body_free_webhook_entry(dropped_entry, run_id="run-drop", event_count=1)
+        assert "payload_bytes" not in dropped_entry
+        assert "secret-payload" not in json.dumps(dropped_entry)
+
+    def test_delivery_capacity_released_after_success(
+        self, tmp_path, sync_usage_executor, usage_webhook_server
+    ):
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage_webhook_server.queue_response(204)
+
+        assert usage.webhook._enqueue_webhook(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+        )
+
+        assert usage_webhook_server.request_count == 1
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        assert usage.counters._pending_reports == 0
+
+    def test_delivery_capacity_released_after_retry_exhaustion(
+        self, tmp_path, sync_usage_executor, usage_webhook_server
+    ):
+        proxy_log = tmp_path / "proxy.jsonl"
+        usage_webhook_server.queue_response(500)
+        usage_webhook_server.queue_response(500)
+
+        with patch.object(usage.webhook.time, "sleep"):
+            assert usage.webhook._enqueue_webhook(
+                usage_webhook_server.url("/usage"),
+                "tok",
+                {"runId": "run-1", "events": []},
+                str(proxy_log),
+                "usage_event",
+            )
+
+        assert usage_webhook_server.request_count == 2
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        assert usage.counters._pending_reports == 0

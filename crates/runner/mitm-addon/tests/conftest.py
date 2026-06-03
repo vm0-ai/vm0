@@ -48,9 +48,11 @@ def _reset_module_state() -> Iterator[None]:
     clear_auth_state()
     _usage_connectors._unregistered_handler_warned.clear()
     usage.counters.reset_for_tests()
+    usage.webhook.reset_delivery_capacity_for_tests()
     usage.reset_usage_buffer_for_tests()
     yield
     usage.reset_usage_buffer_for_tests()
+    usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
 
 

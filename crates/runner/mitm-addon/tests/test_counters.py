@@ -183,6 +183,7 @@ class TestUsagePendingCounter:
             )
 
         assert usage.counters._pending_reports == 0
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
@@ -331,6 +332,7 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
@@ -354,6 +356,7 @@ class TestUsagePendingCounter:
             usage.webhook.usage_executor.shutdown(wait=True)
 
         assert usage.counters._pending_reports == 0
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")
 
@@ -414,5 +417,6 @@ class TestUsagePendingCounter:
             usage.flush_usage_events(trigger="test")
 
         assert usage.counters._pending_reports == 0
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
         usage.write_pending_snapshot(flush_request_id="request-1")
         assert_pending(pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1")

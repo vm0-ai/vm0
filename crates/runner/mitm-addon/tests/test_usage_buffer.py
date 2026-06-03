@@ -305,6 +305,32 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
     assert entries[1]["duration_ms"] >= 0
 
 
+def test_flush_logs_dropped_webhook_batches(tmp_path):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+
+    with patch.object(usage_buffer, "_enqueue_webhook", return_value=False) as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    entries = _flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert entries[0]["dropped_webhook_batch_count"] == 0
+    assert entries[1]["level"] == "warn"
+    assert entries[1]["message"] == (
+        "Usage event buffer flush completed with dropped webhook batches"
+    )
+    assert entries[1]["dropped_webhook_batch_count"] == 1
+    assert entries[1]["webhook_batch_count"] == 1
+    assert "secret-token" not in json.dumps(entries)
+
+
 def test_flush_logs_failure_without_token(tmp_path):
     proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(

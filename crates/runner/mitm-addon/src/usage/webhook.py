@@ -8,6 +8,7 @@ reports are not silently lost.
 """
 
 import json
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -58,6 +59,7 @@ def _log_webhook_entry(
     payload_bytes: int | None = None,
     attempt: int | None = None,
     error: str | None = None,
+    extra_fields: dict[str, object] | None = None,
 ) -> None:
     extra: dict = {"type": log_type, "url": url}
     extra.update(_payload_log_summary(payload))
@@ -67,6 +69,8 @@ def _log_webhook_entry(
         extra["attempt"] = attempt
     if error is not None:
         extra["error"] = error
+    if extra_fields is not None:
+        extra.update(extra_fields)
     log_proxy_entry(proxy_log_path, level, message, **extra)
 
 
@@ -192,7 +196,61 @@ def _do_post_webhook_attempts(
             raise
 
 
-usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
+USAGE_WEBHOOK_WORKERS = 4
+MAX_PENDING_WEBHOOK_PAYLOADS = USAGE_WEBHOOK_WORKERS * 4
+
+usage_executor = ThreadPoolExecutor(
+    max_workers=USAGE_WEBHOOK_WORKERS,
+    thread_name_prefix="usage",
+)
+
+_delivery_capacity_lock = threading.Lock()
+_pending_delivery_payloads = 0
+
+
+def _try_acquire_delivery_capacity() -> int | None:
+    global _pending_delivery_payloads
+    with _delivery_capacity_lock:
+        if _pending_delivery_payloads >= MAX_PENDING_WEBHOOK_PAYLOADS:
+            return None
+        _pending_delivery_payloads += 1
+        return _pending_delivery_payloads
+
+
+def _release_delivery_capacity() -> None:
+    global _pending_delivery_payloads
+    with _delivery_capacity_lock:
+        if _pending_delivery_payloads <= 0:
+            raise RuntimeError("usage webhook delivery capacity released without acquire")
+        _pending_delivery_payloads -= 1
+
+
+def _pending_delivery_payload_count() -> int:
+    with _delivery_capacity_lock:
+        return _pending_delivery_payloads
+
+
+def _pending_delivery_payload_count_for_tests() -> int:
+    return _pending_delivery_payload_count()
+
+
+def reset_delivery_capacity_for_tests() -> None:
+    global _pending_delivery_payloads
+    with _delivery_capacity_lock:
+        _pending_delivery_payloads = 0
+
+
+def _post_admitted_webhook_with_retry(
+    url: str,
+    sandbox_token: str,
+    payload: dict,
+    proxy_log_path: str,
+    log_type: str,
+) -> None:
+    try:
+        _post_webhook_with_retry(url, sandbox_token, payload, proxy_log_path, log_type)
+    finally:
+        _release_delivery_capacity()
 
 
 def _enqueue_webhook(
@@ -201,7 +259,7 @@ def _enqueue_webhook(
     payload: dict,
     proxy_log_path: str,
     log_type: str,
-) -> None:
+) -> bool:
     """Submit webhook POST to the thread pool.
 
     The caller transfers ownership of ``payload`` to webhook delivery and
@@ -209,30 +267,68 @@ def _enqueue_webhook(
 
     If the executor has already been shut down (drain/shutdown race),
     falls back to synchronous delivery so the report is not silently lost.
+
+    Returns whether the payload was admitted to delivery.  ``False`` means
+    delivery was saturated and the payload was explicitly dropped.
     """
-    _log_webhook_entry(
-        proxy_log_path,
-        "info",
-        f"Webhook POST to {url} enqueued",
-        url,
-        log_type,
-        payload,
-    )
+    admitted_count = _try_acquire_delivery_capacity()
+    if admitted_count is None:
+        _log_webhook_entry(
+            proxy_log_path,
+            "warn",
+            f"Webhook POST to {url} dropped because usage delivery is saturated",
+            url,
+            log_type,
+            payload,
+            extra_fields={
+                "webhook_delivery_capacity": MAX_PENDING_WEBHOOK_PAYLOADS,
+                "webhook_delivery_pending": _pending_delivery_payload_count(),
+            },
+        )
+        return False
+
+    try:
+        _log_webhook_entry(
+            proxy_log_path,
+            "info",
+            f"Webhook POST to {url} enqueued",
+            url,
+            log_type,
+            payload,
+            extra_fields={
+                "webhook_delivery_capacity": MAX_PENDING_WEBHOOK_PAYLOADS,
+                "webhook_delivery_pending": admitted_count,
+            },
+        )
+    except Exception:
+        _release_delivery_capacity()
+        raise
+
     increment_pending_reports()
     try:
         usage_executor.submit(
-            _post_webhook_with_retry, url, sandbox_token, payload, proxy_log_path, log_type
+            _post_admitted_webhook_with_retry,
+            url,
+            sandbox_token,
+            payload,
+            proxy_log_path,
+            log_type,
         )
     except RuntimeError:
         # Executor shut down (done() already called during drain).
-        log_proxy_entry(
-            proxy_log_path,
-            "warn",
-            "Webhook executor shut down, falling back to synchronous delivery",
-            type=log_type,
-            url=url,
-        )
-        _post_webhook_with_retry(url, sandbox_token, payload, proxy_log_path, log_type)
+        try:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                "Webhook executor shut down, falling back to synchronous delivery",
+                type=log_type,
+                url=url,
+            )
+            _post_webhook_with_retry(url, sandbox_token, payload, proxy_log_path, log_type)
+        finally:
+            _release_delivery_capacity()
     except Exception:
         decrement_pending_reports()
+        _release_delivery_capacity()
         raise
+    return True
