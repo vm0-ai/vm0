@@ -646,7 +646,9 @@ describe("zero chat thread page display - permission action card", () => {
     expect(requestCreated).toBeFalsy();
     expect(requestsListed).toBeFalsy();
     expect(hasSubscription("permissionAccessRequestsChanged")).toBeFalsy();
-    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    const status = within(card).getByText("Permissions updated");
+    expect(status).toBeInTheDocument();
+    expect(status.closest("button")).toBeNull();
   });
 
   it("writes a current-user grant for admins when user permission grants are enabled", async () => {
@@ -735,7 +737,9 @@ describe("zero chat thread page display - permission action card", () => {
       });
     });
     expect(policyUpdated).toBeFalsy();
-    expect(within(card).getByText("Permission denied")).toBeInTheDocument();
+    const status = within(card).getByText("Permission denied");
+    expect(status).toBeInTheDocument();
+    expect(status.closest("button")).toBeNull();
   });
 
   it("uses default connector policies for already-applied chat permission actions", async () => {
@@ -795,7 +799,9 @@ describe("zero chat thread page display - permission action card", () => {
     const card = await waitFor(() => {
       return screen.getByTestId("permission-action-card");
     });
-    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
+    const status = within(card).getByText("Permissions updated");
+    expect(status).toBeInTheDocument();
+    expect(status.closest("button")).toBeNull();
     expect(grantCalled).toBeFalsy();
   });
 
@@ -850,12 +856,9 @@ describe("zero chat thread page display - permission action card", () => {
     const card = await waitFor(() => {
       return screen.getByTestId("permission-action-card");
     });
-    expect(within(card).getByText("Permissions updated")).toBeInTheDocument();
-    const button = queryAllByRoleFast("button", card).find((element) => {
-      return element.textContent === "Permissions updated";
-    });
-    expect(button).toBeDefined();
-    expect(button).toBeDisabled();
+    const status = within(card).getByText("Permissions updated");
+    expect(status).toBeInTheDocument();
+    expect(status.closest("button")).toBeNull();
   });
 
   it("does not write grants for unknown chat permission actions", async () => {
