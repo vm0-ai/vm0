@@ -5,7 +5,6 @@ import {
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
@@ -18,6 +17,7 @@ import { getDatasetName, queryAxiom } from "../external/axiom";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { getLocalToday, resolveUserTimezones } from "./local-day";
 import { settle } from "../utils";
 
 const L = logger("CronAggregateInsights");
@@ -208,81 +208,6 @@ interface NetworkQueryResult {
 
 function normalizeDbDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
-}
-
-async function resolveUserTimezones(
-  db: Db,
-  orgUserPairs: OrgUserPair[],
-  signal: AbortSignal,
-): Promise<Map<string, string>> {
-  if (orgUserPairs.length === 0) {
-    return new Map();
-  }
-
-  const userIds = [
-    ...new Set(
-      orgUserPairs.map((pair) => {
-        return pair.userId;
-      }),
-    ),
-  ];
-
-  const rows = await db
-    .select({
-      orgId: orgMembersMetadata.orgId,
-      userId: orgMembersMetadata.userId,
-      timezone: orgMembersMetadata.timezone,
-    })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        inArray(orgMembersMetadata.userId, userIds),
-        isNotNull(orgMembersMetadata.timezone),
-      ),
-    );
-  signal.throwIfAborted();
-
-  const tzMap = new Map<string, string>();
-  for (const row of rows) {
-    if (row.timezone) {
-      tzMap.set(`${row.orgId}:${row.userId}`, row.timezone);
-    }
-  }
-  return tzMap;
-}
-
-function getLocalDayStartUtc(timezone: string, now: Date): Date {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  const localMidnight = new Date(`${parts}T00:00:00`);
-  const utcStr = localMidnight.toLocaleString("en-US", { timeZone: "UTC" });
-  const tzStr = localMidnight.toLocaleString("en-US", { timeZone: timezone });
-  const utcDate = new Date(utcStr);
-  const tzDate = new Date(tzStr);
-  const offsetMs = utcDate.getTime() - tzDate.getTime();
-  return new Date(localMidnight.getTime() + offsetMs);
-}
-
-function getLocalToday(
-  timezone: string,
-  now: Date,
-): {
-  readonly targetDate: string;
-  readonly dayStart: Date;
-  readonly dayEnd: Date;
-} {
-  const dayStart = getLocalDayStartUtc(timezone, now);
-  const targetDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  return { targetDate, dayStart, dayEnd: now };
 }
 
 function getPermissionLabel(

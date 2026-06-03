@@ -21,6 +21,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/summarize-memory",
+      "schedule": "30 * * * *"
+    },
+    {
       "path": "/api/cron/telegram-cleanup",
       "schedule": "0 1 * * *"
     },

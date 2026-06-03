@@ -110,6 +110,19 @@ const cronAggregateInsightsResponseSchema = z.union([
   cronAggregateInsightsAggregatedResponseSchema,
 ]);
 
+const cronSummarizeMemorySkippedResponseSchema = z.object({
+  skipped: z.literal(true),
+});
+
+const cronSummarizeMemorySummarizedResponseSchema = z.object({
+  summarized: z.number(),
+});
+
+const cronSummarizeMemoryResponseSchema = z.union([
+  cronSummarizeMemorySkippedResponseSchema,
+  cronSummarizeMemorySummarizedResponseSchema,
+]);
+
 export const cronAggregateUsageContract = c.router({
   aggregate: {
     method: "GET",
@@ -227,6 +240,19 @@ export const cronAggregateInsightsContract = c.router({
   },
 });
 
+export const cronSummarizeMemoryContract = c.router({
+  summarize: {
+    method: "GET",
+    path: "/api/cron/summarize-memory",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronSummarizeMemoryResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Summarize daily memory changes per user",
+  },
+});
+
 export type CronAggregateUsageContract = typeof cronAggregateUsageContract;
 export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
@@ -234,6 +260,7 @@ export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =
   typeof cronAggregateInsightsContract;
+export type CronSummarizeMemoryContract = typeof cronSummarizeMemoryContract;
 export type CronTelegramCleanupContract = typeof cronTelegramCleanupContract;
 export type CronComputerUseScreenshotCleanupContract =
   typeof cronComputerUseScreenshotCleanupContract;
@@ -254,4 +281,5 @@ export {
   cronSyncSkillsResponseSchema,
   cronExecuteSchedulesResponseSchema,
   cronAggregateInsightsResponseSchema,
+  cronSummarizeMemoryResponseSchema,
 };

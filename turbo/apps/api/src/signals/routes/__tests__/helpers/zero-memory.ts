@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
@@ -232,6 +232,103 @@ export function mockMemoryContent(
     }
     if (key === `${args.s3Key}/archive.tar.gz`) {
       return Promise.resolve({ Body: asyncIterableOf(archive) });
+    }
+    return Promise.resolve({});
+  });
+}
+
+interface MemoryVersionSeed {
+  readonly storageId: string;
+  readonly versionId: string;
+  readonly s3Key: string;
+  readonly userId: string;
+  readonly createdAt: Date;
+}
+
+export const seedMemoryVersion$ = command(
+  async (
+    { set },
+    args: MemoryVersionSeed,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db.insert(storageVersions).values({
+      id: args.versionId,
+      storageId: args.storageId,
+      s3Key: args.s3Key,
+      createdBy: args.userId,
+      createdAt: args.createdAt,
+    });
+    signal.throwIfAborted();
+  },
+);
+
+export const findMemoryStorageId$ = command(
+  async ({ set }, orgId: string, signal: AbortSignal): Promise<string> => {
+    const db = set(writeDb$);
+    const [row] = await db
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.orgId, orgId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!row) {
+      throw new Error("Memory storage not found for org");
+    }
+    return row.id;
+  },
+);
+
+interface MemoryVersionContent {
+  readonly s3Key: string;
+  readonly files: readonly MemoryFile[];
+}
+
+/**
+ * Mock S3 for several memory versions at once, each keyed by its own s3Key.
+ * Per-file manifest hashes are content-derived so the diff service classifies
+ * `updated` only when a file's content actually changes between versions.
+ */
+export function mockMemoryVersions(
+  context: TestContext,
+  versions: readonly MemoryVersionContent[],
+): void {
+  const byKey = new Map<string, Buffer>();
+  for (const version of versions) {
+    const files = version.files.map((file) => {
+      return { path: file.path, content: Buffer.from(file.content, "utf8") };
+    });
+    const archive = createTarGz(
+      files.map((file) => {
+        return { filename: file.path, content: file.content };
+      }),
+    );
+    const manifest = {
+      version: "test-version",
+      createdAt: new Date(0).toISOString(),
+      files: files.map((file) => {
+        return {
+          path: file.path,
+          hash: createHash("sha256").update(file.content).digest("hex"),
+          size: file.content.length,
+        };
+      }),
+      totalSize: files.reduce((sum, file) => {
+        return sum + file.content.length;
+      }, 0),
+      fileCount: files.length,
+    };
+    byKey.set(
+      `${version.s3Key}/manifest.json`,
+      Buffer.from(JSON.stringify(manifest), "utf8"),
+    );
+    byKey.set(`${version.s3Key}/archive.tar.gz`, archive);
+  }
+
+  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
+    const body = byKey.get(commandKey(cmd));
+    if (body) {
+      return Promise.resolve({ Body: asyncIterableOf(body) });
     }
     return Promise.resolve({});
   });
