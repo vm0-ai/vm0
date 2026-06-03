@@ -2976,6 +2976,13 @@
       "when": 1780474201659,
       "tag": "0424_sleepy_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 425,
+      "version": "7",
+      "when": 1780477196983,
+      "tag": "0425_outstanding_killraven",
+      "breakpoints": true
     }
   ]
 }
