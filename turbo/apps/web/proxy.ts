@@ -45,6 +45,8 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/presentation",
   "/ai-cofounder",
   "/:locale/ai-cofounder",
+  "/ai-ops-assistant",
+  "/:locale/ai-ops-assistant",
   "/report",
   "/:locale/report",
   "/sprite",

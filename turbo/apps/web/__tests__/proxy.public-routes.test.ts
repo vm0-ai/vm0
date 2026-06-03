@@ -123,6 +123,22 @@ describe("proxy middleware: public routes", () => {
     expect(clerkState.protectedPaths).toEqual([]);
   });
 
+  it("keeps locale-prefixed ai-ops-assistant landing public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/en/ai-ops-assistant");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
+  it("keeps locale-less ai-ops-assistant landing public", async () => {
+    const request = new NextRequest("https://www.vm0.ai/ai-ops-assistant");
+
+    await middleware(request, createMockEvent());
+
+    expect(clerkState.protectedPaths).toEqual([]);
+  });
+
   it("keeps locale-prefixed report gallery public", async () => {
     const request = new NextRequest("https://www.vm0.ai/en/report");
 
