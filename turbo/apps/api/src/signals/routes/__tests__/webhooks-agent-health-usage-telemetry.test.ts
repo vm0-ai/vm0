@@ -718,6 +718,56 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     ]);
   });
 
+  it("keeps the first model usage observation when a retry reuses an idempotency key", async () => {
+    const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: "anthropic-api-key",
+        selectedModel: "claude-sonnet-4-6",
+      })
+      .where(eq(zeroRuns.id, fixture.runId));
+    const sharedKey = randomUUID();
+    const client = setupApp({ context })(webhookModelUsageObservationContract);
+    const request = {
+      body: {
+        runId: fixture.runId,
+        events: [
+          {
+            idempotencyKey: sharedKey,
+            model: "claude-sonnet-4-6",
+            category: "tokens.input",
+            quantity: 9,
+          },
+        ],
+      },
+      headers: authHeaders(fixture),
+    };
+
+    await accept(client.send(request), [200]);
+    await accept(
+      client.send({
+        ...request,
+        body: {
+          ...request.body,
+          events: [{ ...request.body.events[0]!, quantity: 99 }],
+        },
+      }),
+      [200],
+    );
+
+    await expect(observationRowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey: sharedKey,
+        model: "claude-sonnet-4-6",
+        modelProviderType: "anthropic-api-key",
+        category: "tokens.input",
+        quantity: 9,
+      },
+    ]);
+  });
+
   it("skips model usage observations for custom selected models", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
