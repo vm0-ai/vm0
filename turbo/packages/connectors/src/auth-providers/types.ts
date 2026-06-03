@@ -153,49 +153,62 @@ export type ModelProviderGrantProvider = NoneGrantProvider;
 
 export type ModelProviderAuthClient = StaticConnectorAuthClient;
 
-interface ModelProviderAuthProviderRefreshArgs {
+type ModelProviderAuthProviderRefreshInputs = Readonly<Record<string, string>>;
+
+type ModelProviderAuthProviderRefreshOutputs = Readonly<
+  Record<string, string | undefined>
+>;
+
+interface ModelProviderAuthProviderRefreshArgs<
+  Inputs extends ModelProviderAuthProviderRefreshInputs =
+    ModelProviderAuthProviderRefreshInputs,
+> {
   readonly authClient: ModelProviderAuthClient;
-  readonly inputs: Readonly<Record<string, string>>;
+  readonly inputs: Inputs;
   readonly signal: AbortSignal;
 }
 
 export interface ModelProviderAuthProviderRefreshResult<
-  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
-    Record<string, string | undefined>
-  >,
+  Outputs extends ModelProviderAuthProviderRefreshOutputs =
+    ModelProviderAuthProviderRefreshOutputs,
 > {
   readonly outputs: Outputs;
   readonly expiresIn?: number;
 }
 
 interface ModelProviderRefreshTokenAccessProvider<
-  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
-    Record<string, string | undefined>
-  >,
+  Inputs extends ModelProviderAuthProviderRefreshInputs =
+    ModelProviderAuthProviderRefreshInputs,
+  Outputs extends ModelProviderAuthProviderRefreshOutputs =
+    ModelProviderAuthProviderRefreshOutputs,
 > {
   readonly kind: "refresh-token";
   resolveAuthClient(
     currentEnv: ProviderEnv,
   ): ModelProviderAuthClient | undefined;
   refresh(
-    args: ModelProviderAuthProviderRefreshArgs,
+    args: ModelProviderAuthProviderRefreshArgs<Inputs>,
   ): Promise<ModelProviderAuthProviderRefreshResult<Outputs>>;
 }
 
 export type ModelProviderAccessProvider<
-  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
-    Record<string, string | undefined>
-  >,
-> = NoneAccessProvider | ModelProviderRefreshTokenAccessProvider<Outputs>;
+  Inputs extends ModelProviderAuthProviderRefreshInputs =
+    ModelProviderAuthProviderRefreshInputs,
+  Outputs extends ModelProviderAuthProviderRefreshOutputs =
+    ModelProviderAuthProviderRefreshOutputs,
+> =
+  | NoneAccessProvider
+  | ModelProviderRefreshTokenAccessProvider<Inputs, Outputs>;
 
 export type ModelProviderRevokeProvider = NoneRevokeProvider;
 
 export type ModelProviderAuthProvider<
-  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
-    Record<string, string | undefined>
-  >,
+  Inputs extends ModelProviderAuthProviderRefreshInputs =
+    ModelProviderAuthProviderRefreshInputs,
+  Outputs extends ModelProviderAuthProviderRefreshOutputs =
+    ModelProviderAuthProviderRefreshOutputs,
 > = AuthProvider<
   ModelProviderGrantProvider,
-  ModelProviderAccessProvider<Outputs>,
+  ModelProviderAccessProvider<Inputs, Outputs>,
   ModelProviderRevokeProvider
 >;

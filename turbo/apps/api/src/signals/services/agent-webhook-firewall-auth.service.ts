@@ -327,12 +327,7 @@ interface ValidatedRefreshOutput {
 
 type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
-  | {
-      readonly sourceType: "model-provider";
-      readonly providerKey: ModelProviderOAuthProviderKey;
-      readonly currentEnv: ProviderEnv;
-      readonly context: RefreshTokenContext;
-    };
+  | ModelProviderPreparedRefreshTokenContext;
 
 type ConnectorRefreshTokenAccessClientRef =
   ConnectorAuthMethodClientRefByAccessKind<"refresh-token">;
@@ -342,6 +337,13 @@ type ConnectorPreparedRefreshTokenContext =
     readonly sourceType: "connector";
     readonly context: RefreshTokenContext;
   };
+
+type ModelProviderPreparedRefreshTokenContext = {
+  readonly sourceType: "model-provider";
+  readonly providerKey: ModelProviderOAuthProviderKey;
+  readonly currentEnv: ProviderEnv;
+  readonly context: RefreshTokenContext;
+};
 
 function resolveRefreshTokenAccessClientRef(
   authMethodRef: ConnectorAuthMethodRefByAccessKind<"refresh-token">,
@@ -1740,12 +1742,48 @@ function refreshPreparedAccessToken(args: {
     });
   }
 
-  return refreshModelProviderOAuthToken({
-    providerKey: args.prepared.providerKey,
-    currentEnv: args.prepared.currentEnv,
+  return refreshPreparedModelProviderAccessToken({
+    prepared: args.prepared,
     inputs: args.inputs,
     signal: args.signal,
   });
+}
+
+function refreshPreparedModelProviderAccessToken(args: {
+  readonly prepared: ModelProviderPreparedRefreshTokenContext;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}) {
+  switch (args.prepared.providerKey) {
+    case "codex-oauth-token": {
+      return refreshModelProviderOAuthToken({
+        providerKey: args.prepared.providerKey,
+        currentEnv: args.prepared.currentEnv,
+        inputs: {
+          refreshToken: requiredPreparedRefreshInput({
+            connectorType: args.prepared.providerKey,
+            inputs: args.inputs,
+            inputName: "refreshToken",
+          }),
+        },
+        signal: args.signal,
+      });
+    }
+  }
+}
+
+function requiredPreparedRefreshInput(args: {
+  readonly connectorType: string;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly inputName: string;
+}): string {
+  const value = args.inputs[args.inputName];
+  if (value === undefined) {
+    throw new Error(
+      `${args.connectorType} refresh input ${args.inputName} missing after refresh state validation`,
+    );
+  }
+  return value;
 }
 
 function refreshPreparedConnectorAccessToken(args: {

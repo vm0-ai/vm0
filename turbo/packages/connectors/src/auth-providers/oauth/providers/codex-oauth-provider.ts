@@ -2,6 +2,10 @@ import { type ModelProviderAuthProvider } from "../../types";
 import { CHATGPT_OAUTH_CLIENT_ID, refreshChatgptToken } from "./codex-oauth";
 import { oauthRefreshResultToProviderResult } from "../types";
 
+type CodexOAuthRefreshInputs = {
+  readonly refreshToken: string;
+};
+
 type CodexOAuthRefreshOutputs = {
   readonly accessToken: string;
   readonly refreshToken?: string;
@@ -28,9 +32,6 @@ const codexOauthProviderDefinition = {
     },
     refresh: async (args) => {
       const refreshToken = args.inputs.refreshToken;
-      if (!refreshToken) {
-        throw new Error("codex-oauth-token refreshToken input missing");
-      }
       return oauthRefreshResultToProviderResult(
         await refreshChatgptToken(
           args.authClient.clientId,
@@ -43,7 +44,12 @@ const codexOauthProviderDefinition = {
   revoke: {
     kind: "none",
   },
-} satisfies ModelProviderAuthProvider<CodexOAuthRefreshOutputs>;
+} satisfies ModelProviderAuthProvider<
+  CodexOAuthRefreshInputs,
+  CodexOAuthRefreshOutputs
+>;
 
-export const codexOauthProvider: ModelProviderAuthProvider<CodexOAuthRefreshOutputs> =
-  codexOauthProviderDefinition;
+export const codexOauthProvider: ModelProviderAuthProvider<
+  CodexOAuthRefreshInputs,
+  CodexOAuthRefreshOutputs
+> = codexOauthProviderDefinition;

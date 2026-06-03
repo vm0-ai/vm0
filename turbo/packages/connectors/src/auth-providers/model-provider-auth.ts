@@ -43,6 +43,12 @@ const MODEL_PROVIDER_OAUTH_SECRET_METADATA = {
 type ModelProviderOAuthSecretMetadataMap =
   typeof MODEL_PROVIDER_OAUTH_SECRET_METADATA;
 
+type ModelProviderOAuthRefreshInputValues<
+  ProviderKey extends ModelProviderOAuthProviderKey,
+> = {
+  readonly [InputName in keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["inputs"]]: string;
+};
+
 type ModelProviderOAuthRefreshableSecretName<
   ProviderKey extends ModelProviderOAuthProviderKey,
 > = ModelProviderOAuthSecretMetadataMap[ProviderKey] extends {
@@ -75,13 +81,14 @@ type ModelProviderOAuthRefreshOutputValues<
 
 type ModelProviderOAuthProviderMap = {
   readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderAuthProvider<
+    ModelProviderOAuthRefreshInputValues<Key>,
     ModelProviderOAuthRefreshOutputValues<Key>
   >;
 };
 
-const MODEL_PROVIDER_OAUTH_PROVIDERS = {
+const MODEL_PROVIDER_OAUTH_PROVIDERS: ModelProviderOAuthProviderMap = {
   "codex-oauth-token": codexOauthProvider,
-} as const satisfies ModelProviderOAuthProviderMap;
+};
 
 export function isModelProviderOAuthProviderKey(
   providerKey: string,
@@ -120,12 +127,18 @@ export function isModelProviderOAuthRefreshConfigured(args: {
   }
 }
 
-export async function refreshModelProviderOAuthToken(args: {
-  readonly providerKey: ModelProviderOAuthProviderKey;
+export async function refreshModelProviderOAuthToken<
+  ProviderKey extends ModelProviderOAuthProviderKey,
+>(args: {
+  readonly providerKey: ProviderKey;
   readonly currentEnv: ProviderEnv;
-  readonly inputs: Readonly<Record<string, string>>;
+  readonly inputs: ModelProviderOAuthRefreshInputValues<ProviderKey>;
   readonly signal: AbortSignal;
-}): Promise<ModelProviderAuthProviderRefreshResult> {
+}): Promise<
+  ModelProviderAuthProviderRefreshResult<
+    ModelProviderOAuthRefreshOutputValues<ProviderKey>
+  >
+> {
   const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
 
   switch (access.kind) {
