@@ -323,6 +323,26 @@ describe("POST /api/webhooks/agent/storages/prepare", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
+  it("returns 400 when prepare files contain duplicate paths", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody(fixture, {
+          files: [
+            validFile({ path: "duplicate.txt", hash: TEST_HASH }),
+            validFile({ path: "duplicate.txt", hash: SECOND_TEST_HASH }),
+          ],
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Duplicate file path");
+  });
+
   it("returns existing=true for deduplicated versions with uploaded S3 files", async () => {
     const fixture = await track(seedFixture());
     const name = storageName("webhook-prepare-existing");
@@ -426,6 +446,26 @@ describe("POST /api/webhooks/agent/storages/commit", () => {
     );
 
     expect(response.body.error.message).toContain("Version ID mismatch");
+  });
+
+  it("returns 400 when commit files contain duplicate paths", async () => {
+    const fixture = await track(seedFixture());
+
+    const response = await accept(
+      commitClient().commit({
+        body: commitBody(fixture, {
+          files: [
+            validFile({ path: "duplicate.txt", hash: TEST_HASH }),
+            validFile({ path: "duplicate.txt", hash: SECOND_TEST_HASH }),
+          ],
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Duplicate file path");
   });
 
   it("commits uploaded storage and records artifact lineage", async () => {

@@ -129,7 +129,7 @@ export const fileEntryWithHashSchema = z.object({
     .max(MAX_FILE_SIZE_BYTES, "File size exceeds 100MB limit"),
 });
 
-const fileEntriesWithHashSchema = z
+export const fileEntriesWithHashSchema = z
   .array(fileEntryWithHashSchema)
   .superRefine((files, ctx) => {
     const paths = new Set<string>();

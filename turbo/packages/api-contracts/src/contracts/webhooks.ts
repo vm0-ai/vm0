@@ -5,7 +5,7 @@ import { secretConnectorMetadataMapSchema } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
 import {
   storageTypeSchema,
-  fileEntryWithHashSchema,
+  fileEntriesWithHashSchema,
   storageChangesSchema,
   presignedUploadSchema,
 } from "./storages";
@@ -576,7 +576,7 @@ export const webhookStoragesPrepareContract = c.router({
       runId: z.string().min(1, "runId is required"), // Required for webhook auth
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
-      files: z.array(fileEntryWithHashSchema),
+      files: fileEntriesWithHashSchema,
       parentVersionId: z.string().optional(),
       force: z.boolean().optional(),
       baseVersion: z.string().optional(),
@@ -620,7 +620,7 @@ export const webhookStoragesCommitContract = c.router({
       storageType: storageTypeSchema,
       versionId: z.string().min(1, "Version ID is required"),
       parentVersionId: z.string().optional(),
-      files: z.array(fileEntryWithHashSchema),
+      files: fileEntriesWithHashSchema,
       message: z.string().optional(),
     }),
     responses: {
