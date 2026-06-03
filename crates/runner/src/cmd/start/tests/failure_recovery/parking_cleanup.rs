@@ -59,13 +59,38 @@ async fn park_failure_destroys_sandbox_and_skips_pool() {
 
 #[tokio::test]
 async fn park_failure_promotes_workspace_cache_before_destroy() {
+    assert_workspace_cache_after_failed_park(
+        "sess-park-fail-cache",
+        |overrides| {
+            overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+                transition: sandbox::SandboxIdleTransition::Park,
+                message: "simulated balloon failure".into(),
+            }));
+        },
+        true,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn park_panic_skips_workspace_cache_before_destroy() {
+    assert_workspace_cache_after_failed_park(
+        "sess-park-panic-cache",
+        |overrides| overrides.push_park_panic("simulated park panic"),
+        false,
+    )
+    .await;
+}
+
+async fn assert_workspace_cache_after_failed_park(
+    session_id: &str,
+    configure_park: impl FnOnce(&sandbox_mock::MockSandboxOverrides),
+    expect_cache: bool,
+) {
     let wait_gate = MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
-    overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
-        transition: sandbox::SandboxIdleTransition::Park,
-        message: "simulated balloon failure".into(),
-    }));
+    configure_park(&overrides);
     let counter = Arc::clone(&overrides);
 
     let mut profiles = test_profiles();
@@ -86,7 +111,6 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let session_id = "sess-park-fail-cache";
     let mut context = context_with_session(run_id, session_id);
     context.feature_flags = Some(std::collections::HashMap::from([(
         SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
@@ -126,8 +150,12 @@ async fn park_failure_promotes_workspace_cache_before_destroy() {
     assert_eq!(counter.park_call_count(), 1);
     assert_eq!(counter.destroy_call_count(), 1);
     let held = workspace_cache.held_session_states().await;
-    assert_eq!(held.len(), 1);
-    assert_eq!(held[0].session_id, session_id);
+    if expect_cache {
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].session_id, session_id);
+    } else {
+        assert!(held.is_empty());
+    }
 
     shutdown(&env, run_handle).await;
 }

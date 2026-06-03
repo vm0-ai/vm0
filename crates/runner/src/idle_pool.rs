@@ -311,7 +311,9 @@ impl IdleParkRequest {
                 sandbox,
                 factory,
                 budget_lease,
-                workspace_promotion,
+                // A panic leaves the park transition state uncertain; destroy
+                // the sandbox, but do not publish a workspace cache image.
+                workspace_promotion: None,
                 error: "sandbox park panicked".into(),
             }),
         }
