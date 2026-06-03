@@ -257,7 +257,7 @@ pub(crate) struct WorkspaceImageCacheInspectionSummary {
     pub(crate) stale_entries: usize,
     pub(crate) temporary_entries: usize,
     pub(crate) locked_entries: usize,
-    pub(crate) temporary_files: usize,
+    pub(crate) temporary_paths: usize,
     pub(crate) total_allocated_bytes: u64,
     pub(crate) total_logical_image_bytes: u64,
     pub(crate) temporary_allocated_bytes: u64,
@@ -277,7 +277,7 @@ pub(crate) struct WorkspaceImageCacheInspectionEntry {
     pub(crate) last_terminal_status: Option<WorkspaceCacheTerminalStatus>,
     pub(crate) allocated_bytes: u64,
     pub(crate) logical_image_size_bytes: u64,
-    pub(crate) temporary_file_count: usize,
+    pub(crate) temporary_path_count: usize,
     pub(crate) temporary_allocated_bytes: u64,
     pub(crate) storage_count: usize,
     pub(crate) artifact_count: usize,
@@ -294,8 +294,8 @@ pub(crate) enum WorkspaceImageCacheInspectionStatus {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-struct TemporaryFileStats {
-    file_count: usize,
+struct TemporaryPathStats {
+    path_count: usize,
     allocated_bytes: u64,
 }
 
@@ -892,7 +892,7 @@ impl SessionWorkspaceCache {
                 }
                 WorkspaceImageCacheInspectionStatus::Locked => summary.locked_entries += 1,
             }
-            summary.temporary_files += entry.temporary_file_count;
+            summary.temporary_paths += entry.temporary_path_count;
             summary.total_allocated_bytes = summary
                 .total_allocated_bytes
                 .saturating_add(entry.allocated_bytes)
@@ -934,18 +934,18 @@ impl SessionWorkspaceCache {
                     last_terminal_status: None,
                     allocated_bytes: 0,
                     logical_image_size_bytes: 0,
-                    temporary_file_count: 0,
+                    temporary_path_count: 0,
                     temporary_allocated_bytes: 0,
                     storage_count: 0,
                     artifact_count: 0,
                 }));
             }
         };
-        if !fs::try_exists(&entry_dir).await? {
+        if !cache_entry_dir_is_dir(&entry_dir).await? {
             drop(lock);
             return Ok(None);
         }
-        let temporary = inspect_temporary_files(&entry_dir).await?;
+        let temporary = inspect_temporary_paths(&entry_dir).await?;
 
         let current = self.session_workspace_cache_current_image(&cache_key);
         let current_metadata = match fs::symlink_metadata(&current).await {
@@ -974,13 +974,13 @@ impl SessionWorkspaceCache {
 
         let entry = match (current_metadata, metadata) {
             (None, metadata) => {
-                let status = if temporary.file_count > 0 {
+                let status = if temporary.path_count > 0 {
                     WorkspaceImageCacheInspectionStatus::TemporaryOnly
                 } else {
                     WorkspaceImageCacheInspectionStatus::Stale
                 };
-                let reason = if temporary.file_count > 0 {
-                    "missing current image; temporary files present"
+                let reason = if temporary.path_count > 0 {
+                    "missing current image; temporary paths present"
                 } else {
                     "missing current image"
                 };
@@ -1133,6 +1133,11 @@ impl SessionWorkspaceCache {
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
                 continue;
             };
+            let entry_dir = entry.path();
+            if !cache_entry_dir_is_dir(&entry_dir).await? {
+                drop(lock);
+                continue;
+            }
             let current = self.session_workspace_cache_current_image(&cache_key);
             let current_metadata = match fs::symlink_metadata(&current).await {
                 Ok(metadata) => metadata,
@@ -1169,7 +1174,6 @@ impl SessionWorkspaceCache {
                 continue;
             };
 
-            let entry_dir = entry.path();
             let allocated = directory_tree_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
@@ -1258,6 +1262,11 @@ impl SessionWorkspaceCache {
             let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
                 continue;
             };
+            let entry_dir = entry.path();
+            if !cache_entry_dir_is_dir(&entry_dir).await? {
+                drop(lock);
+                continue;
+            }
             let current = self.session_workspace_cache_current_image(&cache_key);
             match fs::try_exists(&current).await {
                 Ok(true) => {
@@ -1270,7 +1279,6 @@ impl SessionWorkspaceCache {
                     return Err(e.into());
                 }
             }
-            let entry_dir = entry.path();
             let allocated = directory_tree_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
@@ -1322,6 +1330,10 @@ impl SessionWorkspaceCache {
                 continue;
             };
             let entry_dir = entry.path();
+            if !cache_entry_dir_is_dir(&entry_dir).await? {
+                drop(lock);
+                continue;
+            }
             let mut files = match fs::read_dir(&entry_dir).await {
                 Ok(files) => files,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -1404,6 +1416,10 @@ impl SessionWorkspaceCache {
     }
 
     async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
+        let entry_dir = self.session_workspace_cache_entry_dir(&cache_key);
+        if !cache_entry_dir_is_dir(&entry_dir).await.ok()? {
+            return None;
+        }
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
         let current_path = self.session_workspace_cache_current_image(&cache_key);
         let file_metadata = fs::symlink_metadata(&current_path).await.ok()?;
@@ -1762,7 +1778,7 @@ fn workspace_image_cache_inspection_entry(
     metadata: Option<&WorkspaceCacheMetadata>,
     current_metadata: Option<&std::fs::Metadata>,
     current_allocated_bytes: u64,
-    temporary: TemporaryFileStats,
+    temporary: TemporaryPathStats,
 ) -> WorkspaceImageCacheInspectionEntry {
     let logical_image_size_bytes = current_metadata.map(std::fs::Metadata::len).unwrap_or(0);
     WorkspaceImageCacheInspectionEntry {
@@ -1777,7 +1793,7 @@ fn workspace_image_cache_inspection_entry(
         last_terminal_status: metadata.map(|metadata| metadata.last_terminal_status),
         allocated_bytes: current_allocated_bytes,
         logical_image_size_bytes,
-        temporary_file_count: temporary.file_count,
+        temporary_path_count: temporary.path_count,
         temporary_allocated_bytes: temporary.allocated_bytes,
         storage_count: metadata
             .map(|metadata| metadata.storage_fingerprints.storages.len())
@@ -1788,24 +1804,16 @@ fn workspace_image_cache_inspection_entry(
     }
 }
 
-async fn inspect_temporary_files(entry_dir: &Path) -> RunnerResult<TemporaryFileStats> {
+async fn inspect_temporary_paths(entry_dir: &Path) -> RunnerResult<TemporaryPathStats> {
     let mut files = match fs::read_dir(entry_dir).await {
         Ok(files) => files,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(TemporaryFileStats::default());
+            return Ok(TemporaryPathStats::default());
         }
         Err(e) => return Err(e.into()),
     };
-    let mut stats = TemporaryFileStats::default();
+    let mut stats = TemporaryPathStats::default();
     while let Some(file) = files.next_entry().await? {
-        let file_type = match file.file_type().await {
-            Ok(file_type) => file_type,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e.into()),
-        };
-        if !file_type.is_file() {
-            continue;
-        }
         let file_name = file.file_name();
         let Some(file_name) = file_name.to_str() else {
             continue;
@@ -1813,15 +1821,19 @@ async fn inspect_temporary_files(entry_dir: &Path) -> RunnerResult<TemporaryFile
         if !is_workspace_tmp_file_name(file_name) {
             continue;
         }
-        let metadata = match fs::symlink_metadata(file.path()).await {
+        let path = file.path();
+        let metadata = match fs::symlink_metadata(&path).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e.into()),
         };
-        stats.file_count += 1;
-        stats.allocated_bytes = stats
-            .allocated_bytes
-            .saturating_add(allocated_bytes(&metadata));
+        let allocated = if metadata.is_dir() {
+            directory_tree_allocated_bytes(&path).await
+        } else {
+            allocated_bytes(&metadata)
+        };
+        stats.path_count += 1;
+        stats.allocated_bytes = stats.allocated_bytes.saturating_add(allocated);
     }
     Ok(stats)
 }
@@ -2525,6 +2537,14 @@ async fn entry_file_type_is_dir(entry: &fs::DirEntry) -> RunnerResult<bool> {
     entry_file_type_matches(entry, std::fs::FileType::is_dir).await
 }
 
+async fn cache_entry_dir_is_dir(path: &Path) -> RunnerResult<bool> {
+    match fs::symlink_metadata(path).await {
+        Ok(metadata) => Ok(metadata.is_dir()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
 async fn entry_file_type_matches(
     entry: &fs::DirEntry,
     matches: fn(&std::fs::FileType) -> bool,
@@ -3194,7 +3214,7 @@ mod tests {
         let inspection = cache.inspect().await.unwrap();
 
         assert_eq!(inspection.summary.temporary_entries, 1);
-        assert_eq!(inspection.summary.temporary_files, 1);
+        assert_eq!(inspection.summary.temporary_paths, 1);
         assert_eq!(
             inspection.summary.temporary_allocated_bytes,
             allocated_bytes(&tmp_metadata)
@@ -3204,7 +3224,38 @@ mod tests {
             entry.status,
             WorkspaceImageCacheInspectionStatus::TemporaryOnly
         );
-        assert_eq!(entry.temporary_file_count, 1);
+        assert_eq!(entry.temporary_path_count, 1);
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_temporary_only_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        fs::create_dir_all(&tmp).await.unwrap();
+        fs::write(tmp.join("partial-image"), vec![1_u8; 4096])
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.temporary_entries, 1);
+        assert_eq!(inspection.summary.temporary_paths, 1);
+        assert!(inspection.summary.temporary_allocated_bytes > 0);
+        let entry = &inspection.entries[0];
+        assert_eq!(
+            entry.status,
+            WorkspaceImageCacheInspectionStatus::TemporaryOnly
+        );
+        assert_eq!(
+            entry.reason.as_deref(),
+            Some("missing current image; temporary paths present")
+        );
+        assert_eq!(entry.temporary_path_count, 1);
+        assert!(entry.temporary_allocated_bytes > 0);
     }
 
     #[tokio::test]
@@ -3230,11 +3281,11 @@ mod tests {
         let inspection = cache.inspect().await.unwrap();
 
         assert_eq!(inspection.summary.locked_entries, 1);
-        assert_eq!(inspection.summary.temporary_files, 0);
+        assert_eq!(inspection.summary.temporary_paths, 0);
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Locked);
         assert_eq!(entry.reason.as_deref(), Some("entry lock is held"));
-        assert_eq!(entry.temporary_file_count, 0);
+        assert_eq!(entry.temporary_path_count, 0);
     }
 
     #[tokio::test]
@@ -3267,6 +3318,25 @@ mod tests {
         let entry_dir = paths.session_workspace_cache_entry_dir(&key);
         fs::create_dir_all(&entry_dir).await.unwrap();
         fs::remove_dir_all(&entry_dir).await.unwrap();
+
+        let entry = cache.inspect_entry(key, entry_dir).await.unwrap();
+
+        assert!(entry.is_none());
+    }
+
+    #[tokio::test]
+    async fn inspect_entry_skips_symlink_replacement_after_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        fs::create_dir_all(entry_dir.parent().unwrap())
+            .await
+            .unwrap();
+        let target = dir.path().join("outside-cache-entry");
+        fs::create_dir_all(&target).await.unwrap();
+        std::os::unix::fs::symlink(&target, &entry_dir).unwrap();
 
         let entry = cache.inspect_entry(key, entry_dir).await.unwrap();
 

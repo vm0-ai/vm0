@@ -55,16 +55,8 @@ impl LockMode {
     }
 
     fn map_error(self, path: &Path, e: nix::errno::Errno) -> RunnerError {
-        if matches!(self, Self::TryExclusive) && e == nix::errno::Errno::EWOULDBLOCK {
-            RunnerError::Config(LOCK_BUSY_ERROR.into())
-        } else {
-            RunnerError::Internal(format!("flock {}: {e}", path.display()))
-        }
+        RunnerError::Internal(format!("flock {}: {e}", path.display()))
     }
-}
-
-fn is_lock_busy_error(error: &RunnerError) -> bool {
-    matches!(error, RunnerError::Config(message) if message == LOCK_BUSY_ERROR)
 }
 
 pub(crate) enum TryLock {
@@ -72,19 +64,39 @@ pub(crate) enum TryLock {
     Busy,
 }
 
-async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
+enum LockAcquire {
+    Acquired(Flock<File>),
+    Busy,
+}
+
+async fn acquire_result_with(path: PathBuf, mode: LockMode) -> RunnerResult<LockAcquire> {
     tokio::task::spawn_blocking(move || {
         loop {
             let file = open_lock_file(&path)?;
-            let lock =
-                Flock::lock(file, mode.arg()).map_err(|(_file, e)| mode.map_error(&path, e))?;
+            let lock = match Flock::lock(file, mode.arg()) {
+                Ok(lock) => lock,
+                Err((_file, e))
+                    if matches!(mode, LockMode::TryExclusive)
+                        && e == nix::errno::Errno::EWOULDBLOCK =>
+                {
+                    return Ok(LockAcquire::Busy);
+                }
+                Err((_file, e)) => return Err(mode.map_error(&path, e)),
+            };
             if is_current_inode(&lock, &path) {
-                return Ok(lock);
+                return Ok(LockAcquire::Acquired(lock));
             }
         }
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("lock task: {e}")))?
+}
+
+async fn acquire_with(path: PathBuf, mode: LockMode) -> RunnerResult<Flock<File>> {
+    match acquire_result_with(path, mode).await? {
+        LockAcquire::Acquired(lock) => Ok(lock),
+        LockAcquire::Busy => Err(RunnerError::Config(LOCK_BUSY_ERROR.into())),
+    }
 }
 
 /// Acquire an exclusive flock on the given path, blocking until available.
@@ -110,10 +122,9 @@ pub async fn try_acquire(path: PathBuf) -> RunnerResult<Flock<File>> {
 }
 
 pub async fn try_acquire_or_busy(path: PathBuf) -> RunnerResult<TryLock> {
-    match try_acquire(path).await {
-        Ok(lock) => Ok(TryLock::Acquired(lock)),
-        Err(e) if is_lock_busy_error(&e) => Ok(TryLock::Busy),
-        Err(e) => Err(e),
+    match acquire_result_with(path, LockMode::TryExclusive).await? {
+        LockAcquire::Acquired(lock) => Ok(TryLock::Acquired(lock)),
+        LockAcquire::Busy => Ok(TryLock::Busy),
     }
 }
 

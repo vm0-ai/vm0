@@ -169,7 +169,7 @@ Workspace image cache
   Filesystem: total {fs_total}, available {fs_available}
   Budget: max {max_cache}, target after GC {target_after_gc}, min free {min_free}, max entry {max_entry}
   Entries: total {total}, reusable {reusable}, invalid {invalid}, stale {stale}, temporary-only {temporary}, locked {locked}
-  Temporary files: {temporary_files} ({temporary_allocated})
+  Temporary paths: {temporary_paths} ({temporary_allocated})
   Size: allocated {allocated}, logical {logical}
 
 List entries:
@@ -192,7 +192,7 @@ Preview cleanup:
         stale = summary.stale_entries,
         temporary = summary.temporary_entries,
         locked = summary.locked_entries,
-        temporary_files = summary.temporary_files,
+        temporary_paths = summary.temporary_paths,
         temporary_allocated = human_bytes(summary.temporary_allocated_bytes),
         allocated = human_bytes(summary.total_allocated_bytes),
         logical = human_bytes(summary.total_logical_image_bytes),
@@ -213,12 +213,12 @@ fn format_list_text(output: &WorkspaceImageCacheListOutput) -> String {
     for entry in &output.entries {
         text.push('\n');
         text.push_str(&format!(
-            "{status} {key}\n  allocated={allocated} logical={logical} tempFiles={temp_files} tempAllocated={temp_allocated} storages={storages} artifacts={artifacts}\n",
+            "{status} {key}\n  allocated={allocated} logical={logical} tempPaths={temp_paths} tempAllocated={temp_allocated} storages={storages} artifacts={artifacts}\n",
             status = entry.status.as_str(),
             key = entry.cache_key,
             allocated = human_bytes(entry.allocated_bytes),
             logical = human_bytes(entry.logical_image_size_bytes),
-            temp_files = entry.temporary_file_count,
+            temp_paths = entry.temporary_path_count,
             temp_allocated = human_bytes(entry.temporary_allocated_bytes),
             storages = entry.storage_count,
             artifacts = entry.artifact_count,
@@ -307,7 +307,7 @@ mod tests {
                 stale_entries: 0,
                 temporary_entries: 0,
                 locked_entries: 0,
-                temporary_files: 1,
+                temporary_paths: 1,
                 total_allocated_bytes: 512,
                 total_logical_image_bytes: 1024,
                 temporary_allocated_bytes: 128,
@@ -327,7 +327,7 @@ mod tests {
                     ),
                     allocated_bytes: 256,
                     logical_image_size_bytes: 1024,
-                    temporary_file_count: 1,
+                    temporary_path_count: 1,
                     temporary_allocated_bytes: 128,
                     storage_count: 2,
                     artifact_count: 1,
@@ -344,7 +344,7 @@ mod tests {
                     last_terminal_status: None,
                     allocated_bytes: 128,
                     logical_image_size_bytes: 512,
-                    temporary_file_count: 0,
+                    temporary_path_count: 0,
                     temporary_allocated_bytes: 0,
                     storage_count: 0,
                     artifact_count: 0,
@@ -361,6 +361,8 @@ mod tests {
             "/var/lib/vm0-runner/workspace-image-cache"
         );
         assert_eq!(value["summary"]["totalEntries"], 2);
+        assert_eq!(value["summary"]["temporaryPaths"], 1);
+        assert!(value["summary"].get("temporaryFiles").is_none());
         assert!(value.get("entries").is_none());
     }
 
@@ -371,6 +373,8 @@ mod tests {
         assert_eq!(value["entries"].as_array().unwrap().len(), 1);
         assert_eq!(value["entries"][0]["status"], "invalid");
         assert_eq!(value["entries"][0]["reason"], "missing metadata");
+        assert_eq!(value["entries"][0]["temporaryPathCount"], 0);
+        assert!(value["entries"][0].get("temporaryFileCount").is_none());
         assert!(value["entries"][0].get("storageFingerprints").is_none());
     }
 
@@ -379,6 +383,7 @@ mod tests {
         let text = format_info_text(&test_inspection());
         assert!(text.contains("Workspace image cache"));
         assert!(text.contains("Entries: total 2, reusable 1, invalid 1"));
+        assert!(text.contains("Temporary paths: 1"));
         assert!(text.contains("runner workspace-image-cache list --limit 50"));
         assert!(text.contains("runner workspace-image-cache gc --dry-run"));
     }
@@ -388,6 +393,7 @@ mod tests {
         let text = format_list_text(&list_output(&test_inspection(), Some(1)));
         assert!(text.contains("1 shown, 2 total"));
         assert!(text.contains("invalid "));
+        assert!(text.contains("tempPaths=0"));
         assert!(text.contains("reason=missing metadata"));
         assert!(!text.contains("reusable "));
     }
