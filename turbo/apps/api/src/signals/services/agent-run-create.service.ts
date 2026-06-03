@@ -2837,6 +2837,8 @@ async function insertRunRecord(
       continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
       sessionId,
       lastHeartbeatAt: nowDate(),
+      modelProvider: args.modelProvider?.type ?? null,
+      selectedModel: args.modelProvider?.selectedModel ?? null,
     })
     .returning({
       id: agentRuns.id,
@@ -2929,6 +2931,8 @@ async function insertQueuedRunRecord(
       continuedFromSessionId: args.resolved.continuedFromSessionId ?? null,
       sessionId,
       lastHeartbeatAt: nowDate(),
+      modelProvider: args.modelProvider?.type ?? null,
+      selectedModel: args.modelProvider?.selectedModel ?? null,
     })
     .returning({
       id: agentRuns.id,

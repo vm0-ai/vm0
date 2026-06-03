@@ -104,22 +104,33 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   const hasModelEvents = body.events.some((event) => {
     return event.kind === MODEL_USAGE_KIND;
   });
-  const [zeroRun] = hasModelEvents
+  const [runModelContext] = hasModelEvents
     ? await db
         .select({
-          modelProvider: zeroRuns.modelProvider,
-          selectedModel: zeroRuns.selectedModel,
+          runModelProvider: agentRuns.modelProvider,
+          runSelectedModel: agentRuns.selectedModel,
+          zeroModelProvider: zeroRuns.modelProvider,
+          zeroSelectedModel: zeroRuns.selectedModel,
         })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, body.runId))
+        .from(agentRuns)
+        .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+        .where(eq(agentRuns.id, body.runId))
         .limit(1)
     : [];
   signal.throwIfAborted();
 
+  const modelProviderType =
+    runModelContext?.zeroModelProvider ??
+    runModelContext?.runModelProvider ??
+    null;
+  const selectedModel =
+    runModelContext?.zeroSelectedModel ??
+    runModelContext?.runSelectedModel ??
+    null;
   const fallbackModel = body.events.find((event) => {
     return event.kind === MODEL_USAGE_KIND;
   })?.provider;
-  const candidateModel = zeroRun?.selectedModel ?? fallbackModel;
+  const candidateModel = selectedModel ?? fallbackModel;
   const canonicalModel = candidateModel
     ? normalizeRunModelId(candidateModel)
     : undefined;
@@ -131,9 +142,8 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     .filter((event) => {
       return (
         event.kind !== MODEL_USAGE_KIND ||
-        !zeroRun ||
-        zeroRun.modelProvider === null ||
-        zeroRun.modelProvider === "vm0"
+        modelProviderType === null ||
+        modelProviderType === "vm0"
       );
     })
     .map((event) => {
@@ -159,7 +169,7 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
             orgId: auth.orgId,
             userId: auth.userId,
             model: observationModel,
-            modelProviderType: zeroRun?.modelProvider ?? "",
+            modelProviderType: modelProviderType ?? "",
             category: event.category,
             quantity: event.quantity,
             observedAt,
