@@ -3619,7 +3619,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(forcedResponse.body.refreshedConnectors).toStrictEqual(["notion"]);
   });
 
-  it("refreshes expired codex model-provider OAuth tokens", async () => {
+  it("refreshes expired codex model-provider access tokens", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
     server.use(
@@ -3680,7 +3680,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("refreshes user-owned codex model-provider OAuth tokens", async () => {
+  it("refreshes user-owned codex model-provider access tokens", async () => {
     const fixture = await track(seedFixture());
     await seedCodexModelProvider(fixture, {
       sourceUserId: fixture.userId,
@@ -3814,7 +3814,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(refreshCallCount).toBe(0);
   });
 
-  it("returns missing configuration when a model-provider OAuth row is absent", async () => {
+  it("returns missing configuration when a model-provider row is absent", async () => {
     const fixture = await track(seedFixture());
     let refreshCallCount = 0;
     server.use(
@@ -3863,7 +3863,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(refreshCallCount).toBe(0);
   });
 
-  it("serializes concurrent model-provider OAuth refreshes for rotated refresh tokens", async () => {
+  it("serializes concurrent model-provider access refreshes for rotated refresh tokens", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
 
@@ -4137,7 +4137,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(refreshCallCount).toBe(0);
   });
 
-  it("preserves model-provider reauth that races with runtime OAuth refresh", async () => {
+  it("preserves model-provider reauth that races with runtime access refresh", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
 
@@ -4241,7 +4241,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  it("derives model-provider source from registered OAuth provider keys", async () => {
+  it("derives model-provider source from registered refresh provider keys", async () => {
     const fixture = await track(seedFixture());
     await seedExpiredCodexModelProvider(fixture);
     server.use(
