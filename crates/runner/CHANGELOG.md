@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.107.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.2...runner-rs-v0.107.3) (2026-06-03)
+
+
+### Bug Fixes
+
+* cap firewall auth response reads ([#15942](https://github.com/vm0-ai/vm0/issues/15942)) ([1177be1](https://github.com/vm0-ai/vm0/commit/1177be1f5ad0ebc858491c0ae41f9ef7a167040c))
+
+
+### Refactoring
+
+* split runner spawn job phases ([#15943](https://github.com/vm0-ai/vm0/issues/15943)) ([a7d5290](https://github.com/vm0-ai/vm0/commit/a7d52907feb13fc1c6adf1d7981568aaedd30021))
+
 ## [0.107.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.1...runner-rs-v0.107.2) (2026-06-02)
 
 

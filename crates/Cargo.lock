@@ -129,7 +129,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "api-contracts"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1263,7 +1263,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.34.4"
+version = "0.34.5"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "api-contracts",
  "libc",
@@ -2067,7 +2067,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.28"
+version = "0.4.29"
 dependencies = [
  "bitvec",
  "libc",
@@ -2558,7 +2558,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.107.2"
+version = "0.107.3"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2774,7 +2774,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.0"
+version = "0.37.1"
 dependencies = [
  "async-trait",
  "base64",

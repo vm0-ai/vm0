@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.403.0](https://github.com/vm0-ai/vm0/compare/app-v0.402.1...app-v0.403.0) (2026-06-03)
+
+
+### Features
+
+* memory viewer refinements — pin MEMORY.md, file panel on the right ([#15937](https://github.com/vm0-ai/vm0/issues/15937)) ([ec20ba1](https://github.com/vm0-ai/vm0/commit/ec20ba1f2d56440c8305349c43dc37683885a239))
+
+
+### Bug Fixes
+
+* intercept relative memory links to switch files instead of 404 ([#15952](https://github.com/vm0-ai/vm0/issues/15952)) ([dda155b](https://github.com/vm0-ai/vm0/commit/dda155b594b4ffb04e56cbab7cf6aff9650fcbbb))
+* render permission action status as text ([#15947](https://github.com/vm0-ai/vm0/issues/15947)) ([cfc154b](https://github.com/vm0-ai/vm0/commit/cfc154be5af765927537d227f0c6b8a9c1967e9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.2
+    * @vm0/core bumped to 8.308.2
+
 ## [0.402.1](https://github.com/vm0-ai/vm0/compare/app-v0.402.0...app-v0.402.1) (2026-06-02)
 
 

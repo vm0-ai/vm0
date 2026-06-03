@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.29](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.28...nbd-cow-v0.4.29) (2026-06-03)
+
+
+### Refactoring
+
+* separate nbd netlink wire handling ([#15944](https://github.com/vm0-ai/vm0/issues/15944)) ([9c337fe](https://github.com/vm0-ai/vm0/commit/9c337fe8f4c8e6e4dad9fe1fca196d00010f362e))
+
 ## [0.4.28](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.27...nbd-cow-v0.4.28) (2026-06-02)
 
 
