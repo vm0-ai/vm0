@@ -33,7 +33,10 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { deleteS3Objects, listS3Objects, putS3Object } from "../external/s3";
 import { settle } from "../utils";
-import type { FileEntryWithHash } from "./storage-content-hash.service";
+import {
+  computeSystemSkillContentHash,
+  type FileEntryWithHash,
+} from "./storage-content-hash.service";
 
 interface SyncSkillsResult {
   readonly commitSha: string;
@@ -184,26 +187,6 @@ async function downloadAndExtractSkills(
   );
 }
 
-function computeSystemSkillHash(
-  skillUrl: string,
-  files: readonly FileEntryWithHash[],
-): string {
-  if (files.length === 0) {
-    return createHash("sha256")
-      .update(`system-skill:${skillUrl}\n`)
-      .digest("hex");
-  }
-
-  const entries = files
-    .map((file) => {
-      return `${file.path}:${file.hash}`;
-    })
-    .sort();
-  return createHash("sha256")
-    .update(`system-skill:${skillUrl}\n${entries.join("\n")}`)
-    .digest("hex");
-}
-
 function skillUrl(skillName: string): string {
   return `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`;
 }
@@ -237,7 +220,7 @@ function buildSkillSyncContext(extracted: ExtractedSkill): SkillSyncContext {
     fullPath,
     storageName: getSkillStorageName(fullPath),
     frontmatter,
-    versionHash: computeSystemSkillHash(url, fileEntries),
+    versionHash: computeSystemSkillContentHash(url, fileEntries),
     totalSize,
   };
 }

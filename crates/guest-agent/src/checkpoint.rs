@@ -270,7 +270,13 @@ async fn snapshot_artifact_entries(
         let local_hash = content_hash::compute_content_hash(
             &entry.storage_id,
             files.iter().map(|f| (f.path.as_str(), f.hash.as_str())),
-        );
+        )
+        .map_err(|error| {
+            AgentError::Checkpoint(format!(
+                "Failed to compute VAS artifact content hash for '{}': {error}",
+                entry.name
+            ))
+        })?;
         if local_hash == entry.version_id {
             log_info!(
                 LOG_TAG,

@@ -112,18 +112,39 @@ export type StoragesContract = typeof storagesContract;
  */
 export const MAX_FILE_SIZE_BYTES = 104_857_600;
 
+const sha256HexSchema = z
+  .string()
+  .regex(/^[a-fA-F0-9]{64}$/, "Hash must be SHA-256 hex");
+
 /**
  * File entry with hash for content-addressable storage
  */
 export const fileEntryWithHashSchema = z.object({
   path: z.string().min(1, "File path is required"),
-  hash: z.string().length(64, "Hash must be SHA-256 (64 hex chars)"),
+  hash: sha256HexSchema,
   size: z
     .number()
     .int()
     .min(0, "Size must be non-negative")
     .max(MAX_FILE_SIZE_BYTES, "File size exceeds 100MB limit"),
 });
+
+const fileEntriesWithHashSchema = z
+  .array(fileEntryWithHashSchema)
+  .superRefine((files, ctx) => {
+    const paths = new Set<string>();
+    for (const [index, file] of files.entries()) {
+      if (paths.has(file.path)) {
+        ctx.addIssue({
+          code: "custom",
+          path: [index, "path"],
+          message: `Duplicate file path "${file.path}"`,
+        });
+        continue;
+      }
+      paths.add(file.path);
+    }
+  });
 
 /**
  * Incremental changes schema for partial uploads
@@ -162,7 +183,7 @@ export const storagesPrepareContract = c.router({
     body: z.object({
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
-      files: z.array(fileEntryWithHashSchema),
+      files: fileEntriesWithHashSchema,
       force: z.boolean().optional(),
       runId: z.string().optional(), // For sandbox auth
       baseVersion: z.string().optional(), // For incremental uploads
@@ -207,7 +228,7 @@ export const storagesCommitContract = c.router({
       storageName: z.string().min(1, "Storage name is required"),
       storageType: storageTypeSchema,
       versionId: z.string().min(1, "Version ID is required"),
-      files: z.array(fileEntryWithHashSchema),
+      files: fileEntriesWithHashSchema,
       runId: z.string().optional(),
       message: z.string().optional(),
     }),

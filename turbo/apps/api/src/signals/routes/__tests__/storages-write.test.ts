@@ -364,6 +364,43 @@ describe("POST /api/storages/prepare", () => {
     expect(response.body.error.code).toBe("BAD_REQUEST");
   });
 
+  it("returns 400 when a file hash is not hex", async () => {
+    await useClerkSession();
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody({
+          files: [validFile({ hash: "g".repeat(64) })],
+        }),
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Hash must be SHA-256 hex");
+  });
+
+  it("returns 400 when prepare files contain duplicate paths", async () => {
+    await useClerkSession();
+
+    const response = await accept(
+      prepareClient().prepare({
+        body: prepareBody({
+          files: [
+            validFile({ path: "duplicate.txt", hash: TEST_HASH }),
+            validFile({ path: "duplicate.txt", hash: SECOND_TEST_HASH }),
+          ],
+        }),
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Duplicate file path");
+  });
+
   it("computes the same version ID regardless of file order", async () => {
     await useClerkSession();
     const name = storageName("order-independent");
@@ -381,6 +418,25 @@ describe("POST /api/storages/prepare", () => {
     );
 
     expect(first.versionId).toBe(second.versionId);
+  });
+
+  it("canonicalizes uppercase file hashes", async () => {
+    await useClerkSession();
+    const name = storageName("hash-case");
+    const lower = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [validFile({ path: "data.txt", hash: TEST_HASH })],
+      }),
+    );
+    const upper = await prepareOk(
+      prepareBody({
+        storageName: name,
+        files: [validFile({ path: "data.txt", hash: TEST_HASH.toUpperCase() })],
+      }),
+    );
+
+    expect(upper.versionId).toBe(lower.versionId);
   });
 
   it("computes different version IDs when file content or path changes", async () => {
@@ -555,6 +611,26 @@ describe("POST /api/storages/commit", () => {
     );
 
     expect(response.body.error.message).toContain("Version ID mismatch");
+  });
+
+  it("returns 400 when commit files contain duplicate paths", async () => {
+    await useClerkSession();
+
+    const response = await accept(
+      commitClient().commit({
+        body: commitBody({
+          files: [
+            validFile({ path: "duplicate.txt", hash: TEST_HASH }),
+            validFile({ path: "duplicate.txt", hash: SECOND_TEST_HASH }),
+          ],
+        }),
+        headers: authHeaders(),
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("Duplicate file path");
   });
 
   it("returns 400 when uploaded S3 objects are missing", async () => {
