@@ -1,6 +1,7 @@
 import type {
   AuthCodeGrantConnectorType,
   ConnectorAuthMethodIds,
+  ConnectorAuthMethodIdsByGrantKind,
   ConnectorGrantOutputValues,
   DeviceAuthGrantConnectorType,
 } from "../connectors";
@@ -26,7 +27,14 @@ export interface ConnectorAuthProviderGrantResult<
   readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
 }
 
+type ConnectorAuthProviderGrantMethodId<
+  T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
+> = ConnectorAuthMethodIdsByGrantKind<T, "auth-code" | "device-auth">;
+
 export type ConnectorAuthProviderGrantResultForMethod<
   T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
   Method extends ConnectorAuthMethodIds<T>,
-> = ConnectorAuthProviderGrantResult<ConnectorGrantOutputValues<T, Method>>;
+> =
+  Method extends ConnectorAuthProviderGrantMethodId<T>
+    ? ConnectorAuthProviderGrantResult<ConnectorGrantOutputValues<T, Method>>
+    : never;
