@@ -126,7 +126,7 @@ pub(super) async fn add_run_with_idle_status_snapshot(
 }
 
 pub(super) fn spawn_idle_destroy_job(
-    destroy_tasks: &mut JoinSet<()>,
+    destroy_tasks: &mut JoinSet<bool>,
     job: IdleDestroyJob,
     context: &'static str,
 ) {
@@ -134,7 +134,10 @@ pub(super) fn spawn_idle_destroy_job(
 }
 
 /// Destroy idle entries in parallel and wait until their leases are dropped.
-pub(super) async fn destroy_idle_jobs_and_wait(jobs: Vec<IdleDestroyJob>, context: &'static str) {
+pub(super) async fn destroy_idle_jobs_and_wait(
+    jobs: Vec<IdleDestroyJob>,
+    context: &'static str,
+) -> bool {
     // Destroy in parallel -- each `stop_and_destroy` is ~1-3s (FC shutdown +
     // cgroup/NBD/netns teardown). Serial destroy blows past shutdown and
     // budget-pressure recovery budgets on multi-VM cleanup.
@@ -142,16 +145,19 @@ pub(super) async fn destroy_idle_jobs_and_wait(jobs: Vec<IdleDestroyJob>, contex
     for job in jobs {
         set.spawn(destroy_idle_job(job, context));
     }
+    let mut workspace_cache_promoted = false;
     while let Some(result) = set.join_next().await {
-        if let Err(e) = result {
-            warn!(context, error = %e, "idle entry destroy task panicked");
+        match result {
+            Ok(promoted) => workspace_cache_promoted |= promoted,
+            Err(e) => warn!(context, error = %e, "idle entry destroy task panicked"),
         }
     }
+    workspace_cache_promoted
 }
 
 /// Destroy an idle sandbox entry. Its budget lease is released by Drop.
-async fn destroy_idle_job(job: IdleDestroyJob, context: &'static str) {
-    job.run_with_context(context).await;
+async fn destroy_idle_job(job: IdleDestroyJob, context: &'static str) -> bool {
+    job.run_with_context(context).await
 }
 
 pub(super) async fn destroy_idle_payload_and_wait(
@@ -183,10 +189,17 @@ mod tests {
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, ParkedIdleCandidate,
-        SyntheticParkedIdleCandidateParts,
+        IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
+        ParkedIdleCandidate, StorageFingerprints, SyntheticParkedIdleCandidateParts,
     };
+    use crate::ids::RunId;
+    use crate::paths::RunnerPaths;
     use crate::resource_budget::ResourceBudget;
+    use crate::workspace_image_cache::{
+        SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImagePrepareRequest,
+        WorkspaceImagePromotionRequest,
+    };
+    use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
     struct PanickingDestroyFactory;
 
@@ -366,5 +379,77 @@ mod tests {
 
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn idle_destroy_reports_workspace_cache_promotion() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-idle-destroy-cache";
+        let image = b"workspace image";
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: image.len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), image)
+            .await
+            .unwrap();
+        let workspace_promotion = workspace_image
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-06-03T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+                promotable: true,
+            })
+            .expect("workspace image should be promotable");
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let request = IdleParkRequest::new(IdleParkRequestParts {
+            sandbox: Box::new(MockSandbox::new("idle-destroy-cache")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            session_id: session_id.into(),
+            sandbox_id,
+            profile_name: "vm0/default".into(),
+            device_rate_limits: None,
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            workspace_promotion: Some(workspace_promotion),
+        });
+        let candidate = match request.park_for_idle().await {
+            Ok(candidate) => candidate.with_last_completed_at("2026-06-03T00:00:00.000Z".into()),
+            Err(_) => panic!("park should succeed"),
+        };
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+
+        let promoted = destroy_idle_jobs_and_wait(pool.drain(), "test_idle_destroy_cache").await;
+
+        assert!(promoted);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        let held = cache.held_session_states().await;
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].session_id, session_id);
     }
 }

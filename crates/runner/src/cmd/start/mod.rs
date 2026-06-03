@@ -954,7 +954,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
     // destroys at shutdown, preventing factory Arc leaks that cause
     // "factory still referenced" warnings from Arc::try_unwrap.
-    let mut destroy_tasks: JoinSet<()> = JoinSet::new();
+    let mut destroy_tasks: JoinSet<bool> = JoinSet::new();
 
     shared.status.write_initial().await;
     info!(
@@ -1129,7 +1129,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         count = expired.len(),
                         "reclaiming expired idle VMs for resource pressure"
                     );
-                    destroy_idle_jobs_and_wait(expired, "budget_pressure_expired").await;
+                    if destroy_idle_jobs_and_wait(expired, "budget_pressure_expired").await {
+                        park_notify.notify_one();
+                    }
                     continue;
                 }
 
@@ -1149,7 +1151,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     );
                     // Wait for the destroy task so the idle VM's lease is
                     // dropped before the loop re-checks can_afford().
-                    destroy_idle_jobs_and_wait(vec![evicted], "budget_pressure_oldest").await;
+                    if destroy_idle_jobs_and_wait(vec![evicted], "budget_pressure_oldest").await {
+                        park_notify.notify_one();
+                    }
                     continue;
                 }
             }
@@ -1236,8 +1240,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Reap completed destroy tasks
             Some(result) = destroy_tasks.join_next(), if !destroy_tasks.is_empty() => {
-                if let Err(e) = result {
-                    warn!(error = %e, "destroy task panicked");
+                match result {
+                    Ok(true) => park_notify.notify_one(),
+                    Ok(false) => {}
+                    Err(e) => warn!(error = %e, "destroy task panicked"),
                 }
             }
             // Mitmproxy crash detection
@@ -1353,8 +1359,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     mitm.request_usage_flush();
                 }
                 Some(result) = destroy_tasks.join_next() => {
-                    if let Err(e) = result {
-                        warn!(error = %e, "destroy task panicked");
+                    match result {
+                        Ok(_) => {}
+                        Err(e) => warn!(error = %e, "destroy task panicked"),
                     }
                 }
                 _ = mitm_crash_rx.recv() => {
@@ -1386,8 +1393,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // shutdown_factories calls Arc::try_unwrap.
     let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
-        if let Err(e) = result {
-            warn!(error = %e, "destroy task panicked during shutdown");
+        match result {
+            Ok(_) => {}
+            Err(e) => {
+                warn!(error = %e, "destroy task panicked during shutdown");
+            }
         }
     }
     teardown.phase_complete("destroy_tasks_drain", phase);

@@ -595,18 +595,19 @@ pub struct IdleDestroyJob {
 impl IdleDestroyJob {
     #[cfg(test)]
     pub async fn run(self) {
-        self.run_with_context("idle_destroy").await;
+        let _ = self.run_with_context("idle_destroy").await;
     }
 
-    pub async fn run_with_context(self, context: &'static str) {
+    pub async fn run_with_context(self, context: &'static str) -> bool {
         let Self {
             payload,
             budget_lease,
             session_id: _,
             profile_name: _,
         } = self;
-        let _ = payload.promote_then_stop_and_destroy(context).await;
+        let result = payload.promote_then_stop_and_destroy(context).await;
         drop(budget_lease);
+        result.workspace_cache_promoted
     }
 
     pub fn session_id(&self) -> &str {

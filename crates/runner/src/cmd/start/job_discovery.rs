@@ -40,7 +40,7 @@ pub(super) struct DiscoveredJobContext<'a> {
     pub(super) mode_rx: &'a tokio::sync::watch::Receiver<RunnerMode>,
     pub(super) cancel_tokens: &'a Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
     pub(super) spawn_ctx: &'a SpawnContext,
-    pub(super) destroy_tasks: &'a mut JoinSet<()>,
+    pub(super) destroy_tasks: &'a mut JoinSet<bool>,
     pub(super) jobs: &'a mut JoinSet<Option<RunId>>,
 }
 
