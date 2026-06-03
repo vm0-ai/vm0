@@ -1576,6 +1576,71 @@ describe("POST /api/agent/runs", () => {
     ).toBeUndefined();
   });
 
+  it("keeps user-authored canonical memory mount overrides strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use canonical memory mount with a custom artifact",
+          artifacts: [
+            {
+              name: "custom-memory",
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, response.body.sessionId));
+    expect(session?.artifacts).toStrictEqual([
+      {
+        name: "custom-memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      },
+    ]);
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.map((artifact) => {
+        return {
+          mountPath: artifact.mountPath,
+          name: artifact.vasStorageName,
+          missingRootPolicy: artifact.missingRootPolicy,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        name: "custom-memory",
+        missingRootPolicy: undefined,
+      },
+    ]);
+  });
+
   it("keeps continued user-authored canonical memory artifacts strict", async () => {
     const fx = await fixture();
     const compose = await createCompose({ fixture: fx });
@@ -2112,6 +2177,76 @@ describe("POST /api/agent/runs", () => {
       {
         mountPath: "/mnt/user-memory",
         name: "memory",
+        missingRootPolicy: undefined,
+      },
+    ]);
+  });
+
+  it("keeps continued body canonical memory mount overrides strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+    const first = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { agentComposeId: compose.composeId, prompt: "first" },
+      }),
+      [201],
+    );
+    const db = store.set(writeDb$);
+    await store.set(
+      seedConversationForSession$,
+      { runId: first.body.runId, sessionId: first.body.sessionId },
+      context.signal,
+    );
+    await db
+      .update(agentRuns)
+      .set({ status: "completed", completedAt: nowDate() })
+      .where(eq(agentRuns.id, first.body.runId));
+
+    const continued = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          sessionId: first.body.sessionId,
+          prompt: "continue",
+          artifacts: [
+            {
+              name: "custom-memory",
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, continued.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: ArtifactEntry["missingRootPolicy"];
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.map((artifact) => {
+        return {
+          mountPath: artifact.mountPath,
+          name: artifact.vasStorageName,
+          missingRootPolicy: artifact.missingRootPolicy,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        name: "custom-memory",
         missingRootPolicy: undefined,
       },
     ]);
