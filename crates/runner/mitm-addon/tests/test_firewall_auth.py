@@ -67,6 +67,13 @@ def _json_response(body: object) -> MagicMock:
     return mock_resp
 
 
+def _raw_response(body: bytes) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = body
+    return mock_resp
+
+
 def _allow(
     api_entry: dict,
     *,
@@ -840,6 +847,64 @@ class TestHandleFirewallRequest:
         assert "connectors" not in body
         mock_resp.__exit__.assert_called_once()
 
+    async def test_oversized_success_response_returns_502_without_auth_mutation(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.github.com",
+            path="/repos?existing=1",
+        )
+        flow.metadata["vm_run_id"] = "test-run"
+        api_entry = {
+            "base": "https://api.github.com",
+            "auth": {
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        }
+        vm_info = {
+            "runId": "run-1",
+            "sandboxToken": "tok-xyz",
+            "encryptedSecrets": "iv:tag:data",
+            "networkLogPath": str(tmp_path / "net.jsonl"),
+            "billableFirewalls": [],
+        }
+        allow = _allow(api_entry)
+        response_body = json.dumps({"headers": {"Authorization": "Bearer tok"}}).encode()
+        mock_resp = _raw_response(response_body)
+
+        with (
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(response_body) - 1,
+                create=True,
+            ),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        assert cached_headers(("test-run", "https://api.github.com")) is None
+        body = json.loads(flow.response.content)
+        assert body["error"] == "auth_failed"
+        assert "Firewall auth response body too large" in body["message"]
+        assert body["permission"] == "github"
+        assert body["base"] == "https://api.github.com"
+        assert "connectors" not in body
+        mock_resp.__exit__.assert_called_once()
+
     async def test_malformed_json_success_response_returns_502_without_auth_mutation(
         self,
         real_flow,
@@ -1313,6 +1378,53 @@ class TestFetchFirewallHeaders:
 
         mock_resp.__exit__.assert_called_once()
 
+    def test_success_response_at_body_limit_is_accepted(self):
+        response_body = json.dumps({"headers": {}}).encode()
+        mock_resp = _raw_response(response_body)
+
+        with (
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(response_body),
+                create=True,
+            ),
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {},
+                "tok-xyz",
+                "https://api.vm0.ai",
+            )
+
+        assert result.payload.headers == {}
+        mock_resp.read.assert_called_once_with(len(response_body) + 1)
+        mock_resp.__exit__.assert_called_once()
+
+    def test_success_response_over_body_limit_raises_and_closes_response(self):
+        response_body = json.dumps({"headers": {}}).encode()
+        mock_resp = _raw_response(response_body)
+
+        with (
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(response_body) - 1,
+                create=True,
+            ),
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(Exception, match="Firewall auth response body too large"),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        mock_resp.read.assert_called_once_with(len(response_body))
+        mock_resp.__exit__.assert_called_once()
+
     def test_success_response_shape_is_parsed_to_internal_type(self):
         expires_at = time.time() + 30
         mock_resp = _json_response(
@@ -1633,6 +1745,73 @@ class TestFetchFirewallHeaders:
         assert str(exc_info.value) == message
         assert exc_info.value.connectors == connectors
         assert exc_info.value.failure_reason == expected_failure_reason
+
+    def test_structured_http_error_at_body_limit_is_preserved(self):
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Access token expired and refresh failed for: notion.",
+                    "code": "TOKEN_REFRESH_FAILED",
+                }
+            }
+        ).encode()
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            502,
+            "Bad Gateway",
+            error_body,
+        )
+        http_error.close = MagicMock()
+
+        with (
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(error_body),
+                create=True,
+            ),
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(auth.FirewallAuthApiError) as exc_info,
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        assert exc_info.value.code == "TOKEN_REFRESH_FAILED"
+        http_error.close.assert_called_once()
+
+    def test_http_error_over_body_limit_raises_and_closes_response(self):
+        error_body = json.dumps(
+            {
+                "error": {
+                    "message": "Access token expired and refresh failed for: notion.",
+                    "code": "TOKEN_REFRESH_FAILED",
+                }
+            }
+        ).encode()
+        http_error = _http_error(
+            "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
+            502,
+            "Bad Gateway",
+            error_body,
+        )
+        http_error.close = MagicMock()
+
+        with (
+            patch.object(
+                auth,
+                "MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES",
+                len(error_body) - 1,
+                create=True,
+            ),
+            patch("auth.urllib.request.Request"),
+            patch("auth.urllib.request.urlopen", side_effect=http_error),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+            pytest.raises(Exception, match="Firewall auth response body too large"),
+        ):
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
+
+        http_error.close.assert_called_once()
 
     @pytest.mark.parametrize(
         "error_body",

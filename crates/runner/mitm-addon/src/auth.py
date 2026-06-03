@@ -40,6 +40,10 @@ class InvalidBillableAuthExpiryError(Exception):
     """Raised when billable firewall auth succeeds with an invalid cache expiry."""
 
 
+class FirewallAuthResponseTooLargeError(Exception):
+    """Raised when /firewall/auth returns a response body above the local cap."""
+
+
 class FirewallAuthApiError(Exception):
     """Raised when /firewall/auth returns a structured error envelope."""
 
@@ -61,6 +65,7 @@ class FirewallAuthApiError(Exception):
 
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES = 256 * 1024
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 _STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
@@ -272,6 +277,13 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     return req
 
 
+def _read_firewall_auth_response_body(resp) -> bytes:
+    body = resp.read(MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES + 1)
+    if len(body) > MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES:
+        raise FirewallAuthResponseTooLargeError("Firewall auth response body too large")
+    return body
+
+
 def _firewall_auth_api_error_from_envelope(
     status: int,
     error_info: dict,
@@ -413,14 +425,14 @@ def _fetch_firewall_headers_sync(
     try:
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            decoded: object = json.loads(resp.read())
+            decoded: object = json.loads(_read_firewall_auth_response_body(resp))
             return _parse_firewall_auth_success(decoded)
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; `with e` closes on every exit
         # path to avoid FD exhaustion under sustained cache-miss load (#10475).
         with e:
             try:
-                error_body = json.loads(e.read())
+                error_body = json.loads(_read_firewall_auth_response_body(e))
             except (json.JSONDecodeError, OSError):
                 raise e from None
             if not isinstance(error_body, dict):
