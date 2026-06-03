@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.404.0](https://github.com/vm0-ai/vm0/compare/app-v0.403.2...app-v0.404.0) (2026-06-03)
+
+
+### Features
+
+* add chat follow-up suggestions ([#15876](https://github.com/vm0-ai/vm0/issues/15876)) ([79a56ee](https://github.com/vm0-ai/vm0/commit/79a56eeea76b3bf5a4e20d1a3f500026c8fe6c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.57.0
+    * @vm0/connectors bumped to 1.45.0
+    * @vm0/core bumped to 8.309.0
+
 ## [0.403.2](https://github.com/vm0-ai/vm0/compare/app-v0.403.1...app-v0.403.2) (2026-06-03)
 
 
