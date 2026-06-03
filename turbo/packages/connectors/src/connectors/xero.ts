@@ -46,19 +46,21 @@ export const xero = {
             "assets",
             "projects",
           ],
+          outputs: {
+            accessToken: "$secrets.XERO_ACCESS_TOKEN",
+            refreshToken: "$secrets.XERO_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.XERO_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.XERO_ACCESS_TOKEN",
-              refreshToken: "$secrets.XERO_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["XERO_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.XERO_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.XERO_ACCESS_TOKEN",
+            refreshToken: "$secrets.XERO_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["XERO_ACCESS_TOKEN"],
           envBindings: {
             XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
           },

@@ -28,19 +28,21 @@ export const dropbox = {
             "files.metadata.read",
             "files.content.read",
           ],
+          outputs: {
+            accessToken: "$secrets.DROPBOX_ACCESS_TOKEN",
+            refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.DROPBOX_ACCESS_TOKEN",
-              refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["DROPBOX_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.DROPBOX_ACCESS_TOKEN",
+            refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["DROPBOX_ACCESS_TOKEN"],
           envBindings: {
             DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
           },

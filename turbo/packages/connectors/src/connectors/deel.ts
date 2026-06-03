@@ -34,19 +34,21 @@ export const deel = {
             "invoice-adjustments:read",
             "invoice-adjustments:write",
           ],
+          outputs: {
+            accessToken: "$secrets.DEEL_ACCESS_TOKEN",
+            refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.DEEL_ACCESS_TOKEN",
-              refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["DEEL_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.DEEL_ACCESS_TOKEN",
+            refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["DEEL_ACCESS_TOKEN"],
           envBindings: {
             DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
           },

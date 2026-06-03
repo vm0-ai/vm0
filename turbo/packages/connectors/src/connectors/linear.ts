@@ -29,24 +29,31 @@ export const linear = {
             "comments:create",
             "timeSchedule:write",
           ],
+          outputs: {
+            accessToken: "$secrets.LINEAR_ACCESS_TOKEN",
+            refreshToken: "$secrets.LINEAR_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.LINEAR_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.LINEAR_ACCESS_TOKEN",
-              refreshToken: "$secrets.LINEAR_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["LINEAR_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.LINEAR_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.LINEAR_ACCESS_TOKEN",
+            refreshToken: "$secrets.LINEAR_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["LINEAR_ACCESS_TOKEN"],
           envBindings: {
             LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "token-revoke" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            accessToken: "$secrets.LINEAR_ACCESS_TOKEN",
+          },
+        },
       },
     },
     defaultAuthMethod: "oauth",

@@ -50,19 +50,21 @@ export const posthog = {
             "survey:write",
             "error_tracking:read",
           ],
+          outputs: {
+            accessToken: "$secrets.POSTHOG_ACCESS_TOKEN",
+            refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.POSTHOG_ACCESS_TOKEN",
-              refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["POSTHOG_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.POSTHOG_ACCESS_TOKEN",
+            refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["POSTHOG_ACCESS_TOKEN"],
           envBindings: {
             POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
           },

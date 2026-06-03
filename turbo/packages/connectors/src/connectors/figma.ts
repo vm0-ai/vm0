@@ -34,19 +34,21 @@ export const figma = {
             "library_assets:read",
             "library_content:read",
           ],
+          outputs: {
+            accessToken: "$secrets.FIGMA_ACCESS_TOKEN",
+            refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.FIGMA_ACCESS_TOKEN",
-              refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["FIGMA_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.FIGMA_ACCESS_TOKEN",
+            refreshToken: "$secrets.FIGMA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["FIGMA_ACCESS_TOKEN"],
           envBindings: {
             FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
           },

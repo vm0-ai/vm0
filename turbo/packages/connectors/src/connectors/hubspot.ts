@@ -36,19 +36,21 @@ export const hubspot = {
             "crm.schemas.contacts.read",
             "settings.users.read",
           ],
+          outputs: {
+            accessToken: "$secrets.HUBSPOT_ACCESS_TOKEN",
+            refreshToken: "$secrets.HUBSPOT_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.HUBSPOT_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.HUBSPOT_ACCESS_TOKEN",
-              refreshToken: "$secrets.HUBSPOT_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["HUBSPOT_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.HUBSPOT_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.HUBSPOT_ACCESS_TOKEN",
+            refreshToken: "$secrets.HUBSPOT_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["HUBSPOT_ACCESS_TOKEN"],
           envBindings: {
             HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
           },

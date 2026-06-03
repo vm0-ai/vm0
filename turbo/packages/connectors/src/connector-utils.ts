@@ -21,12 +21,14 @@ import {
   type ConnectorDeviceAuthGrantConfig,
   type ConnectorEnvBindings,
   type ConnectorGenerationType,
+  type ConnectorGrantOutputBindings,
   type ConnectorGrantConfig,
   type ConnectorGrantKind,
   type ConnectorManualGrantFieldConfig,
   type ConnectorPlatformSecretName,
   type ConnectorRefreshTokenInputBindings,
   type ConnectorRefreshTokenOutputBindings,
+  type ConnectorRevokeInputBindings,
   type ConnectorRevokeKind,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
@@ -256,13 +258,16 @@ function connectorAccessPlatformSecrets(
 export type ConnectorAuthMethodAccessMetadata =
   | {
       readonly kind: "static";
-      readonly accessToken?: string;
       readonly envBindings: ConnectorEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
   | {
       readonly kind: "refresh-token";
-      readonly refresh: ConnectorRefreshMetadata;
+      readonly inputs: Readonly<Record<string, ConnectorRefreshInputMetadata>>;
+      readonly outputs: Readonly<
+        Record<string, ConnectorRefreshOutputMetadata>
+      >;
+      readonly refreshableSecrets: readonly string[];
       readonly envBindings: ConnectorEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
@@ -291,6 +296,36 @@ export interface ConnectorRefreshMetadata {
   readonly refreshableSecrets: readonly string[];
 }
 
+export interface ConnectorGrantOutputMetadata {
+  readonly valueRef: string;
+  readonly secretName: string;
+}
+
+export type ConnectorAuthMethodGrantMetadata =
+  | {
+      readonly kind: "auth-code" | "device-auth";
+      readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
+    }
+  | {
+      readonly kind: "manual" | "managed";
+      readonly outputs: Readonly<Record<string, ConnectorGrantOutputMetadata>>;
+    };
+
+export interface ConnectorRevokeInputMetadata {
+  readonly valueRef: string;
+  readonly secretName: string;
+}
+
+export type ConnectorAuthMethodRevokeMetadata =
+  | {
+      readonly kind: "token-revoke";
+      readonly inputs: Readonly<Record<string, ConnectorRevokeInputMetadata>>;
+    }
+  | {
+      readonly kind: "none";
+      readonly inputs: Readonly<Record<string, ConnectorRevokeInputMetadata>>;
+    };
+
 export type ConnectorRuntimeBindingSource =
   | {
       readonly kind: "connector-secret";
@@ -315,10 +350,6 @@ export interface ConnectorAuthMethodStorageMetadata {
   readonly storage: {
     readonly secrets: readonly string[];
     readonly variables: readonly string[];
-  };
-  readonly secretRoles: {
-    readonly accessToken?: string;
-    readonly refreshToken?: string;
   };
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
@@ -369,6 +400,22 @@ function connectorRefreshOutputMetadata(
   return { valueRef, secretName };
 }
 
+function connectorGrantOutputMetadata(
+  valueRef: string,
+): ConnectorGrantOutputMetadata {
+  return connectorRefreshOutputMetadata(valueRef);
+}
+
+function connectorRevokeInputMetadata(
+  valueRef: string,
+): ConnectorRevokeInputMetadata {
+  const secretName = connectorSecretNameFromValueRef(valueRef);
+  if (!secretName) {
+    throw new Error(`Unsupported connector revoke input ref ${valueRef}`);
+  }
+  return { valueRef, secretName };
+}
+
 function connectorRefreshMetadata(args: {
   readonly inputs: ConnectorRefreshTokenInputBindings;
   readonly outputs: ConnectorRefreshTokenOutputBindings;
@@ -400,10 +447,8 @@ export function getConnectorAuthMethodAccessMetadata(
 
   switch (method.access.kind) {
     case "static": {
-      const accessToken = method.storage.secretRoles?.accessToken;
       return {
         kind: "static",
-        ...(accessToken ? { accessToken } : {}),
         envBindings: method.access.envBindings,
         platformSecrets: method.access.platformSecrets ?? [],
       };
@@ -411,7 +456,7 @@ export function getConnectorAuthMethodAccessMetadata(
     case "refresh-token":
       return {
         kind: "refresh-token",
-        refresh: connectorRefreshMetadata(method.access.refresh),
+        ...connectorRefreshMetadata(method.access),
         envBindings: method.access.envBindings,
         platformSecrets: method.access.platformSecrets ?? [],
       };
@@ -424,12 +469,87 @@ export function getConnectorAuthMethodAccessMetadata(
   }
 }
 
+function connectorGrantOutputMetadataMap(
+  outputs: ConnectorGrantOutputBindings,
+): Record<string, ConnectorGrantOutputMetadata> {
+  return Object.fromEntries(
+    Object.entries(outputs).map(([name, valueRef]) => {
+      return [name, connectorGrantOutputMetadata(valueRef)];
+    }),
+  );
+}
+
+export function getConnectorAuthMethodGrantMetadata(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodGrantMetadata | undefined {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return undefined;
+  }
+
+  switch (method.grant.kind) {
+    case "auth-code":
+    case "device-auth":
+      return {
+        kind: method.grant.kind,
+        outputs: connectorGrantOutputMetadataMap(method.grant.outputs),
+      };
+    case "manual":
+    case "managed":
+      return {
+        kind: method.grant.kind,
+        outputs: {},
+      };
+  }
+}
+
+export function getConnectorGrantOutputSecretName(
+  metadata: ConnectorAuthMethodGrantMetadata,
+  outputName: string,
+): string | undefined {
+  return metadata.outputs[outputName]?.secretName;
+}
+
+function connectorRevokeInputMetadataMap(
+  inputs: ConnectorRevokeInputBindings,
+): Record<string, ConnectorRevokeInputMetadata> {
+  return Object.fromEntries(
+    Object.entries(inputs).map(([name, valueRef]) => {
+      return [name, connectorRevokeInputMetadata(valueRef)];
+    }),
+  );
+}
+
+export function getConnectorAuthMethodRevokeMetadata(
+  type: ConnectorType,
+  authMethod: string,
+): ConnectorAuthMethodRevokeMetadata | undefined {
+  const method = getConnectorAuthMethod(type, authMethod);
+  if (!method) {
+    return undefined;
+  }
+
+  switch (method.revoke.kind) {
+    case "token-revoke":
+      return {
+        kind: "token-revoke",
+        inputs: connectorRevokeInputMetadataMap(method.revoke.inputs),
+      };
+    case "none":
+      return {
+        kind: "none",
+        inputs: {},
+      };
+  }
+}
+
 export function getConnectorRefreshOutputSecretName(
   metadata: ConnectorAuthMethodAccessMetadata,
   outputName: string,
 ): string | undefined {
   return metadata.kind === "refresh-token"
-    ? metadata.refresh.outputs[outputName]?.secretName
+    ? metadata.outputs[outputName]?.secretName
     : undefined;
 }
 
@@ -453,7 +573,7 @@ export function connectorRefreshMetadataHasRefreshableSecret(
 ): boolean {
   return (
     metadata.kind === "refresh-token" &&
-    metadata.refresh.refreshableSecrets.includes(secretName)
+    metadata.refreshableSecrets.includes(secretName)
   );
 }
 
@@ -511,16 +631,10 @@ export function getConnectorAuthMethodStorageMetadata(
     return undefined;
   }
   const platformSecrets = connectorAccessPlatformSecrets(method.access);
-  const accessToken = method.storage.secretRoles?.accessToken;
-  const refreshToken = method.storage.secretRoles?.refreshToken;
   return {
     storage: {
       secrets: [...method.storage.secrets],
       variables: [...method.storage.variables],
-    },
-    secretRoles: {
-      ...(accessToken ? { accessToken } : {}),
-      ...(refreshToken ? { refreshToken } : {}),
     },
     runtimeBindings: connectorRuntimeBindingEntries({
       envBindings: connectorAccessEnvBindings(method.access),

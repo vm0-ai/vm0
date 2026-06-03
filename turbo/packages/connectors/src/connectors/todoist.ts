@@ -19,13 +19,13 @@ export const todoist = {
         storage: {
           secrets: ["TODOIST_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "TODOIST_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
           scopes: ["data:read_write", "data:delete", "project:delete"],
+          outputs: {
+            accessToken: "$secrets.TODOIST_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

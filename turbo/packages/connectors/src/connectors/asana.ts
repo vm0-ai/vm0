@@ -23,19 +23,21 @@ export const asana = {
         grant: {
           kind: "auth-code",
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.ASANA_ACCESS_TOKEN",
+            refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.ASANA_ACCESS_TOKEN",
-              refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["ASANA_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.ASANA_ACCESS_TOKEN",
+            refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["ASANA_ACCESS_TOKEN"],
           envBindings: {
             ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
           },

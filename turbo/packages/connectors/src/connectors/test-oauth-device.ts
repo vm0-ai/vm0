@@ -20,13 +20,13 @@ export const testOauthDevice = {
         storage: {
           secrets: ["TEST_OAUTH_DEVICE_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "TEST_OAUTH_DEVICE_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "device-auth",
           scopes: ["read"],
+          outputs: {
+            accessToken: "$secrets.TEST_OAUTH_DEVICE_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",
@@ -49,13 +49,13 @@ export const testOauthDevice = {
         storage: {
           secrets: ["TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "device-auth",
           scopes: ["read"],
+          outputs: {
+            accessToken: "$secrets.TEST_OAUTH_DEVICE_API_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

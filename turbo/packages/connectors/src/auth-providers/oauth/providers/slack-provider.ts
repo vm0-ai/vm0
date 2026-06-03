@@ -50,7 +50,7 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
     kind: "token-revoke",
     revokeToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return revokeSlackToken(clientId, clientSecret, args.accessToken);
+      return revokeSlackToken(clientId, clientSecret, args.inputs.accessToken);
     },
   },
 };

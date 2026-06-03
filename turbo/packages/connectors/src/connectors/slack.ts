@@ -19,9 +19,6 @@ export const slack = {
         storage: {
           secrets: ["SLACK_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "SLACK_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -60,6 +57,9 @@ export const slack = {
             // Custom emoji (low priority)
             "emoji:read",
           ],
+          outputs: {
+            accessToken: "$secrets.SLACK_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",
@@ -67,7 +67,12 @@ export const slack = {
             SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "token-revoke" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            accessToken: "$secrets.SLACK_ACCESS_TOKEN",
+          },
+        },
       },
     },
     defaultAuthMethod: "oauth",

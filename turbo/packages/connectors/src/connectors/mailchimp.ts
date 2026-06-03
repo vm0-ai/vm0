@@ -21,13 +21,13 @@ export const mailchimp = {
         storage: {
           secrets: ["MAILCHIMP_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "MAILCHIMP_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

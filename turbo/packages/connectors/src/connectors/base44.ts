@@ -22,19 +22,21 @@ export const base44 = {
         grant: {
           kind: "device-auth",
           scopes: ["apps:read", "apps:write", "offline"],
+          outputs: {
+            accessToken: "$secrets.BASE44_ACCESS_TOKEN",
+            refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.BASE44_ACCESS_TOKEN",
-              refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["BASE44_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.BASE44_ACCESS_TOKEN",
+            refreshToken: "$secrets.BASE44_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["BASE44_ACCESS_TOKEN"],
           envBindings: {
             BASE44_TOKEN: "$secrets.BASE44_ACCESS_TOKEN",
           },

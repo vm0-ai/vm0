@@ -30,19 +30,21 @@ export const sentry = {
             "event:read",
             "event:write",
           ],
+          outputs: {
+            accessToken: "$secrets.SENTRY_ACCESS_TOKEN",
+            refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.SENTRY_ACCESS_TOKEN",
-              refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["SENTRY_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.SENTRY_ACCESS_TOKEN",
+            refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["SENTRY_ACCESS_TOKEN"],
           envBindings: {
             SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
           },

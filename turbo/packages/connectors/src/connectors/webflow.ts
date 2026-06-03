@@ -21,9 +21,6 @@ export const webflow = {
         storage: {
           secrets: ["WEBFLOW_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "WEBFLOW_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -45,6 +42,9 @@ export const webflow = {
             "custom_code:read",
             "custom_code:write",
           ],
+          outputs: {
+            accessToken: "$secrets.WEBFLOW_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

@@ -938,11 +938,9 @@ function connectorRefreshInputSources(
   >,
 ): Record<string, RefreshInputSource> {
   return Object.fromEntries(
-    Object.entries(accessMetadata.refresh.inputs).map(
-      ([inputName, metadata]) => {
-        return [inputName, refreshInputSourceFromConnectorMetadata(metadata)];
-      },
-    ),
+    Object.entries(accessMetadata.inputs).map(([inputName, metadata]) => {
+      return [inputName, refreshInputSourceFromConnectorMetadata(metadata)];
+    }),
   );
 }
 
@@ -953,11 +951,9 @@ function connectorRefreshOutputSecrets(
   >,
 ): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(accessMetadata.refresh.outputs).map(
-      ([outputName, metadata]) => {
-        return [outputName, metadata.secretName];
-      },
-    ),
+    Object.entries(accessMetadata.outputs).map(([outputName, metadata]) => {
+      return [outputName, metadata.secretName];
+    }),
   );
 }
 

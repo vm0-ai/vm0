@@ -28,19 +28,21 @@ export const strava = {
             "activity:read_all",
             "activity:write",
           ],
+          outputs: {
+            accessToken: "$secrets.STRAVA_ACCESS_TOKEN",
+            refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.STRAVA_ACCESS_TOKEN",
-              refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["STRAVA_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.STRAVA_ACCESS_TOKEN",
+            refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["STRAVA_ACCESS_TOKEN"],
           envBindings: {
             STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
           },

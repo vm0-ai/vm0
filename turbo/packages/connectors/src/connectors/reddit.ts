@@ -25,19 +25,21 @@ export const reddit = {
         grant: {
           kind: "auth-code",
           scopes: ["identity", "read"],
+          outputs: {
+            accessToken: "$secrets.REDDIT_ACCESS_TOKEN",
+            refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.REDDIT_ACCESS_TOKEN",
-              refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["REDDIT_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.REDDIT_ACCESS_TOKEN",
+            refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["REDDIT_ACCESS_TOKEN"],
           envBindings: {
             REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
           },

@@ -60,7 +60,7 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
     kind: "token-revoke",
     revokeToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return revokeLinearToken(clientId, clientSecret, args.accessToken);
+      return revokeLinearToken(clientId, clientSecret, args.inputs.accessToken);
     },
   },
 };

@@ -19,13 +19,13 @@ export const vercel = {
         storage: {
           secrets: ["VERCEL_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "VERCEL_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.VERCEL_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

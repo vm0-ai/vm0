@@ -10,6 +10,7 @@ import {
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
   type ConnectorRefreshInputValues,
+  type ConnectorRevokeInputValues,
   type RefreshTokenAccessConnectorType,
   type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
@@ -328,7 +329,9 @@ async function revokeTokenRevokeConnectorAccessToken<
   readonly type: T;
   readonly authMethod: Method;
   readonly readEnv: ConnectorEnvReader;
-  readonly loadAccessToken: () => string | Promise<string>;
+  readonly loadInputs: () =>
+    | ConnectorRevokeInputValues<T, Method>
+    | Promise<ConnectorRevokeInputValues<T, Method>>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
   const revoke = connectorTokenRevokeProviderFor(args.type, args.authMethod);
 
@@ -343,7 +346,7 @@ async function revokeTokenRevokeConnectorAccessToken<
 
   await revoke.revokeToken({
     authClient,
-    accessToken: await args.loadAccessToken(),
+    inputs: await args.loadInputs(),
   });
   return { status: "revoked" };
 }
@@ -657,7 +660,7 @@ export async function refreshConnectorAuthProviderAccessToken<
     inputs: args.inputs,
     signal: args.signal,
   });
-  const declaredOutputs = new Set(Object.keys(method.access.refresh.outputs));
+  const declaredOutputs = new Set(Object.keys(method.access.outputs));
   for (const outputName of Object.keys(result.outputs)) {
     if (!declaredOutputs.has(outputName)) {
       throw new Error(
@@ -672,7 +675,9 @@ export async function revokeConnectorAuthMethodAccessToken(args: {
   readonly type: ConnectorType;
   readonly authMethod: string;
   readonly readEnv: ConnectorEnvReader;
-  readonly loadAccessToken: () => string | Promise<string>;
+  readonly loadInputs: () =>
+    | Readonly<Record<string, string>>
+    | Promise<Readonly<Record<string, string>>>;
 }): Promise<ConnectorAuthProviderAccessTokenRevokeResult> {
   const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
     args.authMethod,
@@ -693,6 +698,6 @@ export async function revokeConnectorAuthMethodAccessToken(args: {
     type: authMethodRef.type,
     authMethod: authMethodRef.authMethod,
     readEnv: args.readEnv,
-    loadAccessToken: args.loadAccessToken,
+    loadInputs: args.loadInputs,
   });
 }

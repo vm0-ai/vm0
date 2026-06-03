@@ -11,8 +11,8 @@ import {
 import {
   connectorAuthMethodHasGrantKind,
   getConnectorAuthMethod,
-  getConnectorAuthMethodAccessMetadata,
-  getConnectorRefreshOutputSecretName,
+  getConnectorAuthMethodGrantMetadata,
+  getConnectorGrantOutputSecretName,
 } from "@vm0/connectors/connector-utils";
 import {
   testOauthApiProvider,
@@ -45,7 +45,6 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
-const SECRET_REF_PREFIX = "$secrets.";
 const API_ORIGIN = "https://api.vm0.ai";
 const WEB_ORIGIN = "https://www.vm0.ai";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -1144,22 +1143,6 @@ async function findDecryptedSecret(args: {
   return secret ? decryptSecretForTests(secret.encryptedValue) : undefined;
 }
 
-function staticConnectorOwnedAccessSecretName(
-  envBindings: Readonly<Record<string, string>>,
-  platformSecretNames: ReadonlySet<string>,
-): string | undefined {
-  const secretNames = new Set<string>();
-  for (const valueRef of Object.values(envBindings)) {
-    if (valueRef.startsWith(SECRET_REF_PREFIX)) {
-      const secretName = valueRef.slice(SECRET_REF_PREFIX.length);
-      if (!platformSecretNames.has(secretName)) {
-        secretNames.add(secretName);
-      }
-    }
-  }
-  return secretNames.size === 1 ? [...secretNames][0] : undefined;
-}
-
 function callbackAuthMethodForTest(
   type: AuthCodeGrantConnectorType,
 ): ConnectorAuthMethodId {
@@ -1174,44 +1157,23 @@ function accessTokenSecretNameForAuthCodeMethod(
   type: AuthCodeGrantConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): string {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
-  switch (accessMetadata?.kind) {
-    case "refresh-token": {
-      const accessTokenSecretName = getConnectorRefreshOutputSecretName(
-        accessMetadata,
-        "accessToken",
-      );
-      if (!accessTokenSecretName) {
-        throw new Error(`${type}: auth-code auth method has no access output`);
-      }
-      return accessTokenSecretName;
-    }
-    case "static": {
-      const secretName = staticConnectorOwnedAccessSecretName(
-        accessMetadata.envBindings,
-        new Set(accessMetadata.platformSecrets),
-      );
-      if (!secretName) {
-        throw new Error(
-          `${type}: auth-code auth method has no static access secret`,
-        );
-      }
-      return secretName;
-    }
-    case "none":
-    case undefined: {
-      throw new Error(`${type}: auth-code auth method has no access secret`);
-    }
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(type, authMethod);
+  const secretName =
+    grantMetadata &&
+    getConnectorGrantOutputSecretName(grantMetadata, "accessToken");
+  if (!secretName) {
+    throw new Error(`${type}: auth-code auth method has no access output`);
   }
+  return secretName;
 }
 
 function refreshTokenSecretNameForAuthCodeMethod(
   type: AuthCodeGrantConnectorType,
   authMethod: ConnectorAuthMethodId,
 ): string | undefined {
-  const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
-  return accessMetadata?.kind === "refresh-token"
-    ? getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken")
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(type, authMethod);
+  return grantMetadata
+    ? getConnectorGrantOutputSecretName(grantMetadata, "refreshToken")
     : undefined;
 }
 

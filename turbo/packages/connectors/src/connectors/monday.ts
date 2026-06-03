@@ -38,19 +38,21 @@ export const monday = {
             "tags:read",
             "teams:read",
           ],
+          outputs: {
+            accessToken: "$secrets.MONDAY_ACCESS_TOKEN",
+            refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.MONDAY_ACCESS_TOKEN",
-              refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["MONDAY_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.MONDAY_ACCESS_TOKEN",
+            refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["MONDAY_ACCESS_TOKEN"],
           envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },

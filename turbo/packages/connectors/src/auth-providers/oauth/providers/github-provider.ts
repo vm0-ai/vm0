@@ -39,7 +39,7 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
     kind: "token-revoke",
     revokeToken: (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return revokeGitHubGrant(clientId, clientSecret, args.accessToken);
+      return revokeGitHubGrant(clientId, clientSecret, args.inputs.accessToken);
     },
   },
 };

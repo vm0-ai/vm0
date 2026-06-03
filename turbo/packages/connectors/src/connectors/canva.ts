@@ -38,19 +38,21 @@ export const canva = {
             "folder:write",
             "profile:read",
           ],
+          outputs: {
+            accessToken: "$secrets.CANVA_ACCESS_TOKEN",
+            refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.CANVA_ACCESS_TOKEN",
-              refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["CANVA_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.CANVA_ACCESS_TOKEN",
+            refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["CANVA_ACCESS_TOKEN"],
           envBindings: {
             CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
           },

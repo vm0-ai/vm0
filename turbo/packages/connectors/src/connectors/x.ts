@@ -46,19 +46,21 @@ export const x = {
             "dm.write", // Send and manage Direct Messages for you.
             "media.write", // Upload media.
           ],
+          outputs: {
+            accessToken: "$secrets.X_ACCESS_TOKEN",
+            refreshToken: "$secrets.X_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.X_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.X_ACCESS_TOKEN",
-              refreshToken: "$secrets.X_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["X_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.X_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.X_ACCESS_TOKEN",
+            refreshToken: "$secrets.X_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["X_ACCESS_TOKEN"],
           envBindings: {
             X_TOKEN: "$secrets.X_ACCESS_TOKEN",
           },

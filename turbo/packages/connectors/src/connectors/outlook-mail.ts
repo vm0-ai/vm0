@@ -29,19 +29,21 @@ export const outlookMail = {
             "User.Read",
             "offline_access",
           ],
+          outputs: {
+            accessToken: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+            refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
-              refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["OUTLOOK_MAIL_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+            refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["OUTLOOK_MAIL_ACCESS_TOKEN"],
           envBindings: {
             OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
           },

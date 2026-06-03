@@ -96,7 +96,7 @@ describe("connector/providers/google-ads", () => {
         throw new Error("Expected Google Ads OAuth to support refresh");
       }
 
-      expect(accessMetadata.refresh.inputs.refreshToken).toStrictEqual({
+      expect(accessMetadata.inputs.refreshToken).toStrictEqual({
         valueRef: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
         source: {
           kind: "connector-secret",

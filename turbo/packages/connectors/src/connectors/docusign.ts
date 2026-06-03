@@ -25,19 +25,21 @@ export const docusign = {
         grant: {
           kind: "auth-code",
           scopes: ["signature", "extended", "openid"],
+          outputs: {
+            accessToken: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+            refreshToken: "$secrets.DOCUSIGN_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.DOCUSIGN_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.DOCUSIGN_ACCESS_TOKEN",
-              refreshToken: "$secrets.DOCUSIGN_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["DOCUSIGN_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.DOCUSIGN_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+            refreshToken: "$secrets.DOCUSIGN_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["DOCUSIGN_ACCESS_TOKEN"],
           envBindings: {
             DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
           },

@@ -26,19 +26,21 @@ export const stripe = {
         grant: {
           kind: "auth-code",
           scopes: ["read_write"],
+          outputs: {
+            accessToken: "$secrets.STRIPE_ACCESS_TOKEN",
+            refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.STRIPE_ACCESS_TOKEN",
-              refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["STRIPE_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.STRIPE_ACCESS_TOKEN",
+            refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["STRIPE_ACCESS_TOKEN"],
           envBindings: {
             STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
           },

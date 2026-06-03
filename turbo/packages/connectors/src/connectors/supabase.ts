@@ -38,19 +38,21 @@ export const supabase = {
             "environment:read",
             "domains:read",
           ],
+          outputs: {
+            accessToken: "$secrets.SUPABASE_ACCESS_TOKEN",
+            refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.SUPABASE_ACCESS_TOKEN",
-              refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["SUPABASE_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.SUPABASE_ACCESS_TOKEN",
+            refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["SUPABASE_ACCESS_TOKEN"],
           envBindings: {
             SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
           },

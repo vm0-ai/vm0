@@ -19,13 +19,13 @@ export const intervalsIcu = {
         storage: {
           secrets: ["INTERVALS_ICU_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "INTERVALS_ICU_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
           scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
+          outputs: {
+            accessToken: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

@@ -290,6 +290,58 @@ describe("DELETE /api/zero/connectors/:type", () => {
     await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
   });
 
+  it("revokes the configured connector token input before deleting local state", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(connectors).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "github",
+      authMethod: "oauth",
+    });
+    await writeDb.insert(secrets).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "GITHUB_ACCESS_TOKEN",
+      encryptedValue: encryptSecretForTests("gh-revoke-input-token"),
+      type: "connector",
+    });
+    mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
+    mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", "test-client-secret");
+    let revokeBody = "";
+    server.use(
+      http.delete(
+        "https://api.github.com/applications/test-client-id/grant",
+        async ({ request }) => {
+          revokeBody = await request.text();
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroConnectorsByTypeContract);
+    const response = await accept(
+      client.delete({
+        params: { type: "github" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [204],
+    );
+
+    expect(response.body).toBeUndefined();
+    expect(revokeBody).toBe(
+      JSON.stringify({ access_token: "gh-revoke-input-token" }),
+    );
+    await expect(remainingConnectorCount(fixture)).resolves.toBe(0);
+    await expect(
+      remainingSecretAndVariableState(fixture),
+    ).resolves.toStrictEqual({
+      secrets: 0,
+      variables: 0,
+    });
+  });
+
   it("keeps local deletion authoritative when remote token revoke fails", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);

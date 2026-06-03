@@ -21,13 +21,13 @@ export const metaAds = {
         storage: {
           secrets: ["META_ADS_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "META_ADS_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
           scopes: ["ads_management", "ads_read", "business_management"],
+          outputs: {
+            accessToken: "$secrets.META_ADS_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

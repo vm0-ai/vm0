@@ -31,19 +31,21 @@ export const airtable = {
             "schema.bases:write",
             "user.email:read",
           ],
+          outputs: {
+            accessToken: "$secrets.AIRTABLE_ACCESS_TOKEN",
+            refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          refresh: {
-            inputs: {
-              refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
-            },
-            outputs: {
-              accessToken: "$secrets.AIRTABLE_ACCESS_TOKEN",
-              refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
-            },
-            refreshableSecrets: ["AIRTABLE_ACCESS_TOKEN"],
+          inputs: {
+            refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
           },
+          outputs: {
+            accessToken: "$secrets.AIRTABLE_ACCESS_TOKEN",
+            refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["AIRTABLE_ACCESS_TOKEN"],
           envBindings: {
             AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
           },

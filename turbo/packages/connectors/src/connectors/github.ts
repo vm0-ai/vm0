@@ -20,13 +20,13 @@ export const github = {
         storage: {
           secrets: ["GITHUB_ACCESS_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "GITHUB_ACCESS_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
           scopes: ["repo", "project", "workflow"],
+          outputs: {
+            accessToken: "$secrets.GITHUB_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",
@@ -35,7 +35,12 @@ export const github = {
             GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "token-revoke" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            accessToken: "$secrets.GITHUB_ACCESS_TOKEN",
+          },
+        },
       },
     },
     defaultAuthMethod: "oauth",

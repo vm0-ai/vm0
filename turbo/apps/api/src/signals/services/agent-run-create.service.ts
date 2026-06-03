@@ -1640,7 +1640,7 @@ function connectorEnvBindingSets(
       accessKind: method.access.kind,
       refreshableSecretNames:
         accessMetadata?.kind === "refresh-token"
-          ? new Set(accessMetadata.refresh.refreshableSecrets)
+          ? new Set(accessMetadata.refreshableSecrets)
           : new Set<string>(),
       runtimeBindings: metadata.runtimeBindings,
       optionalSecretNames,
