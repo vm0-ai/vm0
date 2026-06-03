@@ -5,7 +5,7 @@ import type { Stripe } from "stripe";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { getStripeClient } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 
@@ -115,29 +115,6 @@ export function checkoutTierConflictMessage(args: {
   return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }
 
-export async function cancelReplacedProTrialSubscription(args: {
-  readonly stripe: ReturnType<typeof getStripeClient>;
-  readonly currentSubscriptionId: string | null | undefined;
-  readonly currentTier: string | null | undefined;
-  readonly currentSubscriptionStatus: string | null | undefined;
-  readonly targetSubscriptionId: string;
-  readonly targetTier: SubscriptionCheckoutTier;
-  readonly targetSubscriptionStatus: string;
-}): Promise<void> {
-  if (
-    args.targetTier !== "team" ||
-    args.targetSubscriptionStatus !== "active" ||
-    args.currentTier !== "pro" ||
-    args.currentSubscriptionStatus !== "trialing" ||
-    !args.currentSubscriptionId ||
-    args.currentSubscriptionId === args.targetSubscriptionId
-  ) {
-    return;
-  }
-
-  await args.stripe.subscriptions.cancel(args.currentSubscriptionId);
-}
-
 export function activeCustomCreditPriceId(): string | undefined {
   return env("ZERO_PRICE")?.customCredits?.[0];
 }
@@ -174,6 +151,57 @@ function stripeObjectId(
 
 function subscriptionWillCancel(subscription: Stripe.Subscription): boolean {
   return subscription.cancel_at_period_end || subscription.cancel_at !== null;
+}
+
+function successUrlAfterSubscriptionUpdate(successUrl: string): string {
+  const url = new URL(successUrl);
+  url.searchParams.delete("billing_session_id");
+  return url.toString();
+}
+
+async function upgradeProSubscriptionToTeam(args: {
+  readonly db: Db;
+  readonly stripe: ReturnType<typeof getStripeClient>;
+  readonly orgId: string;
+  readonly subscriptionId: string;
+  readonly subscriptionStatus: string | null;
+  readonly teamPriceId: string;
+  readonly successUrl: string;
+}): Promise<string> {
+  const subscription = await args.stripe.subscriptions.retrieve(
+    args.subscriptionId,
+  );
+  const currentItem = subscription.items.data[0];
+  if (!currentItem) {
+    throw new Error("Subscription has no items");
+  }
+
+  const updateParams: Stripe.SubscriptionUpdateParams = {
+    cancel_at_period_end: false,
+    items: [{ id: currentItem.id, price: args.teamPriceId }],
+    proration_behavior: "always_invoice",
+    ...(args.subscriptionStatus === "trialing" ? { trial_end: "now" } : {}),
+  };
+  const updatedSubscription = await args.stripe.subscriptions.update(
+    args.subscriptionId,
+    updateParams,
+  );
+  const periodEnd = subscriptionPeriodEnd(updatedSubscription);
+
+  await args.db
+    .update(orgMetadata)
+    .set({
+      tier: "team",
+      stripeSubscriptionId: updatedSubscription.id,
+      subscriptionStatus: updatedSubscription.status,
+      cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
+      onboardingPaymentPending: false,
+      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.orgId, args.orgId));
+
+  return successUrlAfterSubscriptionUpdate(args.successUrl);
 }
 
 function customUnitAmountParams(
@@ -224,6 +252,37 @@ export const createCheckoutSession$ = command(
     args: CreateCheckoutSessionArgs,
     signal: AbortSignal,
   ): Promise<string> => {
+    const db = set(writeDb$);
+    const [org] = await db
+      .select({
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+        tier: orgMetadata.tier,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, args.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    const stripe = getStripeClient();
+    if (
+      args.tier === "team" &&
+      org?.tier === "pro" &&
+      org.stripeSubscriptionId
+    ) {
+      const url = await upgradeProSubscriptionToTeam({
+        db,
+        stripe,
+        orgId: args.orgId,
+        subscriptionId: org.stripeSubscriptionId,
+        subscriptionStatus: org.subscriptionStatus,
+        teamPriceId: args.priceId,
+        successUrl: args.successUrl,
+      });
+      signal.throwIfAborted();
+      return url;
+    }
+
     const metadata = checkoutSessionMetadata({
       orgId: args.orgId,
       tier: args.tier,
@@ -237,7 +296,6 @@ export const createCheckoutSession$ = command(
     );
     signal.throwIfAborted();
 
-    const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -273,7 +331,6 @@ export const completeCheckoutSession$ = command(
       .select({
         stripeCustomerId: orgMetadata.stripeCustomerId,
         stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        subscriptionStatus: orgMetadata.subscriptionStatus,
         tier: orgMetadata.tier,
       })
       .from(orgMetadata)
@@ -323,17 +380,6 @@ export const completeCheckoutSession$ = command(
     }
     const alreadyPaidSubscription =
       org.stripeSubscriptionId === subscription.id && org.tier === tier;
-
-    await cancelReplacedProTrialSubscription({
-      stripe,
-      currentSubscriptionId: org.stripeSubscriptionId,
-      currentTier: org.tier,
-      currentSubscriptionStatus: org.subscriptionStatus,
-      targetSubscriptionId: subscription.id,
-      targetTier: tier,
-      targetSubscriptionStatus: subscription.status,
-    });
-    signal.throwIfAborted();
 
     await db
       .update(orgMetadata)

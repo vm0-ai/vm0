@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createStore } from "ccstate";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { eq } from "drizzle-orm";
@@ -84,6 +85,9 @@ async function seedOrgRow(values?: {
 
 async function deleteOrgRow(orgId: string): Promise<void> {
   const writeDb = store.set(writeDb$);
+  await writeDb
+    .delete(creditExpiresRecord)
+    .where(eq(creditExpiresRecord.orgId, orgId));
   await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
@@ -278,6 +282,202 @@ describe("POST /api/zero/billing/checkout", () => {
         },
       },
     });
+  });
+
+  it("upgrades active Pro to Team by updating the existing subscription", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const periodEnd = 1_800_000_000;
+    const fixture = await trackedBillingSeed({
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "active",
+      tier: "pro",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: {
+        data: [{ id: "si_item_1", price: { id: TEST_PRICE_PRO } }],
+      },
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
+      id: subscriptionId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            id: "si_item_1",
+            price: { id: TEST_PRICE_TEAM },
+            current_period_end: periodEnd,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "team",
+          successUrl: `${APP_ORIGIN}/billing?billing=team&billing_session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: `${APP_ORIGIN}/billing?billing=team`,
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      subscriptionId,
+      {
+        cancel_at_period_end: false,
+        items: [{ id: "si_item_1", price: TEST_PRICE_TEAM }],
+        proration_behavior: "always_invoice",
+      },
+    );
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+        currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toStrictEqual({
+      tier: "team",
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "active",
+      currentPeriodEnd: new Date(periodEnd * 1000),
+    });
+  });
+
+  it("ends Pro trial when upgrading to Team and retains trial credits", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const subscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const invoiceId = `inv_${randomUUID().slice(0, 8)}`;
+    const periodEnd = 1_800_000_000;
+    const creditsExpiresAt = new Date("2026-04-26T07:24:12Z");
+    const fixture = await trackedBillingSeed({
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "trialing",
+      tier: "pro",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(creditExpiresRecord).values({
+      orgId: fixture.orgId,
+      source: "subscription_renewal",
+      stripeInvoiceId: invoiceId,
+      amount: 20_000,
+      remaining: 20_000,
+      expiresAt: creditsExpiresAt,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      status: "trialing",
+      cancel_at_period_end: false,
+      items: {
+        data: [{ id: "si_item_1", price: { id: TEST_PRICE_PRO } }],
+      },
+    });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
+      id: subscriptionId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            id: "si_item_1",
+            price: { id: TEST_PRICE_TEAM },
+            current_period_end: periodEnd,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.create({
+        body: {
+          tier: "team",
+          successUrl: `${APP_ORIGIN}/billing?billing=team&billing_session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: `${APP_ORIGIN}/billing?billing=team`,
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      subscriptionId,
+      {
+        cancel_at_period_end: false,
+        items: [{ id: "si_item_1", price: TEST_PRICE_TEAM }],
+        proration_behavior: "always_invoice",
+        trial_end: "now",
+      },
+    );
+
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+    const records = await writeDb
+      .select({
+        source: creditExpiresRecord.source,
+        stripeInvoiceId: creditExpiresRecord.stripeInvoiceId,
+        amount: creditExpiresRecord.amount,
+        remaining: creditExpiresRecord.remaining,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(eq(creditExpiresRecord.orgId, fixture.orgId));
+
+    expect(row).toStrictEqual({
+      tier: "team",
+      stripeSubscriptionId: subscriptionId,
+      subscriptionStatus: "active",
+    });
+    expect(records).toStrictEqual([
+      {
+        source: "subscription_renewal",
+        stripeInvoiceId: invoiceId,
+        amount: 20_000,
+        remaining: 20_000,
+        expiresAt: creditsExpiresAt,
+      },
+    ]);
   });
 
   it("returns 400 when checkout would downgrade the current tier", async () => {
@@ -830,72 +1030,6 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     );
 
     expect(response.body).toStrictEqual({ completed: true });
-  });
-
-  it("cancels the replaced Pro trial subscription after completing paid Team checkout", async () => {
-    const customerId = `cus_${randomUUID().slice(0, 8)}`;
-    const proTrialSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
-    const teamSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
-    const fixture = await trackedSeed({
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: proTrialSubscriptionId,
-      subscriptionStatus: "trialing",
-      tier: "pro",
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-
-    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
-      id: "cs_test_completed",
-      mode: "subscription",
-      status: "complete",
-      customer: customerId,
-      subscription: teamSubscriptionId,
-    });
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
-      id: teamSubscriptionId,
-      status: "active",
-      cancel_at_period_end: false,
-      items: {
-        data: [
-          {
-            price: { id: TEST_PRICE_TEAM },
-            current_period_end: 1_800_000_000,
-          },
-        ],
-      },
-    });
-
-    const client = setupApp({ context })(zeroBillingCheckoutContract);
-
-    const response = await accept(
-      client.complete({
-        body: { sessionId: "cs_test_completed" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ completed: true });
-    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
-      proTrialSubscriptionId,
-    );
-
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        tier: orgMetadata.tier,
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        subscriptionStatus: orgMetadata.subscriptionStatus,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-
-    expect(row).toStrictEqual({
-      tier: "team",
-      stripeSubscriptionId: teamSubscriptionId,
-      subscriptionStatus: "active",
-    });
   });
 
   it("returns 400 when completed checkout would downgrade the current tier", async () => {
