@@ -42,6 +42,8 @@ const ALL_AGENTS_FILTER = "all";
 const LIST_AVATAR_LIMIT = 5;
 const SKILL_LIST_GRID =
   "grid grid-cols-[minmax(10rem,1.1fr)_minmax(16rem,1.8fr)_8rem_2.5rem] gap-x-6 items-center";
+const LEADING_YAML_FRONTMATTER_PATTERN =
+  /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
 function skillTitle(skill: {
   readonly name: string;
@@ -56,6 +58,10 @@ function agentTitle(agent: TeamComposeItem): string {
 
 function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(path);
+}
+
+function stripMarkdownFrontmatter(content: string): string {
+  return content.replace(LEADING_YAML_FRONTMATTER_PATTERN, "");
 }
 
 export function SkillsPage() {
@@ -380,7 +386,7 @@ function SkillEditor({
                 aria-label="Skill content"
                 className="min-h-[420px] flex-1 overflow-auto bg-background px-4 py-3"
               >
-                <Markdown source={selectedContent} />
+                <Markdown source={stripMarkdownFrontmatter(selectedContent)} />
               </div>
             ) : (
               <pre

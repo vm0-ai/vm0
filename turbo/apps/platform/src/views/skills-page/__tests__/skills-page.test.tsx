@@ -17,6 +17,16 @@ const context = testContext();
 
 const RESEARCH_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const WRITER_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
+const RESEARCH_SKILL_CONTENT = [
+  "---",
+  "name: Research Notes",
+  "description: Capture source-backed findings",
+  "---",
+  "",
+  "# Research Notes",
+  "",
+  "Start with sources.",
+].join("\n");
 
 const AGENTS = [
   {
@@ -112,7 +122,7 @@ function setupSkillsPage(): void {
       name: "research-notes",
       displayName: "Research Notes",
       description: "Capture source-backed findings",
-      content: "# Research Notes\n\nStart with sources.",
+      content: RESEARCH_SKILL_CONTENT,
       files: [
         { path: "SKILL.md", size: 37 },
         { path: "templates/prompt.md", size: 12 },
@@ -121,7 +131,7 @@ function setupSkillsPage(): void {
       fileContents: [
         {
           path: "SKILL.md",
-          content: "# Research Notes\n\nStart with sources.",
+          content: RESEARCH_SKILL_CONTENT,
         },
         { path: "templates/prompt.md", content: "Use the tool" },
         { path: "scripts/run.sh", content: "#!/bin/sh\necho hi" },
@@ -254,5 +264,23 @@ describe("skills page", () => {
       expect(content.tagName).toBe("PRE");
       expect(content).toHaveTextContent("#!/bin/sh");
     });
+  });
+
+  it("strips leading YAML frontmatter from markdown skill files", async () => {
+    setupSkillsPage();
+
+    click(await screen.findByText("Research Notes"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Skill content")).toHaveTextContent(
+        "Start with sources.",
+      );
+    });
+
+    const content = screen.getByLabelText("Skill content");
+    expect(content).not.toHaveTextContent("---");
+    expect(content).not.toHaveTextContent("name:");
+    expect(content).not.toHaveTextContent("description:");
+    expect(content).not.toHaveTextContent("Capture source-backed findings");
   });
 });
