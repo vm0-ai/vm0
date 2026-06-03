@@ -530,6 +530,117 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn idle_destroy_unpark_error_skips_workspace_cache_and_still_destroys() {
+        assert_idle_destroy_unpark_failure_skips_workspace_cache_and_still_destroys(
+            "sess-idle-destroy-unpark-error",
+            |overrides| {
+                overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition {
+                    transition: sandbox::SandboxIdleTransition::Unpark,
+                    message: "simulated unpark failure".into(),
+                }));
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn idle_destroy_unpark_panic_skips_workspace_cache_and_still_destroys() {
+        assert_idle_destroy_unpark_failure_skips_workspace_cache_and_still_destroys(
+            "sess-idle-destroy-unpark-panic",
+            |overrides| overrides.push_unpark_panic("simulated unpark panic"),
+        )
+        .await;
+    }
+
+    async fn assert_idle_destroy_unpark_failure_skips_workspace_cache_and_still_destroys(
+        session_id: &str,
+        configure_overrides: impl FnOnce(&sandbox_mock::MockSandboxOverrides),
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let image = b"workspace image";
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: image.len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), image)
+            .await
+            .unwrap();
+        let workspace_promotion = workspace_image
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-06-03T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+                promotable: true,
+            })
+            .expect("workspace image should be promotable");
+
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        configure_overrides(&overrides);
+        let sandbox_factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let sandbox = sandbox_factory
+            .create(sandbox::SandboxConfig {
+                id: sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+                device_rate_limits: None,
+                workspace_drive: None,
+            })
+            .await
+            .expect("create sandbox");
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let request = IdleParkRequest::new(IdleParkRequestParts {
+            sandbox,
+            factory: Arc::new(Box::new(sandbox_factory) as Box<dyn SandboxFactory>),
+            session_id: session_id.into(),
+            sandbox_id,
+            profile_name: "vm0/default".into(),
+            device_rate_limits: None,
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            workspace_promotion: Some(workspace_promotion),
+        });
+        let candidate = match request.park_for_idle().await {
+            Ok(candidate) => candidate.with_last_completed_at("2026-06-03T00:00:00.000Z".into()),
+            Err(_) => panic!("park should succeed"),
+        };
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+
+        let promoted =
+            destroy_idle_jobs_and_wait(pool.drain(), "test_idle_destroy_unpark_error").await;
+
+        assert!(!promoted);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        assert!(cache.held_session_states().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn idle_destroy_exec_panic_skips_workspace_cache_and_still_destroys() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
