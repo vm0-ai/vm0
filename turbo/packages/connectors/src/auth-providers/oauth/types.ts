@@ -16,14 +16,13 @@ import type {
 } from "@vm0/connectors/connector-utils";
 import type {
   ConnectorAuthProviderGrantResult,
-  ConnectorAuthProviderGrantResultBase,
+  ConnectorAuthProviderGrantResultForMethod,
 } from "../grant-result";
 
-export type OAuthTokenUserInfo =
-  ConnectorAuthProviderGrantResultBase["userInfo"];
+export type OAuthTokenUserInfo = ConnectorAuthProviderGrantResult["userInfo"];
 
 export type OAuthTokenResultFields = Pick<
-  ConnectorAuthProviderGrantResultBase,
+  ConnectorAuthProviderGrantResult,
   "expiresIn" | "scopes" | "userInfo" | "extraConnectorSecrets"
 >;
 
@@ -102,7 +101,7 @@ export interface OAuthDeviceAuthSlowDownResult {
 
 export interface OAuthDeviceAuthCompleteResultBase {
   readonly status: "complete";
-  readonly token: ConnectorAuthProviderGrantResultBase;
+  readonly token: ConnectorAuthProviderGrantResult;
 }
 
 export interface OAuthDeviceAuthCompleteResult<
@@ -110,7 +109,7 @@ export interface OAuthDeviceAuthCompleteResult<
   Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
 > {
   readonly status: "complete";
-  readonly token: ConnectorAuthProviderGrantResult<T, Method>;
+  readonly token: ConnectorAuthProviderGrantResultForMethod<T, Method>;
 }
 
 export interface OAuthDeviceAuthDeniedResult {

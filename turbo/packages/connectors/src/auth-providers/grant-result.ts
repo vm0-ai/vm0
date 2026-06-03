@@ -11,17 +11,22 @@ export interface ConnectorAuthProviderGrantUserInfo {
   readonly email: string | null;
 }
 
-export interface ConnectorAuthProviderGrantResultBase {
-  readonly outputs: Readonly<Record<string, string | null | undefined>>;
+export type ConnectorAuthProviderGrantOutputValues = Readonly<
+  Record<string, string | null | undefined>
+>;
+
+export interface ConnectorAuthProviderGrantResult<
+  Outputs extends ConnectorAuthProviderGrantOutputValues =
+    ConnectorAuthProviderGrantOutputValues,
+> {
+  readonly outputs: Outputs;
   readonly expiresIn?: number;
   readonly scopes: readonly string[];
   readonly userInfo: ConnectorAuthProviderGrantUserInfo;
   readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
 }
 
-export interface ConnectorAuthProviderGrantResult<
+export type ConnectorAuthProviderGrantResultForMethod<
   T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
   Method extends ConnectorAuthMethodIds<T>,
-> extends ConnectorAuthProviderGrantResultBase {
-  readonly outputs: ConnectorGrantOutputValues<T, Method>;
-}
+> = ConnectorAuthProviderGrantResult<ConnectorGrantOutputValues<T, Method>>;

@@ -27,14 +27,8 @@ import type {
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
 } from "./oauth/types";
-import type { ConnectorAuthProviderGrantResult } from "./grant-result";
+import type { ConnectorAuthProviderGrantResultForMethod } from "./grant-result";
 import type { ProviderEnv } from "./provider-env";
-
-export type {
-  ConnectorAuthProviderGrantResult,
-  ConnectorAuthProviderGrantResultBase,
-  ConnectorAuthProviderGrantUserInfo,
-} from "./grant-result";
 
 interface NoneGrantProvider {
   readonly kind: "none";
@@ -51,7 +45,7 @@ export interface AuthCodeGrantProvider<
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
     args: ConnectorAuthCodeExchangeArgs<T, Method>,
-  ): Promise<ConnectorAuthProviderGrantResult<T, Method>>;
+  ): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
 }
 
 export interface DeviceAuthGrantProvider<

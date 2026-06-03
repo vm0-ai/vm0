@@ -13,10 +13,7 @@ import {
   type AuthCodeGrantConnectorType,
   type ConnectorAuthCodeGrantAuthMethodId,
 } from "@vm0/connectors/connectors";
-import {
-  exchangeConnectorAuthCode,
-  type ConnectorAuthProviderGrantResultBase,
-} from "@vm0/connectors/auth-providers";
+import { exchangeConnectorAuthCode } from "@vm0/connectors/auth-providers";
 
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
@@ -48,6 +45,10 @@ type CallbackIdentity = {
   readonly userId: string;
   readonly orgId: string;
 };
+
+type ConnectorAuthCodeExchangeResult = Awaited<
+  ReturnType<typeof exchangeConnectorAuthCode>
+>;
 
 type AuthCodeCallbackMethodRef<
   Type extends AuthCodeGrantConnectorType = AuthCodeGrantConnectorType,
@@ -157,7 +158,7 @@ async function exchangeTokenForConnector<
     readonly codeVerifier: string | undefined;
     readonly oauthContext: string | undefined;
   },
-): Promise<ConnectorAuthProviderGrantResultBase> {
+): Promise<ConnectorAuthCodeExchangeResult> {
   const authClient = resolveConnectorAuthClientForMethod(
     args.connectorType,
     args.authMethod,
@@ -331,7 +332,7 @@ async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
   readonly connectorType: AuthCodeGrantConnectorType;
   readonly identity: CallbackIdentity;
-  readonly token: ConnectorAuthProviderGrantResultBase;
+  readonly token: ConnectorAuthCodeExchangeResult;
   readonly signal: AbortSignal;
 }): Promise<void> {
   if (args.connectorType !== "github") {

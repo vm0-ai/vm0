@@ -19,7 +19,7 @@ import {
   testOauthProvider,
 } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
 import type { AuthCodeConnectorAuthProvider } from "@vm0/connectors/auth-providers/types";
-import type { ConnectorAuthProviderGrantResultBase } from "@vm0/connectors/auth-providers";
+import type { exchangeConnectorAuthCode } from "@vm0/connectors/auth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
@@ -44,6 +44,10 @@ import { decryptSecretForTests } from "./helpers/encrypt-secret";
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+type ConnectorAuthCodeExchangeResult = Awaited<
+  ReturnType<typeof exchangeConnectorAuthCode>
+>;
 
 const BASE_URL = "https://app.vm0.test";
 const API_ORIGIN = "https://api.vm0.ai";
@@ -2283,7 +2287,7 @@ describe("GET /api/connectors/:type/callback", () => {
       outputs: {
         initialRefreshToken: "dynamic-refresh-token",
       },
-    } satisfies ConnectorAuthProviderGrantResultBase;
+    } satisfies ConnectorAuthCodeExchangeResult;
     testOauthApiProvider.grant.exchangeCode = () => {
       return Promise.resolve(
         malformedResult as DynamicTestOAuthApiExchangeResult,

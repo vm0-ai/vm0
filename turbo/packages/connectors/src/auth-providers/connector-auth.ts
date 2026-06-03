@@ -29,15 +29,16 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
-  ConnectorAuthProviderGrantResultBase,
-  ConnectorAuthProviderGrantResult,
-  ConnectorAuthProviderGrantUserInfo,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
   RefreshTokenAccessProvider,
   TokenRevokeProvider,
 } from "./types";
+import type {
+  ConnectorAuthProviderGrantResult,
+  ConnectorAuthProviderGrantResultForMethod,
+} from "./grant-result";
 import {
   type AuthUrlResult,
   type OAuthDeviceAuthPollResult,
@@ -102,9 +103,6 @@ import {
 
 export type {
   AuthUrlResult,
-  ConnectorAuthProviderGrantResultBase,
-  ConnectorAuthProviderGrantResult,
-  ConnectorAuthProviderGrantUserInfo,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   OAuthDeviceAuthPollResult,
@@ -530,10 +528,10 @@ export function exchangeConnectorAuthCode<
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<ConnectorAuthProviderGrantResult<T, Method>>;
+}): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>>;
 export function exchangeConnectorAuthCode(
   args: ConnectorAuthCodeExchangeCallArgs,
-): Promise<ConnectorAuthProviderGrantResultBase>;
+): Promise<ConnectorAuthProviderGrantResult>;
 export async function exchangeConnectorAuthCode<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T>,
@@ -546,7 +544,7 @@ export async function exchangeConnectorAuthCode<
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<ConnectorAuthProviderGrantResult<T, Method>> {
+}): Promise<ConnectorAuthProviderGrantResultForMethod<T, Method>> {
   const provider = connectorAuthCodeGrantProviderFor(
     args.type,
     args.authMethod,
