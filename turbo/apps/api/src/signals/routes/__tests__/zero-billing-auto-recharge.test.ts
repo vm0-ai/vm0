@@ -277,6 +277,66 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
     expect(row?.pendingAt).toBeInstanceOf(Date);
   });
 
+  it("keeps auto-recharge pending when Stripe reports the invoice is already paid", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const fixture = await track(
+      store.set(seedAutoRechargeOrg$, { tier: "pro" }, context.signal),
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .update(orgMetadata)
+      .set({
+        credits: 500,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: null,
+      })
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      deleted: false,
+      invoice_settings: { default_payment_method: "pm_test" },
+    });
+    context.mocks.stripe.invoices.create.mockResolvedValue({
+      id: "in_auto_recharge_already_paid",
+    });
+    context.mocks.stripe.invoiceItems.create.mockResolvedValue({
+      id: "ii_auto_recharge_already_paid",
+    });
+    context.mocks.stripe.invoices.finalizeInvoice.mockResolvedValue({
+      id: "in_auto_recharge_already_paid",
+    });
+    context.mocks.stripe.invoices.pay.mockRejectedValue(
+      new Error("Invoice is already paid"),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
+
+    const response = await accept(
+      client.update({
+        body: { enabled: true, threshold: 1000, amount: 5000 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      enabled: true,
+      threshold: 1000,
+      amount: 5000,
+    });
+    expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(
+      "in_auto_recharge_already_paid",
+    );
+
+    const [row] = await writeDb
+      .select({ pendingAt: orgMetadata.autoRechargePendingAt })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+    expect(row?.pendingAt).toBeInstanceOf(Date);
+  });
+
   it("disables auto-recharge and clears pending state", async () => {
     const fixture = await track(
       store.set(

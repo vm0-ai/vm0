@@ -68,6 +68,19 @@ async function resolvePaymentMethod(
   return null;
 }
 
+function isInvoiceAlreadyPaidError(error: unknown): boolean {
+  const maybeStripeError = error as
+    | { readonly code?: string; readonly message?: string }
+    | undefined;
+  const message =
+    error instanceof Error ? error.message : (maybeStripeError?.message ?? "");
+
+  return (
+    maybeStripeError?.code === "invoice_already_paid" ||
+    /invoice is already paid/i.test(message)
+  );
+}
+
 /**
  * Trigger a Stripe auto-recharge invoice if the org's balance has
  * crossed the recharge threshold. Mirrors web's `triggerAutoRecharge`.
@@ -172,7 +185,19 @@ export const triggerAutoRecharge$ = command(
 
         await stripe.invoices.finalizeInvoice(invoice.id);
         signal.throwIfAborted();
-        await stripe.invoices.pay(invoice.id);
+        const payOutcome = await settle(stripe.invoices.pay(invoice.id), signal);
+        signal.throwIfAborted();
+        if (!payOutcome.ok) {
+          if (!isInvoiceAlreadyPaidError(payOutcome.error)) {
+            throw payOutcome.error;
+          }
+          L.debug("Auto-recharge invoice was already paid", {
+            orgId,
+            creditsAmount,
+            amountCents,
+            invoiceId: invoice.id,
+          });
+        }
         signal.throwIfAborted();
 
         L.debug("Auto-recharge invoice created and paid", {

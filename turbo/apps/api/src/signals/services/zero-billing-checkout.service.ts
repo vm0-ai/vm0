@@ -364,6 +364,7 @@ export const createCreditCheckoutSession$ = command(
       mode: "payment",
       customer: customerId,
       line_items: [{ price: presetPriceId, quantity: 1 }],
+      allow_promotion_codes: true,
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       payment_intent_data: {

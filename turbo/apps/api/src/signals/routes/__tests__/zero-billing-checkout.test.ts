@@ -1047,7 +1047,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
       }),
     );
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.not.objectContaining({
+      expect.objectContaining({
         allow_promotion_codes: true,
       }),
     );
