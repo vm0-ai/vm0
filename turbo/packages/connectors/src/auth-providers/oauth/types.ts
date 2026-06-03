@@ -19,13 +19,6 @@ import type {
   ConnectorAuthProviderGrantResultForMethod,
 } from "../grant-result";
 
-export type OAuthTokenUserInfo = ConnectorAuthProviderGrantResult["userInfo"];
-
-export type OAuthTokenResultFields = Pick<
-  ConnectorAuthProviderGrantResult,
-  "expiresIn" | "scopes" | "userInfo" | "extraConnectorSecrets"
->;
-
 /**
  * Result from buildAuthUrl when PKCE is required.
  * Providers that need PKCE return { url, codeVerifier } instead of a plain string.

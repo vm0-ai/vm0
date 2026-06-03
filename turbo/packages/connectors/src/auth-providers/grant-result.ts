@@ -28,6 +28,11 @@ export interface ConnectorAuthProviderGrantResult<
   readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
 }
 
+export type ConnectorAuthProviderGrantResultFields = Pick<
+  ConnectorAuthProviderGrantResult,
+  "expiresIn" | "scopes" | "userInfo" | "extraConnectorSecrets"
+>;
+
 type ConnectorAuthProviderGrantMethodId<
   T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
 > = ConnectorAuthMethodIdsByGrantKind<T, "auth-code" | "device-auth">;

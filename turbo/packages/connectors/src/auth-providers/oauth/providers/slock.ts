@@ -6,8 +6,8 @@ import type {
   OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
-  OAuthTokenUserInfo,
 } from "../types";
+import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
 const SLOCK_DEVICE_AUTH_URL = `${SLOCK_API_BASE_URL}/api/auth/device/authorize`;
@@ -249,7 +249,7 @@ function selectSlockServer(
 async function fetchSlockUserInfo(
   accessToken: string,
   fallbackUserId: string | undefined,
-): Promise<OAuthTokenUserInfo> {
+): Promise<ConnectorAuthProviderGrantUserInfo> {
   const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -381,7 +381,7 @@ export async function pollSlockDeviceAuth(args: {
   if (!("ok" in serverIdResult)) {
     return serverIdResult;
   }
-  let userInfo: OAuthTokenUserInfo;
+  let userInfo: ConnectorAuthProviderGrantUserInfo;
   try {
     userInfo = await fetchSlockUserInfo(accessToken, data.data.userId);
   } catch {

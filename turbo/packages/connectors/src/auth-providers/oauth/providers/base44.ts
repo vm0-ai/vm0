@@ -5,8 +5,8 @@ import type {
   OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
-  OAuthTokenUserInfo,
 } from "../types";
+import type { ConnectorAuthProviderGrantUserInfo } from "../../grant-result";
 import { throwOAuthError } from "../error";
 
 const BASE44_DEVICE_AUTH_URL = "https://app.base44.com/oauth/device/code";
@@ -217,7 +217,7 @@ export async function refreshBase44Token(args: {
 
 async function fetchBase44UserInfo(
   accessToken: string,
-): Promise<OAuthTokenUserInfo> {
+): Promise<ConnectorAuthProviderGrantUserInfo> {
   const response = await fetch(BASE44_USERINFO_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
