@@ -322,6 +322,7 @@ export const createAgentCheckpoint$ = command(
       .update(agentSessions)
       .set({
         conversationId: conversation.id,
+        ...(artifactSnapshots ? { artifacts: artifactSnapshots } : {}),
         updatedAt: nowDate(),
       })
       .where(eq(agentSessions.id, run.sessionId))

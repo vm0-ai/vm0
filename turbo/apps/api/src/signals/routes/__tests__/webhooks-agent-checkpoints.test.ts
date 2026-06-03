@@ -500,6 +500,24 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   it("accepts checkpoints without artifact snapshots", async () => {
     const fixture = await track(seedFixture());
+    const originalArtifacts = [
+      {
+        name: "existing-artifact",
+        version: "existing-version",
+        mountPath: "/existing",
+      },
+    ];
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, fixture.runId))
+      .limit(1);
+    expect(run).toBeDefined();
+    await db
+      .update(agentSessions)
+      .set({ artifacts: originalArtifacts })
+      .where(eq(agentSessions.id, run!.sessionId));
 
     const response = await accept(
       checkpointClient().create({
@@ -514,13 +532,18 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(response.body.conversationId).toBeTruthy();
     expect(response.body.artifacts).toBeUndefined();
 
-    const db = store.set(writeDb$);
     const [checkpoint] = await db
       .select({ artifactSnapshots: checkpoints.artifactSnapshots })
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
     expect(checkpoint?.artifactSnapshots).toBeNull();
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, run!.sessionId))
+      .limit(1);
+    expect(session?.artifacts).toStrictEqual(originalArtifacts);
   });
 
   it("normalizes empty artifact snapshots to a missing response field", async () => {
@@ -624,6 +647,18 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(checkpoint?.artifactSnapshots).toStrictEqual(
       persistedArtifactSnapshots,
     );
+    const [run] = await db
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, fixture.runId))
+      .limit(1);
+    expect(run).toBeDefined();
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, run!.sessionId))
+      .limit(1);
+    expect(session?.artifacts).toStrictEqual(persistedArtifactSnapshots);
   });
 
   it("creates independent sessions for separate runs", async () => {
