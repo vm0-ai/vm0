@@ -12,10 +12,8 @@ import type {
   ConnectorAuthMethodId,
   ConnectorType,
 } from "@vm0/connectors/connectors";
-import {
-  buildConnectorAuthCodeAuthorizationUrl,
-  type AuthUrlResult,
-} from "@vm0/connectors/auth-providers";
+import { buildConnectorAuthCodeAuthorizationUrl } from "@vm0/connectors/auth-providers";
+import type { AuthUrlResult } from "@vm0/connectors/auth-providers/oauth/types";
 
 import { generateConnectorOAuthState } from "./connector-oauth-route-state";
 

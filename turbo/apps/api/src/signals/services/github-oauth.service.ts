@@ -7,10 +7,8 @@ import {
 } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
-import {
-  buildConnectorAuthCodeAuthorizationUrl,
-  type AuthUrlResult,
-} from "@vm0/connectors/auth-providers";
+import { buildConnectorAuthCodeAuthorizationUrl } from "@vm0/connectors/auth-providers";
+import type { AuthUrlResult } from "@vm0/connectors/auth-providers/oauth/types";
 import {
   connectorAuthMethodHasGrantKind,
   resolveConnectorAuthClientForMethod,

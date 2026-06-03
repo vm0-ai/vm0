@@ -102,12 +102,8 @@ import {
 } from "./oauth/providers/test-oauth-device-provider";
 
 export type {
-  AuthUrlResult,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
-  OAuthDeviceAuthPollResult,
-  OAuthDeviceAuthPollResultBase,
-  OAuthDeviceAuthStartResult,
 };
 export type { ProviderEnv };
 export { providerEnvFromObject };
