@@ -325,7 +325,9 @@ pub(super) async fn finalize_sandbox_for_completion(
                     // pool; destroying a parked sandbox is safe — Drop
                     // aborts any leftover handles and the FC process is
                     // killed regardless of balloon state.
-                    destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await;
+                    if destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await {
+                        park_notify.notify_one();
+                    }
                     BudgetOwnership::idle_owned()
                 }
                 ParkResult::Rejected(rejected) => {
@@ -522,14 +524,14 @@ mod tests {
 
     use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
     use sandbox::{ExecResult, SandboxFactory, SandboxId};
-    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+    use sandbox_mock::{MockLifecycleGate, MockSandbox, MockSandboxFactory};
     use tokio_util::sync::CancellationToken;
 
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::{ActiveBudgetLease, CompletionPayload, RunCleanupState};
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkedIdleCandidate, ParkingGate,
-        SyntheticParkedIdleCandidateParts,
+        IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult,
+        ParkedIdleCandidate, ParkingGate, SyntheticParkedIdleCandidateParts,
     };
     use crate::ids::RunId;
     use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -998,6 +1000,127 @@ mod tests {
         let cache_states = cache.held_session_states().await;
         assert_eq!(cache_states.len(), 1);
         assert_eq!(cache_states[0].session_id, "sess-new");
+    }
+
+    #[tokio::test]
+    async fn finalizer_notifies_after_replaced_idle_workspace_cache_promotion() {
+        let fixture = FinalizeTestFixture::new().await;
+        let session_id = "sess-replaced-cache";
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+
+        let old_run_id = RunId::new_v4();
+        let old_sandbox_id = SandboxId::new_v4();
+        let old_workspace_image = prepare_test_workspace_image_lease(
+            &paths,
+            &cache,
+            old_run_id,
+            old_sandbox_id,
+            session_id,
+        )
+        .await;
+        let old_promotion = test_promotion_context(
+            old_workspace_image,
+            old_run_id,
+            old_sandbox_id,
+            session_id,
+            WorkspaceCacheTerminalStatus::Success,
+            crate::idle_pool::StorageFingerprints::default(),
+        );
+        let destroy_gate = MockLifecycleGate::new();
+        let existing_overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        existing_overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let existing_factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
+            MockSandboxFactory::with_overrides(Arc::clone(&existing_overrides)),
+        ));
+        let existing_sandbox = existing_factory
+            .create(sandbox::SandboxConfig {
+                id: old_sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+                device_rate_limits: None,
+                workspace_drive: None,
+            })
+            .await
+            .expect("create existing sandbox");
+        let (_existing_budget, existing_lease) = test_budget_lease();
+        let existing_candidate = IdleParkRequest::new(IdleParkRequestParts {
+            source_ip: existing_sandbox.source_ip().to_owned(),
+            sandbox: existing_sandbox,
+            factory: existing_factory,
+            session_id: session_id.into(),
+            sandbox_id: old_sandbox_id,
+            profile_name: "vm0/default".into(),
+            device_rate_limits: None,
+            budget_lease: existing_lease,
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+            workspace_promotion: Some(old_promotion),
+        })
+        .park_for_idle()
+        .await
+        .unwrap_or_else(|failure| {
+            let error = failure.into_active_parts().error;
+            panic!("existing sandbox should park: {error}");
+        })
+        .with_last_completed_at(local_completed_at());
+        assert!(matches!(
+            fixture.idle_pool.lock().await.park(existing_candidate),
+            ParkResult::Parked
+        ));
+
+        let park_notify = Arc::new(tokio::sync::Notify::new());
+        let (_budget, lease) = test_budget_lease();
+        let network_log_session = fixture.network_log_session().await;
+        let new_run_id = RunId::new_v4();
+        let new_sandbox_id = SandboxId::new_v4();
+        let mut context = fixture.finalize_context(
+            new_run_id,
+            new_sandbox_id,
+            session_id,
+            network_log_session,
+            CancellationToken::new(),
+        );
+        context.park_notify = Arc::clone(&park_notify);
+
+        let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("replacement-sandbox"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                new_run_id,
+                0,
+                None,
+                new_sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            context,
+        ));
+
+        destroy_gate
+            .wait_entered(1, Duration::from_secs(5))
+            .await
+            .expect("replaced idle destroy should reach destroy gate");
+        tokio::time::timeout(Duration::from_secs(1), park_notify.notified())
+            .await
+            .expect("newly parked replacement should notify before replaced destroy finishes");
+
+        destroy_gate.release_one();
+        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        tokio::time::timeout(Duration::from_secs(1), park_notify.notified())
+            .await
+            .expect("replaced idle workspace cache promotion should notify after destroy");
+        assert!(
+            cache
+                .held_session_states()
+                .await
+                .iter()
+                .any(|state| state.session_id == session_id),
+            "replaced idle workspace cache should be visible after destroy completion"
+        );
     }
 
     #[tokio::test]
