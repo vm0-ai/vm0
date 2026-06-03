@@ -206,13 +206,15 @@ fn workspace_image_size_mb(image_size_bytes: u64) -> u32 {
     image_size_bytes.div_ceil(mib).min(u64::from(u32::MAX)) as u32
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct FsStats {
-    total_bytes: u64,
-    available_bytes: u64,
+    pub(crate) total_bytes: u64,
+    pub(crate) available_bytes: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CacheBudget {
     pub(crate) max_cache_bytes: u64,
     pub(crate) target_after_gc_bytes: u64,
@@ -233,6 +235,68 @@ impl CacheBudget {
             max_entry_bytes,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceImageCacheInspection {
+    pub(crate) cache_dir: String,
+    pub(crate) lock_dir: String,
+    pub(crate) fs_stats: FsStats,
+    pub(crate) budget: CacheBudget,
+    pub(crate) summary: WorkspaceImageCacheInspectionSummary,
+    pub(crate) entries: Vec<WorkspaceImageCacheInspectionEntry>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceImageCacheInspectionSummary {
+    pub(crate) total_entries: usize,
+    pub(crate) reusable_entries: usize,
+    pub(crate) invalid_entries: usize,
+    pub(crate) stale_entries: usize,
+    pub(crate) temporary_entries: usize,
+    pub(crate) locked_entries: usize,
+    pub(crate) temporary_files: usize,
+    pub(crate) total_allocated_bytes: u64,
+    pub(crate) total_logical_image_bytes: u64,
+    pub(crate) temporary_allocated_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceImageCacheInspectionEntry {
+    pub(crate) cache_key: String,
+    pub(crate) status: WorkspaceImageCacheInspectionStatus,
+    pub(crate) reason: Option<String>,
+    pub(crate) cache_scope: Option<String>,
+    pub(crate) profile_name: Option<String>,
+    pub(crate) working_dir: Option<String>,
+    pub(crate) last_completed_at: Option<String>,
+    pub(crate) last_used_at: Option<String>,
+    pub(crate) last_terminal_status: Option<WorkspaceCacheTerminalStatus>,
+    pub(crate) allocated_bytes: u64,
+    pub(crate) logical_image_size_bytes: u64,
+    pub(crate) temporary_file_count: usize,
+    pub(crate) temporary_allocated_bytes: u64,
+    pub(crate) storage_count: usize,
+    pub(crate) artifact_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum WorkspaceImageCacheInspectionStatus {
+    Reusable,
+    Invalid,
+    Stale,
+    TemporaryOnly,
+    Locked,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TemporaryFileStats {
+    file_count: usize,
+    allocated_bytes: u64,
 }
 
 impl SessionWorkspaceCache {
@@ -776,6 +840,170 @@ impl SessionWorkspaceCache {
             drop(lock);
         }
         cap_workspace_held_session_states(states)
+    }
+
+    pub(crate) async fn inspect(&self) -> RunnerResult<WorkspaceImageCacheInspection> {
+        let fs_stats = self.fs_stats().await?;
+        let budget = CacheBudget::from_fs_stats(fs_stats);
+        let root = self.workspace_image_cache_dir().to_path_buf();
+        let mut entries = match fs::read_dir(&root).await {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(self.inspection_from_entries(fs_stats, budget, Vec::new()));
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let mut inspection_entries = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            if !entry_file_type_is_dir(&entry).await? {
+                continue;
+            }
+            let Some(cache_key) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if !is_cache_key_name(&cache_key) {
+                continue;
+            }
+            inspection_entries.push(self.inspect_entry(cache_key, entry.path()).await?);
+        }
+        inspection_entries.sort_unstable_by(|left, right| left.cache_key.cmp(&right.cache_key));
+        Ok(self.inspection_from_entries(fs_stats, budget, inspection_entries))
+    }
+
+    fn inspection_from_entries(
+        &self,
+        fs_stats: FsStats,
+        budget: CacheBudget,
+        entries: Vec<WorkspaceImageCacheInspectionEntry>,
+    ) -> WorkspaceImageCacheInspection {
+        let mut summary = WorkspaceImageCacheInspectionSummary {
+            total_entries: entries.len(),
+            ..WorkspaceImageCacheInspectionSummary::default()
+        };
+        for entry in &entries {
+            match entry.status {
+                WorkspaceImageCacheInspectionStatus::Reusable => summary.reusable_entries += 1,
+                WorkspaceImageCacheInspectionStatus::Invalid => summary.invalid_entries += 1,
+                WorkspaceImageCacheInspectionStatus::Stale => summary.stale_entries += 1,
+                WorkspaceImageCacheInspectionStatus::TemporaryOnly => {
+                    summary.temporary_entries += 1;
+                }
+                WorkspaceImageCacheInspectionStatus::Locked => summary.locked_entries += 1,
+            }
+            summary.temporary_files += entry.temporary_file_count;
+            summary.total_allocated_bytes = summary
+                .total_allocated_bytes
+                .saturating_add(entry.allocated_bytes)
+                .saturating_add(entry.temporary_allocated_bytes);
+            summary.total_logical_image_bytes = summary
+                .total_logical_image_bytes
+                .saturating_add(entry.logical_image_size_bytes);
+            summary.temporary_allocated_bytes = summary
+                .temporary_allocated_bytes
+                .saturating_add(entry.temporary_allocated_bytes);
+        }
+        WorkspaceImageCacheInspection {
+            cache_dir: self.workspace_image_cache_dir().display().to_string(),
+            lock_dir: self.inner.lock_dir.display().to_string(),
+            fs_stats,
+            budget,
+            summary,
+            entries,
+        }
+    }
+
+    async fn inspect_entry(
+        &self,
+        cache_key: String,
+        entry_dir: PathBuf,
+    ) -> RunnerResult<WorkspaceImageCacheInspectionEntry> {
+        let temporary = inspect_temporary_files(&entry_dir).await;
+        let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await else {
+            return Ok(WorkspaceImageCacheInspectionEntry {
+                cache_key,
+                status: WorkspaceImageCacheInspectionStatus::Locked,
+                reason: Some("entry lock is held".into()),
+                cache_scope: None,
+                profile_name: None,
+                working_dir: None,
+                last_completed_at: None,
+                last_used_at: None,
+                last_terminal_status: None,
+                allocated_bytes: 0,
+                logical_image_size_bytes: 0,
+                temporary_file_count: temporary.file_count,
+                temporary_allocated_bytes: temporary.allocated_bytes,
+                storage_count: 0,
+                artifact_count: 0,
+            });
+        };
+
+        let current = self.session_workspace_cache_current_image(&cache_key);
+        let current_metadata = match fs::metadata(&current).await {
+            Ok(metadata) => Some(metadata),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                drop(lock);
+                return Err(e.into());
+            }
+        };
+        let metadata_path = self.session_workspace_cache_metadata(&cache_key);
+        let metadata = match self.read_metadata_file(&metadata_path).await {
+            Ok(metadata) => Some(metadata),
+            Err(RunnerError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => None,
+        };
+
+        let entry = match (current_metadata, metadata) {
+            (None, metadata) => {
+                let status = if temporary.file_count > 0 {
+                    WorkspaceImageCacheInspectionStatus::TemporaryOnly
+                } else {
+                    WorkspaceImageCacheInspectionStatus::Stale
+                };
+                let reason = if temporary.file_count > 0 {
+                    "missing current image; temporary files present"
+                } else {
+                    "missing current image"
+                };
+                workspace_image_cache_inspection_entry(
+                    cache_key,
+                    status,
+                    Some(reason.into()),
+                    metadata.as_ref(),
+                    None,
+                    temporary,
+                )
+            }
+            (Some(current_metadata), None) => workspace_image_cache_inspection_entry(
+                cache_key,
+                WorkspaceImageCacheInspectionStatus::Invalid,
+                Some("missing or invalid metadata".into()),
+                None,
+                Some(&current_metadata),
+                temporary,
+            ),
+            (Some(current_metadata), Some(metadata)) => {
+                let reason = self
+                    .unusable_current_entry_reason(&cache_key, &metadata, &current_metadata)
+                    .map(str::to_owned);
+                let status = if reason.is_some() {
+                    WorkspaceImageCacheInspectionStatus::Invalid
+                } else {
+                    WorkspaceImageCacheInspectionStatus::Reusable
+                };
+                workspace_image_cache_inspection_entry(
+                    cache_key,
+                    status,
+                    reason,
+                    Some(&metadata),
+                    Some(&current_metadata),
+                    temporary,
+                )
+            }
+        };
+        drop(lock);
+        Ok(entry)
     }
 
     pub(crate) async fn gc(&self, dry_run: bool) -> RunnerResult<u64> {
@@ -1501,6 +1729,70 @@ impl SessionWorkspaceCache {
         }
         Ok(true)
     }
+}
+
+fn workspace_image_cache_inspection_entry(
+    cache_key: String,
+    status: WorkspaceImageCacheInspectionStatus,
+    reason: Option<String>,
+    metadata: Option<&WorkspaceCacheMetadata>,
+    current_metadata: Option<&std::fs::Metadata>,
+    temporary: TemporaryFileStats,
+) -> WorkspaceImageCacheInspectionEntry {
+    let allocated_bytes = current_metadata.map(allocated_bytes).unwrap_or(0);
+    let logical_image_size_bytes = current_metadata.map(std::fs::Metadata::len).unwrap_or(0);
+    WorkspaceImageCacheInspectionEntry {
+        cache_key,
+        status,
+        reason,
+        cache_scope: metadata.map(|metadata| metadata.cache_scope.clone()),
+        profile_name: metadata.map(|metadata| metadata.profile_name.clone()),
+        working_dir: metadata.map(|metadata| metadata.working_dir.clone()),
+        last_completed_at: metadata.map(|metadata| metadata.last_completed_at.clone()),
+        last_used_at: metadata.map(|metadata| metadata.last_used_at.clone()),
+        last_terminal_status: metadata.map(|metadata| metadata.last_terminal_status),
+        allocated_bytes,
+        logical_image_size_bytes,
+        temporary_file_count: temporary.file_count,
+        temporary_allocated_bytes: temporary.allocated_bytes,
+        storage_count: metadata
+            .map(|metadata| metadata.storage_fingerprints.storages.len())
+            .unwrap_or(0),
+        artifact_count: metadata
+            .map(|metadata| metadata.storage_fingerprints.artifacts.len())
+            .unwrap_or(0),
+    }
+}
+
+async fn inspect_temporary_files(entry_dir: &Path) -> TemporaryFileStats {
+    let mut files = match fs::read_dir(entry_dir).await {
+        Ok(files) => files,
+        Err(_) => return TemporaryFileStats::default(),
+    };
+    let mut stats = TemporaryFileStats::default();
+    while let Ok(Some(file)) = files.next_entry().await {
+        let Ok(file_type) = file.file_type().await else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let file_name = file.file_name();
+        let Some(file_name) = file_name.to_str() else {
+            continue;
+        };
+        if !is_workspace_tmp_file_name(file_name) {
+            continue;
+        }
+        stats.file_count += 1;
+        stats.allocated_bytes = stats.allocated_bytes.saturating_add(
+            fs::metadata(file.path())
+                .await
+                .map(|metadata| allocated_bytes(&metadata))
+                .unwrap_or(0),
+        );
+    }
+    stats
 }
 
 impl WorkspaceImageLease {
@@ -2556,6 +2848,215 @@ mod tests {
         assert_eq!(budget.target_after_gc_bytes, 150 * GIB);
         assert_eq!(budget.min_free_bytes, 50 * GIB);
         assert_eq!(budget.max_entry_bytes, 20 * GIB);
+    }
+
+    #[tokio::test]
+    async fn inspect_missing_cache_dir_returns_empty_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths);
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert!(inspection.entries.is_empty());
+        assert_eq!(inspection.summary.total_entries, 0);
+        assert_eq!(inspection.summary.total_allocated_bytes, 0);
+        assert_eq!(inspection.summary.total_logical_image_bytes, 0);
+        assert_eq!(inspection.fs_stats.total_bytes, TEST_FS_TOTAL_BYTES);
+        assert_eq!(
+            inspection.budget,
+            CacheBudget::from_fs_stats(inspection.fs_stats)
+        );
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_reusable_entry_with_storage_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints {
+                        storages: HashMap::from([
+                            ("/workspace".into(), ("repo".into(), "v1".into())),
+                            ("/workspace/cache".into(), ("cache".into(), "v2".into())),
+                        ]),
+                        artifacts: HashMap::from([(
+                            "/workspace/artifact".into(),
+                            ("artifact".into(), "v1".into()),
+                        )]),
+                    },
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.total_entries, 1);
+        assert_eq!(inspection.summary.reusable_entries, 1);
+        assert_eq!(inspection.summary.total_logical_image_bytes, 5);
+        assert!(inspection.summary.total_allocated_bytes > 0);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Reusable);
+        assert_eq!(entry.storage_count, 2);
+        assert_eq!(entry.artifact_count, 1);
+        assert_eq!(entry.allocated_bytes, allocated_bytes(&current_metadata));
+        assert_eq!(entry.logical_image_size_bytes, current_metadata.len());
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_invalid_metadata_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(TEST_PROFILE_NAME, "sess-1", "/workspace", 5);
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::write(&current, b"image").await.unwrap();
+        let current_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "other-session".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("cache key mismatch"));
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_stale_entry_without_current_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = write_current_cache_entry(
+            &cache,
+            &paths,
+            RunId::new_v4(),
+            "sess-1",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        fs::remove_file(paths.session_workspace_cache_current_image(&key))
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.stale_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Stale);
+        assert_eq!(entry.reason.as_deref(), Some("missing current image"));
+        assert_eq!(entry.profile_name.as_deref(), Some(TEST_PROFILE_NAME));
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_temporary_only_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
+        fs::create_dir_all(tmp.parent().unwrap()).await.unwrap();
+        fs::write(&tmp, b"partial image").await.unwrap();
+        let tmp_metadata = fs::metadata(&tmp).await.unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.temporary_entries, 1);
+        assert_eq!(inspection.summary.temporary_files, 1);
+        assert_eq!(
+            inspection.summary.temporary_allocated_bytes,
+            allocated_bytes(&tmp_metadata)
+        );
+        let entry = &inspection.entries[0];
+        assert_eq!(
+            entry.status,
+            WorkspaceImageCacheInspectionStatus::TemporaryOnly
+        );
+        assert_eq!(entry.temporary_file_count, 1);
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_locked_entry_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let _lock = crate::lock::acquire(cache.entry_lock_path(&key))
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.locked_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Locked);
+        assert_eq!(entry.reason.as_deref(), Some("entry lock is held"));
     }
 
     #[test]
