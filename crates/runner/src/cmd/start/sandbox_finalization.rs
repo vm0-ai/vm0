@@ -171,6 +171,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     sandbox,
                     factory: failure_factory,
                     budget_lease,
+                    workspace_promotion,
                 } = failure.active;
                 warn!(
                     run_id = %run_id,
@@ -178,6 +179,12 @@ pub(super) async fn finalize_sandbox_for_completion(
                     error = %failure.error,
                     "sandbox park failed, destroying instead of parking"
                 );
+                let workspace_cache_promoted = promote_workspace_image_from_active_sandbox(
+                    sandbox.as_ref(),
+                    workspace_promotion.as_ref(),
+                    "park_failed",
+                )
+                .await;
                 let destroy_outcome = stop_and_destroy_sandbox(
                     sandbox,
                     &**failure_factory,
@@ -208,7 +215,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                             budget_lease,
                         )),
                     ),
-                    false,
+                    workspace_cache_promoted,
                     false,
                 );
             }

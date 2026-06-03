@@ -249,6 +249,7 @@ pub(crate) struct IdleParkFailure {
     sandbox: Box<dyn Sandbox>,
     factory: Arc<Box<dyn SandboxFactory>>,
     budget_lease: BudgetLease,
+    workspace_promotion: Option<WorkspaceImagePromotionContext>,
     error: String,
 }
 
@@ -257,6 +258,7 @@ pub(crate) struct IdleParkActiveParts {
     pub(crate) sandbox: Box<dyn Sandbox>,
     pub(crate) factory: Arc<Box<dyn SandboxFactory>>,
     pub(crate) budget_lease: BudgetLease,
+    pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
 #[must_use = "idle park failure parts must be logged and cleaned up"]
@@ -302,12 +304,14 @@ impl IdleParkRequest {
                 sandbox,
                 factory,
                 budget_lease,
+                workspace_promotion,
                 error: e.to_string(),
             }),
             Err(_) => Err(IdleParkFailure {
                 sandbox,
                 factory,
                 budget_lease,
+                workspace_promotion,
                 error: "sandbox park panicked".into(),
             }),
         }
@@ -320,6 +324,7 @@ impl IdleParkFailure {
             sandbox,
             factory,
             budget_lease,
+            workspace_promotion,
             error,
         } = self;
         IdleParkFailureParts {
@@ -327,6 +332,7 @@ impl IdleParkFailure {
                 sandbox,
                 factory,
                 budget_lease,
+                workspace_promotion,
             },
             error,
         }

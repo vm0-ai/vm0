@@ -6,6 +6,9 @@ use super::super::support::{
 use super::support::assert_no_completion_for_run;
 
 use crate::idle_pool::ParkingState;
+use crate::paths::RunnerPaths;
+use crate::types::SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG;
+use crate::workspace_image_cache::SessionWorkspaceCache;
 use sandbox_mock::MockLifecycleGate;
 
 /// When `Sandbox::park()` returns an error, the runner falls back to
@@ -50,6 +53,81 @@ async fn park_failure_destroys_sandbox_and_skips_pool() {
         1,
         "park() should have been attempted exactly once"
     );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn park_failure_promotes_workspace_cache_before_destroy() {
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition {
+        transition: sandbox::SandboxIdleTransition::Park,
+        message: "simulated balloon failure".into(),
+    }));
+    let counter = Arc::clone(&overrides);
+
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) =
+        mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    let session_id = "sess-park-fail-cache";
+    let mut context = context_with_session(run_id, session_id);
+    context.feature_flags = Some(std::collections::HashMap::from([(
+        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
+        true,
+    )]));
+    push_job(&env, run_id, "vm0/default", Some(context));
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter before the active workspace image is written");
+    let sandbox_id = counter
+        .create_configs()
+        .into_iter()
+        .next()
+        .expect("sandbox create config should be recorded before wait_process entry")
+        .id;
+    let active_image = runner_paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(16 * 1024 * 1024).await.unwrap();
+    drop(file);
+
+    counter.clear_wait_process_lifecycle_gate();
+    wait_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete normally after park failure destroy");
+    assert_eq!(completion.exit_code, 0);
+
+    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+    assert_eq!(idle_pool.lock().await.len(), 0);
+    assert_eq!(counter.park_call_count(), 1);
+    assert_eq!(counter.destroy_call_count(), 1);
+    let held = workspace_cache.held_session_states().await;
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].session_id, session_id);
 
     shutdown(&env, run_handle).await;
 }
