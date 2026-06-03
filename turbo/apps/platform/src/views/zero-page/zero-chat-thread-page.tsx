@@ -3544,7 +3544,6 @@ function permissionActionVerb(action: PermissionAction): string {
 
 function permissionActionButtonLabel(
   state: PermissionActionButtonState,
-  action: PermissionAction,
 ): string {
   if (state.loading) {
     return "Checking permissions";
@@ -3554,21 +3553,6 @@ function permissionActionButtonLabel(
   }
   if (!state.hasPermission) {
     return "Unknown permission";
-  }
-  if (state.saveDone || state.alreadyApplied) {
-    return action === "allow" ? "Permissions updated" : "Permission denied";
-  }
-  if (state.existingRequestStatus === "pending") {
-    return "Request sent";
-  }
-  if (state.existingRequestStatus === "approved") {
-    return "Permissions updated";
-  }
-  if (state.existingRequestStatus === "rejected") {
-    return "Request denied";
-  }
-  if (state.submitDone) {
-    return "Request sent";
   }
   if (state.saving) {
     return state.canManagePermissions || state.selfServiceGrant
@@ -3587,12 +3571,8 @@ function permissionActionButtonDisabled(
     state.loading ||
     state.loadError ||
     state.saving ||
-    state.alreadyApplied ||
-    state.saveDone ||
-    state.submitDone ||
     !state.hasAgent ||
-    !state.hasPermission ||
-    Boolean(state.existingRequestStatus)
+    !state.hasPermission
   );
 }
 
@@ -3643,7 +3623,7 @@ function PermissionActionButton({
       className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
     >
       {state.saving && <IconLoader2 size={15} className="animate-spin" />}
-      {permissionActionButtonLabel(state, action)}
+      {permissionActionButtonLabel(state)}
     </button>
   );
 }
