@@ -109,14 +109,21 @@ fn format_entry_label(
 ) -> String {
     let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
     let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
-    let missing_root_policy = entry.missing_root_policy.as_deref().unwrap_or("fail");
     let url_scheme = archive_url
         .split_once("://")
         .map(|(scheme, _)| scheme)
         .unwrap_or("unknown");
+    let missing_root_policy = if label_prefix == "artifact" {
+        format!(
+            " missingRootPolicy={}",
+            entry.missing_root_policy.as_deref().unwrap_or("fail")
+        )
+    } else {
+        String::new()
+    };
 
     format!(
-        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={} missingRootPolicy={}",
+        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={}{}",
         label_prefix,
         index,
         entry.mount_path,
@@ -193,7 +200,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[0],
             DownloadTask::new(
-                "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false missingRootPolicy=fail".into(),
+                "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
                 "storage_download",
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),

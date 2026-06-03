@@ -1,7 +1,7 @@
 //! VAS artifact upload — SHA-256 hashing, tar.gz creation, S3 presigned upload.
 //!
-//! Flow (caller first walks the mount via [`walk_files`], then invokes
-//! [`create_snapshot`] with the pre-walked file list):
+//! Flow (caller first walks the mount via [`walk_files_for_checkpoint`], then
+//! invokes [`create_snapshot`] with the pre-walked file list):
 //! 1. POST `/storages/prepare` with file list → get presigned URLs
 //! 2. If deduplicated, POST `/storages/commit` to update HEAD
 //! 3. Create tar.gz archive
@@ -123,8 +123,9 @@ pub(crate) async fn walk_files_for_checkpoint(
 }
 
 /// Create a VAS snapshot using direct S3 upload. Caller provides the
-/// pre-walked file list (see [`walk_files`]) — this lets the checkpoint step
-/// share one walk between its skip-check fingerprint and the snapshot upload.
+/// pre-walked file list (see [`walk_files_for_checkpoint`]) — this lets the
+/// checkpoint step share one walk between its skip-check fingerprint and the
+/// snapshot upload.
 pub(crate) async fn create_snapshot(
     http: &HttpClient,
     request: CreateSnapshotRequest<'_>,

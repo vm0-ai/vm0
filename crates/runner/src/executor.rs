@@ -2501,13 +2501,12 @@ fn build_env_json_with_host_env(
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, storageId, versionId}` objects. Guest-agent
-    // parses this on startup and iterates the list when taking snapshots
-    // at run end. The shape here must stay lockstep with guest-agent's
-    // `ArtifactEnv` — the two ship as one unit via `include_bytes!`, and
-    // `ArtifactEnv` deserializes strict (no `serde(default)`), so a
-    // field drop here will panic the VM at startup instead of silently
-    // producing empty strings.
+    // `{name, mountPath, storageId, versionId, missingRootPolicy?}` objects.
+    // Guest-agent parses this on startup and iterates the list when taking
+    // snapshots at run end. The required fields here must stay lockstep with
+    // guest-agent's `ArtifactEnv` — the two ship as one unit via
+    // `include_bytes!`, and required field drops will panic the VM at startup
+    // instead of silently producing empty strings.
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
@@ -4523,7 +4522,7 @@ mod tests {
         sandbox.push_exec_result(Ok(ExecResult::new(
             1,
             b"stdout clue".to_vec(),
-            b"[2026-05-20T18:03:00Z] [ERROR] [sandbox:guest-download] storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false missingRootPolicy=fail download failed: Failed to read archive entries: invalid gzip header".to_vec(),
+            b"[2026-05-20T18:03:00Z] [ERROR] [sandbox:guest-download] storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false download failed: Failed to read archive entries: invalid gzip header".to_vec(),
         )));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
