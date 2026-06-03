@@ -5,6 +5,8 @@ import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -367,6 +369,64 @@ describe("zeroClient$ apiBackend routing", () => {
     expect(getResult.status).toBe(200);
     expect(updateResult.status).toBe(200);
     expect(requestHosts).toStrictEqual(["api.vm0.ai", "api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted team contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroTeamContract.list, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, []);
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroTeamContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted onboarding status contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: "agent_1",
+          defaultAgentMetadata: null,
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(onboardingStatusContract);
+    const result = await client.getStatus();
+
+    expect(result.status).toBe(200);
+    // The onboard guard may also fetch status during page bootstrap; assert
+    // every onboarding-status request routes to the api host, not the count.
+    expect(requestHosts.length).toBeGreaterThan(0);
+    expect([...new Set(requestHosts)]).toStrictEqual(["api.vm0.ai"]);
   });
 
   it("routes GET contract requests to api host when apiBackend is on", async () => {
