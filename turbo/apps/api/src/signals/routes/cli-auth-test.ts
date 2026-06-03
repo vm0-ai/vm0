@@ -12,7 +12,12 @@ import {
   type ConnectorType,
   connectorTypeSchema,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
+import {
+  getConnectorAuthMethod,
+  getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodGrantMetadata,
+  getConnectorAuthMethodStorageMetadata,
+} from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -72,6 +77,76 @@ function connectorTypeHasSelectedProviderDrivenGrant(
 ): type is ConnectorAuthProviderType {
   const grantKind = getConnectorAuthMethod(type, authMethod)?.grant.kind;
   return grantKind === "auth-code" || grantKind === "device-auth";
+}
+
+function testConnectorTokenOutputs(args: {
+  readonly connectorType: ConnectorAuthProviderType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly accessToken: string;
+  readonly refreshToken: string | undefined;
+}): Readonly<Record<string, string>> {
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(
+    args.connectorType,
+    args.authMethod,
+  );
+  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+    args.connectorType,
+    args.authMethod,
+  );
+  if (!grantMetadata || !storageMetadata) {
+    throw new Error(
+      `${args.connectorType} connector auth method ${args.authMethod} does not expose token outputs`,
+    );
+  }
+
+  const outputNameBySecretName = new Map(
+    Object.entries(grantMetadata.outputs).map(([outputName, output]) => {
+      return [output.secretName, outputName];
+    }),
+  );
+  const accessOutputName = storageMetadata.runtimeBindings
+    .flatMap((binding) => {
+      return binding.source.kind === "connector-secret"
+        ? [outputNameBySecretName.get(binding.source.name)]
+        : [];
+    })
+    .find((outputName) => {
+      return outputName !== undefined;
+    });
+  if (!accessOutputName) {
+    throw new Error(
+      `${args.connectorType} connector auth method ${args.authMethod} does not expose a runtime token output`,
+    );
+  }
+
+  const outputs: Record<string, string> = {
+    [accessOutputName]: args.accessToken,
+  };
+  if (!args.refreshToken) {
+    return outputs;
+  }
+
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    args.connectorType,
+    args.authMethod,
+  );
+  if (accessMetadata?.kind !== "refresh-token") {
+    return outputs;
+  }
+
+  const refreshOutputName = Object.values(accessMetadata.inputs)
+    .flatMap((input) => {
+      return input.source.kind === "connector-secret"
+        ? [outputNameBySecretName.get(input.source.name)]
+        : [];
+    })
+    .find((outputName) => {
+      return outputName !== undefined;
+    });
+  if (refreshOutputName) {
+    outputs[refreshOutputName] = args.refreshToken;
+  }
+  return outputs;
 }
 
 function testEndpointAllowed(request: {
@@ -248,10 +323,12 @@ const createTestConnector$ = command(
         userId,
         type: connectorType,
         authMethod,
-        outputs: {
+        outputs: testConnectorTokenOutputs({
+          connectorType,
+          authMethod,
           accessToken: bodyResult.data.accessToken,
           refreshToken: bodyResult.data.refreshToken,
-        },
+        }),
         userInfo: {
           id: `e2e-test-${connectorType}`,
           username: `e2e-${connectorType}`,
