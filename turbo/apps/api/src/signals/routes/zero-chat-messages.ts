@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import {
   chatMessagesContract,
   type AttachFile,
+  type GenerationTemplateRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
@@ -72,6 +73,7 @@ import {
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
+import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 type SendBody = z.infer<typeof chatMessagesContract.send.body>;
 
@@ -85,6 +87,7 @@ interface NormalSendBody {
     readonly modelProviderId: string;
     readonly selectedModel: string;
   } | null;
+  readonly generationTemplate?: GenerationTemplateRequest;
   readonly hasTextContent?: boolean;
   readonly attachFiles?: AttachFile[];
   readonly clientMessageId?: string;
@@ -159,6 +162,7 @@ interface IncompleteRoundRow extends WebChatIncompleteRoundMessage {
 }
 
 type IncomingModelSelection = NormalSendBody["modelSelection"];
+type IncomingGenerationTemplate = NormalSendBody["generationTemplate"];
 type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
 interface NormalSendArgs {
@@ -175,6 +179,7 @@ interface PreparedNormalSend {
   readonly forceNewSession: boolean;
   readonly thread: ResolvedThread;
   readonly priorContext: string;
+  readonly generationTemplatePrompt: string;
   readonly persistedExplicitSelection: boolean;
 }
 
@@ -442,8 +447,14 @@ function buildWebAttachFilesPrompt(
 function buildAppendSystemPrompt(
   incompleteContext: string,
   priorContext: string,
+  generationTemplatePrompt: string,
 ): string {
-  return [buildWebChatPrompt(), priorContext, incompleteContext]
+  return [
+    buildWebChatPrompt(),
+    priorContext,
+    incompleteContext,
+    generationTemplatePrompt,
+  ]
     .filter((part) => {
       return part.length > 0;
     })
@@ -1352,6 +1363,7 @@ function appendUnassociatedUserMessage(params: {
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
+  readonly generationTemplate: IncomingGenerationTemplate;
 }): Promise<ClientMessageIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1377,6 +1389,7 @@ function appendUnassociatedUserMessage(params: {
         runId: null,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
+        generationTemplate: params.generationTemplate,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -1423,6 +1436,7 @@ async function appendAssociatedUserMessage(params: {
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
   readonly revokesMessageId: string | undefined;
+  readonly generationTemplate: IncomingGenerationTemplate;
   readonly appendQueueMarker: boolean;
 }): Promise<void> {
   await params.db.transaction(async (tx) => {
@@ -1449,6 +1463,7 @@ async function appendAssociatedUserMessage(params: {
         revokesMessageId: params.revokesMessageId,
         attachFiles: fileIds,
         attachFileMetadata: fileMetadata,
+        generationTemplate: params.generationTemplate,
       })
       .onConflictDoNothing({ target: chatMessages.id })
       .returning({ createdAt: chatMessages.createdAt });
@@ -1841,6 +1856,12 @@ const prepareNormalSend$ = command(
     if (modelError) {
       return modelError;
     }
+    const generationTemplatePrompt = buildGenerationTemplatePrompt(
+      args.body.generationTemplate,
+    );
+    if (generationTemplatePrompt.status === "invalid") {
+      return badRequestMessage(generationTemplatePrompt.message);
+    }
 
     const thread = await resolveThread({
       db,
@@ -1888,6 +1909,7 @@ const prepareNormalSend$ = command(
       forceNewSession,
       thread,
       priorContext,
+      generationTemplatePrompt: generationTemplatePrompt.prompt,
       persistedExplicitSelection,
     };
   },
@@ -1908,6 +1930,7 @@ async function queueUnassociatedNormalMessage(params: {
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientMessageId: params.body.clientMessageId,
+    generationTemplate: params.body.generationTemplate,
   });
   if (message.kind === "queued" && message.inserted) {
     await publishChatMessageCreated(
@@ -1968,6 +1991,7 @@ function scheduleAssociatedUserMessage(params: {
         attachFiles: params.body.attachFiles,
         clientMessageId: params.body.clientMessageId,
         revokesMessageId: params.body.revokesMessageId,
+        generationTemplate: params.body.generationTemplate,
         appendQueueMarker: params.appendQueueMarker,
       });
       await publishUserSignal(
@@ -2189,6 +2213,7 @@ const createNormalChatRun$ = command(
         appendSystemPrompt: buildAppendSystemPrompt(
           prepared.thread.incompleteContext,
           prepared.priorContext,
+          prepared.generationTemplatePrompt,
         ),
       },
       signal,
@@ -2281,7 +2306,12 @@ const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    if (await activeRunExistsForThread(prepared.db, prepared.thread.threadId)) {
+    const hasActiveRun = await activeRunExistsForThread(
+      prepared.db,
+      prepared.thread.threadId,
+    );
+    signal.throwIfAborted();
+    if (hasActiveRun) {
       if (args.body.revokesMessageId) {
         return badRequestMessage("Recommended follow-up cannot be queued");
       }

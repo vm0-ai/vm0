@@ -9,7 +9,10 @@ import {
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import {
+  chatMessages,
+  type ChatMessageGenerationTemplate,
+} from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -21,6 +24,7 @@ import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { and, asc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -404,6 +408,7 @@ async function insertQueuedMessage(
     readonly content: string | null;
     readonly attachFiles?: readonly string[];
     readonly interruptsRunId?: string;
+    readonly generationTemplate?: ChatMessageGenerationTemplate;
   },
 ): Promise<string> {
   const [message] = await store
@@ -416,6 +421,7 @@ async function insertQueuedMessage(
       runId: null,
       attachFiles: args.attachFiles ? [...args.attachFiles] : null,
       interruptsRunId: args.interruptsRunId,
+      generationTemplate: args.generationTemplate,
     })
     .returning({ id: chatMessages.id });
   if (!message) {
@@ -1287,6 +1293,14 @@ describe("POST /api/internal/callbacks/chat", () => {
     const fixture = await track(seedChatCallbackFixture());
     const db = store.set(writeDb$);
     const selectedModel = "claude-sonnet-4-6";
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "presentation",
+      selection: {
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    } satisfies ChatMessageGenerationTemplate;
     const [secret] = await db
       .insert(secrets)
       .values({
@@ -1334,6 +1348,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         role: "user",
         content: "queued next turn",
         runId: null,
+        generationTemplate,
       })
       .returning({ id: chatMessages.id });
     if (!queued) {
@@ -1357,6 +1372,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         runId: chatMessages.runId,
         revokesMessageId: chatMessages.revokesMessageId,
         content: chatMessages.content,
+        generationTemplate: chatMessages.generationTemplate,
       })
       .from(chatMessages)
       .where(
@@ -1369,6 +1385,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       .limit(1);
     expect(claimed).toMatchObject({
       content: "queued next turn",
+      generationTemplate,
       revokesMessageId: queued.id,
     });
     expect(claimed?.runId).toBeTruthy();
@@ -1387,6 +1404,20 @@ describe("POST /api/internal/callbacks/chat", () => {
       threadId: fixture.threadId,
       agentId: fixture.agentId,
     });
+
+    const [run] = await db
+      .select({ appendSystemPrompt: agentRuns.appendSystemPrompt })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, claimed!.runId!))
+      .limit(1);
+    expect(run?.appendSystemPrompt).toContain("# Generation Template");
+    expect(run?.appendSystemPrompt).toContain("Type: presentation");
+    expect(run?.appendSystemPrompt).toContain(
+      `Design system ID: ${item.designSystemId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `Template ID: ${item.templateId}`,
+    );
 
     const [zeroRun] = await db
       .select({

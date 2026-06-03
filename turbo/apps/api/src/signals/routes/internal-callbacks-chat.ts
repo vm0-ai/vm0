@@ -10,6 +10,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -65,6 +66,7 @@ import {
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { settle, tapError } from "../utils";
+import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -128,6 +130,7 @@ interface QueuedUserMessage {
   readonly content: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
+  readonly generationTemplate: ChatMessageGenerationTemplate | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
@@ -668,8 +671,11 @@ function buildWebAttachFilesPrompt(
     .join("\n");
 }
 
-function buildAppendSystemPrompt(incompleteContext: string): string {
-  return [buildWebChatPrompt(), incompleteContext]
+function buildAppendSystemPrompt(
+  incompleteContext: string,
+  generationTemplatePrompt: string,
+): string {
+  return [buildWebChatPrompt(), incompleteContext, generationTemplatePrompt]
     .filter((part) => {
       return part.length > 0;
     })
@@ -878,6 +884,7 @@ async function nextQueuedUserMessage(
       content: chatMessages.content,
       attachFiles: chatMessages.attachFiles,
       attachFileMetadata: chatMessages.attachFileMetadata,
+      generationTemplate: chatMessages.generationTemplate,
       modelProviderId: sql<null>`NULL`,
       modelProviderType: sql<null>`NULL`,
       modelProviderCredentialScope: sql<null>`NULL`,
@@ -1106,6 +1113,9 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     attachFiles.length === 0
       ? content
       : `${content}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
+  const generationTemplatePrompt = buildGenerationTemplatePrompt(
+    resolvedQueuedMessage.generationTemplate,
+  );
 
   const run = await args.createRun({
     orgId: agent.orgId,
@@ -1113,7 +1123,12 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     agentId: agent.id,
     prompt: fullPrompt,
     sessionId,
-    appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
+    appendSystemPrompt: buildAppendSystemPrompt(
+      incompleteContext,
+      generationTemplatePrompt.status === "resolved"
+        ? generationTemplatePrompt.prompt
+        : "",
+    ),
     threadId,
     queuedMessage: resolvedQueuedMessage,
   });
@@ -1134,6 +1149,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
       attachFileMetadata: queuedMessage.attachFileMetadata
         ? [...queuedMessage.attachFileMetadata]
         : null,
+      generationTemplate: queuedMessage.generationTemplate,
       revokesMessageId: queuedMessage.id,
     })
     .onConflictDoNothing({ target: chatMessages.revokesMessageId })

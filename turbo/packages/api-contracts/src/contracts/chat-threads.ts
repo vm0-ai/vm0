@@ -268,6 +268,18 @@ const modelSelectionRequestSchema = z
     }
   });
 
+const presentationGenerationTemplateRequestSchema = z.object({
+  type: z.literal("presentation"),
+  selection: z.object({
+    designSystemId: z.string().min(1),
+    templateId: z.string().min(1),
+  }),
+});
+
+const generationTemplateRequestSchema = z.discriminatedUnion("type", [
+  presentationGenerationTemplateRequestSchema,
+]);
+
 /**
  * Chat threads list route contract (/api/chat-threads)
  */
@@ -520,6 +532,7 @@ export const chatMessagesContract = c.router({
          * thread override and fall back to agent/org defaults.
          */
         modelSelection: modelSelectionRequestSchema.nullable().optional(),
+        generationTemplate: generationTemplateRequestSchema.optional(),
         // Optional for backward compatibility: older clients that omit this field
         // still trigger title generation (server guards with !== false, not === true).
         hasTextContent: z.boolean().optional(),
@@ -783,6 +796,8 @@ export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   modelSelectionRequestSchema,
+  generationTemplateRequestSchema,
+  presentationGenerationTemplateRequestSchema,
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
@@ -796,6 +811,12 @@ export {
 };
 
 export type ModelSelectionRequest = z.infer<typeof modelSelectionRequestSchema>;
+export type GenerationTemplateRequest = z.infer<
+  typeof generationTemplateRequestSchema
+>;
+export type PresentationGenerationTemplateRequest = z.infer<
+  typeof presentationGenerationTemplateRequestSchema
+>;
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;

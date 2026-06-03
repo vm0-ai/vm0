@@ -7,6 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -513,6 +514,7 @@ describe("POST /api/zero/chat/messages", () => {
       triggerSource: "web",
       chatThreadId: response.body.threadId,
     });
+    expect(run?.appendSystemPrompt).not.toContain("# Generation Template");
 
     const message = await firstUserMessage(response.body.threadId);
     expect(message).toMatchObject({
@@ -554,6 +556,171 @@ describe("POST /api/zero/chat/messages", () => {
       `chatThreadRunCreated:${response.body.threadId}`,
       null,
     );
+  });
+
+  it("adds generation template guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a launch deck",
+      generationTemplate: {
+        type: "presentation",
+        selection: {
+          designSystemId: item.designSystemId,
+          templateId: item.templateId,
+        },
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.prompt).toBe("make a launch deck");
+    expect(run?.appendSystemPrompt).toContain("# Generation Template");
+    expect(run?.appendSystemPrompt).toContain(
+      "Use the following registered resources for this run.",
+    );
+    expect(run?.appendSystemPrompt).toContain("Type: presentation");
+    expect(run?.appendSystemPrompt).toContain(
+      `Design system ID: ${item.designSystemId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `Template ID: ${item.templateId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain("Instructions:");
+    expect(run?.appendSystemPrompt).toContain(
+      "- Keep the user's prompt as the source of the requested content.",
+    );
+  });
+
+  it("rejects unknown generation template resources", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const unknownTemplate = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: item.designSystemId,
+              templateId: "template:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownTemplate.body.error.message).toBe(
+      "Unknown generation template",
+    );
+
+    const unknownDesignSystem = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: "design-system:missing",
+              templateId: item.templateId,
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownDesignSystem.body.error.message).toBe(
+      "Unknown generation template design system",
+    );
+  });
+
+  it("rejects generation templates that do not support presentation", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: item.designSystemId,
+              templateId: "template:web-prototype-taste-editorial",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Generation template does not support the requested type",
+    );
+  });
+
+  it("queues generation template when the thread has an active run", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "presentation",
+      selection: {
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    } as const;
+    const active = await send({
+      agentId: fixture.agentId,
+      prompt: "active deck run",
+    });
+    await clearAllDetached();
+
+    const response = await send({
+      agentId: fixture.agentId,
+      threadId: active.body.threadId,
+      prompt: "template queued deck",
+      generationTemplate,
+    });
+
+    expect(response.body.runId).toBeNull();
+    const [queued] = await store
+      .set(writeDb$)
+      .select({
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        generationTemplate: chatMessages.generationTemplate,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, active.body.threadId),
+          eq(chatMessages.content, "template queued deck"),
+        ),
+      )
+      .limit(1);
+    expect(queued).toStrictEqual({
+      content: "template queued deck",
+      runId: null,
+      generationTemplate,
+    });
   });
 
   it("appends an assistant queue marker when a chat run enters the org queue", async () => {
