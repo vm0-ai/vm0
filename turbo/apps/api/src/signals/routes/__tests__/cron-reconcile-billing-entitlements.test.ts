@@ -263,40 +263,14 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
     });
   });
 
-  it("keeps canceled subscriptions through their paid-through period", async () => {
+  it("downgrades canceled Stripe subscriptions as missed deleted hooks", async () => {
     const fixture = await track(
       seedBillingOrg({ status: "past_due", currentPeriodEnd: null }),
     );
-    const paidThrough = stripePeriodDaysFromNow(7);
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       stripeSubscription(fixture.subscriptionId, {
         status: "canceled",
-        periodEnd: paidThrough,
-      }),
-    );
-
-    const response = await accept(
-      apiClient().reconcile({ headers: cronHeaders() }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
-    await expect(billingFields(fixture.orgId)).resolves.toMatchObject({
-      tier: "pro",
-      subscriptionStatus: "canceled",
-      stripeSubscriptionId: fixture.subscriptionId,
-      currentPeriodEnd: paidThrough,
-    });
-  });
-
-  it("downgrades canceled subscriptions after paid-through expires", async () => {
-    const fixture = await track(
-      seedBillingOrg({ status: "canceled", currentPeriodEnd: hoursAgo(48) }),
-    );
-    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
-      stripeSubscription(fixture.subscriptionId, {
-        status: "canceled",
-        periodEnd: hoursAgo(48),
+        periodEnd: daysFromNow(7),
       }),
     );
 
@@ -310,7 +284,6 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
       tier: "pro-suspend",
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
-      currentPeriodEnd: null,
     });
   });
 
