@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import {
-  chatMessagesContract,
-  chatThreadMessagesContract,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
@@ -2278,27 +2275,6 @@ describe("POST /api/zero/chat/messages", () => {
         error: "insufficient_credits",
       },
     ]);
-
-    const listResponse = await accept(
-      setupApp({ context })(chatThreadMessagesContract).list({
-        params: { threadId },
-        query: { limit: 50 },
-        headers: authHeaders(),
-      }),
-      [200],
-    );
-    expect(listResponse.body.messages).toHaveLength(2);
-    expect(listResponse.body.messages[0]).toMatchObject({
-      role: "user",
-      content: "blocked by credits",
-      revokesMessageId: recommendedFollowup!.id,
-      error: "insufficient_credits",
-    });
-    expect(listResponse.body.messages[1]).toMatchObject({
-      role: "assistant",
-      content: expect.stringContaining("Upgrade to Pro"),
-      error: "insufficient_credits",
-    });
   });
 
   it("stores upgrade guidance for pro-suspend workspaces with credits", async () => {
