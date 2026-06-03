@@ -130,7 +130,7 @@ type NotFoundResponse = ReturnType<typeof notFound>;
  *   - Multi-auth providers: deletes the per-auth-method secrets by name,
  *     then deletes the model_provider row explicitly.
  *
- * Uses the same auth-state advisory lock as runtime OAuth refresh so a refresh
+ * Uses the same auth-state advisory lock as runtime access refresh so a refresh
  * cannot recreate secrets after a delete.
  */
 export const deleteUserModelProvider$ = command(
