@@ -91,7 +91,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/skills",
     label: "Skills",
     icon: IconFileText as NavIcon,
-    featureGate: FeatureSwitchKey.OrgSkills,
+    featureGate: FeatureSwitchKey.SkillsViewer,
   },
   {
     id: "memory",

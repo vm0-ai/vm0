@@ -130,12 +130,12 @@ describe("zero sidebar", () => {
     expect(screen.getByText("Activity logs")).toBeInTheDocument();
   });
 
-  it("should hide Skills when OrgSkills switch is off", async () => {
+  it("should hide Skills when SkillsViewer switch is off", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.OrgSkills]: false },
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: false },
     });
 
     await waitFor(() => {
@@ -144,12 +144,12 @@ describe("zero sidebar", () => {
     expect(screen.queryByText("Skills")).not.toBeInTheDocument();
   });
 
-  it("should show Skills when OrgSkills switch is on", async () => {
+  it("should show Skills when SkillsViewer switch is on", async () => {
     mockAPIs();
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.OrgSkills]: true },
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
     });
 
     await waitFor(() => {

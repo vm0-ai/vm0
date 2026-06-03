@@ -208,10 +208,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
-  [FeatureSwitchKey.OrgSkills]: {
+  [FeatureSwitchKey.SkillsViewer]: {
     maintainer: "lancy@vm0.ai",
-    description:
-      "Show the organization custom skills library in the Zero sidebar and page UI",
+    description: "Show the skills viewer in the Zero sidebar and page UI",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

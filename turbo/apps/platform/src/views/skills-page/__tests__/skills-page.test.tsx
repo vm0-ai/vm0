@@ -140,16 +140,16 @@ function setupSkillsPage(): void {
   detachedSetupPage({
     context,
     path: "/skills",
-    featureSwitches: { [FeatureSwitchKey.OrgSkills]: true },
+    featureSwitches: { [FeatureSwitchKey.SkillsViewer]: true },
   });
 }
 
 describe("skills page", () => {
-  it("redirects to home when OrgSkills is disabled", async () => {
+  it("redirects to home when SkillsViewer is disabled", async () => {
     detachedSetupPage({
       context,
       path: "/skills",
-      featureSwitches: { [FeatureSwitchKey.OrgSkills]: false },
+      featureSwitches: { [FeatureSwitchKey.SkillsViewer]: false },
     });
 
     await waitFor(() => {

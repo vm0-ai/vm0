@@ -16,7 +16,7 @@ export const setupSkillsPage$ = command(
     const features = await get(featureSwitch$);
     signal.throwIfAborted();
 
-    if (!features[FeatureSwitchKey.OrgSkills]) {
+    if (!features[FeatureSwitchKey.SkillsViewer]) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
       return;
     }
