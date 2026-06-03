@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import {
   webhookHeartbeatContract,
+  webhookModelUsageObservationContract,
   webhookTelemetryContract,
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
@@ -117,18 +118,6 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
 
   const modelProviderType = runModelContext?.modelProvider ?? null;
-  const selectedModel = runModelContext?.selectedModel ?? null;
-  const fallbackModel = body.events.find((event) => {
-    return event.kind === MODEL_USAGE_KIND;
-  })?.provider;
-  const candidateModel = selectedModel ?? fallbackModel;
-  const canonicalModel = candidateModel
-    ? normalizeRunModelId(candidateModel)
-    : undefined;
-  const observationModel = isSupportedRunModel(canonicalModel)
-    ? canonicalModel
-    : undefined;
-  const observedAt = nowDate();
   const usageEventValues = body.events
     .filter((event) => {
       return (
@@ -149,42 +138,15 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
         idempotencyKey: event.idempotencyKey,
       };
     });
-  const observationValues = observationModel
-    ? body.events
-        .filter((event) => {
-          return event.kind === MODEL_USAGE_KIND;
-        })
-        .map((event) => {
-          return {
-            runId: body.runId,
-            orgId: auth.orgId,
-            userId: auth.userId,
-            model: observationModel,
-            modelProviderType: modelProviderType ?? "",
-            category: event.category,
-            quantity: event.quantity,
-            observedAt,
-            idempotencyKey: event.idempotencyKey,
-          };
-        })
-    : [];
   const insertResult = await settle(
-    db.transaction(async (tx) => {
+    (async () => {
       if (usageEventValues.length > 0) {
-        await tx
+        await db
           .insert(usageEvent)
           .values(usageEventValues)
           .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
       }
-      if (observationValues.length > 0) {
-        await tx
-          .insert(modelUsageObservation)
-          .values(observationValues)
-          .onConflictDoNothing({
-            target: [modelUsageObservation.idempotencyKey],
-          });
-      }
-    }),
+    })(),
   );
   signal.throwIfAborted();
   if (!insertResult.ok) {
@@ -203,6 +165,87 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
     body: { success: true },
   };
 });
+
+const modelUsageObservationBody$ = bodyResultOf(
+  webhookModelUsageObservationContract.send,
+);
+const modelUsageObservation$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const bodyResult = await get(modelUsageObservationBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data;
+    const auth = getSandboxAuthForRun(body.runId, get(authorization$));
+    if (!auth) {
+      return unauthorizedRunMismatch;
+    }
+
+    const db = set(writeDb$);
+    const [runModelContext] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.runId))
+      .limit(1);
+    signal.throwIfAborted();
+
+    const modelProviderType = runModelContext?.modelProvider ?? "";
+    const selectedModel = runModelContext?.selectedModel ?? null;
+    const observedAt = nowDate();
+    const observationValues = body.events.flatMap((event) => {
+      const canonicalModel = normalizeRunModelId(selectedModel ?? event.model);
+      if (!isSupportedRunModel(canonicalModel)) {
+        return [];
+      }
+      return [
+        {
+          runId: body.runId,
+          orgId: auth.orgId,
+          userId: auth.userId,
+          model: canonicalModel,
+          modelProviderType,
+          category: event.category,
+          quantity: event.quantity,
+          observedAt,
+          idempotencyKey: event.idempotencyKey,
+        },
+      ];
+    });
+    const insertResult = await settle(
+      (async () => {
+        if (observationValues.length > 0) {
+          await db
+            .insert(modelUsageObservation)
+            .values(observationValues)
+            .onConflictDoNothing({
+              target: [modelUsageObservation.idempotencyKey],
+            });
+        }
+      })(),
+    );
+    signal.throwIfAborted();
+    if (!insertResult.ok) {
+      if (isForeignKeyViolation(insertResult.error)) {
+        L.debug("Run not found for model usage observation, dropping", {
+          runId: body.runId,
+          eventCount: body.events.length,
+        });
+        return notFound("Run not found");
+      }
+      throw insertResult.error;
+    }
+
+    return {
+      status: 200 as const,
+      body: { success: true },
+    };
+  },
+);
 
 const telemetryBody$ = bodyResultOf(webhookTelemetryContract.send);
 const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
@@ -316,6 +359,10 @@ export const webhooksAgentHealthUsageTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: webhookUsageEventContract.send,
     handler: usageEvent$,
+  },
+  {
+    route: webhookModelUsageObservationContract.send,
+    handler: modelUsageObservation$,
   },
   {
     route: webhookTelemetryContract.send,

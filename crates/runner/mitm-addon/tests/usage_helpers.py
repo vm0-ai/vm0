@@ -82,7 +82,19 @@ class UsageWebhookServer:
     def usage_events(self) -> list[dict[str, Any]]:
         return [
             event
-            for body in self.json_bodies()
+            for request in self.requests
+            if request.path == "/api/webhooks/agent/usage-event"
+            for body in [request.json_body()]
+            for event in body.get("events", [])
+            if isinstance(event, dict)
+        ]
+
+    def model_usage_observation_events(self) -> list[dict[str, Any]]:
+        return [
+            event
+            for request in self.requests
+            if request.path == "/api/webhooks/agent/model-usage-observation"
+            for body in [request.json_body()]
             for event in body.get("events", [])
             if isinstance(event, dict)
         ]

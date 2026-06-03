@@ -1100,11 +1100,19 @@ class TestModelProviderResponseUsageWebhookDelivery:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert webhook.request_count == 1
-        assert webhook.requests[0].path == "/api/webhooks/agent/usage-event"
-        body = webhook.requests[0].json_body()
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-001"
         by_category = {event["category"]: event for event in body["events"]}
         assert by_category["tokens.input"]["quantity"] == 100
         assert by_category["tokens.output"]["quantity"] == 500
         assert by_category["tokens.input"]["provider"] == "claude-sonnet-4-6"
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
+        observation_by_category = {event["category"]: event for event in observation_body["events"]}
+        assert observation_by_category["tokens.input"]["model"] == "claude-sonnet-4-6"

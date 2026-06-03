@@ -669,9 +669,8 @@ export type WebhookStoragesCommitContract =
 /**
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
- * Receives usage records from the sandbox. The API decides whether each model
- * event becomes a billing ledger row, a model usage observation row, or both.
- * Reporters send `{ runId, events }` batches.
+ * Receives billing usage records from the sandbox for persistence in the
+ * `usage_event` ledger. Reporters send `{ runId, events }` batches.
  */
 const webhookUsageEventItemSchema = z
   .object({
@@ -707,4 +706,46 @@ export const webhookUsageEventContract = c.router({
   },
 });
 
+/**
+ * Webhook model usage observation contract for
+ * /api/webhooks/agent/model-usage-observation
+ *
+ * Receives model token observations from the sandbox for model usage statistics.
+ * This endpoint is not a billing ledger input.
+ */
+const webhookModelUsageObservationItemSchema = z
+  .object({
+    idempotencyKey: z.uuid(),
+    model: z.string().min(1).max(255),
+    category: z.string().min(1).max(100),
+    quantity: z.number().int().min(0),
+  })
+  .strict();
+
+export const webhookModelUsageObservationContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/webhooks/agent/model-usage-observation",
+    headers: authHeadersSchema,
+    body: z
+      .object({
+        runId: z.string().min(1, "runId is required"),
+        events: z.array(webhookModelUsageObservationItemSchema).min(1).max(100),
+      })
+      .strict(),
+    responses: {
+      200: z.object({
+        success: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Receive model usage observation data from sandbox",
+  },
+});
+
 export type WebhookUsageEventContract = typeof webhookUsageEventContract;
+export type WebhookModelUsageObservationContract =
+  typeof webhookModelUsageObservationContract;

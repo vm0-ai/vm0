@@ -88,6 +88,34 @@ def test_flush_aggregates_same_bucket_and_dedupes_source_key(tmp_path):
     assert enqueue.call_args.args[3] == proxy_log_path
 
 
+def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        usage.buffer_model_usage_observations(
+            "https://api.test/api/webhooks/agent/model-usage-observation",
+            "token-a",
+            "run-1",
+            [
+                _event(source_key="source-1", quantity=10),
+                _event(source_key="source-2", quantity=5),
+            ],
+            proxy_log_path,
+        )
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    payload = enqueue.call_args.args[2]
+    assert payload["events"] == [
+        {
+            "idempotencyKey": payload["events"][0]["idempotencyKey"],
+            "model": "claude-sonnet-4-6",
+            "category": "tokens.input",
+            "quantity": 15,
+        }
+    ]
+    assert enqueue.call_args.args[4] == "model_usage_observation"
+
+
 def test_flush_keeps_runs_categories_providers_and_destinations_separate(tmp_path):
     proxy_a_log_path = str(tmp_path / "proxy-a.jsonl")
     proxy_b_log_path = str(tmp_path / "proxy-b.jsonl")

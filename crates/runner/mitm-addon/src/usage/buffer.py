@@ -1,6 +1,6 @@
-"""Process-local buffering for aggregate usage-event webhook uploads.
+"""Process-local buffering for aggregate usage webhook uploads.
 
-This module owns the usage-event buffer singleton used by the mitmproxy addon.
+This module owns the usage report buffer singleton used by the mitmproxy addon.
 The singleton is created on import with default settings, but its flush timer is
 scheduled lazily only after source events are accepted into the buffer.
 
@@ -9,10 +9,9 @@ bucketing. The seen-key set survives flushes and is bounded by
 ``MAX_SOURCE_IDEMPOTENCY_KEYS``, evicting oldest keys first, so duplicate
 response/error observations do not become separate aggregate rows.
 
-Accepted events are separated by webhook destination (``url``,
-``sandbox_token``, and ``proxy_log_path``), then aggregated by ``run_id``,
-``kind``, ``provider``, and ``category``. Matching aggregate buckets sum
-``quantity`` before delivery.
+Accepted events are separated by webhook destination and output shape, then
+aggregated by ``run_id``, ``kind``, provider/model resource id, and
+``category``. Matching aggregate buckets sum ``quantity`` before delivery.
 
 Flushes are triggered by buffer bounds, the lazy timer, or explicit lifecycle
 calls. The trigger label is emitted in ``usage_event_buffer_flush`` proxy-log
@@ -56,6 +55,7 @@ class UsageEvent(TypedDict):
 
 
 UsageFlushTrigger = Literal["timer", "threshold", "runner", "shutdown", "test"]
+ResourceFieldName = Literal["provider", "model"]
 
 
 class _TimerHandle(Protocol):
@@ -76,6 +76,9 @@ class _DestinationKey:
     url: str
     sandbox_token: str
     proxy_log_path: str
+    resource_field_name: ResourceFieldName
+    include_kind: bool
+    log_type: str
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,7 @@ class _FlushBatch:
     sandbox_token: str
     payload: dict
     proxy_log_path: str
+    log_type: str
 
 
 @dataclass
@@ -114,7 +118,7 @@ class _PendingFlush:
 
 
 class UsageEventBuffer:
-    """Thread-safe process-local usage-event buffer."""
+    """Thread-safe process-local usage report buffer."""
 
     def __init__(
         self,
@@ -153,13 +157,24 @@ class UsageEventBuffer:
         run_id: str,
         events: Iterable[UsageEvent],
         proxy_log_path: str,
+        *,
+        resource_field_name: ResourceFieldName = "provider",
+        include_kind: bool = True,
+        log_type: str = "usage_event",
     ) -> int:
         """Add source usage events and flush if the buffer exceeds a bound."""
         flush_now = False
         timer_to_start: _TimerHandle | None = None
         with self._lock:
             accepted_count = self._add_events_locked(
-                url, sandbox_token, run_id, events, proxy_log_path
+                url,
+                sandbox_token,
+                run_id,
+                events,
+                proxy_log_path,
+                resource_field_name=resource_field_name,
+                include_kind=include_kind,
+                log_type=log_type,
             )
             if accepted_count == 0:
                 return 0
@@ -297,9 +312,20 @@ class UsageEventBuffer:
         run_id: str,
         events: Iterable[UsageEvent],
         proxy_log_path: str,
+        *,
+        resource_field_name: ResourceFieldName,
+        include_kind: bool,
+        log_type: str,
     ) -> int:
         buckets: dict[_AggregateKey, int] | None = None
-        destination = _DestinationKey(url, sandbox_token, proxy_log_path)
+        destination = _DestinationKey(
+            url,
+            sandbox_token,
+            proxy_log_path,
+            resource_field_name,
+            include_kind,
+            log_type,
+        )
         accepted_count = 0
         for event in events:
             source_key = event["idempotencyKey"]
@@ -418,7 +444,14 @@ class UsageEventBuffer:
         batches: list[_FlushBatch] = []
         for destination in sorted(
             buckets,
-            key=lambda item: (item.url, item.sandbox_token, item.proxy_log_path),
+            key=lambda item: (
+                item.url,
+                item.sandbox_token,
+                item.proxy_log_path,
+                item.resource_field_name,
+                item.include_kind,
+                item.log_type,
+            ),
         ):
             events_by_run = self._events_by_run(destination, buckets[destination], flush_sequence)
             for run_id in sorted(events_by_run):
@@ -433,6 +466,7 @@ class UsageEventBuffer:
                                 "events": events[start : start + USAGE_EVENT_BATCH_SIZE],
                             },
                             proxy_log_path=destination.proxy_log_path,
+                            log_type=destination.log_type,
                         )
                     )
         return batches
@@ -448,17 +482,17 @@ class UsageEventBuffer:
             buckets,
             key=lambda item: (item.run_id, item.kind, item.provider, item.category),
         ):
-            events_by_run.setdefault(aggregate_key.run_id, []).append(
-                {
-                    "idempotencyKey": self._aggregate_idempotency_key(
-                        destination, aggregate_key, flush_sequence
-                    ),
-                    "kind": aggregate_key.kind,
-                    "provider": aggregate_key.provider,
-                    "category": aggregate_key.category,
-                    "quantity": buckets[aggregate_key],
-                }
-            )
+            event = {
+                "idempotencyKey": self._aggregate_idempotency_key(
+                    destination, aggregate_key, flush_sequence
+                ),
+                destination.resource_field_name: aggregate_key.provider,
+                "category": aggregate_key.category,
+                "quantity": buckets[aggregate_key],
+            }
+            if destination.include_kind:
+                event["kind"] = aggregate_key.kind
+            events_by_run.setdefault(aggregate_key.run_id, []).append(event)
         return events_by_run
 
     def _aggregate_idempotency_key(
@@ -499,7 +533,7 @@ def _enqueue_batches(batches: Iterable[_FlushBatch]) -> dict[str, int]:
             batch.sandbox_token,
             batch.payload,
             batch.proxy_log_path,
-            "usage_event",
+            batch.log_type,
         )
         if admitted is False:
             dropped_counts[batch.proxy_log_path] = dropped_counts.get(batch.proxy_log_path, 0) + 1
@@ -620,6 +654,26 @@ def buffer_usage_events(
         run_id,
         events,
         proxy_log_path,
+    )
+
+
+def buffer_model_usage_observations(
+    url: str,
+    sandbox_token: str,
+    run_id: str,
+    events: Iterable[UsageEvent],
+    proxy_log_path: str,
+) -> int:
+    """Buffer model usage observations with the observation webhook shape."""
+    return _usage_event_buffer.buffer_usage_events(
+        url,
+        sandbox_token,
+        run_id,
+        events,
+        proxy_log_path,
+        resource_field_name="model",
+        include_kind=False,
+        log_type="model_usage_observation",
     )
 
 
