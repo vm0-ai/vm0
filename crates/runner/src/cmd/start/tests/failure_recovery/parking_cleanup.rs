@@ -160,6 +160,148 @@ async fn assert_workspace_cache_after_failed_park(
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test]
+async fn cancellation_during_sandbox_park_promotes_workspace_cache_before_destroy() {
+    assert_workspace_cache_after_late_cancellation(
+        "sess-cancel-during-park-cache",
+        LateCancellationPoint::DuringPark,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn cancellation_before_idle_pool_transfer_promotes_workspace_cache_before_destroy() {
+    assert_workspace_cache_after_late_cancellation(
+        "sess-cancel-before-pool-cache",
+        LateCancellationPoint::BeforeIdlePoolTransfer,
+    )
+    .await;
+}
+
+enum LateCancellationPoint {
+    DuringPark,
+    BeforeIdlePoolTransfer,
+}
+
+async fn assert_workspace_cache_after_late_cancellation(
+    session_id: &str,
+    cancellation_point: LateCancellationPoint,
+) {
+    let wait_gate = MockLifecycleGate::new();
+    let park_gate = MockLifecycleGate::new();
+    let destroy_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_park_lifecycle_gate(park_gate.clone());
+    overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+    let counter = Arc::clone(&overrides);
+
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) =
+        mock_run_config_with_overrides(profiles, 8, 32768, 4, Arc::clone(&overrides));
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+    let budget = Arc::clone(&config.capacity.budget);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let cancel_tokens = Arc::clone(&config.provider.cancel_tokens);
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    let mut context = context_with_session(run_id, session_id);
+    context.feature_flags = Some(std::collections::HashMap::from([(
+        SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.to_string(),
+        true,
+    )]));
+    push_job(&env, run_id, "vm0/default", Some(context));
+    let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter before the active workspace image is written");
+    let sandbox_id = counter
+        .create_configs()
+        .into_iter()
+        .next()
+        .expect("sandbox create config should be recorded before wait_process entry")
+        .id;
+    let active_image = runner_paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(16 * 1024 * 1024).await.unwrap();
+    drop(file);
+
+    counter.clear_wait_process_lifecycle_gate();
+    wait_gate.release_one();
+    park_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("sandbox park should enter gate");
+
+    match cancellation_point {
+        LateCancellationPoint::DuringPark => {
+            token.cancel();
+            park_gate.release_one();
+        }
+        LateCancellationPoint::BeforeIdlePoolTransfer => {
+            let pool_guard = idle_pool.lock().await;
+            park_gate.release_one();
+            env.start_observer
+                .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
+                .await;
+            token.cancel();
+            drop(pool_guard);
+        }
+    }
+
+    destroy_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("cancelled parked sandbox should enter destroy gate");
+    assert_eq!(counter.destroy_call_count(), 1);
+    assert_eq!(
+        budget.allocated().2,
+        1,
+        "cancelled VM must retain budget while destroy is in-flight"
+    );
+    assert_no_completion_for_run(
+        &env,
+        run_id,
+        "provider.complete must wait until cancelled VM destroy finishes",
+    );
+
+    destroy_gate.release_one();
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete after destroy finishes");
+    assert_eq!(completion.exit_code, 0);
+    assert!(
+        completion.error.is_none(),
+        "late cleanup cancellation should not rewrite job result"
+    );
+
+    wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+    wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(2)).await;
+    assert_eq!(idle_pool.lock().await.len(), 0);
+    let held = workspace_cache.held_session_states().await;
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].session_id, session_id);
+
+    shutdown(&env, run_handle).await;
+}
+
 #[tokio::test(start_paused = true)]
 async fn park_panic_destroys_sandbox_reports_completion_and_releases_budget() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
