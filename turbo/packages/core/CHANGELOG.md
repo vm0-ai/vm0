@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.308.4](https://github.com/vm0-ai/vm0/compare/core-v8.308.3...core-v8.308.4) (2026-06-03)
+
+
+### Refactoring
+
+* extract resource registry into @vm0/core ([#15970](https://github.com/vm0-ai/vm0/issues/15970)) ([c4d07a2](https://github.com/vm0-ai/vm0/commit/c4d07a2c1a7adc07c597cc5b2287ead9d077ac79))
+
 ## [8.308.3](https://github.com/vm0-ai/vm0/compare/core-v8.308.2...core-v8.308.3) (2026-06-03)
 
 

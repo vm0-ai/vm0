@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.180.4](https://github.com/vm0-ai/vm0/compare/cli-v9.180.3...cli-v9.180.4) (2026-06-03)
+
+
+### Refactoring
+
+* extract resource registry into @vm0/core ([#15970](https://github.com/vm0-ai/vm0/issues/15970)) ([c4d07a2](https://github.com/vm0-ai/vm0/commit/c4d07a2c1a7adc07c597cc5b2287ead9d077ac79))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.308.4
+
 ## [9.180.3](https://github.com/vm0-ai/vm0/compare/cli-v9.180.2...cli-v9.180.3) (2026-06-03)
 
 

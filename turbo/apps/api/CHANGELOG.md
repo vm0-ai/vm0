@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.95.4](https://github.com/vm0-ai/vm0/compare/api-v1.95.3...api-v1.95.4) (2026-06-03)
+
+
+### Bug Fixes
+
+* remove stripe checkout flow metadata ([#15904](https://github.com/vm0-ai/vm0/issues/15904)) ([800ef1c](https://github.com/vm0-ai/vm0/commit/800ef1cc528288d1867aaa12eb97ce8e54bf992b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.308.4
+
 ## [1.95.3](https://github.com/vm0-ai/vm0/compare/api-v1.95.2...api-v1.95.3) (2026-06-03)
 
 

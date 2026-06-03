@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.107.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.4...runner-rs-v0.107.5) (2026-06-03)
+
+
+### Bug Fixes
+
+* **mitm-addon:** bound usage webhook delivery queue ([#15959](https://github.com/vm0-ai/vm0/issues/15959)) ([dc36c62](https://github.com/vm0-ai/vm0/commit/dc36c62f4ad4f22354f8ec21811c97993d11408d))
+
 ## [0.107.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.3...runner-rs-v0.107.4) (2026-06-03)
 
 ## [0.107.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.2...runner-rs-v0.107.3) (2026-06-03)

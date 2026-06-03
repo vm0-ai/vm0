@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.403.2](https://github.com/vm0-ai/vm0/compare/app-v0.403.1...app-v0.403.2) (2026-06-03)
+
+
+### Bug Fixes
+
+* add app permissions policy header ([#15939](https://github.com/vm0-ai/vm0/issues/15939)) ([7c22456](https://github.com/vm0-ai/vm0/commit/7c224566ffb454a68498bd389c10c3075e2ac977))
+* render website thumbnails at desktop viewport ([#15973](https://github.com/vm0-ai/vm0/issues/15973)) ([fa71821](https://github.com/vm0-ai/vm0/commit/fa718216019db4b86bb5dd28dd7b59fb847f78c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.308.4
+
 ## [0.403.1](https://github.com/vm0-ai/vm0/compare/app-v0.403.0...app-v0.403.1) (2026-06-03)
 
 

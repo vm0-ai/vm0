@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.2...sandbox-fc-v0.37.3) (2026-06-03)
+
+
+### Performance Improvements
+
+* avoid duplicate netns iptables cleanup ([#15971](https://github.com/vm0-ai/vm0/issues/15971)) ([5eaef3f](https://github.com/vm0-ai/vm0/commit/5eaef3f2ebf437826be911af4713df1c064b35bc))
+
 ## [0.37.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.1...sandbox-fc-v0.37.2) (2026-06-03)
 
 ## [0.37.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.0...sandbox-fc-v0.37.1) (2026-06-03)
