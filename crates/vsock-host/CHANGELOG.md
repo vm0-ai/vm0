@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.18](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.17...vsock-host-v0.17.18) (2026-06-03)
+
+
+### Documentation
+
+* document vsock exec operation API ([#15954](https://github.com/vm0-ai/vm0/issues/15954)) ([dce4119](https://github.com/vm0-ai/vm0/commit/dce41199e9e642ada2a4c05ef2036fd3148721d5))
+
 ## [0.17.17](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.16...vsock-host-v0.17.17) (2026-05-28)
 
 ## [0.17.16](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.15...vsock-host-v0.17.16) (2026-05-27)

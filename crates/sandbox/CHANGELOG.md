@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.0...sandbox-v0.19.1) (2026-06-03)
+
+
+### Documentation
+
+* document sandbox process api ([#15955](https://github.com/vm0-ai/vm0/issues/15955)) ([b61bad2](https://github.com/vm0-ai/vm0/commit/b61bad225f549a42e49d2f1e6e28252eca7f300f))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/sandbox-v0.18.0...sandbox-v0.19.0) (2026-06-02)
 
 
