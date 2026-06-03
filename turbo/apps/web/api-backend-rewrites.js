@@ -455,6 +455,7 @@ export const API_BACKEND_REWRITES = [
     "/api/cron/reconcile-billing-entitlements",
     "/api/cron/reconcile-billing-entitlements",
   ],
+  ["/api/cron/summarize-memory", "/api/cron/summarize-memory"],
   ["/api/cron/sync-skills", "/api/cron/sync-skills"],
   ["/api/cron/telegram-cleanup", "/api/cron/telegram-cleanup"],
   [

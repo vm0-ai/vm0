@@ -10,6 +10,7 @@ import {
   cronExecuteSchedulesContract,
   cronProcessUsageEventsContract,
   cronReconcileBillingEntitlementsContract,
+  cronSummarizeMemoryContract,
   cronSyncSkillsContract,
   cronTelegramCleanupContract,
 } from "@vm0/api-contracts/contracts/cron";
@@ -49,6 +50,10 @@ const expectedVercelCrons = [
   {
     path: cronAggregateInsightsContract.aggregate.path,
     schedule: "0 * * * *",
+  },
+  {
+    path: cronSummarizeMemoryContract.summarize.path,
+    schedule: "30 * * * *",
   },
   {
     path: cronTelegramCleanupContract.cleanup.path,
