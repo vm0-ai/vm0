@@ -17,14 +17,18 @@ function setupMemoryPage(): void {
   setMockMemory({
     exists: true,
     name: "memory",
-    size: 60,
-    fileCount: 2,
+    size: 80,
+    fileCount: 3,
     updatedAt: "2024-01-01T00:00:00Z",
+    // "context.md" sorts before "MEMORY.md" alphabetically, so it proves the
+    // MEMORY.md pin (rather than plain alphabetical ordering).
     files: [
+      { path: "context.md", size: 20 },
       { path: "MEMORY.md", size: 30 },
       { path: "scratch.txt", size: 30 },
     ],
     fileContents: [
+      { path: "context.md", content: "Context note." },
       { path: "MEMORY.md", content: "# Memory Index\n\nThings I know." },
       { path: "scratch.txt", content: "Plain scratch note." },
     ],
@@ -93,5 +97,26 @@ describe("memory page", () => {
         return button.textContent === "Save";
       }),
     ).toBeFalsy();
+  });
+
+  it("pins MEMORY.md to the top of the file list", async () => {
+    setupMemoryPage();
+
+    await waitFor(() => {
+      expect(screen.getAllByText("MEMORY.md").length).toBeGreaterThan(0);
+    });
+
+    const filePaths = ["context.md", "MEMORY.md", "scratch.txt"];
+    const fileButtons = queryAllByRoleFast("button").filter((button) => {
+      const text = button.textContent ?? "";
+      return filePaths.some((path) => {
+        return text.includes(path);
+      });
+    });
+
+    // MEMORY.md is pinned first even though "context.md" sorts before it.
+    expect(fileButtons[0]?.textContent).toContain("MEMORY.md");
+    expect(fileButtons[1]?.textContent).toContain("context.md");
+    expect(fileButtons[2]?.textContent).toContain("scratch.txt");
   });
 });

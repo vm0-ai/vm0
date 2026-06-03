@@ -68,7 +68,15 @@ function MemoryViewer({ detail }: { readonly detail: MemoryDetailResponse }) {
   const explicitSelected = useGet(selectedMemoryFilePath$);
   const setSelected = useSet(setSelectedMemoryFilePath$);
 
+  // MEMORY.md is the index of all memory, so pin it to the top; the rest stay
+  // sorted alphabetically.
   const files = [...detail.files].sort((a, b) => {
+    if (a.path === PREFERRED_FILE) {
+      return -1;
+    }
+    if (b.path === PREFERRED_FILE) {
+      return 1;
+    }
     return a.path.localeCompare(b.path);
   });
   const preferredPath =
