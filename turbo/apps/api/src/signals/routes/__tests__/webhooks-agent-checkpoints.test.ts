@@ -627,6 +627,71 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       ...minimalCheckpointBody(fixture),
       artifactSnapshots,
     };
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, fixture.runId))
+      .limit(1);
+    expect(run).toBeDefined();
+    await db
+      .update(agentSessions)
+      .set({
+        artifacts: [
+          {
+            name: "memory",
+            mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            generatedBy: "apiAutoMemory" as const,
+          },
+          {
+            name: "memory",
+            mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+            generatedBy: "apiAutoMemory" as const,
+          },
+        ],
+      })
+      .where(eq(agentSessions.id, run!.sessionId));
+
+    const response = await accept(
+      checkpointClient().create({
+        body,
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.artifacts).toStrictEqual(artifactSnapshots);
+
+    const [checkpoint] = await db
+      .select({ artifactSnapshots: checkpoints.artifactSnapshots })
+      .from(checkpoints)
+      .where(eq(checkpoints.id, response.body.checkpointId))
+      .limit(1);
+    expect(checkpoint?.artifactSnapshots).toStrictEqual(
+      persistedArtifactSnapshots,
+    );
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, run!.sessionId))
+      .limit(1);
+    expect(session?.artifacts).toStrictEqual(persistedArtifactSnapshots);
+  });
+
+  it("strips canonical memory provenance unless the session expects api auto memory", async () => {
+    const fixture = await track(seedFixture());
+    const artifactSnapshots = [
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+    ];
+    const body = {
+      ...minimalCheckpointBody(fixture),
+      artifactSnapshots,
+    };
 
     const response = await accept(
       checkpointClient().create({
@@ -644,21 +709,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
-    expect(checkpoint?.artifactSnapshots).toStrictEqual(
-      persistedArtifactSnapshots,
-    );
-    const [run] = await db
-      .select({ sessionId: agentRuns.sessionId })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, fixture.runId))
-      .limit(1);
-    expect(run).toBeDefined();
-    const [session] = await db
-      .select({ artifacts: agentSessions.artifacts })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, run!.sessionId))
-      .limit(1);
-    expect(session?.artifacts).toStrictEqual(persistedArtifactSnapshots);
+    expect(checkpoint?.artifactSnapshots).toStrictEqual([
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      },
+    ]);
   });
 
   it("creates independent sessions for separate runs", async () => {
