@@ -885,7 +885,7 @@ impl SessionWorkspaceCache {
                 continue;
             };
             let current = self.session_workspace_cache_current_image(&cache_key);
-            let current_metadata = match fs::metadata(&current).await {
+            let current_metadata = match fs::symlink_metadata(&current).await {
                 Ok(metadata) => metadata,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     drop(lock);
@@ -1154,7 +1154,10 @@ impl SessionWorkspaceCache {
     async fn gc_candidate(&self, cache_key: String) -> Option<GcCandidate> {
         let metadata_path = self.session_workspace_cache_metadata(&cache_key);
         let current_path = self.session_workspace_cache_current_image(&cache_key);
-        let file_metadata = fs::metadata(&current_path).await.ok()?;
+        let file_metadata = fs::symlink_metadata(&current_path).await.ok()?;
+        if !file_metadata.is_file() {
+            return None;
+        }
         let last_used_at = match self.read_metadata_file(&metadata_path).await {
             Ok(metadata) => {
                 if !self.can_collect_metadata_scope(&metadata) {
@@ -1199,7 +1202,7 @@ impl SessionWorkspaceCache {
             working_dir,
             image_size_bytes,
         ));
-        let current_metadata = match fs::metadata(&current_path).await {
+        let current_metadata = match fs::symlink_metadata(&current_path).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
@@ -1222,7 +1225,7 @@ impl SessionWorkspaceCache {
         metadata: &WorkspaceCacheMetadata,
     ) -> bool {
         let current_path = self.session_workspace_cache_current_image(cache_key);
-        let Ok(current_metadata) = fs::metadata(current_path).await else {
+        let Ok(current_metadata) = fs::symlink_metadata(current_path).await else {
             return false;
         };
         validate_current_image_identity(metadata, &current_metadata).is_ok()
@@ -1427,7 +1430,7 @@ impl SessionWorkspaceCache {
             let _ = remove_workspace_cache_path_if_exists(&tmp).await;
             return Err(e.into());
         }
-        let current_metadata = match fs::metadata(&current).await {
+        let current_metadata = match fs::symlink_metadata(&current).await {
             Ok(metadata) => metadata,
             Err(e) => {
                 let _ = remove_workspace_cache_path_if_exists(&current).await;
@@ -2040,7 +2043,7 @@ async fn workspace_cache_path_allocated_bytes(path: &Path) -> u64 {
         return 0;
     };
     if metadata.is_dir() {
-        flat_directory_allocated_bytes(path).await
+        directory_tree_allocated_bytes(path).await
     } else {
         allocated_bytes(&metadata)
     }
@@ -2215,6 +2218,33 @@ async fn flat_directory_allocated_bytes(path: &Path) -> u64 {
             .map(|metadata| allocated_bytes(&metadata))
             .unwrap_or(0);
         total = total.saturating_add(allocated);
+    }
+    total
+}
+
+async fn directory_tree_allocated_bytes(path: &Path) -> u64 {
+    let mut total: u64 = 0;
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(metadata) = fs::symlink_metadata(&dir).await else {
+            continue;
+        };
+        total = total.saturating_add(allocated_bytes(&metadata));
+        let mut entries = match fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let Ok(metadata) = fs::symlink_metadata(&path).await else {
+                continue;
+            };
+            if metadata.is_dir() {
+                pending.push(path);
+            } else {
+                total = total.saturating_add(allocated_bytes(&metadata));
+            }
+        }
     }
     total
 }
@@ -3326,6 +3356,81 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn metadata_validation_rejects_symlink_current_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().to_path_buf());
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let key = cache.scoped_cache_key(
+            TEST_PROFILE_NAME,
+            "sess-1",
+            "/workspace",
+            b"image".len() as u64,
+        );
+        fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
+            .await
+            .unwrap();
+        let target = dir.path().join("target.ext4");
+        fs::write(&target, b"image").await.unwrap();
+        let current = paths.session_workspace_cache_current_image(&key);
+        std::os::unix::fs::symlink(&target, &current).unwrap();
+        let current_target_metadata = fs::metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: "sess-1".into(),
+                    working_dir: "/workspace".into(),
+                    last_completed_at: local_timestamp(),
+                    last_used_at: local_timestamp(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_target_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_target_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(
+                        &current_target_metadata,
+                    ),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let err = cache
+            .read_valid_metadata(
+                &paths.session_workspace_cache_metadata(&key),
+                TEST_PROFILE_NAME,
+                "sess-1",
+                "/workspace",
+                current_target_metadata.len(),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("current image is not a file"));
+        assert!(
+            cache.held_session_states().await.is_empty(),
+            "symlink current image entries must not be advertised for affinity",
+        );
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(freed > 0);
+        assert!(!paths.session_workspace_cache_entry_dir(&key).exists());
+        assert!(
+            target.exists(),
+            "GC must remove the symlink, not its target"
+        );
+    }
+
     #[test]
     fn copy_headroom_requires_min_free_after_copy() {
         let budget = CacheBudget {
@@ -4058,6 +4163,44 @@ mod tests {
         assert!(freed > 0);
         assert!(!tmp.exists());
         assert!(!metadata_tmp.exists());
+        assert!(
+            paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_counts_nested_temporary_workspace_cache_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let cache_key = write_current_cache_entry(
+            &cache,
+            &paths,
+            run_id,
+            "sess-1",
+            "/workspace",
+            "2026-05-01T00:00:00.000Z",
+            "2026-05-01T00:00:00.000Z",
+        )
+        .await;
+        let tmp = paths.session_workspace_cache_tmp_image(&cache_key, run_id);
+        let nested = tmp.join("nested");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+        tokio::fs::write(nested.join("partial-image"), vec![1_u8; 4096])
+            .await
+            .unwrap();
+
+        let freed = cache.gc(false).await.unwrap();
+
+        assert!(
+            freed > 0,
+            "GC must report bytes freed from nested temporary directories"
+        );
+        assert!(!tmp.exists());
         assert!(
             paths
                 .session_workspace_cache_current_image(&cache_key)
