@@ -21,10 +21,6 @@ export const posthog = {
         storage: {
           secrets: ["POSTHOG_ACCESS_TOKEN", "POSTHOG_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "POSTHOG_ACCESS_TOKEN",
-            refreshToken: "POSTHOG_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -57,6 +53,16 @@ export const posthog = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.POSTHOG_ACCESS_TOKEN",
+              refreshToken: "$secrets.POSTHOG_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["POSTHOG_ACCESS_TOKEN"],
+          },
           envBindings: {
             POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
           },

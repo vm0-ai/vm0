@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildStripeAuthorizationUrl,
   exchangeStripeCode,
-  getStripeSecretName,
   refreshStripeToken,
 } from "./stripe";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   grant: {
     kind: "auth-code",
@@ -40,17 +40,15 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getStripeSecretName,
-    getRefreshSecretName: () => {
-      return "STRIPE_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshStripeToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshStripeToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

@@ -19,10 +19,6 @@ export const xero = {
         storage: {
           secrets: ["XERO_ACCESS_TOKEN", "XERO_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "XERO_ACCESS_TOKEN",
-            refreshToken: "XERO_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -53,6 +49,16 @@ export const xero = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.XERO_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.XERO_ACCESS_TOKEN",
+              refreshToken: "$secrets.XERO_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["XERO_ACCESS_TOKEN"],
+          },
           envBindings: {
             XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
           },

@@ -19,10 +19,10 @@ import type {
   ConnectorDeviceAuthorizationStartArgs,
   ConnectorAuthCodeExchangeArgs,
   ConnectorAuthProviderRefreshArgs,
+  ConnectorAuthProviderRefreshResult,
   ConnectorAuthProviderRevokeArgs,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
-  OAuthRefreshResult,
   OAuthTokenResult,
 } from "./oauth/types";
 import type { ProviderEnv } from "./provider-env";
@@ -61,7 +61,6 @@ export interface DeviceAuthGrantProvider<
 
 export interface NoneAccessProvider {
   readonly kind: "none";
-  getAccessSecretName(): string;
 }
 
 export interface RefreshTokenAccessProvider<
@@ -70,11 +69,9 @@ export interface RefreshTokenAccessProvider<
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
 > {
   readonly kind: "refresh-token";
-  getAccessSecretName(): string;
-  getRefreshSecretName(): string;
-  refreshToken(
+  refresh(
     args: ConnectorAuthProviderRefreshArgs<T, Method>,
-  ): Promise<OAuthRefreshResult>;
+  ): Promise<ConnectorAuthProviderRefreshResult<T, Method>>;
 }
 
 export type ConnectorAuthProviderAccess<
@@ -158,20 +155,28 @@ export type ModelProviderAuthClient = StaticConnectorAuthClient;
 
 interface ModelProviderAuthProviderRefreshArgs {
   readonly authClient: ModelProviderAuthClient;
-  readonly refreshToken: string;
+  readonly inputs: {
+    readonly refreshToken: string;
+  };
   readonly signal: AbortSignal;
+}
+
+export interface ModelProviderAuthProviderRefreshResult {
+  readonly outputs: {
+    readonly accessToken: string;
+    readonly refreshToken?: string;
+  };
+  readonly expiresIn?: number;
 }
 
 interface ModelProviderRefreshTokenAccessProvider {
   readonly kind: "refresh-token";
-  getAccessSecretName(): string;
-  getRefreshSecretName(): string;
   resolveAuthClient(
     currentEnv: ProviderEnv,
   ): ModelProviderAuthClient | undefined;
-  refreshToken(
+  refresh(
     args: ModelProviderAuthProviderRefreshArgs,
-  ): Promise<OAuthRefreshResult>;
+  ): Promise<ModelProviderAuthProviderRefreshResult>;
 }
 
 export type ModelProviderAccessProvider =

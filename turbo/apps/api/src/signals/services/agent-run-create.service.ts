@@ -24,6 +24,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
   getConnectorAuthMethodStorageMetadata,
   type ConnectorRuntimeBindingEntry,
@@ -1081,14 +1082,16 @@ function modelProviderRefreshMaps(
     return undefined;
   }
 
-  const accessSecretName = metadata.accessSecretName;
   const secretConnectorMap: Record<string, string> = {};
   const envBindings = getModelProviderEnvBindings(providerType);
   // Firewall auth templates reference runtime env aliases (for example, the
   // `CHATGPT_ACCESS_TOKEN` in `${{ secrets.CHATGPT_ACCESS_TOKEN }}`), so the
   // refresh map is keyed by envName, not by the backing provider storage key.
   for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
-    if (valueRef === `$secrets.${accessSecretName}`) {
+    if (
+      valueRef.startsWith("$secrets.") &&
+      metadata.refreshableSecrets.includes(valueRef.slice("$secrets.".length))
+    ) {
       secretConnectorMap[envName] = providerType;
     }
   }
@@ -1553,7 +1556,7 @@ interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
   readonly accessKind: "static" | "refresh-token" | "none";
-  readonly accessTokenSecret: string | undefined;
+  readonly refreshableSecretNames: ReadonlySet<string>;
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
   readonly optionalSecretNames: ReadonlySet<string>;
   readonly optionalVariableNames: ReadonlySet<string>;
@@ -1604,6 +1607,10 @@ function connectorEnvBindingSets(
 ): readonly ConnectorEnvBindingSet[] {
   return rows.map((row) => {
     const method = getConnectorAuthMethod(row.connectorType, row.authMethod);
+    const accessMetadata = getConnectorAuthMethodAccessMetadata(
+      row.connectorType,
+      row.authMethod,
+    );
     const metadata = getConnectorAuthMethodStorageMetadata(
       row.connectorType,
       row.authMethod,
@@ -1631,7 +1638,10 @@ function connectorEnvBindingSets(
       connectorType: row.connectorType,
       authMethod: row.authMethod,
       accessKind: method.access.kind,
-      accessTokenSecret: metadata.secretRoles.accessToken,
+      refreshableSecretNames:
+        accessMetadata?.kind === "refresh-token"
+          ? new Set(accessMetadata.refresh.refreshableSecrets)
+          : new Set<string>(),
       runtimeBindings: metadata.runtimeBindings,
       optionalSecretNames,
       optionalVariableNames,
@@ -1749,7 +1759,7 @@ function resolveStoredConnectorState(
   for (const {
     connectorType,
     accessKind,
-    accessTokenSecret,
+    refreshableSecretNames,
     runtimeBindings,
     optionalSecretNames,
     optionalVariableNames,
@@ -1794,7 +1804,7 @@ function resolveStoredConnectorState(
       for (const { envName, source } of runtimeBindings) {
         if (
           source.kind === "connector-secret" &&
-          source.name === accessTokenSecret
+          refreshableSecretNames.has(source.name)
         ) {
           secretConnectorMap[envName] = connectorType;
         }

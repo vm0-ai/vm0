@@ -21,10 +21,6 @@ export const zoom = {
         storage: {
           secrets: ["ZOOM_ACCESS_TOKEN", "ZOOM_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "ZOOM_ACCESS_TOKEN",
-            refreshToken: "ZOOM_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -47,6 +43,16 @@ export const zoom = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.ZOOM_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.ZOOM_ACCESS_TOKEN",
+              refreshToken: "$secrets.ZOOM_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["ZOOM_ACCESS_TOKEN"],
+          },
           envBindings: {
             ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
           },

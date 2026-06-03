@@ -1,11 +1,13 @@
-import {
-  getAuthProviderSecretMetadata,
-  type AuthProviderSecretMetadata,
-} from "./secret-metadata";
-import type { ModelProviderAuthProvider } from "./types";
-import type { OAuthRefreshResult } from "./oauth/types";
+import type {
+  ModelProviderAuthProvider,
+  ModelProviderAuthProviderRefreshResult,
+} from "./types";
 import type { ProviderEnv } from "./provider-env";
 import { codexOauthProvider } from "./oauth/providers/codex-oauth-provider";
+import {
+  getChatgptRefreshSecretName,
+  getChatgptSecretName,
+} from "./oauth/providers/codex-oauth";
 
 export const MODEL_PROVIDER_OAUTH_PROVIDER_KEYS = [
   "codex-oauth-token",
@@ -22,7 +24,34 @@ const MODEL_PROVIDER_OAUTH_PROVIDERS = {
   "codex-oauth-token": codexOauthProvider,
 } as const satisfies ModelProviderOAuthProviderMap;
 
-export type ModelProviderOAuthSecretMetadata = AuthProviderSecretMetadata;
+export interface ModelProviderOAuthSecretMetadata {
+  readonly isRefreshable: true;
+  readonly inputs: {
+    readonly refreshToken: string;
+  };
+  readonly outputs: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+  };
+  readonly refreshableSecrets: readonly string[];
+}
+
+const MODEL_PROVIDER_OAUTH_SECRET_METADATA = {
+  "codex-oauth-token": {
+    isRefreshable: true,
+    inputs: {
+      refreshToken: getChatgptRefreshSecretName(),
+    },
+    outputs: {
+      accessToken: getChatgptSecretName(),
+      refreshToken: getChatgptRefreshSecretName(),
+    },
+    refreshableSecrets: [getChatgptSecretName()],
+  },
+} as const satisfies Record<
+  ModelProviderOAuthProviderKey,
+  ModelProviderOAuthSecretMetadata
+>;
 
 export function isModelProviderOAuthProviderKey(
   providerKey: string,
@@ -43,9 +72,7 @@ export function getModelProviderOAuthSecretMetadata(
     return undefined;
   }
 
-  return getAuthProviderSecretMetadata(
-    MODEL_PROVIDER_OAUTH_PROVIDERS[providerKey],
-  );
+  return MODEL_PROVIDER_OAUTH_SECRET_METADATA[providerKey];
 }
 
 export function isModelProviderOAuthRefreshConfigured(args: {
@@ -66,9 +93,11 @@ export function isModelProviderOAuthRefreshConfigured(args: {
 export async function refreshModelProviderOAuthToken(args: {
   readonly providerKey: ModelProviderOAuthProviderKey;
   readonly currentEnv: ProviderEnv;
-  readonly refreshToken: string;
+  readonly inputs: {
+    readonly refreshToken: string;
+  };
   readonly signal: AbortSignal;
-}): Promise<OAuthRefreshResult> {
+}): Promise<ModelProviderAuthProviderRefreshResult> {
   const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
 
   switch (access.kind) {
@@ -83,9 +112,9 @@ export async function refreshModelProviderOAuthToken(args: {
         throw new Error(`${args.providerKey} auth client not configured`);
       }
 
-      return await access.refreshToken({
+      return await access.refresh({
         authClient,
-        refreshToken: args.refreshToken,
+        inputs: args.inputs,
         signal: args.signal,
       });
     }

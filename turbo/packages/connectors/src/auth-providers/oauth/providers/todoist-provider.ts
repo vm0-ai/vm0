@@ -1,9 +1,5 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildTodoistAuthorizationUrl,
-  exchangeTodoistCode,
-  getTodoistSecretName,
-} from "./todoist";
+import { buildTodoistAuthorizationUrl, exchangeTodoistCode } from "./todoist";
 export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
   grant: {
     kind: "auth-code",
@@ -41,7 +37,6 @@ export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getTodoistSecretName,
   },
   revoke: { kind: "none" },
 };

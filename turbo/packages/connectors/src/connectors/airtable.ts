@@ -19,10 +19,6 @@ export const airtable = {
         storage: {
           secrets: ["AIRTABLE_ACCESS_TOKEN", "AIRTABLE_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "AIRTABLE_ACCESS_TOKEN",
-            refreshToken: "AIRTABLE_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -38,6 +34,16 @@ export const airtable = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.AIRTABLE_ACCESS_TOKEN",
+              refreshToken: "$secrets.AIRTABLE_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["AIRTABLE_ACCESS_TOKEN"],
+          },
           envBindings: {
             AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
           },

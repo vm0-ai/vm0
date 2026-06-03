@@ -19,10 +19,6 @@ export const sentry = {
         storage: {
           secrets: ["SENTRY_ACCESS_TOKEN", "SENTRY_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "SENTRY_ACCESS_TOKEN",
-            refreshToken: "SENTRY_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -37,6 +33,16 @@ export const sentry = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.SENTRY_ACCESS_TOKEN",
+              refreshToken: "$secrets.SENTRY_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["SENTRY_ACCESS_TOKEN"],
+          },
           envBindings: {
             SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
           },

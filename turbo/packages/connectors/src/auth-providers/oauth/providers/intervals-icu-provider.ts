@@ -2,7 +2,6 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildIntervalsIcuAuthorizationUrl,
   exchangeIntervalsIcuCode,
-  getIntervalsIcuSecretName,
 } from "./intervals-icu";
 export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"> =
   {
@@ -40,7 +39,6 @@ export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"
     },
     access: {
       kind: "none",
-      getAccessSecretName: getIntervalsIcuSecretName,
     },
     revoke: { kind: "none" },
   };

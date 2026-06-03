@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildFigmaAuthorizationUrl,
   exchangeFigmaCode,
-  getFigmaSecretName,
   refreshFigmaToken,
 } from "./figma";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getFigmaSecretName,
-    getRefreshSecretName: () => {
-      return "FIGMA_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshFigmaToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshFigmaToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

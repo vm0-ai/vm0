@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildXeroAuthorizationUrl,
   exchangeXeroCode,
-  getXeroSecretName,
   refreshXeroToken,
 } from "./xero";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getXeroSecretName,
-    getRefreshSecretName: () => {
-      return "XERO_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshXeroToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshXeroToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

@@ -20,10 +20,6 @@ export const outlookMail = {
         storage: {
           secrets: ["OUTLOOK_MAIL_ACCESS_TOKEN", "OUTLOOK_MAIL_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "OUTLOOK_MAIL_ACCESS_TOKEN",
-            refreshToken: "OUTLOOK_MAIL_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -36,6 +32,16 @@ export const outlookMail = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+              refreshToken: "$secrets.OUTLOOK_MAIL_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["OUTLOOK_MAIL_ACCESS_TOKEN"],
+          },
           envBindings: {
             OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
           },

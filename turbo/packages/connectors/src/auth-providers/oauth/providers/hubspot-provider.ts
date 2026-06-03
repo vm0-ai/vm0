@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildHubSpotAuthorizationUrl,
   exchangeHubSpotCode,
-  getHubSpotSecretName,
   refreshHubSpotToken,
 } from "./hubspot";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const hubspotProvider: AuthCodeConnectorAuthProvider<"hubspot"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getHubSpotSecretName,
-    getRefreshSecretName: () => {
-      return "HUBSPOT_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshHubSpotToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshHubSpotToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

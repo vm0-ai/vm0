@@ -19,10 +19,6 @@ export const monday = {
         storage: {
           secrets: ["MONDAY_ACCESS_TOKEN", "MONDAY_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "MONDAY_ACCESS_TOKEN",
-            refreshToken: "MONDAY_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -45,6 +41,16 @@ export const monday = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.MONDAY_ACCESS_TOKEN",
+              refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["MONDAY_ACCESS_TOKEN"],
+          },
           envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },

@@ -2,10 +2,10 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildLinearAuthorizationUrl,
   exchangeLinearCode,
-  getLinearSecretName,
   refreshLinearToken,
   revokeLinearToken,
 } from "./linear";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
   grant: {
     kind: "auth-code",
@@ -44,17 +44,15 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getLinearSecretName,
-    getRefreshSecretName: () => {
-      return "LINEAR_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshLinearToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshLinearToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

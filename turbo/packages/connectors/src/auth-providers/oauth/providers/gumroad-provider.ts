@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
-  getGumroadSecretName,
   refreshGumroadToken,
 } from "./gumroad";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getGumroadSecretName,
-    getRefreshSecretName: () => {
-      return "GUMROAD_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshGumroadToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshGumroadToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

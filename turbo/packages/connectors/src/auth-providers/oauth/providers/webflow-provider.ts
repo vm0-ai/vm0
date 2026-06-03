@@ -1,9 +1,5 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildWebflowAuthorizationUrl,
-  exchangeWebflowCode,
-  getWebflowSecretName,
-} from "./webflow";
+import { buildWebflowAuthorizationUrl, exchangeWebflowCode } from "./webflow";
 export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
   grant: {
     kind: "auth-code",
@@ -41,7 +37,6 @@ export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getWebflowSecretName,
   },
   revoke: { kind: "none" },
 };

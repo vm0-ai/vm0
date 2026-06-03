@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildZoomAuthorizationUrl,
   exchangeZoomCode,
-  getZoomSecretName,
   refreshZoomToken,
 } from "./zoom";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const zoomProvider: AuthCodeConnectorAuthProvider<"zoom"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getZoomSecretName,
-    getRefreshSecretName: () => {
-      return "ZOOM_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshZoomToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshZoomToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

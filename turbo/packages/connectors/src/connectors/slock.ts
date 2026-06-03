@@ -21,10 +21,6 @@ export const slock = {
             "SLOCK_REFRESH_TOKEN",
           ],
           variables: [],
-          secretRoles: {
-            accessToken: "SLOCK_ACCESS_TOKEN",
-            refreshToken: "SLOCK_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "device-auth",
@@ -32,6 +28,16 @@ export const slock = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.SLOCK_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.SLOCK_ACCESS_TOKEN",
+              refreshToken: "$secrets.SLOCK_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["SLOCK_ACCESS_TOKEN"],
+          },
           envBindings: {
             SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
             SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",

@@ -5,9 +5,7 @@ import type {
 import type { ConnectorDeviceAuthGrantAuthMethodId } from "../../../connectors";
 import {
   pollTestOAuthDeviceAuth,
-  TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
   startTestOAuthDeviceAuth,
-  TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
 } from "./test-oauth-device";
 
 function createTestOauthDeviceGrant<
@@ -39,9 +37,6 @@ export const testOauthDeviceProvider: DeviceAuthConnectorAuthProvider<
   grant: createTestOauthDeviceGrant<"oauth">(),
   access: {
     kind: "none",
-    getAccessSecretName: () => {
-      return TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME;
-    },
   },
   revoke: { kind: "none" },
 };
@@ -53,9 +48,6 @@ export const testOauthDeviceApiProvider: DeviceAuthConnectorAuthProvider<
   grant: createTestOauthDeviceGrant<"api">(),
   access: {
     kind: "none",
-    getAccessSecretName: () => {
-      return TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME;
-    },
   },
   revoke: { kind: "none" },
 };

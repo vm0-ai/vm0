@@ -3,20 +3,14 @@ import type {
   AuthCodeGrantProvider,
   RefreshTokenAccessProvider,
 } from "../../types";
-import type {
-  ConnectorAuthCodeGrantAuthMethodId,
-  ConnectorAuthMethodIdsByAccessKind,
-} from "../../../connectors";
+import type { ConnectorAuthCodeGrantAuthMethodId } from "../../../connectors";
 import {
   buildTestOAuthAuthorizationUrl,
   exchangeTestOAuthCode,
   fetchTestOAuthUserInfo,
   refreshTestOAuthToken,
-  TEST_OAUTH_API_ACCESS_SECRET_NAME,
-  TEST_OAUTH_API_REFRESH_SECRET_NAME,
-  TEST_OAUTH_ACCESS_SECRET_NAME,
-  TEST_OAUTH_REFRESH_SECRET_NAME,
 } from "./test-oauth";
+import { oauthRefreshResultToProviderResult } from "../types";
 
 function createTestOauthGrant<
   Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
@@ -54,37 +48,42 @@ function createTestOauthGrant<
   };
 }
 
-function createTestOauthAccess<
-  Method extends ConnectorAuthMethodIdsByAccessKind<
-    "test-oauth",
-    "refresh-token"
-  >,
->(args: {
-  readonly accessSecretName: string;
-  readonly refreshSecretName: string;
-}): RefreshTokenAccessProvider<"test-oauth", Method> {
+function createTestOauthAccess(): RefreshTokenAccessProvider<
+  "test-oauth",
+  "oauth"
+> {
   return {
     kind: "refresh-token",
-    getAccessSecretName: () => {
-      return args.accessSecretName;
-    },
-    getRefreshSecretName: () => {
-      return args.refreshSecretName;
-    },
-    refreshToken: async (refreshArgs) => {
+    refresh: async (refreshArgs) => {
       const { clientId, clientSecret } = refreshArgs.authClient;
-      const refreshToken = refreshArgs.refreshToken;
+      const refreshToken = refreshArgs.inputs.refreshToken;
       const result = await refreshTestOAuthToken(
         clientId,
         clientSecret,
         refreshToken,
         refreshArgs.signal,
       );
-      return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-        expiresIn: result.expiresIn,
-      };
+      return oauthRefreshResultToProviderResult(result);
+    },
+  };
+}
+
+function createTestOauthApiAccess(): RefreshTokenAccessProvider<
+  "test-oauth",
+  "api"
+> {
+  return {
+    kind: "refresh-token",
+    refresh: async (refreshArgs) => {
+      const { clientId, clientSecret } = refreshArgs.authClient;
+      const refreshToken = refreshArgs.inputs.refreshToken;
+      const result = await refreshTestOAuthToken(
+        clientId,
+        clientSecret,
+        refreshToken,
+        refreshArgs.signal,
+      );
+      return oauthRefreshResultToProviderResult(result);
     },
   };
 }
@@ -94,10 +93,7 @@ export const testOauthProvider: AuthCodeConnectorAuthProvider<
   "oauth"
 > = {
   grant: createTestOauthGrant<"oauth">(),
-  access: createTestOauthAccess<"oauth">({
-    accessSecretName: TEST_OAUTH_ACCESS_SECRET_NAME,
-    refreshSecretName: TEST_OAUTH_REFRESH_SECRET_NAME,
-  }),
+  access: createTestOauthAccess(),
   revoke: { kind: "none" },
 };
 
@@ -106,9 +102,6 @@ export const testOauthApiProvider: AuthCodeConnectorAuthProvider<
   "api"
 > = {
   grant: createTestOauthGrant<"api">(),
-  access: createTestOauthAccess<"api">({
-    accessSecretName: TEST_OAUTH_API_ACCESS_SECRET_NAME,
-    refreshSecretName: TEST_OAUTH_API_REFRESH_SECRET_NAME,
-  }),
+  access: createTestOauthApiAccess(),
   revoke: { kind: "none" },
 };

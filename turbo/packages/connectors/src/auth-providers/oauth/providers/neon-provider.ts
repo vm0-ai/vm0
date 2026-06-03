@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildNeonAuthorizationUrl,
   exchangeNeonCode,
-  getNeonSecretName,
   refreshNeonToken,
 } from "./neon";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getNeonSecretName,
-    getRefreshSecretName: () => {
-      return "NEON_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshNeonToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshNeonToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

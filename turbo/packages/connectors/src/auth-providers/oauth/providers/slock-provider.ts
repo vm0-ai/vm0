@@ -1,11 +1,10 @@
 import type { DeviceAuthConnectorAuthProvider } from "../../types";
 import {
-  SLOCK_ACCESS_SECRET_NAME,
-  SLOCK_REFRESH_SECRET_NAME,
   pollSlockDeviceAuth,
   refreshSlockToken,
   startSlockDeviceAuth,
 } from "./slock";
+import { oauthRefreshResultToProviderResult } from "../types";
 
 export const slockProvider: DeviceAuthConnectorAuthProvider<"slock"> = {
   grant: {
@@ -21,17 +20,13 @@ export const slockProvider: DeviceAuthConnectorAuthProvider<"slock"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: () => {
-      return SLOCK_ACCESS_SECRET_NAME;
-    },
-    getRefreshSecretName: () => {
-      return SLOCK_REFRESH_SECRET_NAME;
-    },
-    refreshToken: async (args) => {
-      return await refreshSlockToken({
-        refreshToken: args.refreshToken,
-        signal: args.signal,
-      });
+    refresh: async (args) => {
+      return oauthRefreshResultToProviderResult(
+        await refreshSlockToken({
+          refreshToken: args.inputs.refreshToken,
+          signal: args.signal,
+        }),
+      );
     },
   },
   revoke: { kind: "none" },

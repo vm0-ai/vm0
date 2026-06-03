@@ -20,10 +20,6 @@ export const dropbox = {
         storage: {
           secrets: ["DROPBOX_ACCESS_TOKEN", "DROPBOX_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "DROPBOX_ACCESS_TOKEN",
-            refreshToken: "DROPBOX_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -35,6 +31,16 @@ export const dropbox = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.DROPBOX_ACCESS_TOKEN",
+              refreshToken: "$secrets.DROPBOX_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["DROPBOX_ACCESS_TOKEN"],
+          },
           envBindings: {
             DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
           },

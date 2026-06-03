@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildDeelAuthorizationUrl,
   exchangeDeelCode,
-  getDeelSecretName,
   refreshDeelToken,
 } from "./deel";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
   grant: {
     kind: "auth-code",
@@ -50,17 +50,15 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getDeelSecretName,
-    getRefreshSecretName: () => {
-      return "DEEL_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshDeelToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshDeelToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

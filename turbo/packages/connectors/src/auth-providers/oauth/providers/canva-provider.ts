@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildCanvaAuthorizationUrl,
   exchangeCanvaCode,
-  getCanvaSecretName,
   refreshCanvaToken,
 } from "./canva";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
   grant: {
     kind: "auth-code",
@@ -50,17 +50,15 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getCanvaSecretName,
-    getRefreshSecretName: () => {
-      return "CANVA_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshCanvaToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshCanvaToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

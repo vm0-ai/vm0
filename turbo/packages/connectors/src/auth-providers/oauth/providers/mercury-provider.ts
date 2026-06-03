@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildMercuryAuthorizationUrl,
   exchangeMercuryCode,
-  getMercurySecretName,
   refreshMercuryToken,
 } from "./mercury";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const mercuryProvider: AuthCodeConnectorAuthProvider<"mercury"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getMercurySecretName,
-    getRefreshSecretName: () => {
-      return "MERCURY_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshMercuryToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshMercuryToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

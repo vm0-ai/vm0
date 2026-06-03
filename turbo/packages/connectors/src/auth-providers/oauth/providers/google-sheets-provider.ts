@@ -4,6 +4,7 @@ import {
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "../google";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"> =
   {
     grant: {
@@ -47,21 +48,17 @@ export const googleSheetsProvider: AuthCodeConnectorAuthProvider<"google-sheets"
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: () => {
-        return "GOOGLE_SHEETS_ACCESS_TOKEN";
-      },
-      getRefreshSecretName: () => {
-        return "GOOGLE_SHEETS_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
+      refresh: async (args) => {
         const { clientId, clientSecret } = args.authClient;
-        const refreshToken = args.refreshToken;
-        return refreshGoogleToken(
-          "google-sheets",
-          clientId,
-          clientSecret,
-          refreshToken,
-          args.signal,
+        const refreshToken = args.inputs.refreshToken;
+        return oauthRefreshResultToProviderResult(
+          await refreshGoogleToken(
+            "google-sheets",
+            clientId,
+            clientSecret,
+            refreshToken,
+            args.signal,
+          ),
         );
       },
     },

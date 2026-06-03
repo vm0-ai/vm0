@@ -21,10 +21,6 @@ export const deel = {
         storage: {
           secrets: ["DEEL_ACCESS_TOKEN", "DEEL_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "DEEL_ACCESS_TOKEN",
-            refreshToken: "DEEL_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -41,6 +37,16 @@ export const deel = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.DEEL_ACCESS_TOKEN",
+              refreshToken: "$secrets.DEEL_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["DEEL_ACCESS_TOKEN"],
+          },
           envBindings: {
             DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
           },

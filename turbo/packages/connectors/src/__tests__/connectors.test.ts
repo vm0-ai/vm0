@@ -46,6 +46,7 @@ import {
   getConnectorAuthMethodDeviceAuthGrantConfig,
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethodStorageMetadata,
+  getConnectorRefreshOutputSecretName,
   getConnectorStoredSecretDisplayInfo,
   getDiagnosticConnectorTypeForRuntimeEnvName,
   resolveConnectorAuthClientForMethod,
@@ -73,10 +74,6 @@ import {
   revokeConnectorAuthMethodAccessToken,
   startConnectorDeviceAuthorization,
 } from "../auth-providers/connector-auth";
-import {
-  testOauthDeviceApiProvider,
-  testOauthDeviceProvider,
-} from "../auth-providers/oauth/providers/test-oauth-device-provider";
 import {
   TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
   TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
@@ -1134,12 +1131,14 @@ describe("connector selected auth method capability checks", () => {
   });
 
   it("keeps test OAuth device provider access secrets method-specific", () => {
-    expect(testOauthDeviceProvider.access.getAccessSecretName()).toBe(
-      TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
-    );
-    expect(testOauthDeviceApiProvider.access.getAccessSecretName()).toBe(
-      TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
-    );
+    expect(
+      getConnectorAuthMethodStorageMetadata("test-oauth-device", "oauth")
+        ?.secretRoles.accessToken,
+    ).toBe(TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME);
+    expect(
+      getConnectorAuthMethodStorageMetadata("test-oauth-device", "api")
+        ?.secretRoles.accessToken,
+    ).toBe(TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME);
   });
 
   it("starts, polls, and refreshes the Base44 OAuth device provider", async () => {
@@ -1345,12 +1344,16 @@ describe("connector selected auth method capability checks", () => {
         type: "base44",
         authMethod: "oauth",
         authClient: oauthClient,
-        refreshToken: "base44-refresh-rotation",
+        inputs: {
+          refreshToken: "base44-refresh-rotation",
+        },
         signal: testRefreshSignal(),
       }),
     ).resolves.toStrictEqual({
-      accessToken: "base44-access-refreshed",
-      refreshToken: "base44-refresh-rotated",
+      outputs: {
+        accessToken: "base44-access-refreshed",
+        refreshToken: "base44-refresh-rotated",
+      },
       expiresIn: 3600,
     });
     await expect(
@@ -1358,12 +1361,15 @@ describe("connector selected auth method capability checks", () => {
         type: "base44",
         authMethod: "oauth",
         authClient: oauthClient,
-        refreshToken: "base44-refresh-without-rotation",
+        inputs: {
+          refreshToken: "base44-refresh-without-rotation",
+        },
         signal: testRefreshSignal(),
       }),
     ).resolves.toStrictEqual({
-      accessToken: "base44-access-refreshed",
-      refreshToken: null,
+      outputs: {
+        accessToken: "base44-access-refreshed",
+      },
       expiresIn: 3600,
     });
   });
@@ -1691,12 +1697,16 @@ describe("connector selected auth method capability checks", () => {
       type: "slock",
       authMethod: "oauth",
       authClient: oauthClient,
-      refreshToken: "slock-refresh-token",
+      inputs: {
+        refreshToken: "slock-refresh-token",
+      },
       signal: testRefreshSignal(),
     });
     expect(refreshResult).toStrictEqual({
-      accessToken: slockRefreshedAccessToken,
-      refreshToken: "slock-refresh-rotated",
+      outputs: {
+        accessToken: slockRefreshedAccessToken,
+        refreshToken: "slock-refresh-rotated",
+      },
       expiresIn: expect.any(Number),
     });
     if (refreshResult.expiresIn === undefined) {
@@ -1712,13 +1722,16 @@ describe("connector selected auth method capability checks", () => {
         type: "slock",
         authMethod: "oauth",
         authClient: oauthClient,
-        refreshToken: "slock-refresh-malformed",
+        inputs: {
+          refreshToken: "slock-refresh-malformed",
+        },
         signal: testRefreshSignal(),
       }),
     ).resolves.toStrictEqual({
-      accessToken: slockMalformedAccessToken,
-      refreshToken: "slock-refresh-malformed-rotated",
-      expiresIn: undefined,
+      outputs: {
+        accessToken: slockMalformedAccessToken,
+        refreshToken: "slock-refresh-malformed-rotated",
+      },
     });
   });
 });
@@ -1803,8 +1816,28 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       getConnectorAuthMethodAccessMetadata("stripe", "oauth"),
     ).toStrictEqual({
       kind: "refresh-token",
-      accessToken: "STRIPE_ACCESS_TOKEN",
-      refreshToken: "STRIPE_REFRESH_TOKEN",
+      refresh: {
+        inputs: {
+          refreshToken: {
+            valueRef: "$secrets.STRIPE_REFRESH_TOKEN",
+            source: {
+              kind: "connector-secret",
+              name: "STRIPE_REFRESH_TOKEN",
+            },
+          },
+        },
+        outputs: {
+          accessToken: {
+            valueRef: "$secrets.STRIPE_ACCESS_TOKEN",
+            secretName: "STRIPE_ACCESS_TOKEN",
+          },
+          refreshToken: {
+            valueRef: "$secrets.STRIPE_REFRESH_TOKEN",
+            secretName: "STRIPE_REFRESH_TOKEN",
+          },
+        },
+        refreshableSecrets: ["STRIPE_ACCESS_TOKEN"],
+      },
       envBindings: {
         STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
       },
@@ -1829,13 +1862,78 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
       getConnectorAuthMethodAccessMetadata("google-ads", "oauth"),
     ).toStrictEqual({
       kind: "refresh-token",
-      accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
-      refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
+      refresh: {
+        inputs: {
+          refreshToken: {
+            valueRef: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+            source: {
+              kind: "connector-secret",
+              name: "GOOGLE_ADS_REFRESH_TOKEN",
+            },
+          },
+        },
+        outputs: {
+          accessToken: {
+            valueRef: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+            secretName: "GOOGLE_ADS_ACCESS_TOKEN",
+          },
+          refreshToken: {
+            valueRef: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+            secretName: "GOOGLE_ADS_REFRESH_TOKEN",
+          },
+        },
+        refreshableSecrets: ["GOOGLE_ADS_ACCESS_TOKEN"],
+      },
       envBindings: {
         GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
         GOOGLE_ADS_DEVELOPER_TOKEN: "$secrets.GOOGLE_ADS_DEVELOPER_TOKEN",
       },
       platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
+    });
+  });
+
+  it("supports multi-input and multi-output refresh metadata", () => {
+    expect(
+      getConnectorAuthMethodAccessMetadata("test-oauth", "api"),
+    ).toStrictEqual({
+      kind: "refresh-token",
+      refresh: {
+        inputs: {
+          refreshToken: {
+            valueRef: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
+            source: {
+              kind: "connector-secret",
+              name: "TEST_OAUTH_API_REFRESH_TOKEN",
+            },
+          },
+          tenantId: {
+            valueRef: "$vars.TEST_OAUTH_API_TENANT_ID",
+            source: {
+              kind: "connector-variable",
+              name: "TEST_OAUTH_API_TENANT_ID",
+            },
+          },
+        },
+        outputs: {
+          accessToken: {
+            valueRef: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+            secretName: "TEST_OAUTH_API_ACCESS_TOKEN",
+          },
+          refreshToken: {
+            valueRef: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
+            secretName: "TEST_OAUTH_API_REFRESH_TOKEN",
+          },
+          secondaryToken: {
+            valueRef: "$secrets.TEST_OAUTH_API_SECONDARY_TOKEN",
+            secretName: "TEST_OAUTH_API_SECONDARY_TOKEN",
+          },
+        },
+        refreshableSecrets: ["TEST_OAUTH_API_ACCESS_TOKEN"],
+      },
+      envBindings: {
+        TEST_OAUTH_TOKEN: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
+      },
+      platformSecrets: [],
     });
   });
 
@@ -1887,14 +1985,12 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
           }
         }
         if (accessMetadata.kind === "refresh-token") {
-          expect(
-            platformSecretNames.has(accessMetadata.accessToken),
-            `${type}/${authMethod}: access token storage must stay connector-owned`,
-          ).toBe(false);
-          expect(
-            platformSecretNames.has(accessMetadata.refreshToken),
-            `${type}/${authMethod}: refresh token storage must stay connector-owned`,
-          ).toBe(false);
+          for (const output of Object.values(accessMetadata.refresh.outputs)) {
+            expect(
+              platformSecretNames.has(output.secretName),
+              `${type}/${authMethod}: refresh output storage must stay connector-owned`,
+            ).toBe(false);
+          }
         }
       }
     }
@@ -1975,10 +2071,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         ],
         variables: [],
       },
-      secretRoles: {
-        accessToken: "SLOCK_ACCESS_TOKEN",
-        refreshToken: "SLOCK_REFRESH_TOKEN",
-      },
+      secretRoles: {},
       runtimeBindings: [
         {
           envName: "SLOCK_TOKEN",
@@ -2008,10 +2101,7 @@ describe("getConnectorAuthMethodStorageMetadata", () => {
         secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
         variables: [],
       },
-      secretRoles: {
-        accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
-        refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
-      },
+      secretRoles: {},
       runtimeBindings: [
         {
           envName: "GOOGLE_ADS_TOKEN",
@@ -2143,18 +2233,28 @@ describe("getConnectorEnvBindingEntries", () => {
 
   it("authorization-grant auth methods keep the documented secret naming convention", () => {
     // This is a registry naming convention. Runtime behavior must use
-    // storage.secretRoles and runtimeBindings, not infer roles from names.
+    // refresh output metadata and runtimeBindings, not infer roles from names.
     for (const type of connectorTypeSchema.options) {
       if (!hasConnectorAuthorizationGrant(type)) continue;
 
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        type,
+        "oauth",
+      );
       const storageMetadata = getConnectorAuthMethodStorageMetadata(
         type,
         "oauth",
       );
-      const accessSecretName = storageMetadata?.secretRoles.accessToken;
+      if (!storageMetadata) {
+        throw new Error(`${type}: missing OAuth storage metadata`);
+      }
+      const accessSecretName =
+        accessMetadata?.kind === "refresh-token"
+          ? getConnectorRefreshOutputSecretName(accessMetadata, "accessToken")
+          : storageMetadata?.secretRoles.accessToken;
       expect(
         accessSecretName,
-        `${type}: OAuth auth method must declare an access token role`,
+        `${type}: OAuth auth method must declare access token storage`,
       ).toBeDefined();
       if (!accessSecretName) {
         continue;
@@ -2174,9 +2274,12 @@ describe("getConnectorEnvBindingEntries", () => {
 
       const oauthMethod = getConnectorAuthMethod(type, "oauth");
       if (oauthMethod?.access.kind === "refresh-token") {
+        if (!accessMetadata || accessMetadata.kind !== "refresh-token") {
+          throw new Error(`${type}: expected refresh-token access metadata`);
+        }
         expect(
-          storageMetadata.secretRoles.refreshToken,
-          `${type}: refresh-token access must declare a refresh token role`,
+          getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken"),
+          `${type}: refresh-token access must declare refresh token storage`,
         ).toBe(refreshSecretName);
         expect(
           oauthSecrets,

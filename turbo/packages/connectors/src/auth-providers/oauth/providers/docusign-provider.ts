@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildDocuSignAuthorizationUrl,
   exchangeDocuSignCode,
-  getDocuSignSecretName,
   refreshDocuSignToken,
 } from "./docusign";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
   grant: {
     kind: "auth-code",
@@ -50,17 +50,15 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getDocuSignSecretName,
-    getRefreshSecretName: () => {
-      return "DOCUSIGN_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshDocuSignToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshDocuSignToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

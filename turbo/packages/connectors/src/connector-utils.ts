@@ -25,6 +25,8 @@ import {
   type ConnectorGrantKind,
   type ConnectorManualGrantFieldConfig,
   type ConnectorPlatformSecretName,
+  type ConnectorRefreshTokenInputBindings,
+  type ConnectorRefreshTokenOutputBindings,
   type ConnectorRevokeKind,
   type ConnectorType,
   type AuthCodeGrantConnectorType,
@@ -260,8 +262,7 @@ export type ConnectorAuthMethodAccessMetadata =
     }
   | {
       readonly kind: "refresh-token";
-      readonly accessToken: string;
-      readonly refreshToken: string;
+      readonly refresh: ConnectorRefreshMetadata;
       readonly envBindings: ConnectorEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     }
@@ -270,6 +271,25 @@ export type ConnectorAuthMethodAccessMetadata =
       readonly envBindings: ConnectorEnvBindings;
       readonly platformSecrets: readonly ConnectorPlatformSecretName[];
     };
+
+export interface ConnectorRefreshInputMetadata {
+  readonly valueRef: string;
+  readonly source: Extract<
+    ConnectorRuntimeBindingSource,
+    { readonly kind: "connector-secret" | "connector-variable" }
+  >;
+}
+
+export interface ConnectorRefreshOutputMetadata {
+  readonly valueRef: string;
+  readonly secretName: string;
+}
+
+export interface ConnectorRefreshMetadata {
+  readonly inputs: Readonly<Record<string, ConnectorRefreshInputMetadata>>;
+  readonly outputs: Readonly<Record<string, ConnectorRefreshOutputMetadata>>;
+  readonly refreshableSecrets: readonly string[];
+}
 
 export type ConnectorRuntimeBindingSource =
   | {
@@ -303,19 +323,70 @@ export interface ConnectorAuthMethodStorageMetadata {
   readonly runtimeBindings: readonly ConnectorRuntimeBindingEntry[];
 }
 
-function requireConnectorSecretRole(args: {
-  readonly type: ConnectorType;
-  readonly authMethod: string;
-  readonly role: "accessToken" | "refreshToken";
-}): string {
-  const role = getConnectorAuthMethod(args.type, args.authMethod)?.storage
-    .secretRoles?.[args.role];
-  if (!role) {
-    throw new Error(
-      `${args.type} connector auth method ${args.authMethod} is missing ${args.role} secret role`,
-    );
+function connectorSecretNameFromValueRef(valueRef: string): string | undefined {
+  return valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)
+    ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
+    : undefined;
+}
+
+function connectorVariableNameFromValueRef(
+  valueRef: string,
+): string | undefined {
+  return valueRef.startsWith(CONNECTOR_VARIABLE_REF_PREFIX)
+    ? valueRef.slice(CONNECTOR_VARIABLE_REF_PREFIX.length)
+    : undefined;
+}
+
+function connectorRefreshInputMetadata(
+  valueRef: string,
+): ConnectorRefreshInputMetadata {
+  const secretName = connectorSecretNameFromValueRef(valueRef);
+  if (secretName) {
+    return {
+      valueRef,
+      source: { kind: "connector-secret", name: secretName },
+    };
   }
-  return role;
+
+  const variableName = connectorVariableNameFromValueRef(valueRef);
+  if (variableName) {
+    return {
+      valueRef,
+      source: { kind: "connector-variable", name: variableName },
+    };
+  }
+
+  throw new Error(`Unsupported connector refresh input ref ${valueRef}`);
+}
+
+function connectorRefreshOutputMetadata(
+  valueRef: string,
+): ConnectorRefreshOutputMetadata {
+  const secretName = connectorSecretNameFromValueRef(valueRef);
+  if (!secretName) {
+    throw new Error(`Unsupported connector refresh output ref ${valueRef}`);
+  }
+  return { valueRef, secretName };
+}
+
+function connectorRefreshMetadata(args: {
+  readonly inputs: ConnectorRefreshTokenInputBindings;
+  readonly outputs: ConnectorRefreshTokenOutputBindings;
+  readonly refreshableSecrets: readonly string[];
+}): ConnectorRefreshMetadata {
+  return {
+    inputs: Object.fromEntries(
+      Object.entries(args.inputs).map(([name, valueRef]) => {
+        return [name, connectorRefreshInputMetadata(valueRef)];
+      }),
+    ),
+    outputs: Object.fromEntries(
+      Object.entries(args.outputs).map(([name, valueRef]) => {
+        return [name, connectorRefreshOutputMetadata(valueRef)];
+      }),
+    ),
+    refreshableSecrets: [...args.refreshableSecrets],
+  };
 }
 
 export function getConnectorAuthMethodAccessMetadata(
@@ -340,16 +411,7 @@ export function getConnectorAuthMethodAccessMetadata(
     case "refresh-token":
       return {
         kind: "refresh-token",
-        accessToken: requireConnectorSecretRole({
-          type,
-          authMethod,
-          role: "accessToken",
-        }),
-        refreshToken: requireConnectorSecretRole({
-          type,
-          authMethod,
-          role: "refreshToken",
-        }),
+        refresh: connectorRefreshMetadata(method.access.refresh),
         envBindings: method.access.envBindings,
         platformSecrets: method.access.platformSecrets ?? [],
       };
@@ -360,6 +422,39 @@ export function getConnectorAuthMethodAccessMetadata(
         platformSecrets: [],
       };
   }
+}
+
+export function getConnectorRefreshOutputSecretName(
+  metadata: ConnectorAuthMethodAccessMetadata,
+  outputName: string,
+): string | undefined {
+  return metadata.kind === "refresh-token"
+    ? metadata.refresh.outputs[outputName]?.secretName
+    : undefined;
+}
+
+export function getConnectorRuntimeBindingSecretName(
+  metadata: ConnectorAuthMethodStorageMetadata,
+  envName: string,
+): string | undefined {
+  const binding = metadata.runtimeBindings.find((entry) => {
+    return (
+      entry.envName === envName && entry.source.kind === "connector-secret"
+    );
+  });
+  return binding?.source.kind === "connector-secret"
+    ? binding.source.name
+    : undefined;
+}
+
+export function connectorRefreshMetadataHasRefreshableSecret(
+  metadata: ConnectorAuthMethodAccessMetadata,
+  secretName: string,
+): boolean {
+  return (
+    metadata.kind === "refresh-token" &&
+    metadata.refresh.refreshableSecrets.includes(secretName)
+  );
 }
 
 function connectorPlatformSecretSource(

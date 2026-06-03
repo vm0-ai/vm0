@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildPosthogAuthorizationUrl,
   exchangePosthogCode,
-  getPosthogSecretName,
   refreshPosthogToken,
 } from "./posthog";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const posthogProvider: AuthCodeConnectorAuthProvider<"posthog"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getPosthogSecretName,
-    getRefreshSecretName: () => {
-      return "POSTHOG_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshPosthogToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshPosthogToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

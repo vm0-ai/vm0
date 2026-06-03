@@ -21,10 +21,6 @@ export const googleAds = {
         storage: {
           secrets: ["GOOGLE_ADS_ACCESS_TOKEN", "GOOGLE_ADS_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "GOOGLE_ADS_ACCESS_TOKEN",
-            refreshToken: "GOOGLE_ADS_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -35,6 +31,16 @@ export const googleAds = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",
+              refreshToken: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["GOOGLE_ADS_ACCESS_TOKEN"],
+          },
           platformSecrets: ["GOOGLE_ADS_DEVELOPER_TOKEN"],
           envBindings: {
             GOOGLE_ADS_TOKEN: "$secrets.GOOGLE_ADS_ACCESS_TOKEN",

@@ -6,6 +6,8 @@ import type {
   ConnectorDeviceAuthGrantAuthMethodId,
   ConnectorAuthMethodIdsByAccessKind,
   ConnectorAuthMethodIdsByRevokeKind,
+  ConnectorRefreshInputValues,
+  ConnectorRefreshOutputValues,
   ConnectorType,
   DeviceAuthGrantConnectorType,
   RefreshTokenAccessConnectorType,
@@ -48,11 +50,6 @@ interface OAuthExchangeFlowArgs {
   readonly oauthContext?: string;
 }
 
-interface OAuthRefreshFlowArgs {
-  readonly refreshToken: string;
-  readonly signal: AbortSignal;
-}
-
 interface OAuthRevokeFlowArgs {
   readonly accessToken: string;
 }
@@ -69,6 +66,24 @@ export interface OAuthRefreshResult {
   readonly accessToken: string;
   readonly refreshToken: string | null;
   readonly expiresIn?: number;
+}
+
+export function oauthRefreshResultToProviderResult(
+  result: OAuthRefreshResult,
+): {
+  readonly outputs: {
+    readonly accessToken: string;
+    readonly refreshToken?: string;
+  };
+  readonly expiresIn?: number;
+} {
+  return {
+    outputs: {
+      accessToken: result.accessToken,
+      ...(result.refreshToken ? { refreshToken: result.refreshToken } : {}),
+    },
+    ...(result.expiresIn === undefined ? {} : { expiresIn: result.expiresIn }),
+  };
 }
 
 export interface OAuthDeviceAuthStartResult {
@@ -156,7 +171,23 @@ export type ConnectorAuthProviderRefreshArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
     ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = OAuthRefreshFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;
+> = ConnectorAuthMethodClientArgs<T, Method> & {
+  readonly inputs: ConnectorRefreshInputValues<T, Method>;
+  readonly signal: AbortSignal;
+};
+
+export interface ConnectorAuthProviderRefreshResultBase {
+  readonly outputs: Readonly<Record<string, string | undefined>>;
+  readonly expiresIn?: number;
+}
+
+export interface ConnectorAuthProviderRefreshResult<
+  T extends RefreshTokenAccessConnectorType,
+  Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token"> =
+    ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
+> extends ConnectorAuthProviderRefreshResultBase {
+  readonly outputs: ConnectorRefreshOutputValues<T, Method>;
+}
 
 export type ConnectorAuthProviderRevokeArgs<
   T extends TokenRevokeConnectorType,

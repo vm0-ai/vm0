@@ -4,6 +4,7 @@ import {
   exchangeMicrosoftOAuthCode,
   refreshMicrosoftToken,
 } from "../microsoft";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> =
   {
     grant: {
@@ -47,21 +48,17 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: () => {
-        return "OUTLOOK_MAIL_ACCESS_TOKEN";
-      },
-      getRefreshSecretName: () => {
-        return "OUTLOOK_MAIL_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
+      refresh: async (args) => {
         const { clientId, clientSecret } = args.authClient;
-        const refreshToken = args.refreshToken;
-        return refreshMicrosoftToken(
-          "outlook-mail",
-          clientId,
-          clientSecret,
-          refreshToken,
-          args.signal,
+        const refreshToken = args.inputs.refreshToken;
+        return oauthRefreshResultToProviderResult(
+          await refreshMicrosoftToken(
+            "outlook-mail",
+            clientId,
+            clientSecret,
+            refreshToken,
+            args.signal,
+          ),
         );
       },
     },

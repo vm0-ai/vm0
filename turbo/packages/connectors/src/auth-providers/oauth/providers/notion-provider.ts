@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildNotionAuthorizationUrl,
   exchangeNotionCode,
-  getNotionSecretName,
   refreshNotionToken,
 } from "./notion";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
   grant: {
     kind: "auth-code",
@@ -38,17 +38,15 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getNotionSecretName,
-    getRefreshSecretName: () => {
-      return "NOTION_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshNotionToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshNotionToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

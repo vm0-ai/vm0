@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildCloseAuthorizationUrl,
   exchangeCloseCode,
-  getCloseSecretName,
   refreshCloseToken,
 } from "./close";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
   grant: {
     kind: "auth-code",
@@ -38,17 +38,15 @@ export const closeProvider: AuthCodeConnectorAuthProvider<"close"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getCloseSecretName,
-    getRefreshSecretName: () => {
-      return "CLOSE_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshCloseToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshCloseToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

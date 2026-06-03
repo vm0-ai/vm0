@@ -4,6 +4,7 @@ import {
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "../google";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
   grant: {
     kind: "auth-code",
@@ -46,21 +47,17 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: () => {
-      return "GOOGLE_ADS_ACCESS_TOKEN";
-    },
-    getRefreshSecretName: () => {
-      return "GOOGLE_ADS_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      const refreshToken = args.refreshToken;
-      return refreshGoogleToken(
-        "google-ads",
-        clientId,
-        clientSecret,
-        refreshToken,
-        args.signal,
+      const refreshToken = args.inputs.refreshToken;
+      return oauthRefreshResultToProviderResult(
+        await refreshGoogleToken(
+          "google-ads",
+          clientId,
+          clientSecret,
+          refreshToken,
+          args.signal,
+        ),
       );
     },
   },

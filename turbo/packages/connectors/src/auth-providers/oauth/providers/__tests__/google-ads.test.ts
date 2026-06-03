@@ -3,6 +3,8 @@ import { HttpResponse, http } from "msw";
 import {
   connectorAuthClientIdentity,
   getConnectorAuthMethodAuthCodeGrantConfig,
+  getConnectorAuthMethodAccessMetadata,
+  getConnectorRefreshOutputSecretName,
   resolveConnectorAuthClientForMethod,
   type StaticConfidentialConnectorAuthClient,
 } from "../../../../connector-utils";
@@ -71,19 +73,39 @@ describe("connector/providers/google-ads", () => {
       });
     });
 
-    it("getSecretName returns GOOGLE_ADS_ACCESS_TOKEN", () => {
-      expect(googleAdsProvider.access.getAccessSecretName()).toBe(
-        "GOOGLE_ADS_ACCESS_TOKEN",
+    it("declares GOOGLE_ADS_ACCESS_TOKEN as the refresh access output", () => {
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        "google-ads",
+        "oauth",
       );
-    });
-
-    it("getRefreshSecretName returns GOOGLE_ADS_REFRESH_TOKEN", () => {
-      const { access } = googleAdsProvider;
-      if (access.kind !== "refresh-token") {
-        throw new Error("Expected Google Ads provider to support refresh");
+      if (!accessMetadata || accessMetadata.kind !== "refresh-token") {
+        throw new Error("Expected Google Ads OAuth to support refresh");
       }
 
-      expect(access.getRefreshSecretName()).toBe("GOOGLE_ADS_REFRESH_TOKEN");
+      expect(
+        getConnectorRefreshOutputSecretName(accessMetadata, "accessToken"),
+      ).toBe("GOOGLE_ADS_ACCESS_TOKEN");
+    });
+
+    it("declares GOOGLE_ADS_REFRESH_TOKEN as the refresh token input and output", () => {
+      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+        "google-ads",
+        "oauth",
+      );
+      if (!accessMetadata || accessMetadata.kind !== "refresh-token") {
+        throw new Error("Expected Google Ads OAuth to support refresh");
+      }
+
+      expect(accessMetadata.refresh.inputs.refreshToken).toStrictEqual({
+        valueRef: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
+        source: {
+          kind: "connector-secret",
+          name: "GOOGLE_ADS_REFRESH_TOKEN",
+        },
+      });
+      expect(
+        getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken"),
+      ).toBe("GOOGLE_ADS_REFRESH_TOKEN");
     });
 
     it("refreshToken is defined (uses shared Google token refresh)", () => {
@@ -139,7 +161,7 @@ describe("connector/providers/google-ads", () => {
       });
     });
 
-    it("refreshToken delegates to the shared Google refresh flow", async () => {
+    it("refresh delegates to the shared Google refresh flow", async () => {
       const handler = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
           access_token: "refreshed-google-ads-token",
@@ -153,19 +175,22 @@ describe("connector/providers/google-ads", () => {
         throw new Error("Expected Google Ads provider to support refresh");
       }
 
-      const result = await access.refreshToken({
+      const result = await access.refresh({
         authClient: {
           ...testAuthClient,
           clientId: "client-id",
           clientSecret: "client-secret",
         },
-        refreshToken: "refresh-token",
+        inputs: {
+          refreshToken: "refresh-token",
+        },
         signal: testRefreshSignal(),
       });
 
       expect(result).toEqual({
-        accessToken: "refreshed-google-ads-token",
-        refreshToken: null,
+        outputs: {
+          accessToken: "refreshed-google-ads-token",
+        },
         expiresIn: 3600,
       });
     });

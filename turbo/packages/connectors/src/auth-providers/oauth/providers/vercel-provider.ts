@@ -1,9 +1,5 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildVercelAuthorizationUrl,
-  exchangeVercelCode,
-  getVercelSecretName,
-} from "./vercel";
+import { buildVercelAuthorizationUrl, exchangeVercelCode } from "./vercel";
 export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
   grant: {
     kind: "auth-code",
@@ -39,7 +35,6 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getVercelSecretName,
   },
   revoke: { kind: "none" },
 };

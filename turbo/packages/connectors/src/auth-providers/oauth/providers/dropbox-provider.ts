@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildDropboxAuthorizationUrl,
   exchangeDropboxCode,
-  getDropboxSecretName,
   refreshDropboxToken,
 } from "./dropbox";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const dropboxProvider: AuthCodeConnectorAuthProvider<"dropbox"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getDropboxSecretName,
-    getRefreshSecretName: () => {
-      return "DROPBOX_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshDropboxToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshDropboxToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

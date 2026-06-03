@@ -21,10 +21,6 @@ export const googleSheets = {
             "GOOGLE_SHEETS_REFRESH_TOKEN",
           ],
           variables: [],
-          secretRoles: {
-            accessToken: "GOOGLE_SHEETS_ACCESS_TOKEN",
-            refreshToken: "GOOGLE_SHEETS_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -35,6 +31,16 @@ export const googleSheets = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.GOOGLE_SHEETS_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
+              refreshToken: "$secrets.GOOGLE_SHEETS_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["GOOGLE_SHEETS_ACCESS_TOKEN"],
+          },
           envBindings: {
             GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
           },

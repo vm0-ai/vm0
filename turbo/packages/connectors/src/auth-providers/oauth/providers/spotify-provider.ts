@@ -2,9 +2,9 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildSpotifyAuthorizationUrl,
   exchangeSpotifyCode,
-  getSpotifySecretName,
   refreshSpotifyToken,
 } from "./spotify";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
   grant: {
     kind: "auth-code",
@@ -43,17 +43,15 @@ export const spotifyProvider: AuthCodeConnectorAuthProvider<"spotify"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getSpotifySecretName,
-    getRefreshSecretName: () => {
-      return "SPOTIFY_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshSpotifyToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshSpotifyToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

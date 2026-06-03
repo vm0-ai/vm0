@@ -19,10 +19,6 @@ export const strava = {
         storage: {
           secrets: ["STRAVA_ACCESS_TOKEN", "STRAVA_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "STRAVA_ACCESS_TOKEN",
-            refreshToken: "STRAVA_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -35,6 +31,16 @@ export const strava = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.STRAVA_ACCESS_TOKEN",
+              refreshToken: "$secrets.STRAVA_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["STRAVA_ACCESS_TOKEN"],
+          },
           envBindings: {
             STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
           },

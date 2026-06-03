@@ -3,7 +3,6 @@ import {
   buildGitHubAuthorizationUrl,
   exchangeGitHubCode,
   fetchGitHubUserInfo,
-  getGitHubSecretName,
   revokeGitHubGrant,
 } from "./github";
 export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
@@ -35,7 +34,6 @@ export const githubProvider: AuthCodeConnectorAuthProvider<"github"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getGitHubSecretName,
   },
   revoke: {
     kind: "token-revoke",

@@ -1,10 +1,6 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildXAuthorizationUrl,
-  exchangeXCode,
-  getXSecretName,
-  refreshXToken,
-} from "./x";
+import { buildXAuthorizationUrl, exchangeXCode, refreshXToken } from "./x";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
   grant: {
     kind: "auth-code",
@@ -48,17 +44,15 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getXSecretName,
-    getRefreshSecretName: () => {
-      return "X_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
+    refresh: async (args) => {
       const { clientId, clientSecret } = args.authClient;
-      return refreshXToken(
-        clientId,
-        clientSecret,
-        args.refreshToken,
-        args.signal,
+      return oauthRefreshResultToProviderResult(
+        await refreshXToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
       );
     },
   },

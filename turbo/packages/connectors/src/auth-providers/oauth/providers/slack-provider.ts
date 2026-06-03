@@ -3,7 +3,6 @@ import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
   fetchSlackUserInfo,
-  getSlackSecretName,
   revokeSlackToken,
 } from "./slack";
 export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
@@ -46,7 +45,6 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getSlackSecretName,
   },
   revoke: {
     kind: "token-revoke",

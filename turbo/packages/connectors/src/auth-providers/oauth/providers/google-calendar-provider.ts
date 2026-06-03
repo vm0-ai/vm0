@@ -4,6 +4,7 @@ import {
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "../google";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calendar"> =
   {
     grant: {
@@ -47,21 +48,17 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: () => {
-        return "GOOGLE_CALENDAR_ACCESS_TOKEN";
-      },
-      getRefreshSecretName: () => {
-        return "GOOGLE_CALENDAR_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
+      refresh: async (args) => {
         const { clientId, clientSecret } = args.authClient;
-        const refreshToken = args.refreshToken;
-        return refreshGoogleToken(
-          "google-calendar",
-          clientId,
-          clientSecret,
-          refreshToken,
-          args.signal,
+        const refreshToken = args.inputs.refreshToken;
+        return oauthRefreshResultToProviderResult(
+          await refreshGoogleToken(
+            "google-calendar",
+            clientId,
+            clientSecret,
+            refreshToken,
+            args.signal,
+          ),
         );
       },
     },

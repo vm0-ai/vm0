@@ -24,10 +24,6 @@ export const garminConnect = {
             "GARMIN_CONNECT_REFRESH_TOKEN",
           ],
           variables: [],
-          secretRoles: {
-            accessToken: "GARMIN_CONNECT_ACCESS_TOKEN",
-            refreshToken: "GARMIN_CONNECT_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -35,6 +31,16 @@ export const garminConnect = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.GARMIN_CONNECT_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
+              refreshToken: "$secrets.GARMIN_CONNECT_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["GARMIN_CONNECT_ACCESS_TOKEN"],
+          },
           envBindings: {
             GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
           },

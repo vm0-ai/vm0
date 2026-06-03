@@ -21,10 +21,6 @@ export const ahrefs = {
         storage: {
           secrets: ["AHREFS_ACCESS_TOKEN", "AHREFS_REFRESH_TOKEN"],
           variables: [],
-          secretRoles: {
-            accessToken: "AHREFS_ACCESS_TOKEN",
-            refreshToken: "AHREFS_REFRESH_TOKEN",
-          },
         },
         grant: {
           kind: "auth-code",
@@ -32,6 +28,16 @@ export const ahrefs = {
         },
         access: {
           kind: "refresh-token",
+          refresh: {
+            inputs: {
+              refreshToken: "$secrets.AHREFS_REFRESH_TOKEN",
+            },
+            outputs: {
+              accessToken: "$secrets.AHREFS_ACCESS_TOKEN",
+              refreshToken: "$secrets.AHREFS_REFRESH_TOKEN",
+            },
+            refreshableSecrets: ["AHREFS_ACCESS_TOKEN"],
+          },
           envBindings: {
             AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
           },

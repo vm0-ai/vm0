@@ -12,6 +12,7 @@ import {
   connectorAuthMethodHasGrantKind,
   getConnectorAuthMethod,
   getConnectorAuthMethodAccessMetadata,
+  getConnectorRefreshOutputSecretName,
 } from "@vm0/connectors/connector-utils";
 import {
   testOauthApiProvider,
@@ -1176,7 +1177,14 @@ function accessTokenSecretNameForAuthCodeMethod(
   const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
   switch (accessMetadata?.kind) {
     case "refresh-token": {
-      return accessMetadata.accessToken;
+      const accessTokenSecretName = getConnectorRefreshOutputSecretName(
+        accessMetadata,
+        "accessToken",
+      );
+      if (!accessTokenSecretName) {
+        throw new Error(`${type}: auth-code auth method has no access output`);
+      }
+      return accessTokenSecretName;
     }
     case "static": {
       const secretName = staticConnectorOwnedAccessSecretName(
@@ -1203,7 +1211,7 @@ function refreshTokenSecretNameForAuthCodeMethod(
 ): string | undefined {
   const accessMetadata = getConnectorAuthMethodAccessMetadata(type, authMethod);
   return accessMetadata?.kind === "refresh-token"
-    ? accessMetadata.refreshToken
+    ? getConnectorRefreshOutputSecretName(accessMetadata, "refreshToken")
     : undefined;
 }
 
