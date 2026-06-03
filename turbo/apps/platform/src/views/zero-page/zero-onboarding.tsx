@@ -83,6 +83,7 @@ import {
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
+import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
@@ -1121,8 +1122,9 @@ function OnboardingIllustrationPanel() {
         )}
       </div>
 
-      {/* Account dropdown — bottom-left of left panel */}
-      <div className="absolute bottom-6 left-4 z-20">
+      {/* Workspace switcher + account — bottom-left of left panel */}
+      <div className="absolute bottom-6 left-4 z-20 flex w-[260px] flex-col gap-0.5">
+        <ZeroOrgSwitcher />
         <OnboardingAccountDropdown />
       </div>
     </div>
