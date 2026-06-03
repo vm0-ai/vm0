@@ -713,12 +713,19 @@ export const webhookUsageEventContract = c.router({
  * Receives model token observations from the sandbox for model usage statistics.
  * This endpoint is not a billing ledger input.
  */
+const modelUsageObservationCategorySchema = z.enum([
+  "tokens.input",
+  "tokens.output",
+  "tokens.cache_read",
+  "tokens.cache_creation",
+]);
+
 const webhookModelUsageObservationItemSchema = z
   .object({
     idempotencyKey: z.uuid(),
     model: z.string().min(1).max(255),
-    category: z.string().min(1).max(100),
-    quantity: z.number().int().min(0),
+    category: modelUsageObservationCategorySchema,
+    quantity: z.number().int().min(1),
   })
   .strict();
 

@@ -397,8 +397,13 @@ class TestErrorHandler:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
-        assert webhook.request_count == 1
-        body = webhook.requests[0].json_body()
+        assert webhook.request_count == 2
+        requests_by_path = {request.path: request for request in webhook.requests}
+        assert set(requests_by_path) == {
+            "/api/webhooks/agent/usage-event",
+            "/api/webhooks/agent/model-usage-observation",
+        }
+        body = requests_by_path["/api/webhooks/agent/usage-event"].json_body()
         assert body["runId"] == "run-int-002"
         assert [
             {key: value for key, value in event.items() if key != "idempotencyKey"}
@@ -411,4 +416,22 @@ class TestErrorHandler:
                 "quantity": 80,
             }
         ]
-        uuid.UUID(body["events"][0]["idempotencyKey"])
+        billing_key = body["events"][0]["idempotencyKey"]
+        uuid.UUID(billing_key)
+        observation_body = requests_by_path[
+            "/api/webhooks/agent/model-usage-observation"
+        ].json_body()
+        assert observation_body["runId"] == "run-int-002"
+        assert [
+            {key: value for key, value in event.items() if key != "idempotencyKey"}
+            for event in observation_body["events"]
+        ] == [
+            {
+                "model": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 80,
+            }
+        ]
+        observation_key = observation_body["events"][0]["idempotencyKey"]
+        uuid.UUID(observation_key)
+        assert observation_key != billing_key

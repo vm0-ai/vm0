@@ -185,6 +185,13 @@ async function replaceModelStats(
         WHERE ${modelUsageObservation.observedAt} >= ${windowStart}
           AND ${modelUsageObservation.observedAt} < ${windowEnd}
           AND ${modelUsageObservation.model} IN (${modelStatsModelIdSql})
+          AND ${modelUsageObservation.category} IN (
+            ${TOKEN_CATEGORY_INPUT},
+            ${TOKEN_CATEGORY_OUTPUT},
+            ${TOKEN_CATEGORY_CACHE_READ},
+            ${TOKEN_CATEGORY_CACHE_CREATION}
+          )
+          AND ${modelUsageObservation.quantity} > 0
       ),
       aggregated AS (
         SELECT

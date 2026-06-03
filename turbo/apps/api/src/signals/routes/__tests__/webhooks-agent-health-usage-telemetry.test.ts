@@ -117,6 +117,32 @@ async function postRawUsageEvent(
   };
 }
 
+async function postRawModelUsageObservation(
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+}> {
+  const app = createApp({ signal: context.signal });
+  const response = await app.request(
+    "/api/webhooks/agent/model-usage-observation",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+
+  return {
+    status: response.status,
+    body: await response.json(),
+  };
+}
+
 async function postRawTelemetry(
   body: unknown,
   headers: Record<string, string> = {},
@@ -737,7 +763,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
           {
             idempotencyKey: sharedKey,
             model: "claude-sonnet-4-6",
-            category: "tokens.input",
+            category: "tokens.input" as const,
             quantity: 9,
           },
         ],
@@ -799,6 +825,64 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     );
 
     await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
+    await expect(observationRowsForRun(fixture.runId)).resolves.toStrictEqual(
+      [],
+    );
+  });
+
+  it.each([
+    {
+      name: "unknown model token category",
+      event: {
+        idempotencyKey: randomUUID(),
+        model: "claude-sonnet-4-6",
+        category: "tokens.total",
+        quantity: 1,
+      },
+    },
+    {
+      name: "zero quantity",
+      event: {
+        idempotencyKey: randomUUID(),
+        model: "claude-sonnet-4-6",
+        category: "tokens.input",
+        quantity: 0,
+      },
+    },
+    {
+      name: "non-integer quantity",
+      event: {
+        idempotencyKey: randomUUID(),
+        model: "claude-sonnet-4-6",
+        category: "tokens.input",
+        quantity: 1.5,
+      },
+    },
+    {
+      name: "unexpected event field",
+      event: {
+        idempotencyKey: randomUUID(),
+        model: "claude-sonnet-4-6",
+        category: "tokens.input",
+        quantity: 1,
+        unexpected: true,
+      },
+    },
+  ])("rejects model usage observation with $name", async ({ event }) => {
+    const fixture = await track(seedFixture());
+
+    const response = await postRawModelUsageObservation(
+      {
+        runId: fixture.runId,
+        events: [event],
+      },
+      authHeaders(fixture),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
     await expect(observationRowsForRun(fixture.runId)).resolves.toStrictEqual(
       [],
     );
