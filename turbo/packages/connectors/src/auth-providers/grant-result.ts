@@ -35,7 +35,6 @@ type ConnectorAuthProviderGrantMethodId<
 export type ConnectorAuthProviderGrantResultForMethod<
   T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
   Method extends ConnectorAuthMethodIds<T>,
-> =
-  Method extends ConnectorAuthProviderGrantMethodId<T>
-    ? ConnectorAuthProviderGrantResult<ConnectorGrantOutputValues<T, Method>>
-    : never;
+> = [Method] extends [ConnectorAuthProviderGrantMethodId<T>]
+  ? ConnectorAuthProviderGrantResult<ConnectorGrantOutputValues<T, Method>>
+  : never;
