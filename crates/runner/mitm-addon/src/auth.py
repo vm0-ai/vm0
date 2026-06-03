@@ -65,7 +65,8 @@ class FirewallAuthApiError(Exception):
 
 
 class _ResponseBodyReader(Protocol):
-    def read(self, n: int = -1) -> bytes: ...
+    def read(self, n: int = -1) -> bytes:
+        raise NotImplementedError
 
 
 # Vercel bypass secret (still from environment as it's a secret)
