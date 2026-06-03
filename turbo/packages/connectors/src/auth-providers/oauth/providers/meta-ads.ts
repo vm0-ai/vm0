@@ -19,7 +19,6 @@ interface MetaAdsUserInfo {
 
 interface MetaAdsTokenResult {
   accessToken: string;
-  refreshToken: string | null;
   expiresIn?: number;
   scopes: string[];
   userInfo: MetaAdsUserInfo;
@@ -109,7 +108,6 @@ export async function exchangeMetaAdsCode(
 
   return {
     accessToken: longLivedToken.accessToken,
-    refreshToken: null,
     expiresIn: longLivedToken.expiresIn,
     scopes: authCodeGrant.scopes,
     userInfo,

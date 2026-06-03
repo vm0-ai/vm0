@@ -28,7 +28,6 @@ export const intervalsIcuProvider: AuthCodeConnectorAuthProvider<"intervals-icu"
         return {
           outputs: {
             accessToken: result.accessToken,
-            refreshToken: null,
           },
           scopes: result.scopes,
           userInfo: {

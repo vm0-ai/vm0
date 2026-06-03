@@ -26,7 +26,6 @@ export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
       return {
         outputs: {
           accessToken: result.accessToken,
-          refreshToken: null,
         },
         scopes: result.scopes,
         userInfo: {

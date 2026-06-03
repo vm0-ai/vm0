@@ -26,7 +26,6 @@ export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
       return {
         outputs: {
           accessToken: result.accessToken,
-          refreshToken: null,
         },
         scopes: result.scopes,
         userInfo: {
