@@ -832,6 +832,72 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     expect(response.body).toStrictEqual({ completed: true });
   });
 
+  it("cancels the replaced Pro trial subscription after completing paid Team checkout", async () => {
+    const customerId = `cus_${randomUUID().slice(0, 8)}`;
+    const proTrialSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const teamSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;
+    const fixture = await trackedSeed({
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: proTrialSubscriptionId,
+      subscriptionStatus: "trialing",
+      tier: "pro",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    context.mocks.stripe.checkout.sessions.retrieve.mockResolvedValue({
+      id: "cs_test_completed",
+      mode: "subscription",
+      status: "complete",
+      customer: customerId,
+      subscription: teamSubscriptionId,
+    });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: teamSubscriptionId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: {
+        data: [
+          {
+            price: { id: TEST_PRICE_TEAM },
+            current_period_end: 1_800_000_000,
+          },
+        ],
+      },
+    });
+
+    const client = setupApp({ context })(zeroBillingCheckoutContract);
+
+    const response = await accept(
+      client.complete({
+        body: { sessionId: "cs_test_completed" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ completed: true });
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      proTrialSubscriptionId,
+    );
+
+    const writeDb = store.set(writeDb$);
+    const [row] = await writeDb
+      .select({
+        tier: orgMetadata.tier,
+        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
+      })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId))
+      .limit(1);
+
+    expect(row).toStrictEqual({
+      tier: "team",
+      stripeSubscriptionId: teamSubscriptionId,
+      subscriptionStatus: "active",
+    });
+  });
+
   it("returns 400 when completed checkout would downgrade the current tier", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const existingSubscriptionId = `sub_${randomUUID().slice(0, 8)}`;

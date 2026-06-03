@@ -115,6 +115,29 @@ export function checkoutTierConflictMessage(args: {
   return `Cannot create ${billingTierLabel(args.targetTier)} checkout while current tier is ${billingTierLabel(args.currentTier)}; use billing management to change plans`;
 }
 
+export async function cancelReplacedProTrialSubscription(args: {
+  readonly stripe: ReturnType<typeof getStripeClient>;
+  readonly currentSubscriptionId: string | null | undefined;
+  readonly currentTier: string | null | undefined;
+  readonly currentSubscriptionStatus: string | null | undefined;
+  readonly targetSubscriptionId: string;
+  readonly targetTier: SubscriptionCheckoutTier;
+  readonly targetSubscriptionStatus: string;
+}): Promise<void> {
+  if (
+    args.targetTier !== "team" ||
+    args.targetSubscriptionStatus !== "active" ||
+    args.currentTier !== "pro" ||
+    args.currentSubscriptionStatus !== "trialing" ||
+    !args.currentSubscriptionId ||
+    args.currentSubscriptionId === args.targetSubscriptionId
+  ) {
+    return;
+  }
+
+  await args.stripe.subscriptions.cancel(args.currentSubscriptionId);
+}
+
 export function activeCustomCreditPriceId(): string | undefined {
   return env("ZERO_PRICE")?.customCredits?.[0];
 }
@@ -250,6 +273,7 @@ export const completeCheckoutSession$ = command(
       .select({
         stripeCustomerId: orgMetadata.stripeCustomerId,
         stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+        subscriptionStatus: orgMetadata.subscriptionStatus,
         tier: orgMetadata.tier,
       })
       .from(orgMetadata)
@@ -299,6 +323,17 @@ export const completeCheckoutSession$ = command(
     }
     const alreadyPaidSubscription =
       org.stripeSubscriptionId === subscription.id && org.tier === tier;
+
+    await cancelReplacedProTrialSubscription({
+      stripe,
+      currentSubscriptionId: org.stripeSubscriptionId,
+      currentTier: org.tier,
+      currentSubscriptionStatus: org.subscriptionStatus,
+      targetSubscriptionId: subscription.id,
+      targetTier: tier,
+      targetSubscriptionStatus: subscription.status,
+    });
+    signal.throwIfAborted();
 
     await db
       .update(orgMetadata)
