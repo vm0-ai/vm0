@@ -3,7 +3,7 @@ import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
-import { and, eq, gt, lte, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
@@ -18,7 +18,6 @@ import {
 } from "./zero-billing-checkout.service";
 
 const L = logger("WebhookStripe");
-const TRIALING_CREDIT_EXPIRY_DAYS = 7;
 
 type WriteTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -53,7 +52,9 @@ interface InvoiceInput {
 
 interface SubscriptionInput {
   readonly id: string;
+  readonly customer?: string | { readonly id: string } | null;
   readonly status: string;
+  readonly trial_end?: number | null;
   readonly cancel_at_period_end: boolean;
   readonly items: {
     readonly data: readonly {
@@ -79,10 +80,34 @@ function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
     : null;
 }
 
+function customerIdFromSubscription(
+  subscription: SubscriptionInput,
+): string | null {
+  return typeof subscription.customer === "string"
+    ? subscription.customer
+    : (subscription.customer?.id ?? null);
+}
+
 function subscriptionCanRefreshPaidThrough(
   subscription: SubscriptionInput,
 ): boolean {
   return subscription.status === "active" || subscription.status === "trialing";
+}
+
+function subscriptionTrialEnd(subscription: SubscriptionInput): Date | null {
+  return typeof subscription.trial_end === "number"
+    ? new Date(subscription.trial_end * 1000)
+    : null;
+}
+
+function requiredSubscriptionTrialEnd(subscription: SubscriptionInput): Date {
+  const trialEnd = subscriptionTrialEnd(subscription);
+  if (!trialEnd) {
+    throw new Error(
+      `trialing subscription has no trial_end (subscriptionId=${subscription.id})`,
+    );
+  }
+  return trialEnd;
 }
 
 function monthlyCreditsForTier(tier: OrgTier): number {
@@ -103,13 +128,11 @@ function monthlyCreditsForTier(tier: OrgTier): number {
 }
 
 function subscriptionCreditExpiresAt(
-  subscriptionStatus: string,
+  subscription: SubscriptionInput,
   periodEndDate: Date,
 ): Date {
-  if (subscriptionStatus === "trialing") {
-    const expiresAt = nowDate();
-    expiresAt.setDate(expiresAt.getDate() + TRIALING_CREDIT_EXPIRY_DAYS);
-    return expiresAt;
+  if (subscription.status === "trialing") {
+    return requiredSubscriptionTrialEnd(subscription);
   }
 
   const expiresAt = new Date(periodEndDate);
@@ -466,6 +489,141 @@ async function shouldSkipCheckoutSubscriptionUpdate(
   return false;
 }
 
+async function orgHasStripeCustomer(
+  db: Db,
+  customerId: string,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ orgId: orgMetadata.orgId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.stripeCustomerId, customerId))
+    .limit(1);
+
+  return Boolean(existing);
+}
+
+async function bindCustomerFromStripeMetadata(
+  db: Db,
+  args: {
+    readonly customerId: string;
+    readonly subscriptionId: string;
+  },
+): Promise<boolean> {
+  if (await orgHasStripeCustomer(db, args.customerId)) {
+    return true;
+  }
+
+  const stripe = getStripeClient();
+  const customer = await stripe.customers.retrieve(args.customerId);
+  if ("deleted" in customer && customer.deleted) {
+    L.warn("subscription customer was deleted before org binding", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    });
+    return false;
+  }
+
+  const orgId = customer.metadata.orgId;
+  if (!orgId) {
+    L.warn("subscription customer has no org metadata", {
+      customerId: args.customerId,
+      subscriptionId: args.subscriptionId,
+    });
+    return false;
+  }
+
+  const rows = await db
+    .update(orgMetadata)
+    .set({ stripeCustomerId: args.customerId, updatedAt: nowDate() })
+    .where(
+      and(eq(orgMetadata.orgId, orgId), isNull(orgMetadata.stripeCustomerId)),
+    )
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length > 0) {
+    return true;
+  }
+
+  const [org] = await db
+    .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  L.warn("subscription customer metadata could not bind org", {
+    customerId: args.customerId,
+    subscriptionId: args.subscriptionId,
+    orgId,
+    existingStripeCustomerId: org?.stripeCustomerId ?? null,
+  });
+  return false;
+}
+
+async function bindSubscriptionToCustomerOrg(
+  db: Db,
+  args: {
+    readonly customerId: string;
+    readonly subscription: SubscriptionInput;
+    readonly source:
+      | "checkout.session.completed"
+      | "customer.subscription.created";
+  },
+): Promise<void> {
+  if (
+    args.source === "customer.subscription.created" &&
+    !(await bindCustomerFromStripeMetadata(db, {
+      customerId: args.customerId,
+      subscriptionId: args.subscription.id,
+    }))
+  ) {
+    return;
+  }
+
+  const priceId = args.subscription.items.data[0]?.price?.id;
+  if (!priceId) {
+    L.warn("subscription has no price ID", {
+      subscriptionId: args.subscription.id,
+      source: args.source,
+    });
+    return;
+  }
+
+  const tier = tierFromPriceId(priceId);
+  if (
+    await shouldSkipCheckoutSubscriptionUpdate(db, {
+      customerId: args.customerId,
+      subscriptionId: args.subscription.id,
+      tier,
+    })
+  ) {
+    return;
+  }
+
+  const periodEnd = subscriptionPeriodEnd(args.subscription);
+
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      tier,
+      stripeSubscriptionId: args.subscription.id,
+      subscriptionStatus: args.subscription.status,
+      cancelAtPeriodEnd: args.subscription.cancel_at_period_end,
+      onboardingPaymentPending: false,
+      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+      updatedAt: nowDate(),
+    })
+    .where(eq(orgMetadata.stripeCustomerId, args.customerId))
+    .returning({ orgId: orgMetadata.orgId });
+
+  if (rows.length === 0) {
+    L.warn("subscription customer has no matching org", {
+      customerId: args.customerId,
+      subscriptionId: args.subscription.id,
+      source: args.source,
+    });
+  }
+}
+
 function invoiceWouldReplaceWithSameOrLowerTier(args: {
   readonly currentSubscriptionId: string | null;
   readonly subscriptionId: string;
@@ -502,38 +660,30 @@ async function handleCheckoutCompleted(
 
   const stripe = getStripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-  const priceId = subscription.items.data[0]?.price?.id;
-  if (!priceId) {
-    L.warn("subscription has no price ID", { subscriptionId });
+  await bindSubscriptionToCustomerOrg(db, {
+    customerId,
+    subscription,
+    source: "checkout.session.completed",
+  });
+}
+
+async function handleSubscriptionCreated(
+  db: Db,
+  subscription: SubscriptionInput,
+): Promise<void> {
+  const customerId = customerIdFromSubscription(subscription);
+  if (!customerId) {
+    L.warn("customer.subscription.created without customer ID", {
+      subscriptionId: subscription.id,
+    });
     return;
   }
 
-  const tier = tierFromPriceId(priceId);
-  if (
-    await shouldSkipCheckoutSubscriptionUpdate(db, {
-      customerId,
-      subscriptionId,
-      tier,
-    })
-  ) {
-    return;
-  }
-
-  const itemPeriodEnd = subscription.items.data[0]?.current_period_end;
-  const periodEnd = itemPeriodEnd ? new Date(itemPeriodEnd * 1000) : undefined;
-
-  await db
-    .update(orgMetadata)
-    .set({
-      tier,
-      stripeSubscriptionId: subscriptionId,
-      subscriptionStatus: subscription.status,
-      cancelAtPeriodEnd: false,
-      onboardingPaymentPending: false,
-      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
-      updatedAt: nowDate(),
-    })
-    .where(eq(orgMetadata.stripeCustomerId, customerId));
+  await bindSubscriptionToCustomerOrg(db, {
+    customerId,
+    subscription,
+    source: "customer.subscription.created",
+  });
 }
 
 async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
@@ -644,7 +794,7 @@ async function handleInvoicePaid(db: Db, invoice: InvoiceInput): Promise<void> {
   }
   const periodEndDate = new Date(periodEndUnix * 1000);
   const expiresAt = subscriptionCreditExpiresAt(
-    subscriptionRecord.status,
+    subscriptionRecord,
     periodEndDate,
   );
 
@@ -690,16 +840,36 @@ async function handleSubscriptionUpdated(
     ? subscriptionPeriodEnd(subscription)
     : null;
 
-  await db
-    .update(orgMetadata)
-    .set({
-      subscriptionStatus: subscription.status,
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-      updatedAt: nowDate(),
-      ...(tier ? { tier } : {}),
-      ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
-    })
-    .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
+  await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(orgMetadata)
+      .set({
+        subscriptionStatus: subscription.status,
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        updatedAt: nowDate(),
+        ...(tier ? { tier } : {}),
+        ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+      })
+      .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+      .returning({ orgId: orgMetadata.orgId });
+
+    if (subscription.status !== "trialing") {
+      return;
+    }
+    const trialEnd = requiredSubscriptionTrialEnd(subscription);
+    for (const row of rows) {
+      await tx
+        .update(creditExpiresRecord)
+        .set({ expiresAt: trialEnd })
+        .where(
+          and(
+            eq(creditExpiresRecord.orgId, row.orgId),
+            eq(creditExpiresRecord.source, "subscription_renewal"),
+            gt(creditExpiresRecord.remaining, 0),
+          ),
+        );
+    }
+  });
 }
 
 async function handleSubscriptionDeleted(
@@ -736,6 +906,11 @@ export const handleStripeWebhookEvent$ = command(
       }
       case "invoice.paid": {
         await handleInvoicePaid(db, event.data.object);
+        signal.throwIfAborted();
+        break;
+      }
+      case "customer.subscription.created": {
+        await handleSubscriptionCreated(db, event.data.object);
         signal.throwIfAborted();
         break;
       }

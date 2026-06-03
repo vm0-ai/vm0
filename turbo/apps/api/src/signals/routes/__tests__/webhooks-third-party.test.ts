@@ -222,6 +222,7 @@ interface GitHubIssueCommentPayloadOverrides {
 interface StripeBillingRow {
   readonly credits: number;
   readonly tier: string;
+  readonly stripeCustomerId: string | null;
   readonly stripeSubscriptionId: string | null;
   readonly subscriptionStatus: string | null;
   readonly currentPeriodEnd: Date | null;
@@ -682,6 +683,7 @@ async function selectStripeBilling(
     .select({
       credits: orgMetadata.credits,
       tier: orgMetadata.tier,
+      stripeCustomerId: orgMetadata.stripeCustomerId,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
       currentPeriodEnd: orgMetadata.currentPeriodEnd,
@@ -2425,6 +2427,151 @@ describe("POST /api/webhooks/stripe", () => {
     });
   });
 
+  describe("customer.subscription.created", () => {
+    it("binds a dashboard-created Pro subscription to the org by Stripe customer", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const periodEnd = 1_800_000_000;
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.created",
+        dataObject: {
+          id: subId,
+          customer: fixture.stripeCustomerId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("pro");
+      expect(billing.stripeSubscriptionId).toBe(subId);
+      expect(billing.subscriptionStatus).toBe("active");
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
+      expect(billing.cancelAtPeriodEnd).toBeFalsy();
+    });
+
+    it("does not bind a subscription for an unknown Stripe customer", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const customerId = stripeId("cus");
+      context.mocks.stripe.customers.retrieve.mockResolvedValue({
+        id: customerId,
+        metadata: {},
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.created",
+        dataObject: {
+          id: stripeId("sub"),
+          customer: customerId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: {
+            data: [{ price: { id: STRIPE_PRICE_PRO } }],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.tier).toBe("pro-suspend");
+      expect(billing.stripeSubscriptionId).toBeNull();
+      expect(billing.subscriptionStatus).toBeNull();
+    });
+
+    it("binds a dashboard-created customer to the org from Stripe metadata", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const customerId = stripeId("cus");
+      const subId = stripeId("sub");
+      const periodEnd = 1_800_000_000;
+      await updateStripeOrg(fixture, { stripeCustomerId: null });
+      context.mocks.stripe.customers.retrieve.mockResolvedValue({
+        id: customerId,
+        metadata: { orgId: fixture.orgId },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.created",
+        dataObject: {
+          id: subId,
+          customer: customerId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: periodEnd,
+              },
+            ],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.stripeCustomerId).toBe(customerId);
+      expect(billing.tier).toBe("pro");
+      expect(billing.stripeSubscriptionId).toBe(subId);
+      expect(billing.subscriptionStatus).toBe("active");
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
+    });
+
+    it("does not rebind metadata to an org with a different Stripe customer", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const customerId = stripeId("cus");
+      context.mocks.stripe.customers.retrieve.mockResolvedValue({
+        id: customerId,
+        metadata: { orgId: fixture.orgId },
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.created",
+        dataObject: {
+          id: stripeId("sub"),
+          customer: customerId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: {
+            data: [{ price: { id: STRIPE_PRICE_PRO } }],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      expect(billing.stripeCustomerId).toBe(fixture.stripeCustomerId);
+      expect(billing.tier).toBe("pro-suspend");
+      expect(billing.stripeSubscriptionId).toBeNull();
+      expect(billing.subscriptionStatus).toBeNull();
+    });
+  });
+
   describe("invoice.paid", () => {
     it("grants 20k credits for pro tier", async () => {
       const fixture = await trackStripe(
@@ -2827,6 +2974,56 @@ describe("POST /api/webhooks/stripe", () => {
       ).toStrictEqual(new Date(periodEnd * 1000));
     });
 
+    it("syncs trial credit expiry when the Stripe trial period is extended", async () => {
+      const fixture = await trackStripe(
+        store.set(seedStripeFixture$, undefined, context.signal),
+      );
+      mockStripeWebhookEnv();
+      const subId = stripeId("sub");
+      const extendedPeriodEnd = 1_900_000_000;
+      const extendedTrialEnd = 1_900_086_400;
+      await updateStripeOrg(fixture, {
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "trialing",
+        tier: "pro",
+      });
+      await insertStripeCreditExpiresRecord(fixture, {
+        stripeInvoiceId: stripeId("inv_trial"),
+        amount: 20_000,
+        remaining: 15_000,
+        expiresAt: new Date("2026-01-01T00:00:00.000Z"),
+      });
+
+      const response = await postStripeWebhookEvent({
+        type: "customer.subscription.updated",
+        dataObject: {
+          id: subId,
+          status: "trialing",
+          trial_end: extendedTrialEnd,
+          cancel_at_period_end: false,
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: extendedPeriodEnd,
+              },
+            ],
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const billing = await selectStripeBilling(fixture);
+      const records = await selectStripeCreditExpiresRecords(fixture);
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(extendedPeriodEnd * 1000),
+      );
+      expect(records).toHaveLength(1);
+      expect(records[0]?.expiresAt).toStrictEqual(
+        new Date(extendedTrialEnd * 1000),
+      );
+    });
+
     it("does not extend paid-through from a failed payment update", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
@@ -2906,28 +3103,30 @@ describe("POST /api/webhooks/stripe", () => {
       expect(records[0]?.expiresAt).toStrictEqual(expectedExpiresAt);
     });
 
-    it("creates trialing Pro expires record with seven-day expiresAt", async () => {
+    it("creates trialing Pro expires record at the Stripe trial period end", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
       mockStripeWebhookEnv();
       const subId = stripeId("sub");
       const invId = stripeId("inv");
+      const periodEnd = 1_800_000_000;
+      const trialEnd = 1_800_086_400;
       await updateStripeOrg(fixture, { stripeSubscriptionId: subId });
       context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
         id: subId,
         status: "trialing",
+        trial_end: trialEnd,
         items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
       });
 
-      const lowerBound = nowDate().getTime() + 7 * 86_400 * 1000;
       const response = await postStripeWebhookEvent({
         type: "invoice.paid",
         dataObject: {
           id: invId,
           customer: fixture.stripeCustomerId,
           metadata: null,
-          lines: invoiceLinesWithSubscriptionPeriod(1_800_000_000),
+          lines: invoiceLinesWithSubscriptionPeriod(periodEnd),
           parent: { subscription_details: { subscription: subId } },
         },
       });
@@ -2940,11 +3139,7 @@ describe("POST /api/webhooks/stripe", () => {
         remaining: 20_000,
         stripeInvoiceId: invId,
       });
-      const upperBound = nowDate().getTime() + 7 * 86_400 * 1000;
-      expect(records[0]?.expiresAt.getTime()).toBeGreaterThanOrEqual(
-        lowerBound,
-      );
-      expect(records[0]?.expiresAt.getTime()).toBeLessThanOrEqual(upperBound);
+      expect(records[0]?.expiresAt).toStrictEqual(new Date(trialEnd * 1000));
     });
 
     it("expires old credits before granting new ones", async () => {
