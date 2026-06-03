@@ -278,10 +278,17 @@ pub fn disconnect(device_index: u32) -> Result<()> {
 // --- Internal netlink helpers ---
 
 fn resolve_nbd_family(sock: &socket::GenlSocket) -> Result<u16> {
-    let attrs = wire::build_nla(CTRL_ATTR_FAMILY_NAME, b"nbd\0");
+    let request_attrs = wire::build_nla(CTRL_ATTR_FAMILY_NAME, b"nbd\0");
     // The family reply itself confirms success. Requesting a success ACK here
     // would leave an extra datagram queued before the following NBD command.
-    let seq = socket::send_genl_msg(sock, GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, false)?;
+    let seq = socket::send_genl_msg(
+        sock,
+        GENL_ID_CTRL,
+        CTRL_CMD_GETFAMILY,
+        1,
+        &request_attrs,
+        false,
+    )?;
 
     let mut buf = vec![0u8; 4096];
     let n = socket::recv_for_seq(sock, &mut buf, seq)?;
@@ -294,8 +301,8 @@ fn resolve_nbd_family(sock: &socket::GenlSocket) -> Result<u16> {
         }
     }
 
-    let attrs = wire::genl_attrs(&buf, n)?;
-    wire::find_nla_u16(attrs, CTRL_ATTR_FAMILY_ID, "truncated family id")?
+    let reply_attrs = wire::genl_attrs(&buf, n)?;
+    wire::find_nla_u16(reply_attrs, CTRL_ATTR_FAMILY_ID, "truncated family id")?
         .ok_or_else(|| NbdCowError::Netlink("NBD family ID not found in response".into()))
 }
 
@@ -382,6 +389,30 @@ mod tests {
         let result = parse_genl_completion(&msg, msg.len());
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn resolve_nbd_family_reads_family_id_attr() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        let attrs = wire::build_nla(CTRL_ATTR_FAMILY_ID, &123u16.to_ne_bytes());
+        let reply = wire::build_genl_msg(GENL_ID_CTRL, CTRL_CMD_GETFAMILY, 1, &attrs, 1, false);
+        socket::send_test_nl(&peer, &reply);
+
+        let result = resolve_nbd_family(&sock);
+
+        assert_eq!(result.unwrap(), 123);
+    }
+
+    #[test]
+    fn resolve_nbd_family_rejects_ack() {
+        let (sock, peer) = socket::test_genl_socket_pair();
+        socket::send_test_nl(&peer, &wire::build_nlmsg_error_for_test(1, 0));
+
+        let result = resolve_nbd_family(&sock);
+
+        assert!(
+            matches!(result, Err(NbdCowError::Netlink(message)) if message == "unexpected ACK while resolving NBD family")
+        );
     }
 
     #[test]
