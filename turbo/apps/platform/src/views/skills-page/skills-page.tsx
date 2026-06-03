@@ -525,17 +525,11 @@ function SkillFiles({
   readonly selectedPath: string | null;
   readonly onSelectFile: (path: string) => void;
 }) {
-  const totalSize = files.reduce((sum, file) => {
-    return sum + file.size;
-  }, 0);
-
   return (
     <div className="min-h-0">
       <div className="flex h-9 items-center justify-between border-b border-border/70 px-3">
         <span className="text-xs font-medium text-muted-foreground">Files</span>
-        <span className="text-xs text-muted-foreground">
-          {formatBytes(totalSize)}
-        </span>
+        <span className="text-xs text-muted-foreground">{files.length}</span>
       </div>
       <div className="max-h-[240px] overflow-auto p-2 lg:max-h-none">
         {files.length > 0 ? (

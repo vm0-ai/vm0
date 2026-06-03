@@ -199,6 +199,13 @@ describe("skills page", () => {
     expect(within(dialog).getByText("Used by")).toBeInTheDocument();
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByAltText("Research Agent")).toBeInTheDocument();
+    const filesSummary = within(dialog).getByText("Files").closest("div");
+    expect(filesSummary).not.toBeNull();
+    if (filesSummary === null) {
+      throw new Error("Files summary row not found");
+    }
+    expect(within(filesSummary).getByText("3")).toBeInTheDocument();
+    expect(within(filesSummary).queryByText("67 B")).not.toBeInTheDocument();
     const promptFileButton = queryAllByRoleFast("button", dialog).find(
       (button) => {
         return button.textContent?.includes("templates/prompt.md");
