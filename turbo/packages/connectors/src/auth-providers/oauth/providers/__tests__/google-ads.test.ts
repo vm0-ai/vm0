@@ -78,9 +78,6 @@ describe("connector/providers/google-ads", () => {
         "google-ads",
         "oauth",
       );
-      if (!accessMetadata || accessMetadata.kind !== "refresh-token") {
-        throw new Error("Expected Google Ads OAuth to support refresh");
-      }
 
       expect(
         getConnectorRefreshOutputSecretName(accessMetadata, "accessToken"),
@@ -92,9 +89,6 @@ describe("connector/providers/google-ads", () => {
         "google-ads",
         "oauth",
       );
-      if (!accessMetadata || accessMetadata.kind !== "refresh-token") {
-        throw new Error("Expected Google Ads OAuth to support refresh");
-      }
 
       expect(accessMetadata.inputs.refreshToken).toStrictEqual({
         valueRef: "$secrets.GOOGLE_ADS_REFRESH_TOKEN",
@@ -173,9 +167,6 @@ describe("connector/providers/google-ads", () => {
       server.use(handler);
 
       const { access } = googleAdsProvider;
-      if (access.kind !== "refresh-token") {
-        throw new Error("Expected Google Ads provider to support refresh");
-      }
 
       const result = await access.refresh({
         authClient: {

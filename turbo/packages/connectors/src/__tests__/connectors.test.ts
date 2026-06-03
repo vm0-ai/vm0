@@ -67,6 +67,7 @@ import {
   isStaticConnectorAuthClient,
   type ConnectorAuthClient,
   type ConnectorAuthClientForMethod,
+  type ConnectorAuthMethodRef,
   type ConnectorEnvReader,
 } from "../connector-utils";
 import { FeatureSwitchKey } from "../feature-switch-key";
@@ -2271,9 +2272,13 @@ describe("getConnectorEnvBindingEntries", () => {
     for (const type of connectorTypeSchema.options) {
       if (!hasConnectorAuthorizationGrant(type)) continue;
 
-      const accessMetadata = getConnectorAuthMethodAccessMetadata(
+      const oauthAuthMethodRef: ConnectorAuthMethodRef = {
         type,
-        "oauth",
+        authMethod: "oauth",
+      };
+      const hasRefreshTokenAccess = connectorAuthMethodRefHasAccessKind(
+        oauthAuthMethodRef,
+        "refresh-token",
       );
       const grantMetadata = getConnectorAuthMethodGrantMetadata(type, "oauth");
       const storageMetadata = getConnectorAuthMethodStorageMetadata(
@@ -2310,11 +2315,11 @@ describe("getConnectorEnvBindingEntries", () => {
         `${type}: oauth secrets must include ${accessSecretName}`,
       ).toContain(accessSecretName);
 
-      const oauthMethod = getConnectorAuthMethod(type, "oauth");
-      if (oauthMethod?.access.kind === "refresh-token") {
-        if (!accessMetadata || accessMetadata.kind !== "refresh-token") {
-          throw new Error(`${type}: expected refresh-token access metadata`);
-        }
+      if (hasRefreshTokenAccess) {
+        const accessMetadata = getConnectorAuthMethodAccessMetadata(
+          oauthAuthMethodRef.type,
+          oauthAuthMethodRef.authMethod,
+        );
         expect(
           getConnectorGrantOutputSecretName(grantMetadata, "refreshToken"),
           `${type}: grant must declare refresh token storage`,
@@ -2378,7 +2383,7 @@ describe("getConnectorEnvBindingEntries", () => {
 
       expect(oauthSecrets, `${type}: unexpected primary OAuth secrets`).toEqual(
         expect.arrayContaining(
-          oauthMethod?.access.kind === "refresh-token"
+          hasRefreshTokenAccess
             ? [accessSecretName, refreshSecretName]
             : [accessSecretName],
         ),
