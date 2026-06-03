@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getModelProviderOAuthSecretMetadata } from "../../../model-provider-auth";
+import { getModelProviderRefreshMetadata } from "../../../model-provider-auth";
 import {
   getChatgptSecretName,
   getChatgptRefreshSecretName,
@@ -194,7 +194,7 @@ describe("connector/providers/codex-oauth", () => {
   describe("codexOauthProvider", () => {
     it("is registered with model-provider refresh metadata", () => {
       expect(
-        getModelProviderOAuthSecretMetadata("codex-oauth-token"),
+        getModelProviderRefreshMetadata("codex-oauth-token"),
       ).toStrictEqual({
         isRefreshable: true,
         inputs: {

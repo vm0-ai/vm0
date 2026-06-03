@@ -40,7 +40,7 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
-import { getModelProviderOAuthSecretMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
+import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   expandHostWildcardsInBaseUrl,
   extractSecretNamesFromApis,
@@ -1175,7 +1175,7 @@ function modelProviderRefreshMaps(
       >;
     }
   | undefined {
-  const metadata = getModelProviderOAuthSecretMetadata(providerType);
+  const metadata = getModelProviderRefreshMetadata(providerType);
   if (!metadata?.isRefreshable) {
     return undefined;
   }

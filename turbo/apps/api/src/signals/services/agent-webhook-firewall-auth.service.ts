@@ -37,11 +37,11 @@ import {
 } from "@vm0/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
 import {
-  getModelProviderOAuthSecretMetadata,
-  isModelProviderOAuthRefreshConfigured,
-  refreshModelProviderOAuthToken,
-  isModelProviderOAuthProviderKey,
-  type ModelProviderOAuthProviderKey,
+  getModelProviderRefreshMetadata,
+  isModelProviderRefreshConfigured,
+  refreshModelProviderAccess,
+  isModelProviderRefreshProviderKey,
+  type ModelProviderRefreshProviderKey,
 } from "@vm0/connectors/auth-providers/model-provider-auth";
 import { isChatgptRefreshError } from "@vm0/connectors/auth-providers/oauth/providers/codex-oauth";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -340,7 +340,7 @@ type ConnectorPreparedRefreshTokenContext =
 
 type ModelProviderPreparedRefreshTokenContext = {
   readonly sourceType: "model-provider";
-  readonly providerKey: ModelProviderOAuthProviderKey;
+  readonly providerKey: ModelProviderRefreshProviderKey;
   readonly currentEnv: ProviderEnv;
   readonly context: RefreshTokenContext;
 };
@@ -465,18 +465,20 @@ const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
-function getOAuthProviderKeySourceType(
+function getRefreshProviderKeySourceType(
   providerKey: string,
 ): AccessSecretSource {
-  return isModelProviderOAuthProviderKey(providerKey)
+  return isModelProviderRefreshProviderKey(providerKey)
     ? "model-provider"
     : "connector";
 }
 
-function modelProviderTypeForOAuthProviderKey(
+function modelProviderTypeForRefreshProviderKey(
   providerKey: string,
 ): string | undefined {
-  return isModelProviderOAuthProviderKey(providerKey) ? providerKey : undefined;
+  return isModelProviderRefreshProviderKey(providerKey)
+    ? providerKey
+    : undefined;
 }
 
 function resolveSecretUserId(
@@ -494,7 +496,7 @@ function resolveRefreshMetadata(
   metadata: SecretConnectorMetadata | undefined,
 ): SecretConnectorMetadata {
   const sourceType =
-    metadata?.sourceType ?? getOAuthProviderKeySourceType(connectorType);
+    metadata?.sourceType ?? getRefreshProviderKeySourceType(connectorType);
   return {
     sourceType,
     sourceUserId:
@@ -502,7 +504,7 @@ function resolveRefreshMetadata(
     metadataKey:
       sourceType === "model-provider"
         ? (metadata?.metadataKey ??
-          modelProviderTypeForOAuthProviderKey(connectorType))
+          modelProviderTypeForRefreshProviderKey(connectorType))
         : undefined,
   };
 }
@@ -512,7 +514,8 @@ function modelProviderTypeForMetadata(
   metadata: SecretConnectorMetadata,
 ): ModelProviderType | undefined {
   const providerType =
-    metadata.metadataKey ?? modelProviderTypeForOAuthProviderKey(connectorType);
+    metadata.metadataKey ??
+    modelProviderTypeForRefreshProviderKey(connectorType);
   const parsedProviderType = providerType
     ? modelProviderTypeSchema.safeParse(providerType)
     : undefined;
@@ -703,7 +706,7 @@ async function upsertSecretValue(
       type: args.type,
       description:
         args.type === "model-provider"
-          ? `Model provider OAuth secret: ${args.name}`
+          ? `Model provider secret: ${args.name}`
           : `Connector secret: ${args.name}`,
     })
     .onConflictDoUpdate({
@@ -725,9 +728,7 @@ function modelProviderRuntimeSecretName(args: {
   readonly connectorType: string;
   readonly metadata: SecretConnectorMetadata;
 }): string | undefined {
-  const secretMetadata = getModelProviderOAuthSecretMetadata(
-    args.connectorType,
-  );
+  const secretMetadata = getModelProviderRefreshMetadata(args.connectorType);
   if (!secretMetadata?.isRefreshable) {
     return undefined;
   }
@@ -754,9 +755,7 @@ function refreshableRuntimeSecretNameForSource(args: {
 }): string | undefined {
   if (args.metadata.sourceType === "model-provider") {
     const secretName = modelProviderRuntimeSecretName(args);
-    const secretMetadata = getModelProviderOAuthSecretMetadata(
-      args.connectorType,
-    );
+    const secretMetadata = getModelProviderRefreshMetadata(args.connectorType);
     return secretName && secretMetadata?.refreshableSecrets.includes(secretName)
       ? secretName
       : undefined;
@@ -913,7 +912,7 @@ function modelProviderSourceLookup(args: {
     providerKey: args.providerKey,
     providerType:
       metadata.metadataKey ??
-      modelProviderTypeForOAuthProviderKey(args.providerKey) ??
+      modelProviderTypeForRefreshProviderKey(args.providerKey) ??
       args.providerKey,
     userId: resolveSecretUserId(
       "model-provider",
@@ -1046,7 +1045,7 @@ async function getSourceStateByProviderKey(args: {
       ).sourceType === "connector"
     );
   });
-  const modelProviderOAuthProviderKeys = args.connectorTypes.filter(
+  const modelProviderRefreshProviderKeys = args.connectorTypes.filter(
     (connectorType) => {
       return (
         resolveRefreshMetadata(
@@ -1069,7 +1068,7 @@ async function getSourceStateByProviderKey(args: {
     db: args.db,
     orgId: args.orgId,
     userId: args.userId,
-    providerKeys: modelProviderOAuthProviderKeys,
+    providerKeys: modelProviderRefreshProviderKeys,
     metadataByConnector: args.metadataByConnector,
   });
   for (const [providerKey, state] of modelProviderStates) {
@@ -1131,12 +1130,10 @@ function prepareRefreshTokenContext(
   }
 
   if (args.sourceType === "model-provider") {
-    if (!isModelProviderOAuthProviderKey(args.connectorType)) {
+    if (!isModelProviderRefreshProviderKey(args.connectorType)) {
       return { ok: false, reason: "not-refreshable" };
     }
-    const secretMetadata = getModelProviderOAuthSecretMetadata(
-      args.connectorType,
-    );
+    const secretMetadata = getModelProviderRefreshMetadata(args.connectorType);
     if (!secretMetadata.isRefreshable) {
       return { ok: false, reason: "not-refreshable" };
     }
@@ -1148,7 +1145,7 @@ function prepareRefreshTokenContext(
 
     const env = currentProviderEnv();
     if (
-      !isModelProviderOAuthRefreshConfigured({
+      !isModelProviderRefreshConfigured({
         providerKey: args.connectorType,
         currentEnv: env,
       })
@@ -1752,36 +1749,12 @@ function refreshPreparedModelProviderAccessToken(args: {
   readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }) {
-  switch (args.prepared.providerKey) {
-    case "codex-oauth-token": {
-      return refreshModelProviderOAuthToken({
-        providerKey: args.prepared.providerKey,
-        currentEnv: args.prepared.currentEnv,
-        inputs: {
-          refreshToken: requiredPreparedRefreshInput({
-            connectorType: args.prepared.providerKey,
-            inputs: args.inputs,
-            inputName: "refreshToken",
-          }),
-        },
-        signal: args.signal,
-      });
-    }
-  }
-}
-
-function requiredPreparedRefreshInput(args: {
-  readonly connectorType: string;
-  readonly inputs: Readonly<Record<string, string>>;
-  readonly inputName: string;
-}): string {
-  const value = args.inputs[args.inputName];
-  if (value === undefined) {
-    throw new Error(
-      `${args.connectorType} refresh input ${args.inputName} missing after refresh state validation`,
-    );
-  }
-  return value;
+  return refreshModelProviderAccess({
+    providerKey: args.prepared.providerKey,
+    currentEnv: args.prepared.currentEnv,
+    inputs: args.inputs,
+    signal: args.signal,
+  });
 }
 
 function refreshPreparedConnectorAccessToken(args: {
@@ -2212,9 +2185,7 @@ function modelProviderAccessSecretName(args: {
   readonly connectorType: string;
   readonly metadata: SecretConnectorMetadata;
 }): string | undefined {
-  const secretMetadata = getModelProviderOAuthSecretMetadata(
-    args.connectorType,
-  );
+  const secretMetadata = getModelProviderRefreshMetadata(args.connectorType);
   if (!secretMetadata?.isRefreshable) {
     return undefined;
   }

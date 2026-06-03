@@ -9,21 +9,21 @@ import {
   getChatgptSecretName,
 } from "./oauth/providers/codex-oauth";
 
-export const MODEL_PROVIDER_OAUTH_PROVIDER_KEYS = [
+export const MODEL_PROVIDER_REFRESH_PROVIDER_KEYS = [
   "codex-oauth-token",
 ] as const;
 
-export type ModelProviderOAuthProviderKey =
-  (typeof MODEL_PROVIDER_OAUTH_PROVIDER_KEYS)[number];
+export type ModelProviderRefreshProviderKey =
+  (typeof MODEL_PROVIDER_REFRESH_PROVIDER_KEYS)[number];
 
-export interface ModelProviderOAuthSecretMetadata {
+export interface ModelProviderRefreshMetadata {
   readonly isRefreshable: true;
   readonly inputs: Readonly<Record<string, string>>;
   readonly outputs: Readonly<Record<string, string>>;
   readonly refreshableSecrets: readonly string[];
 }
 
-const MODEL_PROVIDER_OAUTH_SECRET_METADATA = {
+const MODEL_PROVIDER_REFRESH_METADATA = {
   "codex-oauth-token": {
     isRefreshable: true,
     inputs: {
@@ -36,111 +36,144 @@ const MODEL_PROVIDER_OAUTH_SECRET_METADATA = {
     refreshableSecrets: [getChatgptSecretName()],
   },
 } as const satisfies Record<
-  ModelProviderOAuthProviderKey,
-  ModelProviderOAuthSecretMetadata
+  ModelProviderRefreshProviderKey,
+  ModelProviderRefreshMetadata
 >;
 
-type ModelProviderOAuthSecretMetadataMap =
-  typeof MODEL_PROVIDER_OAUTH_SECRET_METADATA;
+type ModelProviderRefreshMetadataMap = typeof MODEL_PROVIDER_REFRESH_METADATA;
 
-type ModelProviderOAuthRefreshInputValues<
-  ProviderKey extends ModelProviderOAuthProviderKey,
+type ModelProviderRefreshInputValues<
+  ProviderKey extends ModelProviderRefreshProviderKey,
 > = {
-  readonly [InputName in keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["inputs"]]: string;
+  readonly [InputName in keyof ModelProviderRefreshMetadataMap[ProviderKey]["inputs"]]: string;
 };
 
-type ModelProviderOAuthRefreshableSecretName<
-  ProviderKey extends ModelProviderOAuthProviderKey,
-> = ModelProviderOAuthSecretMetadataMap[ProviderKey] extends {
+type ModelProviderRefreshableSecretName<
+  ProviderKey extends ModelProviderRefreshProviderKey,
+> = ModelProviderRefreshMetadataMap[ProviderKey] extends {
   readonly refreshableSecrets: readonly (infer SecretName)[];
 }
   ? Extract<SecretName, string>
   : never;
 
-type ModelProviderOAuthRequiredRefreshOutputName<
-  ProviderKey extends ModelProviderOAuthProviderKey,
+type ModelProviderRequiredRefreshOutputName<
+  ProviderKey extends ModelProviderRefreshProviderKey,
 > = {
-  readonly [OutputName in keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"]]: ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"][OutputName] extends ModelProviderOAuthRefreshableSecretName<ProviderKey>
+  readonly [OutputName in keyof ModelProviderRefreshMetadataMap[ProviderKey]["outputs"]]: ModelProviderRefreshMetadataMap[ProviderKey]["outputs"][OutputName] extends ModelProviderRefreshableSecretName<ProviderKey>
     ? OutputName
     : never;
-}[keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"]];
+}[keyof ModelProviderRefreshMetadataMap[ProviderKey]["outputs"]];
 
-type ModelProviderOAuthRefreshOutputValues<
-  ProviderKey extends ModelProviderOAuthProviderKey,
+type ModelProviderRefreshOutputValues<
+  ProviderKey extends ModelProviderRefreshProviderKey,
 > = Readonly<
   Record<
-    Extract<ModelProviderOAuthRequiredRefreshOutputName<ProviderKey>, string>,
+    Extract<ModelProviderRequiredRefreshOutputName<ProviderKey>, string>,
     string
   >
 > & {
   readonly [OutputName in Exclude<
-    keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"],
-    ModelProviderOAuthRequiredRefreshOutputName<ProviderKey>
+    keyof ModelProviderRefreshMetadataMap[ProviderKey]["outputs"],
+    ModelProviderRequiredRefreshOutputName<ProviderKey>
   >]?: string;
 };
 
-type ModelProviderOAuthProviderMap = {
-  readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderRefreshTokenAuthProvider<
-    ModelProviderOAuthRefreshInputValues<Key>,
-    ModelProviderOAuthRefreshOutputValues<Key>
+type ModelProviderRefreshProviderMap = {
+  readonly [Key in ModelProviderRefreshProviderKey]: ModelProviderRefreshTokenAuthProvider<
+    ModelProviderRefreshInputValues<Key>,
+    ModelProviderRefreshOutputValues<Key>
   >;
 };
 
-const MODEL_PROVIDER_OAUTH_PROVIDERS: ModelProviderOAuthProviderMap = {
+const MODEL_PROVIDER_REFRESH_PROVIDERS: ModelProviderRefreshProviderMap = {
   "codex-oauth-token": codexOauthProvider,
 };
 
-export function isModelProviderOAuthProviderKey(
+export function isModelProviderRefreshProviderKey(
   providerKey: string,
-): providerKey is ModelProviderOAuthProviderKey {
-  return Object.hasOwn(MODEL_PROVIDER_OAUTH_PROVIDERS, providerKey);
+): providerKey is ModelProviderRefreshProviderKey {
+  return Object.hasOwn(MODEL_PROVIDER_REFRESH_PROVIDERS, providerKey);
 }
 
-export function getModelProviderOAuthSecretMetadata(
-  providerKey: ModelProviderOAuthProviderKey,
-): ModelProviderOAuthSecretMetadata;
-export function getModelProviderOAuthSecretMetadata(
+export function getModelProviderRefreshMetadata(
+  providerKey: ModelProviderRefreshProviderKey,
+): ModelProviderRefreshMetadata;
+export function getModelProviderRefreshMetadata(
   providerKey: string,
-): ModelProviderOAuthSecretMetadata | undefined;
-export function getModelProviderOAuthSecretMetadata(
+): ModelProviderRefreshMetadata | undefined;
+export function getModelProviderRefreshMetadata(
   providerKey: string,
-): ModelProviderOAuthSecretMetadata | undefined {
-  if (!isModelProviderOAuthProviderKey(providerKey)) {
+): ModelProviderRefreshMetadata | undefined {
+  if (!isModelProviderRefreshProviderKey(providerKey)) {
     return undefined;
   }
 
-  return MODEL_PROVIDER_OAUTH_SECRET_METADATA[providerKey];
+  return MODEL_PROVIDER_REFRESH_METADATA[providerKey];
 }
 
-export function isModelProviderOAuthRefreshConfigured(args: {
-  readonly providerKey: ModelProviderOAuthProviderKey;
+export function isModelProviderRefreshConfigured(args: {
+  readonly providerKey: ModelProviderRefreshProviderKey;
   readonly currentEnv: ProviderEnv;
 }): boolean {
-  const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
+  const access = MODEL_PROVIDER_REFRESH_PROVIDERS[args.providerKey].access;
   return Boolean(access.resolveAuthClient(args.currentEnv));
 }
 
-export async function refreshModelProviderOAuthToken<
-  ProviderKey extends ModelProviderOAuthProviderKey,
->(args: {
-  readonly providerKey: ProviderKey;
+export async function refreshModelProviderAccess(args: {
+  readonly providerKey: ModelProviderRefreshProviderKey;
   readonly currentEnv: ProviderEnv;
-  readonly inputs: ModelProviderOAuthRefreshInputValues<ProviderKey>;
+  readonly inputs: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
 }): Promise<
   ModelProviderAuthProviderRefreshResult<
-    ModelProviderOAuthRefreshOutputValues<ProviderKey>
+    Readonly<Record<string, string | undefined>>
   >
 > {
-  const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
+  switch (args.providerKey) {
+    case "codex-oauth-token": {
+      return await refreshCodexModelProviderAccess(args);
+    }
+  }
+}
+
+async function refreshCodexModelProviderAccess(args: {
+  readonly providerKey: "codex-oauth-token";
+  readonly currentEnv: ProviderEnv;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}): Promise<
+  ModelProviderAuthProviderRefreshResult<
+    ModelProviderRefreshOutputValues<"codex-oauth-token">
+  >
+> {
+  const access = MODEL_PROVIDER_REFRESH_PROVIDERS[args.providerKey].access;
   const authClient = access.resolveAuthClient(args.currentEnv);
   if (!authClient) {
     throw new Error(`${args.providerKey} auth client not configured`);
   }
-
   return await access.refresh({
     authClient,
-    inputs: args.inputs,
+    inputs: {
+      refreshToken: requiredModelProviderRefreshInput({
+        providerKey: args.providerKey,
+        inputs: args.inputs,
+        inputName: "refreshToken",
+      }),
+    },
     signal: args.signal,
   });
+}
+
+function requiredModelProviderRefreshInput(args: {
+  readonly providerKey: ModelProviderRefreshProviderKey;
+  readonly inputs: Readonly<Record<string, string>>;
+  readonly inputName: string;
+}): string {
+  const value = args.inputs[args.inputName];
+  if (value === undefined) {
+    throw new Error(
+      `${args.providerKey} refresh input ${args.inputName} missing after refresh state validation`,
+    );
+  }
+  return value;
 }
