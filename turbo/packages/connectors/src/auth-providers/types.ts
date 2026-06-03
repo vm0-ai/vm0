@@ -159,29 +159,43 @@ interface ModelProviderAuthProviderRefreshArgs {
   readonly signal: AbortSignal;
 }
 
-export interface ModelProviderAuthProviderRefreshResult {
-  readonly outputs: Readonly<Record<string, string | undefined>>;
+export interface ModelProviderAuthProviderRefreshResult<
+  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
+    Record<string, string | undefined>
+  >,
+> {
+  readonly outputs: Outputs;
   readonly expiresIn?: number;
 }
 
-interface ModelProviderRefreshTokenAccessProvider {
+interface ModelProviderRefreshTokenAccessProvider<
+  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
+    Record<string, string | undefined>
+  >,
+> {
   readonly kind: "refresh-token";
   resolveAuthClient(
     currentEnv: ProviderEnv,
   ): ModelProviderAuthClient | undefined;
   refresh(
     args: ModelProviderAuthProviderRefreshArgs,
-  ): Promise<ModelProviderAuthProviderRefreshResult>;
+  ): Promise<ModelProviderAuthProviderRefreshResult<Outputs>>;
 }
 
-export type ModelProviderAccessProvider =
-  | NoneAccessProvider
-  | ModelProviderRefreshTokenAccessProvider;
+export type ModelProviderAccessProvider<
+  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
+    Record<string, string | undefined>
+  >,
+> = NoneAccessProvider | ModelProviderRefreshTokenAccessProvider<Outputs>;
 
 export type ModelProviderRevokeProvider = NoneRevokeProvider;
 
-export type ModelProviderAuthProvider = AuthProvider<
+export type ModelProviderAuthProvider<
+  Outputs extends Readonly<Record<string, string | undefined>> = Readonly<
+    Record<string, string | undefined>
+  >,
+> = AuthProvider<
   ModelProviderGrantProvider,
-  ModelProviderAccessProvider,
+  ModelProviderAccessProvider<Outputs>,
   ModelProviderRevokeProvider
 >;

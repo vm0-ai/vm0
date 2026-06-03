@@ -671,6 +671,33 @@ type ConnectorRefreshOutputSecretName<Outputs> =
       : never
     : never;
 
+type ConnectorRefreshableSecretName<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> =
+  ConnectorRefreshMappingFor<Type, Method> extends {
+    readonly refreshableSecrets: readonly (infer SecretName)[];
+  }
+    ? Extract<SecretName, string>
+    : never;
+
+type ConnectorRefreshOutputSecretNameFromRef<Ref> =
+  Ref extends `$secrets.${infer Name}` ? Name : never;
+
+type ConnectorRequiredRefreshOutputName<
+  Type extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<Type>,
+> = {
+  readonly [OutputName in keyof ConnectorRefreshOutputsFor<
+    Type,
+    Method
+  >]: ConnectorRefreshOutputSecretNameFromRef<
+    ConnectorRefreshOutputsFor<Type, Method>[OutputName]
+  > extends ConnectorRefreshableSecretName<Type, Method>
+    ? OutputName
+    : never;
+}[keyof ConnectorRefreshOutputsFor<Type, Method>];
+
 type ValidatedConnectorRefreshableSecrets<Secrets, Outputs> =
   Secrets extends readonly unknown[]
     ? {
@@ -1157,10 +1184,15 @@ export type ConnectorGrantOutputValues<
 export type ConnectorRefreshOutputValues<
   Type extends ConnectorType,
   Method extends ConnectorAuthMethodIds<Type>,
-> = {
-  readonly [OutputName in keyof ConnectorRefreshOutputsFor<
-    Type,
-    Method
+> = Readonly<
+  Record<
+    Extract<ConnectorRequiredRefreshOutputName<Type, Method>, string>,
+    string
+  >
+> & {
+  readonly [OutputName in Exclude<
+    keyof ConnectorRefreshOutputsFor<Type, Method>,
+    ConnectorRequiredRefreshOutputName<Type, Method>
   >]?: string;
 };
 

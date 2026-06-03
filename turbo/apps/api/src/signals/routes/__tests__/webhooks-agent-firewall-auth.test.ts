@@ -565,6 +565,12 @@ type CapturedOAuthRefresh = {
   readonly tenantId?: string;
 };
 
+type TestOAuthApiRefreshOutputs = {
+  readonly refreshedAccessToken: string;
+  readonly refreshedRefreshToken?: string;
+  readonly secondaryToken?: string;
+};
+
 function useDynamicTestOAuthRefresh(): {
   readonly refreshes: readonly CapturedOAuthRefresh[];
   readonly restore: () => void;
@@ -578,11 +584,7 @@ function useDynamicTestOAuthRefresh(): {
 
 function useDynamicTestOAuthApiRefresh(
   args: {
-    readonly outputs?: {
-      readonly refreshedAccessToken?: string;
-      readonly refreshedRefreshToken?: string;
-      readonly secondaryToken?: string;
-    };
+    readonly outputs?: TestOAuthApiRefreshOutputs;
   } = {},
 ): {
   readonly refreshes: readonly CapturedOAuthRefresh[];
@@ -592,6 +594,19 @@ function useDynamicTestOAuthApiRefresh(
   return {
     refreshes,
     restore: configureDynamicTestOAuthApiRefresh(refreshes, args.outputs),
+  };
+}
+
+function useMalformedTestOAuthApiRefresh(args: {
+  readonly outputs: Readonly<Record<string, string | undefined>>;
+}): {
+  readonly refreshes: readonly CapturedOAuthRefresh[];
+  readonly restore: () => void;
+} {
+  const refreshes: CapturedOAuthRefresh[] = [];
+  return {
+    refreshes,
+    restore: configureMalformedTestOAuthApiRefresh(refreshes, args.outputs),
   };
 }
 
@@ -642,11 +657,7 @@ function configureDynamicTestOAuthRefresh(
 
 function configureDynamicTestOAuthApiRefresh(
   refreshes: CapturedOAuthRefresh[],
-  outputs: {
-    readonly refreshedAccessToken?: string;
-    readonly refreshedRefreshToken?: string;
-    readonly secondaryToken?: string;
-  } = {
+  outputs: TestOAuthApiRefreshOutputs = {
     refreshedAccessToken: "fresh-test-oauth-api-token",
     secondaryToken: "fresh-test-oauth-api-secondary-token",
   },
@@ -684,6 +695,55 @@ function configureDynamicTestOAuthApiRefresh(
       expiresIn: 3600,
     });
   };
+
+  return () => {
+    mutableMethod.client = originalClient;
+    access.refresh = originalRefresh;
+  };
+}
+
+function configureMalformedTestOAuthApiRefresh(
+  refreshes: CapturedOAuthRefresh[],
+  outputs: Readonly<Record<string, string | undefined>>,
+): () => void {
+  const method = getConnectorAuthMethod("test-oauth", "api");
+  if (method?.grant.kind !== "auth-code") {
+    throw new Error("test-oauth API config is missing");
+  }
+
+  const mutableMethod = method as { client: ConnectorAuthClientConfig };
+  const originalClient = mutableMethod.client;
+  const access = testOauthApiProvider.access;
+  if (access.kind !== "refresh-token") {
+    throw new Error("test-oauth API provider should support refresh");
+  }
+  const originalRefresh = access.refresh;
+
+  mutableMethod.client = dynamicPublicClient;
+  const malformedRefresh = (
+    args: Parameters<typeof originalRefresh>[0],
+  ): Promise<unknown> => {
+    refreshes.push({
+      clientId:
+        args.authClient.clientRegistration === "static"
+          ? args.authClient.clientId
+          : undefined,
+      clientSecret:
+        args.authClient.clientRegistration === "static" &&
+        args.authClient.clientType === "confidential"
+          ? args.authClient.clientSecret
+          : undefined,
+      refreshToken: args.inputs.apiRefreshToken,
+      tenantId: args.inputs.tenantId,
+    });
+    return Promise.resolve({
+      outputs,
+      expiresIn: 3600,
+    });
+  };
+  // Deliberately bypass provider-specific output typing to exercise the
+  // runtime guard for malformed third-party/provider responses.
+  access.refresh = malformedRefresh as typeof originalRefresh;
 
   return () => {
     mutableMethod.client = originalClient;
@@ -2212,7 +2272,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
   });
 
   it("returns refresh failure when provider output omits the runtime token", async () => {
-    const dynamicOAuth = useDynamicTestOAuthApiRefresh({
+    const dynamicOAuth = useMalformedTestOAuthApiRefresh({
       outputs: {
         secondaryToken: "fresh-secondary-only-token",
       },

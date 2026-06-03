@@ -2,13 +2,18 @@ import { type ModelProviderAuthProvider } from "../../types";
 import { CHATGPT_OAUTH_CLIENT_ID, refreshChatgptToken } from "./codex-oauth";
 import { oauthRefreshResultToProviderResult } from "../types";
 
+type CodexOAuthRefreshOutputs = {
+  readonly accessToken: string;
+  readonly refreshToken?: string;
+};
+
 /**
  * Refresh provider for the codex-oauth-token model provider type.
  *
  * Browser OAuth setup is not supported. Users connect by pasting auth.json;
  * this provider only keeps the derived ChatGPT access token fresh server-side.
  */
-export const codexOauthProvider: ModelProviderAuthProvider = {
+const codexOauthProviderDefinition = {
   grant: {
     kind: "none",
   },
@@ -38,4 +43,7 @@ export const codexOauthProvider: ModelProviderAuthProvider = {
   revoke: {
     kind: "none",
   },
-};
+} satisfies ModelProviderAuthProvider<CodexOAuthRefreshOutputs>;
+
+export const codexOauthProvider: ModelProviderAuthProvider<CodexOAuthRefreshOutputs> =
+  codexOauthProviderDefinition;

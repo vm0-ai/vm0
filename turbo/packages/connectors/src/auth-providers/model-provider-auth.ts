@@ -16,14 +16,6 @@ export const MODEL_PROVIDER_OAUTH_PROVIDER_KEYS = [
 export type ModelProviderOAuthProviderKey =
   (typeof MODEL_PROVIDER_OAUTH_PROVIDER_KEYS)[number];
 
-type ModelProviderOAuthProviderMap = {
-  readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderAuthProvider;
-};
-
-const MODEL_PROVIDER_OAUTH_PROVIDERS = {
-  "codex-oauth-token": codexOauthProvider,
-} as const satisfies ModelProviderOAuthProviderMap;
-
 export interface ModelProviderOAuthSecretMetadata {
   readonly isRefreshable: true;
   readonly inputs: Readonly<Record<string, string>>;
@@ -47,6 +39,49 @@ const MODEL_PROVIDER_OAUTH_SECRET_METADATA = {
   ModelProviderOAuthProviderKey,
   ModelProviderOAuthSecretMetadata
 >;
+
+type ModelProviderOAuthSecretMetadataMap =
+  typeof MODEL_PROVIDER_OAUTH_SECRET_METADATA;
+
+type ModelProviderOAuthRefreshableSecretName<
+  ProviderKey extends ModelProviderOAuthProviderKey,
+> = ModelProviderOAuthSecretMetadataMap[ProviderKey] extends {
+  readonly refreshableSecrets: readonly (infer SecretName)[];
+}
+  ? Extract<SecretName, string>
+  : never;
+
+type ModelProviderOAuthRequiredRefreshOutputName<
+  ProviderKey extends ModelProviderOAuthProviderKey,
+> = {
+  readonly [OutputName in keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"]]: ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"][OutputName] extends ModelProviderOAuthRefreshableSecretName<ProviderKey>
+    ? OutputName
+    : never;
+}[keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"]];
+
+type ModelProviderOAuthRefreshOutputValues<
+  ProviderKey extends ModelProviderOAuthProviderKey,
+> = Readonly<
+  Record<
+    Extract<ModelProviderOAuthRequiredRefreshOutputName<ProviderKey>, string>,
+    string
+  >
+> & {
+  readonly [OutputName in Exclude<
+    keyof ModelProviderOAuthSecretMetadataMap[ProviderKey]["outputs"],
+    ModelProviderOAuthRequiredRefreshOutputName<ProviderKey>
+  >]?: string;
+};
+
+type ModelProviderOAuthProviderMap = {
+  readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderAuthProvider<
+    ModelProviderOAuthRefreshOutputValues<Key>
+  >;
+};
+
+const MODEL_PROVIDER_OAUTH_PROVIDERS = {
+  "codex-oauth-token": codexOauthProvider,
+} as const satisfies ModelProviderOAuthProviderMap;
 
 export function isModelProviderOAuthProviderKey(
   providerKey: string,

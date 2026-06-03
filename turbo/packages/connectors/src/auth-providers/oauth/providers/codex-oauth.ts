@@ -123,10 +123,10 @@ export async function refreshChatgptToken(
   };
 }
 
-export function getChatgptSecretName(): string {
+export function getChatgptSecretName(): "CHATGPT_ACCESS_TOKEN" {
   return "CHATGPT_ACCESS_TOKEN";
 }
 
-export function getChatgptRefreshSecretName(): string {
+export function getChatgptRefreshSecretName(): "CHATGPT_REFRESH_TOKEN" {
   return "CHATGPT_REFRESH_TOKEN";
 }
