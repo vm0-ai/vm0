@@ -1716,6 +1716,25 @@ impl WorkspaceImagePromotionContext {
             .await
     }
 
+    pub(crate) async fn invalidate_current(self, reason: &str) -> RunnerResult<bool> {
+        let Self {
+            cache,
+            cache_key,
+            entry_lock,
+            run_id,
+            ..
+        } = self;
+        let _late_entry_lock_guard = if entry_lock.is_some() {
+            None
+        } else {
+            Some(crate::lock::acquire(cache.entry_lock_path(&cache_key)).await?)
+        };
+        let current = cache.session_workspace_cache_current_image(&cache_key);
+        cache
+            .invalidate_current_image(run_id, &cache_key, &current, reason)
+            .await
+    }
+
     pub(crate) fn into_active_lease(
         self,
         request: WorkspaceImageActiveLeaseRequest<'_>,
