@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.98.0](https://github.com/vm0-ai/vm0/compare/api-v1.97.0...api-v1.98.0) (2026-06-03)
+
+
+### Features
+
+* add generation template chat contract ([#16011](https://github.com/vm0-ai/vm0/issues/16011)) ([511bb29](https://github.com/vm0-ai/vm0/commit/511bb29ded2c017a7651292151c7235bca930336))
+
+
+### Bug Fixes
+
+* **api:** make memory activity item ordering deterministic ([#16016](https://github.com/vm0-ai/vm0/issues/16016)) ([c01da32](https://github.com/vm0-ai/vm0/commit/c01da3276abd86763a9c7945fb5f43c91f78f262))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.0
+    * @vm0/core bumped to 8.309.3
+    * @vm0/db bumped to 1.28.1
+
 ## [1.97.0](https://github.com/vm0-ai/vm0/compare/api-v1.96.1...api-v1.97.0) (2026-06-03)
 
 

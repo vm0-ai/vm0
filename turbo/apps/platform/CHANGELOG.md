@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.406.1](https://github.com/vm0-ai/vm0/compare/app-v0.406.0...app-v0.406.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* hide skill frontmatter in viewer ([#16014](https://github.com/vm0-ai/vm0/issues/16014)) ([93f4fe3](https://github.com/vm0-ai/vm0/commit/93f4fe322b3d15ad9495ab9da09764128dbbebe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.0
+    * @vm0/core bumped to 8.309.3
+
 ## [0.406.0](https://github.com/vm0-ai/vm0/compare/app-v0.405.0...app-v0.406.0) (2026-06-03)
 
 

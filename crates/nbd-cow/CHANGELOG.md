@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.30](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.29...nbd-cow-v0.4.30) (2026-06-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** bound netlink reply attrs by message length ([#16017](https://github.com/vm0-ai/vm0/issues/16017)) ([aaf48f2](https://github.com/vm0-ai/vm0/commit/aaf48f2ebf91420fc17827c7ba4342236523f0de))
+
 ## [0.4.29](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.28...nbd-cow-v0.4.29) (2026-06-03)
 
 
