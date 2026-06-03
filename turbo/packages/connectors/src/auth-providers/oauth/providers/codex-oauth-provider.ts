@@ -1,4 +1,4 @@
-import { type ModelProviderAuthProvider } from "../../types";
+import { type ModelProviderRefreshTokenAuthProvider } from "../../types";
 import { CHATGPT_OAUTH_CLIENT_ID, refreshChatgptToken } from "./codex-oauth";
 import { oauthRefreshResultToProviderResult } from "../types";
 
@@ -44,12 +44,12 @@ const codexOauthProviderDefinition = {
   revoke: {
     kind: "none",
   },
-} satisfies ModelProviderAuthProvider<
+} satisfies ModelProviderRefreshTokenAuthProvider<
   CodexOAuthRefreshInputs,
   CodexOAuthRefreshOutputs
 >;
 
-export const codexOauthProvider: ModelProviderAuthProvider<
+export const codexOauthProvider: ModelProviderRefreshTokenAuthProvider<
   CodexOAuthRefreshInputs,
   CodexOAuthRefreshOutputs
 > = codexOauthProviderDefinition;

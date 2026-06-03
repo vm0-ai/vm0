@@ -1,6 +1,6 @@
 import type {
-  ModelProviderAuthProvider,
   ModelProviderAuthProviderRefreshResult,
+  ModelProviderRefreshTokenAuthProvider,
 } from "./types";
 import type { ProviderEnv } from "./provider-env";
 import { codexOauthProvider } from "./oauth/providers/codex-oauth-provider";
@@ -80,7 +80,7 @@ type ModelProviderOAuthRefreshOutputValues<
 };
 
 type ModelProviderOAuthProviderMap = {
-  readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderAuthProvider<
+  readonly [Key in ModelProviderOAuthProviderKey]: ModelProviderRefreshTokenAuthProvider<
     ModelProviderOAuthRefreshInputValues<Key>,
     ModelProviderOAuthRefreshOutputValues<Key>
   >;
@@ -117,14 +117,7 @@ export function isModelProviderOAuthRefreshConfigured(args: {
   readonly currentEnv: ProviderEnv;
 }): boolean {
   const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
-
-  switch (access.kind) {
-    case "none":
-      return false;
-
-    case "refresh-token":
-      return Boolean(access.resolveAuthClient(args.currentEnv));
-  }
+  return Boolean(access.resolveAuthClient(args.currentEnv));
 }
 
 export async function refreshModelProviderOAuthToken<
@@ -140,24 +133,14 @@ export async function refreshModelProviderOAuthToken<
   >
 > {
   const access = MODEL_PROVIDER_OAUTH_PROVIDERS[args.providerKey].access;
-
-  switch (access.kind) {
-    case "none":
-      throw new Error(
-        `${args.providerKey} OAuth provider does not support refresh`,
-      );
-
-    case "refresh-token": {
-      const authClient = access.resolveAuthClient(args.currentEnv);
-      if (!authClient) {
-        throw new Error(`${args.providerKey} auth client not configured`);
-      }
-
-      return await access.refresh({
-        authClient,
-        inputs: args.inputs,
-        signal: args.signal,
-      });
-    }
+  const authClient = access.resolveAuthClient(args.currentEnv);
+  if (!authClient) {
+    throw new Error(`${args.providerKey} auth client not configured`);
   }
+
+  return await access.refresh({
+    authClient,
+    inputs: args.inputs,
+    signal: args.signal,
+  });
 }

@@ -176,7 +176,7 @@ export interface ModelProviderAuthProviderRefreshResult<
   readonly expiresIn?: number;
 }
 
-interface ModelProviderRefreshTokenAccessProvider<
+export interface ModelProviderRefreshTokenAccessProvider<
   Inputs extends ModelProviderAuthProviderRefreshInputs =
     ModelProviderAuthProviderRefreshInputs,
   Outputs extends ModelProviderAuthProviderRefreshOutputs =
@@ -210,5 +210,16 @@ export type ModelProviderAuthProvider<
 > = AuthProvider<
   ModelProviderGrantProvider,
   ModelProviderAccessProvider<Inputs, Outputs>,
+  ModelProviderRevokeProvider
+>;
+
+export type ModelProviderRefreshTokenAuthProvider<
+  Inputs extends ModelProviderAuthProviderRefreshInputs =
+    ModelProviderAuthProviderRefreshInputs,
+  Outputs extends ModelProviderAuthProviderRefreshOutputs =
+    ModelProviderAuthProviderRefreshOutputs,
+> = AuthProvider<
+  ModelProviderGrantProvider,
+  ModelProviderRefreshTokenAccessProvider<Inputs, Outputs>,
   ModelProviderRevokeProvider
 >;
