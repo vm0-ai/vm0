@@ -460,6 +460,35 @@ describe("zeroClient$ apiBackend routing", () => {
     expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
+  it("keeps same-path org mutation on www when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroOrgContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.update({ body: { name: "Renamed" } });
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
   it("routes policy allowlisted voice-io quota contract requests to api host when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
