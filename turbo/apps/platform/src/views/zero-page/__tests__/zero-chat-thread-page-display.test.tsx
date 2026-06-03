@@ -12,6 +12,7 @@ import {
 import { mockApi } from "../../../mocks/msw-contract.ts";
 import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
+import { search } from "../../../signals/location.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
@@ -60,6 +61,15 @@ function queryRoleByAriaLabel(
   return queryAllByRoleFast(role).find((element) => {
     return element.getAttribute("aria-label") === label;
   });
+}
+
+function getRoleByAriaLabel(
+  role: Parameters<typeof queryAllByRoleFast>[0],
+  label: string,
+): HTMLElement {
+  const element = queryRoleByAriaLabel(role, label);
+  expect(element).toBeDefined();
+  return element!;
 }
 
 function mockConnectorOauthStart() {
@@ -1417,6 +1427,138 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(within(table).getByText("alpha")).toBeInTheDocument();
       expect(within(table).getByText("1")).toBeInTheDocument();
     });
+  });
+
+  it("opens the artifact inbox sidebar when the sidebar feature is enabled", async () => {
+    const user = userEvent.setup();
+    let artifactsRequests = 0;
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create files",
+          runId: "run-artifact-inbox",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        artifactsRequests += 1;
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifact-inbox",
+              files: [
+                {
+                  id: "file-image",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: "https://example.com/chart.png",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "file-data",
+                  filename: "data.csv",
+                  contentType: "text/csv",
+                  size: 2048,
+                  url: "https://example.com/data.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "file-site",
+                  filename: "landing.html",
+                  contentType: "text/html",
+                  size: 8192,
+                  url: "https://preview.sites.vm7.io",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+      featureSwitches: {
+        [FeatureSwitchKey.ChatArtifactSidebar]: true,
+      },
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    expect(artifactsRequests).toBe(0);
+    await user.click(button);
+
+    const inbox = await screen.findByTestId("artifact-inbox");
+    expect(inbox).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Artifacts" })).toBeNull();
+    expect(artifactsRequests).toBeGreaterThan(0);
+    expect(search()).toContain("artifacts=thread-test-1");
+    expect(
+      getRoleByAriaLabel("button", "Open artifact chart.png"),
+    ).toBeInTheDocument();
+    expect(
+      getRoleByAriaLabel("button", "Open artifact data.csv"),
+    ).toBeInTheDocument();
+    expect(
+      getRoleByAriaLabel("button", "Open artifact landing.html"),
+    ).toBeInTheDocument();
+
+    await user.click(getRoleByText("tab", "Sites"));
+    expect(
+      getRoleByAriaLabel("button", "Open artifact landing.html"),
+    ).toBeInTheDocument();
+    expect(
+      queryRoleByAriaLabel("button", "Open artifact chart.png"),
+    ).toBeUndefined();
+
+    await user.click(getRoleByText("tab", "Docs"));
+    expect(
+      getRoleByAriaLabel("button", "Open artifact data.csv"),
+    ).toBeInTheDocument();
+    expect(
+      queryRoleByAriaLabel("button", "Open artifact landing.html"),
+    ).toBeUndefined();
+
+    await user.click(getRoleByText("tab", "Media"));
+    await user.click(getRoleByAriaLabel("button", "Open artifact chart.png"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    expect(sidebar).toBeInTheDocument();
+    expect(screen.getByLabelText("Back to all artifacts")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("artifact-sidebar-image-zoom-controls"),
+    ).toBeInTheDocument();
+    expect(search()).toContain(
+      "artifact=https%3A%2F%2Fexample.com%2Fchart.png",
+    );
+
+    await user.click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    expect(screen.getByTestId("artifact-sidebar")).toHaveClass("fixed");
+    expect(search()).toContain("artifact-fullscreen=1");
+
+    await user.click(screen.getByLabelText("Back to all artifacts"));
+    await expect(
+      screen.findByTestId("artifact-inbox"),
+    ).resolves.toBeInTheDocument();
+    expect(search()).toContain("artifacts=thread-test-1");
+    expect(search()).not.toContain("artifact=");
+    expect(search()).not.toContain("artifact-fullscreen=");
+
+    await user.click(screen.getByTestId("artifact-inbox-fullscreen-toggle"));
+    expect(screen.getByTestId("artifact-inbox")).toHaveClass("fixed");
+
+    await user.click(screen.getByLabelText("Close artifacts"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-inbox")).not.toBeInTheDocument();
+    });
+    expect(search()).not.toContain("artifacts=");
   });
 
   it("opens artifacts from the mobile top bar icon", async () => {

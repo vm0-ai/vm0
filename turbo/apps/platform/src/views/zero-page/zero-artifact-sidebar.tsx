@@ -1,17 +1,24 @@
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
+  IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
   IconCopy,
   IconDownload,
+  IconDots,
   IconExternalLink,
   IconLoader2,
   IconX,
-  IconZoomIn,
-  IconZoomOut,
-  IconZoomReset,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
+import {
+  cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@vm0/ui";
 import {
   artifactFullscreen$,
   type ArtifactRef,
@@ -36,7 +43,6 @@ import {
   IMAGE_LIGHTBOX_MIN_ZOOM,
   imageLightboxImageRef$,
   imageLightboxState$,
-  resetImageLightboxZoom$,
   zoomImageLightboxIn$,
   zoomImageLightboxOut$,
 } from "../../signals/view-component-state.ts";
@@ -59,44 +65,59 @@ export function ArtifactSidebarSlot() {
   return <ArtifactSidebar artifactRef={ref} />;
 }
 
-export function ArtifactSidebar({ artifactRef }: { artifactRef: ArtifactRef }) {
+export function ArtifactSidebar({
+  artifactRef,
+  onBack,
+  onClose,
+}: {
+  artifactRef: ArtifactRef;
+  onBack?: () => void;
+  onClose?: () => void;
+}) {
   const fullscreen = useGet(artifactFullscreen$);
   const close = useSet(closeArtifact$);
   const toggleFullscreen = useSet(toggleArtifactFullscreen$);
   const pageSignal = useGet(pageSignal$);
+  const closePreview = onClose ?? close;
 
   const display = resolveArtifactDisplay(artifactRef);
 
   if (!display) {
-    return (
+    const sidebar = (
       <div
-        className={
+        className={cn(
           fullscreen
-            ? "fixed inset-0 z-40 flex flex-col bg-background"
-            : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background"
-        }
+            ? "fixed inset-0 z-[100] flex flex-col bg-background"
+            : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
+          "animate-in fade-in slide-in-from-right-2 duration-200",
+        )}
         data-testid="artifact-sidebar"
       >
         <ArtifactSidebarHeader
           title="Artifact unavailable"
           fullscreen={fullscreen}
+          onBack={onBack}
           onToggleFullscreen={toggleFullscreen}
-          onClose={close}
+          onClose={closePreview}
         />
         <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
           Unsupported artifact reference.
         </div>
       </div>
     );
+    return fullscreen && typeof document !== "undefined"
+      ? createPortal(sidebar, document.body)
+      : sidebar;
   }
 
-  return (
+  const sidebar = (
     <div
-      className={
+      className={cn(
         fullscreen
-          ? "fixed inset-0 z-40 flex flex-col bg-background"
-          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background"
-      }
+          ? "fixed inset-0 z-[100] flex flex-col bg-background"
+          : "flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background",
+        "animate-in fade-in slide-in-from-right-2 duration-200",
+      )}
       data-testid="artifact-sidebar"
     >
       <ArtifactSidebarHeader
@@ -104,8 +125,9 @@ export function ArtifactSidebar({ artifactRef }: { artifactRef: ArtifactRef }) {
         kind={display.kind}
         url={display.url}
         fullscreen={fullscreen}
+        onBack={onBack}
         onToggleFullscreen={toggleFullscreen}
-        onClose={close}
+        onClose={closePreview}
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
         <ArtifactBody
@@ -117,6 +139,9 @@ export function ArtifactSidebar({ artifactRef }: { artifactRef: ArtifactRef }) {
       </div>
     </div>
   );
+  return fullscreen && typeof document !== "undefined"
+    ? createPortal(sidebar, document.body)
+    : sidebar;
 }
 
 interface ArtifactDisplay {
@@ -153,6 +178,7 @@ function ArtifactSidebarHeader({
   kind,
   url,
   fullscreen,
+  onBack,
   onToggleFullscreen,
   onClose,
 }: {
@@ -160,93 +186,254 @@ function ArtifactSidebarHeader({
   kind?: ArtifactKindForBody;
   url?: string;
   fullscreen: boolean;
+  onBack?: () => void;
   onToggleFullscreen: () => void;
   onClose: () => void;
 }) {
-  const publicUrl = url ? publicAttachmentUrl(url) : undefined;
+  const compactActions = onBack !== undefined;
+
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
-      {url ? (
+    <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
+      {onBack && (
         <button
           type="button"
-          onClick={() => {
-            detach(
-              copyAttachmentLinkToClipboard(url),
-              Reason.DomCallback,
-              "artifact copy link",
-            );
-          }}
-          aria-label="Copy artifact URL"
-          title={publicUrl}
-          className="group/copy-url flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          onClick={onBack}
+          aria-label="Back to all artifacts"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
         >
-          <IconCopy size={14} className="shrink-0" />
-          <span className="min-w-0 flex-1 truncate font-mono text-xs">
-            {publicUrl}
-          </span>
+          <IconArrowLeft size={16} />
         </button>
-      ) : (
-        <div className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-foreground">
           {title}
         </div>
-      )}
-      <div className="flex shrink-0 items-center gap-1">
-        {url && (
-          <>
-            {kind === "html" ? (
-              <a
-                href={publicAttachmentUrl(url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Open in new tab"
-                data-testid="artifact-sidebar-open-external"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-              >
-                <IconExternalLink size={16} />
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  detach(
-                    downloadAttachmentUrl(url, undefined, title),
-                    Reason.DomCallback,
-                    "artifact download",
-                  );
-                }}
-                aria-label="Download"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-              >
-                <IconDownload size={16} />
-              </button>
-            )}
-          </>
+        {kind && (
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {artifactKindLabel(kind)}
+          </div>
         )}
-        <button
-          type="button"
-          onClick={onToggleFullscreen}
-          aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-          data-testid="artifact-sidebar-fullscreen-toggle"
-          className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        >
-          {fullscreen ? (
-            <IconArrowsDiagonalMinimize2 size={16} />
-          ) : (
-            <IconArrowsDiagonal size={16} />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close artifact"
-          data-testid="artifact-sidebar-close"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        >
-          <IconX size={16} />
-        </button>
       </div>
+      <ArtifactSidebarActions
+        compactActions={compactActions}
+        fullscreen={fullscreen}
+        kind={kind}
+        onClose={onClose}
+        onToggleFullscreen={onToggleFullscreen}
+        title={title}
+        url={url}
+      />
     </div>
   );
+}
+
+function ArtifactSidebarActions({
+  compactActions,
+  fullscreen,
+  kind,
+  onClose,
+  onToggleFullscreen,
+  title,
+  url,
+}: {
+  compactActions: boolean;
+  fullscreen: boolean;
+  kind?: ArtifactKindForBody;
+  onClose: () => void;
+  onToggleFullscreen: () => void;
+  title: string;
+  url?: string;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      {url && (
+        <>
+          <ArtifactPrimaryAction kind={kind} title={title} url={url} />
+          {!compactActions && <ArtifactCopyAction url={url} />}
+        </>
+      )}
+      <ArtifactFullscreenAction
+        fullscreen={fullscreen}
+        onToggleFullscreen={onToggleFullscreen}
+      />
+      {compactActions && url ? (
+        <ArtifactMoreActions onClose={onClose} url={url} />
+      ) : (
+        <ArtifactCloseAction onClose={onClose} />
+      )}
+    </div>
+  );
+}
+
+function ArtifactPrimaryAction({
+  kind,
+  title,
+  url,
+}: {
+  kind?: ArtifactKindForBody;
+  title: string;
+  url: string;
+}) {
+  if (kind === "html") {
+    return (
+      <a
+        href={publicAttachmentUrl(url)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Open in new tab"
+        data-testid="artifact-sidebar-open-external"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+      >
+        <IconExternalLink size={16} />
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        detach(
+          downloadAttachmentUrl(url, undefined, title),
+          Reason.DomCallback,
+          "artifact download",
+        );
+      }}
+      aria-label="Download"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    >
+      <IconDownload size={16} />
+    </button>
+  );
+}
+
+function ArtifactCopyAction({ url }: { url: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        copyArtifactUrl(url);
+      }}
+      aria-label="Copy artifact URL"
+      title={publicAttachmentUrl(url)}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    >
+      <IconCopy size={16} />
+    </button>
+  );
+}
+
+function ArtifactFullscreenAction({
+  fullscreen,
+  onToggleFullscreen,
+}: {
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggleFullscreen}
+      aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+      data-testid="artifact-sidebar-fullscreen-toggle"
+      className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    >
+      {fullscreen ? (
+        <IconArrowsDiagonalMinimize2 size={16} />
+      ) : (
+        <IconArrowsDiagonal size={16} />
+      )}
+    </button>
+  );
+}
+
+function ArtifactMoreActions({
+  onClose,
+  url,
+}: {
+  onClose: () => void;
+  url: string;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="More artifact actions"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        >
+          <IconDots size={16} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => {
+            copyArtifactUrl(url);
+          }}
+        >
+          Copy link
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onClose}>Close preview</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close artifact"
+      data-testid="artifact-sidebar-close"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+    >
+      <IconX size={16} />
+    </button>
+  );
+}
+
+function copyArtifactUrl(url: string) {
+  detach(
+    copyAttachmentLinkToClipboard(url),
+    Reason.DomCallback,
+    "artifact copy link",
+  );
+}
+
+function artifactKindLabel(kind: ArtifactKindForBody): string {
+  switch (kind) {
+    case "markdown": {
+      return "Markdown document";
+    }
+    case "text": {
+      return "Text document";
+    }
+    case "json": {
+      return "JSON document";
+    }
+    case "csv": {
+      return "Data table";
+    }
+    case "html": {
+      return "Hosted site";
+    }
+    case "pdf": {
+      return "PDF document";
+    }
+    case "image": {
+      return "Image";
+    }
+    case "video": {
+      return "Video";
+    }
+    case "audio": {
+      return "Audio";
+    }
+    case "file": {
+      return "File";
+    }
+  }
 }
 
 function ArtifactBody({
@@ -404,10 +591,6 @@ function ArtifactCsvBody({
   );
 }
 
-function isImageLightboxZoomAtReset(zoom: number): boolean {
-  return Math.abs(zoom - 1) < 0.001;
-}
-
 function ArtifactImageBody({
   url,
   filename,
@@ -424,7 +607,6 @@ function ArtifactImageBody({
   const setImageRef = useSet(imageLightboxImageRef$);
   const zoomIn = useSet(zoomImageLightboxIn$);
   const zoomOut = useSet(zoomImageLightboxOut$);
-  const resetZoom = useSet(resetImageLightboxZoom$);
 
   return (
     <div className="relative flex h-full items-center justify-center overflow-auto bg-muted/20 p-4">
@@ -441,7 +623,6 @@ function ArtifactImageBody({
         zoom={zoom}
         zoomIn={zoomIn}
         zoomOut={zoomOut}
-        resetZoom={resetZoom}
       />
     </div>
   );
@@ -451,31 +632,29 @@ function ArtifactImageZoomControls({
   zoom,
   zoomIn,
   zoomOut,
-  resetZoom,
 }: {
   zoom: number;
   zoomIn: () => void;
   zoomOut: () => void;
-  resetZoom: () => void;
 }) {
   return (
     <div
-      className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-foreground/80 p-1 text-background shadow-lg backdrop-blur-sm"
+      className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg border border-border/70 bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
       data-testid="artifact-sidebar-image-zoom-controls"
     >
       <button
         type="button"
         onClick={zoomOut}
         disabled={zoom <= IMAGE_LIGHTBOX_MIN_ZOOM}
-        className="rounded-full p-1.5 transition-colors hover:bg-background/20 disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label="Zoom out"
         title="Zoom out"
         data-testid="artifact-sidebar-image-zoom-out"
       >
-        <IconZoomOut size={18} stroke={2} />
+        -
       </button>
       <span
-        className="min-w-10 text-center text-xs font-medium tabular-nums"
+        className="min-w-10 text-center text-xs font-medium tabular-nums text-foreground"
         data-testid="artifact-sidebar-image-zoom-level"
       >
         {Math.round(zoom * 100)}%
@@ -484,23 +663,12 @@ function ArtifactImageZoomControls({
         type="button"
         onClick={zoomIn}
         disabled={zoom >= IMAGE_LIGHTBOX_MAX_ZOOM}
-        className="rounded-full p-1.5 transition-colors hover:bg-background/20 disabled:pointer-events-none disabled:opacity-40"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
         aria-label="Zoom in"
         title="Zoom in"
         data-testid="artifact-sidebar-image-zoom-in"
       >
-        <IconZoomIn size={18} stroke={2} />
-      </button>
-      <button
-        type="button"
-        onClick={resetZoom}
-        disabled={isImageLightboxZoomAtReset(zoom)}
-        className="rounded-full p-1.5 transition-colors hover:bg-background/20 disabled:pointer-events-none disabled:opacity-40"
-        aria-label="Reset zoom"
-        title="Reset zoom"
-        data-testid="artifact-sidebar-image-zoom-reset"
-      >
-        <IconZoomReset size={18} stroke={2} />
+        +
       </button>
     </div>
   );

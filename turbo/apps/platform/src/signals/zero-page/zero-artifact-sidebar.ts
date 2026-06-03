@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
@@ -22,17 +22,23 @@ import {
 // FeatureSwitchKey.ChatArtifactSidebar; the OFF path keeps the old modal
 // lightbox in place.
 //
-// Every piece of sidebar state lives in `?artifact=` (plus the optional
-// `?artifact-fullscreen=1` flag). There is no in-memory state — opening
-// is a search-param write, closing is a search-param delete, and the
-// fullscreen toggle is just another search-param flip. Components read
-// the state through `currentArtifactRef$` / `artifactFullscreen$`, which
-// are pure computeds over `searchParams$`.
+// Sidebar state lives in search params: `?artifacts=<threadId>` opens the
+// artifact inbox, `?artifact=<url>` opens a detail preview, and
+// `?artifact-fullscreen=1` expands whichever artifact surface is active.
+// There is no in-memory state — opening is a search-param write, closing is a
+// search-param delete, and components read pure computeds over `searchParams$`.
 // ---------------------------------------------------------------------------
 
 const ARTIFACT_QUERY_PARAM = "artifact";
+const ARTIFACT_INBOX_QUERY_PARAM = "artifacts";
 const ARTIFACT_FULLSCREEN_PARAM = "artifact-fullscreen";
 const IMAGE_ID_PREFIX = "image:";
+
+export type ArtifactInboxSection = "all" | "media" | "docs" | "sites";
+
+const internalArtifactInboxSection$ = state<ArtifactInboxSection>("all");
+const internalArtifactInboxQuery$ = state("");
+const internalArtifactInboxSearchOpen$ = state(false);
 
 export type ArtifactPreviewKind =
   | "markdown"
@@ -74,6 +80,22 @@ export const chatArtifactSidebarEnabled$ = computed((get) => {
   return features[FeatureSwitchKey.ChatArtifactSidebar] ?? false;
 });
 
+export const currentArtifactInboxThreadId$ = computed((get) => {
+  return get(searchParams$).get(ARTIFACT_INBOX_QUERY_PARAM);
+});
+
+export const artifactInboxSection$ = computed((get) => {
+  return get(internalArtifactInboxSection$);
+});
+
+export const artifactInboxQuery$ = computed((get) => {
+  return get(internalArtifactInboxQuery$);
+});
+
+export const artifactInboxSearchOpen$ = computed((get) => {
+  return get(internalArtifactInboxSearchOpen$);
+});
+
 // The URL alone is the source of truth: kind + filename are derived from
 // the URL itself via previewAttachmentFromUrl, so deep-linking or refreshing
 // the page re-renders the right body without any in-memory metadata cache.
@@ -103,15 +125,63 @@ const openArtifact$ = command(({ get, set }, url: string) => {
   set(updateSearchParams$, params);
 });
 
+export const openArtifactInbox$ = command(({ get, set }, threadId: string) => {
+  const params = new URLSearchParams(get(searchParams$));
+  params.set(ARTIFACT_INBOX_QUERY_PARAM, threadId);
+  params.delete(ARTIFACT_QUERY_PARAM);
+  params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  set(internalArtifactInboxSection$, "all");
+  set(internalArtifactInboxQuery$, "");
+  set(internalArtifactInboxSearchOpen$, false);
+  set(updateSearchParams$, params);
+});
+
+export const setArtifactInboxSection$ = command(
+  ({ set }, value: ArtifactInboxSection) => {
+    set(internalArtifactInboxSection$, value);
+  },
+);
+
+export const setArtifactInboxQuery$ = command(({ set }, value: string) => {
+  set(internalArtifactInboxQuery$, value);
+});
+
+export const toggleArtifactInboxSearch$ = command(({ get, set }) => {
+  const nextOpen = !get(internalArtifactInboxSearchOpen$);
+  set(internalArtifactInboxSearchOpen$, nextOpen);
+  if (!nextOpen) {
+    set(internalArtifactInboxQuery$, "");
+  }
+});
+
+export const openArtifactFromInbox$ = command(
+  ({ get, set }, args: { threadId: string; url: string }) => {
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(ARTIFACT_INBOX_QUERY_PARAM, args.threadId);
+    params.set(ARTIFACT_QUERY_PARAM, args.url);
+    params.delete(ARTIFACT_FULLSCREEN_PARAM);
+    set(updateSearchParams$, params);
+  },
+);
+
+export const backToArtifactInbox$ = command(({ get, set }) => {
+  const params = new URLSearchParams(get(searchParams$));
+  params.delete(ARTIFACT_QUERY_PARAM);
+  params.delete(ARTIFACT_FULLSCREEN_PARAM);
+  set(replaceSearchParams$, params);
+});
+
 export const closeArtifact$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
   if (
     !params.has(ARTIFACT_QUERY_PARAM) &&
+    !params.has(ARTIFACT_INBOX_QUERY_PARAM) &&
     !params.has(ARTIFACT_FULLSCREEN_PARAM)
   ) {
     return;
   }
   params.delete(ARTIFACT_QUERY_PARAM);
+  params.delete(ARTIFACT_INBOX_QUERY_PARAM);
   params.delete(ARTIFACT_FULLSCREEN_PARAM);
   set(replaceSearchParams$, params);
 });

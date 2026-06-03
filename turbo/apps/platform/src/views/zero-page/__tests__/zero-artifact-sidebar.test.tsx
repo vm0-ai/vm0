@@ -24,6 +24,7 @@ import {
 import {
   artifactFullscreen$,
   clearArtifactPreview$,
+  currentArtifactInboxThreadId$,
   currentArtifactRef$,
 } from "../../../signals/zero-page/zero-artifact-sidebar.ts";
 
@@ -181,16 +182,19 @@ describe("chatArtifactSidebar: sidebar slot rendering", () => {
 
   it("clears the artifact pane state", () => {
     setup(
-      "/chats/thread-1?artifact=https%3A%2F%2Fexample.com%2Fnotes.txt&artifact-fullscreen=1",
+      "/chats/thread-1?artifacts=thread-1&artifact=https%3A%2F%2Fexample.com%2Fnotes.txt&artifact-fullscreen=1",
     );
 
+    expect(context.store.get(currentArtifactInboxThreadId$)).toBe("thread-1");
     expect(context.store.get(currentArtifactRef$)).not.toBeNull();
     expect(context.store.get(artifactFullscreen$)).toBeTruthy();
 
     context.store.set(clearArtifactPreview$);
 
+    expect(context.store.get(currentArtifactInboxThreadId$)).toBeNull();
     expect(context.store.get(currentArtifactRef$)).toBeNull();
     expect(context.store.get(artifactFullscreen$)).toBeFalsy();
+    expect(search()).not.toContain("artifacts=");
     expect(search()).not.toContain("artifact=");
     expect(search()).not.toContain("artifact-fullscreen=");
   });
@@ -247,11 +251,10 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
     ).toBe("100%");
   });
 
-  it("zooms in, zooms out, and resets back to 100%", () => {
+  it("zooms in and zooms out", () => {
     renderImageSidebar();
     const zoomIn = screen.getByTestId("artifact-sidebar-image-zoom-in");
     const zoomOut = screen.getByTestId("artifact-sidebar-image-zoom-out");
-    const reset = screen.getByTestId("artifact-sidebar-image-zoom-reset");
     const level = screen.getByTestId("artifact-sidebar-image-zoom-level");
 
     fireEvent.click(zoomIn);
@@ -259,11 +262,8 @@ describe("chatArtifactSidebar: image preview zoom controls", () => {
     fireEvent.click(zoomIn);
     expect(level.textContent).toBe("150%");
 
-    fireEvent.click(reset);
-    expect(level.textContent).toBe("100%");
-
     fireEvent.click(zoomOut);
-    expect(level.textContent).toBe("75%");
+    expect(level.textContent).toBe("125%");
   });
 
   it("disables zoom out at min zoom and zoom in at max zoom", () => {
