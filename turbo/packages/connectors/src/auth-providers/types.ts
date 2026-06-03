@@ -26,9 +26,15 @@ import type {
   ConnectorAuthProviderRevokeArgs,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthStartResult,
-  OAuthTokenResult,
 } from "./oauth/types";
+import type { ConnectorAuthProviderGrantResult } from "./grant-result";
 import type { ProviderEnv } from "./provider-env";
+
+export type {
+  ConnectorAuthProviderGrantResult,
+  ConnectorAuthProviderGrantResultBase,
+  ConnectorAuthProviderGrantUserInfo,
+} from "./grant-result";
 
 interface NoneGrantProvider {
   readonly kind: "none";
@@ -45,7 +51,7 @@ export interface AuthCodeGrantProvider<
   ): string | AuthUrlResult | Promise<string | AuthUrlResult>;
   exchangeCode(
     args: ConnectorAuthCodeExchangeArgs<T, Method>,
-  ): Promise<OAuthTokenResult<T, Method>>;
+  ): Promise<ConnectorAuthProviderGrantResult<T, Method>>;
 }
 
 export interface DeviceAuthGrantProvider<

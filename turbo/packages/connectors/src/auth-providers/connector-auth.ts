@@ -29,6 +29,9 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
+  ConnectorAuthProviderGrantResultBase,
+  ConnectorAuthProviderGrantResult,
+  ConnectorAuthProviderGrantUserInfo,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
@@ -40,8 +43,6 @@ import {
   type OAuthDeviceAuthPollResult,
   type OAuthDeviceAuthPollResultBase,
   type OAuthDeviceAuthStartResult,
-  type OAuthTokenResult,
-  type OAuthTokenResultBase,
 } from "./oauth/types";
 import { providerEnvFromObject, type ProviderEnv } from "./provider-env";
 import { ahrefsProvider } from "./oauth/providers/ahrefs-provider";
@@ -101,13 +102,14 @@ import {
 
 export type {
   AuthUrlResult,
+  ConnectorAuthProviderGrantResultBase,
+  ConnectorAuthProviderGrantResult,
+  ConnectorAuthProviderGrantUserInfo,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   OAuthDeviceAuthPollResult,
   OAuthDeviceAuthPollResultBase,
   OAuthDeviceAuthStartResult,
-  OAuthTokenResult,
-  OAuthTokenResultBase,
 };
 export type { ProviderEnv };
 export { providerEnvFromObject };
@@ -528,10 +530,10 @@ export function exchangeConnectorAuthCode<
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<OAuthTokenResult<T, Method>>;
+}): Promise<ConnectorAuthProviderGrantResult<T, Method>>;
 export function exchangeConnectorAuthCode(
   args: ConnectorAuthCodeExchangeCallArgs,
-): Promise<OAuthTokenResultBase>;
+): Promise<ConnectorAuthProviderGrantResultBase>;
 export async function exchangeConnectorAuthCode<
   T extends AuthCodeGrantConnectorType,
   Method extends ConnectorAuthCodeGrantAuthMethodId<T>,
@@ -544,7 +546,7 @@ export async function exchangeConnectorAuthCode<
   readonly state: string | undefined;
   readonly codeVerifier: string | undefined;
   readonly oauthContext: string | undefined;
-}): Promise<OAuthTokenResult<T, Method>> {
+}): Promise<ConnectorAuthProviderGrantResult<T, Method>> {
   const provider = connectorAuthCodeGrantProviderFor(
     args.type,
     args.authMethod,
