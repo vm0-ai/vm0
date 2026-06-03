@@ -151,7 +151,7 @@ class TestReportModelProviderUsage:
     def test_reports_non_billable_observable_model_provider(
         self, real_flow, fresh_usage_executor, usage_webhook_api
     ):
-        """BYOK model providers report ranking observations without billing."""
+        """BYOK model providers report model usage observations without billing."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = False
