@@ -456,7 +456,6 @@ async function collectAgentConfig(
       description: zeroAgents.description,
       sound: zeroAgents.sound,
       customSkills: zeroAgents.customSkills,
-      permissionPolicies: zeroAgents.permissionPolicies,
       composeContent: agentComposeVersions.content,
     })
     .from(agentComposeVersions)
@@ -477,7 +476,6 @@ async function collectAgentConfig(
     description: agent.description,
     sound: agent.sound,
     customSkills: agent.customSkills,
-    permissionPolicies: agent.permissionPolicies,
     composeContent: agent.composeContent,
   };
 }

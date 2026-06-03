@@ -7,10 +7,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import type {
-  OrgResponse,
-  PermissionGrantMode,
-} from "@vm0/api-contracts/contracts/orgs";
+import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
 import type { OrgListResponse } from "@vm0/api-contracts/contracts/org-list";
 import type {
   OrgMessageResponse,
@@ -18,8 +15,6 @@ import type {
   OrgMembersResponse,
   OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import type { User } from "@clerk/backend";
 
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -28,7 +23,6 @@ import { fetchClerkMembershipRequests } from "../external/clerk-membership-reque
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { settle } from "../utils";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const clerkOrgIdentitySchema = z.object({
   slug: z.string().nullable().optional(),
@@ -292,23 +286,6 @@ interface ZeroOrgDetailArgs {
   readonly orgRole?: OrgRole;
 }
 
-async function resolvePermissionGrantMode(
-  db: ReadonlyDb,
-  args: Pick<ZeroOrgDetailArgs, "orgId" | "userId">,
-): Promise<PermissionGrantMode> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  return isFeatureEnabled(
-    FeatureSwitchKey.UserPermissionGrants,
-    featureSwitchContext,
-  )
-    ? "user-grants"
-    : "legacy";
-}
-
 export const zeroOrgDetail$ = command(
   async (
     { get, set },
@@ -317,7 +294,7 @@ export const zeroOrgDetail$ = command(
   ): Promise<OrgResponse | null> => {
     const db = get(db$);
 
-    const [cached, meta, membership, permissionGrantMode] = await Promise.all([
+    const [cached, meta, membership] = await Promise.all([
       db
         .select({
           slug: orgCache.slug,
@@ -342,7 +319,6 @@ export const zeroOrgDetail$ = command(
           ),
         )
         .limit(1),
-      resolvePermissionGrantMode(db, args),
     ]);
     signal.throwIfAborted();
 
@@ -404,7 +380,6 @@ export const zeroOrgDetail$ = command(
       name: identity.name,
       tier: meta[0]?.tier ?? "pro-suspend",
       role: args.orgRole ?? (membership[0]?.role as OrgRole) ?? "member",
-      permissionGrantMode,
       createdBy: identity.createdBy ?? undefined,
     };
   },

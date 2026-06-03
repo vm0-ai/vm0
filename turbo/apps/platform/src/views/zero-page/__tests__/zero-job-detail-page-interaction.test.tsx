@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentPermissionPoliciesContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -20,9 +19,7 @@ import { pathname } from "../../../signals/location.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { createMockUserPermissionGrantResponse } from "../../../mocks/handlers/api-user-permission-grants.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -215,12 +212,10 @@ describe("zero job detail page - interaction and state", () => {
     });
   });
 
-  it("should save current-user grants from permissions drawer when user grants are enabled", async () => {
+  it("should save current-user grants from permissions drawer", async () => {
     const grantBodies: unknown[] = [];
-    let policyUpdated = false;
 
     mockAPIs();
-    setMockOrg({ role: "member" });
     server.use(
       mockApi(zeroUserPermissionGrantsContract.upsert, ({ body, respond }) => {
         grantBodies.push(body);
@@ -234,28 +229,9 @@ describe("zero job detail page - interaction and state", () => {
           }),
         );
       }),
-      mockApi(zeroAgentPermissionPoliciesContract.update, ({ respond }) => {
-        policyUpdated = true;
-        return respond(200, {
-          agentId: "e0000000-0000-4000-a000-000000000010",
-          ownerId: "test-user-123",
-          description: "A helpful agent",
-          displayName: "My Agent",
-          sound: null,
-          avatarUrl: "preset:2",
-          permissionPolicies: {
-            slack: { policies: { "channels:read": "deny" } },
-          },
-          customSkills: [],
-        });
-      }),
     );
 
-    detachedSetupPage({
-      context,
-      path: "/agents/my-agent",
-      featureSwitches: { [FeatureSwitchKey.UserPermissionGrants]: true },
-    });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     await waitFor(() => {
@@ -305,7 +281,6 @@ describe("zero job detail page - interaction and state", () => {
       permission: "channels:read",
       action: "deny",
     });
-    expect(policyUpdated).toBeFalsy();
   });
 
   it("should filter connector list when searching (AGENT-D-032)", async () => {

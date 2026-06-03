@@ -7,13 +7,10 @@
  *
  * permission-deny is a pure diagnostic command — it identifies which permission
  * covers a denied request and tells the agent to run permission-change.
- * It does not generate platform URLs, and only resolves rollout state
- * best-effort for the suggested next step.
+ * It does not generate platform URLs.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
 import { permissionDenyCommand } from "../permission-deny";
 
 describe("zero doctor permission-deny command", () => {
@@ -56,7 +53,8 @@ describe("zero doctor permission-deny command", () => {
       expect(logCalls).toContain(
         "zero doctor permission-change slack --permission",
       );
-      expect(logCalls).toContain("--enable --reason");
+      expect(logCalls).toContain("--enable");
+      expect(logCalls).not.toContain("--reason");
       expect(mockConsoleDebug).not.toHaveBeenCalled();
     });
   });
@@ -155,10 +153,11 @@ describe("zero doctor permission-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      // The suggested command should contain the ref, permission, --enable, and --reason placeholder
+      // The suggested command should contain the ref, permission, and --enable.
       expect(logCalls).toMatch(
-        /zero doctor permission-change slack --permission \S+ --enable --reason/,
+        /zero doctor permission-change slack --permission \S+ --enable/,
       );
+      expect(logCalls).not.toContain("--reason");
     });
 
     it("should not suggest permission-change when no permission matches", async () => {
@@ -195,40 +194,6 @@ describe("zero doctor permission-deny command", () => {
       expect(logCalls).not.toContain("app.vm0.ai");
       expect(logCalls).not.toContain("[Manage");
       expect(logCalls).not.toContain("[Request");
-    });
-
-    it("should omit reason from the suggested command when user grants are active", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/org", () => {
-          return HttpResponse.json({
-            id: "org-1",
-            slug: "test-org",
-            name: "Test Org",
-            role: "member",
-            permissionGrantMode: "user-grants",
-          });
-        }),
-      );
-
-      await permissionDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "slack",
-        "--method",
-        "GET",
-        "--path",
-        "/conversations.list",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("To allow this permission, run:");
-      expect(logCalls).toContain(
-        "zero doctor permission-change slack --permission",
-      );
-      expect(logCalls).toContain("--enable");
-      expect(logCalls).not.toContain("--reason");
     });
   });
 });

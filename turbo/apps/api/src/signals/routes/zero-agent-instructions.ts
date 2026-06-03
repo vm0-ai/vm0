@@ -124,8 +124,6 @@ const updateAgentInstructionsInner$ = command(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        permissionPolicies: zeroAgents.permissionPolicies,
-        unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
         customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,

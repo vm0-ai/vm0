@@ -39,7 +39,6 @@ import {
   deauthorizeAgentConnector$,
   saveAgentConnectors$,
   discardAgentConnectorsDraft$,
-  agentPermissionPolicies$,
   type AgentScheduleSaveParams,
 } from "../zero-job-detail";
 
@@ -201,26 +200,6 @@ describe("zero-job-detail signals", () => {
       // Verify the agent name was included in the URL (percent-encoded)
       expect(capturedUrl).toContain("my-org");
       expect(capturedUrl).toContain("sub-agent");
-    });
-
-    it("should derive permission policies from detail", async () => {
-      const policies = {
-        search: { policies: { read: "allow" as const } },
-      };
-      server.use(
-        mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
-          return respond(200, {
-            ...mockAgentResponse(),
-            permissionPolicies: policies,
-          });
-        }),
-      );
-
-      detachedSetupPage({ context, path: "/", withoutRender: true });
-      context.store.set(setActiveAgent$, "my-agent");
-
-      const permissions = await context.store.get(agentPermissionPolicies$);
-      expect(permissions).toStrictEqual(policies);
     });
 
     it("should reset draft states on agent switch", async () => {

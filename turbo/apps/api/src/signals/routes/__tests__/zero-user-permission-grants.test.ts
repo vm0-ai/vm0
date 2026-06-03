@@ -5,10 +5,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewalls";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -51,24 +49,6 @@ async function seedMember(args: {
     },
     context.signal,
   );
-}
-
-async function enableUserPermissionGrants(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: { switches: { [FeatureSwitchKey.UserPermissionGrants]: true } },
-    });
 }
 
 async function seedAgent(args: {
@@ -140,9 +120,6 @@ describe("zero user permission grants", () => {
       await db
         .delete(userPermissionGrants)
         .where(inArray(userPermissionGrants.orgId, trackedOrgIds));
-      await db
-        .delete(userFeatureSwitches)
-        .where(inArray(userFeatureSwitches.orgId, trackedOrgIds));
       trackedOrgIds.length = 0;
     }
 
@@ -155,42 +132,11 @@ describe("zero user permission grants", () => {
     }
   });
 
-  it("blocks list and upsert while the feature is disabled", async () => {
-    const fixture = await createFixture();
-    const agentId = await seedAgent(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    const client = setupApp({ context })(zeroUserPermissionGrantsContract);
-
-    const listed = await accept(
-      client.list({
-        query: { agentId },
-        headers: AUTH_HEADERS,
-      }),
-      [403],
-    );
-    expect(listed.body.error.code).toBe("FORBIDDEN");
-
-    const upserted = await accept(
-      client.upsert({
-        body: {
-          agentId,
-          connectorRef: SLACK_CONNECTOR,
-          permission: SLACK_READ_PERMISSION,
-          action: "allow",
-        },
-        headers: AUTH_HEADERS,
-      }),
-      [403],
-    );
-    expect(upserted.body.error.code).toBe("FORBIDDEN");
-  });
-
   it("upserts and lists only the authenticated user's active grants", async () => {
     const fixture = await createFixture();
     const otherUserId = `user_${randomUUID()}`;
     await seedMember({ orgId: fixture.orgId, userId: otherUserId });
     const agentId = await seedAgent(fixture);
-    await enableUserPermissionGrants(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
@@ -268,9 +214,6 @@ describe("zero user permission grants", () => {
       visibility: "private",
     });
 
-    await enableUserPermissionGrants(owner.orgId, owner.userId);
-    await enableUserPermissionGrants(owner.orgId, sameOrgUserId);
-    await enableUserPermissionGrants(otherOrgUser.orgId, otherOrgUser.userId);
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
     mocks.clerk.session(owner.userId, owner.orgId, "org:member");
@@ -340,7 +283,6 @@ describe("zero user permission grants", () => {
   it("validates connector refs, permission names, ask, and __unknown__", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
-    await enableUserPermissionGrants(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 
@@ -426,7 +368,6 @@ describe("zero user permission grants", () => {
   it("filters expired grants and folds active grants into legacy policies", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
-    await enableUserPermissionGrants(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const db = store.set(writeDb$);
     const checkedAt = new Date("2026-01-01T00:00:00.000Z");
@@ -511,7 +452,6 @@ describe("zero user permission grants", () => {
   it("updates action and updatedAt without changing createdAt", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
-    await enableUserPermissionGrants(fixture.orgId, fixture.userId);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroUserPermissionGrantsContract);
 

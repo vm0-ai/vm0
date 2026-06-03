@@ -6,7 +6,6 @@ import {
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
 import { withErrorHandler } from "../../../lib/command";
-import { resolvePermissionGrantMode } from "./permission-context";
 
 export const permissionDenyCommand = new Command()
   .name("permission-deny")
@@ -78,15 +77,8 @@ Notes:
             : narrowest;
         });
         console.log(`This is covered by the "${permission}" permission.`);
-        const permissionGrantMode = await resolvePermissionGrantMode();
-        const reasonArg =
-          permissionGrantMode === "user-grants"
-            ? ""
-            : ' --reason "why this is needed"';
-        const actionVerb =
-          permissionGrantMode === "user-grants" ? "allow" : "request";
         console.log(
-          `To ${actionVerb} this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable${reasonArg}`,
+          `To allow this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable`,
         );
       },
     ),

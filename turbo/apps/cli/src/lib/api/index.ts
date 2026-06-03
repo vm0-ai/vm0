@@ -108,6 +108,7 @@ export {
   getZeroAgentInstructions,
   updateZeroAgentInstructions,
   getZeroAgentUserConnectors,
+  listZeroUserPermissionGrants,
 } from "./domains/zero-agents";
 
 // Domain modules - Zero Skills (org-level)

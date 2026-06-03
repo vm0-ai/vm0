@@ -8,11 +8,9 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -21,7 +19,6 @@ import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
-import { nowDate } from "../../external/time";
 import {
   type SchedulesFixture,
   deleteSchedulesScenario$,
@@ -79,27 +76,6 @@ async function seedFixture(): Promise<SchedulesFixture> {
   );
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
-}
-
-async function enableUserPermissionGrants(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
-        updatedAt: nowDate(),
-      },
-    });
 }
 
 async function seedSlackGrantForScheduleOwner(
@@ -262,7 +238,6 @@ describe("POST /api/zero/schedules/run", () => {
     if (!scheduleId) {
       throw new Error("Expected schedule fixture");
     }
-    await enableUserPermissionGrants(fixture.orgId, fixture.userId);
     await seedSlackGrantForScheduleOwner(fixture);
     mocks.clerk.session(`trigger-${fixture.userId}`, fixture.orgId);
 

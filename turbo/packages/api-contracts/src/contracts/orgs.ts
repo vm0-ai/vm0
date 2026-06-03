@@ -11,9 +11,6 @@ const c = initContract();
 export const orgTierSchema = z.enum(["free", "pro-suspend", "pro", "team"]);
 export type OrgTier = z.infer<typeof orgTierSchema>;
 
-export const permissionGrantModeSchema = z.enum(["legacy", "user-grants"]);
-export type PermissionGrantMode = z.infer<typeof permissionGrantModeSchema>;
-
 /**
  * Org slug validation
  * - 3-64 characters (or 1-2 for single/double char slugs)
@@ -41,7 +38,6 @@ export const orgResponseSchema = z.object({
   name: z.string(),
   tier: z.string().optional(),
   role: orgRoleSchema.optional(),
-  permissionGrantMode: permissionGrantModeSchema.optional(),
   createdBy: z.string().optional(),
 });
 

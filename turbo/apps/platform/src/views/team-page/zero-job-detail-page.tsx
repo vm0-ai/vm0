@@ -67,8 +67,6 @@ import {
   saveAgentConnectors$,
   agentActiveTab$,
   setAgentActiveTab$,
-  agentPermissionPolicies$,
-  reloadAgentDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
@@ -85,17 +83,12 @@ import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.
 import { currentAgent$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
 import noConnectorImg from "../zero-page/assets/no-connector.webp";
 import { JobCustomConnectorsSection } from "./job-custom-connectors-section.tsx";
-import {
-  hasConnectorPermissions,
-  savePermissionPolicies$,
-} from "../../signals/zero-page/settings/permissions.ts";
+import { hasConnectorPermissions } from "../../signals/zero-page/settings/permissions.ts";
 import {
   upsertUserPermissionGrant$,
   userPermissionGrantsByAgent,
@@ -136,12 +129,6 @@ type UpsertUserPermissionGrant = (
   },
   signal: AbortSignal,
 ) => Promise<void>;
-
-type SavePermissionPolicies = (
-  agentId: string,
-  policies: FirewallPolicies,
-  signal: AbortSignal,
-) => Promise<FirewallPolicies | null | undefined>;
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -517,39 +504,26 @@ async function saveUserGrantPolicies({
 async function saveDrawerPolicies({
   agentId,
   connectorType,
-  userPermissionGrantsEnabled,
   initialPolicies,
   policies,
   pageSignal,
   upsertGrant,
-  savePermPol,
-  reloadDetail,
 }: {
   agentId: string;
   connectorType: ConnectorType;
-  userPermissionGrantsEnabled: boolean;
   initialPolicies: FirewallPolicies;
   policies: FirewallPolicies;
   pageSignal: AbortSignal;
   upsertGrant: UpsertUserPermissionGrant;
-  savePermPol: SavePermissionPolicies;
-  reloadDetail: () => void;
 }): Promise<void> {
-  if (userPermissionGrantsEnabled) {
-    await saveUserGrantPolicies({
-      agentId,
-      connectorType,
-      initialPolicies,
-      policies,
-      pageSignal,
-      upsertGrant,
-    });
-    return;
-  }
-  const saved = await savePermPol(agentId, policies, pageSignal);
-  if (saved !== undefined) {
-    reloadDetail();
-  }
+  await saveUserGrantPolicies({
+    agentId,
+    connectorType,
+    initialPolicies,
+    policies,
+    pageSignal,
+    upsertGrant,
+  });
 }
 
 function PermissionListSkeleton() {
@@ -790,25 +764,16 @@ function JobPermissionsTab({
   const deauthorizeFn = useSet(deauthorizeAgentConnector$);
   const saveConnectors = useSet(saveAgentConnectors$);
   const pageSignal = useGet(pageSignal$);
-  const permissionPolicies = useLastResolved(agentPermissionPolicies$) ?? null;
-  const features = useLastResolved(featureSwitch$);
-  const userPermissionGrantsEnabled =
-    features?.[FeatureSwitchKey.UserPermissionGrants] ?? false;
   const userGrantsLoadable = useLoadable(
     userPermissionGrantsByAgent({
       agentId,
-      enabled: userPermissionGrantsEnabled,
     }),
   );
   const userGrantPolicies =
-    userPermissionGrantsEnabled && userGrantsLoadable.state === "hasData"
+    userGrantsLoadable.state === "hasData"
       ? permissionGrantsToFirewallPolicies(userGrantsLoadable.data)
       : null;
-  const drawerInitialPolicies = userPermissionGrantsEnabled
-    ? (userGrantPolicies ?? {})
-    : (permissionPolicies ?? {});
-  const reloadDetail = useSet(reloadAgentDetail$);
-  const savePermPol = useSet(savePermissionPolicies$);
+  const drawerInitialPolicies = userGrantPolicies ?? {};
   const [, upsertGrant] = useLoadableSet(upsertUserPermissionGrant$);
   const connectorType = useGet(permConnectorType$);
   const setConnectorType = useSet(setPermConnectorType$);
@@ -824,9 +789,7 @@ function JobPermissionsTab({
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const adminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermissions = userPermissionGrantsEnabled || isAdmin;
+  const canManagePermissions = true;
 
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
@@ -857,12 +820,12 @@ function JobPermissionsTab({
   if (
     allTypesLoadable.state !== "hasData" ||
     connectorsLoading ||
-    (userPermissionGrantsEnabled && userGrantsLoadable.state === "loading")
+    userGrantsLoadable.state === "loading"
   ) {
     return <PermissionListSkeleton />;
   }
 
-  if (userPermissionGrantsEnabled && userGrantsLoadable.state === "hasError") {
+  if (userGrantsLoadable.state === "hasError") {
     return <PermissionGrantsError />;
   }
 
@@ -897,13 +860,10 @@ function JobPermissionsTab({
               await saveDrawerPolicies({
                 agentId,
                 connectorType,
-                userPermissionGrantsEnabled,
                 initialPolicies: drawerInitialPolicies,
                 policies,
                 pageSignal,
                 upsertGrant,
-                savePermPol,
-                reloadDetail,
               });
               toast.success("Permissions updated");
             }}

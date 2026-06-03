@@ -1090,12 +1090,6 @@ const ONBOARDING_SETUP_NEXT_NEGATIVE_PATHS = [
   "/api/zero/onboarding/setup/extra",
   "/api/zero/onboarding",
 ] as const;
-const PERMISSION_POLICIES_REWRITE_SOURCE = "/api/zero/permission-policies";
-const PERMISSION_POLICIES_PATH = "/api/zero/permission-policies";
-const PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/permission-policies/extra",
-  "/api/zero/permission-policy",
-] as const;
 const ZERO_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/model-providers/:type";
 const ZERO_MODEL_PROVIDER_TYPE_PATH =
@@ -1389,13 +1383,6 @@ const ZERO_VARIABLE_BY_NAME_PATH = "/api/zero/variables/USER_TOKEN";
 const ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS = [
   "/api/zero/variables/USER_TOKEN/extra",
   "/api/zero/variable/USER_TOKEN",
-] as const;
-const PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE =
-  "/api/zero/permission-access-requests";
-const PERMISSION_ACCESS_REQUESTS_PATH = "/api/zero/permission-access-requests";
-const PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS = [
-  "/api/zero/permission-access-requests/extra",
-  "/api/zero/permission-access-request",
 ] as const;
 const ZERO_SECRETS_REWRITE_SOURCE = "/api/zero/secrets";
 const ZERO_SECRETS_PATH = "/api/zero/secrets";
@@ -2651,21 +2638,12 @@ describe("API backend rewrites", () => {
           destination: "https://api.example.test/api/zero/uploads/prepare",
         },
         {
-          source: PERMISSION_POLICIES_REWRITE_SOURCE,
-          destination: "https://api.example.test/api/zero/permission-policies",
-        },
-        {
           source: PUSH_SUBSCRIPTIONS_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/push-subscriptions",
         },
         {
           source: QUEUE_POSITION_REWRITE_SOURCE,
           destination: "https://api.example.test/api/zero/queue-position",
-        },
-        {
-          source: PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE,
-          destination:
-            "https://api.example.test/api/zero/permission-access-requests",
         },
         {
           source: ZERO_SECRETS_REWRITE_SOURCE,
@@ -5729,30 +5707,6 @@ describe("API backend rewrites", () => {
     }
   });
 
-  it("should match only the exact permission access requests rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE,
-      destination:
-        "https://api.example.test/api/zero/permission-access-requests",
-    });
-
-    const matcher = getPathMatch(PERMISSION_ACCESS_REQUESTS_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(PERMISSION_ACCESS_REQUESTS_PATH)).toStrictEqual({});
-    for (const pathname of PERMISSION_ACCESS_REQUESTS_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
   it("should match only the exact user model preference rewrite", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
 
@@ -6836,29 +6790,6 @@ describe("API backend rewrites", () => {
 
     expect(matcher(ZERO_FEATURE_SWITCHES_PATH)).toStrictEqual({});
     for (const pathname of ZERO_FEATURE_SWITCHES_NEXT_NEGATIVE_PATHS) {
-      expect(matcher(pathname)).toBe(false);
-    }
-  });
-
-  it("should match only the exact permission policies rewrite", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "https://api.example.test");
-
-    const rewrites = await getBeforeFileRewrites();
-    const rewrite = rewrites.find((entry) => {
-      return entry.source === PERMISSION_POLICIES_REWRITE_SOURCE;
-    });
-    expect(rewrite).toStrictEqual({
-      source: PERMISSION_POLICIES_REWRITE_SOURCE,
-      destination: "https://api.example.test/api/zero/permission-policies",
-    });
-
-    const matcher = getPathMatch(PERMISSION_POLICIES_REWRITE_SOURCE, {
-      removeUnnamedParams: true,
-      strict: true,
-    });
-
-    expect(matcher(PERMISSION_POLICIES_PATH)).toStrictEqual({});
-    for (const pathname of PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS) {
       expect(matcher(pathname)).toBe(false);
     }
   });
@@ -8903,13 +8834,6 @@ describe("API backend rewrites", () => {
 
     expect(matchesApiBackendRewritePath(ZERO_VARIABLE_BY_NAME_PATH)).toBe(true);
     for (const pathname of ZERO_VARIABLE_BY_NAME_NEXT_NEGATIVE_PATHS) {
-      expect(matchesApiBackendRewritePath(pathname)).toBe(false);
-    }
-  });
-
-  it("should match the permission policies route for middleware pass-through", async () => {
-    expect(matchesApiBackendRewritePath(PERMISSION_POLICIES_PATH)).toBe(true);
-    for (const pathname of PERMISSION_POLICIES_NEXT_NEGATIVE_PATHS) {
       expect(matchesApiBackendRewritePath(pathname)).toBe(false);
     }
   });

@@ -2820,20 +2820,6 @@ describe("API backend rewrite proxy behavior", () => {
     expect(matchesApiBackendRewritePath("/api/zero/teams")).toBe(false);
   });
 
-  it("matches the permission access requests rewrite path exactly", () => {
-    expect(
-      matchesApiBackendRewritePath("/api/zero/permission-access-requests"),
-    ).toBe(true);
-    expect(
-      matchesApiBackendRewritePath(
-        "/api/zero/permission-access-requests/extra",
-      ),
-    ).toBe(false);
-    expect(
-      matchesApiBackendRewritePath("/api/zero/permission-access-request"),
-    ).toBe(false);
-  });
-
   it("matches the zero secrets root rewrite path exactly", () => {
     expect(matchesApiBackendRewritePath("/api/zero/secrets")).toBe(true);
     expect(matchesApiBackendRewritePath("/api/zero/secret")).toBe(false);
@@ -2944,18 +2930,6 @@ describe("API backend rewrite proxy behavior", () => {
       matchesApiBackendRewritePath("/api/zero/secrets/DELETE_ME/extra"),
     ).toBe(false);
     expect(matchesApiBackendRewritePath("/api/zero/secret/DELETE_ME")).toBe(
-      false,
-    );
-  });
-
-  it("matches the permission policies rewrite path exactly", () => {
-    expect(matchesApiBackendRewritePath("/api/zero/permission-policies")).toBe(
-      true,
-    );
-    expect(
-      matchesApiBackendRewritePath("/api/zero/permission-policies/extra"),
-    ).toBe(false);
-    expect(matchesApiBackendRewritePath("/api/zero/permission-policy")).toBe(
       false,
     );
   });

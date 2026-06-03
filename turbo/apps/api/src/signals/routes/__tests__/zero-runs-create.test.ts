@@ -53,7 +53,7 @@ import {
   verifyZeroToken,
 } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { now, nowDate } from "../../external/time";
+import { now } from "../../external/time";
 import { mockNow } from "../../../lib/time";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
 import { createZeroIntegrationRun$ } from "../../services/zero-runs-create.service";
@@ -266,27 +266,6 @@ async function fixture(): Promise<UsageInsightFixture> {
   );
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   return created;
-}
-
-async function enableUserPermissionGrants(
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId,
-      userId,
-      switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
-    })
-    .onConflictDoUpdate({
-      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
-      set: {
-        switches: { [FeatureSwitchKey.UserPermissionGrants]: true },
-        updatedAt: nowDate(),
-      },
-    });
 }
 
 async function seedSlackConnector(args: {
@@ -2558,7 +2537,7 @@ describe("POST /api/zero/runs", () => {
     ).toBeFalsy();
   });
 
-  it("builds runner firewalls from stored zero agent permission policies", async () => {
+  it("ignores stored zero agent permission policies", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -2625,39 +2604,14 @@ describe("POST /api/zero/runs", () => {
       throw new Error("Expected x network policy");
     }
     expect(xPolicy.allow).toContain("tweet.read");
-    expect(xPolicy.deny).toContain("tweet.write");
+    expect(xPolicy.allow).toContain("tweet.write");
+    expect(xPolicy.deny).not.toContain("tweet.write");
     expect(xPolicy.unknownPolicy).toBe("allow");
   });
 
-  it("uses legacy agent permission policies when user grants are disabled", async () => {
-    const fx = await fixture();
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        [SLACK_CONNECTOR]: {
-          [SLACK_WRITE_PERMISSION]: "allow",
-        },
-      },
-    });
-    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
-    await insertUserPermissionGrant({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      agentId: agent.agentId,
-      permission: SLACK_WRITE_PERMISSION,
-      action: "deny",
-    });
-
-    const policy = await createZeroRunNetworkPolicy(agent.agentId);
-
-    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
-    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
-  });
-
-  it("uses connector defaults when user grants are enabled with no grants", async () => {
+  it("uses connector defaults with no grants", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
 
     const policy = await createZeroRunNetworkPolicy(agent.agentId);
@@ -2668,10 +2622,9 @@ describe("POST /api/zero/runs", () => {
     expect(policy.unknownPolicy).toBe("allow");
   });
 
-  it("applies current-user grants when user grants are enabled", async () => {
+  it("applies current-user grants", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
     await insertUserPermissionGrant({
       orgId: fx.orgId,
@@ -2691,7 +2644,6 @@ describe("POST /api/zero/runs", () => {
   it("bakes the active grant result into the queued run context", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
     await insertUserPermissionGrant({
       orgId: fx.orgId,
@@ -2730,7 +2682,6 @@ describe("POST /api/zero/runs", () => {
   it("ignores grants for other users on the same agent", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
     await insertUserPermissionGrant({
       orgId: fx.orgId,
@@ -2749,7 +2700,6 @@ describe("POST /api/zero/runs", () => {
   it("ignores expired grants for newly created runs", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
     await insertUserPermissionGrant({
       orgId: fx.orgId,
@@ -2769,7 +2719,6 @@ describe("POST /api/zero/runs", () => {
   it("applies unknown-policy grants without changing named defaults", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
     await insertUserPermissionGrant({
       orgId: fx.orgId,
@@ -2786,7 +2735,7 @@ describe("POST /api/zero/runs", () => {
     expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
   });
 
-  it("ignores legacy agent permission policies when user grants are enabled", async () => {
+  it("ignores legacy agent permission policies", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -2796,7 +2745,6 @@ describe("POST /api/zero/runs", () => {
         },
       },
     });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
 
     const policy = await createZeroRunNetworkPolicy(agent.agentId);
@@ -2808,7 +2756,6 @@ describe("POST /api/zero/runs", () => {
   it("resolves user grants for zero integration runs", async () => {
     const fx = await fixture();
     const agent = await seedRunnableZeroAgent({ fixture: fx });
-    await enableUserPermissionGrants(fx.orgId, fx.userId);
     await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
     await insertUserPermissionGrant({
       orgId: fx.orgId,

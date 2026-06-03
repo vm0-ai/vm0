@@ -84,11 +84,6 @@ import {
   resetMockSlackConnect,
 } from "./api-integrations-slack-connect.ts";
 import {
-  apiPermissionAccessRequestsHandlers,
-  resetMockPermissionRequests,
-} from "./api-permission-access-requests.ts";
-import { apiPermissionPoliciesHandlers } from "./api-permission-policies.ts";
-import {
   apiUserPermissionGrantsHandlers,
   resetMockUserPermissionGrants,
 } from "./api-user-permission-grants.ts";
@@ -123,8 +118,6 @@ export const handlers = [
   ...apiIntegrationsSlackConnectHandlers,
   ...apiFeatureSwitchesHandlers,
   ...apiRealtimeHandlers,
-  ...apiPermissionAccessRequestsHandlers,
-  ...apiPermissionPoliciesHandlers,
   ...apiUserPermissionGrantsHandlers,
   ...apiSchedulesHandlers,
   ...apiInsightsHandlers,
@@ -148,7 +141,6 @@ export function resetAllMockHandlers(): void {
   resetMockBilling();
   resetMockSlackConnect();
   resetAblySubscriptions();
-  resetMockPermissionRequests();
   resetMockUserPermissionGrants();
   resetMockComposesList();
   resetMockOrg();

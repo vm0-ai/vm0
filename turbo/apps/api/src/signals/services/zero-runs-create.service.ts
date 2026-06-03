@@ -6,18 +6,11 @@ import {
   connectorTypeSchema,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import {
   permissionGrantsToFirewallPolicies,
   resolveFirewallPolicies,
 } from "@vm0/connectors/firewalls";
-import {
-  toFirewallPolicies,
-  type FirewallPolicyValue,
-  type RawPermissionPolicies,
-} from "@vm0/connectors/firewall-types";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
@@ -38,7 +31,6 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { createAgentRun$ } from "./agent-run-create.service";
-import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
@@ -70,11 +62,6 @@ interface ZeroAgentRunRecord {
   readonly displayName: string | null;
   readonly description: string | null;
   readonly sound: string | null;
-  readonly permissionPolicies: RawPermissionPolicies | null;
-  readonly unknownPermissionPolicies: Record<
-    string,
-    FirewallPolicyValue
-  > | null;
   readonly customSkills: readonly string[];
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
@@ -335,8 +322,6 @@ async function loadZeroAgent(
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      permissionPolicies: zeroAgents.permissionPolicies,
-      unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
       customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
@@ -419,28 +404,6 @@ async function resolveZeroRunPermissionPolicies(
   },
   signal: AbortSignal,
 ): Promise<ReturnType<typeof resolveFirewallPolicies>> {
-  const featureSwitchContext = await loadUserFeatureSwitchContext(
-    db,
-    args.orgId,
-    args.userId,
-  );
-  signal.throwIfAborted();
-
-  if (
-    !isFeatureEnabled(
-      FeatureSwitchKey.UserPermissionGrants,
-      featureSwitchContext,
-    )
-  ) {
-    return resolveFirewallPolicies(
-      toFirewallPolicies(
-        args.agent.permissionPolicies,
-        args.agent.unknownPermissionPolicies,
-      ),
-      [...args.allowedConnectorTypes],
-    );
-  }
-
   const grants = await loadActiveUserPermissionGrants(
     db,
     {
@@ -650,7 +613,7 @@ export const createZeroIntegrationRun$ = command(
     });
     signal.throwIfAborted();
 
-    const agentPermissionPolicies = await resolveZeroRunPermissionPolicies(
+    const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
       {
         orgId: args.orgId,
@@ -672,7 +635,7 @@ export const createZeroIntegrationRun$ = command(
           sessionId: args.sessionId,
           agent,
           userInfo: { ...userInfo, ...args.userInfoExtras },
-          permissionPolicies: agentPermissionPolicies,
+          permissionPolicies: runPermissionPolicies,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
         }),
@@ -770,7 +733,7 @@ export const createZeroRun$ = command(
       agentId: agent.id,
     });
     signal.throwIfAborted();
-    const agentPermissionPolicies = await resolveZeroRunPermissionPolicies(
+    const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
       db,
       {
         orgId: args.auth.orgId,
@@ -791,7 +754,7 @@ export const createZeroRun$ = command(
           body: args.body,
           agent,
           userInfo: { ...userInfo, ...args.userInfoExtras },
-          permissionPolicies: agentPermissionPolicies,
+          permissionPolicies: runPermissionPolicies,
           triggerAgentId,
           triggerSource: args.triggerSource,
           appendSystemPrompt: args.appendSystemPrompt,
