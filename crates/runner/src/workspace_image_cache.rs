@@ -1350,7 +1350,7 @@ impl SessionWorkspaceCache {
                 let Some(file_name) = file_name.to_str() else {
                     continue;
                 };
-                if !is_workspace_tmp_file_name(file_name) {
+                if !is_workspace_tmp_path_name(file_name) {
                     continue;
                 }
                 let path = file.path();
@@ -1818,7 +1818,7 @@ async fn inspect_temporary_paths(entry_dir: &Path) -> RunnerResult<TemporaryPath
         let Some(file_name) = file_name.to_str() else {
             continue;
         };
-        if !is_workspace_tmp_file_name(file_name) {
+        if !is_workspace_tmp_path_name(file_name) {
             continue;
         }
         let path = file.path();
@@ -2400,7 +2400,7 @@ fn validate_current_image_identity(
     Ok(())
 }
 
-fn is_workspace_tmp_file_name(name: &str) -> bool {
+fn is_workspace_tmp_path_name(name: &str) -> bool {
     name.starts_with("current.ext4.tmp.") || name.starts_with("metadata.json.tmp.")
 }
 

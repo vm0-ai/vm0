@@ -207,7 +207,11 @@ fn format_list_text(output: &WorkspaceImageCacheListOutput) -> String {
         cache_dir = output.cache_dir,
     );
     if output.entries.is_empty() {
-        text.push_str("\nNo workspace image cache entries found.\n");
+        if output.summary.total_entries == 0 {
+            text.push_str("\nNo workspace image cache entries found.\n");
+        } else {
+            text.push_str("\nNo workspace image cache entries shown by current limit.\n");
+        }
         return text;
     }
     for entry in &output.entries {
@@ -396,6 +400,23 @@ mod tests {
         assert!(text.contains("tempPaths=0"));
         assert!(text.contains("reason=missing metadata"));
         assert!(!text.contains("reusable "));
+    }
+
+    #[test]
+    fn text_list_distinguishes_empty_limit_from_empty_cache() {
+        let limited = format_list_text(&list_output(&test_inspection(), Some(0)));
+        assert!(limited.contains("0 shown, 2 total"));
+        assert!(limited.contains("No workspace image cache entries shown by current limit."));
+        assert!(!limited.contains("No workspace image cache entries found."));
+
+        let empty = WorkspaceImageCacheInspection {
+            summary: WorkspaceImageCacheInspectionSummary::default(),
+            entries: Vec::new(),
+            ..test_inspection()
+        };
+        let text = format_list_text(&list_output(&empty, None));
+        assert!(text.contains("0 shown, 0 total"));
+        assert!(text.contains("No workspace image cache entries found."));
     }
 
     #[tokio::test]
