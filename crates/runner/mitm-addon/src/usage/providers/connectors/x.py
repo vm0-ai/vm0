@@ -301,16 +301,18 @@ class _XJsonResponseExtractor:
         return result, None
 
 
-def create_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
+def create_response_parser(
+    flow: http.HTTPFlow, original_url: str
+) -> ConnectorResponseParser | None:
     """Create the X response-body parser needed for this flow, if any."""
     if not flow.response:
         return None
 
     status_code = flow.response.status_code
     if _HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN:
-        # Use the request target path so the hot path never needs to split or
-        # decode the original URL query just to detect streaming endpoints.
-        stream_path = _strip_request_target_query(flow.request.path)
+        # Use the dispatcher-required original URL so parser registration and
+        # final request metadata cannot diverge.
+        stream_path = urllib.parse.urlparse(original_url).path
         if _is_stream_path(stream_path):
             extractor = _NdjsonExtractor()
             # Deliberately NOT "model_provider_usage" — that key routes through
@@ -340,6 +342,20 @@ def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:
 
 def _empty_request_query_fallback_hints() -> dict:
     return {"request_ids_count": None, "max_results": None}
+
+
+def _parse_request_metadata(original_url: str) -> dict:
+    """Extract billing-relevant query params from an X API request.
+
+    Returns a dict with:
+      - ``is_count_endpoint``: bool — True when the request path is an X Post
+        Counts endpoint whose ``data`` array contains time buckets instead of
+        returned posts.
+
+    Parses the dispatcher-required original URL rather than ``pretty_url`` to
+    stay consistent with the rest of the addon.
+    """
+    return {"is_count_endpoint": _is_count_path(urllib.parse.urlparse(original_url).path)}
 
 
 def _decode_request_query_hint_key(raw_key: str) -> str | None:
@@ -373,8 +389,7 @@ def _exceeds_query_hint_byte_limit(value: str, max_bytes: int) -> bool:
     return _slice_exceeds_query_hint_byte_limit(value, 0, len(value), max_bytes)
 
 
-def _get_bounded_original_request_query(flow: http.HTTPFlow) -> str | None:
-    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL, "")
+def _get_bounded_original_request_query(original_url: str) -> str | None:
     query_start = original_url.find("?")
     if query_start == -1:
         return ""
@@ -392,7 +407,7 @@ def _get_bounded_original_request_query(flow: http.HTTPFlow) -> str | None:
     return original_url[value_start:fragment_start]
 
 
-def _parse_request_query_fallback_hints(flow: http.HTTPFlow) -> dict:
+def _parse_request_query_fallback_hints(original_url: str) -> dict:
     """Extract request-side count hints only for unparseable GET responses.
 
     This intentionally does not call ``parse_qs``.  Successful X responses
@@ -402,7 +417,7 @@ def _parse_request_query_fallback_hints(flow: http.HTTPFlow) -> dict:
     blank-value and ``+`` behavior for those keys, and caps work on hostile
     query strings instead of materializing every parameter.
     """
-    query = _get_bounded_original_request_query(flow)
+    query = _get_bounded_original_request_query(original_url)
     if query is None:
         return _empty_request_query_fallback_hints()
 
@@ -622,7 +637,7 @@ def _compute_billable_counts(
     return counts
 
 
-def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
+def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     """Compute billable resource counts and buffer them for upload.
 
     Derives per-permission billable resource counts from the request and
@@ -631,9 +646,10 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
 
     **Caller contract**: the dispatcher in
     :mod:`usage.providers.connectors` guarantees ``run_id`` is non-empty,
-    ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, and
-    ``flow.metadata[metadata_keys.FIREWALL_NAME] == "x"`` before calling this.  Those
-    gates are not re-checked here.
+    ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True,
+    ``flow.metadata[metadata_keys.FIREWALL_NAME] == "x"``, and
+    ``original_url`` is a non-empty string before calling this. Those gates are
+    not re-checked here.
 
     Additional X-specific skip conditions:
 
@@ -673,10 +689,10 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
             request_body,
         )
 
-    req_meta = {"is_count_endpoint": _is_count_path(request_path)}
+    req_meta = _parse_request_metadata(original_url)
     resp_meta = _parse_response_metadata(flow)
     req_meta.update(
-        _parse_request_query_fallback_hints(flow)
+        _parse_request_query_fallback_hints(original_url)
         if (
             flow.request.method == "GET"
             and not req_meta["is_count_endpoint"]
@@ -685,9 +701,6 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         else _empty_request_query_fallback_hints()
     )
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    audit_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
-    if not isinstance(audit_url, str) or not audit_url:
-        audit_url = flow.request.url
 
     # Structured context common to every billing-side proxy log entry
     # for this flow — threaded into the helper so the log firing at the
@@ -698,7 +711,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         "firewall_name": firewall_name,
         "permission": permission,
         "method": flow.request.method,
-        "url": audit_url,
+        "url": original_url,
     }
 
     def _log_warn(message: str, extra: dict) -> None:

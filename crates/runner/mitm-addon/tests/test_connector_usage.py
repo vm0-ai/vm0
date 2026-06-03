@@ -47,17 +47,26 @@ class TestXStreamPathRouting:
         assert "x_ndjson_state" in flow.metadata
         assert "connector_response_finish" in flow.metadata
 
-    def test_absolute_form_stream_endpoint_registers_ndjson_parser(self, real_flow):
-        """Absolute-form request targets keep the old urlsplit path behavior."""
+    def test_absolute_form_request_target_registers_ndjson_parser_from_original_url(
+        self, real_flow
+    ):
         flow = self._make_x_response_flow(
             real_flow,
-            "https://api.x.com/2/tweets/search/stream?tweet.fields=id",
+            "/2/tweets/search/stream?tweet.fields=id",
         )
+        flow.request.path = "https://api.x.com/2/tweets/search/stream?tweet.fields=id"
 
         mitm_addon.responseheaders(flow)
 
         assert "x_ndjson_state" in flow.metadata
         assert "connector_response_finish" in flow.metadata
+
+    def test_stream_parser_requires_original_url(self, real_flow):
+        flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
+        flow.metadata.pop("original_url")
+
+        with pytest.raises(ValueError, match="original_url"):
+            mitm_addon.responseheaders(flow)
 
     @pytest.mark.parametrize(
         "path",
@@ -92,6 +101,16 @@ class TestXStreamPathRouting:
         assert "connector_response_finish" not in flow.metadata
         assert log.debug.call_count == 1
         assert "Streaming decompression skipped (br)" in log.debug.call_args[0][0]
+
+    def test_unregistered_parser_factory_does_not_require_original_url(self, real_flow):
+        flow = self._make_x_response_flow(real_flow, "/2/tweets/search/stream")
+        flow.metadata["firewall_name"] = "github"
+        flow.metadata.pop("original_url")
+
+        mitm_addon.responseheaders(flow)
+
+        assert "x_ndjson_state" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
 
 
 class TestReportConnectorUsage:
@@ -1616,6 +1635,13 @@ class TestReportConnectorUsage:
         flow.metadata["firewall_name"] = "github"
         assert self._call_and_get_billing(flow) == []
 
+    def test_unregistered_handler_does_not_require_original_url(self, tmp_path, real_flow):
+        flow = self._make_x_flow(real_flow, tmp_path)
+        flow.metadata["firewall_name"] = "github"
+        flow.metadata.pop("original_url")
+
+        assert self._call_and_get_billing(flow) == []
+
     # ---- unregistered-handler one-shot warn (issue #10483) ----
 
     def test_warns_once_per_unregistered_firewall_name(self, tmp_path, real_flow):
@@ -1674,6 +1700,16 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(real_flow, tmp_path)
         flow.response = None
         assert self._call_and_get_billing(flow) == []
+
+    def test_registered_x_usage_requires_original_url(self, tmp_path, real_flow, mitm_ctx):
+        flow = self._make_x_flow(real_flow, tmp_path)
+        flow.metadata.pop("original_url")
+
+        with (
+            mitm_ctx(api_url="https://api.vm0.ai"),
+            pytest.raises(ValueError, match="original_url"),
+        ):
+            usage.report_connector_usage(flow, "run-abc-123")
 
     # ---- webhook skip ----
 

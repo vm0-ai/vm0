@@ -24,17 +24,18 @@ from logging_utils import log_proxy_entry
 from . import x
 from .response_parser import ConnectorResponseParser
 
+_ConnectorUsageHandler = Callable[[http.HTTPFlow, str, str], None]
+_ResponseParserFactory = Callable[[http.HTTPFlow, str], ConnectorResponseParser | None]
+
 # Map firewall_name → per-connector report_usage handler.  A handler is only
 # invoked when ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, so the
 # BILLABLE_CONNECTORS whitelist in ``@vm0/core`` and this table must stay
 # in sync.  (The web layer controls who shows up as ``billable``; this
 # table controls who we know how to parse.  Desync manifests as a
 # dropped billing record plus a missing handler in test coverage.)
-_HANDLERS: dict[str, Callable[[http.HTTPFlow, str], None]] = {
+_HANDLERS: dict[str, _ConnectorUsageHandler] = {
     "x": x.report_usage,
 }
-
-_ResponseParserFactory = Callable[[http.HTTPFlow], ConnectorResponseParser | None]
 
 # Response parser factories are consulted at response-header time for registered
 # connector firewall flows that may need streamed response-body state before
@@ -50,6 +51,13 @@ _RESPONSE_PARSER_FACTORIES: dict[str, _ResponseParserFactory] = {
 # grown but the runner is on an older addon image — without this, billing
 # records silently drop with no local signal.
 _unregistered_handler_warned: set[str] = set()
+
+
+def _require_original_url(flow: http.HTTPFlow) -> str:
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(original_url, str) or not original_url:
+        raise ValueError("registered billable connector flow is missing original_url")
+    return original_url
 
 
 def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
@@ -88,7 +96,8 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
                 firewall_name=firewall_name,
             )
         return
-    handler(flow, run_id)
+    original_url = _require_original_url(flow)
+    handler(flow, run_id, original_url)
 
 
 def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponseParser | None:
@@ -104,4 +113,5 @@ def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponsePa
     factory = _RESPONSE_PARSER_FACTORIES.get(firewall_name)
     if factory is None:
         return None
-    return factory(flow)
+    original_url = _require_original_url(flow)
+    return factory(flow, original_url)
