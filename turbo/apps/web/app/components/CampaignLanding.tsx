@@ -1,18 +1,72 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import Image from "next/image";
 import { posthog } from "posthog-js";
 import { getAppUrl } from "../../src/lib/zero/url";
-import { buildSignupHref } from "../../src/lib/adAttribution";
 import { Footer } from "./Footer";
+import { ACQUISITION_ATTRIBUTION_COOKIE } from "@vm0/api-contracts/contracts/zero-attribution";
+
+// Ad params that arrive on the landing URL. We strip these from the visible
+// address bar after attribution is durably captured, so the URL stays clean
+// (homepage-consistent) without losing per-campaign attribution.
+const LANDING_AD_PARAMS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "vm0_experiment",
+  "vm0_variant",
+  "lp_variant",
+  "vm0_source",
+] as const;
+
+function hasAttributionCookie(): boolean {
+  if (typeof document === "undefined") {
+    return false;
+  }
+  return document.cookie.split(";").some((part) => {
+    return part.trim().startsWith(`${ACQUISITION_ATTRIBUTION_COOKIE}=`);
+  });
+}
+
+function searchHasAdParams(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return LANDING_AD_PARAMS.some((param) => {
+    return params.has(param);
+  });
+}
+
+// Remove only the ad params from the address bar, preserving any other query
+// params, the hash, and the path. Uses replaceState so it leaves no history
+// entry and never reloads (so PostHog state and the React tree are untouched).
+function stripAdParamsFromUrl(): void {
+  const url = new URL(window.location.href);
+  let changed = false;
+  for (const param of LANDING_AD_PARAMS) {
+    if (url.searchParams.has(param)) {
+      url.searchParams.delete(param);
+      changed = true;
+    }
+  }
+  if (!changed) {
+    return;
+  }
+  const cleaned = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState(window.history.state, "", cleaned);
+}
 
 // Config-driven paid campaign landing page. Reuses the homepage's design
-// tokens, connector marquee, reveal-on-scroll behavior, and the exact
-// buildSignupHref attribution path so the trial funnel + Stripe/Clerk
-// attribution stay intact. Each paid segment is a pure config object
+// tokens, connector marquee, reveal-on-scroll behavior, and the homepage's
+// clean /sign-up CTA so the trial funnel + Stripe/Clerk attribution stay
+// intact: attribution flows through the shared `.vm0.ai` vm0_attribution
+// cookie, not the CTA query string. Each paid segment is a pure config object
 // (see app/[locale]/<slug>/data.ts); the component never hard-codes copy.
 
 export interface CampaignUseCase {
@@ -150,10 +204,6 @@ export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
   const revealRef = useScrollReveal();
 
   const appUrl = getAppUrl();
-  const [landingSearch, setLandingSearch] = useState("");
-  useEffect(() => {
-    setLandingSearch(window.location.search);
-  }, []);
 
   // Campaign-agnostic tracking taxonomy. Register the campaign dimensions on
   // load and fire a viewed event; event NAMES never get namespaced per
@@ -178,8 +228,56 @@ export function CampaignLanding({ config }: { config: CampaignLandingConfig }) {
     }
   }, [config.utm_campaign, config.segment, config.slug]);
 
+  // Clean the visible address bar after an ad click: turn
+  // /en/ai-cofounder?gclid=...&utm_* into /en/ai-cofounder, without losing
+  // attribution.
+  //
+  // Sequencing is load-bearing. AttributionCapture reads
+  // window.location.search and is gated on Termly advertising consent; it may
+  // poll up to ~5s for Termly to initialize before writing the vm0_attribution
+  // cookie. Stripping the URL before that runs would drop attribution for
+  // consenting users (incl. US default-granted). So we only strip once we have
+  // observed the cookie. If it never appears within the window, consent was
+  // declined (or there is nothing to capture), in which case there is nothing
+  // to lose and cleaning is safe. The page's own campaign value comes from
+  // config (data.ts), not the URL, so posthog.register / LP Viewed are
+  // unaffected by stripping.
+  useEffect(() => {
+    if (!searchHasAdParams(window.location.search)) {
+      return;
+    }
+
+    // If the cookie is already present (revisit / fast consent), strip now.
+    if (hasAttributionCookie()) {
+      stripAdParamsFromUrl();
+      return;
+    }
+
+    // Poll for the cookie. AttributionCapture polls Termly for ~5s (20 * 250ms);
+    // give it a little headroom, then clean regardless (consent declined =>
+    // no cookie will ever be written => safe to clean).
+    let elapsed = 0;
+    const intervalMs = 200;
+    const maxWaitMs = 6000;
+    const interval = window.setInterval(() => {
+      elapsed += intervalMs;
+      if (hasAttributionCookie() || elapsed >= maxWaitMs) {
+        window.clearInterval(interval);
+        stripAdParamsFromUrl();
+      }
+    }, intervalMs);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
   const ctaText = isSignedIn ? "Open the app" : config.ctaText;
-  const ctaHref = isSignedIn ? appUrl : buildSignupHref(landingSearch);
+  // Clean CTA, exactly like the homepage: no query decoration. Attribution is
+  // carried by the shared `.vm0.ai` vm0_attribution cookie (written by
+  // AttributionCapture), which the app reads on signup -> onboarding ->
+  // checkout, so Clerk/Stripe still get per-campaign attribution.
+  const ctaHref = isSignedIn ? appUrl : "/sign-up";
 
   function trackCtaClick(cta: string) {
     const props = {
