@@ -184,6 +184,21 @@ interface ContextArtifact {
   readonly mountPath: string;
 }
 
+interface AutoMemoryContextArtifact {
+  readonly name: typeof AUTO_MEMORY_ARTIFACT_NAME;
+  readonly mountPath: string;
+}
+
+interface StorageContextArtifact extends ContextArtifact {
+  readonly missingRootPolicy?: "preserveParentVersion";
+}
+
+interface RunArtifacts {
+  readonly artifacts: readonly ContextArtifact[];
+  // Index into `artifacts` for API-managed memory checkpoint policy.
+  readonly autoMemoryPolicyArtifactIndex: number | undefined;
+}
+
 interface ComposeArtifact {
   readonly name: string;
   readonly version?: string;
@@ -587,28 +602,44 @@ function frameworkApiKeyEnv(framework: SupportedFramework): string {
   return framework === "codex" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
-function autoMemoryArtifact(framework: SupportedFramework): ContextArtifact {
+function autoMemoryMountPath(framework: SupportedFramework): string {
+  return framework === "codex"
+    ? CODEX_AUTO_MEMORY_MOUNT_PATH
+    : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH;
+}
+
+function autoMemoryArtifact(
+  framework: SupportedFramework,
+): AutoMemoryContextArtifact {
   return {
     name: AUTO_MEMORY_ARTIFACT_NAME,
-    mountPath:
-      framework === "codex"
-        ? CODEX_AUTO_MEMORY_MOUNT_PATH
-        : CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+    mountPath: autoMemoryMountPath(framework),
   };
 }
 
-function withAutoMemoryArtifact(
-  artifacts: readonly ContextArtifact[],
+function isAutoMemoryArtifact(
+  artifact: ContextArtifact,
   framework: SupportedFramework,
-): readonly ContextArtifact[] {
-  if (
-    artifacts.some((artifact) => {
-      return artifact.name === AUTO_MEMORY_ARTIFACT_NAME;
-    })
-  ) {
-    return artifacts;
-  }
-  return [...artifacts, autoMemoryArtifact(framework)];
+): boolean {
+  return (
+    artifact.name === AUTO_MEMORY_ARTIFACT_NAME &&
+    artifact.mountPath === autoMemoryMountPath(framework)
+  );
+}
+
+function storageArtifactsForRun(
+  artifacts: readonly ContextArtifact[],
+  autoMemoryPolicyArtifactIndex: number | undefined,
+): readonly StorageContextArtifact[] {
+  return artifacts.map((artifact, index) => {
+    if (index === autoMemoryPolicyArtifactIndex) {
+      return {
+        ...artifact,
+        missingRootPolicy: "preserveParentVersion",
+      };
+    }
+    return artifact;
+  });
 }
 
 function resolveComposeArtifactMountPath(artifact: ComposeArtifact): string {
@@ -631,18 +662,47 @@ function artifactsForRun(args: {
   readonly resolved: ResolvedCompose;
   readonly framework: SupportedFramework;
   readonly bodyArtifacts: readonly ContextArtifact[] | undefined;
-}): readonly ContextArtifact[] {
-  const baseArtifacts =
-    args.resolved.sessionId || args.resolved.resumedFromCheckpointId
-      ? args.resolved.artifacts
-      : [
-          ...composeArtifacts(args.resolved.content),
-          ...args.resolved.artifacts,
-        ];
-  return withAutoMemoryArtifact(
-    [...baseArtifacts, ...(args.bodyArtifacts ?? [])],
-    args.framework,
+}): RunArtifacts {
+  const isContinuation =
+    Boolean(args.resolved.sessionId) ||
+    Boolean(args.resolved.resumedFromCheckpointId);
+  const composeContextArtifacts = isContinuation
+    ? []
+    : composeArtifacts(args.resolved.content);
+  const persistedArtifactStart = composeContextArtifacts.length;
+  const persistedArtifactEnd =
+    persistedArtifactStart + args.resolved.artifacts.length;
+  const baseArtifacts = isContinuation
+    ? args.resolved.artifacts
+    : [...composeContextArtifacts, ...args.resolved.artifacts];
+  const bodyArtifacts = args.bodyArtifacts ?? [];
+  const artifacts = [...baseArtifacts, ...bodyArtifacts];
+  const hasMemoryArtifact = artifacts.some((artifact) => {
+    return artifact.name === AUTO_MEMORY_ARTIFACT_NAME;
+  });
+  if (!hasMemoryArtifact) {
+    return {
+      artifacts: [...artifacts, autoMemoryArtifact(args.framework)],
+      autoMemoryPolicyArtifactIndex: artifacts.length,
+    };
+  }
+
+  const autoMemoryPolicyArtifactIndex = artifacts.findIndex(
+    (artifact, index) => {
+      return (
+        index >= persistedArtifactStart &&
+        index < persistedArtifactEnd &&
+        isAutoMemoryArtifact(artifact, args.framework)
+      );
+    },
   );
+  return {
+    artifacts,
+    autoMemoryPolicyArtifactIndex:
+      autoMemoryPolicyArtifactIndex >= 0
+        ? autoMemoryPolicyArtifactIndex
+        : undefined,
+  };
 }
 
 function runnerGroup(content: AgentComposeContent): string | null {
@@ -3119,6 +3179,7 @@ function buildRunnerJobPayload(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
+    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3166,7 +3227,10 @@ function buildRunnerJobPayload(
           agentOrgId: args.resolved.orgId,
           runtimeOrgId: args.orgId,
           userId: args.userId,
-          artifacts: args.artifacts,
+          artifacts: storageArtifactsForRun(
+            args.artifacts,
+            args.autoMemoryPolicyArtifactIndex,
+          ),
           volumeVersionOverrides: body.volumeVersions,
           additionalVolumes: args.additionalVolumes,
           framework: args.framework,
@@ -3227,6 +3291,7 @@ function dispatchRun(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
+    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3299,6 +3364,7 @@ function enqueueRunForConcurrency(
     readonly resolved: ResolvedCompose;
     readonly body: CreateRunBody;
     readonly artifacts: readonly ContextArtifact[];
+    readonly autoMemoryPolicyArtifactIndex: number | undefined;
     readonly framework: SupportedFramework;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
     readonly connectorContext: ConnectorRuntimeContext;
@@ -3407,6 +3473,7 @@ interface PreparedRunContext {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly artifacts: readonly ContextArtifact[];
+  readonly autoMemoryPolicyArtifactIndex: number | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -3710,7 +3777,7 @@ function prepareRunContext(
       const userTimezone = await loadUserTimezone(db, args);
       signal.throwIfAborted();
 
-      const artifacts = artifactsForRun({
+      const runArtifacts = artifactsForRun({
         resolved,
         framework,
         bodyArtifacts: body.artifacts,
@@ -3727,7 +3794,9 @@ function prepareRunContext(
         modelProvider,
         connectorContext,
         customConnectorContext,
-        artifacts,
+        artifacts: runArtifacts.artifacts,
+        autoMemoryPolicyArtifactIndex:
+          runArtifacts.autoMemoryPolicyArtifactIndex,
         additionalVolumes,
         userTimezone,
         featureSwitchContext,
@@ -3800,6 +3869,8 @@ function completeQueuedRun(input: {
             resolved: input.context.resolved,
             body: input.context.body,
             artifacts: input.context.artifacts,
+            autoMemoryPolicyArtifactIndex:
+              input.context.autoMemoryPolicyArtifactIndex,
             framework: input.context.framework,
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,
@@ -3845,6 +3916,8 @@ function completePendingRun(input: {
             resolved: input.context.resolved,
             body: input.context.body,
             artifacts: input.context.artifacts,
+            autoMemoryPolicyArtifactIndex:
+              input.context.autoMemoryPolicyArtifactIndex,
             framework: input.context.framework,
             modelProvider: input.context.modelProvider,
             connectorContext: input.context.connectorContext,

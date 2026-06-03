@@ -40,6 +40,8 @@ pub(crate) struct ManifestEntry {
     pub(crate) vas_storage_name: Option<String>,
     #[serde(default)]
     pub(crate) vas_version_id: Option<String>,
+    #[serde(default)]
+    pub(crate) missing_root_policy: Option<String>,
 }
 
 #[cfg(test)]
@@ -104,7 +106,8 @@ mod tests {
                 "archiveUrl": "https://s3/artifact.tar.gz",
                 "vasStorageName": "artifact",
                 "vasStorageId": "artifact-id",
-                "vasVersionId": "v2"
+                "vasVersionId": "v2",
+                "missingRootPolicy": "preserveParentVersion"
             }]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
@@ -120,5 +123,9 @@ mod tests {
             Some("artifact")
         );
         assert_eq!(manifest.artifacts[0].vas_version_id.as_deref(), Some("v2"));
+        assert_eq!(
+            manifest.artifacts[0].missing_root_policy.as_deref(),
+            Some("preserveParentVersion")
+        );
     }
 }

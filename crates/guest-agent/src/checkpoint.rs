@@ -15,6 +15,8 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
 
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
+
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 #[derive(Clone, Copy)]
@@ -74,6 +76,11 @@ fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) ->
 struct ArtifactSnapshotPlan<'a> {
     entry: &'a env::ArtifactEnv,
     files: Vec<artifact::FileEntry>,
+}
+
+enum ArtifactSnapshotWork<'a> {
+    Preserve(serde_json::Value),
+    Snapshot(ArtifactSnapshotPlan<'a>),
 }
 
 /// Prepare + upload the session history to S3 via a presigned URL. If the
@@ -179,7 +186,7 @@ async fn snapshot_artifact_entries(
         return Ok(None);
     }
 
-    let mut plans = Vec::with_capacity(entries.len());
+    let mut work = Vec::with_capacity(entries.len());
     for entry in entries {
         log_info!(
             LOG_TAG,
@@ -187,12 +194,51 @@ async fn snapshot_artifact_entries(
             entry.name,
             entry.mount_path
         );
-        let files = artifact::walk_files(&entry.mount_path).await?;
-        plans.push(ArtifactSnapshotPlan { entry, files });
+        let files = match artifact::walk_files_for_checkpoint(&entry.mount_path).await {
+            Ok(files) => files,
+            Err(error)
+                if entry.missing_root_policy
+                    == Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+                    && error.is_root_not_found() =>
+            {
+                let preserve_start = std::time::Instant::now();
+                let message = format!(
+                    "Preserving artifact '{}' parent version {} because mount root is missing at {}",
+                    entry.name, entry.version_id, entry.mount_path
+                );
+                log_warn!(LOG_TAG, "{message}");
+                record_sandbox_op(
+                    "artifact_snapshot_preserved_missing_root",
+                    preserve_start.elapsed(),
+                    true,
+                    Some(&message),
+                );
+                work.push(ArtifactSnapshotWork::Preserve(
+                    build_artifact_snapshot_entry(
+                        &entry.name,
+                        &entry.version_id,
+                        &entry.mount_path,
+                    ),
+                ));
+                continue;
+            }
+            Err(error) => return Err(error.into_agent_error()),
+        };
+        work.push(ArtifactSnapshotWork::Snapshot(ArtifactSnapshotPlan {
+            entry,
+            files,
+        }));
     }
 
-    let mut results = Vec::with_capacity(plans.len());
-    for ArtifactSnapshotPlan { entry, files } in plans {
+    let mut results = Vec::with_capacity(work.len());
+    for item in work {
+        let (entry, files) = match item {
+            ArtifactSnapshotWork::Preserve(entry) => {
+                results.push(entry);
+                continue;
+            }
+            ArtifactSnapshotWork::Snapshot(ArtifactSnapshotPlan { entry, files }) => (entry, files),
+        };
         // Skip the VAS round-trips when the mount is byte-identical to what
         // was originally mounted. `version_id` in VAS *is* the content hash
         // (same SHA-256 the web producer emits), so an equality check on the
@@ -553,6 +599,7 @@ mod tests {
             mount_path: missing_mount.to_string_lossy().into_owned(),
             storage_id: "storage-id".to_string(),
             version_id: "parent-version".to_string(),
+            missing_root_policy: None,
         }];
 
         let err = snapshot_artifact_entries(&http, &entries)
@@ -593,14 +640,93 @@ mod tests {
                 mount_path: valid_mount.to_string_lossy().into_owned(),
                 storage_id: "workspace-storage-id".to_string(),
                 version_id: "old-workspace-version".to_string(),
+                missing_root_policy: None,
             },
             env::ArtifactEnv {
                 name: "memory".to_string(),
                 mount_path: missing_mount.to_string_lossy().into_owned(),
                 storage_id: "memory-storage-id".to_string(),
                 version_id: "old-memory-version".to_string(),
+                missing_root_policy: None,
             },
         ];
+
+        let err = snapshot_artifact_entries(&http, &entries)
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("Failed to walk artifact files"),
+            "got: {err}"
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn artifact_snapshot_preserves_parent_version_for_policy_missing_root() {
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let missing_mount = dir.path().join("memory");
+        let entries = vec![env::ArtifactEnv {
+            name: "memory".to_string(),
+            mount_path: missing_mount.to_string_lossy().into_owned(),
+            storage_id: "memory-storage-id".to_string(),
+            version_id: "old-memory-version".to_string(),
+            missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+        }];
+
+        let snapshots = snapshot_artifact_entries(&http, &entries).await.unwrap();
+
+        assert_eq!(
+            snapshots,
+            Some(json!([{
+                "name": "memory",
+                "version": "old-memory-version",
+                "mountPath": missing_mount.to_string_lossy(),
+            }]))
+        );
+        prepare.assert_calls(0);
+        commit.assert_calls(0);
+    }
+
+    #[tokio::test]
+    async fn artifact_snapshot_policy_still_fails_on_non_not_found_root_error() {
+        let server = MockServer::start();
+        let prepare = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/prepare");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let commit = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/storages/commit");
+            then.status(200).json_body(json!({"unreachable": true}));
+        });
+        let http = HttpClient::with_api_config(server.base_url(), "test-token", "", Duration::ZERO)
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file_mount = dir.path().join("memory");
+        std::fs::write(&file_mount, "not a directory").unwrap();
+        let entries = vec![env::ArtifactEnv {
+            name: "memory".to_string(),
+            mount_path: file_mount.to_string_lossy().into_owned(),
+            storage_id: "memory-storage-id".to_string(),
+            version_id: "old-memory-version".to_string(),
+            missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+        }];
 
         let err = snapshot_artifact_entries(&http, &entries)
             .await
@@ -656,6 +782,7 @@ mod tests {
             mount_path: missing_mount.to_string_lossy().into_owned(),
             storage_id: "storage-id".to_string(),
             version_id: "parent-version".to_string(),
+            missing_root_policy: None,
         }];
 
         let err = create_checkpoint_impl_with_artifacts(&http, CheckpointMode::Success, &entries)

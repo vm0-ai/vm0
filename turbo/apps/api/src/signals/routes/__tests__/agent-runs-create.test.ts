@@ -1402,6 +1402,14 @@ describe("POST /api/agent/runs", () => {
         })
         .sort(),
     ).toStrictEqual(["artifact", "memory"]);
+    expect(
+      session?.artifacts.some((artifact) => {
+        return Object.prototype.hasOwnProperty.call(
+          artifact,
+          "missingRootPolicy",
+        );
+      }),
+    ).toBe(false);
 
     const [job] = await db
       .select({ executionContext: runnerJobQueue.executionContext })
@@ -1415,6 +1423,7 @@ describe("POST /api/agent/runs", () => {
           readonly vasStorageName: string;
           readonly archiveUrl: string;
           readonly manifestUrl?: string;
+          readonly missingRootPolicy?: "preserveParentVersion";
         }[];
       };
     };
@@ -1443,6 +1452,122 @@ describe("POST /api/agent/runs", () => {
         return artifact.archiveUrl && artifact.manifestUrl;
       }),
     ).toBeTruthy();
+    const memoryArtifact = executionContext.storageManifest.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "memory";
+      },
+    );
+    const requestedArtifact = executionContext.storageManifest.artifacts.find(
+      (artifact) => {
+        return artifact.vasStorageName === "artifact";
+      },
+    );
+    expect(memoryArtifact?.missingRootPolicy).toBe("preserveParentVersion");
+    expect(requestedArtifact?.missingRootPolicy).toBeUndefined();
+  });
+
+  it("keeps user-authored memory artifacts strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use user memory artifact",
+          artifacts: [{ name: "memory", mountPath: "/mnt/user-memory" }],
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, response.body.sessionId));
+    expect(session?.artifacts).toStrictEqual([
+      { name: "memory", mountPath: "/mnt/user-memory" },
+    ]);
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: "preserveParentVersion";
+        }[];
+      };
+    };
+
+    expect(
+      executionContext.storageManifest.artifacts.map((artifact) => {
+        return {
+          mountPath: artifact.mountPath,
+          name: artifact.vasStorageName,
+          missingRootPolicy: artifact.missingRootPolicy,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        mountPath: "/mnt/user-memory",
+        name: "memory",
+        missingRootPolicy: undefined,
+      },
+    ]);
+  });
+
+  it("keeps user-authored canonical memory artifacts strict", async () => {
+    const fx = await fixture();
+    const compose = await createCompose({ fixture: fx });
+
+    const response = await accept(
+      runsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          agentComposeId: compose.composeId,
+          prompt: "Use canonical user memory artifact",
+          artifacts: [
+            {
+              name: "memory",
+              mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+
+    const db = store.set(writeDb$);
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    expect(job).toBeDefined();
+    const executionContext = job!.executionContext as {
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly mountPath: string;
+          readonly vasStorageName: string;
+          readonly missingRootPolicy?: "preserveParentVersion";
+        }[];
+      };
+    };
+
+    expect(executionContext.storageManifest.artifacts).toHaveLength(1);
+    expect(executionContext.storageManifest.artifacts[0]).toMatchObject({
+      mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      vasStorageName: "memory",
+    });
+    expect(
+      executionContext.storageManifest.artifacts[0]?.missingRootPolicy,
+    ).toBeUndefined();
   });
 
   it("includes compose artifacts and volumes in the runner storage manifest", async () => {
@@ -1828,11 +1953,26 @@ describe("POST /api/agent/runs", () => {
     const executionContext = job!.executionContext as {
       readonly resumeSession: { readonly sessionId: string };
       readonly environment: Record<string, string>;
+      readonly storageManifest: {
+        readonly artifacts: readonly {
+          readonly vasStorageName: string;
+          readonly mountPath: string;
+          readonly missingRootPolicy?: "preserveParentVersion";
+        }[];
+      };
     };
     expect(executionContext.resumeSession.sessionId).toBe(
       `session-${first.body.runId}`,
     );
     expect(executionContext.environment.TEST_VAR).toBe("from-first-run");
+    expect(
+      executionContext.storageManifest.artifacts.find((artifact) => {
+        return (
+          artifact.vasStorageName === "memory" &&
+          artifact.mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH
+        );
+      })?.missingRootPolicy,
+    ).toBe("preserveParentVersion");
     expect(runContextSnapshot(continued.body.runId)).toMatchObject({
       runId: continued.body.runId,
       userId: fx.userId,

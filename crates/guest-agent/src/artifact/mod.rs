@@ -49,11 +49,40 @@ pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) parent_version_id: &'a str,
 }
 
-/// Walk `mount_path` in a blocking task and collect `FileEntry` records,
-/// recording the hash-compute op and emitting a "Found N files" log. Exposed
-/// so the checkpoint step can pre-walk once, decide whether to skip, and reuse
-/// the result for `create_snapshot` without a second walk.
-pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, AgentError> {
+#[derive(Debug)]
+pub(crate) enum WalkFilesError {
+    Execution(String),
+    Checkpoint {
+        message: String,
+        root_not_found: bool,
+    },
+}
+
+impl WalkFilesError {
+    pub(crate) fn is_root_not_found(&self) -> bool {
+        matches!(
+            self,
+            Self::Checkpoint {
+                root_not_found: true,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn into_agent_error(self) -> AgentError {
+        match self {
+            Self::Execution(message) => AgentError::Execution(message),
+            Self::Checkpoint { message, .. } => {
+                log_error!(LOG_TAG, "{message}");
+                AgentError::Checkpoint(message)
+            }
+        }
+    }
+}
+
+pub(crate) async fn walk_files_for_checkpoint(
+    mount_path: &str,
+) -> Result<Vec<FileEntry>, WalkFilesError> {
     log_info!(LOG_TAG, "Computing file hashes...");
     let hash_start = std::time::Instant::now();
     let mount = mount_path.to_string();
@@ -68,21 +97,24 @@ pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, Agent
                     false,
                     Some(&message),
                 );
-                return Err(AgentError::Execution(message));
+                return Err(WalkFilesError::Execution(message));
             }
         };
     let files = match files_result {
         Ok(files) => files,
         Err(e) => {
+            let root_not_found = e.is_root_not_found();
             let message = format!("Failed to walk artifact files: {e}");
-            log_error!(LOG_TAG, "{message}");
             record_sandbox_op(
                 "artifact_hash_compute",
                 hash_start.elapsed(),
                 false,
                 Some(&message),
             );
-            return Err(AgentError::Checkpoint(message));
+            return Err(WalkFilesError::Checkpoint {
+                message,
+                root_not_found,
+            });
         }
     };
     record_sandbox_op("artifact_hash_compute", hash_start.elapsed(), true, None);

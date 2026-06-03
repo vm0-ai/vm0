@@ -4,6 +4,12 @@
 
 pub mod runners {
     pub mod storage {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum ArtifactEntryMissingRootPolicy {
+            #[serde(rename = "preserveParentVersion")]
+            PreserveParentVersion,
+        }
+
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub struct ArtifactEntry {
@@ -14,6 +20,8 @@ pub mod runners {
             pub archive_url: String,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub manifest_url: Option<String>,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
         }
 
         #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -111,6 +111,10 @@ export const storageEntrySchema = z.object({
 /**
  * Artifact entry in manifest
  */
+export const artifactMissingRootPolicySchema = z.enum([
+  "preserveParentVersion",
+]);
+
 export const artifactEntrySchema = z.object({
   mountPath: z.string(),
   vasStorageName: z.string(),
@@ -118,6 +122,7 @@ export const artifactEntrySchema = z.object({
   vasVersionId: z.string(),
   archiveUrl: z.string(),
   manifestUrl: z.string().optional(),
+  missingRootPolicy: artifactMissingRootPolicySchema.optional(),
 });
 
 /**

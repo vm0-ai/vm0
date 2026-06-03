@@ -1141,6 +1141,7 @@ mod tests {
                 vas_storage_name: name.to_string(),
                 vas_storage_id: String::new(),
                 vas_version_id: version.to_string(),
+                missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
         };
@@ -1498,6 +1499,7 @@ mod tests {
                 vas_storage_name: String::new(),
                 vas_storage_id: String::new(),
                 vas_version_id: String::new(),
+                missing_root_policy: None,
             }],
             cleanup_paths: Vec::new(),
         };

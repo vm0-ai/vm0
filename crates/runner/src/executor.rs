@@ -36,6 +36,7 @@ use tracing::{info, warn};
 
 use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
 use crate::ids::RunId;
 
@@ -2141,8 +2142,11 @@ fn filter_unchanged_storages(
                            prev_ver: Option<&(String, String)>,
                            skipped: &mut usize,
                            cleanup: &mut Vec<String>| {
+        let preserve_missing_root =
+            a.missing_root_policy == Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion);
         let same = prev_ver.is_some_and(|fingerprint| {
-            !StorageFingerprints::fingerprint_is_tainted(fingerprint)
+            !preserve_missing_root
+                && !StorageFingerprints::fingerprint_is_tainted(fingerprint)
                 && fingerprint.0.as_str() == a.vas_storage_name.as_str()
                 && fingerprint.1.as_str() == a.vas_version_id.as_str()
         });
@@ -2514,12 +2518,18 @@ fn build_env_json_with_host_env(
             .artifacts
             .iter()
             .map(|a| {
-                serde_json::json!({
+                let mut entry = serde_json::json!({
                     "name": a.vas_storage_name,
                     "mountPath": a.mount_path,
                     "storageId": a.vas_storage_id,
                     "versionId": a.vas_version_id,
-                })
+                });
+                if let Some(policy) = a.missing_root_policy
+                    && let Some(object) = entry.as_object_mut()
+                {
+                    object.insert("missingRootPolicy".to_string(), serde_json::json!(policy));
+                }
+                entry
             })
             .collect();
         // Serialization cannot fail — payload is a Vec of String-only JSON
@@ -2744,7 +2754,7 @@ mod tests {
     };
     use crate::workspace_image_cache::WorkspaceCacheTerminalStatus;
     use api_contracts::generated::types::runners::storage::{
-        ArtifactEntry, StorageEntry, StorageManifest,
+        ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry, StorageManifest,
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
@@ -2841,6 +2851,7 @@ mod tests {
             vas_storage_id: storage_id.into(),
             vas_version_id: version.into(),
             manifest_url: None,
+            missing_root_policy: None,
         }
     }
 
@@ -3399,11 +3410,37 @@ mod tests {
         assert_eq!(parsed[0]["mountPath"], "/artifacts");
         assert_eq!(parsed[0]["storageId"], "sid-1");
         assert_eq!(parsed[0]["versionId"], "v1");
+        assert!(parsed[0].get("missingRootPolicy").is_none());
         // Legacy singleton env vars must no longer be emitted.
         assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
         assert!(!env.contains_key("VM0_ARTIFACT_MOUNT_PATH"));
         assert!(!env.contains_key("VM0_ARTIFACT_VOLUME_NAME"));
         assert!(!env.contains_key("VM0_ARTIFACT_VERSION_ID"));
+    }
+
+    #[test]
+    fn build_env_json_with_artifact_missing_root_policy() {
+        let mut ctx = minimal_context();
+        let mut artifact = api_artifact(
+            "memory",
+            "/home/user/.claude/projects/-home-user-workspace/memory",
+            "sid-memory",
+            "v1",
+            "https://example.com/memory.tar.gz",
+        );
+        artifact.missing_root_policy = Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion);
+        ctx.storage_manifest = Some(StorageManifest {
+            storages: vec![],
+            artifacts: vec![artifact],
+        });
+
+        let env = build_env_for_test(&ctx, "http://localhost");
+        let raw = env.get("VM0_ARTIFACTS").expect("VM0_ARTIFACTS must be set");
+        let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0]["name"], "memory");
+        assert_eq!(parsed[0]["missingRootPolicy"], "preserveParentVersion");
     }
 
     #[test]
@@ -4486,7 +4523,7 @@ mod tests {
         sandbox.push_exec_result(Ok(ExecResult::new(
             1,
             b"stdout clue".to_vec(),
-            b"[2026-05-20T18:03:00Z] [ERROR] [sandbox:guest-download] storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false download failed: Failed to read archive entries: invalid gzip header".to_vec(),
+            b"[2026-05-20T18:03:00Z] [ERROR] [sandbox:guest-download] storage 1 mountPath=/workspace vasStorageName=repo vasVersionId=v1 urlScheme=file cached=false missingRootPolicy=fail download failed: Failed to read archive entries: invalid gzip header".to_vec(),
         )));
         let ctx = minimal_context();
         let manifest = GuestDownloadManifest {
@@ -7018,6 +7055,15 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
+        guest_art_with_policy(name, ver, url, None)
+    }
+
+    fn guest_art_with_policy(
+        name: &str,
+        ver: &str,
+        url: Option<&str>,
+        missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
+    ) -> GuestDownloadArtifactEntry {
         GuestDownloadArtifactEntry {
             mount_path: "/workspace".into(),
             archive_url: url.map(str::to_string),
@@ -7025,6 +7071,7 @@ mod tests {
             vas_storage_name: name.into(),
             vas_storage_id: String::new(),
             vas_version_id: ver.into(),
+            missing_root_policy,
         }
     }
 
@@ -7162,6 +7209,7 @@ mod tests {
             vas_storage_name: "art-a".into(),
             vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
+            missing_root_policy: None,
         };
         let art_b = GuestDownloadArtifactEntry {
             mount_path: "/data".into(),
@@ -7170,6 +7218,7 @@ mod tests {
             vas_storage_name: "art-b".into(),
             vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
+            missing_root_policy: None,
         };
         let manifest = GuestDownloadManifest {
             storages: vec![],
@@ -7331,6 +7380,33 @@ mod tests {
     }
 
     #[test]
+    fn filter_preserve_missing_root_artifact_keeps_url_even_when_version_matches() {
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![guest_art_with_policy(
+                "memory",
+                "v1",
+                Some("https://s3/memory"),
+                Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+            )],
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifacts: art_fp("/workspace", "memory", "v1"),
+        };
+
+        let result = filter_unchanged_storages(&manifest, &prev);
+
+        assert_eq!(
+            result.artifacts[0].archive_url.as_deref(),
+            Some("https://s3/memory")
+        );
+        assert!(!result.artifacts[0].cached);
+        assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
+    }
+
+    #[test]
     fn filter_changed_storage_with_null_url_adds_cleanup_path() {
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage("/data", "vol-1", "v2", None)],
@@ -7388,6 +7464,7 @@ mod tests {
                 vas_storage_name: "artifact".into(),
                 vas_storage_id: String::new(),
                 vas_version_id: "v1".into(),
+                missing_root_policy: None,
             }],
             cleanup_paths: vec![],
         };

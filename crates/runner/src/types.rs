@@ -4,7 +4,9 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use api_contracts::generated::types::runners::storage::StorageManifest;
+use api_contracts::generated::types::runners::storage::{
+    ArtifactEntryMissingRootPolicy, StorageManifest,
+};
 
 use crate::ids::RunId;
 
@@ -222,6 +224,8 @@ pub struct GuestDownloadArtifactEntry {
     pub vas_storage_name: String,
     pub vas_storage_id: String,
     pub vas_version_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 }
 
 impl From<&StorageManifest> for GuestDownloadManifest {
@@ -249,6 +253,7 @@ impl From<&StorageManifest> for GuestDownloadManifest {
                     vas_storage_name: artifact.vas_storage_name.clone(),
                     vas_storage_id: artifact.vas_storage_id.clone(),
                     vas_version_id: artifact.vas_version_id.clone(),
+                    missing_root_policy: artifact.missing_root_policy,
                 })
                 .collect(),
             cleanup_paths: Vec::new(),
@@ -366,7 +371,9 @@ impl SandboxReuseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use api_contracts::generated::types::runners::storage::{ArtifactEntry, StorageEntry};
+    use api_contracts::generated::types::runners::storage::{
+        ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry,
+    };
     use serde_json::json;
 
     #[test]
@@ -764,6 +771,7 @@ mod tests {
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
                 manifest_url: Some("https://example.com/manifest.json".into()),
+                missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
             }],
         };
 
@@ -786,6 +794,10 @@ mod tests {
             guest_manifest.artifacts[0].archive_url.as_deref(),
             Some("https://example.com/artifact.tar.gz")
         );
+        assert_eq!(
+            guest_manifest.artifacts[0].missing_root_policy,
+            Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion)
+        );
     }
 
     #[test]
@@ -806,6 +818,7 @@ mod tests {
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
                 manifest_url: Some("https://example.com/manifest.json".into()),
+                missing_root_policy: None,
             }],
         };
 
@@ -816,6 +829,7 @@ mod tests {
         assert!(value["storages"][0].get("name").is_none());
         assert_eq!(value["artifacts"][0]["cached"], false);
         assert!(value["artifacts"][0].get("manifestUrl").is_none());
+        assert!(value["artifacts"][0].get("missingRootPolicy").is_none());
     }
 
     #[test]

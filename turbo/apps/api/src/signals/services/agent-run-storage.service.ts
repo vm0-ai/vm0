@@ -31,6 +31,7 @@ interface ContextArtifact {
   readonly name: string;
   readonly version?: string;
   readonly mountPath: string;
+  readonly missingRootPolicy?: ManifestArtifact["missingRootPolicy"];
 }
 
 interface AdditionalVolume {
@@ -718,6 +719,9 @@ function buildArtifactEntry(args: {
       vasVersionId: resolved.versionId,
       archiveUrl,
       manifestUrl,
+      ...(args.artifact.missingRootPolicy
+        ? { missingRootPolicy: args.artifact.missingRootPolicy }
+        : {}),
     };
   });
 }
