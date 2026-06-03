@@ -16,6 +16,16 @@ interface ApiTargetPolicyEntry {
 const API_ROUTE_TARGET_POLICY: readonly ApiTargetPolicyEntry[] = [
   {
     methods: ["GET"],
+    pathname: "/api/zero/me/model-providers",
+    target: "api",
+  },
+  {
+    methods: ["GET"],
+    pathname: "/api/zero/model-providers",
+    target: "api",
+  },
+  {
+    methods: ["GET"],
     pathname: "/api/zero/onboarding/status",
     target: "api",
   },

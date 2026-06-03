@@ -10,6 +10,8 @@ import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboardin
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -531,6 +533,57 @@ describe("zeroClient$ apiBackend routing", () => {
 
     const createClient = context.store.get(zeroClient$);
     const client = createClient(zeroSchedulesMainContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted personal model providers contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(
+        zeroPersonalModelProvidersMainContract.list,
+        ({ request, respond }) => {
+          requestHosts.push(new URL(request.url).host);
+          return respond(200, { modelProviders: [] });
+        },
+      ),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroPersonalModelProvidersMainContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted org model providers contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroModelProvidersMainContract.list, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { modelProviders: [] });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroModelProvidersMainContract);
     const result = await client.list();
 
     expect(result.status).toBe(200);
