@@ -864,7 +864,9 @@ impl SessionWorkspaceCache {
             if !is_cache_key_name(&cache_key) {
                 continue;
             }
-            inspection_entries.push(self.inspect_entry(cache_key, entry.path()).await?);
+            if let Some(entry) = self.inspect_entry(cache_key, entry.path()).await? {
+                inspection_entries.push(entry);
+            }
         }
         inspection_entries.sort_unstable_by(|left, right| left.cache_key.cmp(&right.cache_key));
         Ok(self.inspection_from_entries(fs_stats, budget, inspection_entries))
@@ -916,12 +918,11 @@ impl SessionWorkspaceCache {
         &self,
         cache_key: String,
         entry_dir: PathBuf,
-    ) -> RunnerResult<WorkspaceImageCacheInspectionEntry> {
-        let temporary = inspect_temporary_files(&entry_dir).await?;
+    ) -> RunnerResult<Option<WorkspaceImageCacheInspectionEntry>> {
         let lock = match crate::lock::try_acquire(self.entry_lock_path(&cache_key)).await {
             Ok(lock) => lock,
             Err(e) if crate::lock::is_lock_busy_error(&e) => {
-                return Ok(WorkspaceImageCacheInspectionEntry {
+                return Ok(Some(WorkspaceImageCacheInspectionEntry {
                     cache_key,
                     status: WorkspaceImageCacheInspectionStatus::Locked,
                     reason: Some("entry lock is held".into()),
@@ -933,14 +934,19 @@ impl SessionWorkspaceCache {
                     last_terminal_status: None,
                     allocated_bytes: 0,
                     logical_image_size_bytes: 0,
-                    temporary_file_count: temporary.file_count,
-                    temporary_allocated_bytes: temporary.allocated_bytes,
+                    temporary_file_count: 0,
+                    temporary_allocated_bytes: 0,
                     storage_count: 0,
                     artifact_count: 0,
-                });
+                }));
             }
             Err(e) => return Err(e),
         };
+        if !fs::try_exists(&entry_dir).await? {
+            drop(lock);
+            return Ok(None);
+        }
+        let temporary = inspect_temporary_files(&entry_dir).await?;
 
         let current = self.session_workspace_cache_current_image(&cache_key);
         let current_metadata = match fs::metadata(&current).await {
@@ -1011,7 +1017,7 @@ impl SessionWorkspaceCache {
             }
         };
         drop(lock);
-        Ok(entry)
+        Ok(Some(entry))
     }
 
     pub(crate) async fn gc(&self, dry_run: bool) -> RunnerResult<u64> {
@@ -3084,6 +3090,12 @@ mod tests {
         fs::create_dir_all(paths.session_workspace_cache_entry_dir(&key))
             .await
             .unwrap();
+        fs::write(
+            paths.session_workspace_cache_tmp_image(&key, RunId::new_v4()),
+            b"partial image",
+        )
+        .await
+        .unwrap();
         let _lock = crate::lock::acquire(cache.entry_lock_path(&key))
             .await
             .unwrap();
@@ -3091,9 +3103,11 @@ mod tests {
         let inspection = cache.inspect().await.unwrap();
 
         assert_eq!(inspection.summary.locked_entries, 1);
+        assert_eq!(inspection.summary.temporary_files, 0);
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Locked);
         assert_eq!(entry.reason.as_deref(), Some("entry lock is held"));
+        assert_eq!(entry.temporary_file_count, 0);
     }
 
     #[tokio::test]
@@ -3115,6 +3129,21 @@ mod tests {
             err.to_string().contains("create lock dir"),
             "unexpected error: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn inspect_entry_skips_directory_removed_after_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let key = session_workspace_cache_key("sess-1", "/workspace");
+        let entry_dir = paths.session_workspace_cache_entry_dir(&key);
+        fs::create_dir_all(&entry_dir).await.unwrap();
+        fs::remove_dir_all(&entry_dir).await.unwrap();
+
+        let entry = cache.inspect_entry(key, entry_dir).await.unwrap();
+
+        assert!(entry.is_none());
     }
 
     #[tokio::test]
