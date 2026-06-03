@@ -21,6 +21,7 @@ from collections.abc import Callable
 from mitmproxy import http
 
 import body_utils
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import usage
 from logging_utils import log_proxy_entry
@@ -93,7 +94,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
     if not flow.response:
         return None
 
-    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     is_model_provider = firewall_name.startswith("model-provider:")
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())

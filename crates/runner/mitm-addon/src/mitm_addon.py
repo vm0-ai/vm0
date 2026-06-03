@@ -34,6 +34,7 @@ from mitmproxy.addonmanager import Loader
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
@@ -709,7 +710,7 @@ def response(flow: http.HTTPFlow) -> None:
         and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
     ):
-        firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+        firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
         if firewall_name.startswith("model-provider:") and flow.metadata.get(
             metadata_keys.FIREWALL_BILLABLE, False
         ):

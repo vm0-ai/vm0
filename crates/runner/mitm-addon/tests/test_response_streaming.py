@@ -530,6 +530,25 @@ class TestResponseHeadersSseParser:
 
         assert "model_provider_usage" not in flow.metadata
 
+    @pytest.mark.parametrize("firewall_name", [None, 42])
+    def test_malformed_firewall_name_skips_usage_parsers(self, real_flow, firewall_name):
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+        flow.metadata["firewall_name"] = firewall_name
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/search/stream"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "model_provider_usage" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
+        assert "connector_response_finish" not in flow.metadata
+        assert "x_ndjson_state" not in flow.metadata
+
 
 class TestReleaseResponseStreamState:
     """Tests for direct response streaming cleanup."""

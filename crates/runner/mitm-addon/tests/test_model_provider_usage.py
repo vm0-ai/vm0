@@ -3,6 +3,8 @@
 import json
 import uuid
 
+import pytest
+
 import usage
 
 
@@ -157,6 +159,24 @@ class TestReportModelProviderUsage:
             usage.flush_usage_events(trigger="test")
             usage.webhook.usage_executor.shutdown(wait=True)
 
+        assert webhook.request_count == 0
+
+    @pytest.mark.parametrize("firewall_name", [None, 42])
+    def test_skips_malformed_firewall_name(
+        self, real_flow, fresh_usage_executor, usage_webhook_api, firewall_name
+    ):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = firewall_name
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
+
+        with usage_webhook_api() as webhook:
+            accepted = usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert accepted is False
         assert webhook.request_count == 0
 
     def test_skips_when_no_model_provider_usage(

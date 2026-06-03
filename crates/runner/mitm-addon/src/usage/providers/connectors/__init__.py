@@ -18,6 +18,7 @@ from collections.abc import Callable
 
 from mitmproxy import http
 
+import flow_metadata
 import flow_metadata_keys as metadata_keys
 from logging_utils import log_proxy_entry
 
@@ -71,7 +72,7 @@ def report_connector_usage(flow: http.HTTPFlow, run_id: str) -> None:
         return
     if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
         return
-    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     if firewall_name.startswith("model-provider:"):
         return
     handler = _HANDLERS.get(firewall_name)
@@ -100,7 +101,7 @@ def create_connector_response_parser(flow: http.HTTPFlow) -> ConnectorResponsePa
     """
     if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
         return None
-    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     factory = _RESPONSE_PARSER_FACTORIES.get(firewall_name)
     if factory is None:
         return None

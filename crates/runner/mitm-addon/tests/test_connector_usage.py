@@ -1512,6 +1512,22 @@ class TestReportConnectorUsage:
         if proxy_log.exists():
             assert "no registered handler" not in proxy_log.read_text()
 
+    @pytest.mark.parametrize("firewall_name", [None, 42])
+    def test_skips_malformed_firewall_name_without_warning(
+        self, tmp_path, real_flow, firewall_name
+    ):
+        body = json.dumps({"data": {"id": "1", "text": "hi"}}).encode()
+        flow = self._make_x_flow(
+            real_flow, tmp_path, path="/2/tweets/1", body=body, rule="GET /2/tweets/{id}"
+        )
+        flow.metadata["firewall_name"] = firewall_name
+
+        assert self._call_and_get_billing(flow) == []
+
+        proxy_log = tmp_path / "proxy.jsonl"
+        if proxy_log.exists():
+            assert "no registered handler" not in proxy_log.read_text()
+
     def test_skips_for_non_x_billable_firewall(self, tmp_path, real_flow):
         """Billable non-x connectors (hypothetical future additions to
         BILLABLE_CONNECTORS) must NOT reach the X parser.  The dispatcher

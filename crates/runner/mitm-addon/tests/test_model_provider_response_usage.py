@@ -1048,6 +1048,23 @@ class TestModelProviderResponseUsage:
         assert "model_provider_usage" not in flow.metadata
         assert not proxy_log_path.exists()
 
+    @pytest.mark.parametrize("firewall_name", [None, 42])
+    def test_json_fallback_skips_malformed_firewall_name(self, tmp_path, real_flow, firewall_name):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        self._set_common_model_metadata(flow, tmp_path)
+        flow.metadata["original_url"] = ANTHROPIC_JSON_CASE.original_url
+        flow.metadata["firewall_name"] = firewall_name
+        body = _standard_success_payload(ANTHROPIC_JSON_CASE)
+        set_stream_buffer(flow, body)
+        flow.response = tutils.tresp(
+            status_code=200, headers=header_map({"content-type": "application/json"})
+        )
+
+        webhook = self._run_response(flow)
+
+        assert webhook.request_count == 0
+        assert "model_provider_usage" not in flow.metadata
+
 
 class TestModelProviderResponseUsageWebhookDelivery:
     """Tests for real background executor webhook delivery."""
