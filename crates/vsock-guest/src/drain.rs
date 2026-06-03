@@ -274,6 +274,8 @@ mod tests {
         };
 
         assert_eq!(output, b"hello".to_vec());
+        // A concurrent fork can briefly inherit this pipe, so assert local fd
+        // ownership directly instead of requiring the writer to see EPIPE.
         assert_fd_open(
             writer_fd,
             "writer fd should remain open after drain cancellation",
