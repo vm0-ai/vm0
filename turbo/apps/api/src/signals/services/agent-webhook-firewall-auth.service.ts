@@ -320,6 +320,11 @@ interface RefreshStateRow {
   readonly updatedAtMicros: bigint | number | string;
 }
 
+interface ValidatedRefreshOutput {
+  readonly secretName: string;
+  readonly value: string;
+}
+
 type PreparedRefreshTokenContext =
   | ConnectorPreparedRefreshTokenContext
   | {
@@ -1592,22 +1597,11 @@ async function loadRefreshState(
 async function markRefreshSuccess(
   args: RefreshAccessTokenArgs,
   context: RefreshTokenContext,
-  result: {
-    readonly outputs: Readonly<Record<string, string | undefined>>;
-    readonly expiresIn?: number;
-  },
+  outputs: readonly ValidatedRefreshOutput[],
+  expiresIn: number | undefined,
 ): Promise<Record<string, string>> {
   const returnedSecretValues = new Map<string, string>();
-  for (const [outputName, value] of Object.entries(result.outputs)) {
-    if (value === undefined) {
-      continue;
-    }
-    const secretName = context.outputSecrets[outputName];
-    if (!secretName) {
-      throw new Error(
-        `${args.connectorType} token refresh returned undeclared output ${outputName}`,
-      );
-    }
+  for (const { secretName, value } of outputs) {
     await upsertSecretValue(args.db, {
       orgId: args.orgId,
       userId: context.secretUserId,
@@ -1619,17 +1613,9 @@ async function markRefreshSuccess(
     returnedSecretValues.set(secretName, value);
   }
 
-  for (const secretName of requiredRuntimeOutputSecretNames(context)) {
-    if (!returnedSecretValues.has(secretName)) {
-      throw new Error(
-        `${args.connectorType} token refresh did not return required output for ${secretName}`,
-      );
-    }
-  }
-
   const expiresAt = new Date(
     nowDate().getTime() +
-      (result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
+      (expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
   );
   if (args.sourceType === "model-provider") {
     await args.db
@@ -1850,6 +1836,49 @@ function runtimeSecretsFromRefreshResult(args: {
   return refreshedSecrets;
 }
 
+function validateRefreshResultOutputs(args: {
+  readonly connectorType: string;
+  readonly context: RefreshTokenContext;
+  readonly result: {
+    readonly outputs: Readonly<Record<string, string | undefined>>;
+  };
+}):
+  | {
+      readonly ok: true;
+      readonly outputs: readonly ValidatedRefreshOutput[];
+    }
+  | {
+      readonly ok: false;
+      readonly message: string;
+    } {
+  const returnedSecretValues = new Set<string>();
+  const outputs: ValidatedRefreshOutput[] = [];
+  for (const [outputName, value] of Object.entries(args.result.outputs)) {
+    if (value === undefined) {
+      continue;
+    }
+    const secretName = args.context.outputSecrets[outputName];
+    if (!secretName) {
+      return {
+        ok: false,
+        message: `${args.connectorType} token refresh returned undeclared output ${outputName}`,
+      };
+    }
+    returnedSecretValues.add(secretName);
+    outputs.push({ secretName, value });
+  }
+
+  for (const secretName of requiredRuntimeOutputSecretNames(args.context)) {
+    if (!returnedSecretValues.has(secretName)) {
+      return {
+        ok: false,
+        message: `${args.connectorType} token refresh did not return required output for ${secretName}`,
+      };
+    }
+  }
+  return { ok: true, outputs };
+}
+
 async function refreshLockedAccessToken(args: {
   readonly refreshArgs: RefreshAccessTokenArgs;
   readonly prepared: PreparedRefreshTokenContext;
@@ -1933,10 +1962,32 @@ async function refreshLockedAccessToken(args: {
     );
   }
 
+  const outputValidation = validateRefreshResultOutputs({
+    connectorType: args.refreshArgs.connectorType,
+    context: args.prepared.context,
+    result: refreshResult.value,
+  });
+  if (!outputValidation.ok) {
+    L.warn(outputValidation.message, {
+      connectorType: args.refreshArgs.connectorType,
+      orgId: args.refreshArgs.orgId,
+      userId: args.refreshArgs.userId,
+      sourceType: args.refreshArgs.sourceType,
+    });
+    await markRefreshFailure(
+      args.refreshArgs,
+      args.prepared.context,
+      null,
+      "upstream_provider",
+    );
+    return refreshFailedResult("upstream_provider");
+  }
+
   const returnedSecretValues = await markRefreshSuccess(
     args.refreshArgs,
     args.prepared.context,
-    refreshResult.value,
+    outputValidation.outputs,
+    refreshResult.value.expiresIn,
   );
   const refreshedSecrets = runtimeSecretsFromRefreshResult({
     connectorType: args.refreshArgs.connectorType,
