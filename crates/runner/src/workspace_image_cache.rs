@@ -966,6 +966,11 @@ impl SessionWorkspaceCache {
                 return Err(e);
             }
         };
+        let current_allocated_bytes = match current_metadata.as_ref() {
+            Some(metadata) if metadata.is_dir() => directory_tree_allocated_bytes(&current).await,
+            Some(metadata) => allocated_bytes(metadata),
+            None => 0,
+        };
 
         let entry = match (current_metadata, metadata) {
             (None, metadata) => {
@@ -985,6 +990,7 @@ impl SessionWorkspaceCache {
                     Some(reason.into()),
                     metadata.as_ref(),
                     None,
+                    0,
                     temporary,
                 )
             }
@@ -994,6 +1000,7 @@ impl SessionWorkspaceCache {
                 Some("missing or invalid metadata".into()),
                 None,
                 Some(&current_metadata),
+                current_allocated_bytes,
                 temporary,
             ),
             (Some(current_metadata), Some(metadata)) => {
@@ -1011,6 +1018,7 @@ impl SessionWorkspaceCache {
                     reason,
                     Some(&metadata),
                     Some(&current_metadata),
+                    current_allocated_bytes,
                     temporary,
                 )
             }
@@ -1216,6 +1224,9 @@ impl SessionWorkspaceCache {
         }
         if !is_safe_guest_working_dir(&metadata.working_dir) {
             return Some("unsafe working dir");
+        }
+        if !current_metadata.is_file() {
+            return Some("current image is not a file");
         }
         if !self.metadata_matches_cache_key(cache_key, metadata) {
             return Some("cache key mismatch");
@@ -1750,9 +1761,9 @@ fn workspace_image_cache_inspection_entry(
     reason: Option<String>,
     metadata: Option<&WorkspaceCacheMetadata>,
     current_metadata: Option<&std::fs::Metadata>,
+    current_allocated_bytes: u64,
     temporary: TemporaryFileStats,
 ) -> WorkspaceImageCacheInspectionEntry {
-    let allocated_bytes = current_metadata.map(allocated_bytes).unwrap_or(0);
     let logical_image_size_bytes = current_metadata.map(std::fs::Metadata::len).unwrap_or(0);
     WorkspaceImageCacheInspectionEntry {
         cache_key,
@@ -1764,7 +1775,7 @@ fn workspace_image_cache_inspection_entry(
         last_completed_at: metadata.map(|metadata| metadata.last_completed_at.clone()),
         last_used_at: metadata.map(|metadata| metadata.last_used_at.clone()),
         last_terminal_status: metadata.map(|metadata| metadata.last_terminal_status),
-        allocated_bytes,
+        allocated_bytes: current_allocated_bytes,
         logical_image_size_bytes,
         temporary_file_count: temporary.file_count,
         temporary_allocated_bytes: temporary.allocated_bytes,
@@ -1802,7 +1813,7 @@ async fn inspect_temporary_files(entry_dir: &Path) -> RunnerResult<TemporaryFile
         if !is_workspace_tmp_file_name(file_name) {
             continue;
         }
-        let metadata = match fs::metadata(file.path()).await {
+        let metadata = match fs::symlink_metadata(file.path()).await {
             Ok(metadata) => metadata,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => return Err(e.into()),
@@ -3077,9 +3088,65 @@ mod tests {
         assert_eq!(inspection.summary.invalid_entries, 1);
         let entry = &inspection.entries[0];
         assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
-        assert_eq!(
-            entry.reason.as_deref(),
-            Some("current image identity mismatch")
+        assert_eq!(entry.reason.as_deref(), Some("current image is not a file"));
+    }
+
+    #[tokio::test]
+    async fn inspect_reports_current_directory_as_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let session_id = "sess-1";
+        let working_dir = "/workspace";
+        let probe = dir.path().join("current-probe");
+        tokio::fs::create_dir_all(&probe).await.unwrap();
+        let image_size_bytes = fs::metadata(&probe).await.unwrap().len();
+        tokio::fs::remove_dir_all(&probe).await.unwrap();
+        let key =
+            cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, working_dir, image_size_bytes);
+        let current = paths.session_workspace_cache_current_image(&key);
+        fs::create_dir_all(&current).await.unwrap();
+        fs::write(current.join("nested"), vec![1_u8; 4096])
+            .await
+            .unwrap();
+        let current_metadata = fs::symlink_metadata(&current).await.unwrap();
+        cache
+            .write_metadata(
+                &key,
+                run_id,
+                WorkspaceCacheMetadata {
+                    format_version: CACHE_FORMAT_VERSION,
+                    key_version: CACHE_KEY_VERSION,
+                    cache_scope: String::new(),
+                    profile_name: TEST_PROFILE_NAME.into(),
+                    session_id: session_id.into(),
+                    working_dir: working_dir.into(),
+                    last_completed_at: "2026-05-01T00:00:00.000Z".into(),
+                    last_used_at: "2026-05-01T00:01:00.000Z".into(),
+                    last_terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    workspace_trust: WorkspaceTrust::Clean,
+                    logical_image_size_bytes: current_metadata.len(),
+                    allocated_bytes: allocated_bytes(&current_metadata),
+                    current_image: WorkspaceImageFileIdentity::from_metadata(&current_metadata),
+                    drive_layout: WORKSPACE_DRIVE_LAYOUT.into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    state: WorkspaceCacheState::Current,
+                },
+            )
+            .await
+            .unwrap();
+
+        let inspection = cache.inspect().await.unwrap();
+
+        assert_eq!(inspection.summary.invalid_entries, 1);
+        let entry = &inspection.entries[0];
+        assert_eq!(entry.status, WorkspaceImageCacheInspectionStatus::Invalid);
+        assert_eq!(entry.reason.as_deref(), Some("current image is not a file"));
+        assert!(
+            entry.allocated_bytes > allocated_bytes(&current_metadata),
+            "inspection should count nested bytes for directory-shaped current images",
         );
     }
 
