@@ -15,7 +15,8 @@ import { agentRuns } from "./agent-run";
  *
  * This table is intentionally separate from `usage_event`, which is the
  * billing ledger. Built-in model usage can write both tables; BYOK model usage
- * writes observations only.
+ * writes observations only. The model stats aggregation cron prunes observations
+ * older than the maximum stats reprocessing window.
  */
 export const modelUsageObservation = pgTable(
   "model_usage_observation",

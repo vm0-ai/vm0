@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import {
@@ -254,6 +254,15 @@ async function replaceModelStats(
   return result.rowCount ?? 0;
 }
 
+async function deleteExpiredModelUsageObservations(
+  db: Db,
+  retentionStart: Date,
+): Promise<void> {
+  await db
+    .delete(modelUsageObservation)
+    .where(lt(modelUsageObservation.observedAt, retentionStart));
+}
+
 async function selectModelRankings(
   db: Db,
   period: ModelRankingPeriod,
@@ -332,9 +341,14 @@ export const aggregateModelStats$ = command(
     const db = set(writeDb$);
     const windowEnd = utcHourStart(nowDate());
     const windowStart = new Date(windowEnd.getTime() - hours * HOUR_MS);
+    const retentionStart = new Date(
+      windowEnd.getTime() - MAX_MODEL_STATS_REPROCESS_HOURS * HOUR_MS,
+    );
 
     signal.throwIfAborted();
     const aggregated = await replaceModelStats(db, windowStart, windowEnd);
+    signal.throwIfAborted();
+    await deleteExpiredModelUsageObservations(db, retentionStart);
     signal.throwIfAborted();
 
     return {

@@ -57,6 +57,14 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     const createdAt = new Date(expectedHourStart.getTime() + 10 * 60_000);
     mockNow(new Date(expectedWindowEnd.getTime() + 30 * 60_000));
     const outputEventId = randomUUID();
+    const expiredObservationId = randomUUID();
+    const retainedObservationId = randomUUID();
+    const expiredObservedAt = new Date(
+      expectedWindowEnd.getTime() - 33 * 24 * HOUR_MS,
+    );
+    const retainedObservedAt = new Date(
+      expectedWindowEnd.getTime() - 31 * 24 * HOUR_MS,
+    );
 
     await db.insert(modelUsageObservation).values([
       {
@@ -99,6 +107,26 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         quantity: 300_000,
         observedAt: createdAt,
       },
+      {
+        idempotencyKey: expiredObservationId,
+        orgId,
+        userId,
+        model,
+        modelProviderType: "vm0",
+        category: "tokens.input",
+        quantity: 1,
+        observedAt: expiredObservedAt,
+      },
+      {
+        idempotencyKey: retainedObservationId,
+        orgId,
+        userId,
+        model,
+        modelProviderType: "vm0",
+        category: "tokens.input",
+        quantity: 1,
+        observedAt: retainedObservedAt,
+      },
     ]);
 
     const response = await accept(
@@ -110,6 +138,18 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
 
     expect(response.body.windowStart).toBe(expectedWindowStart.toISOString());
     expect(response.body.windowEnd).toBe(expectedWindowEnd.toISOString());
+    await expect(
+      db
+        .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
+        .from(modelUsageObservation)
+        .where(eq(modelUsageObservation.idempotencyKey, expiredObservationId)),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      db
+        .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
+        .from(modelUsageObservation)
+        .where(eq(modelUsageObservation.idempotencyKey, retainedObservationId)),
+    ).resolves.toStrictEqual([{ idempotencyKey: retainedObservationId }]);
 
     const [row] = await db
       .select()
