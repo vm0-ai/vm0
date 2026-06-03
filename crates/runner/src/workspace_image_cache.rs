@@ -1492,7 +1492,7 @@ impl WorkspaceImageLease {
 
         match self.result {
             WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
-                self.cache_key.is_some() && self.entry_lock.is_some() && self.session_id.is_some()
+                self.cache_key.is_some() && self.session_id.is_some()
             }
             WorkspaceCacheCheckoutResult::NoSession => {
                 self.session_id.is_none() && session_id_override.is_some()
@@ -1634,7 +1634,6 @@ impl WorkspaceImageLease {
 
         let cache_key = match self.result {
             WorkspaceCacheCheckoutResult::Hit | WorkspaceCacheCheckoutResult::Miss => {
-                self.entry_lock.as_ref()?;
                 self.cache_key.clone()?
             }
             WorkspaceCacheCheckoutResult::NoSession => self.cache.scoped_cache_key(
@@ -1694,10 +1693,22 @@ impl WorkspaceImagePromotionContext {
             }
         };
 
-        let _late_entry_lock_guard = if self.entry_lock.is_some() {
-            None
-        } else {
-            Some(crate::lock::acquire(self.cache.entry_lock_path(&self.cache_key)).await?)
+        let _late_entry_lock_guard = match self.entry_lock.as_ref() {
+            Some(_) => None,
+            None => {
+                match crate::lock::try_acquire(self.cache.entry_lock_path(&self.cache_key)).await {
+                    Ok(lock) => Some(lock),
+                    Err(e) => {
+                        info!(
+                            run_id = %self.run_id,
+                            cache_key = self.cache_key,
+                            error = %e,
+                            "workspace image cache promotion skipped: late entry lock unavailable"
+                        );
+                        return Ok(false);
+                    }
+                }
+            }
         };
 
         self.cache
@@ -1724,10 +1735,21 @@ impl WorkspaceImagePromotionContext {
             run_id,
             ..
         } = self;
-        let _late_entry_lock_guard = if entry_lock.is_some() {
-            None
-        } else {
-            Some(crate::lock::acquire(cache.entry_lock_path(&cache_key)).await?)
+        let _late_entry_lock_guard = match entry_lock.as_ref() {
+            Some(_) => None,
+            None => match crate::lock::try_acquire(cache.entry_lock_path(&cache_key)).await {
+                Ok(lock) => Some(lock),
+                Err(e) => {
+                    info!(
+                        run_id = %run_id,
+                        cache_key,
+                        reason,
+                        error = %e,
+                        "workspace image cache baseline invalidation skipped: late entry lock unavailable"
+                    );
+                    return Ok(false);
+                }
+            },
         };
         let current = cache.session_workspace_cache_current_image(&cache_key);
         cache
@@ -4054,5 +4076,119 @@ mod tests {
         assert_eq!(metadata.session_id, "sess-1");
         assert_eq!(metadata.working_dir, "/workspace");
         assert_eq!(metadata.logical_image_size_bytes, 5);
+    }
+
+    #[tokio::test]
+    async fn late_session_promotion_skips_when_entry_lock_is_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-late-lock-busy";
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), b"image")
+            .await
+            .unwrap();
+        let promotion = lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-05-01T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+                promotable: true,
+            })
+            .unwrap();
+        let cache_key = session_workspace_cache_key(session_id, "/workspace");
+        let _held_lock = crate::lock::acquire(cache.entry_lock_path(&cache_key))
+            .await
+            .unwrap();
+
+        let promoted = tokio::time::timeout(std::time::Duration::from_secs(1), promotion.promote())
+            .await
+            .expect("late-session promotion must not block behind another runner's lock")
+            .unwrap();
+
+        assert!(!promoted);
+        assert!(
+            !paths
+                .session_workspace_cache_current_image(&cache_key)
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    async fn no_lock_promotion_context_survives_reuse_active_lease() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths);
+        let run_id = RunId::new_v4();
+        let sandbox_id = sandbox::SandboxId::new_v4();
+        let session_id = "sess-reused-late-context";
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                session_id: None,
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+                workspace_drive_required: false,
+            })
+            .await;
+        let promotion = lease
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-05-01T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+                promotable: true,
+            })
+            .unwrap();
+
+        let active_lease = promotion.into_active_lease(WorkspaceImageActiveLeaseRequest {
+            run_id: RunId::new_v4(),
+            sandbox_id,
+            profile_name: TEST_PROFILE_NAME,
+            session_id: Some(session_id),
+            working_dir: "/workspace",
+            image_size_bytes: 5,
+            workspace_drive_available: true,
+        });
+
+        assert!(active_lease.can_attempt_promotion(Some(session_id)));
+        assert!(
+            active_lease
+                .into_promotion_context(WorkspaceImagePromotionRequest {
+                    run_id: RunId::new_v4(),
+                    sandbox_id,
+                    session_id_override: Some(session_id),
+                    terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    completed_at: "2026-05-01T00:00:01.000Z".into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    promotable: true,
+                })
+                .is_some(),
+            "reusing an idle sandbox created before the CLI reported a session id must not lose the future cache promotion"
+        );
     }
 }
