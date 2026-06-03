@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.406.0](https://github.com/vm0-ai/vm0/compare/app-v0.405.0...app-v0.406.0) (2026-06-03)
+
+
+### Features
+
+* route platform model-provider config reads to api backend ([#16004](https://github.com/vm0-ai/vm0/issues/16004)) ([83290dd](https://github.com/vm0-ai/vm0/commit/83290dd7e699fde9a29b77f97895eca228155293))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.58.0
+    * @vm0/core bumped to 8.309.2
+
 ## [0.405.0](https://github.com/vm0-ai/vm0/compare/app-v0.404.0...app-v0.405.0) (2026-06-03)
 
 

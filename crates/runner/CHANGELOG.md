@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.107.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.6...runner-rs-v0.107.7) (2026-06-03)
+
+
+### Bug Fixes
+
+* count final x ndjson stream line ([#16000](https://github.com/vm0-ai/vm0/issues/16000)) ([71c9bab](https://github.com/vm0-ai/vm0/commit/71c9bab4c6654e0133363645204236ce375f681a))
+* **mitm-addon:** sanitize proxy log url fields ([#16002](https://github.com/vm0-ai/vm0/issues/16002)) ([fb046d4](https://github.com/vm0-ai/vm0/commit/fb046d436ec69dfeae9f82107433c6cb18229237))
+
 ## [0.107.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.107.5...runner-rs-v0.107.6) (2026-06-03)
 
 

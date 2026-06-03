@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.409.0](https://github.com/vm0-ai/vm0/compare/web-v12.408.5...web-v12.409.0) (2026-06-03)
+
+
+### Features
+
+* **api:** add memory activity read endpoint ([#15998](https://github.com/vm0-ai/vm0/issues/15998)) ([0f98a9c](https://github.com/vm0-ai/vm0/commit/0f98a9c6f413343b56fb45e03801ff34e6773baf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.58.0
+    * @vm0/core bumped to 8.309.2
+
 ## [12.408.5](https://github.com/vm0-ai/vm0/compare/web-v12.408.4...web-v12.408.5) (2026-06-03)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.97.0](https://github.com/vm0-ai/vm0/compare/api-v1.96.1...api-v1.97.0) (2026-06-03)
+
+
+### Features
+
+* **api:** add memory activity read endpoint ([#15998](https://github.com/vm0-ai/vm0/issues/15998)) ([0f98a9c](https://github.com/vm0-ai/vm0/commit/0f98a9c6f413343b56fb45e03801ff34e6773baf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.58.0
+    * @vm0/core bumped to 8.309.2
+    * @vm0/db bumped to 1.28.0
+
 ## [1.96.1](https://github.com/vm0-ai/vm0/compare/api-v1.96.0...api-v1.96.1) (2026-06-03)
 
 
