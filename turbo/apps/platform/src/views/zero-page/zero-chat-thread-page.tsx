@@ -3611,6 +3611,9 @@ function permissionActionStatusText(
   if (state.existingRequestStatus === "pending" || state.submitDone) {
     return { label: "Request sent", className: "text-green-600" };
   }
+  if (state.existingRequestStatus === "rejected") {
+    return { label: "Request denied", className: "text-destructive" };
+  }
   return null;
 }
 

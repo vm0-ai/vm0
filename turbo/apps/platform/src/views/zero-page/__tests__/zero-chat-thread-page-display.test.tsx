@@ -473,6 +473,67 @@ describe("zero chat thread page display - permission action card", () => {
     expect(createCalled).toBeFalsy();
   });
 
+  it("shows denied existing permission requests as text", async () => {
+    let createCalled = false;
+
+    setMockOrg({ role: "member" });
+    setMockPermissionRequests([
+      pendingPermissionRequest({
+        status: "rejected",
+        resolvedBy: "other-owner-id",
+        resolvedAt: "2026-03-10T00:01:00Z",
+      }),
+    ]);
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content:
+            "https://app.vm0.ai/agents/4f189ea8-ada2-416d-83a9-9c25ddb960c9/permissions?ref=vercel&permission=projects%3Awrite&action=allow",
+          runId: "run-rejected-permission-request",
+          status: "completed",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          agentId: "4f189ea8-ada2-416d-83a9-9c25ddb960c9",
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          permissionPolicies: {
+            vercel: { policies: { "projects:write": "deny" } },
+          },
+          customSkills: [],
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
+        });
+      }),
+      mockApi(permissionAccessRequestsCreateContract.create, ({ respond }) => {
+        createCalled = true;
+        return respond(201, pendingPermissionRequest());
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const card = await waitFor(() => {
+      return screen.getByTestId("permission-action-card");
+    });
+    await waitFor(() => {
+      expect(within(card).getByText("Request denied")).toBeInTheDocument();
+    });
+    expect(
+      within(card).getByText("Request denied").closest("button"),
+    ).toBeNull();
+    expect(createCalled).toBeFalsy();
+  });
+
   it("refreshes a requested permission action when the Ably signal arrives", async () => {
     let requestBody: unknown;
     let agentPolicies: Record<
