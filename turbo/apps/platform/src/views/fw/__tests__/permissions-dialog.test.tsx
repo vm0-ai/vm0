@@ -161,6 +161,15 @@ function getPolicyButton(row: HTMLElement, label: string): HTMLElement {
   return button;
 }
 
+function getUnknownEndpointsRow(): HTMLElement {
+  const label = screen.getByText("Other endpoints");
+  const row = label.closest(".flex.items-center.justify-between");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("Unknown endpoints row not found");
+  }
+  return row;
+}
+
 describe("permissions dialog - flat list connector (Notion)", () => {
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
     mockAPIs({ connectorType: "notion" });
@@ -327,6 +336,26 @@ describe("permissions dialog - grouped connector (Slack)", () => {
         screen.queryByRole("heading", { name: /Slack permissions/i }),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("enables Apply only when permission policies changed", async () => {
+    mockAPIs({ connectorType: "slack" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("Slack");
+
+    const applyButton = screen.getByText("Apply");
+    expect(applyButton).toBeDisabled();
+
+    click(screen.getByText(/Read \(\d+\)/i));
+    const channelsReadRow = getPermissionRow("channels:read");
+    click(getPolicyButton(channelsReadRow, "Deny"));
+    expect(applyButton).toBeEnabled();
+
+    click(getPolicyButton(channelsReadRow, "Allow"));
+    expect(applyButton).toBeDisabled();
+
+    click(getPolicyButton(getUnknownEndpointsRow(), "Deny"));
+    expect(applyButton).toBeEnabled();
   });
 
   it("allows org admins to manage permissions for agents owned by another user (FW-V-001)", async () => {

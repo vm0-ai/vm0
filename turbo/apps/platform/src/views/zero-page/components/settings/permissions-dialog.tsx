@@ -213,6 +213,54 @@ function buildInitialPolicies(
   return result;
 }
 
+function permissionPoliciesEqual(
+  a: Record<string, PermissionPolicy>,
+  b: Record<string, PermissionPolicy>,
+): boolean {
+  const aKeys = Object.keys(a);
+  if (aKeys.length !== Object.keys(b).length) {
+    return false;
+  }
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function hasPermissionPolicyChanges({
+  currentPolicies,
+  initialPolicies,
+  currentUnknownPolicy,
+  initialUnknownPolicy,
+}: {
+  currentPolicies: Record<string, PermissionPolicy> | undefined;
+  initialPolicies: Record<string, PermissionPolicy>;
+  currentUnknownPolicy: FirewallPolicyValue;
+  initialUnknownPolicy: FirewallPolicyValue;
+}): boolean {
+  if (currentPolicies === undefined) {
+    return false;
+  }
+  if (currentUnknownPolicy !== initialUnknownPolicy) {
+    return true;
+  }
+  return !permissionPoliciesEqual(currentPolicies, initialPolicies);
+}
+
+function canApplyPermissionPolicies({
+  config,
+  saving,
+  hasChanges,
+}: {
+  config: FirewallConfig | null;
+  saving: boolean;
+  hasChanges: boolean;
+}): boolean {
+  return config !== null && !saving && hasChanges;
+}
+
 function UnknownEndpointsToggle({
   policy,
   disabled,
@@ -278,8 +326,20 @@ export function PermissionsDrawer({
   const pageSignal = useGet(pageSignal$);
 
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
-  const policies = allPolicies[ref] ?? {};
+  const policiesForRef = allPolicies[ref];
+  const policies = policiesForRef ?? {};
   const groups = buildSortedGroups(config, ref);
+  const hasPermissionChanges = hasPermissionPolicyChanges({
+    currentPolicies: policiesForRef,
+    initialPolicies: initialPolicyState[ref] ?? {},
+    currentUnknownPolicy: unknownPolicy,
+    initialUnknownPolicy,
+  });
+  const canApply = canApplyPermissionPolicies({
+    config,
+    saving,
+    hasChanges: hasPermissionChanges,
+  });
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
     setPolicyFn(ref, name, policy);
@@ -510,7 +570,7 @@ export function PermissionsDrawer({
             {readOnly ? "Close" : "Cancel"}
           </Button>
           {!readOnly && (
-            <Button onClick={handleApply} disabled={!config || saving}>
+            <Button onClick={handleApply} disabled={!canApply}>
               {saving ? "Saving..." : "Apply"}
             </Button>
           )}
