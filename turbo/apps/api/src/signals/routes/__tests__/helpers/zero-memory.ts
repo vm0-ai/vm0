@@ -3,6 +3,8 @@ import { gzipSync } from "node:zlib";
 
 import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { command } from "ccstate";
+import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
+import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { eq } from "drizzle-orm";
@@ -46,8 +48,73 @@ export const deleteMemoryForFixture$ = command(
     // Storage cascade deletes storage_versions via FK.
     await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
     signal.throwIfAborted();
+    // Change items cascade delete with their parent summary via FK.
+    await db
+      .delete(memoryChangeSummaries)
+      .where(eq(memoryChangeSummaries.orgId, fixture.orgId));
+    signal.throwIfAborted();
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
+  },
+);
+
+interface MemoryActivityItemSeed {
+  readonly kind: string;
+  readonly title?: string | null;
+  readonly description?: string | null;
+  readonly filePath: string;
+  readonly beforeSnippet?: string | null;
+  readonly afterSnippet?: string | null;
+}
+
+interface MemoryActivitySummarySeed {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly date: string;
+  readonly fromVersionId?: string | null;
+  readonly toVersionId: string;
+  readonly summary?: string | null;
+  readonly items?: readonly MemoryActivityItemSeed[];
+}
+
+export const seedMemoryActivitySummary$ = command(
+  async (
+    { set },
+    seed: MemoryActivitySummarySeed,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const db = set(writeDb$);
+    const summaryId = randomUUID();
+    await db.insert(memoryChangeSummaries).values({
+      id: summaryId,
+      orgId: seed.orgId,
+      userId: seed.userId,
+      date: seed.date,
+      fromVersionId: seed.fromVersionId ?? null,
+      toVersionId: seed.toVersionId,
+      summary: seed.summary ?? null,
+    });
+    signal.throwIfAborted();
+
+    const items = seed.items ?? [];
+    if (items.length > 0) {
+      await db.insert(memoryChangeItems).values(
+        items.map((item) => {
+          return {
+            summaryId,
+            kind: item.kind,
+            title: item.title ?? null,
+            description: item.description ?? null,
+            filePath: item.filePath,
+            beforeSnippet: item.beforeSnippet ?? null,
+            afterSnippet: item.afterSnippet ?? null,
+          };
+        }),
+      );
+      signal.throwIfAborted();
+    }
+
+    return summaryId;
   },
 );
 

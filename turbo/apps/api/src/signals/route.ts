@@ -91,6 +91,7 @@ import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroHostRoutes } from "./routes/zero-host";
 import { zeroMemoryRoutes } from "./routes/zero-memory";
+import { zeroMemoryActivityRoutes } from "./routes/zero-memory-activity";
 import { zeroBuiltInGenerationRoutes } from "./routes/zero-built-in-generation";
 import { zeroInsightsRoutes } from "./routes/zero-insights";
 import { zeroImageIoGenerateRoutes } from "./routes/zero-image-io-generate";
@@ -271,6 +272,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroFeatureSwitchesRoutes,
   ...zeroHostRoutes,
   ...zeroMemoryRoutes,
+  ...zeroMemoryActivityRoutes,
   ...zeroBuiltInGenerationRoutes,
   ...zeroInsightsRoutes,
   ...zeroImageIoGenerateRoutes,
