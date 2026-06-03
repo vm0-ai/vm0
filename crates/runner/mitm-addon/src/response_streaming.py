@@ -96,7 +96,7 @@ def _configure_response_usage_parser(flow: http.HTTPFlow) -> _ResponseChunkParse
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
     # and the incremental response parsers used for connector billing payload
-    # extraction. Model-provider ranking observation is gated separately.
+    # extraction. Model-provider usage reporting is gated separately.
     is_billable_flow = flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False)
     is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
     if (

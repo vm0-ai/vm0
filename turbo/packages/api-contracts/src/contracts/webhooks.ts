@@ -670,7 +670,7 @@ export type WebhookStoragesCommitContract =
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
  * Receives usage records from the sandbox. The API decides whether each model
- * event becomes a billing ledger row, a ranking observation row, or both.
+ * event becomes a billing ledger row, a model usage observation row, or both.
  * Reporters send `{ runId, events }` batches.
  */
 const webhookUsageEventItemSchema = z

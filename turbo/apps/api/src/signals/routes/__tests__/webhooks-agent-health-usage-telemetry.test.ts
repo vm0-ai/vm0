@@ -524,7 +524,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     ]);
   });
 
-  it("writes built-in model usage to billing ledger and ranking observations", async () => {
+  it("writes built-in model usage to billing ledger and usage observations", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
     await db
@@ -571,7 +571,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     ]);
   });
 
-  it("writes BYOK model usage only to ranking observations", async () => {
+  it("writes BYOK model usage only to usage observations", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
     await db
@@ -649,7 +649,7 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     ]);
   });
 
-  it("skips BYOK ranking observations for custom selected models", async () => {
+  it("skips BYOK usage observations for custom selected models", async () => {
     const fixture = await track(seedFixture());
     const db = store.set(writeDb$);
     await db

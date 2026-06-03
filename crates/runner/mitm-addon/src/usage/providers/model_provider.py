@@ -1,12 +1,14 @@
-"""Model-provider usage observation entry point.
+"""Model-provider usage reporting entry point.
 
 Buffers token counts already normalized by an addon-side provider extractor
 (stored in ``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]``) for aggregate upload to
 the platform ``/api/webhooks/agent/usage-event`` endpoint.
 
-Model-provider usage observation is separate from platform billing. New run
-contexts set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` when model
-token usage should be observed for ranking. ``FIREWALL_BILLABLE`` remains as a
+Model-provider usage reporting is separate from platform billing. New run
+contexts set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` to the
+canonical model id the proxy should report for model token usage. The API uses
+run context to decide whether reported model rows become billing ledger rows,
+model usage observation rows, or both. ``FIREWALL_BILLABLE`` remains as a
 legacy/billing signal so in-flight Built-in runs created before the context
 field existed can still report usage.
 """

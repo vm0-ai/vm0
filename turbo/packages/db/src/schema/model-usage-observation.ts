@@ -11,7 +11,7 @@ import {
 import { agentRuns } from "./agent-run";
 
 /**
- * Ranking-only raw model usage observations.
+ * Raw model usage observations for model statistics.
  *
  * This table is intentionally separate from `usage_event`, which is the
  * billing ledger. Built-in model usage can write both tables; BYOK model usage
