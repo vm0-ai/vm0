@@ -14,6 +14,10 @@ const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 
 const ENTITLEMENT_PERIOD_REFRESH_STATUSES = ["active", "trialing"] as const;
 const PAYMENT_FAILED_SUBSCRIPTION_STATUSES = ["past_due", "unpaid"] as const;
+const DOWNGRADE_CANDIDATE_SUBSCRIPTION_STATUSES = [
+  ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
+  "canceled",
+] as const;
 const PAYMENT_FAILURE_DOWNGRADE_GRACE_MS = 24 * 60 * 60 * 1000;
 
 interface SubscriptionInput {
@@ -108,12 +112,19 @@ async function reconcileBillingCandidate(
     eq(orgMetadata.orgId, candidate.orgId),
     eq(orgMetadata.stripeSubscriptionId, candidate.stripeSubscriptionId),
     inArray(orgMetadata.tier, ["pro", "team"]),
-    inArray(orgMetadata.subscriptionStatus, [
-      ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
-    ]),
+    inArray(
+      orgMetadata.subscriptionStatus,
+      DOWNGRADE_CANDIDATE_SUBSCRIPTION_STATUSES,
+    ),
   );
 
   if (subscription.status === "canceled") {
+    if (stripePeriodEnd && stripePeriodEnd > now) {
+      await db.update(orgMetadata).set(syncedFields).where(currentCandidate);
+      signal.throwIfAborted();
+      return [];
+    }
+
     const rows = await db
       .update(orgMetadata)
       .set({
@@ -121,6 +132,7 @@ async function reconcileBillingCandidate(
         subscriptionStatus: "canceled",
         stripeSubscriptionId: null,
         cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
         updatedAt: now,
       })
       .where(currentCandidate)
@@ -215,15 +227,26 @@ export const reconcileBillingEntitlements$ = command(
         and(
           inArray(orgMetadata.tier, ["pro", "team"]),
           isNotNull(orgMetadata.stripeSubscriptionId),
-          inArray(orgMetadata.subscriptionStatus, [
-            ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
-          ]),
           or(
             and(
-              isNull(orgMetadata.currentPeriodEnd),
-              lte(orgMetadata.updatedAt, staleBefore),
+              inArray(orgMetadata.subscriptionStatus, [
+                ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
+              ]),
+              or(
+                and(
+                  isNull(orgMetadata.currentPeriodEnd),
+                  lte(orgMetadata.updatedAt, staleBefore),
+                ),
+                lte(orgMetadata.currentPeriodEnd, staleBefore),
+              ),
             ),
-            lte(orgMetadata.currentPeriodEnd, staleBefore),
+            and(
+              eq(orgMetadata.subscriptionStatus, "canceled"),
+              or(
+                isNull(orgMetadata.currentPeriodEnd),
+                lte(orgMetadata.currentPeriodEnd, now),
+              ),
+            ),
           ),
         ),
       );
@@ -241,7 +264,7 @@ export const reconcileBillingEntitlements$ = command(
     }
 
     if (downgraded.length > 0) {
-      L.warn("stale payment-failed subscriptions downgraded", {
+      L.warn("stale billing subscriptions downgraded", {
         count: downgraded.length,
         subscriptionIds: downgraded.slice(0, 10).map((row) => {
           return row.subscriptionId;

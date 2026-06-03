@@ -2865,12 +2865,13 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing.currentPeriodEnd).toStrictEqual(paidThrough);
     });
 
-    it("downgrades when subscription update is canceled", async () => {
+    it("syncs canceled subscription update without suspending paid-through entitlement", async () => {
       const fixture = await trackStripe(
         store.set(seedStripeFixture$, undefined, context.signal),
       );
       mockStripeWebhookEnv();
       const subId = stripeId("sub");
+      const periodEnd = 1_800_000_000;
       await updateStripeOrg(fixture, {
         stripeSubscriptionId: subId,
         subscriptionStatus: "active",
@@ -2885,17 +2886,26 @@ describe("POST /api/webhooks/stripe", () => {
           id: subId,
           status: "canceled",
           cancel_at_period_end: false,
-          items: { data: [{ price: { id: STRIPE_PRICE_PRO } }] },
+          items: {
+            data: [
+              {
+                price: { id: STRIPE_PRICE_PRO },
+                current_period_end: periodEnd,
+              },
+            ],
+          },
         },
       });
 
       expect(response.status).toBe(200);
       const billing = await selectStripeBilling(fixture);
-      expect(billing.tier).toBe("pro-suspend");
+      expect(billing.tier).toBe("pro");
       expect(billing.subscriptionStatus).toBe("canceled");
-      expect(billing.stripeSubscriptionId).toBeNull();
+      expect(billing.stripeSubscriptionId).toBe(subId);
       expect(billing.cancelAtPeriodEnd).toBeFalsy();
-      expect(billing.currentPeriodEnd).toBeNull();
+      expect(billing.currentPeriodEnd).toStrictEqual(
+        new Date(periodEnd * 1000),
+      );
     });
   });
 

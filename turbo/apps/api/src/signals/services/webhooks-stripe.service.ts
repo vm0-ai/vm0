@@ -85,6 +85,15 @@ function subscriptionCanRefreshPaidThrough(
   return subscription.status === "active" || subscription.status === "trialing";
 }
 
+function subscriptionCanSyncPeriodEnd(
+  subscription: SubscriptionInput,
+): boolean {
+  return (
+    subscriptionCanRefreshPaidThrough(subscription) ||
+    subscription.status === "canceled"
+  );
+}
+
 function monthlyCreditsForTier(tier: OrgTier): number {
   switch (tier) {
     case "free": {
@@ -681,17 +690,12 @@ async function handleSubscriptionUpdated(
   db: Db,
   subscription: SubscriptionInput,
 ): Promise<void> {
-  if (subscription.status === "canceled") {
-    await cancelSubscription(db, subscription.id);
-    return;
-  }
-
   const priceId = subscription.items.data[0]?.price?.id;
   const canSyncPaidEntitlement =
     subscriptionCanRefreshPaidThrough(subscription);
   const tier: OrgTier | undefined =
     canSyncPaidEntitlement && priceId ? tierFromPriceId(priceId) : undefined;
-  const periodEnd = canSyncPaidEntitlement
+  const periodEnd = subscriptionCanSyncPeriodEnd(subscription)
     ? subscriptionPeriodEnd(subscription)
     : null;
 
