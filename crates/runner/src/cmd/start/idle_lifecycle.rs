@@ -185,7 +185,10 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use sandbox::{Sandbox, SandboxFactory, SandboxId};
+    use sandbox::{
+        CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestProcessHandle, ProcessExit,
+        Sandbox, SandboxFactory, SandboxId, StartProcessRequest,
+    };
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
     use crate::idle_pool::{
@@ -253,6 +256,79 @@ mod tests {
         }
 
         async fn shutdown(&mut self) {}
+    }
+
+    struct PanicExecSandbox {
+        id: String,
+    }
+
+    impl PanicExecSandbox {
+        fn new(id: impl Into<String>) -> Self {
+            Self { id: id.into() }
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for PanicExecSandbox {
+        fn id(&self) -> &str {
+            &self.id
+        }
+
+        fn source_ip(&self) -> &str {
+            "10.0.0.1"
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn exec(&self, _request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+            panic!("simulated exec panic");
+        }
+
+        async fn read_file(
+            &self,
+            _path: &str,
+            _max_bytes: u64,
+        ) -> sandbox::Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+
+        async fn copy_file(
+            &self,
+            _path: &str,
+            _host_path: &std::path::Path,
+            _options: CopyFileOptions,
+        ) -> sandbox::Result<CopyFileResult> {
+            panic!("unused copy_file");
+        }
+
+        async fn write_file(&self, _path: &str, _content: &[u8]) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn start_process(
+            &self,
+            _request: &StartProcessRequest<'_>,
+        ) -> sandbox::Result<GuestProcessHandle> {
+            panic!("unused start_process");
+        }
+
+        async fn wait_process(
+            &self,
+            _handle: GuestProcessHandle,
+            _timeout: Duration,
+        ) -> sandbox::Result<ProcessExit> {
+            panic!("unused wait_process");
+        }
     }
 
     #[tokio::test]
@@ -451,5 +527,80 @@ mod tests {
         let held = cache.held_session_states().await;
         assert_eq!(held.len(), 1);
         assert_eq!(held[0].session_id, session_id);
+    }
+
+    #[tokio::test]
+    async fn idle_destroy_exec_panic_skips_workspace_cache_and_still_destroys() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let session_id = "sess-idle-destroy-exec-panic";
+        let image = b"workspace image";
+        let workspace_image = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: image.len() as u64,
+                workspace_drive_required: true,
+            })
+            .await;
+        tokio::fs::create_dir_all(paths.workspace_dir(&sandbox_id))
+            .await
+            .unwrap();
+        tokio::fs::write(paths.active_workspace_image(&sandbox_id), image)
+            .await
+            .unwrap();
+        let workspace_promotion = workspace_image
+            .into_promotion_context(WorkspaceImagePromotionRequest {
+                run_id,
+                sandbox_id,
+                session_id_override: Some(session_id),
+                terminal_status: WorkspaceCacheTerminalStatus::Success,
+                completed_at: "2026-06-03T00:00:00.000Z".into(),
+                storage_fingerprints: StorageFingerprints::default(),
+                promotable: true,
+            })
+            .expect("workspace image should be promotable");
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let destroy_count = Arc::new(AtomicUsize::new(0));
+        let request = IdleParkRequest::new(IdleParkRequestParts {
+            sandbox: Box::new(PanicExecSandbox::new("idle-destroy-exec-panic")),
+            factory: Arc::new(Box::new(RecordingDestroyFactory {
+                destroy_count: Arc::clone(&destroy_count),
+            }) as Box<dyn SandboxFactory>),
+            session_id: session_id.into(),
+            sandbox_id,
+            profile_name: "vm0/default".into(),
+            device_rate_limits: None,
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: StorageFingerprints::default(),
+            workspace_promotion: Some(workspace_promotion),
+        });
+        let candidate = match request.park_for_idle().await {
+            Ok(candidate) => candidate.with_last_completed_at("2026-06-03T00:00:00.000Z".into()),
+            Err(_) => panic!("park should succeed"),
+        };
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+
+        let promoted =
+            destroy_idle_jobs_and_wait(pool.drain(), "test_idle_destroy_exec_panic").await;
+
+        assert!(!promoted);
+        assert_eq!(destroy_count.load(Ordering::SeqCst), 1);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+        assert!(cache.held_session_states().await.is_empty());
     }
 }

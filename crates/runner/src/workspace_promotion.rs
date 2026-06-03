@@ -16,6 +16,32 @@ pub(crate) async fn promote_workspace_image_from_active_sandbox(
         return false;
     };
 
+    match AssertUnwindSafe(promote_workspace_image_from_active_sandbox_inner(
+        sandbox, promotion, reason,
+    ))
+    .catch_unwind()
+    .await
+    {
+        Ok(promoted) => promoted,
+        Err(_) => {
+            warn!(
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                session_id = promotion.session_id(),
+                reason,
+                "workspace image cache promotion panicked"
+            );
+            false
+        }
+    }
+}
+
+async fn promote_workspace_image_from_active_sandbox_inner(
+    sandbox: &dyn Sandbox,
+    promotion: &WorkspaceImagePromotionContext,
+    reason: &'static str,
+) -> bool {
     match flush_and_unmount_workspace_drive(sandbox, promotion.run_id()).await {
         Ok(()) => {}
         Err(e) => {
