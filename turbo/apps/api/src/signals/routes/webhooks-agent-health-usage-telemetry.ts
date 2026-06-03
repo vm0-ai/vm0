@@ -5,8 +5,14 @@ import {
   webhookUsageEventContract,
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
+import {
+  isSupportedRunModel,
+  normalizeRunModelId,
+} from "@vm0/api-contracts/contracts/model-providers";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
@@ -29,6 +35,7 @@ const SANDBOX_TELEMETRY_SYSTEM_DATASET = "sandbox-telemetry-system";
 const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
 const SANDBOX_TELEMETRY_NETWORK_DATASET = "sandbox-telemetry-network";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
+const MODEL_USAGE_KIND = "model";
 
 const L = logger("webhooks:agent");
 
@@ -94,24 +101,89 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const db = set(writeDb$);
-  const insertResult = await settle(
-    db
-      .insert(usageEvent)
-      .values(
-        body.events.map((event) => {
+  const hasModelEvents = body.events.some((event) => {
+    return event.kind === MODEL_USAGE_KIND;
+  });
+  const [zeroRun] = hasModelEvents
+    ? await db
+        .select({
+          modelProvider: zeroRuns.modelProvider,
+          selectedModel: zeroRuns.selectedModel,
+        })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, body.runId))
+        .limit(1)
+    : [];
+  signal.throwIfAborted();
+
+  const fallbackModel = body.events.find((event) => {
+    return event.kind === MODEL_USAGE_KIND;
+  })?.provider;
+  const candidateModel = zeroRun?.selectedModel ?? fallbackModel;
+  const canonicalModel = candidateModel
+    ? normalizeRunModelId(candidateModel)
+    : undefined;
+  const observationModel = isSupportedRunModel(canonicalModel)
+    ? canonicalModel
+    : undefined;
+  const observedAt = nowDate();
+  const usageEventValues = body.events
+    .filter((event) => {
+      return (
+        event.kind !== MODEL_USAGE_KIND ||
+        !zeroRun ||
+        zeroRun.modelProvider === null ||
+        zeroRun.modelProvider === "vm0"
+      );
+    })
+    .map((event) => {
+      return {
+        runId: body.runId,
+        orgId: auth.orgId,
+        userId: auth.userId,
+        kind: event.kind,
+        provider: event.provider,
+        category: event.category,
+        quantity: event.quantity,
+        idempotencyKey: event.idempotencyKey,
+      };
+    });
+  const observationValues = observationModel
+    ? body.events
+        .filter((event) => {
+          return event.kind === MODEL_USAGE_KIND;
+        })
+        .map((event) => {
           return {
             runId: body.runId,
             orgId: auth.orgId,
             userId: auth.userId,
-            kind: event.kind,
-            provider: event.provider,
+            model: observationModel,
+            modelProviderType: zeroRun?.modelProvider ?? "",
             category: event.category,
             quantity: event.quantity,
+            observedAt,
             idempotencyKey: event.idempotencyKey,
           };
-        }),
-      )
-      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] }),
+        })
+    : [];
+  const insertResult = await settle(
+    db.transaction(async (tx) => {
+      if (usageEventValues.length > 0) {
+        await tx
+          .insert(usageEvent)
+          .values(usageEventValues)
+          .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
+      }
+      if (observationValues.length > 0) {
+        await tx
+          .insert(modelUsageObservation)
+          .values(observationValues)
+          .onConflictDoNothing({
+            target: [modelUsageObservation.idempotencyKey],
+          });
+      }
+    }),
   );
   signal.throwIfAborted();
   if (!insertResult.ok) {

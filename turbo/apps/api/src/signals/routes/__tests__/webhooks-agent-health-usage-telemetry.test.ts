@@ -11,7 +11,9 @@ import {
 } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
@@ -405,6 +407,27 @@ describe("POST /api/webhooks/agent/usage-event", () => {
     });
   }
 
+  async function observationRowsForRun(runId: string) {
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({
+        runId: modelUsageObservation.runId,
+        orgId: modelUsageObservation.orgId,
+        userId: modelUsageObservation.userId,
+        model: modelUsageObservation.model,
+        modelProviderType: modelUsageObservation.modelProviderType,
+        category: modelUsageObservation.category,
+        quantity: modelUsageObservation.quantity,
+        idempotencyKey: modelUsageObservation.idempotencyKey,
+      })
+      .from(modelUsageObservation)
+      .where(eq(modelUsageObservation.runId, runId));
+
+    return [...rows].sort((left, right) => {
+      return left.idempotencyKey.localeCompare(right.idempotencyKey);
+    });
+  }
+
   it("rejects missing sandbox auth", async () => {
     const fixture = await track(seedFixture());
     const client = setupApp({ context })(webhookUsageEventContract);
@@ -499,6 +522,124 @@ describe("POST /api/webhooks/agent/usage-event", () => {
         status: "pending",
       },
     ]);
+  });
+
+  it("writes built-in model usage to billing ledger and ranking observations", async () => {
+    const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: "vm0",
+        selectedModel: "anthropic/claude-sonnet-4.6",
+      })
+      .where(eq(zeroRuns.id, fixture.runId));
+    const idempotencyKey = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          idempotencyKey,
+          kind: "model",
+          provider: "anthropic/claude-sonnet-4.6",
+          category: "tokens.input",
+          quantity: 42,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(rowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey,
+        kind: "model",
+        provider: "anthropic/claude-sonnet-4.6",
+        category: "tokens.input",
+        quantity: 42,
+      },
+    ]);
+    await expect(observationRowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey,
+        model: "claude-sonnet-4-6",
+        modelProviderType: "vm0",
+        category: "tokens.input",
+        quantity: 42,
+      },
+    ]);
+  });
+
+  it("writes BYOK model usage only to ranking observations", async () => {
+    const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: "anthropic-api-key",
+        selectedModel: "claude-sonnet-4-6",
+      })
+      .where(eq(zeroRuns.id, fixture.runId));
+    const idempotencyKey = randomUUID();
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          idempotencyKey,
+          kind: "model",
+          provider: "claude-sonnet-4-6",
+          category: "tokens.output",
+          quantity: 9,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
+    await expect(observationRowsForRun(fixture.runId)).resolves.toMatchObject([
+      {
+        idempotencyKey,
+        model: "claude-sonnet-4-6",
+        modelProviderType: "anthropic-api-key",
+        category: "tokens.output",
+        quantity: 9,
+      },
+    ]);
+  });
+
+  it("skips BYOK ranking observations for custom selected models", async () => {
+    const fixture = await track(seedFixture());
+    const db = store.set(writeDb$);
+    await db
+      .update(zeroRuns)
+      .set({
+        modelProvider: "anthropic-api-key",
+        selectedModel: `custom-${randomUUID()}`,
+      })
+      .where(eq(zeroRuns.id, fixture.runId));
+    const client = setupApp({ context })(webhookUsageEventContract);
+
+    await accept(
+      client.send({
+        body: validBody(fixture, {
+          idempotencyKey: randomUUID(),
+          kind: "model",
+          provider: "claude-sonnet-4-6",
+          category: "tokens.input",
+          quantity: 100,
+        }),
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    await expect(rowsForRun(fixture.runId)).resolves.toStrictEqual([]);
+    await expect(observationRowsForRun(fixture.runId)).resolves.toStrictEqual(
+      [],
+    );
   });
 
   it("keeps the first value when a retry reuses an idempotency key", async () => {

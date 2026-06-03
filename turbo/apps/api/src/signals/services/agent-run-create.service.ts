@@ -20,7 +20,9 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
+  isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
+  normalizeRunModelId,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
   type ModelProviderType,
@@ -3194,9 +3196,11 @@ function billableFirewallsForPermissions(args: {
 function modelUsageProviderForContext(
   modelProvider: ResolvedModelProviderEnvironment | null,
 ): string | undefined {
-  return modelProvider?.type === "vm0"
-    ? (modelProvider.selectedModel ?? undefined)
-    : undefined;
+  if (!modelProvider?.selectedModel) {
+    return undefined;
+  }
+  const canonicalModel = normalizeRunModelId(modelProvider.selectedModel);
+  return isSupportedRunModel(canonicalModel) ? canonicalModel : undefined;
 }
 
 async function markRunFailed(

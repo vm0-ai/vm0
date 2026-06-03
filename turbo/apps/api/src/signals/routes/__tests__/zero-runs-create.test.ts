@@ -1234,7 +1234,7 @@ describe("POST /api/zero/runs", () => {
       }),
     ).toContain("model-provider:codex-oauth-token");
     expect(executionContext.billableFirewalls).toStrictEqual([]);
-    expect(executionContext.modelUsageProvider).toBeUndefined();
+    expect(executionContext.modelUsageProvider).toBe("gpt-5.4");
 
     const [zeroRun] = await db
       .select({
@@ -1317,7 +1317,7 @@ describe("POST /api/zero/runs", () => {
       ANTHROPIC_API_KEY: "test-secret-value",
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
-    expect(executionContext.modelUsageProvider).toBeUndefined();
+    expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
 
     const [zeroRun] = await db
       .select({

@@ -34,7 +34,6 @@ from mitmproxy.addonmanager import Loader
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
-import flow_metadata
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
@@ -519,6 +518,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 _maybe_track_usage_flow(
                     flow,
                     is_billable_firewall(result.name, vm_info),
+                    _is_model_provider_usage_observable(result.name, vm_info),
                 )
                 await handle_firewall_request(flow, result, vm_info)
                 if flow.response is not None and not flow.metadata.get(
@@ -538,18 +538,25 @@ async def request(flow: http.HTTPFlow) -> None:
         raise
 
 
-def _maybe_track_usage_flow(flow: http.HTTPFlow, firewall_billable: bool) -> None:
-    """Track billable flows before provider work can outlive shutdown.
+def _is_model_provider_usage_observable(firewall_name: str, vm_info: dict) -> bool:
+    """Return whether a firewall can produce model usage observations."""
+    return firewall_name.startswith("model-provider:") and bool(vm_info.get("modelUsageProvider"))
+
+
+def _maybe_track_usage_flow(
+    flow: http.HTTPFlow, firewall_billable: bool, model_usage_observable: bool
+) -> None:
+    """Track usage flows before provider work can outlive shutdown.
 
     This closes the shutdown drain gap before standard upstream dispatch and
     before auth.base URL rewrites, where the addon itself forwards upstream.
     Normal HTTP flows release from response/error.  Model-provider WebSocket
     upgrades release from websocket_end/error because the 101 response does not
-    complete the billable usage lifecycle.
+    complete the usage reporting lifecycle.
     """
     if flow.metadata.get(_USAGE_FLOW_TRACKED):
         return
-    if firewall_billable:
+    if firewall_billable or model_usage_observable:
         usage.increment_in_flight_flows()
         flow.metadata[_USAGE_FLOW_TRACKED] = True
 
@@ -709,33 +716,28 @@ def response(flow: http.HTTPFlow) -> None:
         not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
         and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
+        and usage.is_model_provider_usage_observable(flow)
     ):
-        firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
-        if firewall_name.startswith("model-provider:") and flow.metadata.get(
-            metadata_keys.FIREWALL_BILLABLE, False
-        ):
-            if response_streaming.uses_openai_responses_usage_protocol(flow):
-                json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
-                    bytes(stream_buf),
-                    flow.response.headers if flow.response else None,
-                )
-            else:
-                json_usage, json_error = (
-                    usage.extract_anthropic_messages_usage_with_error_from_json(
-                        bytes(stream_buf),
-                        flow.response.headers if flow.response else None,
-                    )
-                )
-            if json_usage:
-                flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
-            elif json_error is not None:
-                log_proxy_entry(
-                    proxy_log_path,
-                    "warn",
-                    "Model provider JSON usage extraction failed",
-                    type="usage_event",
-                    error=json_error,
-                )
+        if response_streaming.uses_openai_responses_usage_protocol(flow):
+            json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        else:
+            json_usage, json_error = usage.extract_anthropic_messages_usage_with_error_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        if json_usage:
+            flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
+        elif json_error is not None:
+            log_proxy_entry(
+                proxy_log_path,
+                "warn",
+                "Model provider JSON usage extraction failed",
+                type="usage_event",
+                error=json_error,
+            )
     _report_model_provider_usage_once(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).

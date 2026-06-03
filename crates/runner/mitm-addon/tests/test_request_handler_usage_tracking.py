@@ -307,7 +307,7 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     fake_firewall_headers,
     headers,
 ):
-    """Model-provider usage only reports when the firewall is billable."""
+    """Non-billable model providers without observation metadata are not tracked."""
     firewall_name = "model-provider:anthropic-api-key"
     reg_path = _write_registry(
         tmp_path,
@@ -352,6 +352,61 @@ async def test_non_billable_model_provider_is_not_tracked_before_responseheaders
     assert_pending(
         usage_pending_path,
         flows=0,
+        buffered=0,
+        reports=0,
+        flush_request_id="request-1",
+    )
+
+
+async def test_non_billable_observable_model_provider_is_tracked_before_responseheaders(
+    tmp_path, usage_pending_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    """BYOK model observations drain during shutdown even without billing."""
+    firewall_name = "model-provider:anthropic-api-key"
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-model-1",
+            sandbox_marker="tok-model",
+            firewall_name=firewall_name,
+            api_entry={
+                "base": "https://api.anthropic.com",
+                "auth": {"headers": {"x-api-key": "test-key"}},
+                "permissions": [{"name": "messages", "rules": ["POST /v1/messages"]}],
+            },
+            network_policy={
+                "allow": ["messages"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields={"modelUsageProvider": "claude-sonnet-4-6"},
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.anthropic.com",
+        path="/v1/messages",
+        method="POST",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.metadata["firewall_name"] == firewall_name
+    assert flow.metadata["firewall_billable"] is False
+    assert flow.metadata["model_usage_provider"] == "claude-sonnet-4-6"
+    assert flow.metadata["_usage_flow_tracked"] is True
+    usage.write_pending_snapshot(flush_request_id="request-1")
+    assert_pending(
+        usage_pending_path,
+        flows=1,
         buffered=0,
         reports=0,
         flush_request_id="request-1",

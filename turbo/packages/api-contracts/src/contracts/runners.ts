@@ -204,6 +204,8 @@ export const storedExecutionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  // Canonical model id used by the proxy for ranking-only model usage observation.
+  // Billing remains controlled by billableFirewalls.
   modelUsageProvider: z.string().optional(),
 });
 
@@ -265,6 +267,8 @@ export const executionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  // Canonical model id used by the proxy for ranking-only model usage observation.
+  // Billing remains controlled by billableFirewalls.
   modelUsageProvider: z.string().optional(),
 });
 

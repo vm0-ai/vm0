@@ -1319,7 +1319,7 @@ describe("POST /api/agent/runs", () => {
       ANTHROPIC_API_KEY: "test-secret-value",
     });
     expect(executionContext.billableFirewalls).toStrictEqual([]);
-    expect(executionContext.modelUsageProvider).toBeUndefined();
+    expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
   });
 
   it("injects a Codex gateway provider with the OPENAI_API_KEY placeholder", async () => {

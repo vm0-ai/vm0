@@ -148,6 +148,31 @@ class TestReportModelProviderUsage:
 
         assert webhook.request_count == 0
 
+    def test_reports_non_billable_observable_model_provider(
+        self, real_flow, fresh_usage_executor, usage_webhook_api
+    ):
+        """BYOK model providers report ranking observations without billing."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = False
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_usage_provider"] = "claude-sonnet-4-6"
+        flow.metadata["model_provider_usage"] = {
+            "model": "ignored-runtime-model",
+            "message_id": "msg-byok-usage-1",
+            "tokens.input": 100,
+        }
+
+        with usage_webhook_api() as webhook:
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.flush_usage_events(trigger="test")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        assert webhook.request_count == 1
+        body = webhook.requests[0].json_body()
+        assert body["events"][0]["provider"] == "claude-sonnet-4-6"
+        assert body["events"][0]["quantity"] == 100
+
     def test_skips_non_model_provider(self, real_flow, fresh_usage_executor, usage_webhook_api):
         """Should NOT reach the webhook boundary for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")

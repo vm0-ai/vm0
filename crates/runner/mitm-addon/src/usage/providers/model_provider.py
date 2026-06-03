@@ -1,15 +1,14 @@
-"""Model-provider billing entry point.
+"""Model-provider usage observation entry point.
 
 Buffers token counts already normalized by an addon-side provider extractor
 (stored in ``flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]``) for aggregate upload to
 the platform ``/api/webhooks/agent/usage-event`` endpoint.
 
-Model-provider usage is intentionally reported only for platform-billable
-flows. ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` comes from the web layer's
-``billableFirewalls`` list; when it is false, the run is using BYO provider
-credentials or another non-platform-billable path and must not charge platform
-credits. The same flag gates incremental usage extraction before this reporter
-runs.
+Model-provider usage observation is separate from platform billing. New run
+contexts set ``flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER]`` when model
+token usage should be observed for ranking. ``FIREWALL_BILLABLE`` remains as a
+legacy/billing signal so in-flight Built-in runs created before the context
+field existed can still report usage.
 """
 
 import uuid
@@ -29,6 +28,17 @@ from ..model_tokens import MODEL_USAGE_CATEGORIES
 MODEL_USAGE_KIND = "model"
 
 
+def is_model_provider_usage_observable(flow: http.HTTPFlow) -> bool:
+    """Return whether model-provider token usage should be extracted/reported."""
+    firewall_name = flow.metadata.get(metadata_keys.FIREWALL_NAME, "")
+    if not firewall_name.startswith("model-provider:"):
+        return False
+    return bool(
+        _string_or_none(flow.metadata.get(metadata_keys.MODEL_USAGE_PROVIDER))
+        or flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False)
+    )
+
+
 def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     """Buffer extracted token usage for model-provider responses if available.
 
@@ -36,8 +46,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
 
     - ``firewall_name`` starts with ``model-provider:``.
     - ``run_id`` is non-empty.
-    - ``firewall_billable`` is truthy; false is the BYO-key /
-      non-platform-billable path.
+    - model usage is observable, usually because ``model_usage_provider`` is set.
     - ``model_provider_usage`` is a non-empty dict.
     - At least one ``MODEL_USAGE_CATEGORIES`` value has a positive integer
       quantity.
@@ -51,7 +60,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
     if not (firewall_name.startswith("model-provider:") and run_id):
         return False
-    if not flow.metadata.get(metadata_keys.FIREWALL_BILLABLE, False):
+    if not is_model_provider_usage_observable(flow):
         return False
     usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
     if not usage or not isinstance(usage, dict):

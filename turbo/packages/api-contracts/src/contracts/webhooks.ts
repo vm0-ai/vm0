@@ -669,8 +669,9 @@ export type WebhookStoragesCommitContract =
 /**
  * Webhook usage event contract for /api/webhooks/agent/usage-event
  *
- * Receives billable usage records from the sandbox for persistence in the
- * `usage_event` table. Reporters send `{ runId, events }` batches.
+ * Receives usage records from the sandbox. The API decides whether each model
+ * event becomes a billing ledger row, a ranking observation row, or both.
+ * Reporters send `{ runId, events }` batches.
  */
 const webhookUsageEventItemSchema = z
   .object({
