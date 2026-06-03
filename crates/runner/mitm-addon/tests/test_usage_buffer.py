@@ -400,6 +400,49 @@ def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp
     assert usage.counters._buffered_usage_events == 0
 
 
+def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_keys(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    with patch.object(usage_buffer, "USAGE_EVENT_BATCH_SIZE", 1):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                _event(source_key="source-1", category="category-1"),
+                _event(source_key="source-2", category="category-2"),
+            ],
+            proxy_log_path,
+        )
+
+        failed_payloads = []
+
+        def fail_second_batch(url, sandbox_token, payload, path, log_type):
+            failed_payloads.append(payload)
+            if len(failed_payloads) == 2:
+                raise OSError("second batch rejected")
+
+        with (
+            patch.object(
+                usage_buffer, "_enqueue_webhook", side_effect=fail_second_batch
+            ) as enqueue,
+            pytest.raises(OSError, match="second batch rejected"),
+        ):
+            usage.flush_usage_events(trigger="test")
+
+        assert enqueue.call_count == 2
+        assert [len(payload["events"]) for payload in failed_payloads] == [1, 1]
+        assert usage.counters._buffered_usage_events == 2
+
+        with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+            assert usage.flush_usage_events(trigger="test") == 2
+
+        retry_payloads = _payloads_from_enqueue_calls(enqueue.call_args_list)
+        assert [
+            event["idempotencyKey"] for payload in retry_payloads for event in payload["events"]
+        ] == [event["idempotencyKey"] for payload in failed_payloads for event in payload["events"]]
+        assert usage.counters._buffered_usage_events == 0
+
+
 def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
     proxy_log_path = str(tmp_path / "proxy.jsonl")
     usage.buffer_usage_events(
