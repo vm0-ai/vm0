@@ -4,5 +4,6 @@
 //! - Structured stderr logging macros
 //! - Sandbox operation telemetry helpers
 
+pub mod fs_status;
 pub mod log;
 pub mod telemetry;

@@ -38,7 +38,7 @@ use agent_diagnostics::{FailureDetailSource, FailureReason};
 use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_info, log_warn};
+use guest_common::{fs_status, log_info, log_warn};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
@@ -47,6 +47,18 @@ use termination::{TerminationReason, TerminationState};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+fn log_artifact_root_statuses(phase: &str) {
+    for artifact in env::artifacts() {
+        log_info!(
+            LOG_TAG,
+            "Artifact root status {phase}: name={} version={} {}",
+            artifact.name,
+            artifact.version_id,
+            fs_status::describe_path(&artifact.mount_path)
+        );
+    }
+}
 
 async fn tick_optional_interval(interval: &mut Option<tokio::time::Interval>) {
     match interval {
@@ -168,6 +180,8 @@ pub async fn execute_cli(
             }
         }
     }
+
+    log_artifact_root_statuses("before CLI spawn");
 
     // Open the run log before spawning the CLI. If the run-id-scoped path is
     // invalid or unavailable, fail without starting a child process.
@@ -389,6 +403,7 @@ pub async fn execute_cli(
                     Ok(s) => {
                         cli_exit_at = Some(Instant::now());
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
+                        log_artifact_root_statuses("after CLI process exit");
                         cli_status = Some(s);
                         // CLI exited on its own (possibly in response to our
                         // SIGTERM). Park the termination FSM so it can't

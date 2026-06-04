@@ -10,7 +10,7 @@ use crate::paths;
 use crate::session_history;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info, log_warn};
+use guest_common::{fs_status, log_error, log_info, log_warn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
@@ -181,6 +181,13 @@ async fn snapshot_artifact_entries(
 
     let mut plans = Vec::with_capacity(entries.len());
     for entry in entries {
+        log_info!(
+            LOG_TAG,
+            "Artifact root status before checkpoint walk: name={} version={} {}",
+            entry.name,
+            entry.version_id,
+            fs_status::describe_path(&entry.mount_path)
+        );
         log_info!(
             LOG_TAG,
             "Processing artifact '{}' at {}",

@@ -14,7 +14,7 @@ mod manifest;
 mod plan;
 mod source;
 
-use guest_common::log_error;
+use guest_common::{fs_status, log_error, log_info};
 use manifest::{Manifest, ManifestLoadError};
 use plan::RunPlan;
 use std::fs;
@@ -61,9 +61,25 @@ pub fn run(manifest_path: &str) -> bool {
         }
     }
 
+    let download_roots = download_tasks
+        .iter()
+        .map(|task| (task.label().to_string(), task.mount_path().to_string()))
+        .collect::<Vec<_>>();
+
     let success = download::download_all_parallel(download_tasks);
     if success {
         instructions::normalize_instruction_files(&instruction_files);
+        log_download_root_statuses("after instruction normalization", &download_roots);
     }
     success
+}
+
+fn log_download_root_statuses(phase: &str, roots: &[(String, String)]) {
+    for (label, mount_path) in roots {
+        log_info!(
+            LOG_TAG,
+            "Download root status {phase}: {label} {}",
+            fs_status::describe_path(mount_path)
+        );
+    }
 }

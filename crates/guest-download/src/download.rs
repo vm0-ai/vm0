@@ -2,7 +2,7 @@ use crate::LOG_TAG;
 use crate::archive;
 use crate::error::DownloadError;
 use crate::source;
-use guest_common::{log_error, log_info, log_warn, telemetry::record_sandbox_op};
+use guest_common::{fs_status, log_error, log_info, log_warn, telemetry::record_sandbox_op};
 use std::any::Any;
 use std::collections::VecDeque;
 use std::fs;
@@ -45,6 +45,10 @@ impl DownloadTask {
 
     pub(crate) fn mount_path(&self) -> &str {
         &self.mount_path
+    }
+
+    pub(crate) fn label(&self) -> &str {
+        &self.label
     }
 
     fn failure_detail(&self, error: &DownloadError) -> String {
@@ -228,6 +232,12 @@ fn run_download_task(task: DownloadTask) -> bool {
         Ok(()) => {
             let elapsed = start.elapsed();
             record_sandbox_op(task.op_name, elapsed, true, None);
+            log_info!(
+                LOG_TAG,
+                "Download root status after task success: {} {}",
+                task.label,
+                fs_status::describe_path(&task.mount_path)
+            );
             log_info!(
                 LOG_TAG,
                 "{} downloaded in {}ms",
