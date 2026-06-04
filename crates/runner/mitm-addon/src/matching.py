@@ -1508,7 +1508,7 @@ class _FirewallDecisionState:
     best_base_specificity: int | None
     best_rule_specificity: _PathSpecificity | None
     denied_match: _BlockMatch | None
-    denied_permission_names: list[str]
+    denied_permission_names: dict[str, None]
     malformed_config_match: _BlockMatch | None
     malformed_policy_match: _BlockMatch | None
 
@@ -1518,7 +1518,7 @@ class _FirewallDecisionState:
         self.best_base_specificity = None
         self.best_rule_specificity = None
         self.denied_match = None
-        self.denied_permission_names = []
+        self.denied_permission_names = {}
         self.malformed_config_match = None
         self.malformed_policy_match = None
 
@@ -1539,7 +1539,7 @@ class _FirewallDecisionState:
             self.allowed_match = None
             self.base_match = None
             self.denied_match = None
-            self.denied_permission_names = []
+            self.denied_permission_names = {}
             self.malformed_config_match = None
             self.malformed_policy_match = None
         elif api_entry.base.specificity < self.best_base_specificity:
@@ -1568,7 +1568,7 @@ class _FirewallDecisionState:
             self.best_rule_specificity = candidate.specificity
             self.allowed_match = None
             self.denied_match = None
-            self.denied_permission_names = []
+            self.denied_permission_names = {}
         elif candidate.specificity < self.best_rule_specificity:
             return False
 
@@ -1579,8 +1579,7 @@ class _FirewallDecisionState:
             self.allowed_match = match
 
     def record_denied_rule(self, match: _BlockMatch, permission: str) -> None:
-        if permission not in self.denied_permission_names:
-            self.denied_permission_names.append(permission)
+        self.denied_permission_names[permission] = None
         if self.denied_match is None:
             self.denied_match = match
 
