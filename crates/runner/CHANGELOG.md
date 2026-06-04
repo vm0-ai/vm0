@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.2...runner-rs-v0.108.3) (2026-06-04)
+
+
+### Bug Fixes
+
+* **runner:** restore codex sessions with rollout filenames ([#16144](https://github.com/vm0-ai/vm0/issues/16144)) ([1adf687](https://github.com/vm0-ai/vm0/commit/1adf687fcfcf39c06a11e3b995918f8c46e8f611))
+
 ## [0.108.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.1...runner-rs-v0.108.2) (2026-06-04)
 
 

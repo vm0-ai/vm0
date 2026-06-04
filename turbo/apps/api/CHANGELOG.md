@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.99.0](https://github.com/vm0-ai/vm0/compare/api-v1.98.7...api-v1.99.0) (2026-06-04)
+
+
+### Features
+
+* add structured memory activity diffs ([#16145](https://github.com/vm0-ai/vm0/issues/16145)) ([7b91b35](https://github.com/vm0-ai/vm0/commit/7b91b357292ecb5611ab5f98b2ae9e5909ed4fbf))
+
+
+### Bug Fixes
+
+* sanitize artifact filename consistently across upload and message storage ([#16042](https://github.com/vm0-ai/vm0/issues/16042)) ([7e4b497](https://github.com/vm0-ai/vm0/commit/7e4b49701a09943a05b844c0a76b8b2f6471ea4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.60.0
+    * @vm0/core bumped to 8.309.10
+    * @vm0/db bumped to 1.29.0
+
 ## [1.98.7](https://github.com/vm0-ai/vm0/compare/api-v1.98.6...api-v1.98.7) (2026-06-04)
 
 

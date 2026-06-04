@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.32](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.31...nbd-cow-v0.4.32) (2026-06-04)
+
+
+### Refactoring
+
+* extract nbd cow dispatch test harness ([#16140](https://github.com/vm0-ai/vm0/issues/16140)) ([280d6ca](https://github.com/vm0-ai/vm0/commit/280d6cae22a379ff4ed2c611eb532202c8fd0efa))
+
 ## [0.4.31](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.30...nbd-cow-v0.4.31) (2026-06-04)
 
 

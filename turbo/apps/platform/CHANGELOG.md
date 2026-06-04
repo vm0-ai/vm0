@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.411.0](https://github.com/vm0-ai/vm0/compare/app-v0.410.0...app-v0.411.0) (2026-06-04)
+
+
+### Features
+
+* add structured memory activity diffs ([#16145](https://github.com/vm0-ai/vm0/issues/16145)) ([7b91b35](https://github.com/vm0-ai/vm0/commit/7b91b357292ecb5611ab5f98b2ae9e5909ed4fbf))
+* expose org switcher in onboarding ([#16029](https://github.com/vm0-ai/vm0/issues/16029)) ([863e59b](https://github.com/vm0-ai/vm0/commit/863e59bb53cddac25affe687f03f41b49c0e9123))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.60.0
+    * @vm0/core bumped to 8.309.10
+
 ## [0.410.0](https://github.com/vm0-ai/vm0/compare/app-v0.409.0...app-v0.410.0) (2026-06-04)
 
 
