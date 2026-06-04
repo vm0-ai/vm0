@@ -383,12 +383,8 @@ impl SessionWorkspaceCache {
         &self.inner.cache_dir
     }
 
-    #[cfg(not(test))]
-    fn workspace_image_cache_fs_stats_path(&self) -> &Path {
-        self.inner
-            .cache_dir
-            .parent()
-            .unwrap_or(self.workspace_image_cache_dir())
+    fn workspace_image_cache_fs_stats_path(&self) -> PathBuf {
+        existing_fs_stats_path(self.workspace_image_cache_dir())
     }
 
     async fn fs_stats(&self) -> RunnerResult<FsStats> {
@@ -399,7 +395,8 @@ impl SessionWorkspaceCache {
 
         #[cfg(not(test))]
         {
-            statvfs_bytes(self.workspace_image_cache_fs_stats_path()).await
+            let path = self.workspace_image_cache_fs_stats_path();
+            statvfs_bytes(&path).await
         }
     }
 
@@ -2487,6 +2484,20 @@ fn fs_stats_with_additional_available(stats: FsStats, bytes: u64) -> FsStats {
     }
 }
 
+fn existing_fs_stats_path(path: &Path) -> PathBuf {
+    let mut current = Some(path);
+    while let Some(candidate) = current {
+        match std::fs::metadata(candidate) {
+            Ok(_) => return candidate.to_path_buf(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                current = candidate.parent();
+            }
+            Err(_) => return candidate.to_path_buf(),
+        }
+    }
+    path.to_path_buf()
+}
+
 async fn workspace_cache_path_allocated_bytes(path: &Path) -> u64 {
     let Ok(metadata) = fs::symlink_metadata(path).await else {
         return 0;
@@ -3000,6 +3011,32 @@ mod tests {
         assert_eq!(budget.target_after_gc_bytes, 150 * GIB);
         assert_eq!(budget.min_free_bytes, 50 * GIB);
         assert_eq!(budget.max_entry_bytes, 20 * GIB);
+    }
+
+    #[test]
+    fn fs_stats_path_prefers_existing_cache_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        std::fs::create_dir_all(paths.workspace_image_cache_dir()).unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+
+        assert_eq!(
+            cache.workspace_image_cache_fs_stats_path(),
+            paths.workspace_image_cache_dir()
+        );
+    }
+
+    #[test]
+    fn fs_stats_path_falls_back_to_existing_parent_when_cache_dir_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = RunnerPaths::new(dir.path().join("runner"));
+        std::fs::create_dir_all(paths.base_dir()).unwrap();
+        let cache = SessionWorkspaceCache::new(paths.clone());
+
+        assert_eq!(
+            cache.workspace_image_cache_fs_stats_path(),
+            paths.base_dir().to_path_buf()
+        );
     }
 
     #[tokio::test]
