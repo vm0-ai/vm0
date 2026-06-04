@@ -19,13 +19,14 @@ use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
 const MOCK_GUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
+const MOCK_GUEST_TASK_TIMEOUT: Duration = Duration::from_secs(6);
 
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
 }
 
 pub(crate) async fn await_mock_guest(mut task: JoinHandle<()>) {
-    match tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, &mut task).await {
+    match tokio::time::timeout(MOCK_GUEST_TASK_TIMEOUT, &mut task).await {
         Ok(result) => result.expect("mock guest task panicked"),
         Err(_) => {
             task.abort();
@@ -80,7 +81,10 @@ impl MockGuest {
 
     pub(crate) async fn expect_eof(&mut self) {
         let mut buf = [0u8; 1];
-        let n = self.stream.read(&mut buf).await.unwrap();
+        let n = tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, self.stream.read(&mut buf))
+            .await
+            .expect("timed out waiting for guest stream EOF")
+            .unwrap();
         assert_eq!(n, 0, "expected guest stream EOF, got {n} byte(s)");
     }
 
