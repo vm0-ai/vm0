@@ -4,14 +4,10 @@ import {
   IconChevronUp,
   IconDownload,
   IconEye,
-  IconExternalLink,
   IconFileMusic,
-  IconFileTypePdf,
   IconLoader2,
   IconPlayerPlay,
-  IconTable,
   IconVideo,
-  IconWorld,
 } from "@tabler/icons-react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import type { Computed } from "ccstate";
@@ -132,17 +128,56 @@ type AttachmentAnchorChipKind =
   | "pdf"
   | "html";
 
-function attachmentAnchorChipIcon(kind: AttachmentAnchorChipKind): ReactNode {
-  if (kind === "html") {
-    return <IconWorld size={13} stroke={1.8} />;
+function documentPreviewAccentClass(kind: AttachmentAnchorChipKind) {
+  if (kind === "markdown") {
+    return "from-emerald-500/15 via-lime-500/10 to-background";
   }
   if (kind === "csv") {
-    return <IconTable size={13} stroke={1.8} />;
+    return "from-teal-500/15 via-emerald-500/10 to-background";
   }
   if (kind === "pdf") {
-    return <IconFileTypePdf size={13} stroke={1.8} />;
+    return "from-rose-500/15 via-orange-500/10 to-background";
   }
-  return <IconExternalLink size={13} stroke={1.8} />;
+  return "from-slate-500/15 via-cyan-500/10 to-background";
+}
+
+function AttachmentDocumentThumbnailArtwork({
+  actionIcon,
+  actionLabel,
+  filename,
+  kind,
+}: {
+  actionIcon: ReactNode;
+  actionLabel: string;
+  filename: string;
+  kind: AttachmentAnchorChipKind;
+}) {
+  return (
+    <div
+      className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${documentPreviewAccentClass(
+        kind,
+      )}`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
+      <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
+      <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
+        <FilePreviewIcon
+          filename={filename}
+          contentType={contentTypeForDocumentPreviewKind(kind)}
+          testId={`attachment-preview-${kind}-icon`}
+        />
+      </div>
+      <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+        {actionIcon}
+        {actionLabel}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+        <div className="min-w-0">
+          <div className="truncate text-xs font-medium">{filename}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AttachmentAnchorChip({
@@ -171,15 +206,14 @@ function AttachmentAnchorChip({
       }}
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
-      className="group/anchor-chip inline-flex min-h-8 max-w-[min(100%,520px)] w-fit items-center gap-2 self-start rounded-full border border-foreground/10 bg-background px-2 py-1 pr-3 text-left align-top text-sm text-foreground no-underline transition-colors hover:border-foreground/20 hover:bg-muted/40"
+      className="group/doc-preview inline-flex w-fit self-start align-top text-left no-underline"
     >
-      <span
-        data-testid={`attachment-preview-${kind}-icon`}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-muted/40 text-muted-foreground transition-colors group-hover/anchor-chip:border-foreground/15 group-hover/anchor-chip:bg-muted/60 group-hover/anchor-chip:text-foreground"
-      >
-        {attachmentAnchorChipIcon(kind)}
-      </span>
-      <span className="min-w-0 truncate font-medium">{filename}</span>
+      <AttachmentDocumentThumbnailArtwork
+        actionIcon={<IconEye size={10} />}
+        actionLabel="Preview"
+        filename={filename}
+        kind={kind}
+      />
     </a>
   );
 }
@@ -372,13 +406,6 @@ function DocumentThumbnailPreview({
     return <AttachmentAnchorChip filename={filename} url={url} kind={kind} />;
   }
 
-  const accentClass =
-    kind === "markdown"
-      ? "from-emerald-500/15 via-lime-500/10 to-background"
-      : kind === "csv"
-        ? "from-teal-500/15 via-emerald-500/10 to-background"
-        : "from-rose-500/15 via-orange-500/10 to-background";
-
   return (
     <button
       type="button"
@@ -392,28 +419,12 @@ function DocumentThumbnailPreview({
       aria-label={`Open ${kind} preview for ${filename}`}
       title={filename}
     >
-      <div
-        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
-        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
-        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
-          <FilePreviewIcon
-            filename={filename}
-            contentType={contentTypeForDocumentPreviewKind(kind)}
-            testId={`attachment-preview-${kind}-icon`}
-          />
-        </div>
-        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <IconEye size={10} />
-          Preview
-        </div>
-        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
-          <div className="min-w-0">
-            <div className="truncate text-xs font-medium">{filename}</div>
-          </div>
-        </div>
-      </div>
+      <AttachmentDocumentThumbnailArtwork
+        actionIcon={<IconEye size={10} />}
+        actionLabel="Preview"
+        filename={filename}
+        kind={kind}
+      />
     </button>
   );
 }

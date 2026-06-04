@@ -2,14 +2,14 @@
  * Integration tests for the ChatArtifactSidebar feature switch behavior.
  *
  * Covers the ON path that issue #15027 introduces: inline .txt/.md
- * attachments collapse to anchor chips, plain clicks still open the modal
+ * attachments render as thumbnail anchors, plain clicks still open the modal
  * lightbox, and explicit sidebar opens write the ?artifact= URL parameter.
  * The OFF path is covered by the existing
  * zero-attachment-preview.test.tsx file.
  */
 
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -53,8 +53,8 @@ function renderWithStore(node: React.ReactNode) {
   return render(<StoreProvider value={context.store}>{node}</StoreProvider>);
 }
 
-describe("chatArtifactSidebar: inline anchor chip behavior", () => {
-  it("renders a .txt attachment as an anchor chip when the switch is on", () => {
+describe("chatArtifactSidebar: inline thumbnail anchor behavior", () => {
+  it("renders a .txt attachment as a thumbnail anchor when the switch is on", () => {
     setup();
     renderWithStore(
       <AttachmentPreview
@@ -68,11 +68,20 @@ describe("chatArtifactSidebar: inline anchor chip behavior", () => {
     const chip = screen.getByTestId("attachment-preview-text");
     expect(chip.tagName).toBe("A");
     expect(chip).toHaveAttribute("href", "https://example.com/notes.txt");
+    expect(chip).toHaveClass("group/doc-preview", "w-fit");
+    expect(chip.firstElementChild).toHaveClass(
+      "aspect-[4/3]",
+      "w-[144px]",
+      "sm:w-[168px]",
+    );
+    expect(
+      within(chip).getByTestId("attachment-preview-text-icon"),
+    ).toBeInTheDocument();
     // The inline <pre> body should NOT be present on the ON path.
     expect(screen.queryByText(/notes\.txt/)).toBeInTheDocument();
   });
 
-  it("renders a .md attachment as an anchor chip when the switch is on", () => {
+  it("renders a .md attachment as a thumbnail anchor when the switch is on", () => {
     setup();
     renderWithStore(
       <AttachmentPreview
@@ -86,6 +95,11 @@ describe("chatArtifactSidebar: inline anchor chip behavior", () => {
     const chip = screen.getByTestId("attachment-preview-markdown");
     expect(chip.tagName).toBe("A");
     expect(chip).toHaveAttribute("href", "https://example.com/readme.md");
+    expect(chip.firstElementChild).toHaveClass(
+      "aspect-[4/3]",
+      "w-[144px]",
+      "sm:w-[168px]",
+    );
   });
 
   it("opens the attachment lightbox on plain click", () => {
