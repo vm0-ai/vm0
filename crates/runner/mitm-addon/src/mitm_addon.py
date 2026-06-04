@@ -933,7 +933,7 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
         return
 
     vm_info = registry_state.vms.get(client_ip)
-    if not vm_info:
+    if vm_info is None:
         if client_ip in registry_state.invalid_vms:
             flow.kill()
         return
