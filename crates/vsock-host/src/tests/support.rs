@@ -18,12 +18,14 @@ use vsock_proto::{
 use crate::operation_tracker::NormalOperationReadiness;
 use crate::{ConnectionState, NormalOperationFence, VsockHost};
 
+const MOCK_GUEST_IO_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub(crate) fn make_pair() -> (UnixStream, UnixStream) {
     UnixStream::pair().unwrap()
 }
 
 pub(crate) async fn await_mock_guest(mut task: JoinHandle<()>) {
-    match tokio::time::timeout(Duration::from_secs(5), &mut task).await {
+    match tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, &mut task).await {
         Ok(result) => result.expect("mock guest task panicked"),
         Err(_) => {
             task.abort();
@@ -202,7 +204,10 @@ pub(crate) fn drop_started_request_write_guard(host: &VsockHost) {
 
 pub(crate) async fn read_guest_message(stream: &mut UnixStream) -> RawMessage {
     let mut header = [0u8; HEADER_SIZE];
-    stream.read_exact(&mut header).await.unwrap();
+    tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, stream.read_exact(&mut header))
+        .await
+        .expect("timed out reading guest message header")
+        .unwrap();
 
     let body_len = u32::from_be_bytes(header) as usize;
     assert!(
@@ -211,7 +216,10 @@ pub(crate) async fn read_guest_message(stream: &mut UnixStream) -> RawMessage {
     );
 
     let mut body = vec![0u8; body_len];
-    stream.read_exact(&mut body).await.unwrap();
+    tokio::time::timeout(MOCK_GUEST_IO_TIMEOUT, stream.read_exact(&mut body))
+        .await
+        .expect("timed out reading guest message body")
+        .unwrap();
 
     RawMessage {
         msg_type: body[0],
