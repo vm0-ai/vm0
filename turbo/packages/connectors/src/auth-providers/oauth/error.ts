@@ -1,4 +1,4 @@
-import { ProviderHttpError } from "../provider-http-error";
+import { ProviderHttpError } from "../provider-error";
 
 const MAX_BODY_LENGTH = 500;
 

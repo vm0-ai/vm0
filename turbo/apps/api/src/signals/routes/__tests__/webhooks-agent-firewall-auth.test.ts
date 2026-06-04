@@ -2685,7 +2685,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(larkCalls).toStrictEqual([]);
   });
 
-  it("returns refresh failure for invalid Lark token endpoint responses", async () => {
+  it("treats malformed Lark token endpoint responses as upstream provider failures", async () => {
     const larkCalls = useLarkTenantAccessTokenEndpoint({
       body: {
         code: 0,
@@ -2716,6 +2716,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     expect(response.body.error).toMatchObject({
       code: "TOKEN_REFRESH_FAILED",
       connectors: ["lark"],
+      failureReason: "upstream_provider",
+    });
+    await expect(connectorState(fixture, "lark")).resolves.toMatchObject({
+      needsReconnect: false,
     });
     await expect(
       readSecret({

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ProviderHttpError } from "../../provider-http-error";
+import { ProviderHttpError, ProviderResponseError } from "../../provider-error";
 
 const LARK_TENANT_ACCESS_TOKEN_URL =
   "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal";
@@ -11,6 +11,10 @@ const larkTenantAccessTokenResponseSchema = z.object({
   tenant_access_token: z.string().optional(),
   expire: z.number().optional(),
 });
+
+type LarkTenantAccessTokenResponse = z.infer<
+  typeof larkTenantAccessTokenResponseSchema
+>;
 
 export interface LarkTenantAccessTokenResult {
   readonly accessToken: string;
@@ -41,20 +45,41 @@ export async function fetchLarkTenantAccessToken(args: {
     );
   }
 
-  const data = larkTenantAccessTokenResponseSchema.parse(await response.json());
+  const data = await readLarkTenantAccessTokenResponse(response);
 
   if (data.code !== 0) {
     throw new Error(data.msg ?? `Lark tenant access token error ${data.code}`);
   }
   if (!data.tenant_access_token) {
-    throw new Error("Missing Lark tenant access token");
+    throw new ProviderResponseError("Missing Lark tenant access token");
   }
   if (data.expire === undefined || data.expire <= 0) {
-    throw new Error("Missing Lark tenant access token expiry");
+    throw new ProviderResponseError("Missing Lark tenant access token expiry");
   }
 
   return {
     accessToken: data.tenant_access_token,
     expiresIn: data.expire,
   };
+}
+
+async function readLarkTenantAccessTokenResponse(
+  response: Response,
+): Promise<LarkTenantAccessTokenResponse> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new ProviderResponseError(
+      "Invalid Lark tenant access token response",
+    );
+  }
+
+  const parsed = larkTenantAccessTokenResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new ProviderResponseError(
+      "Invalid Lark tenant access token response",
+    );
+  }
+  return parsed.data;
 }

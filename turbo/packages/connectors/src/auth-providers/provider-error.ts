@@ -13,3 +13,16 @@ export function isProviderHttpError(
 ): value is ProviderHttpError {
   return value instanceof ProviderHttpError;
 }
+
+export class ProviderResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProviderResponseError";
+  }
+}
+
+export function isProviderResponseError(
+  value: unknown,
+): value is ProviderResponseError {
+  return value instanceof ProviderResponseError;
+}
