@@ -4,6 +4,7 @@ import { computed, type Computed } from "ccstate";
 import { env } from "../../lib/env";
 import { extractFilesFromTarGz } from "../../lib/tar";
 import { downloadManifest, downloadS3Buffer } from "../external/s3";
+import { safeSync } from "../utils";
 
 type MemoryChangeKind = "learned" | "updated" | "forgotten";
 
@@ -57,11 +58,17 @@ function deriveTitle(
   content: string | undefined,
 ): { readonly title: string | null; readonly description: string | null } {
   if (content && filePath.endsWith(".md")) {
-    const frontmatter = parseSkillFrontmatter(content);
-    if (frontmatter.description) {
+    // Memory files are free-form, agent-written markdown, so a body that opens
+    // with `---` but is not valid YAML (e.g. a `description` value starting
+    // with a backtick, a reserved YAML scalar char) is expected. Guard the
+    // parse and degrade to a path-based title rather than crashing the run.
+    const parsed = safeSync(() => {
+      return parseSkillFrontmatter(content);
+    });
+    if ("ok" in parsed && parsed.ok.description) {
       return {
-        title: frontmatter.name ?? filePath,
-        description: frontmatter.description,
+        title: parsed.ok.name ?? filePath,
+        description: parsed.ok.description,
       };
     }
   }

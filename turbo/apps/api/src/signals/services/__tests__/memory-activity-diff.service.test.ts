@@ -94,6 +94,31 @@ describe("computeChangeSet", () => {
     });
   });
 
+  it("falls back to the file path when frontmatter is not valid YAML", () => {
+    // Regression for the prod crash: a memory file whose `description` value
+    // opens with a backtick is a reserved YAML scalar char and makes
+    // parseSkillFrontmatter throw a YAMLParseError. The diff must degrade to a
+    // path-based title instead of letting the whole summary run 500.
+    const content =
+      "---\nname: zero search\ndescription: `zero search` command shipped in CLI v9.125.x\n---\nbody";
+    expect(() => {
+      return computeChangeSet(
+        fileMap([]),
+        fileMap([["facts/zero-search.md", "h1", content]]),
+      );
+    }).not.toThrow();
+
+    const changeSet = computeChangeSet(
+      fileMap([]),
+      fileMap([["facts/zero-search.md", "h1", content]]),
+    );
+    expect(changeSet.items[0]).toMatchObject({
+      kind: "learned",
+      title: "facts/zero-search.md",
+      description: null,
+    });
+  });
+
   it("folds MEMORY.md churn into real file changes (does not emit it)", () => {
     const changeSet = computeChangeSet(
       fileMap([["MEMORY.md", "idx1", "# index v1"]]),

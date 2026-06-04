@@ -363,9 +363,23 @@ export const summarizeMemory$ = command(
     for (const storage of memoryStorages) {
       const timezone =
         timezoneMap.get(`${storage.orgId}:${storage.userId}`) ?? "UTC";
-      summarized += await get(
-        summarizeUserMemory(db, storage, timezone, now, signal),
+      // Isolate each user: one user's malformed data (e.g. invalid memory
+      // frontmatter) must not abort the whole run for everyone. AbortError
+      // still propagates through `settle`, so a genuine cancellation stops the
+      // loop instead of being swallowed.
+      const result = await settle(
+        get(summarizeUserMemory(db, storage, timezone, now, signal)),
+        signal,
       );
+      if (result.ok) {
+        summarized += result.value;
+      } else {
+        L.warn("Failed to summarize user memory", {
+          orgId: storage.orgId,
+          userId: storage.userId,
+          err: result.error,
+        });
+      }
       signal.throwIfAborted();
     }
 

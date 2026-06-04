@@ -122,6 +122,60 @@ async function seedTwoVersions(
   return { fixture, v2Id };
 }
 
+/**
+ * Seed two versions for a user inside the closed day without mocking their S3
+ * content. The caller supplies a single combined S3 mock (so several users can
+ * coexist on the shared mock), and may deliberately omit a user's content to
+ * make their per-user summarize throw — exercising the cron's per-user error
+ * isolation.
+ */
+async function seedTwoVersionsNoMock(): Promise<{
+  fixture: MemoryFixture;
+  v1Key: string;
+  v2Key: string;
+  v2Id: string;
+}> {
+  const fixture = await track(
+    store.set(seedMemoryFixture$, undefined, context.signal),
+  );
+  const base = `orgs/${fixture.orgId}/users/${fixture.userId}/memory`;
+  const v1Key = `${base}/v1`;
+  const v2Key = `${base}/v2`;
+  const v2Id = `v2-${randomUUID()}`;
+
+  await store.set(
+    seedMemoryStorage$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      s3Key: v1Key,
+      headVersionId: `v1-${randomUUID()}`,
+      fileCount: 1,
+      updatedAt: new Date("2999-01-02T03:00:00.000Z"),
+    },
+    context.signal,
+  );
+
+  const storageId = await store.set(
+    findMemoryStorageId$,
+    fixture.orgId,
+    context.signal,
+  );
+  await store.set(
+    seedMemoryVersion$,
+    {
+      storageId,
+      versionId: v2Id,
+      s3Key: v2Key,
+      userId: fixture.userId,
+      createdAt: new Date("2999-01-02T09:00:00.000Z"),
+    },
+    context.signal,
+  );
+
+  return { fixture, v1Key, v2Key, v2Id };
+}
+
 interface DayVersion {
   readonly createdAt: Date;
   readonly files: readonly MemoryFile[];
@@ -312,6 +366,39 @@ describe("GET /api/cron/summarize-memory", () => {
     ]);
   });
 
+  it("summarizes a file whose frontmatter is not valid YAML", async () => {
+    // Regression for the prod 500: a memory file whose `description` opens with
+    // a backtick is invalid YAML and made parseSkillFrontmatter throw a
+    // YAMLParseError, which propagated up and 500'd every cron run. The run
+    // must now complete and persist the item with a path-based title.
+    const llm = mockLlm();
+    const seeded = await seedTwoVersions(
+      [{ path: "facts/pets.md", content: "Has a dog" }],
+      [
+        { path: "facts/pets.md", content: "Has a dog" },
+        {
+          path: "facts/zero-search.md",
+          content:
+            "---\nname: zero search\ndescription: `zero search` command shipped in CLI v9.125.x\n---\nbody",
+        },
+      ],
+    );
+
+    const response = await accept(
+      apiClient().summarize({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(llm.calls).toBe(1);
+
+    const summary = await findSummary(seeded.fixture);
+    const items = await findItems(summary?.id ?? "");
+    expect(items).toStrictEqual([
+      { kind: "learned", filePath: "facts/zero-search.md" },
+    ]);
+  });
+
   it("folds MEMORY.md churn into the real file change", async () => {
     mockLlm();
     const seeded = await seedTwoVersions(
@@ -418,6 +505,49 @@ describe("GET /api/cron/summarize-memory", () => {
       .where(eq(memoryChangeSummaries.orgId, seeded.fixture.orgId));
     expect(rows).toHaveLength(1);
     await expect(findItems(rows[0]?.id ?? "")).resolves.toHaveLength(1);
+  });
+
+  it("isolates a failing user so others are still summarized", async () => {
+    // Defense-in-depth: one user's data error (here, missing S3 content) must
+    // not abort the whole run. The healthy user must still be summarized.
+    const llm = mockLlm();
+    const healthy = await seedTwoVersionsNoMock();
+    const broken = await seedTwoVersionsNoMock();
+
+    // Combined mock: only the healthy user's versions resolve. The broken
+    // user's keys are absent, so its manifest download throws and its per-user
+    // summarize fails — without the isolation that would 500 the whole run.
+    mockMemoryVersions(context, [
+      {
+        s3Key: healthy.v1Key,
+        files: [{ path: "facts/pets.md", content: "Has a dog" }],
+      },
+      {
+        s3Key: healthy.v2Key,
+        files: [
+          { path: "facts/pets.md", content: "Has a dog" },
+          { path: "facts/coffee.md", content: "Drinks oat milk lattes" },
+        ],
+      },
+    ]);
+
+    const response = await accept(
+      apiClient().summarize({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ summarized: 1 });
+    expect(llm.calls).toBe(1);
+
+    const healthySummary = await findSummary(healthy.fixture);
+    expect(healthySummary).not.toBeNull();
+    expect(healthySummary?.toVersionId).toBe(healthy.v2Id);
+    const items = await findItems(healthySummary?.id ?? "");
+    expect(items).toStrictEqual([
+      { kind: "learned", filePath: "facts/coffee.md" },
+    ]);
+
+    await expect(findSummary(broken.fixture)).resolves.toBeNull();
   });
 
   it("backfills every closed day when the cron missed earlier runs", async () => {
