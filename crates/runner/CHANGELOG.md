@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.108.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.4...runner-rs-v0.108.5) (2026-06-04)
+
+
+### Performance Improvements
+
+* avoid cloning workspace image cache list entries ([#16177](https://github.com/vm0-ai/vm0/issues/16177)) ([0d190b6](https://github.com/vm0-ai/vm0/commit/0d190b693d21ab16b3d332388d52c1e824eea64e))
+
 ## [0.108.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.108.3...runner-rs-v0.108.4) (2026-06-04)
 
 

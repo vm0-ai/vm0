@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.21](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.20...vsock-host-v0.17.21) (2026-06-04)
+
+
+### Documentation
+
+* document vsock exec lifecycle handles ([#16189](https://github.com/vm0-ai/vm0/issues/16189)) ([dca9ebf](https://github.com/vm0-ai/vm0/commit/dca9ebf211808185ba5b1c25d896ad7a70d50061))
+
+
+### Refactoring
+
+* centralize vsock-host mock guest scripting ([#16170](https://github.com/vm0-ai/vm0/issues/16170)) ([8d9bedf](https://github.com/vm0-ai/vm0/commit/8d9bedf68eb50df7d6a7352b880c03702d4831b9))
+
 ## [0.17.20](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.19...vsock-host-v0.17.20) (2026-06-04)
 
 

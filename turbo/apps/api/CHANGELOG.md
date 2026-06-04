@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.101.0](https://github.com/vm0-ai/vm0/compare/api-v1.100.0...api-v1.101.0) (2026-06-04)
+
+
+### Features
+
+* show template on sent chat messages ([#16191](https://github.com/vm0-ai/vm0/issues/16191)) ([0083a37](https://github.com/vm0-ai/vm0/commit/0083a37acbde5e348758bffb4a93bb8f046476ed))
+
+
+### Bug Fixes
+
+* show memory index diffs separately ([#16183](https://github.com/vm0-ai/vm0/issues/16183)) ([f2cf8e8](https://github.com/vm0-ai/vm0/commit/f2cf8e8ddc9b4ed5933f492db1e5af296eca98d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.62.0
+    * @vm0/core bumped to 8.309.12
+    * @vm0/db bumped to 1.30.1
+
 ## [1.100.0](https://github.com/vm0-ai/vm0/compare/api-v1.99.0...api-v1.100.0) (2026-06-04)
 
 

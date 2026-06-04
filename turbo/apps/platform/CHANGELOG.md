@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.413.0](https://github.com/vm0-ai/vm0/compare/app-v0.412.0...app-v0.413.0) (2026-06-04)
+
+
+### Features
+
+* show template on sent chat messages ([#16191](https://github.com/vm0-ai/vm0/issues/16191)) ([0083a37](https://github.com/vm0-ai/vm0/commit/0083a37acbde5e348758bffb4a93bb8f046476ed))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.62.0
+    * @vm0/core bumped to 8.309.12
+
 ## [0.412.0](https://github.com/vm0-ai/vm0/compare/app-v0.411.0...app-v0.412.0) (2026-06-04)
 
 
