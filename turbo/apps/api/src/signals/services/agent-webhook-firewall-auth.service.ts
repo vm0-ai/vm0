@@ -377,7 +377,7 @@ type ConnectorPreparedRefreshTokenContextFor<
   readonly authMethod: Method;
   readonly context: RefreshTokenContext;
 } & ([ConnectorAuthMethodClientConfig<Type, Method>] extends [never]
-  ? Record<never, never>
+  ? unknown
   : { readonly authClient: ConnectorAuthClientForMethod<Type, Method> });
 
 type ConnectorPreparedRefreshTokenContext = {

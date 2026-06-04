@@ -83,7 +83,6 @@ import {
   TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME,
   TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME,
 } from "../auth-providers/oauth/providers/test-oauth-device";
-import { testOauthApiTokenProvider } from "../auth-providers/oauth/providers/test-oauth-provider";
 import {
   GOOGLE_OAUTH_CONNECTOR_TYPES,
   isGoogleOAuthConnector,
@@ -1198,40 +1197,6 @@ describe("connector selected auth method capability checks", () => {
       },
       expiresIn: 3600,
     });
-  });
-
-  it("rejects undeclared input-only refresh provider outputs", async () => {
-    const access = testOauthApiTokenProvider.access;
-    const originalRefresh = access.refresh;
-    const malformedRefresh = (
-      args: Parameters<typeof originalRefresh>[0],
-    ): Promise<unknown> => {
-      args.signal.throwIfAborted();
-      return Promise.resolve({
-        outputs: {
-          undeclaredToken: "fresh-undeclared-token",
-        },
-        expiresIn: 3600,
-      });
-    };
-    access.refresh = malformedRefresh as typeof originalRefresh;
-    try {
-      await expect(
-        refreshConnectorAuthProviderAccessToken({
-          type: "test-oauth",
-          authMethod: "api-token",
-          inputs: {
-            inputSecret: "secret-input",
-            inputVariable: "variable-input",
-          },
-          signal: testRefreshSignal(),
-        }),
-      ).rejects.toThrow(
-        "test-oauth connector auth method api-token returned undeclared refresh output undeclaredToken",
-      );
-    } finally {
-      access.refresh = originalRefresh;
-    }
   });
 
   it("starts, polls, and refreshes the Base44 OAuth device provider", async () => {

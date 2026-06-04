@@ -9,7 +9,6 @@ import {
   type DeviceAuthGrantConnectorType,
   type ConnectorAuthMethodIdsByAccessKind,
   type ConnectorAuthMethodIdsByRevokeKind,
-  type ConnectorAuthMethodClientConfig,
   type ConnectorRefreshInputValues,
   type ConnectorRevokeInputValues,
   type RefreshTokenAccessConnectorType,
@@ -29,6 +28,7 @@ import {
 } from "@vm0/connectors/connector-utils";
 import type {
   AuthCodeConnectorAuthProvider,
+  ConnectorAuthProviderRefreshArgs,
   ConnectorAuthProviderRefreshResultBase,
   ConnectorAuthProviderRefreshResult,
   DeviceAuthConnectorAuthProvider,
@@ -492,9 +492,7 @@ type ConnectorRefreshTokenAccessCallArgs<
 type ConnectorRefreshTokenAccessClientArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
-> = [ConnectorAuthMethodClientConfig<T, Method>] extends [never]
-  ? Record<never, never>
-  : { readonly authClient: ConnectorAuthClientForMethod<T, Method> };
+> = Omit<ConnectorAuthProviderRefreshArgs<T, Method>, "inputs" | "signal">;
 
 type ConnectorRefreshTokenAccessDynamicCallArgs = {
   readonly [Type in RefreshTokenAccessConnectorType]: {

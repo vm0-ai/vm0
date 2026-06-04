@@ -80,7 +80,7 @@ type ConnectorRefreshAuthClientArgs<
   T extends RefreshTokenAccessConnectorType,
   Method extends ConnectorAuthMethodIdsByAccessKind<T, "refresh-token">,
 > = [ConnectorAuthMethodClientConfig<T, Method>] extends [never]
-  ? Record<never, never>
+  ? unknown
   : {
       readonly authClient: ConnectorAuthClientForMethod<T, Method>;
     };
