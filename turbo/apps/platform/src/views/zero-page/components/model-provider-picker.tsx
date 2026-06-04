@@ -74,8 +74,11 @@ const INHERIT_SENTINEL = "__inherit_default__";
 
 // Radix Select uses the selected item's offsetHeight as the scroll-button
 // step. Keep hidden selected items measurable so native hover scrolling works.
+// These items are also `disabled`, and SelectItem's base `data-[disabled]:opacity-50`
+// outranks a plain `opacity-0` on specificity, so restate the hidden opacity under
+// the disabled variant to stop the measuring item from bleeding through.
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
-  "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 pointer-events-none";
+  "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
 
 function formatMultiplier(multiplier: number): string {
   return `×${multiplier}`;
