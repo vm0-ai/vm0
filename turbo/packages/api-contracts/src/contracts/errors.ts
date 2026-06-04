@@ -149,12 +149,15 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
 
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
   const normalized = errorMessage.toLowerCase();
+  const hasTokenRefreshFailedCode = /"error"\s*:\s*"token_refresh_failed"/.test(
+    normalized,
+  );
   const hasOnlyCodexOAuthConnector =
     /"connectors"\s*:\s*\[\s*"codex-oauth-token"\s*\]/.test(normalized);
   const hasReconnectRequiredFailureReason =
     /"failurereason"\s*:\s*"reconnect_required"/.test(normalized);
   return (
-    normalized.includes("token_refresh_failed") &&
+    hasTokenRefreshFailedCode &&
     hasOnlyCodexOAuthConnector &&
     hasReconnectRequiredFailureReason &&
     !normalized.includes("upstream_provider")
