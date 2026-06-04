@@ -39,10 +39,11 @@ struct ExecControlEntry {
 
 /// RAII owner for one exec-control registry entry.
 ///
-/// Operation completion releases the guard explicitly, and `Drop` releases it
-/// as a fallback. Cleanup removes the active entry and closes any sink. The
-/// release path is idempotent so a released guard cannot remove a later
-/// registration that reused the same sequence id.
+/// Normal operation completion paths release the guard explicitly, and `Drop`
+/// releases it as a fallback for aborted setup or any missed explicit release.
+/// Cleanup removes the active entry and closes any sink. The release path is
+/// idempotent so a released guard cannot remove a later registration that
+/// reused the same sequence id.
 pub(crate) struct ExecControlGuard {
     registry: ExecControlRegistry,
     seq: u32,
