@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.102.0](https://github.com/vm0-ai/vm0/compare/api-v1.101.0...api-v1.102.0) (2026-06-04)
+
+
+### Features
+
+* paginate memory activity updates ([#16204](https://github.com/vm0-ai/vm0/issues/16204)) ([45522b7](https://github.com/vm0-ai/vm0/commit/45522b73f613d08ec66a8d21123962bff37faf05))
+* run schedules as web-chat turns in a linked chat thread ([#16176](https://github.com/vm0-ai/vm0/issues/16176)) ([f403258](https://github.com/vm0-ai/vm0/commit/f4032589b6c024852293bb4ee16f2ea1a22e9c87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.63.0
+    * @vm0/connectors bumped to 1.47.0
+    * @vm0/core bumped to 8.310.0
+    * @vm0/db bumped to 1.31.0
+
 ## [1.101.0](https://github.com/vm0-ai/vm0/compare/api-v1.100.0...api-v1.101.0) (2026-06-04)
 
 

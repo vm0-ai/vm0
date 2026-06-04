@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.310.0](https://github.com/vm0-ai/vm0/compare/core-v8.309.12...core-v8.310.0) (2026-06-04)
+
+
+### Features
+
+* add artifact inbox sidebar preview ([#15983](https://github.com/vm0-ai/vm0/issues/15983)) ([bc96129](https://github.com/vm0-ai/vm0/commit/bc96129f7584851ec8d892bd5ce1d1827d83e8d2))
+* run schedules as web-chat turns in a linked chat thread ([#16176](https://github.com/vm0-ai/vm0/issues/16176)) ([f403258](https://github.com/vm0-ai/vm0/commit/f4032589b6c024852293bb4ee16f2ea1a22e9c87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.63.0
+    * @vm0/connectors bumped to 1.47.0
+
 ## [8.309.12](https://github.com/vm0-ai/vm0/compare/core-v8.309.11...core-v8.309.12) (2026-06-04)
 
 

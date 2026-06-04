@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.181.0](https://github.com/vm0-ai/vm0/compare/cli-v9.180.17...cli-v9.181.0) (2026-06-04)
+
+
+### Features
+
+* run schedules as web-chat turns in a linked chat thread ([#16176](https://github.com/vm0-ai/vm0/issues/16176)) ([f403258](https://github.com/vm0-ai/vm0/commit/f4032589b6c024852293bb4ee16f2ea1a22e9c87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.63.0
+    * @vm0/connectors bumped to 1.47.0
+    * @vm0/core bumped to 8.310.0
+
 ## [9.180.17](https://github.com/vm0-ai/vm0/compare/cli-v9.180.16...cli-v9.180.17) (2026-06-04)
 
 
