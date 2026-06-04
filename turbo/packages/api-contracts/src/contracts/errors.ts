@@ -155,16 +155,51 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
 
 function parseEmbeddedRunErrorBody(errorMessage: string): unknown {
   const bodyStart = errorMessage.indexOf("{");
-  const bodyEnd = errorMessage.lastIndexOf("}");
-  if (bodyStart === -1 || bodyEnd <= bodyStart) {
+  if (bodyStart === -1) {
     return undefined;
   }
 
-  try {
-    return JSON.parse(errorMessage.slice(bodyStart, bodyEnd + 1)) as unknown;
-  } catch {
-    return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = bodyStart; index < errorMessage.length; index += 1) {
+    const char = errorMessage[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = inString;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}") {
+      continue;
+    }
+
+    depth -= 1;
+    if (depth !== 0) {
+      continue;
+    }
+
+    try {
+      return JSON.parse(errorMessage.slice(bodyStart, index + 1)) as unknown;
+    } catch {
+      return undefined;
+    }
   }
+
+  return undefined;
 }
 
 function isCodexOAuthReconnectRequiredRunError(errorMessage: string): boolean {
