@@ -15,6 +15,7 @@ mod ids;
 mod image_hash;
 mod io_limits;
 mod kmsg_log;
+mod local_queue;
 mod lock;
 mod network_log_drain;
 mod network_log_manager;
@@ -28,12 +29,16 @@ mod proxy;
 mod r2_cache;
 mod resource_budget;
 mod retry;
+mod run_resolution;
 mod runner_dirname;
 mod runtime_overrides;
 mod status;
 mod storage_cache;
 mod telemetry;
 mod types;
+mod workspace_image_cache;
+mod workspace_mount;
+mod workspace_promotion;
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -74,6 +79,8 @@ enum Command {
     Kill(cmd::KillArgs),
     /// Clean up unused image directories
     Gc(cmd::GcArgs),
+    /// Clean up reusable session workspace image cache entries
+    GcWorkspaceImageCache(cmd::GcWorkspaceImageCacheArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
     /// Local file-queue provider commands
@@ -259,6 +266,9 @@ async fn main() -> ExitCode {
             .map(|()| ExitCode::SUCCESS),
         Command::Service(args) => cmd::run_service(args).await.map(|()| ExitCode::SUCCESS),
         Command::Gc(args) => cmd::run_gc(args).await.map(|()| ExitCode::SUCCESS),
+        Command::GcWorkspaceImageCache(args) => cmd::run_gc_workspace_image_cache(args)
+            .await
+            .map(|()| ExitCode::SUCCESS),
         Command::Doctor(args) => cmd::run_doctor(args).await,
         Command::Local(args) => cmd::run_local(args).await,
     };

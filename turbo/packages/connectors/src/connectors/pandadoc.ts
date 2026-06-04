@@ -11,6 +11,10 @@ export const pandadoc = {
         label: "API Key",
         helpText:
           "1. In PandaDoc, go to **Settings > Integrations > API**\n2. Click **Generate Production Key** (requires an API-enabled plan) or **Generate Sandbox Key** for testing\n3. Copy the key and paste it here\n\nNote: Only Org Admins can generate keys. Sandbox keys work for free but signed documents have no legal validity.",
+        storage: {
+          secrets: ["PANDADOC_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

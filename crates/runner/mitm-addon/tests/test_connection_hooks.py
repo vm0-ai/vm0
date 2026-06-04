@@ -9,8 +9,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from mitmproxy.flow import Error
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 import usage
+import usage.buffer as usage_buffer
 from tests.pending_helpers import assert_pending
 from tests.timestamp_helpers import assert_utc_millisecond_timestamp
 
@@ -250,6 +252,52 @@ class TestRunnerUsageFlushSignal:
         assert "RuntimeError" in message
         assert "secret-token" not in message
 
+    def test_runner_flush_failure_snapshot_includes_retryable_buffered_usage(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        request_path = tmp_path / "usage-flush-request"
+        usage.set_pending_path(str(pending_path), usage_state_id="runner-state")
+        request_path.write_text(
+            json.dumps(
+                {
+                    "usageStateId": "runner-state",
+                    "flushRequestId": "request-1",
+                    "requestedAtMs": 1_770_000_000_000,
+                }
+            )
+        )
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [
+                {
+                    "idempotencyKey": "source-1",
+                    "kind": "model",
+                    "provider": "claude-sonnet-4-6",
+                    "category": "tokens.input",
+                    "quantity": 1,
+                }
+            ],
+            str(tmp_path / "proxy.jsonl"),
+        )
+
+        try:
+            with (
+                patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("no threads")),
+                patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            ):
+                mitm_addon._flush_usage_for_runner_request()
+
+            assert_pending(
+                pending_path,
+                flows=0,
+                buffered=1,
+                reports=0,
+                flush_request_id="request-1",
+            )
+        finally:
+            usage.set_pending_path("")
+
     def test_signal_during_active_flush_runs_follow_up_flush(self):
         reset_runner_usage_flush_state()
         first_flush_started = threading.Event()
@@ -355,7 +403,7 @@ class TestTcpStart:
 
         assert flow.metadata["vm_run_id"] == "run-abc-123"
         assert "vm_network_log_path" in flow.metadata
-        assert "tcp_start_time" in flow.metadata
+        assert metadata_keys.TCP_START_MONOTONIC in flow.metadata
 
     def test_skips_when_no_client_ip(self, registry_file, mitm_ctx, real_tcp_flow):
         flow = real_tcp_flow()
@@ -385,7 +433,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time() - 0.05
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic() - 0.05
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
@@ -407,7 +455,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time()
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.error = Error("connection reset by peer")
 
         with mitm_ctx():
@@ -433,7 +481,7 @@ class TestTcpLog:
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata["vm_run_id"] = "run-abc-123"
         flow.metadata["vm_network_log_path"] = log_path
-        flow.metadata["tcp_start_time"] = time.time()
+        flow.metadata[metadata_keys.TCP_START_MONOTONIC] = time.monotonic()
         flow.server_conn = None
 
         with mitm_ctx():

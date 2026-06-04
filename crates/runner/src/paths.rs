@@ -24,19 +24,19 @@ use sha2::{Digest, Sha256};
 use crate::error::RunnerResult;
 use crate::ids::RunId;
 
-/// Short hex digests (16 chars = 8 bytes) of a `(name, version)` pair, used
-/// when building filesystem paths from untrusted manifest fields.
+/// Short hex digests for storage name and version components, used when
+/// building filesystem paths from untrusted manifest fields.
 ///
-/// Prefix-length of 16 is ample collision resistance for a runner-local
-/// cache (~10^10 pairs before birthday collision) while keeping directory
-/// names compact.
+/// Each component uses a 16-character / 64-bit prefix. That keeps directory
+/// names compact for this bounded runner-local cache, but is not a
+/// mathematical uniqueness guarantee or unbounded global key.
 fn storage_key_hashes(name: &str, version: &str) -> (String, String) {
     (short_digest(name), short_digest(version))
 }
 
 /// Hex-encode the first 8 bytes of `SHA-256(s)` — 16 characters, collision
-/// resistant enough for runner-local bookkeeping and always a valid path
-/// segment.
+/// resistant enough for bounded runner-local bookkeeping and always a valid
+/// path segment.
 ///
 /// Exposed `pub(crate)` so the host-side cache dir (built here) and the
 /// guest-side `file://` URL (built in `storage_cache`) share one source of
@@ -46,6 +46,37 @@ pub(crate) fn short_digest(s: &str) -> String {
     let digest = Sha256::digest(s.as_bytes());
     let prefix = digest.get(..8).unwrap_or(&digest);
     hex::encode(prefix)
+}
+
+/// Versioned digest key for host-shared session workspace image baselines.
+///
+/// The raw CLI session id is untrusted and must not be embedded directly in
+/// host paths. The working-dir argument is intentionally ignored: workspace
+/// image cache identity is based on canonical workspace semantics. The key
+/// includes the cache scope, profile, drive layout version, and logical image
+/// size so incompatible workspace images never share a host entry.
+#[cfg(test)]
+pub(crate) fn session_workspace_cache_key(session_id: &str, working_dir: &str) -> String {
+    scoped_session_workspace_cache_key("", "vm0/default", session_id, working_dir, 5)
+}
+
+pub(crate) fn scoped_session_workspace_cache_key(
+    cache_scope: &str,
+    profile_name: &str,
+    session_id: &str,
+    _working_dir: &str,
+    image_size_bytes: u64,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"session-workspace-cache:v3\0");
+    hasher.update(cache_scope.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(profile_name.as_bytes());
+    hasher.update(b"\0workspace-drive-v1\0");
+    hasher.update(image_size_bytes.to_le_bytes());
+    hasher.update(b"\0");
+    hasher.update(session_id.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 /// Update a directory's mtime to now, so `runner gc` treats it as recently used.
@@ -69,6 +100,7 @@ pub mod guest {
 }
 
 /// Runner-level paths derived from the base directory.
+#[derive(Clone)]
 pub struct RunnerPaths {
     base_dir: PathBuf,
 }
@@ -76,6 +108,11 @@ pub struct RunnerPaths {
 impl RunnerPaths {
     pub fn new(base_dir: PathBuf) -> Self {
         Self { base_dir }
+    }
+
+    #[cfg(test)]
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
     }
 
     pub fn status(&self) -> PathBuf {
@@ -92,6 +129,46 @@ impl RunnerPaths {
 
     pub fn proxy_registry_lock(&self) -> PathBuf {
         self.base_dir.join("proxy-registry.json.lock")
+    }
+
+    pub fn workspaces_dir(&self) -> PathBuf {
+        self.base_dir.join("workspaces")
+    }
+
+    pub fn workspace_dir(&self, sandbox_id: &sandbox::SandboxId) -> PathBuf {
+        self.workspaces_dir().join(sandbox_id.to_string())
+    }
+
+    pub fn active_workspace_image(&self, sandbox_id: &sandbox::SandboxId) -> PathBuf {
+        self.workspace_dir(sandbox_id).join("workspace.ext4")
+    }
+
+    #[cfg(test)]
+    pub fn workspace_image_cache_dir(&self) -> PathBuf {
+        self.base_dir.join("workspace-image-cache")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_entry_dir(&self, cache_key: &str) -> PathBuf {
+        self.workspace_image_cache_dir().join(cache_key)
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_metadata(&self, cache_key: &str) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join("metadata.json")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_current_image(&self, cache_key: &str) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join("current.ext4")
+    }
+
+    #[cfg(test)]
+    pub fn session_workspace_cache_tmp_image(&self, cache_key: &str, run_id: RunId) -> PathBuf {
+        self.session_workspace_cache_entry_dir(cache_key)
+            .join(format!("current.ext4.tmp.{run_id}"))
     }
 }
 
@@ -148,6 +225,10 @@ impl HomePaths {
 
     pub fn runners_dir(&self) -> PathBuf {
         self.root.join("runners")
+    }
+
+    pub fn workspace_image_cache_dir(&self) -> PathBuf {
+        self.root.join("workspace-image-cache")
     }
 
     pub fn groups_dir(&self) -> PathBuf {
@@ -207,9 +288,9 @@ impl HomePaths {
     ///
     /// `name` and `version` come from untrusted manifest fields
     /// (`vas_storage_name` / `vas_version_id`) so they are hashed before use.
-    /// Hashing also makes the key pair injective — two distinct `(name,
-    /// version)` pairs cannot collide on a single directory regardless of
-    /// hyphen placement in either component.
+    /// Hashing also avoids separator ambiguity between the two path components
+    /// and provides compact collision-resistant cache keys under the truncated
+    /// hash model.
     pub fn storage_cache_dir(&self, name: &str, version: &str) -> PathBuf {
         let (name_hash, version_hash) = storage_key_hashes(name, version);
         self.storages_dir().join(name_hash).join(version_hash)
@@ -218,7 +299,8 @@ impl HomePaths {
     /// Per-version flock path guarding `storage_cache_dir(name, version)`.
     ///
     /// Same hashing rationale as `storage_cache_dir`: the lock filename must
-    /// be injective in `(name, version)` and safe to embed in a path segment.
+    /// use the same compact cache key components and be safe to embed in a
+    /// path segment.
     pub fn storage_lock(&self, name: &str, version: &str) -> PathBuf {
         let (name_hash, version_hash) = storage_key_hashes(name, version);
         self.storage_lock_for_cache_key(&name_hash, &version_hash)
@@ -233,6 +315,10 @@ impl HomePaths {
         self.locks_dir()
             .join(format!("storage-{name_hash}-{version_hash}.lock"))
     }
+}
+
+pub(crate) fn workspace_image_cache_lock_path(lock_dir: &Path, cache_key: &str) -> PathBuf {
+    lock_dir.join(format!("workspace-image-cache-{cache_key}.lock"))
 }
 
 /// Paths for a rootfs build output, keyed by rootfs hash.
@@ -386,6 +472,7 @@ define_per_run_logs! {
     network_log => ("network-", ".jsonl"),
     proxy_log => ("proxy-", ".jsonl"),
     system_log => ("system-", ".log"),
+    system_stream_log => ("system-stream-", ".log"),
     metrics_log => ("metrics-", ".jsonl"),
     sandbox_ops_log => ("sandbox-ops-", ".jsonl"),
 }
@@ -606,6 +693,10 @@ mod tests {
                 PathBuf::from(format!("/test/logs/system-{id}.log")),
             ),
             (
+                lp.system_stream_log(id),
+                PathBuf::from(format!("/test/logs/system-stream-{id}.log")),
+            ),
+            (
                 lp.metrics_log(id),
                 PathBuf::from(format!("/test/logs/metrics-{id}.jsonl")),
             ),
@@ -635,6 +726,9 @@ mod tests {
             "system-550e8400-e29b-41d4-a716-446655440000.log"
         ));
         assert!(LogPaths::is_gc_eligible_log(
+            "system-stream-550e8400-e29b-41d4-a716-446655440000.log"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
             "metrics-550e8400-e29b-41d4-a716-446655440000.jsonl"
         ));
         assert!(LogPaths::is_gc_eligible_log(
@@ -646,6 +740,9 @@ mod tests {
         assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
         assert!(LogPaths::is_gc_eligible_log(
             ".system-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-101-7-1"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
+            ".system-stream-550e8400-e29b-41d4-a716-446655440000.log.vm0tmp-101-7-1"
         ));
         assert!(LogPaths::is_gc_eligible_log(
             ".metrics-550e8400-e29b-41d4-a716-446655440000.jsonl.vm0tmp-101-7-2"
@@ -662,6 +759,7 @@ mod tests {
         let paths = [
             lp.network_log(id),
             lp.system_log(id),
+            lp.system_stream_log(id),
             lp.metrics_log(id),
             lp.sandbox_ops_log(id),
             lp.proxy_log(id),
@@ -727,16 +825,19 @@ mod tests {
     }
 
     #[test]
-    fn storage_lock_is_injective_and_inside_locks_dir() {
+    fn storage_lock_avoids_separator_ambiguity_and_stays_inside_locks_dir() {
         // Distinct (name, version) pairs that would collide under naive
         // `format!("storage-{name}-{version}.lock")` templating must produce
-        // distinct lock paths after hashing.
+        // distinct lock paths for these examples after hashing.
         let home = HomePaths::with_root(PathBuf::from("/test"));
         let locks = home.locks_dir();
 
         let a = home.storage_lock("foo", "bar-v1");
         let b = home.storage_lock("foo-bar", "v1");
-        assert_ne!(a, b, "hashed lock paths must not collide: {a:?} vs {b:?}");
+        assert_ne!(
+            a, b,
+            "naive-ambiguous examples should not share a lock path: {a:?} vs {b:?}"
+        );
         assert!(a.starts_with(&locks));
         assert!(b.starts_with(&locks));
         assert!(a.to_string_lossy().ends_with(".lock"));

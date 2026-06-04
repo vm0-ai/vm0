@@ -4,14 +4,16 @@ import {
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "../google";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       const redirectUri = args.redirectUri;
       const state = args.state;
       return buildGoogleAuthorizationUrl(
+        args.authCodeGrant,
         "google-ads",
         clientId,
         redirectUri,
@@ -19,10 +21,11 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGoogleOAuthCode(
+        args.authCodeGrant,
         "google-ads",
         clientId,
         clientSecret,
@@ -30,8 +33,10 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -44,20 +49,17 @@ export const googleAdsProvider: AuthCodeConnectorAuthProvider<"google-ads"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: () => {
-      return "GOOGLE_ADS_ACCESS_TOKEN";
-    },
-    getRefreshSecretName: () => {
-      return "GOOGLE_ADS_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      const refreshToken = args.refreshToken;
-      return refreshGoogleToken(
-        "google-ads",
-        clientId,
-        clientSecret,
-        refreshToken,
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      const refreshToken = args.inputs.refreshToken;
+      return oauthRefreshResultToProviderResult(
+        await refreshGoogleToken(
+          "google-ads",
+          clientId,
+          clientSecret,
+          refreshToken,
+          args.signal,
+        ),
       );
     },
   },

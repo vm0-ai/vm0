@@ -1,5 +1,6 @@
 """Pass-through and auto-allow tests for the request hook."""
 
+import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
@@ -72,7 +73,7 @@ async def test_tracks_start_time(registry_file, real_flow, mitm_ctx):
     ):
         await mitm_addon.request(flow)
 
-    assert flow.id in mitm_addon._request_start_times
+    assert metadata_keys.HTTP_REQUEST_START_MONOTONIC in flow.metadata
 
 
 async def test_unregistered_vm_passes_through(registry_file, real_flow, mitm_ctx):

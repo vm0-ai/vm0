@@ -19,15 +19,28 @@ export const stripe = {
           clientIdEnv: "STRIPE_OAUTH_CLIENT_ID",
           clientSecretEnv: "STRIPE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["STRIPE_ACCESS_TOKEN", "STRIPE_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://connect.stripe.com/oauth/token",
           scopes: ["read_write"],
+          outputs: {
+            accessToken: "$secrets.STRIPE_ACCESS_TOKEN",
+            refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "STRIPE_ACCESS_TOKEN",
-          refreshToken: "STRIPE_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.STRIPE_ACCESS_TOKEN",
+            refreshToken: "$secrets.STRIPE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["STRIPE_ACCESS_TOKEN"],
           envBindings: {
             STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
           },
@@ -38,6 +51,10 @@ export const stripe = {
         label: "API Key",
         helpText:
           "1. Log in to your [Stripe Dashboard](https://dashboard.stripe.com/apikeys)\n2. Go to **Developers > API keys**\n3. Reveal the **Secret key** (starts with `sk_live_` or `sk_test_`) or create a **Restricted key** (`rk_live_...`) with the scopes you need\n4. Copy the key",
+        storage: {
+          secrets: ["STRIPE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

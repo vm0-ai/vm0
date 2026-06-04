@@ -61,6 +61,7 @@ import {
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
+  onboardingConnectorTypes$,
   connectConnectorOAuthAuthCode$,
   matchesConnectorSearch,
   pollingOAuthAuthCodeConnectorType$,
@@ -68,6 +69,7 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   setPermissionDialogType$,
+  getOnlyAvailableAuthCodeAuthMethod,
   getConnectorConnectLaunchMode,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -169,7 +171,7 @@ function SelectConnectorsContent() {
   const toggleConnector = useSet(toggleZeroConnector$);
   const search = useGet(connectorSearch$);
   const setSearch = useSet(setConnectorSearch$);
-  const connectorEntries = useLastResolved(allConnectorTypes$) ?? [];
+  const connectorEntries = useLastResolved(onboardingConnectorTypes$) ?? [];
 
   const filtered = connectorEntries.filter((connector) => {
     return matchesConnectorSearch(search, connector);
@@ -275,14 +277,22 @@ function ConnectStepContent() {
     const launchMode = getConnectorConnectLaunchMode({
       type,
       availableAuthMethods: connector.availableAuthMethods,
-      preferModalForGoogleOAuth: true,
+      preferModalForGoogleSecurityWarning: true,
     });
     if (launchMode === "modal") {
       setSelectedConnector(type);
     } else {
+      const authMethod = getOnlyAvailableAuthCodeAuthMethod(
+        type,
+        connector.availableAuthMethods,
+      );
+      if (!authMethod) {
+        setSelectedConnector(type);
+        return;
+      }
       detach(
         (async () => {
-          await connect(type, {}, pageSignal);
+          await connect(type, authMethod, {}, pageSignal);
           await clearPermissionDialog(null);
         })(),
         Reason.DomCallback,
@@ -557,6 +567,19 @@ const TRIAL_ILLUSTRATION_TILES: readonly string[] = [
   illPosterSrc,
 ];
 
+const TRIAL_ILLUSTRATION_TILE_CLASSES: readonly string[] = [
+  "col-start-1 row-start-1 row-span-2",
+  "col-start-2 row-start-1 row-span-2",
+  "col-start-3 row-start-1 row-span-2",
+  "col-start-4 row-start-1 row-span-1",
+  "col-start-1 row-start-3 row-span-2",
+  "col-start-2 row-start-3 row-span-2",
+  "col-start-3 row-start-3 row-span-1",
+  "col-start-4 row-start-2 row-span-2",
+  "col-start-4 row-start-4 row-span-1",
+  "col-start-3 row-start-4 row-span-1",
+];
+
 const TRIAL_GALLERY_THUMBS: readonly string[] = [
   trialWorkflowSrc,
   webModernSrc,
@@ -587,6 +610,7 @@ function TrialWorkflowSlide() {
               key={channel.key}
               src={channel.src}
               alt=""
+              decoding="async"
               className={`h-9 w-9 object-contain ${slackScale}`}
             />
           );
@@ -595,6 +619,7 @@ function TrialWorkflowSlide() {
       <img
         src={trialWorkflowSrc}
         alt="Workflow preview"
+        decoding="async"
         className="block min-h-0 min-w-0 max-w-full max-h-full object-contain rounded-xl"
       />
     </div>
@@ -610,6 +635,8 @@ function TrialWebsiteSlide() {
             <img
               src={src}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover object-top"
             />
           </div>
@@ -621,11 +648,20 @@ function TrialWebsiteSlide() {
 
 function TrialIllustrationSlide() {
   return (
-    <div className="h-full w-full p-2 overflow-hidden columns-4 gap-2 [&>*]:mb-2 [&>*]:break-inside-avoid">
-      {TRIAL_ILLUSTRATION_TILES.map((src) => {
+    <div className="grid h-full w-full grid-cols-4 grid-rows-4 gap-2 overflow-hidden p-2">
+      {TRIAL_ILLUSTRATION_TILES.map((src, index) => {
         return (
-          <div key={src} className="rounded-xl overflow-hidden bg-background">
-            <img src={src} alt="" className="block w-full h-auto" />
+          <div
+            key={src}
+            className={`overflow-hidden rounded-xl bg-background ${TRIAL_ILLUSTRATION_TILE_CLASSES[index]}`}
+          >
+            <img
+              src={src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="block h-full w-full object-cover object-center"
+            />
           </div>
         );
       })}
@@ -684,6 +720,8 @@ function OnboardingTrialPanel() {
               <img
                 src={TRIAL_GALLERY_THUMBS[i]}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 className="block w-full h-full object-cover object-center"
               />
             </button>
@@ -1147,7 +1185,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col min-w-0 bg-background items-center">
         <div className="flex flex-col w-full max-w-[750px] flex-1 min-h-0">
           {/* Progress bar */}
-          <div className="shrink-0 px-5 sm:px-10 pt-8 pb-4">
+          <div className="shrink-0 px-5 pb-4 pt-16 sm:px-10 lg:pt-8">
             <OnboardingProgressBar />
           </div>
 

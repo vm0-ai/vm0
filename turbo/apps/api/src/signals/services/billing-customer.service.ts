@@ -6,6 +6,11 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { getStripeClient } from "../external/stripe-client";
 
+interface GetOrCreateStripeCustomerArgs {
+  readonly orgId: string;
+  readonly metadata?: Readonly<Record<string, string | undefined>>;
+}
+
 /**
  * Get or create a Stripe customer for an org. Serializes per-org via
  * pg_advisory_xact_lock so concurrent checkout / redeem requests in the
@@ -15,18 +20,22 @@ import { getStripeClient } from "../external/stripe-client";
  * process races during the web→api cutover coordinate on the same lock.
  */
 export const getOrCreateStripeCustomer$ = command(
-  ({ set }, orgId: string, signal: AbortSignal): Promise<string> => {
+  (
+    { set },
+    args: GetOrCreateStripeCustomerArgs,
+    signal: AbortSignal,
+  ): Promise<string> => {
     const writeDb = set(writeDb$);
     return writeDb.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext('stripe_customer_' || ${orgId}))`,
+        sql`SELECT pg_advisory_xact_lock(hashtext('stripe_customer_' || ${args.orgId}))`,
       );
       signal.throwIfAborted();
 
       const [row] = await tx
         .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
         .from(orgMetadata)
-        .where(eq(orgMetadata.orgId, orgId))
+        .where(eq(orgMetadata.orgId, args.orgId))
         .limit(1);
       signal.throwIfAborted();
 
@@ -35,12 +44,22 @@ export const getOrCreateStripeCustomer$ = command(
       }
 
       const stripe = getStripeClient();
-      const customer = await stripe.customers.create({ metadata: { orgId } });
+      const metadata: Record<string, string> = { orgId: args.orgId };
+      for (const [key, value] of Object.entries(args.metadata ?? {})) {
+        if (value) {
+          metadata[key] = value;
+        }
+      }
+      const customer = await stripe.customers.create({ metadata });
       signal.throwIfAborted();
 
       await tx
         .insert(orgMetadata)
-        .values({ orgId, stripeCustomerId: customer.id, credits: 0 })
+        .values({
+          orgId: args.orgId,
+          stripeCustomerId: customer.id,
+          credits: 0,
+        })
         .onConflictDoUpdate({
           target: orgMetadata.orgId,
           set: { stripeCustomerId: customer.id, updatedAt: nowDate() },

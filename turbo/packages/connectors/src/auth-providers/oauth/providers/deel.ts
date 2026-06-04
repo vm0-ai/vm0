@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const DEEL_TOKEN_URL = "https://app.deel.com/oauth2/tokens";
 
 const DEEL_AUTHORIZATION_URL = "https://app.deel.com/oauth2/authorize";
 
@@ -64,11 +66,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build Deel OAuth authorization URL with PKCE code_challenge.
  */
 export async function buildDeelAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("deel");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -95,13 +97,14 @@ export async function refreshDeelToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<DeelRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("deel");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DEEL_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -146,19 +149,19 @@ export async function refreshDeelToken(
  * Exchange authorization code for access token and user info with PKCE code_verifier.
  */
 export async function exchangeDeelCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<DeelTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("deel");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DEEL_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

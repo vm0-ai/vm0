@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const DROPBOX_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
 
 const DROPBOX_AUTHORIZATION_URL = "https://www.dropbox.com/oauth2/authorize";
 
@@ -33,11 +35,11 @@ interface DropboxRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildDropboxAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("dropbox");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -55,13 +57,13 @@ export function buildDropboxAuthorizationUrl(
  * Exchange authorization code for access token and user info.
  */
 export async function exchangeDropboxCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<DropboxTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("dropbox");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DROPBOX_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -118,9 +120,10 @@ export async function refreshDropboxToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<DropboxRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("dropbox");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(DROPBOX_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

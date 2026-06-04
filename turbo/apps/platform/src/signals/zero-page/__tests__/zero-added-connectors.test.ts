@@ -27,7 +27,6 @@ function mockAgentApi(connectors: string[]) {
         displayName: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -70,7 +69,6 @@ describe("zeroAuthorizedConnectors$", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),

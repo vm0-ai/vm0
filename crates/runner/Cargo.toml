@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.105.6"
+version = "0.107.9"
 edition.workspace = true
 
 [dependencies]
@@ -31,6 +31,7 @@ flate2 = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
 hex = { workspace = true }
+libc = { workspace = true }
 sha2 = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }

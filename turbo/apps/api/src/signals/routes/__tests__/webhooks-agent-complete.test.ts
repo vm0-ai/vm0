@@ -650,7 +650,6 @@ describe("POST /api/webhooks/agent/complete", () => {
     const profile = "vm0/default";
     const queuedSessionId = `session-${randomUUID()}`;
     const queuedExecutionContext = {
-      workingDir: "/workspace",
       storageManifest: null,
       environment: null,
       resumeSession: null,

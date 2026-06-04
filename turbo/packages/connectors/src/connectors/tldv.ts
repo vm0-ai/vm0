@@ -11,6 +11,10 @@ export const tldv = {
         label: "API Key",
         helpText:
           "1. Ensure you have a **Business Plan** subscription on [tldv](https://tldv.io)\n2. API and webhook access is only available on the Business Plan\n3. Contact support at **support@tldv.io** to request API access and obtain your credentials",
+        storage: {
+          secrets: ["TLDV_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

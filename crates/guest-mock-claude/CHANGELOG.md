@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.18.4](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.3...guest-mock-claude-v0.18.4) (2026-06-03)
+
+## [0.18.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.2...guest-mock-claude-v0.18.3) (2026-06-03)
+
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.1...guest-mock-claude-v0.18.2) (2026-06-02)
+
+
+### Bug Fixes
+
+* validate mock claude echo session ids ([#15862](https://github.com/vm0-ai/vm0/issues/15862)) ([1b9c2df](https://github.com/vm0-ai/vm0/commit/1b9c2dfaca34e649e656a3d96a007cdf1fe483f0))
+
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.18.0...guest-mock-claude-v0.18.1) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.7...guest-mock-claude-v0.18.0) (2026-05-29)
 
 

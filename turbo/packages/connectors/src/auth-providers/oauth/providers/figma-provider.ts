@@ -2,29 +2,37 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildFigmaAuthorizationUrl,
   exchangeFigmaCode,
-  getFigmaSecretName,
   refreshFigmaToken,
 } from "./figma";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildFigmaAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildFigmaAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeFigmaCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -37,13 +45,16 @@ export const figmaProvider: AuthCodeConnectorAuthProvider<"figma"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getFigmaSecretName,
-    getRefreshSecretName: () => {
-      return "FIGMA_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshFigmaToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshFigmaToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

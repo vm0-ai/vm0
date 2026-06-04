@@ -11,6 +11,10 @@ export const explorium = {
         label: "API Key",
         helpText:
           "1. Log in to the [Explorium Admin Portal](https://admin.explorium.ai)\n2. Navigate to **Access & Authentication > Getting Your API Key**\n3. Click the **Show Key** button to reveal the masked API key\n4. Click the **Copy Key** button to copy it",
+        storage: {
+          secrets: ["EXPLORIUM_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

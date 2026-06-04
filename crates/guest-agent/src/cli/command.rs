@@ -4,8 +4,8 @@
 //! Codex config override construction. Runtime process spawning stays in
 //! `execute_cli`.
 
-use crate::env;
 use crate::error::AgentError;
+use crate::{env, paths};
 use guest_common::log_info;
 
 use super::LOG_TAG;
@@ -155,7 +155,6 @@ fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'static str>
 }
 
 fn build_codex_args(
-    working_dir: &str,
     model: &str,
     resume_id: &str,
     append_system_prompt: &str,
@@ -168,7 +167,7 @@ fn build_codex_args(
         "danger-full-access".to_string(),
         "--skip-git-repo-check".to_string(),
         "-C".to_string(),
-        working_dir.to_string(),
+        paths::CANONICAL_WORKING_DIR.to_string(),
     ];
 
     args.push("-c".to_string());
@@ -216,7 +215,6 @@ fn build_codex_command(use_mock: bool) -> Vec<String> {
 
     let mut cmd = vec![bin];
     cmd.extend(build_codex_args(
-        env::working_dir(),
         env::openai_model(),
         env::resume_session_id(),
         env::append_system_prompt(),
@@ -322,25 +320,19 @@ mod tests {
         assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
     }
 
-    fn build_codex_args_for_test(
-        working_dir: &str,
-        model: &str,
-        resume_id: &str,
-        prompt: &str,
-    ) -> Vec<String> {
+    fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
         disable_system_log();
-        build_codex_args(working_dir, model, resume_id, "", prompt)
+        build_codex_args(model, resume_id, "", prompt)
     }
 
     fn build_codex_args_with_append_for_test(
-        working_dir: &str,
         model: &str,
         resume_id: &str,
         append_system_prompt: &str,
         prompt: &str,
     ) -> Vec<String> {
         disable_system_log();
-        build_codex_args(working_dir, model, resume_id, append_system_prompt, prompt)
+        build_codex_args(model, resume_id, append_system_prompt, prompt)
     }
 
     fn codex_args_have_config(args: &[String], config: &str) -> bool {
@@ -355,14 +347,14 @@ mod tests {
 
     #[test]
     fn build_codex_args_basic_shape() {
-        let args = build_codex_args_for_test("/workspace", "", "", "hello");
+        let args = build_codex_args_for_test("", "", "hello");
         assert_eq!(args[0], "exec");
         assert_eq!(args[1], "--json");
         let s_idx = args.iter().position(|a| a == "--sandbox").unwrap();
         assert_eq!(args[s_idx + 1], "danger-full-access");
         assert!(args.contains(&"--skip-git-repo-check".to_string()));
         let c_idx = args.iter().position(|a| a == "-C").unwrap();
-        assert_eq!(args[c_idx + 1], "/workspace");
+        assert_eq!(args[c_idx + 1], paths::CANONICAL_WORKING_DIR);
         assert!(codex_args_have_config(&args, "features.memories=true"));
         assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "hello");
@@ -370,20 +362,20 @@ mod tests {
 
     #[test]
     fn build_codex_args_omits_model_when_empty() {
-        let args = build_codex_args_for_test("/wd", "", "", "p");
+        let args = build_codex_args_for_test("", "", "p");
         assert!(!args.contains(&"-m".to_string()));
     }
 
     #[test]
     fn build_codex_args_with_model() {
-        let args = build_codex_args_for_test("/wd", "gpt-5", "", "p");
+        let args = build_codex_args_for_test("gpt-5", "", "p");
         let m_idx = args.iter().position(|a| a == "-m").unwrap();
         assert_eq!(args[m_idx + 1], "gpt-5");
     }
 
     #[test]
     fn build_codex_args_gpt_5_5_defaults_reasoning_effort_xhigh() {
-        let args = build_codex_args_for_test("/wd", "gpt-5.5", "", "p");
+        let args = build_codex_args_for_test("gpt-5.5", "", "p");
         assert!(codex_args_have_config(
             &args,
             "model_reasoning_effort=xhigh"
@@ -392,7 +384,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_openai_prefixed_gpt_5_5_defaults_reasoning_effort_xhigh() {
-        let args = build_codex_args_for_test("/wd", "openai/gpt-5.5", "", "p");
+        let args = build_codex_args_for_test("openai/gpt-5.5", "", "p");
         assert!(codex_args_have_config(
             &args,
             "model_reasoning_effort=xhigh"
@@ -402,7 +394,7 @@ mod tests {
     #[test]
     fn build_codex_args_non_gpt_5_5_omits_reasoning_effort() {
         for model in ["gpt-5.4", "gpt-5.4-mini", "openai/gpt-5.4", ""] {
-            let args = build_codex_args_for_test("/wd", model, "", "p");
+            let args = build_codex_args_for_test(model, "", "p");
             assert!(
                 !args
                     .iter()
@@ -414,7 +406,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_resume_uses_positional_subcommand() {
-        let args = build_codex_args_for_test("/wd", "", "thread-abc", "follow up");
+        let args = build_codex_args_for_test("", "thread-abc", "follow up");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 1], "thread-abc");
         assert_eq!(args[r_idx + 2], "--");
@@ -425,7 +417,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_resume_layout_is_resume_id_prompt() {
-        let args = build_codex_args_for_test("/wd", "", "id1", "p1");
+        let args = build_codex_args_for_test("", "id1", "p1");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args.len(), r_idx + 4);
         assert_eq!(args[r_idx + 1], "id1");
@@ -435,7 +427,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_separates_prompt_from_options() {
-        let args = build_codex_args_for_test("/wd", "gpt-5", "id", "hello");
+        let args = build_codex_args_for_test("gpt-5", "id", "hello");
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 2], "--");
         assert_eq!(args[r_idx + 3], "hello");
@@ -443,7 +435,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_prompt_last_in_no_resume_path() {
-        let args = build_codex_args_for_test("/wd", "gpt-5", "", "the prompt");
+        let args = build_codex_args_for_test("gpt-5", "", "the prompt");
         assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), "the prompt");
     }
@@ -451,7 +443,7 @@ mod tests {
     #[test]
     fn build_codex_args_keeps_dash_prefixed_prompt_as_prompt() {
         let prompt = "--input-format stream-json 是说从一个文件里读取 input 吗？";
-        let args = build_codex_args_for_test("/wd", "gpt-5", "", prompt);
+        let args = build_codex_args_for_test("gpt-5", "", prompt);
         assert_eq!(args[args.len() - 2], "--");
         assert_eq!(args.last().unwrap(), prompt);
     }
@@ -459,7 +451,7 @@ mod tests {
     #[test]
     fn build_codex_args_resume_keeps_dash_prefixed_prompt_as_prompt() {
         let prompt = "--input-format stream-json 是说从一个文件里读取 input 吗？";
-        let args = build_codex_args_for_test("/wd", "gpt-5", "id1", prompt);
+        let args = build_codex_args_for_test("gpt-5", "id1", prompt);
         let r_idx = args.iter().position(|a| a == "resume").unwrap();
         assert_eq!(args[r_idx + 1], "id1");
         assert_eq!(args[r_idx + 2], "--");
@@ -468,13 +460,8 @@ mod tests {
 
     #[test]
     fn build_codex_args_with_append_system_prompt() {
-        let args = build_codex_args_with_append_for_test(
-            "/wd",
-            "",
-            "",
-            "Your name is Aria.",
-            "analyze this",
-        );
+        let args =
+            build_codex_args_with_append_for_test("", "", "Your name is Aria.", "analyze this");
         assert!(codex_args_have_config(&args, "features.memories=true"));
         assert!(codex_args_have_config(
             &args,
@@ -486,7 +473,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_empty_append_system_prompt_omitted() {
-        let args = build_codex_args_with_append_for_test("/wd", "", "", "", "test");
+        let args = build_codex_args_with_append_for_test("", "", "", "test");
         assert!(codex_args_have_config(&args, "features.memories=true"));
         assert!(
             !args
@@ -497,8 +484,7 @@ mod tests {
 
     #[test]
     fn build_codex_args_resume_with_append_system_prompt_order() {
-        let args =
-            build_codex_args_with_append_for_test("/wd", "", "thread-abc", "Be concise.", "next");
+        let args = build_codex_args_with_append_for_test("", "thread-abc", "Be concise.", "next");
         let c_idx = args
             .iter()
             .position(|a| a == r#"developer_instructions="Be concise.""#)
@@ -515,13 +501,8 @@ mod tests {
 
     #[test]
     fn build_codex_args_quotes_append_system_prompt_for_config() {
-        let args = build_codex_args_with_append_for_test(
-            "/wd",
-            "",
-            "",
-            "Say \"hi\"\nPath C:\\tmp",
-            "prompt",
-        );
+        let args =
+            build_codex_args_with_append_for_test("", "", "Say \"hi\"\nPath C:\\tmp", "prompt");
         assert!(codex_args_have_config(
             &args,
             r#"developer_instructions="Say \"hi\"\nPath C:\\tmp""#

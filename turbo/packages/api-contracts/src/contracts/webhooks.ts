@@ -158,6 +158,9 @@ const artifactSnapshotsSchema = z.array(
     name: z.string(),
     version: z.string(),
     mountPath: z.string(),
+    // Internal provenance used by run creation to decide checkpoint-time
+    // behavior on a later resume. It is not exposed by public checkpoint APIs.
+    generatedBy: z.literal("apiAutoMemory").optional(),
   }),
 );
 
@@ -173,6 +176,9 @@ const firewallAuthErrorSchema = z.object({
     message: z.string(),
     code: z.string(),
     connectors: z.array(z.string()).optional(),
+    failureReason: z
+      .enum(["upstream_provider", "reconnect_required"])
+      .optional(),
   }),
 });
 

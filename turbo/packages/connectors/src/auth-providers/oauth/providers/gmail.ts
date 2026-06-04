@@ -1,8 +1,10 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { buildGoogleAuthorizationUrl } from "../google";
 import { throwOAuthError } from "../error";
+
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const GMAIL_PROFILE_URL =
   "https://www.googleapis.com/gmail/v1/users/me/profile";
@@ -26,11 +28,18 @@ interface GmailTokenResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildGmailAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  return buildGoogleAuthorizationUrl("gmail", clientId, redirectUri, state);
+  return buildGoogleAuthorizationUrl(
+    authCodeGrant,
+    "gmail",
+    clientId,
+    redirectUri,
+    state,
+  );
 }
 
 /**
@@ -38,13 +47,13 @@ export function buildGmailAuthorizationUrl(
  * Google returns user info from a separate userinfo endpoint.
  */
 export async function exchangeGmailCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<GmailTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("gmail");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

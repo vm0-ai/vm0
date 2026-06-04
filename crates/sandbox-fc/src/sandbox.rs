@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 use std::future::Future;
 use std::io;
+use std::num::NonZeroU64;
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -64,7 +65,7 @@ const GUEST_PARK_LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Bash command run inside `unshare --mount` for snapshot restore.
 /// Positional args are documented at the spawn site.
-const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount "$4" 2>/dev/null; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
+const SNAPSHOT_RESTORE_INNER_CMD: &str = r#"umount -- "$4" 2>/dev/null; umount -- "$6" 2>/dev/null; mount --bind -- "$1" "$2" && mount --bind -- "$3" "$4" && mount --bind -- "$5" "$6" && exec ip netns exec "$7" "$8" --api-sock "$9""#;
 const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 async fn load_snapshot_and_apply_rate_limits(
@@ -82,11 +83,22 @@ async fn load_snapshot_and_apply_rate_limits(
             message: format!("snapshot load failed: {e}"),
         })?;
     if let Some(rate_limits) = rate_limits {
+        let drive_rate_limiter = rate_limits
+            .block_drive_limiter(nonzero_block_drive_count(2)?)
+            .map_err(|e| SandboxError::Start {
+                message: format!("build snapshot drive rate limiter: {e}"),
+            })?;
         client
-            .patch_drive_rate_limiter("rootfs", &rate_limits.drive)
+            .patch_drive_rate_limiter("rootfs", &drive_rate_limiter)
             .await
             .map_err(|e| SandboxError::Start {
                 message: format!("snapshot drive rate limiter patch failed: {e}"),
+            })?;
+        client
+            .patch_drive_rate_limiter("workspace", &drive_rate_limiter)
+            .await
+            .map_err(|e| SandboxError::Start {
+                message: format!("snapshot workspace drive rate limiter patch failed: {e}"),
             })?;
         let inv = InvariantConfig::new();
         client
@@ -107,6 +119,7 @@ fn build_fresh_boot_firecracker_config(
     resources: &sandbox::ResourceLimits,
     kernel_path: String,
     cow_device_path: String,
+    workspace_device_path: Option<String>,
     vsock_path: String,
     device_rate_limits: Option<&FirecrackerDeviceRateLimits>,
 ) -> sandbox::Result<serde_json::Value> {
@@ -120,18 +133,43 @@ fn build_fresh_boot_firecracker_config(
         ("is_root_device".to_string(), serde_json::json!(true)),
         ("is_read_only".to_string(), serde_json::json!(false)),
     ]);
+    let mut workspace_drive = workspace_device_path.map(|workspace_device_path| {
+        serde_json::Map::from_iter([
+            ("drive_id".to_string(), serde_json::json!("workspace")),
+            (
+                "path_on_host".to_string(),
+                serde_json::json!(workspace_device_path),
+            ),
+            ("is_root_device".to_string(), serde_json::json!(false)),
+            ("is_read_only".to_string(), serde_json::json!(false)),
+        ])
+    });
     let mut network_interface = serde_json::Map::from_iter([
         ("iface_id".to_string(), serde_json::json!(inv.iface_id)),
         ("guest_mac".to_string(), serde_json::json!(inv.guest_mac)),
         ("host_dev_name".to_string(), serde_json::json!(inv.tap_name)),
     ]);
     if let Some(rate_limits) = device_rate_limits {
+        let block_drive_count = if workspace_drive.is_some() { 2 } else { 1 };
+        let drive_rate_limiter = rate_limits
+            .block_drive_limiter(nonzero_block_drive_count(block_drive_count)?)
+            .map_err(|e| SandboxError::Start {
+                message: format!("build drive rate limiter: {e}"),
+            })?;
         drive.insert(
             "rate_limiter".to_string(),
-            serde_json::to_value(&rate_limits.drive).map_err(|e| SandboxError::Start {
+            serde_json::to_value(&drive_rate_limiter).map_err(|e| SandboxError::Start {
                 message: format!("serialize drive rate limiter: {e}"),
             })?,
         );
+        if let Some(workspace_drive) = workspace_drive.as_mut() {
+            workspace_drive.insert(
+                "rate_limiter".to_string(),
+                serde_json::to_value(&drive_rate_limiter).map_err(|e| SandboxError::Start {
+                    message: format!("serialize workspace drive rate limiter: {e}"),
+                })?,
+            );
+        }
         network_interface.insert(
             "rx_rate_limiter".to_string(),
             serde_json::to_value(&rate_limits.net_rx).map_err(|e| SandboxError::Start {
@@ -145,13 +183,17 @@ fn build_fresh_boot_firecracker_config(
             })?,
         );
     }
+    let mut drives = vec![serde_json::Value::Object(drive)];
+    if let Some(workspace_drive) = workspace_drive {
+        drives.push(serde_json::Value::Object(workspace_drive));
+    }
 
     Ok(serde_json::json!({
         "boot-source": {
             "kernel_image_path": kernel_path,
             "boot_args": inv.boot_args,
         },
-        "drives": [serde_json::Value::Object(drive)],
+        "drives": drives,
         "machine-config": {
             "vcpu_count": resources.cpu_count,
             "mem_size_mib": resources.memory_mb,
@@ -167,6 +209,12 @@ fn build_fresh_boot_firecracker_config(
             "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
         },
     }))
+}
+
+fn nonzero_block_drive_count(count: u64) -> sandbox::Result<NonZeroU64> {
+    NonZeroU64::new(count).ok_or_else(|| SandboxError::Start {
+        message: "block drive count must be non-zero".into(),
+    })
 }
 
 #[repr(u8)]
@@ -959,12 +1007,18 @@ impl FirecrackerSandbox {
     fn build_config(&self) -> sandbox::Result<serde_json::Value> {
         let kernel_path = self.factory_config.kernel_path.display().to_string();
         let cow_device_path = self.cow_device()?.device_path().display().to_string();
+        let workspace_device_path = self
+            .config
+            .workspace_drive
+            .as_ref()
+            .map(|_| self.sandbox_paths.workspace_image().display().to_string());
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
         build_fresh_boot_firecracker_config(
             &self.config.resources,
             kernel_path,
             cow_device_path,
+            workspace_device_path,
             vsock_path,
             self.device_rate_limits.as_ref(),
         )
@@ -1055,6 +1109,11 @@ impl FirecrackerSandbox {
                 .ok_or_else(|| SandboxError::Start {
                     message: "missing snapshot config".into(),
                 })?;
+        if self.config.workspace_drive.is_none() {
+            return Err(SandboxError::Start {
+                message: "snapshot restore requires a workspace drive".into(),
+            });
+        }
 
         // Ensure bind mount target directories exist.
         tokio::fs::create_dir_all(&snapshot.vsock_bind_dir)
@@ -1064,6 +1123,7 @@ impl FirecrackerSandbox {
             })?;
 
         ensure_snapshot_drive_bind_target(&snapshot.drive_bind_path).await?;
+        ensure_snapshot_drive_bind_target(&snapshot.workspace_drive_bind_path).await?;
 
         // Verify sock dir exists before spawning — if this fails, we know
         // the directory was never created or was removed before spawn.
@@ -1076,20 +1136,22 @@ impl FirecrackerSandbox {
             });
         }
         let cow_device_path = self.cow_device()?.device_path();
+        let workspace_image_path = self.sandbox_paths.workspace_image();
         info!(
             id = %self.id,
             api_sock = %api_sock.display(),
             sock_dir = %sock_dir.display(),
             cow_device = %cow_device_path.display(),
+            workspace_image = %workspace_image_path.display(),
             netns = %self.network.name(),
             binary = %self.factory_config.binary_path.display(),
             "spawning firecracker (snapshot restore)"
         );
 
-        // Use positional args ($1..$7) to avoid shell injection from paths.
+        // Use positional args ($1..$9) to avoid shell injection from paths.
         //
-        // Bind mount targets ($2, $4) are snapshot-level paths shared by all
-        // sandboxes.  Each sandbox runs inside `unshare --mount`, so bind
+        // Bind mount targets ($2, $4, $6) are snapshot-level paths shared by
+        // all sandboxes. Each sandbox runs inside `unshare --mount`, so bind
         // mounts are per-namespace and don't conflict.
         //
         // IMPORTANT: we must NOT `rm -f` the bind mount target.  The target
@@ -1108,9 +1170,11 @@ impl FirecrackerSandbox {
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(cow_device_path) // $3
             .arg(&snapshot.drive_bind_path) // $4
-            .arg(self.network.name()) // $5
-            .arg(&self.factory_config.binary_path) // $6
-            .arg(&api_sock) // $7
+            .arg(&workspace_image_path) // $5
+            .arg(&snapshot.workspace_drive_bind_path) // $6
+            .arg(self.network.name()) // $7
+            .arg(&self.factory_config.binary_path) // $8
+            .arg(&api_sock) // $9
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -2966,6 +3030,7 @@ mod tests {
                 id,
                 resources: test_resources(),
                 device_rate_limits: None,
+                workspace_drive: None,
             },
             factory_config: FirecrackerConfig {
                 binary_path: base_dir.join("firecracker"),
@@ -3318,15 +3383,9 @@ mod tests {
 
     fn test_rate_limits() -> FirecrackerDeviceRateLimits {
         FirecrackerDeviceRateLimits {
-            drive: RateLimiterConfig {
-                bandwidth: Some(TokenBucketConfig {
-                    size: 1024,
-                    refill_time: 100,
-                }),
-                ops: Some(TokenBucketConfig {
-                    size: 10,
-                    refill_time: 100,
-                }),
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 10_240,
+                ops_per_sec: 100,
             },
             net_rx: RateLimiterConfig {
                 bandwidth: Some(TokenBucketConfig {
@@ -3351,6 +3410,7 @@ mod tests {
             &test_resources(),
             "/kernel".to_string(),
             "/dev/nbd0".to_string(),
+            None,
             "/run/vsock.sock".to_string(),
             None,
         )
@@ -3376,6 +3436,7 @@ mod tests {
             &test_resources(),
             "/kernel".to_string(),
             "/dev/nbd0".to_string(),
+            None,
             "/run/vsock.sock".to_string(),
             Some(&rate_limits),
         )
@@ -3399,6 +3460,61 @@ mod tests {
             serde_json::json!({
                 "bandwidth": { "size": 4096, "refill_time": 100 },
             })
+        );
+    }
+
+    #[test]
+    fn fresh_boot_config_includes_workspace_drive_without_rate_limiters() {
+        let config = build_fresh_boot_firecracker_config(
+            &test_resources(),
+            "/kernel".to_string(),
+            "/dev/nbd0".to_string(),
+            Some("/workspaces/test/workspace.ext4".to_string()),
+            "/run/vsock.sock".to_string(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(config["drives"][0]["drive_id"], "rootfs");
+        assert_eq!(config["drives"][1]["drive_id"], "workspace");
+        assert_eq!(
+            config["drives"][1]["path_on_host"],
+            "/workspaces/test/workspace.ext4"
+        );
+        assert_eq!(config["drives"][1]["is_root_device"], false);
+        assert_eq!(config["drives"][1]["is_read_only"], false);
+        assert!(config["drives"][0].get("rate_limiter").is_none());
+        assert!(config["drives"][1].get("rate_limiter").is_none());
+    }
+
+    #[test]
+    fn fresh_boot_config_includes_workspace_drive_and_splits_block_limiters() {
+        let rate_limits = test_rate_limits();
+        let config = build_fresh_boot_firecracker_config(
+            &test_resources(),
+            "/kernel".to_string(),
+            "/dev/nbd0".to_string(),
+            Some("/workspaces/test/workspace.ext4".to_string()),
+            "/run/vsock.sock".to_string(),
+            Some(&rate_limits),
+        )
+        .unwrap();
+
+        assert_eq!(config["drives"][0]["drive_id"], "rootfs");
+        assert_eq!(config["drives"][1]["drive_id"], "workspace");
+        assert_eq!(
+            config["drives"][1]["path_on_host"],
+            "/workspaces/test/workspace.ext4"
+        );
+        assert_eq!(config["drives"][1]["is_root_device"], false);
+        assert_eq!(config["drives"][1]["is_read_only"], false);
+        assert_eq!(
+            config["drives"][0]["rate_limiter"]["bandwidth"]["size"],
+            512
+        );
+        assert_eq!(
+            config["drives"][1]["rate_limiter"]["bandwidth"]["size"],
+            512
         );
     }
 
@@ -5826,14 +5942,14 @@ mod tests {
     #[test]
     fn snapshot_restore_inner_cmd_uses_positional_args_without_touch() {
         assert!(!SNAPSHOT_RESTORE_INNER_CMD.contains("$0"));
-        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7"] {
+        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9"] {
             let quoted = format!(r#""{arg}""#);
             assert!(
                 SNAPSHOT_RESTORE_INNER_CMD.contains(&quoted),
                 "expected quoted positional {arg} in inner_cmd: {SNAPSHOT_RESTORE_INNER_CMD}"
             );
         }
-        for unexpected in ["$8", "$9"] {
+        for unexpected in ["$10", "$11"] {
             assert!(
                 !SNAPSHOT_RESTORE_INNER_CMD.contains(unexpected),
                 "unexpected positional {unexpected} in inner_cmd: {SNAPSHOT_RESTORE_INNER_CMD}"
@@ -5841,13 +5957,16 @@ mod tests {
         }
 
         assert!(
-            SNAPSHOT_RESTORE_INNER_CMD.starts_with(r#"umount "$4" 2>/dev/null; mount --bind"#),
+            SNAPSHOT_RESTORE_INNER_CMD.starts_with(
+                r#"umount -- "$4" 2>/dev/null; umount -- "$6" 2>/dev/null; mount --bind"#
+            ),
             "inner_cmd must clear stale bind mount before binding: {SNAPSHOT_RESTORE_INNER_CMD}"
         );
         assert!(
-            SNAPSHOT_RESTORE_INNER_CMD
-                .contains(r#"&& mount --bind "$3" "$4" && exec ip netns exec"#),
-            "inner_cmd must bind COW device and exec firecracker: {SNAPSHOT_RESTORE_INNER_CMD}"
+            SNAPSHOT_RESTORE_INNER_CMD.contains(
+                r#"&& mount --bind -- "$3" "$4" && mount --bind -- "$5" "$6" && exec ip netns exec"#
+            ),
+            "inner_cmd must bind COW and workspace devices before execing firecracker: {SNAPSHOT_RESTORE_INNER_CMD}"
         );
         assert!(
             !SNAPSHOT_RESTORE_INNER_CMD.contains("touch"),
@@ -6135,8 +6254,8 @@ mod tests {
         let reqs = reqs.lock().await;
         assert_eq!(
             reqs.len(),
-            4,
-            "expected load, drive patch, network patch, resume"
+            5,
+            "expected load, rootfs drive patch, workspace drive patch, network patch, resume"
         );
         assert_eq!(reqs[0].method, "PUT");
         assert_eq!(reqs[0].path, "/snapshot/load");
@@ -6146,23 +6265,30 @@ mod tests {
         assert_eq!(reqs[1].path, "/drives/rootfs");
         assert_eq!(
             mock_request_body_json(&reqs[1])["rate_limiter"]["bandwidth"]["size"],
-            1024
+            512
         );
 
         assert_eq!(reqs[2].method, "PATCH");
-        assert_eq!(reqs[2].path, "/network-interfaces/eth0");
+        assert_eq!(reqs[2].path, "/drives/workspace");
         assert_eq!(
-            mock_request_body_json(&reqs[2])["rx_rate_limiter"]["bandwidth"]["size"],
-            2048
-        );
-        assert_eq!(
-            mock_request_body_json(&reqs[2])["tx_rate_limiter"]["bandwidth"]["size"],
-            4096
+            mock_request_body_json(&reqs[2])["rate_limiter"]["bandwidth"]["size"],
+            512
         );
 
         assert_eq!(reqs[3].method, "PATCH");
-        assert_eq!(reqs[3].path, "/vm");
-        assert!(reqs[3].body.contains("Resumed"));
+        assert_eq!(reqs[3].path, "/network-interfaces/eth0");
+        assert_eq!(
+            mock_request_body_json(&reqs[3])["rx_rate_limiter"]["bandwidth"]["size"],
+            2048
+        );
+        assert_eq!(
+            mock_request_body_json(&reqs[3])["tx_rate_limiter"]["bandwidth"]["size"],
+            4096
+        );
+
+        assert_eq!(reqs[4].method, "PATCH");
+        assert_eq!(reqs[4].path, "/vm");
+        assert!(reqs[4].body.contains("Resumed"));
     }
 
     #[tokio::test]
@@ -6210,7 +6336,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn snapshot_restore_network_limiter_patch_failure_does_not_resume() {
+    async fn snapshot_restore_workspace_limiter_patch_failure_does_not_resume() {
         let (sock, reqs, _dir) =
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
         let client = ApiClient::new(&sock);
@@ -6226,13 +6352,49 @@ mod tests {
         .unwrap_err()
         .to_string();
 
-        assert!(err.contains("snapshot network rate limiter patch failed"));
+        assert!(err.contains("snapshot workspace drive rate limiter patch failed"));
         let reqs = reqs.lock().await;
-        assert_eq!(reqs.len(), 3, "resume must not be attempted");
+        assert_eq!(
+            reqs.len(),
+            3,
+            "network patch and resume must not be attempted"
+        );
         assert_eq!(reqs[0].path, "/snapshot/load");
         assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
         assert_eq!(reqs[1].path, "/drives/rootfs");
-        assert_eq!(reqs[2].path, "/network-interfaces/eth0");
+        assert_eq!(reqs[2].path, "/drives/workspace");
+        assert!(
+            reqs.iter()
+                .all(|request| request.path != "/network-interfaces/eth0")
+        );
+        assert!(reqs.iter().all(|request| request.path != "/vm"));
+    }
+
+    #[tokio::test]
+    async fn snapshot_restore_network_limiter_patch_failure_does_not_resume() {
+        let (sock, reqs, _dir) =
+            spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 204, 500]), None).await;
+        let client = ApiClient::new(&sock);
+        let rate_limits = test_rate_limits();
+
+        let err = load_snapshot_and_apply_rate_limits(
+            &client,
+            "/snap/state",
+            "/snap/memory",
+            Some(&rate_limits),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("snapshot network rate limiter patch failed"));
+        let reqs = reqs.lock().await;
+        assert_eq!(reqs.len(), 4, "resume must not be attempted");
+        assert_eq!(reqs[0].path, "/snapshot/load");
+        assert_eq!(mock_request_body_json(&reqs[0])["resume_vm"], false);
+        assert_eq!(reqs[1].path, "/drives/rootfs");
+        assert_eq!(reqs[2].path, "/drives/workspace");
+        assert_eq!(reqs[3].path, "/network-interfaces/eth0");
         assert!(reqs.iter().all(|request| request.path != "/vm"));
     }
 

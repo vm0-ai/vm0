@@ -205,7 +205,6 @@ describe("POST /api/zero/agents", () => {
       description: "Tracks research context",
       sound: "calm",
       avatarUrl: "preset:2",
-      permissionPolicies: null,
       customSkills: ["research-notes"],
       modelProviderId: null,
       selectedModel: null,

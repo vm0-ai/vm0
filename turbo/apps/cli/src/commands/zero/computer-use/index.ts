@@ -9,6 +9,7 @@ import type {
 import {
   createComputerUseReadCommand,
   createComputerUseWriteCommand,
+  fetchComputerUseScreenshot,
   getComputerUseCommand,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
@@ -263,6 +264,31 @@ async function writeScreenshotDataUrl(
   return outputPath;
 }
 
+function screenshotPointerType(value: unknown): "s3" | "expired" | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const type = (value as { readonly type?: unknown }).type;
+  return type === "s3" || type === "expired" ? type : null;
+}
+
+async function writeScreenshotBytes(
+  result: Record<string, unknown>,
+  buffer: Buffer,
+  mimeType: string,
+): Promise<string> {
+  const appName = sanitizeFilenamePart(result.app, "app");
+  const snapshotId = sanitizeFilenamePart(result.snapshotId, "snapshot");
+  const outputPath = join(
+    COMPUTER_USE_OUTPUT_DIR,
+    `${appName}-${snapshotId}.${extensionForMimeType(mimeType)}`,
+  );
+
+  await mkdir(COMPUTER_USE_OUTPUT_DIR, { recursive: true });
+  await writeFile(outputPath, buffer);
+  return outputPath;
+}
+
 async function writeAppStateText(
   result: Record<string, unknown>,
   appState: string,
@@ -297,6 +323,7 @@ function compactActionResult(
 
 export async function formatComputerUseResultForConsole(
   result: Record<string, unknown>,
+  commandId: string,
 ): Promise<string> {
   const printable: Record<string, unknown> = { status: "succeeded" };
   const apps = result.apps;
@@ -311,10 +338,22 @@ export async function formatComputerUseResultForConsole(
   if (appState) {
     printable.appState = await writeAppStateText(result, appState);
   }
-  const screenshot = stringField(result, "screenshot");
-  if (screenshot) {
+  const screenshot = result.screenshot;
+  if (typeof screenshot === "string") {
     const screenshotPath = await writeScreenshotDataUrl(result, screenshot);
     printable.screenshot = screenshotPath ?? screenshot;
+  } else {
+    const pointerType = screenshotPointerType(screenshot);
+    if (pointerType === "s3") {
+      const { buffer, mimeType } = await fetchComputerUseScreenshot(commandId);
+      printable.screenshot = await writeScreenshotBytes(
+        result,
+        buffer,
+        mimeType,
+      );
+    } else if (pointerType === "expired") {
+      printable.screenshot = "[screenshot expired]";
+    }
   }
   const action = result.action;
   if (isRecord(action)) {
@@ -329,7 +368,7 @@ async function commandOutputText(
   if (!command.result) {
     return "";
   }
-  return await formatComputerUseResultForConsole(command.result);
+  return await formatComputerUseResultForConsole(command.result, command.id);
 }
 
 async function waitForCommand(

@@ -3,21 +3,26 @@ import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,
   fetchSlackUserInfo,
-  getSlackSecretName,
   revokeSlackToken,
 } from "./slack";
 export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildSlackAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildSlackAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const slackResult = await exchangeSlackCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -28,7 +33,9 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
         slackResult.accessToken,
       );
       return {
-        accessToken: slackResult.accessToken,
+        outputs: {
+          accessToken: slackResult.accessToken,
+        },
         scopes: slackResult.scopes,
         userInfo: {
           id: slackUser.id,
@@ -40,13 +47,12 @@ export const slackProvider: AuthCodeConnectorAuthProvider<"slack"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getSlackSecretName,
   },
   revoke: {
     kind: "token-revoke",
     revokeToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return revokeSlackToken(clientId, clientSecret, args.accessToken);
+      const { clientId, clientSecret } = args.authClient;
+      return revokeSlackToken(clientId, clientSecret, args.inputs.accessToken);
     },
   },
 };

@@ -88,7 +88,7 @@ export function Vm0LogoLink() {
   );
 }
 
-export function GoogleOAuthNotice() {
+export function GoogleSecurityWarningNotice() {
   return (
     <div className="w-full mt-2 flex flex-col gap-3 rounded-lg bg-muted/50 px-4 py-4 text-left">
       <AvatarSvgPreview
@@ -107,8 +107,8 @@ export function GoogleOAuthNotice() {
           To continue, select{" "}
           <strong className="text-foreground">Advanced</strong> then{" "}
           <strong className="text-foreground">Go to vm0.ai (unsafe)</strong>. We
-          only request the minimum permissions needed, and your credentials are
-          encrypted at rest.
+          only request the minimum permissions needed, and your connection
+          tokens are encrypted at rest.
         </p>
       </div>
     </div>

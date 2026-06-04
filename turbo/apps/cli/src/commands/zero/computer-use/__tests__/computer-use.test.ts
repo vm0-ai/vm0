@@ -184,13 +184,16 @@ describe("computer-use command visibility", () => {
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
     const appState = "snapshot_id=snap_1\nw0 AXWindow";
-    const text = await formatComputerUseResultForConsole({
-      app: "Slack/Test App",
-      snapshotId: "desktop_test_snapshot",
-      appState,
-      screenshot: `data:image/png;base64,${screenshotBase64}`,
-      screenshotSource: "window",
-    });
+    const text = await formatComputerUseResultForConsole(
+      {
+        app: "Slack/Test App",
+        snapshotId: "desktop_test_snapshot",
+        appState,
+        screenshot: `data:image/png;base64,${screenshotBase64}`,
+        screenshotSource: "window",
+      },
+      "cmd_inline",
+    );
 
     const parsed = JSON.parse(text) as Record<string, unknown>;
     expect(parsed.status).toBe("succeeded");
@@ -207,17 +210,20 @@ describe("computer-use command visibility", () => {
   });
 
   it("should print app bundle identifiers in list-apps output", async () => {
-    const text = await formatComputerUseResultForConsole({
-      apps: [
-        {
-          name: "TextEdit",
-          bundleId: "com.apple.TextEdit",
-          appPath: "/System/Applications/TextEdit.app",
-          running: true,
-          pid: 42,
-        },
-      ],
-    });
+    const text = await formatComputerUseResultForConsole(
+      {
+        apps: [
+          {
+            name: "TextEdit",
+            bundleId: "com.apple.TextEdit",
+            appPath: "/System/Applications/TextEdit.app",
+            running: true,
+            pid: 42,
+          },
+        ],
+      },
+      "cmd_apps",
+    );
 
     expect(JSON.parse(text)).toStrictEqual({
       status: "succeeded",
@@ -587,5 +593,118 @@ describe("computer-use command visibility", () => {
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('"status": "succeeded"');
     expect(output).toContain('"summary": "Typed text"');
+  });
+
+  it("should download pointer-backed screenshots through the API proxy", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    const screenshotBytes = Buffer.from("proxy-png-bytes");
+    server.use(
+      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+        return HttpResponse.json({ commandId: "cmd_ptr", status: "queued" });
+      }),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_ptr",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_ptr",
+            kind: "app.state",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { app: "Slack/Test App" },
+            result: {
+              app: "Slack/Test App",
+              snapshotId: "desktop_test_snapshot",
+              screenshot: {
+                type: "s3",
+                mimeType: "image/png",
+                sizeBytes: screenshotBytes.length,
+                width: 1363,
+                height: 1200,
+              },
+            },
+            timeoutMs: 10_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_ptr/screenshot",
+        () => {
+          return new HttpResponse(screenshotBytes, {
+            status: 200,
+            headers: { "Content-Type": "image/png" },
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "get-app-state",
+      "--app",
+      "Slack/Test App",
+      "--timeout",
+      "10",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    expect(parsed.screenshot).toBe(TEST_SCREENSHOT_PATH);
+    await expect(readFile(TEST_SCREENSHOT_PATH)).resolves.toEqual(
+      screenshotBytes,
+    );
+  });
+
+  it("should mark expired pointer screenshots in command output", async () => {
+    vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+    vi.stubEnv("VM0_TOKEN", "test-token");
+
+    server.use(
+      http.post("http://localhost:3000/api/zero/computer-use/commands", () => {
+        return HttpResponse.json({ commandId: "cmd_exp", status: "queued" });
+      }),
+      http.get(
+        "http://localhost:3000/api/zero/computer-use/commands/cmd_exp",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_exp",
+            kind: "app.state",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: { app: "Slack/Test App" },
+            result: {
+              app: "Slack/Test App",
+              snapshotId: "desktop_test_snapshot",
+              screenshot: { type: "expired" },
+            },
+            timeoutMs: 10_000,
+            createdAt: "2026-05-21T10:00:00.000Z",
+            claimedAt: "2026-05-21T10:00:01.000Z",
+            completedAt: "2026-05-21T10:00:02.000Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync([
+      "node",
+      "cli",
+      "get-app-state",
+      "--app",
+      "Slack/Test App",
+      "--timeout",
+      "10",
+    ]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    expect(parsed.screenshot).toBe("[screenshot expired]");
   });
 });

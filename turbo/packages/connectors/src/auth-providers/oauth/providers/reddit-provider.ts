@@ -2,33 +2,37 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildRedditAuthorizationUrl,
   exchangeRedditCode,
-  getRedditSecretName,
   refreshRedditToken,
 } from "./reddit";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildRedditAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeRedditCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -41,13 +45,16 @@ export const redditProvider: AuthCodeConnectorAuthProvider<"reddit"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getRedditSecretName,
-    getRefreshSecretName: () => {
-      return "REDDIT_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshRedditToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshRedditToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

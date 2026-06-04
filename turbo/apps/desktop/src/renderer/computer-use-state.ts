@@ -4,6 +4,7 @@ import type {
   DesktopAuthState,
   DesktopComputerUseApi,
 } from "../desktop-bridge";
+import { hasReadyDesktopAuth } from "../computer-use-startup-gate";
 import {
   hasRequiredComputerUsePermissions,
   type DesktopComputerUseState,
@@ -39,9 +40,11 @@ export function hasDesktopAuthBridge(): boolean {
 
 export function shouldAutoStartComputerUse(
   stateValue: DesktopComputerUseState,
+  authState: DesktopAuthState | null,
 ): boolean {
   return (
     stateValue.supported &&
+    hasReadyDesktopAuth(authState) &&
     hasRequiredComputerUsePermissions(stateValue.permissions) &&
     (stateValue.host.status === "idle" ||
       stateValue.host.status === "unauthenticated")
@@ -107,8 +110,15 @@ export const startComputerUse$ = command(async ({ set }) => {
 });
 
 export const maybeAutoStartComputerUse$ = command(
-  async ({ get, set }, stateValue: DesktopComputerUseState) => {
-    if (get(autoStartAttempted$) || !shouldAutoStartComputerUse(stateValue)) {
+  async (
+    { get, set },
+    stateValue: DesktopComputerUseState,
+    authState: DesktopAuthState | null,
+  ) => {
+    if (
+      get(autoStartAttempted$) ||
+      !shouldAutoStartComputerUse(stateValue, authState)
+    ) {
       return;
     }
     set(autoStartAttempted$, true);

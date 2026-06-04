@@ -236,6 +236,7 @@ fn generated_storage_manifest_serializes_without_absent_manifest_url() {
             vas_version_id: "version-2".to_string(),
             archive_url: "https://storage.example/artifact.tar.gz".to_string(),
             manifest_url: None,
+            missing_root_policy: None,
         }],
     };
 

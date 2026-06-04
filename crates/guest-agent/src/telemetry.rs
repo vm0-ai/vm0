@@ -170,7 +170,7 @@ async fn upload_telemetry(
     let masked_log = if system_log.is_empty() {
         String::new()
     } else {
-        masker.mask_string(&system_log)
+        masker.mask_owned_string(system_log)
     };
 
     let payload = json!({

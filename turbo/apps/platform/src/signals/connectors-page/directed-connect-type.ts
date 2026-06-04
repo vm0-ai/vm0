@@ -32,10 +32,10 @@ export const directedConnectAgentName$ = computed(async (get) => {
   return agent?.displayName ?? null;
 });
 
-const internalTokenDialogOpen$ = state(false);
-export const tokenDialogOpen$ = computed((get) => {
-  return get(internalTokenDialogOpen$);
+const internalManualGrantDialogOpen$ = state(false);
+export const manualGrantDialogOpen$ = computed((get) => {
+  return get(internalManualGrantDialogOpen$);
 });
-export const setTokenDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalTokenDialogOpen$, open);
+export const setManualGrantDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalManualGrantDialogOpen$, open);
 });

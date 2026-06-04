@@ -18,15 +18,28 @@ export const close = {
           clientIdEnv: "CLOSE_OAUTH_CLIENT_ID",
           clientSecretEnv: "CLOSE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["CLOSE_ACCESS_TOKEN", "CLOSE_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.close.com/oauth2/token/",
           scopes: ["all.full_access", "offline_access"],
+          outputs: {
+            accessToken: "$secrets.CLOSE_ACCESS_TOKEN",
+            refreshToken: "$secrets.CLOSE_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "CLOSE_ACCESS_TOKEN",
-          refreshToken: "CLOSE_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.CLOSE_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.CLOSE_ACCESS_TOKEN",
+            refreshToken: "$secrets.CLOSE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["CLOSE_ACCESS_TOKEN"],
           envBindings: {
             CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
           },

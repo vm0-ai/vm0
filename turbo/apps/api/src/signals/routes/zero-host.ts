@@ -8,6 +8,7 @@ import {
   completeHostedSiteDeployment$,
   prepareHostedSiteDeployment$,
 } from "../services/zero-host.service";
+import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import type { RouteEntry } from "../route";
 
@@ -28,6 +29,11 @@ const prepareInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!bodyResult.ok) {
     return bodyResult.response;
+  }
+
+  const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+  if (suspended) {
+    return suspended;
   }
 
   const result = await set(
@@ -60,6 +66,11 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
 
   const params = get(completeParams$);
+  const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+  if (suspended) {
+    return suspended;
+  }
+
   const result = await set(
     completeHostedSiteDeployment$,
     {

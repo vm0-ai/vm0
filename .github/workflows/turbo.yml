@@ -501,7 +501,7 @@ jobs:
         run: node scripts/print-bench-summary.mjs bench-results-p90.json
       - name: Upload bench results
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-api-results
           path: |
@@ -831,6 +831,22 @@ jobs:
 
           npm install -g neonctl@2.15.0
 
+          # On pushes to main, migrate the test project's default (parent) branch
+          # BEFORE creating/resetting the preview branch off it. Neon branches are
+          # copy-on-write, so a preview branched from an already-migrated parent
+          # inherits the up-to-date schema and its own db:migrate below becomes a
+          # near no-op -- this is what keeps preview migrate (and deploy-web) fast.
+          # Safe by construction: this job has no `environment: production`, so
+          # NEON_PROJECT_ID resolves to the Neon TEST project, never production.
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            echo "main push: pre-migrating test project default (parent) branch"
+            PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+            if [ -z "$PARENT_DATABASE_URL" ]; then
+              PARENT_DATABASE_URL=$(neonctl connection-string --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+            fi
+            (cd turbo && DATABASE_URL="$PARENT_DATABASE_URL" pnpm -F @vm0/db db:migrate)
+          fi
+
           BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}"
 
           if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e --arg name "$BRANCH_NAME" '.[] | select(.name == $name)' > /dev/null; then
@@ -1148,7 +1164,7 @@ jobs:
           e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+runner@vm0-e2e.ai"
           cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
         env:
-          VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
+          VM0_API_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
@@ -1479,7 +1495,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1490,7 +1506,7 @@ jobs:
           BATS_TEST_TIMEOUT=30 ./e2e/test/libs/bats/bin/bats -T --report-formatter junit --output e2e/results ./e2e/tests/01-serial/*.bats
           echo "✅ Serial tests passed"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
@@ -1658,7 +1674,7 @@ jobs:
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
           SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
-          PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          RUNNER_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           read_host_capacity() {
@@ -1715,7 +1731,7 @@ jobs:
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
               --concurrency-factor 2.0 \
-              --api-url ${PREVIEW_URL} \
+              --api-url ${RUNNER_API_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
             # Stop any existing service from a previous run (e.g., re-run after test failure).
@@ -1852,13 +1868,13 @@ jobs:
           curl -fsS "${headers[@]}" -X PUT -d "$payload" "${VM0_API_URL}/api/zero/model-policies" >/dev/null
           curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null}' "${VM0_API_URL}/api/zero/user-model-preference" >/dev/null
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap test account
         run: |
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   # Skip on push to main - runner tests are only needed for PRs
@@ -1927,7 +1943,7 @@ jobs:
           ./e2e/scripts/cron-simulator.sh "$VM0_API_URL" 60 &
           echo "CRON_SIMULATOR_PID=$!" >> "$GITHUB_ENV"
         env:
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1947,7 +1963,7 @@ jobs:
         env:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}
           RUNNER_CHUNK_COUNT: ${{ needs.deploy-runner-prepare.outputs.chunk-count }}
-          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          VM0_API_URL: ${{ needs.deploy-web.outputs.api-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
           USE_MOCK_CODEX: "true"

@@ -2,34 +2,38 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildLinearAuthorizationUrl,
   exchangeLinearCode,
-  getLinearSecretName,
   refreshLinearToken,
   revokeLinearToken,
 } from "./linear";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildLinearAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeLinearCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -42,20 +46,23 @@ export const linearProvider: AuthCodeConnectorAuthProvider<"linear"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getLinearSecretName,
-    getRefreshSecretName: () => {
-      return "LINEAR_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshLinearToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshLinearToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: {
     kind: "token-revoke",
     revokeToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return revokeLinearToken(clientId, clientSecret, args.accessToken);
+      const { clientId, clientSecret } = args.authClient;
+      return revokeLinearToken(clientId, clientSecret, args.inputs.accessToken);
     },
   },
 };

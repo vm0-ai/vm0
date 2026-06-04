@@ -58,7 +58,6 @@ function mockAgent() {
         description: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [] as string[],
         modelProviderId: null,
         selectedModel: "claude-opus-4-7",

@@ -9,6 +9,10 @@ export const pushinator = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        storage: {
+          secrets: ["PUSHINATOR_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

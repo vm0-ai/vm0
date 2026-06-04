@@ -7,6 +7,6 @@ export const presentationCommand = createPresentationGenerateCommand({
   examples: `  Generate deck:         zero generate presentation --prompt "A strategy deck for reducing support volume"
   Pipe prompt:           cat brief.txt | zero generate presentation
   Pick slide count:      zero generate presentation --slides 10 --prompt "A product launch narrative"
-  Stable hosted slug:    zero generate presentation --site-slug api-migration-plan --prompt "API migration plan"
+  Custom site slug:      zero generate presentation --site-slug api-migration-plan --prompt "API migration plan"
   Show choices:          zero generate presentation`,
 });

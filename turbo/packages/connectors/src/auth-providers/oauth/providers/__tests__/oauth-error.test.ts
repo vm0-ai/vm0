@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { throwOAuthError } from "../../error";
+import { isOAuthProviderHttpError, throwOAuthError } from "../../error";
 
 function makeResponse(status: number, body: string): Response {
   return new Response(body, { status, statusText: "Bad Request" });
@@ -49,6 +49,39 @@ describe("throwOAuthError", () => {
     await expect(
       throwOAuthError("Slack", "exchange", response),
     ).rejects.toThrow("Slack token exchange failed: 502");
+  });
+
+  it("throws a typed HTTP error with status", async () => {
+    const response = makeResponse(502, "");
+
+    const error = await throwOAuthError("Slack", "exchange", response).catch(
+      (e: unknown) => {
+        return e;
+      },
+    );
+
+    expect(isOAuthProviderHttpError(error)).toBe(true);
+    expect(isOAuthProviderHttpError(error) ? error.status : null).toBe(502);
+  });
+
+  it("preserves the standard OAuth error code", async () => {
+    const response = makeResponse(
+      400,
+      JSON.stringify({
+        error: "invalid_grant",
+        error_description: "The refresh token is expired",
+      }),
+    );
+
+    const error = await throwOAuthError("Notion", "refresh", response).catch(
+      (e: unknown) => {
+        return e;
+      },
+    );
+
+    expect(isOAuthProviderHttpError(error) ? error.oauthError : null).toBe(
+      "invalid_grant",
+    );
   });
 
   it("truncates long response bodies", async () => {

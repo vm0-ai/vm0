@@ -13,6 +13,10 @@ export const gemini = {
         label: "API Key",
         helpText:
           "1. Go to [Google AI Studio](https://aistudio.google.com/apikey)\n2. Sign in with your Google account\n3. Click **Create API key**\n4. Copy the key (starts with `AIza`) and store it in a safe location",
+        storage: {
+          secrets: ["GEMINI_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

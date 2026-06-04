@@ -19,7 +19,6 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import { isGoogleOAuthConnector } from "@vm0/connectors/connector-utils";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
   connectorsPageTab$,
@@ -27,6 +26,7 @@ import {
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -46,6 +46,8 @@ import {
   setPermissionDialogType$,
   isStandaloneMode,
   matchesConnectorSearch,
+  getAvailableAuthCodeAuthMethod,
+  getOnlyAvailableAuthCodeAuthMethod,
   getConnectorConnectLaunchMode,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -492,7 +494,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {isGoogleOAuthConnector(connector.type) ? (
+          {shouldShowGoogleSecurityWarningNotice(connector.type) ? (
             <>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -636,13 +638,21 @@ export function ZeroConnectorsPage() {
     const launchMode = getConnectorConnectLaunchMode({
       type,
       availableAuthMethods: ct.availableAuthMethods,
-      preferModalForGoogleOAuth: true,
+      preferModalForGoogleSecurityWarning: true,
     });
     if (launchMode === "modal") {
       setSelected(type);
     } else {
+      const authMethod = getOnlyAvailableAuthCodeAuthMethod(
+        type,
+        ct.availableAuthMethods,
+      );
+      if (!authMethod) {
+        setSelected(type);
+        return;
+      }
       detach(
-        connect(type, { showPermissionDialog: true }, signal),
+        connect(type, authMethod, { showPermissionDialog: true }, signal),
         Reason.DomCallback,
       );
     }
@@ -807,8 +817,22 @@ export function ZeroConnectorsPage() {
           }}
           onReconnect={(type) => {
             setScopeReviewType(null);
+            const connector = allConnectors.find((connector) => {
+              return connector.type === type;
+            });
+            const authMethod = connector?.connector
+              ? getAvailableAuthCodeAuthMethod(
+                  type,
+                  connector.availableAuthMethods,
+                  connector.connector.authMethod,
+                )
+              : null;
+            if (!authMethod) {
+              setSelected(type);
+              return;
+            }
             detach(
-              connect(type, { showPermissionDialog: true }, signal),
+              connect(type, authMethod, { showPermissionDialog: true }, signal),
               Reason.DomCallback,
             );
           }}

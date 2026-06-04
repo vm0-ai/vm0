@@ -18,16 +18,31 @@ export const outlookCalendar = {
           clientIdEnv: "MICROSOFT_OAUTH_CLIENT_ID",
           clientSecretEnv: "MICROSOFT_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: [
+            "OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          ],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl:
-            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
           scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
+          outputs: {
+            accessToken: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            refreshToken: "$secrets.OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "OUTLOOK_CALENDAR_ACCESS_TOKEN",
-          refreshToken: "OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+            refreshToken: "$secrets.OUTLOOK_CALENDAR_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["OUTLOOK_CALENDAR_ACCESS_TOKEN"],
           envBindings: {
             OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
           },

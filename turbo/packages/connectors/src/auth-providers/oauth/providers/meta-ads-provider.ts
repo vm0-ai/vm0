@@ -1,33 +1,32 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildMetaAdsAuthorizationUrl,
-  exchangeMetaAdsCode,
-  getMetaAdsSecretName,
-} from "./meta-ads";
+import { buildMetaAdsAuthorizationUrl, exchangeMetaAdsCode } from "./meta-ads";
 export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildMetaAdsAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMetaAdsCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -40,7 +39,6 @@ export const metaAdsProvider: AuthCodeConnectorAuthProvider<"meta-ads"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getMetaAdsSecretName,
   },
   revoke: { kind: "none" },
 };

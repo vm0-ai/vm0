@@ -2,33 +2,37 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildGumroadAuthorizationUrl,
   exchangeGumroadCode,
-  getGumroadSecretName,
   refreshGumroadToken,
 } from "./gumroad";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildGumroadAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeGumroadCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -41,13 +45,16 @@ export const gumroadProvider: AuthCodeConnectorAuthProvider<"gumroad"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getGumroadSecretName,
-    getRefreshSecretName: () => {
-      return "GUMROAD_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshGumroadToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshGumroadToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

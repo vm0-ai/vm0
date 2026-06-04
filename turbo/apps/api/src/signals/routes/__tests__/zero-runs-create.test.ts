@@ -6,10 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
-import type {
-  FirewallPolicyValue,
-  RawPermissionPolicies,
-} from "@vm0/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { getConnectorFirewall } from "@vm0/connectors/firewalls";
 import {
   agentComposes,
@@ -33,12 +30,16 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import {
+  userPermissionGrants,
+  type UserPermissionGrantAction,
+} from "@vm0/db/schema/user-permission-grant";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -51,6 +52,7 @@ import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { mockNow } from "../../../lib/time";
 import { drainOrgQueue$ } from "../../services/zero-run-queue.service";
+import { createZeroIntegrationRun$ } from "../../services/zero-runs-create.service";
 import { mockOptionalEnv } from "../../../lib/env";
 import {
   createFixtureTracker,
@@ -74,6 +76,16 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
+const SLACK_CONNECTOR = "slack";
+const SLACK_READ_PERMISSION = "channels:read";
+const SLACK_WRITE_PERMISSION = "chat:write";
+
+interface QueuedNetworkPolicy {
+  readonly allow: readonly string[];
+  readonly deny: readonly string[];
+  readonly ask: readonly string[];
+  readonly unknownPolicy: string;
+}
 
 function modelProviderSecretPlaceholder(
   type: ModelProviderType,
@@ -108,8 +120,6 @@ interface ZeroAgentSeed {
   readonly customSkills?: readonly string[];
   readonly framework?: "claude-code" | "codex";
   readonly environment?: Record<string, string>;
-  readonly permissionPolicies?: RawPermissionPolicies;
-  readonly unknownPermissionPolicies?: Record<string, FirewallPolicyValue>;
   readonly modelProviderId?: string | null;
   readonly selectedModel?: string | null;
 }
@@ -172,8 +182,6 @@ const seedRunnableZeroAgent$ = command(
       displayName: args.displayName ?? null,
       description: args.description ?? null,
       sound: args.sound ?? null,
-      permissionPolicies: args.permissionPolicies,
-      unknownPermissionPolicies: args.unknownPermissionPolicies,
       customSkills: args.customSkills ? [...args.customSkills] : [],
       modelProviderId: args.modelProviderId ?? null,
       selectedModel: args.selectedModel ?? null,
@@ -250,6 +258,111 @@ async function fixture(): Promise<UsageInsightFixture> {
   );
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   return created;
+}
+
+async function seedSlackConnector(args: {
+  readonly fixture: UsageInsightFixture;
+  readonly agentId: string;
+  readonly userId?: string;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  const userId = args.userId ?? args.fixture.userId;
+  await db.insert(userConnectors).values({
+    orgId: args.fixture.orgId,
+    userId,
+    agentId: args.agentId,
+    connectorType: SLACK_CONNECTOR,
+  });
+  await db.insert(connectors).values({
+    orgId: args.fixture.orgId,
+    userId,
+    type: SLACK_CONNECTOR,
+    authMethod: "oauth",
+  });
+  await db.insert(secrets).values({
+    orgId: args.fixture.orgId,
+    userId,
+    name: "SLACK_ACCESS_TOKEN",
+    encryptedValue: encryptSecretForTests("xoxb-test-token"),
+    type: "connector",
+  });
+}
+
+async function insertUserPermissionGrant(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly permission: string;
+  readonly action: UserPermissionGrantAction;
+  readonly expiresAt?: Date | null;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db.insert(userPermissionGrants).values({
+    orgId: args.orgId,
+    userId: args.userId,
+    agentId: args.agentId,
+    connectorRef: SLACK_CONNECTOR,
+    permission: args.permission,
+    action: args.action,
+    expiresAt: args.expiresAt ?? null,
+  });
+}
+
+async function updateUserPermissionGrantAction(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly permission: string;
+  readonly action: UserPermissionGrantAction;
+}): Promise<void> {
+  const db = store.set(writeDb$);
+  await db
+    .update(userPermissionGrants)
+    .set({ action: args.action })
+    .where(
+      and(
+        eq(userPermissionGrants.orgId, args.orgId),
+        eq(userPermissionGrants.userId, args.userId),
+        eq(userPermissionGrants.agentId, args.agentId),
+        eq(userPermissionGrants.connectorRef, SLACK_CONNECTOR),
+        eq(userPermissionGrants.permission, args.permission),
+      ),
+    );
+}
+
+async function networkPolicyForRun(
+  runId: string,
+  connectorRef: string,
+): Promise<QueuedNetworkPolicy> {
+  const db = store.set(writeDb$);
+  const [job] = await db
+    .select({ executionContext: runnerJobQueue.executionContext })
+    .from(runnerJobQueue)
+    .where(eq(runnerJobQueue.runId, runId));
+  const executionContext = job?.executionContext as
+    | {
+        readonly networkPolicies?: Record<string, QueuedNetworkPolicy>;
+      }
+    | undefined;
+  const policy = executionContext?.networkPolicies?.[connectorRef];
+  if (!policy) {
+    throw new Error(`Expected network policy for ${connectorRef}`);
+  }
+  return policy;
+}
+
+async function createZeroRunNetworkPolicy(
+  agentId: string,
+  connectorRef: string = SLACK_CONNECTOR,
+): Promise<QueuedNetworkPolicy> {
+  const response = await accept(
+    zeroRunsClient().create({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { prompt: "resolve runtime permissions", agentId },
+    }),
+    [201],
+  );
+  return await networkPolicyForRun(response.body.runId, connectorRef);
 }
 
 async function seedRunnableZeroAgent(
@@ -403,6 +516,29 @@ describe("POST /api/zero/runs", () => {
     );
 
     expect(response.body.error.message).toBe("agentId is required");
+  });
+
+  it("rejects caller-provided permission policies", async () => {
+    await fixture();
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          prompt: "hello",
+          agentId: randomUUID(),
+          permissionPolicies: {
+            x: {
+              policies: { "tweet.write": "allow" },
+            },
+          },
+        } as never,
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("permissionPolicies");
   });
 
   it("rejects ambiguous Claude tool list entries", async () => {
@@ -771,7 +907,7 @@ describe("POST /api/zero/runs", () => {
     });
     await seedVm0ApiKey({
       vendor: "anthropic",
-      model: "claude-haiku-4-5",
+      model: "claude-opus-4-7",
       apiKey: "sk-vm0-fallback",
     });
     await seedVm0ApiKey({
@@ -861,7 +997,7 @@ describe("POST /api/zero/runs", () => {
       userId: ORG_SENTINEL_USER_ID,
       type: "vm0",
       isDefault: true,
-      selectedModel: "MiniMax-M2.7",
+      selectedModel: "MiniMax-M3",
     });
     const agent = await seedRunnableZeroAgent({
       fixture: fx,
@@ -896,7 +1032,7 @@ describe("POST /api/zero/runs", () => {
         "minimax-api-key",
         "MINIMAX_API_KEY",
       ),
-      ANTHROPIC_MODEL: "MiniMax-M2.7",
+      ANTHROPIC_MODEL: "MiniMax-M3",
       ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
     });
     const decrypted = decryptSecretsMapForTests(
@@ -907,6 +1043,80 @@ describe("POST /api/zero/runs", () => {
       expect(decrypted?.MINIMAX_API_KEY).toBe("sk-vm0-fallback");
     }
     expect(decrypted?.MINIMAX_API_KEY).toBeDefined();
+  });
+
+  it("routes VM0 managed MiniMax M3 through the official MiniMax endpoint", async () => {
+    const fx = await fixture();
+    await setOrgCredits(fx.orgId, 100);
+    await setMemberCredits({ orgId: fx.orgId, userId: fx.userId });
+    const db = store.set(writeDb$);
+    const existingVendorKeys = await db
+      .select({ model: vm0ApiKeys.model })
+      .from(vm0ApiKeys)
+      .where(eq(vm0ApiKeys.vendor, "minimax"));
+    const hasExistingExactKey = existingVendorKeys.some((row) => {
+      return row.model === "MiniMax-M3";
+    });
+    await seedVm0ApiKey({
+      vendor: "minimax",
+      model: "MiniMax-M3",
+      apiKey: "sk-vm0-minimax-m3",
+    });
+    await db.insert(modelProviders).values({
+      orgId: fx.orgId,
+      userId: ORG_SENTINEL_USER_ID,
+      type: "vm0",
+      isDefault: true,
+      selectedModel: "MiniMax-M3",
+    });
+    const agent = await seedRunnableZeroAgent({
+      fixture: fx,
+      environment: {},
+    });
+
+    const response = await accept(
+      zeroRunsClient().create({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { prompt: "vm0 minimax m3 provider", agentId: agent.agentId },
+      }),
+      [201],
+    );
+
+    const [job] = await db
+      .select({ executionContext: runnerJobQueue.executionContext })
+      .from(runnerJobQueue)
+      .where(eq(runnerJobQueue.runId, response.body.runId));
+    const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
+      readonly encryptedSecrets: string | null;
+    };
+    expect(executionContext.environment).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: modelProviderSecretPlaceholder(
+        "minimax-api-key",
+        "MINIMAX_API_KEY",
+      ),
+      ANTHROPIC_MODEL: "MiniMax-M3",
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
+    });
+    const decrypted = decryptSecretsMapForTests(
+      executionContext.encryptedSecrets,
+    );
+    if (!hasExistingExactKey) {
+      expect(decrypted?.MINIMAX_API_KEY).toBe("sk-vm0-minimax-m3");
+    }
+    expect(decrypted?.MINIMAX_API_KEY).toBeDefined();
+
+    const [zeroRun] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, response.body.runId));
+    expect(zeroRun).toStrictEqual({
+      modelProvider: "vm0",
+      selectedModel: "MiniMax-M3",
+    });
   });
 
   it("injects multi-auth Codex OAuth model provider secrets and refresh metadata", async () => {
@@ -1464,17 +1674,10 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.secretConnectorMetadataMap).toBeNull();
   });
 
-  it("injects authorized OAuth connector secrets and refresh metadata", async () => {
+  it("injects authorized connector token secrets and refresh metadata", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        x: {
-          "tweet.read": "allow",
-        },
-      },
-    });
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
     await db.insert(userConnectors).values({
       orgId: fx.orgId,
       userId: fx.userId,
@@ -1549,7 +1752,7 @@ describe("POST /api/zero/runs", () => {
     expect(executionContext.billableFirewalls).toContain("x");
   });
 
-  it("maps static OAuth connector env aliases", async () => {
+  it("maps static connector env aliases", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -1604,14 +1807,7 @@ describe("POST /api/zero/runs", () => {
   it("ignores orphaned connector secrets for removed connector types", async () => {
     const fx = await fixture();
     const db = store.set(writeDb$);
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        x: {
-          "tweet.read": "allow",
-        },
-      },
-    });
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
     await db.insert(userConnectors).values({
       orgId: fx.orgId,
       userId: fx.userId,
@@ -1763,7 +1959,8 @@ describe("POST /api/zero/runs", () => {
     );
   });
 
-  it("injects authorized Slock OAuth secrets through the runtime firewall", async () => {
+  it("injects authorized Slock OAuth secrets through the runtime firewall without platform secrets", async () => {
+    mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
     const fx = await fixture();
     const db = store.set(writeDb$);
     const agent = await seedRunnableZeroAgent({ fixture: fx });
@@ -1850,6 +2047,7 @@ describe("POST /api/zero/runs", () => {
     });
     expect(decrypted).not.toHaveProperty("SLOCK_ACCESS_TOKEN");
     expect(decrypted).not.toHaveProperty("SLOCK_REFRESH_TOKEN");
+    expect(decrypted).not.toHaveProperty("GOOGLE_ADS_DEVELOPER_TOKEN");
     expect(executionContext.secretConnectorMap).toStrictEqual({
       SLOCK_TOKEN: "slock",
     });
@@ -1864,7 +2062,7 @@ describe("POST /api/zero/runs", () => {
     });
   });
 
-  it("adds the Google Ads developer token for authorized OAuth connector runs", async () => {
+  it("adds the Google Ads developer token for authorized connector runs", async () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
     const fx = await fixture();
     const db = store.set(writeDb$);
@@ -1902,6 +2100,7 @@ describe("POST /api/zero/runs", () => {
       .from(runnerJobQueue)
       .where(eq(runnerJobQueue.runId, response.body.runId));
     const executionContext = job?.executionContext as {
+      readonly environment: Record<string, string>;
       readonly encryptedSecrets: string | null;
       readonly secretConnectorMap: Record<string, string> | null;
       readonly firewalls: readonly { readonly name: string }[];
@@ -1912,6 +2111,9 @@ describe("POST /api/zero/runs", () => {
       GOOGLE_ADS_TOKEN: "google-ads-access",
       GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
     });
+    expect(executionContext.environment).not.toHaveProperty(
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    );
     expect(executionContext.secretConnectorMap).toStrictEqual({
       GOOGLE_ADS_TOKEN: "google-ads",
     });
@@ -2313,75 +2515,167 @@ describe("POST /api/zero/runs", () => {
     ).toBeFalsy();
   });
 
-  it("builds runner firewalls from stored zero agent permission policies", async () => {
+  it("uses connector defaults with no grants", async () => {
     const fx = await fixture();
-    const agent = await seedRunnableZeroAgent({
-      fixture: fx,
-      permissionPolicies: {
-        x: {
-          "tweet.write": "deny",
-          "tweet.read": "allow",
-        },
-      },
-    });
-    const db = store.set(writeDb$);
-    await db.insert(userConnectors).values({
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_READ_PERMISSION);
+    expect(policy.allow).toContain("users:read");
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.unknownPolicy).toBe("allow");
+  });
+
+  it("applies current-user grants", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
       orgId: fx.orgId,
       userId: fx.userId,
       agentId: agent.agentId,
-      connectorType: "x",
-    });
-    await db.insert(connectors).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      type: "x",
-      authMethod: "oauth",
-    });
-    await db.insert(secrets).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      name: "X_ACCESS_TOKEN",
-      encryptedValue: encryptSecretForTests("x-policy-token"),
-      type: "connector",
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2999-01-01T00:00:00.000Z"),
     });
 
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("bakes the active grant result into the queued run context", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+    });
     const response = await accept(
       zeroRunsClient().create({
         headers: { authorization: "Bearer clerk-session" },
-        body: { prompt: "use x policy", agentId: agent.agentId },
+        body: {
+          prompt: "snapshot runtime permissions",
+          agentId: agent.agentId,
+        },
       }),
       [201],
     );
 
-    const [job] = await db
-      .select({ executionContext: runnerJobQueue.executionContext })
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, response.body.runId));
-    const executionContext = job?.executionContext as {
-      readonly firewalls?: readonly { readonly name: string }[];
-      readonly networkPolicies?: Record<
-        string,
-        {
-          readonly allow: readonly string[];
-          readonly deny: readonly string[];
-          readonly ask: readonly string[];
-          readonly unknownPolicy: string;
-        }
-      >;
-    };
+    await updateUserPermissionGrantAction({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "deny",
+    });
+    const policy = await networkPolicyForRun(
+      response.body.runId,
+      SLACK_CONNECTOR,
+    );
 
-    expect(
-      executionContext.firewalls?.map((firewall) => {
-        return firewall.name;
-      }),
-    ).toContain("x");
-    const xPolicy = executionContext.networkPolicies?.x;
-    if (!xPolicy) {
-      throw new Error("Expected x network policy");
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("ignores grants for other users on the same agent", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: `other-${fx.userId}`,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.allow).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("ignores expired grants for newly created runs", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+      expiresAt: new Date("2000-01-01T00:00:00.000Z"),
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.allow).not.toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("applies unknown-policy grants without changing named defaults", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: UNKNOWN_PERMISSION_GRANT,
+      action: "deny",
+    });
+
+    const policy = await createZeroRunNetworkPolicy(agent.agentId);
+
+    expect(policy.unknownPolicy).toBe("deny");
+    expect(policy.allow).toContain(SLACK_READ_PERMISSION);
+    expect(policy.deny).toContain(SLACK_WRITE_PERMISSION);
+  });
+
+  it("resolves user grants for zero integration runs", async () => {
+    const fx = await fixture();
+    const agent = await seedRunnableZeroAgent({ fixture: fx });
+    await seedSlackConnector({ fixture: fx, agentId: agent.agentId });
+    await insertUserPermissionGrant({
+      orgId: fx.orgId,
+      userId: fx.userId,
+      agentId: agent.agentId,
+      permission: SLACK_WRITE_PERMISSION,
+      action: "allow",
+    });
+
+    const result = await store.set(
+      createZeroIntegrationRun$,
+      {
+        userId: fx.userId,
+        orgId: fx.orgId,
+        agentId: agent.agentId,
+        prompt: "integration runtime permissions",
+        triggerSource: "slack",
+        apiStartTime: now(),
+      },
+      context.signal,
+    );
+
+    expect(result.status).toBe(201);
+    if (result.status !== 201) {
+      throw new Error("Expected zero integration run to be created");
     }
-    expect(xPolicy.allow).toContain("tweet.read");
-    expect(xPolicy.deny).toContain("tweet.write");
-    expect(xPolicy.unknownPolicy).toBe("allow");
+    const policy = await networkPolicyForRun(
+      result.body.runId,
+      SLACK_CONNECTOR,
+    );
+    expect(policy.allow).toContain(SLACK_WRITE_PERMISSION);
+    expect(policy.deny).not.toContain(SLACK_WRITE_PERMISSION);
   });
 
   it("uses the Codex skills mount path for codex zero agents", async () => {

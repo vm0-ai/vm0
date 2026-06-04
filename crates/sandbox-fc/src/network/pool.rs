@@ -912,13 +912,7 @@ async fn delete_iptables_from_table(table: &str, comment: &str) -> NamespaceDele
 async fn delete_namespace_resources(ns_name: &str, host_device: &str) -> NamespaceDeleteOutcome {
     info!(name = %ns_name, "deleting namespace");
     let iptables = delete_iptables_rules_by_comment(ns_name).await;
-    let del_link_args = ["link", "del", host_device];
-    let del_ns_args = ["netns", "del", ns_name];
-    let (link, netns) = tokio::join!(
-        exec_ignore_errors_with_timeout("ip", &del_link_args, NETNS_COMMAND_TIMEOUT),
-        exec_ignore_errors_with_timeout("ip", &del_ns_args, NETNS_COMMAND_TIMEOUT),
-    );
-    let outcome = NamespaceDeleteOutcome::from_best_effort([link, netns]);
+    let outcome = delete_namespace_link_and_netns(ns_name, host_device).await;
     if matches!(iptables, NamespaceDeleteOutcome::Deleted)
         && matches!(outcome, NamespaceDeleteOutcome::Deleted)
     {
@@ -932,6 +926,20 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) -> Namespa
         );
         NamespaceDeleteOutcome::Abandoned
     }
+}
+
+/// Delete the host veth and netns only; callers handle host iptables separately.
+async fn delete_namespace_link_and_netns(
+    ns_name: &str,
+    host_device: &str,
+) -> NamespaceDeleteOutcome {
+    let del_link_args = ["link", "del", host_device];
+    let del_ns_args = ["netns", "del", ns_name];
+    let (link, netns) = tokio::join!(
+        exec_ignore_errors_with_timeout("ip", &del_link_args, NETNS_COMMAND_TIMEOUT),
+        exec_ignore_errors_with_timeout("ip", &del_ns_args, NETNS_COMMAND_TIMEOUT),
+    );
+    NamespaceDeleteOutcome::from_best_effort([link, netns])
 }
 
 /// Flush conntrack entries for a given IP address.
@@ -2057,9 +2065,9 @@ async fn create_namespace_inner(
 
 /// Clean up all resources matching a given pool index.
 ///
-/// Deletes orphaned host iptables rules first (catches rules left behind even
-/// if the namespace was already removed), then discovers and deletes remaining
-/// namespaces and their veth devices.
+/// Deletes orphaned host iptables rules first, then discovers and deletes
+/// remaining namespaces and their veth devices. If the pool-wide iptables
+/// cleanup is abandoned, each namespace falls back to full cleanup.
 pub async fn cleanup_namespaces_by_index(index: u32) {
     let idx_str = format_hex_index(index);
     let prefix = format!("{NS_PREFIX}{idx_str}-");
@@ -2068,7 +2076,7 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
     //    The Rust-side `contains()` does substring matching, so the prefix matches
     //    all namespaces in this pool. This catches rules left behind even if the
     //    namespace itself was already deleted.
-    delete_iptables_rules_by_comment(&prefix).await;
+    let iptables = delete_iptables_rules_by_comment(&prefix).await;
 
     // 2. Discover and delete any remaining namespaces (+ their veth devices).
     let Ok(output) = exec_with_timeout("ip", &["netns", "list"], NETNS_COMMAND_TIMEOUT).await
@@ -2095,7 +2103,25 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
                 let pool_idx = format_hex_index(parsed.pool_index);
                 let ns_idx = format_hex_index(parsed.namespace_index);
                 let host_device = make_host_device(&pool_idx, &ns_idx);
-                delete_namespace_resources(&ns_name, &host_device).await;
+                match iptables {
+                    NamespaceDeleteOutcome::Deleted => {
+                        info!(name = %ns_name, "deleting namespace");
+                        let outcome =
+                            delete_namespace_link_and_netns(&ns_name, &host_device).await;
+                        if matches!(outcome, NamespaceDeleteOutcome::Deleted) {
+                            info!(name = %ns_name, "namespace deleted");
+                        } else {
+                            warn!(
+                                name = %ns_name,
+                                host_device,
+                                "namespace cleanup did not complete cleanly; startup orphan reconciliation will retry"
+                            );
+                        }
+                    }
+                    NamespaceDeleteOutcome::Abandoned => {
+                        delete_namespace_resources(&ns_name, &host_device).await;
+                    }
+                }
             }
         });
     }

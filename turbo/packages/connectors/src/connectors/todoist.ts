@@ -16,10 +16,16 @@ export const todoist = {
           clientIdEnv: "TODOIST_OAUTH_CLIENT_ID",
           clientSecretEnv: "TODOIST_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["TODOIST_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://todoist.com/oauth/access_token",
           scopes: ["data:read_write", "data:delete", "project:delete"],
+          outputs: {
+            accessToken: "$secrets.TODOIST_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

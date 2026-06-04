@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from mitmproxy import ctx, http
 
@@ -40,19 +41,75 @@ class InvalidBillableAuthExpiryError(Exception):
     """Raised when billable firewall auth succeeds with an invalid cache expiry."""
 
 
+class FirewallAuthResponseTooLargeError(Exception):
+    """Raised when /firewall/auth returns a response body above the local cap."""
+
+
+class FirewallAuthApiError(Exception):
+    """Raised when /firewall/auth returns a structured error envelope."""
+
+    def __init__(
+        self,
+        *,
+        status: int,
+        code: str,
+        message: str,
+        connectors: list[str] | None = None,
+        failure_reason: str | None = None,
+    ):
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.connectors = connectors
+        self.failure_reason = failure_reason
+
+
+class _ResponseBodyReader(Protocol):
+    def read(self, n: int = -1) -> bytes:
+        raise NotImplementedError
+
+
 # Vercel bypass secret (still from environment as it's a secret)
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES = 256 * 1024
+_HTTP_STATUS_CLIENT_ERROR_MIN = 400
+_HTTP_STATUS_SERVER_ERROR_MIN = 500
+_STRUCTURED_FIREWALL_AUTH_ERROR_CODES = frozenset(
+    {
+        "FORBIDDEN",
+        "TOKEN_REFRESH_FAILED",
+        "TOKEN_ACCESS_RESOLUTION_FAILED",
+    }
+)
+_FIREWALL_AUTH_FAILURE_REASONS = frozenset({"upstream_provider", "reconnect_required"})
+
+
+@dataclass(frozen=True)
+class _FirewallAuthPayload:
+    """Cacheable /firewall/auth data applied to outbound requests."""
+
+    headers: dict[str, str]
+    resolved_secrets: list[str] = field(default_factory=list)
+    base: str | None = None
+    query: dict[str, str] | None = None
 
 
 @dataclass
 class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
 
-    headers: dict
+    payload: _FirewallAuthPayload
     expires_at: object = None
-    resolved_secrets: list = field(default_factory=list)
-    base: str | None = None
-    query: dict | None = None
+
+
+@dataclass(frozen=True)
+class _FirewallAuthSuccess:
+    """Validated /firewall/auth success response consumed by the auth cache."""
+
+    payload: _FirewallAuthPayload
+    expires_at: object = None
+    refreshed_connectors: list[str] = field(default_factory=list)
+    refreshed_secrets: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -121,6 +178,7 @@ def _set_matched_firewall_failure_response(
     message: str,
     permission: str,
     connectors: list[str] | None = None,
+    failure_reason: str | None = None,
 ) -> None:
     """Set the common matched-firewall auth/forward failure response."""
     # `firewall_action` records the firewall permission decision
@@ -139,6 +197,8 @@ def _set_matched_firewall_failure_response(
     }
     if connectors:
         body["connectors"] = connectors
+    if failure_reason:
+        body["failureReason"] = failure_reason
     flow.response = http.Response.make(
         status,
         json.dumps(body).encode(),
@@ -202,10 +262,13 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     Centralises User-Agent, Authorization, Content-Type, and the optional
     Vercel bypass header so that callers cannot accidentally omit them.
     """
-    # S310 (suspicious-url-open-usage): `url` is always built by callers
-    # from `ctx.options.vm0_api_url` (operator-configured at mitmdump launch),
-    # never from user-controlled input, so the file:/custom-scheme risk S310
-    # guards against doesn't apply here.
+    parsed_url = urllib.parse.urlsplit(url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise ValueError("Platform API URL must be an absolute http(s) URL")
+
+    # S310 (suspicious-url-open-usage): callers build `url` from the
+    # operator-configured platform API URL, and the scheme is validated above
+    # before urllib can consume the request.
     req = urllib.request.Request(  # noqa: S310
         url,
         data=data,
@@ -220,11 +283,120 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     return req
 
 
+def _read_firewall_auth_response_body(resp: _ResponseBodyReader) -> bytes:
+    body = resp.read(MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES + 1)
+    if len(body) > MAX_FIREWALL_AUTH_RESPONSE_BODY_BYTES:
+        raise FirewallAuthResponseTooLargeError("Firewall auth response body too large")
+    return body
+
+
+def _firewall_auth_api_error_from_envelope(
+    status: int,
+    error_info: dict,
+) -> FirewallAuthApiError | None:
+    code = error_info.get("code")
+    message = error_info.get("message")
+    if not isinstance(code, str) or not isinstance(message, str):
+        return None
+    if code not in _STRUCTURED_FIREWALL_AUTH_ERROR_CODES:
+        return None
+    connectors = error_info.get("connectors")
+    if isinstance(connectors, list) and all(isinstance(item, str) for item in connectors):
+        parsed_connectors = connectors
+    else:
+        parsed_connectors = None
+    failure_reason = error_info.get("failureReason")
+    parsed_failure_reason = (
+        failure_reason
+        if isinstance(failure_reason, str) and failure_reason in _FIREWALL_AUTH_FAILURE_REASONS
+        else None
+    )
+    return FirewallAuthApiError(
+        status=status,
+        code=code,
+        message=message,
+        connectors=parsed_connectors,
+        failure_reason=parsed_failure_reason,
+    )
+
+
+_MALFORMED_FIREWALL_AUTH_SUCCESS = "Firewall auth endpoint returned malformed success response"
+
+
+def _malformed_firewall_auth_success(message: str) -> ValueError:
+    return ValueError(f"{_MALFORMED_FIREWALL_AUTH_SUCCESS}: {message}")
+
+
+def _parse_string_map(value: object, field_name: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise _malformed_firewall_auth_success(f"{field_name} must be an object")
+
+    parsed: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise _malformed_firewall_auth_success(f"{field_name} keys must be strings")
+        if not isinstance(item, str):
+            raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
+        parsed[key] = item
+    return parsed
+
+
+def _parse_optional_string_map(
+    decoded: dict[object, object], field_name: str
+) -> dict[str, str] | None:
+    value = decoded.get(field_name)
+    if value is None:
+        return None
+    return _parse_string_map(value, field_name)
+
+
+def _parse_optional_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
+    value = decoded.get(field_name)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise _malformed_firewall_auth_success(f"{field_name} must be an array")
+    if not all(isinstance(item, str) for item in value):
+        raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
+    return list(value)
+
+
+def _parse_firewall_auth_success(decoded: object) -> _FirewallAuthSuccess:
+    if not isinstance(decoded, dict):
+        raise _malformed_firewall_auth_success("response must be an object")
+    decoded_map: dict[object, object] = decoded
+    if "headers" not in decoded_map:
+        raise _malformed_firewall_auth_success("headers is required")
+
+    base = decoded_map.get("base")
+    if base is not None and not isinstance(base, str):
+        raise _malformed_firewall_auth_success("base must be a string")
+
+    headers = _parse_string_map(decoded_map["headers"], "headers")
+    resolved_secrets = _parse_optional_string_list(decoded_map, "resolvedSecrets")
+    refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
+    refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
+    query = _parse_optional_string_map(decoded_map, "query")
+    payload = _FirewallAuthPayload(
+        headers=headers,
+        resolved_secrets=resolved_secrets,
+        base=base,
+        query=query,
+    )
+    return _FirewallAuthSuccess(
+        payload=payload,
+        expires_at=decoded_map.get("expiresAt"),
+        refreshed_connectors=refreshed_connectors,
+        refreshed_secrets=refreshed_secrets,
+    )
+
+
 def _fetch_firewall_headers_sync(
     encrypted_secrets: str,
     auth_headers: dict,
     sandbox_token: str,
     api_url: str,
+    *,
     secret_connector_map: dict | None = None,
     secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
@@ -232,7 +404,7 @@ def _fetch_firewall_headers_sync(
     auth_query: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> dict:
+) -> _FirewallAuthSuccess:
     """Synchronous helper — runs in a thread to avoid blocking the event loop.
 
     api_url is resolved by the async caller (fetch_firewall_headers) while
@@ -256,23 +428,17 @@ def _fetch_firewall_headers_sync(
         body["forceRefresh"] = True
     data = json.dumps(body).encode()
     req = make_api_request(url, data, sandbox_token)
-    # `req` always targets ctx.options.vm0_api_url (operator-set at mitmdump
-    # launch), never user-controlled input — so the file://-scheme risk that
-    # both S310 and Semgrep's dynamic-urllib-use-detected rule guard against
-    # does not apply. Defense in depth: reject anything that isn't an http(s)
-    # URL before opening it.
-    if not req.full_url.startswith(("http://", "https://")):
-        raise ValueError(f"Unexpected URL scheme: {req.full_url!r}")
     try:
         # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            return json.loads(resp.read())
+            decoded: object = json.loads(_read_firewall_auth_response_body(resp))
+            return _parse_firewall_auth_success(decoded)
     except urllib.error.HTTPError as e:
         # HTTPError wraps an open socket; `with e` closes on every exit
         # path to avoid FD exhaustion under sustained cache-miss load (#10475).
         with e:
             try:
-                error_body = json.loads(e.read())
+                error_body = json.loads(_read_firewall_auth_response_body(e))
             except (json.JSONDecodeError, OSError):
                 raise e from None
             if not isinstance(error_body, dict):
@@ -289,13 +455,17 @@ def _fetch_firewall_headers_sync(
                 raise InsufficientCreditsError(
                     error_message if isinstance(error_message, str) else "Insufficient credits",
                 ) from None
-            raise
+            api_error = _firewall_auth_api_error_from_envelope(e.code, error_info)
+            if api_error is None:
+                raise e from None
+            raise api_error from None
 
 
 async def fetch_firewall_headers(
     encrypted_secrets: str,
     auth_headers: dict,
     sandbox_token: str,
+    *,
     secret_connector_map: dict | None = None,
     secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
@@ -303,7 +473,7 @@ async def fetch_firewall_headers(
     auth_query: dict | None = None,
     firewall_billable: bool = False,
     force_refresh: bool = False,
-) -> dict:
+) -> _FirewallAuthSuccess:
     """Resolve auth headers via server-side decryption.
 
     encrypted_secrets is the encrypted runtime secret namespace. After API-side
@@ -333,13 +503,13 @@ async def fetch_firewall_headers(
         auth_headers,
         sandbox_token,
         api_url,
-        secret_connector_map,
-        secret_connector_metadata_map,
-        vars_map,
-        auth_base,
-        auth_query,
-        firewall_billable,
-        force_refresh,
+        secret_connector_map=secret_connector_map,
+        secret_connector_metadata_map=secret_connector_metadata_map,
+        vars_map=vars_map,
+        auth_base=auth_base,
+        auth_query=auth_query,
+        firewall_billable=firewall_billable,
+        force_refresh=force_refresh,
     )
 
 
@@ -363,6 +533,29 @@ def _has_valid_expiry(value: object, now: float | None = None) -> bool:
     return (time.time() if now is None else now) < value
 
 
+def _build_token_meta(
+    payload: _FirewallAuthPayload,
+    *,
+    cache_hit: bool,
+    refreshed_connectors: list[str] | None = None,
+    refreshed_secrets: list[str] | None = None,
+) -> dict:
+    token_meta: dict = {
+        "headers": payload.headers,
+        "resolved_secrets": payload.resolved_secrets,
+        "cache_hit": cache_hit,
+    }
+    if refreshed_connectors is not None:
+        token_meta["refreshed_connectors"] = refreshed_connectors
+    if refreshed_secrets is not None:
+        token_meta["refreshed_secrets"] = refreshed_secrets
+    if payload.base is not None:
+        token_meta["base"] = payload.base
+    if payload.query is not None:
+        token_meta["query"] = payload.query
+    return token_meta
+
+
 def _build_cache_hit(
     cached: _FirewallHeaderCacheEntry, firewall_billable: bool = False
 ) -> dict | None:
@@ -374,16 +567,7 @@ def _build_cache_hit(
             return None
     elif not _has_valid_expiry(expires_at, now):
         return None
-    hit = {
-        "headers": cached.headers,
-        "resolved_secrets": cached.resolved_secrets,
-        "cache_hit": True,
-    }
-    if cached.base is not None:
-        hit["base"] = cached.base
-    if cached.query is not None:
-        hit["query"] = cached.query
-    return hit
+    return _build_token_meta(cached.payload, cache_hit=True)
 
 
 async def get_firewall_headers(
@@ -392,6 +576,7 @@ async def get_firewall_headers(
     encrypted_secrets: str,
     auth_headers: dict,
     sandbox_token: str,
+    *,
     secret_connector_map: dict | None = None,
     secret_connector_metadata_map: dict | None = None,
     vars_map: dict | None = None,
@@ -441,29 +626,22 @@ async def get_firewall_headers(
             encrypted_secrets,
             auth_headers,
             sandbox_token,
-            secret_connector_map,
-            secret_connector_metadata_map,
-            vars_map,
-            auth_base,
-            auth_query,
-            firewall_billable,
+            secret_connector_map=secret_connector_map,
+            secret_connector_metadata_map=secret_connector_metadata_map,
+            vars_map=vars_map,
+            auth_base=auth_base,
+            auth_query=auth_query,
+            firewall_billable=firewall_billable,
             force_refresh=force_refresh,
         )
-        if firewall_billable and not _has_valid_expiry(result.get("expiresAt")):
+        if firewall_billable and not _has_valid_expiry(result.expires_at):
             raise InvalidBillableAuthExpiryError(
                 "Billable firewall auth response did not include a valid cache expiry"
             )
-        headers = result["headers"]
-        resolved_secrets = result.get("resolvedSecrets", [])
         cache_entry = _FirewallHeaderCacheEntry(
-            headers=headers,
-            expires_at=result.get("expiresAt"),
-            resolved_secrets=resolved_secrets,
+            payload=result.payload,
+            expires_at=result.expires_at,
         )
-        if result.get("base"):
-            cache_entry.base = result["base"]
-        if result.get("query"):
-            cache_entry.query = result["query"]
 
         # A 401 can request a forced refresh while this non-forced fetch is
         # in flight. Return the current result to this request, but do not let
@@ -472,18 +650,12 @@ async def get_firewall_headers(
         if not marker_appeared_during_non_forced_fetch:
             state.cache = cache_entry
 
-        ret: dict = {
-            "headers": headers,
-            "resolved_secrets": resolved_secrets,
-            "refreshed_connectors": result.get("refreshedConnectors", []),
-            "refreshed_secrets": result.get("refreshedSecrets", []),
-            "cache_hit": False,
-        }
-        if result.get("base"):
-            ret["base"] = result["base"]
-        if result.get("query"):
-            ret["query"] = result["query"]
-        return ret
+        return _build_token_meta(
+            result.payload,
+            cache_hit=False,
+            refreshed_connectors=result.refreshed_connectors,
+            refreshed_secrets=result.refreshed_secrets,
+        )
 
 
 def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict) -> None:
@@ -509,6 +681,32 @@ def _apply_header_query_injection(
             flow.request.query[key] = value
 
 
+def _set_url_rewrite_forward_failed(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+    error_type: str,
+) -> None:
+    log_proxy_entry(
+        proxy_log_path,
+        "error",
+        "URL rewrite forward failed",
+        type="firewall",
+        firewall_base=firewall_base,
+        error_type=error_type,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=502,
+        action="ALLOW",
+        error_code="url_rewrite_forward_failed",
+        message="Failed to forward request to upstream",
+        permission=allow.name,
+    )
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -523,7 +721,17 @@ async def _apply_url_rewrite(
     # connection already connected to the placeholder IP. Setting
     # flow.response bypasses the upstream connection entirely.
     orig_query = urllib.parse.urlparse(flow.request.path).query
-    new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+    try:
+        new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+    except ValueError as e:
+        _set_url_rewrite_forward_failed(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+            error_type=type(e).__name__,
+        )
+        return False
 
     # Filter client-controlled hop-by-hop headers before adding trusted
     # auth headers, so Connection tokens cannot suppress injected auth.
@@ -541,21 +749,12 @@ async def _apply_url_rewrite(
         )
         flow.response = http.Response.make(status, resp_body, resp_headers)
     except Exception as e:
-        log_proxy_entry(
-            proxy_log_path,
-            "error",
-            "URL rewrite forward failed",
-            type="firewall",
+        _set_url_rewrite_forward_failed(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
             firewall_base=firewall_base,
             error_type=type(e).__name__,
-        )
-        _set_matched_firewall_failure_response(
-            flow,
-            status=502,
-            action="ALLOW",
-            error_code="url_rewrite_forward_failed",
-            message="Failed to forward request to upstream",
-            permission=allow.name,
         )
         return False
 
@@ -653,12 +852,12 @@ async def handle_firewall_request(
             encrypted_secrets,
             auth_headers,
             sandbox_token,
-            secret_connector_map,
-            secret_connector_metadata_map,
-            vars_map,
-            auth_base,
-            auth_query,
-            firewall_billable,
+            secret_connector_map=secret_connector_map,
+            secret_connector_metadata_map=secret_connector_metadata_map,
+            vars_map=vars_map,
+            auth_base=auth_base,
+            auth_query=auth_query,
+            firewall_billable=firewall_billable,
         )
     except ConnectorNotConfiguredError as e:
         log_proxy_entry(
@@ -710,6 +909,30 @@ async def handle_firewall_request(
             error_code="invalid_auth_expiry",
             message=str(e),
             permission=allow.name,
+        )
+        return
+    except FirewallAuthApiError as e:
+        log_proxy_entry(
+            proxy_log_path,
+            "error",
+            f"Firewall auth API failed for {firewall_base}: {e.code}",
+            type="firewall",
+            firewall_base=firewall_base,
+            error_code=e.code,
+        )
+        _set_matched_firewall_failure_response(
+            flow,
+            status=e.status,
+            action=(
+                "BLOCK"
+                if _HTTP_STATUS_CLIENT_ERROR_MIN <= e.status < _HTTP_STATUS_SERVER_ERROR_MIN
+                else "ALLOW"
+            ),
+            error_code=e.code,
+            message=str(e),
+            permission=allow.name,
+            connectors=e.connectors,
+            failure_reason=e.failure_reason,
         )
         return
     except Exception as e:

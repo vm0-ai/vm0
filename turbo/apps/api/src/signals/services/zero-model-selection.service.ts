@@ -1,4 +1,7 @@
-import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  isSupportedRunModel,
+  type ModelProviderCredentialScope,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -23,6 +26,10 @@ export interface ModelFirstPin {
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
   readonly selectedModel: string;
+}
+
+interface AvailableModelProviderPin {
+  readonly type: string;
 }
 
 function parseModelProviderCredentialScope(
@@ -112,8 +119,17 @@ export async function modelProviderPinAvailable(params: {
   readonly userId: string;
   readonly modelProviderId: string;
 }): Promise<boolean> {
+  return (await loadAvailableModelProviderPin(params)) !== null;
+}
+
+async function loadAvailableModelProviderPin(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly modelProviderId: string;
+}): Promise<AvailableModelProviderPin | null> {
   const [provider] = await params.db
-    .select({ id: modelProviders.id })
+    .select({ type: modelProviders.type })
     .from(modelProviders)
     .where(
       and(
@@ -126,7 +142,7 @@ export async function modelProviderPinAvailable(params: {
       ),
     )
     .limit(1);
-  return provider !== undefined;
+  return provider ?? null;
 }
 
 export async function resolveModelSelectionPin(params: {
@@ -137,14 +153,20 @@ export async function resolveModelSelectionPin(params: {
 }): Promise<ModelFirstPin | ReturnType<typeof badRequestMessage>> {
   const { db, orgId, userId, modelSelection } = params;
   if (modelSelection.modelProviderId !== MODEL_FIRST_SELECTION_PROVIDER_ID) {
-    const available = await modelProviderPinAvailable({
+    const provider = await loadAvailableModelProviderPin({
       db,
       orgId,
       userId,
       modelProviderId: modelSelection.modelProviderId,
     });
-    if (!available) {
+    if (!provider) {
       return badRequestMessage("Unknown model provider for this workspace");
+    }
+    if (
+      provider.type === "vm0" &&
+      !isSupportedRunModel(modelSelection.selectedModel)
+    ) {
+      return badRequestMessage("Invalid model selection");
     }
     return {
       modelProviderId: modelSelection.modelProviderId,
@@ -152,6 +174,10 @@ export async function resolveModelSelectionPin(params: {
       modelProviderCredentialScope: null,
       selectedModel: modelSelection.selectedModel,
     };
+  }
+
+  if (!isSupportedRunModel(modelSelection.selectedModel)) {
+    return badRequestMessage("Invalid model selection");
   }
 
   await ensureOrgModelPolicies(db, orgId, userId);

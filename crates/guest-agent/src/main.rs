@@ -44,27 +44,6 @@ async fn run() -> i32 {
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api("api_to_agent_start");
 
-    // Validate required env vars
-    if env::working_dir().is_empty() {
-        log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let telemetry = match HttpClient::for_current_env() {
-            Ok(http) => Some(Telemetry::spawn(masker, http)),
-            Err(e) => {
-                log_error!(LOG_TAG, "Final telemetry unavailable: {e}");
-                None
-            }
-        };
-        log_info!(LOG_TAG, "▷ Cleanup");
-        if let Some(telemetry) = telemetry {
-            final_telemetry(&telemetry).await;
-            telemetry.shutdown().await;
-        }
-        log_info!(LOG_TAG, "Background processes stopped");
-        log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
-        return 1;
-    }
-
     let http = match HttpClient::for_current_env() {
         Ok(http) => http,
         Err(e) => {
@@ -85,7 +64,11 @@ async fn run() -> i32 {
     let control_handle = control::ControlHandle::spawn(shutdown.clone());
     let start = Instant::now();
 
-    log_info!(LOG_TAG, "Working directory: {}", env::working_dir());
+    log_info!(
+        LOG_TAG,
+        "Working directory: {}",
+        paths::CANONICAL_WORKING_DIR
+    );
 
     let t = Instant::now();
     let heartbeat_handle = tokio::spawn({
@@ -157,9 +140,7 @@ async fn execute(
 
     // Working directory setup
     let wd_start = Instant::now();
-    if let Err(e) = std::fs::create_dir_all(env::working_dir())
-        .and_then(|()| std::env::set_current_dir(env::working_dir()))
-    {
+    if let Err(e) = setup_working_dir(paths::CANONICAL_WORKING_DIR) {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
         write_guest_error_file(&msg);
@@ -362,8 +343,13 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::InvalidApiKey);
     }
-    if matches!(framework, AgentFramework::Codex)
-        && (normalized.contains("usage limit") || normalized.contains("session limit"))
+    // Subscription/usage limits are an expected quota state for both Codex
+    // (ChatGPT plan "usage limit") and Claude Code (Max plan "session limit" /
+    // "weekly limit"), so classify them regardless of framework. This lets the
+    // runner log these expected outcomes at info instead of error.
+    if normalized.contains("usage limit")
+        || normalized.contains("session limit")
+        || normalized.contains("weekly limit")
     {
         return Some(FailureReason::UsageLimit);
     }
@@ -690,6 +676,12 @@ async fn complete_execution(
 
 fn should_create_success_checkpoint(cli_exit_code: i32, exit_code: i32) -> bool {
     cli_exit_code == 0 && exit_code == 0
+}
+
+fn setup_working_dir(path: impl AsRef<Path>) -> std::io::Result<()> {
+    let path = path.as_ref();
+    std::fs::create_dir_all(path)?;
+    std::env::set_current_dir(path)
 }
 
 /// Final telemetry upload — best-effort and logs on failure.
@@ -1091,23 +1083,33 @@ mod tests {
     }
 
     #[test]
-    fn cli_failure_reason_ignores_non_codex_usage_limit() {
+    fn cli_failure_reason_classifies_claude_usage_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
             "Claude usage limit reached. Visit https://claude.ai/settings/usage.",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
-    fn cli_failure_reason_ignores_non_codex_session_limit() {
+    fn cli_failure_reason_classifies_claude_session_limit() {
         let reason = classify_cli_failure_reason(
             AgentFramework::ClaudeCode,
-            "You've hit your session limit. Visit https://chatgpt.com/codex/settings/usage.",
+            "You've hit your session limit · resets 12:50pm (Asia/Shanghai)",
         );
 
-        assert_eq!(reason, None);
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
+    }
+
+    #[test]
+    fn cli_failure_reason_classifies_claude_weekly_limit() {
+        let reason = classify_cli_failure_reason(
+            AgentFramework::ClaudeCode,
+            "You've hit your weekly limit · resets 10am (Asia/Shanghai)",
+        );
+
+        assert_eq!(reason, Some(FailureReason::UsageLimit));
     }
 
     #[test]
@@ -1362,7 +1364,6 @@ mod tests {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
             std::env::set_var("VM0_PROMPT", "/event-upload-failure");
         }
 
@@ -1436,7 +1437,6 @@ mod tests {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
             std::env::set_var("VM0_PROMPT", "/checkpoint-failure");
         }
 
@@ -1507,7 +1507,6 @@ mod tests {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
             std::env::set_var("VM0_PROMPT", "plain prompt");
         }
 
@@ -1584,7 +1583,6 @@ mod tests {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
             std::env::set_var("VM0_PROMPT", "/help");
         }
 
@@ -1669,7 +1667,6 @@ mod tests {
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
-            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
             std::env::set_var("VM0_PROMPT", "plain prompt");
         }
 

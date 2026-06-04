@@ -1,15 +1,18 @@
 import { z } from "zod";
 
 import { throwOAuthError } from "../error";
-import { getDeviceAuthGrantConfig } from "../grant-config";
 import type {
   OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
-  OAuthTokenResult,
+  OAuthTokenUserInfo,
 } from "../types";
 
 const SLOCK_API_BASE_URL = "https://api.slock.ai";
+const SLOCK_DEVICE_AUTH_URL = `${SLOCK_API_BASE_URL}/api/auth/device/authorize`;
+const SLOCK_DEVICE_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/device/token`;
+const SLOCK_REFRESH_TOKEN_URL = `${SLOCK_API_BASE_URL}/api/auth/refresh`;
 const DEFAULT_DEVICE_AUTH_EXPIRES_IN_SECONDS = 600;
 const POST_TOKEN_LOOKUP_FAILED_DESCRIPTION =
   "Unable to load Slock account metadata after authorization.";
@@ -87,10 +90,6 @@ const nestedServersObjectResponseSchema = z
   .object({ data: serversObjectResponseSchema })
   .passthrough();
 
-function slockDeviceAuthGrant() {
-  return getDeviceAuthGrantConfig("slock");
-}
-
 async function safeJson(response: Response): Promise<unknown> {
   return await response.json().catch(() => {
     return null;
@@ -108,7 +107,7 @@ function absoluteVerificationUri(uri: string): string {
 function devicePollErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult {
+}): OAuthDeviceAuthIncompleteResult {
   if (args.error === "authorization_pending") {
     return { status: "pending" };
   }
@@ -139,7 +138,7 @@ function devicePollErrorResult(args: {
 function deviceCompletionErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult {
+}): OAuthDeviceAuthIncompleteResult {
   return {
     status: "error",
     error: args.error,
@@ -250,7 +249,7 @@ function selectSlockServer(
 async function fetchSlockUserInfo(
   accessToken: string,
   fallbackUserId: string | undefined,
-): Promise<OAuthTokenResult["userInfo"]> {
+): Promise<OAuthTokenUserInfo> {
   const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/me`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -277,7 +276,8 @@ async function fetchSlockUserInfo(
 async function fetchSlockServerId(
   accessToken: string,
 ): Promise<
-  { readonly ok: true; readonly serverId: string } | OAuthDeviceAuthPollResult
+  | { readonly ok: true; readonly serverId: string }
+  | OAuthDeviceAuthIncompleteResult
 > {
   const response = await fetch(`${SLOCK_API_BASE_URL}/api/servers`, {
     headers: {
@@ -301,7 +301,7 @@ async function fetchSlockServerId(
 }
 
 export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(slockDeviceAuthGrant().deviceAuthUrl, {
+  const response = await fetch(SLOCK_DEVICE_AUTH_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -328,8 +328,8 @@ export async function startSlockDeviceAuth(): Promise<OAuthDeviceAuthStartResult
 
 export async function pollSlockDeviceAuth(args: {
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(slockDeviceAuthGrant().tokenUrl, {
+}): Promise<OAuthDeviceAuthPollResult<"slock", "oauth">> {
+  const response = await fetch(SLOCK_DEVICE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -369,7 +369,7 @@ export async function pollSlockDeviceAuth(args: {
 
   let serverIdResult:
     | { readonly ok: true; readonly serverId: string }
-    | OAuthDeviceAuthPollResult;
+    | OAuthDeviceAuthIncompleteResult;
   try {
     serverIdResult = await fetchSlockServerId(accessToken);
   } catch {
@@ -381,7 +381,7 @@ export async function pollSlockDeviceAuth(args: {
   if (!("ok" in serverIdResult)) {
     return serverIdResult;
   }
-  let userInfo: OAuthTokenResult["userInfo"];
+  let userInfo: OAuthTokenUserInfo;
   try {
     userInfo = await fetchSlockUserInfo(accessToken, data.data.userId);
   } catch {
@@ -394,8 +394,10 @@ export async function pollSlockDeviceAuth(args: {
   return {
     status: "complete",
     token: {
-      accessToken,
-      refreshToken,
+      outputs: {
+        accessToken,
+        refreshToken,
+      },
       expiresIn: accessTokenExpiresIn(accessToken),
       scopes: [],
       userInfo,
@@ -408,8 +410,10 @@ export async function pollSlockDeviceAuth(args: {
 
 export async function refreshSlockToken(args: {
   readonly refreshToken: string;
+  readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(`${SLOCK_API_BASE_URL}/api/auth/refresh`, {
+  const response = await fetch(SLOCK_REFRESH_TOKEN_URL, {
+    signal: args.signal,
     method: "POST",
     headers: {
       "Content-Type": "application/json",

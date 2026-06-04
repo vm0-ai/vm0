@@ -13,7 +13,6 @@ pub(in super::super) fn minimal_context(run_id: RunId) -> crate::types::Executio
         vars: None,
         checkpoint_id: None,
         sandbox_token: "tok".into(),
-        working_dir: "/workspace".into(),
         storage_manifest: None,
         environment: None,
         resume_session: None,

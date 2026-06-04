@@ -6,31 +6,31 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchAuthMethod } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
-  connectorAuthMethodSupportsTokenRevoke,
+  connectorAuthMethodRefHasRevokeKind,
   getAvailableConnectorAuthMethods,
-  resolveConnectorAuthClientForMethod,
+  getConnectorAuthMethodGrantMetadata,
+  getConnectorAuthMethodRevokeMetadata,
+  getConnectorAuthMethodStorageMetadata,
   getConnectorAuthMethodScopeDiff,
-  getConnectorAuthMethodEnvBindings,
   getConnectorAuthMethod,
-  getConnectorManualGrantFieldNames,
-  getConnectorSecretNames,
+  getConnectorManualGrantFieldNamesForAuthMethod,
+  getConnectorOwnedSecretNames,
   getConnectorVariableNames,
   getRuntimeAvailableConnectorTypes,
+  type ConnectorAuthMethodRef,
+  type ConnectorAuthMethodRefByRevokeKind,
   type ManualGrantFieldNames,
 } from "@vm0/connectors/connector-utils";
-import {
-  getConnectorAuthProviderSecretMetadata,
-  revokeConnectorAuthProviderAccessToken,
-} from "@vm0/connectors/auth-providers";
+import { revokeConnectorAuthMethodAccessToken } from "@vm0/connectors/auth-providers";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
+  connectorAuthMethodIdSchema,
   connectorTypeSchema,
   type ConnectorAuthMethodId,
   type ConnectorManualGrantFieldConfig,
   type ConnectorType,
   type ConnectorAuthProviderType,
-  type TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
 import {
   getAllFeatureStates,
@@ -75,7 +75,6 @@ interface ConnectorScopedSecretNames {
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
-const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ExternalUserInfo {
@@ -84,48 +83,64 @@ interface ExternalUserInfo {
   readonly email: string | null;
 }
 
-interface PreparedApiTokenField {
+interface PreparedManualGrantField {
   readonly name: string;
   readonly value: string;
 }
 
-interface PreparedApiTokenConnect {
-  readonly secretValues: readonly PreparedApiTokenField[];
-  readonly variableValues: readonly PreparedApiTokenField[];
+interface ConnectorTokenOutputMetadata {
+  readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly requiredOutputNames: readonly string[];
+  readonly requiredExtraSecretNames: readonly string[];
+  readonly isRefreshable: boolean;
+}
+
+type ConnectorTokenOutputValues = Readonly<
+  Record<string, string | null | undefined>
+>;
+
+interface PreparedManualGrantConnect {
+  readonly secretValues: readonly PreparedManualGrantField[];
+  readonly variableValues: readonly PreparedManualGrantField[];
   readonly configuredSecretNames: readonly string[];
   readonly configuredVariableNames: readonly string[];
 }
 
-type PreparedApiTokenConnectResult =
-  | { readonly ok: true; readonly prepared: PreparedApiTokenConnect }
+type PreparedManualGrantConnectResult =
+  | { readonly ok: true; readonly prepared: PreparedManualGrantConnect }
   | { readonly ok: false; readonly message: string };
 
-type ConnectApiTokenConnectorResult =
+type ConnectManualGrantConnectorResult =
   | { readonly status: "connected"; readonly connector: ConnectorResponse }
   | { readonly status: "invalid"; readonly message: string };
 
-interface EncryptedApiTokenSecret {
+interface EncryptedManualGrantSecret {
   readonly name: string;
   readonly encryptedValue: string;
 }
 
-interface OmittedApiTokenFieldNames {
+interface OmittedManualGrantFieldNames {
   readonly omittedSecretNames: readonly string[];
   readonly omittedVariableNames: readonly string[];
 }
 
-interface EncryptedOAuthConnectorSecret {
+interface EncryptedConnectorTokenSecret {
   readonly name: string;
   readonly encryptedValue: string;
   readonly description: string;
 }
 
-interface PendingConnectorTokenRevoke {
-  readonly type: TokenRevokeConnectorType;
-  readonly authMethod: string;
-  readonly encryptedAccessToken: string;
-  readonly featureSwitchContext: FeatureSwitchContext;
+interface ConnectorTokenSecretRequirements {
+  readonly requiredOutputNames: readonly string[];
+  readonly requiredExtraSecretNames: readonly string[];
 }
+
+type TokenRevokeMethodRef = ConnectorAuthMethodRefByRevokeKind<"token-revoke">;
+
+type PendingConnectorTokenRevoke = TokenRevokeMethodRef & {
+  readonly encryptedInputs: Readonly<Record<string, string>>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+};
 
 function parseOauthScopes(value: string | null): string[] | null {
   return value ? oauthScopesSchema.parse(JSON.parse(value)) : null;
@@ -160,22 +175,19 @@ function storedConnectorTypeIsVisible(
   );
 }
 
-function apiTokenManualGrantFields(
+function manualGrantFieldsForAuthMethod(
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
 ): Record<string, ConnectorManualGrantFieldConfig> | null {
-  const method = getConnectorAuthMethod(type, "api-token");
+  const method = getConnectorAuthMethod(type, authMethod);
   return method?.grant.kind === "manual" ? method.grant.fields : null;
 }
 
-export function connectorSupportsApiTokenAuth(type: ConnectorType): boolean {
-  return apiTokenManualGrantFields(type) !== null;
-}
-
-function sanitizeApiTokenValue(value: string): string {
+function sanitizeManualGrantValue(value: string): string {
   return value.replace(/\s+/gu, "");
 }
 
-function formatApiTokenFieldList(names: readonly string[]): string {
+function formatManualGrantFieldList(names: readonly string[]): string {
   return [...names].sort().join(", ");
 }
 
@@ -206,15 +218,16 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
   throwCapturedAbort(postCommitAbort);
 }
 
-function prepareApiTokenConnect(
+function prepareManualGrantConnect(
   type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
   values: Readonly<Record<string, string>>,
-): PreparedApiTokenConnectResult {
-  const fields = apiTokenManualGrantFields(type);
+): PreparedManualGrantConnectResult {
+  const fields = manualGrantFieldsForAuthMethod(type, authMethod);
   if (!fields) {
     return {
       ok: false,
-      message: `${type} connector does not support API-token auth`,
+      message: `${type} ${authMethod} auth method does not use a manual grant`,
     };
   }
 
@@ -225,7 +238,7 @@ function prepareApiTokenConnect(
   if (unknownFieldNames.length > 0) {
     return {
       ok: false,
-      message: `Unknown API-token field(s): ${formatApiTokenFieldList(
+      message: `Unknown manual grant field(s): ${formatManualGrantFieldList(
         unknownFieldNames,
       )}`,
     };
@@ -233,11 +246,11 @@ function prepareApiTokenConnect(
 
   const sanitizedValues = new Map<string, string>();
   for (const [name, value] of Object.entries(values)) {
-    sanitizedValues.set(name, sanitizeApiTokenValue(value));
+    sanitizedValues.set(name, sanitizeManualGrantValue(value));
   }
 
-  const secretValues: PreparedApiTokenField[] = [];
-  const variableValues: PreparedApiTokenField[] = [];
+  const secretValues: PreparedManualGrantField[] = [];
+  const variableValues: PreparedManualGrantField[] = [];
   const configuredSecretNames: string[] = [];
   const configuredVariableNames: string[] = [];
   const missingRequiredNames: string[] = [];
@@ -265,7 +278,7 @@ function prepareApiTokenConnect(
   if (missingRequiredNames.length > 0) {
     return {
       ok: false,
-      message: `Missing required API-token field(s): ${formatApiTokenFieldList(
+      message: `Missing required manual grant field(s): ${formatManualGrantFieldList(
         missingRequiredNames,
       )}`,
     };
@@ -282,12 +295,12 @@ function prepareApiTokenConnect(
   };
 }
 
-async function encryptApiTokenSecrets(args: {
-  readonly secretValues: readonly PreparedApiTokenField[];
+async function encryptManualGrantSecrets(args: {
+  readonly secretValues: readonly PreparedManualGrantField[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<readonly EncryptedApiTokenSecret[]> {
-  const encryptedSecrets: EncryptedApiTokenSecret[] = [];
+}): Promise<readonly EncryptedManualGrantSecret[]> {
+  const encryptedSecrets: EncryptedManualGrantSecret[] = [];
   for (const field of args.secretValues) {
     encryptedSecrets.push({
       name: field.name,
@@ -301,9 +314,9 @@ async function encryptApiTokenSecrets(args: {
   return encryptedSecrets;
 }
 
-function omittedApiTokenFieldNames(
-  prepared: PreparedApiTokenConnect,
-): OmittedApiTokenFieldNames {
+function omittedManualGrantFieldNames(
+  prepared: PreparedManualGrantConnect,
+): OmittedManualGrantFieldNames {
   const submittedSecretNames = new Set(
     prepared.secretValues.map((field) => {
       return field.name;
@@ -408,16 +421,18 @@ function connectorProvidedEnvNamesForStoredConnectors(
 ): Set<string> {
   const provided = new Set<string>();
   for (const connector of connectorList) {
-    const envBindings = getConnectorAuthMethodEnvBindings(
+    const metadata = getConnectorAuthMethodStorageMetadata(
       connector.type,
       connector.authMethod,
     );
-    for (const [envName, valueRef] of Object.entries(envBindings)) {
-      if (!valueRef.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+    if (!metadata) {
+      continue;
+    }
+    for (const { envName, source } of metadata.runtimeBindings) {
+      if (source.kind !== "connector-secret") {
         continue;
       }
-      const secretName = valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
-      if (!connectorScopedSecretNames.secretNames.has(secretName)) {
+      if (!connectorScopedSecretNames.secretNames.has(source.name)) {
         continue;
       }
       provided.add(envName);
@@ -497,63 +512,111 @@ async function loadPendingConnectorTokenRevoke(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: TokenRevokeConnectorType;
-  readonly authMethod: string;
+  readonly method: TokenRevokeMethodRef;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
 }): Promise<PendingConnectorTokenRevoke | null> {
-  const connectorType = args.type;
-  const secretMetadata = getConnectorAuthProviderSecretMetadata(connectorType);
-  const accessTokenName = secretMetadata.accessSecretName;
+  const revokeMetadata = getConnectorAuthMethodRevokeMetadata(
+    args.method.type,
+    args.method.authMethod,
+  );
+  if (revokeMetadata?.kind !== "token-revoke") {
+    return null;
+  }
 
-  const [accessTokenSecret] = await args.db
-    .select({ encryptedValue: secrets.encryptedValue })
+  const inputEntries = Object.entries(revokeMetadata.inputs);
+  if (inputEntries.length === 0) {
+    return {
+      ...args.method,
+      encryptedInputs: {},
+      featureSwitchContext: args.featureSwitchContext,
+    };
+  }
+
+  const secretNames = inputEntries.map(([, input]) => {
+    return input.secretName;
+  });
+  const secretRows = await args.db
+    .select({ name: secrets.name, encryptedValue: secrets.encryptedValue })
     .from(secrets)
     .where(
       and(
         eq(secrets.orgId, args.orgId),
         eq(secrets.userId, args.userId),
-        eq(secrets.name, accessTokenName),
+        inArray(secrets.name, secretNames),
         eq(secrets.type, "connector"),
       ),
-    )
-    .limit(1);
+    );
   args.signal.throwIfAborted();
 
-  if (!accessTokenSecret?.encryptedValue) {
-    return null;
+  const encryptedValuesByName = new Map(
+    secretRows.flatMap((row) => {
+      return row.encryptedValue ? [[row.name, row.encryptedValue]] : [];
+    }),
+  );
+  const encryptedInputs: Record<string, string> = {};
+  for (const [inputName, input] of inputEntries) {
+    const encryptedValue = encryptedValuesByName.get(input.secretName);
+    if (!encryptedValue) {
+      return null;
+    }
+    encryptedInputs[inputName] = encryptedValue;
   }
 
   return {
-    type: connectorType,
-    authMethod: args.authMethod,
-    encryptedAccessToken: accessTokenSecret.encryptedValue,
+    ...args.method,
+    encryptedInputs,
     featureSwitchContext: args.featureSwitchContext,
   };
+}
+
+async function decryptConnectorRevokeInputs(args: {
+  readonly encryptedInputs: Readonly<Record<string, string>>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<Readonly<Record<string, string>>> {
+  const inputs: Record<string, string> = {};
+  for (const [name, encryptedValue] of Object.entries(args.encryptedInputs)) {
+    inputs[name] = await decryptStoredSecretValue(
+      encryptedValue,
+      args.featureSwitchContext,
+    );
+  }
+  return inputs;
+}
+
+function resolveTokenRevokeMethodRef(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+}): TokenRevokeMethodRef | null {
+  const parsedAuthMethod = connectorAuthMethodIdSchema.safeParse(
+    args.authMethod,
+  );
+  if (!parsedAuthMethod.success) {
+    return null;
+  }
+  const method: ConnectorAuthMethodRef = {
+    type: args.type,
+    authMethod: parsedAuthMethod.data,
+  };
+  return connectorAuthMethodRefHasRevokeKind(method, "token-revoke")
+    ? method
+    : null;
 }
 
 async function revokePendingConnectorToken(args: {
   readonly pending: PendingConnectorTokenRevoke;
 }): Promise<void> {
-  const authClient = resolveConnectorAuthClientForMethod(
-    args.pending.type,
-    args.pending.authMethod,
-    optionalEnv,
-  );
-  if (!authClient) {
-    return;
-  }
-
   // Provider revocation is best-effort; local cleanup still owns visible state.
   await bestEffort(
-    revokeConnectorAuthProviderAccessToken({
+    revokeConnectorAuthMethodAccessToken({
       type: args.pending.type,
-      authClient,
-      loadAccessToken: () => {
-        return decryptStoredSecretValue(
-          args.pending.encryptedAccessToken,
-          args.pending.featureSwitchContext,
-        );
+      authMethod: args.pending.authMethod,
+      readEnv: optionalEnv,
+      loadInputs: () => {
+        return decryptConnectorRevokeInputs({
+          encryptedInputs: args.pending.encryptedInputs,
+          featureSwitchContext: args.pending.featureSwitchContext,
+        });
       },
     }),
   );
@@ -606,6 +669,36 @@ async function deleteManualGrantConnectorLocalState(args: {
   return deleted;
 }
 
+async function deleteManualGrantConnectorLocalStateForAuthMethods(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly type: ConnectorType;
+  readonly authMethods: readonly (string | null)[];
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  const cleanupAuthMethods = new Set<string>();
+  for (const authMethod of args.authMethods) {
+    if (authMethod) {
+      cleanupAuthMethods.add(authMethod);
+    }
+  }
+
+  for (const authMethod of cleanupAuthMethods) {
+    args.signal.throwIfAborted();
+    await deleteManualGrantConnectorLocalState({
+      db: args.db,
+      orgId: args.orgId,
+      userId: args.userId,
+      fields: getConnectorManualGrantFieldNamesForAuthMethod(
+        args.type,
+        authMethod,
+      ),
+      signal: args.signal,
+    });
+  }
+}
+
 export const deleteZeroConnectorLocalState$ = command(
   async (
     { get, set },
@@ -655,15 +748,16 @@ export const deleteZeroConnectorLocalState$ = command(
       }
 
       let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-      if (
-        connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)
-      ) {
+      const tokenRevokeMethod = resolveTokenRevokeMethodRef({
+        type: args.type,
+        authMethod: existing.authMethod,
+      });
+      if (tokenRevokeMethod) {
         pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
           db: tx,
           orgId: args.orgId,
           userId: args.userId,
-          type: args.type,
-          authMethod: existing.authMethod,
+          method: tokenRevokeMethod,
           featureSwitchContext,
           signal,
         });
@@ -676,7 +770,7 @@ export const deleteZeroConnectorLocalState$ = command(
       await deleteConnectorScopedSecretNames(tx, {
         orgId: args.orgId,
         userId: args.userId,
-        names: getConnectorSecretNames(args.type, existing.authMethod),
+        names: getConnectorOwnedSecretNames(args.type, existing.authMethod),
         signal,
       });
       await deleteConnectorScopedVariableNames(tx, {
@@ -709,7 +803,7 @@ export const deleteZeroConnectorLocalState$ = command(
   },
 );
 
-async function upsertApiTokenConnectorSecret(
+async function upsertManualGrantConnectorSecret(
   db: Db,
   args: {
     readonly orgId: string;
@@ -738,7 +832,7 @@ async function upsertApiTokenConnectorSecret(
     });
 }
 
-async function upsertApiTokenConnectorVariable(
+async function upsertManualGrantConnectorVariable(
   db: Db,
   args: {
     readonly orgId: string;
@@ -772,12 +866,13 @@ async function upsertApiTokenConnectorVariable(
     });
 }
 
-async function upsertApiTokenConnectorRow(
+async function upsertManualGrantConnectorRow(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly type: ConnectorType;
+    readonly authMethod: ConnectorAuthMethodId;
   },
 ): Promise<StoredConnectorRow> {
   const [row] = await db
@@ -786,7 +881,7 @@ async function upsertApiTokenConnectorRow(
       orgId: args.orgId,
       userId: args.userId,
       type: args.type,
-      authMethod: "api-token",
+      authMethod: args.authMethod,
       externalId: null,
       externalUsername: null,
       externalEmail: null,
@@ -797,7 +892,7 @@ async function upsertApiTokenConnectorRow(
     .onConflictDoUpdate({
       target: [connectors.orgId, connectors.userId, connectors.type],
       set: {
-        authMethod: "api-token",
+        authMethod: args.authMethod,
         externalId: null,
         externalUsername: null,
         externalEmail: null,
@@ -820,7 +915,7 @@ async function upsertApiTokenConnectorRow(
     });
 
   if (!row) {
-    throw new Error("Failed to upsert API-token connector");
+    throw new Error("Failed to upsert manual grant connector");
   }
 
   return row;
@@ -924,7 +1019,7 @@ async function deleteConnectorScopedVariableNames(
   args.signal.throwIfAborted();
 }
 
-async function cleanupExistingStoredConnectorForApiTokenConnect(
+async function cleanupExistingStoredConnectorForManualGrantConnect(
   db: Db,
   args: {
     readonly orgId: string;
@@ -952,13 +1047,16 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
   }
 
   let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
-  if (connectorAuthMethodSupportsTokenRevoke(args.type, existing.authMethod)) {
+  const tokenRevokeMethod = resolveTokenRevokeMethodRef({
+    type: args.type,
+    authMethod: existing.authMethod,
+  });
+  if (tokenRevokeMethod) {
     pendingTokenRevoke = await loadPendingConnectorTokenRevoke({
       db,
       orgId: args.orgId,
       userId: args.userId,
-      type: args.type,
-      authMethod: existing.authMethod,
+      method: tokenRevokeMethod,
       featureSwitchContext: args.featureSwitchContext,
       signal: args.signal,
     });
@@ -967,7 +1065,7 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
   await deleteConnectorScopedSecretNames(db, {
     orgId: args.orgId,
     userId: args.userId,
-    names: getConnectorSecretNames(args.type, existing.authMethod),
+    names: getConnectorOwnedSecretNames(args.type, existing.authMethod),
     signal: args.signal,
   });
   await deleteConnectorScopedVariableNames(db, {
@@ -980,18 +1078,23 @@ async function cleanupExistingStoredConnectorForApiTokenConnect(
   return pendingTokenRevoke;
 }
 
-export const connectApiTokenConnector$ = command(
+export const connectManualGrantConnector$ = command(
   async (
     { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
       readonly type: ConnectorType;
+      readonly authMethod: ConnectorAuthMethodId;
       readonly values: Readonly<Record<string, string>>;
     },
     signal: AbortSignal,
-  ): Promise<ConnectApiTokenConnectorResult> => {
-    const preparedResult = prepareApiTokenConnect(args.type, args.values);
+  ): Promise<ConnectManualGrantConnectorResult> => {
+    const preparedResult = prepareManualGrantConnect(
+      args.type,
+      args.authMethod,
+      args.values,
+    );
     if (!preparedResult.ok) {
       return { status: "invalid", message: preparedResult.message };
     }
@@ -1001,14 +1104,14 @@ export const connectApiTokenConnector$ = command(
     );
     signal.throwIfAborted();
 
-    const encryptedSecrets = await encryptApiTokenSecrets({
+    const encryptedSecrets = await encryptManualGrantSecrets({
       secretValues: preparedResult.prepared.secretValues,
       featureSwitchContext,
       signal,
     });
     signal.throwIfAborted();
     const { omittedSecretNames, omittedVariableNames } =
-      omittedApiTokenFieldNames(preparedResult.prepared);
+      omittedManualGrantFieldNames(preparedResult.prepared);
 
     const writeDb = set(writeDb$);
     let pendingTokenRevoke: PendingConnectorTokenRevoke | null = null;
@@ -1024,7 +1127,7 @@ export const connectApiTokenConnector$ = command(
       signal.throwIfAborted();
 
       pendingTokenRevoke =
-        await cleanupExistingStoredConnectorForApiTokenConnect(tx, {
+        await cleanupExistingStoredConnectorForManualGrantConnect(tx, {
           orgId: args.orgId,
           userId: args.userId,
           type: args.type,
@@ -1046,7 +1149,7 @@ export const connectApiTokenConnector$ = command(
       });
 
       for (const field of encryptedSecrets) {
-        await upsertApiTokenConnectorSecret(tx, {
+        await upsertManualGrantConnectorSecret(tx, {
           orgId: args.orgId,
           userId: args.userId,
           name: field.name,
@@ -1056,7 +1159,7 @@ export const connectApiTokenConnector$ = command(
       }
 
       for (const field of preparedResult.prepared.variableValues) {
-        await upsertApiTokenConnectorVariable(tx, {
+        await upsertManualGrantConnectorVariable(tx, {
           orgId: args.orgId,
           userId: args.userId,
           name: field.name,
@@ -1065,10 +1168,11 @@ export const connectApiTokenConnector$ = command(
         signal.throwIfAborted();
       }
 
-      connectorRow = await upsertApiTokenConnectorRow(tx, {
+      connectorRow = await upsertManualGrantConnectorRow(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
+        authMethod: args.authMethod,
       });
       signal.throwIfAborted();
 
@@ -1090,7 +1194,7 @@ export const connectApiTokenConnector$ = command(
     }
 
     if (!connectorRow) {
-      throw new Error("Expected API-token connector upsert to return a row");
+      throw new Error("Expected manual grant connector upsert to return a row");
     }
 
     await finalizeConnectorStateChangeAfterCommit({
@@ -1108,12 +1212,12 @@ export const connectApiTokenConnector$ = command(
   },
 );
 
-async function encryptedOAuthConnectorSecret(args: {
+async function encryptedConnectorTokenSecret(args: {
   readonly name: string;
   readonly value: string;
   readonly description: string;
   readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<EncryptedOAuthConnectorSecret> {
+}): Promise<EncryptedConnectorTokenSecret> {
   return {
     name: args.name,
     encryptedValue: await encryptStoredSecretValue(
@@ -1167,54 +1271,161 @@ function connectorTokenExpiresAt(args: {
     : new Date(nowDate().getTime() + expiresInSecs * 1000);
 }
 
-function allowedOAuthConnectorSecretNames(
+function connectorTokenOutputMetadataForAuthMethod(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+}): ConnectorTokenOutputMetadata | undefined {
+  const method = getConnectorAuthMethod(args.type, args.authMethod);
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(
+    args.type,
+    args.authMethod,
+  );
+  if (!method || !grantMetadata) {
+    return undefined;
+  }
+
+  switch (method.grant.kind) {
+    case "auth-code":
+    case "device-auth": {
+      const outputSecretNames = Object.fromEntries(
+        Object.entries(grantMetadata.outputs).map(([outputName, output]) => {
+          return [outputName, output.secretName];
+        }),
+      );
+      const secretRequirements = requiredConnectorTokenSecretRequirements({
+        type: args.type,
+        authMethod: args.authMethod,
+        outputSecretNames,
+      });
+      return {
+        outputSecretNames,
+        requiredOutputNames: secretRequirements.requiredOutputNames,
+        requiredExtraSecretNames: secretRequirements.requiredExtraSecretNames,
+        isRefreshable: method.access.kind === "refresh-token",
+      };
+    }
+
+    case "manual":
+    case "managed": {
+      return undefined;
+    }
+  }
+}
+
+function requiredConnectorTokenSecretRequirements(args: {
+  readonly type: ConnectorType;
+  readonly authMethod: string;
+  readonly outputSecretNames: Readonly<Record<string, string>>;
+}): ConnectorTokenSecretRequirements {
+  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+    args.type,
+    args.authMethod,
+  );
+  if (!storageMetadata) {
+    return { requiredOutputNames: [], requiredExtraSecretNames: [] };
+  }
+
+  const outputNameBySecretName = new Map(
+    Object.entries(args.outputSecretNames).map(([outputName, secretName]) => {
+      return [secretName, outputName];
+    }),
+  );
+  const requiredOutputNames = new Set<string>();
+  const requiredExtraSecretNames = new Set<string>();
+  for (const binding of storageMetadata.runtimeBindings) {
+    if (binding.source.kind !== "connector-secret") {
+      continue;
+    }
+    const outputName = outputNameBySecretName.get(binding.source.name);
+    if (outputName) {
+      requiredOutputNames.add(outputName);
+    } else {
+      requiredExtraSecretNames.add(binding.source.name);
+    }
+  }
+  return {
+    requiredOutputNames: [...requiredOutputNames],
+    requiredExtraSecretNames: [...requiredExtraSecretNames],
+  };
+}
+
+function validateRequiredConnectorTokenSecrets(args: {
+  readonly type: ConnectorAuthProviderType;
+  readonly outputs: ConnectorTokenOutputValues;
+  readonly requiredOutputNames: readonly string[];
+  readonly extraSecrets: readonly (readonly [string, string])[];
+  readonly requiredExtraSecretNames: readonly string[];
+}): void {
+  const missingOutputNames = args.requiredOutputNames.filter((outputName) => {
+    return !args.outputs[outputName];
+  });
+  if (missingOutputNames.length > 0) {
+    throw new Error(
+      `${args.type} connector provider did not return required token output(s): ${formatManualGrantFieldList(
+        missingOutputNames,
+      )}`,
+    );
+  }
+
+  const extraSecretValues = new Map(args.extraSecrets);
+  const missingExtraSecretNames = args.requiredExtraSecretNames.filter(
+    (secretName) => {
+      return !extraSecretValues.get(secretName);
+    },
+  );
+  if (missingExtraSecretNames.length > 0) {
+    throw new Error(
+      `${args.type} connector provider did not return required connector secret(s): ${formatManualGrantFieldList(
+        missingExtraSecretNames,
+      )}`,
+    );
+  }
+}
+
+function allowedConnectorTokenSecretNames(
   type: ConnectorAuthProviderType,
   authMethod: ConnectorAuthMethodId,
 ): Set<string> {
-  return new Set(getConnectorSecretNames(type, authMethod));
+  return new Set(getConnectorOwnedSecretNames(type, authMethod));
 }
 
-function isOAuthPrimaryTokenSecret(args: {
+function isPrimaryConnectorTokenSecret(args: {
   readonly name: string;
-  readonly accessSecretName: string;
-  readonly refreshSecretName: string | undefined;
+  readonly outputSecretNames: ReadonlySet<string>;
 }): boolean {
-  return (
-    args.name === args.accessSecretName || args.name === args.refreshSecretName
-  );
+  return args.outputSecretNames.has(args.name);
 }
 
-function validateExtraOAuthConnectorSecrets(args: {
+function validateExtraConnectorTokenSecrets(args: {
   readonly type: ConnectorAuthProviderType;
   readonly authMethod: ConnectorAuthMethodId;
   readonly extraConnectorSecrets: Readonly<Record<string, string>> | undefined;
-  readonly accessSecretName: string;
-  readonly refreshSecretName: string | undefined;
+  readonly outputSecretNames: Readonly<Record<string, string>>;
 }): readonly (readonly [string, string])[] {
   const extraSecrets = Object.entries(args.extraConnectorSecrets ?? {});
   if (extraSecrets.length === 0) {
     return [];
   }
 
-  const allowedSecretNames = allowedOAuthConnectorSecretNames(
+  const allowedSecretNames = allowedConnectorTokenSecretNames(
     args.type,
     args.authMethod,
   );
+  const outputSecretNames = new Set(Object.values(args.outputSecretNames));
   for (const [name] of extraSecrets) {
     if (
-      isOAuthPrimaryTokenSecret({
+      isPrimaryConnectorTokenSecret({
         name,
-        accessSecretName: args.accessSecretName,
-        refreshSecretName: args.refreshSecretName,
+        outputSecretNames,
       })
     ) {
       throw new Error(
-        `${args.type} OAuth provider returned primary token ${name} in extra connector secrets`,
+        `${args.type} connector provider returned mapped token output ${name} in extra connector secrets`,
       );
     }
     if (!allowedSecretNames.has(name)) {
       throw new Error(
-        `${args.type} OAuth provider returned unsupported connector secret ${name}`,
+        `${args.type} connector provider returned unsupported connector secret ${name}`,
       );
     }
   }
@@ -1222,19 +1433,19 @@ function validateExtraOAuthConnectorSecrets(args: {
   return extraSecrets;
 }
 
-async function encryptExtraOAuthConnectorSecrets(args: {
+async function encryptExtraConnectorTokenSecrets(args: {
   readonly type: ConnectorAuthProviderType;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<readonly EncryptedOAuthConnectorSecret[]> {
-  const encryptedSecrets: EncryptedOAuthConnectorSecret[] = [];
+}): Promise<readonly EncryptedConnectorTokenSecret[]> {
+  const encryptedSecrets: EncryptedConnectorTokenSecret[] = [];
   for (const [name, value] of args.extraSecrets) {
     encryptedSecrets.push(
-      await encryptedOAuthConnectorSecret({
+      await encryptedConnectorTokenSecret({
         name,
         value,
-        description: `OAuth connector secret for ${args.type}: ${name}`,
+        description: `Connector token secret for ${args.type}: ${name}`,
         featureSwitchContext: args.featureSwitchContext,
       }),
     );
@@ -1243,54 +1454,62 @@ async function encryptExtraOAuthConnectorSecrets(args: {
   return encryptedSecrets;
 }
 
-async function encryptOAuthConnectorSecretSet(args: {
+async function encryptConnectorTokenSecretSet(args: {
   readonly type: ConnectorAuthProviderType;
-  readonly accessSecretName: string;
-  readonly accessToken: string;
-  readonly refreshSecretName: string | undefined;
-  readonly refreshToken: string | null | undefined;
+  readonly outputSecretNames: Readonly<Record<string, string>>;
+  readonly requiredOutputNames: readonly string[];
+  readonly requiredExtraSecretNames: readonly string[];
+  readonly outputs: ConnectorTokenOutputValues;
   readonly extraSecrets: readonly (readonly [string, string])[];
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly signal: AbortSignal;
-}): Promise<readonly EncryptedOAuthConnectorSecret[]> {
-  const encryptedOAuthSecrets: EncryptedOAuthConnectorSecret[] = [
-    await encryptedOAuthConnectorSecret({
-      name: args.accessSecretName,
-      value: args.accessToken,
-      description: `OAuth token for ${args.type} connector`,
-      featureSwitchContext: args.featureSwitchContext,
-    }),
-  ];
-  args.signal.throwIfAborted();
+}): Promise<readonly EncryptedConnectorTokenSecret[]> {
+  validateRequiredConnectorTokenSecrets({
+    type: args.type,
+    outputs: args.outputs,
+    requiredOutputNames: args.requiredOutputNames,
+    extraSecrets: args.extraSecrets,
+    requiredExtraSecretNames: args.requiredExtraSecretNames,
+  });
 
-  if (args.refreshToken && args.refreshSecretName) {
-    encryptedOAuthSecrets.push(
-      await encryptedOAuthConnectorSecret({
-        name: args.refreshSecretName,
-        value: args.refreshToken,
-        description: `OAuth refresh token for ${args.type} connector`,
+  const encryptedConnectorTokenSecrets: EncryptedConnectorTokenSecret[] = [];
+  for (const [outputName, value] of Object.entries(args.outputs)) {
+    if (!value) {
+      continue;
+    }
+    const secretName = args.outputSecretNames[outputName];
+    if (!secretName) {
+      throw new Error(
+        `${args.type} connector provider returned undeclared token output ${outputName}`,
+      );
+    }
+    encryptedConnectorTokenSecrets.push(
+      await encryptedConnectorTokenSecret({
+        name: secretName,
+        value,
+        description: `Connector token output for ${args.type}: ${secretName}`,
         featureSwitchContext: args.featureSwitchContext,
       }),
     );
     args.signal.throwIfAborted();
   }
 
-  encryptedOAuthSecrets.push(
-    ...(await encryptExtraOAuthConnectorSecrets({
+  encryptedConnectorTokenSecrets.push(
+    ...(await encryptExtraConnectorTokenSecrets({
       type: args.type,
       extraSecrets: args.extraSecrets,
       featureSwitchContext: args.featureSwitchContext,
       signal: args.signal,
     })),
   );
-  return encryptedOAuthSecrets;
+  return encryptedConnectorTokenSecrets;
 }
 
-async function upsertOAuthConnectorSecrets(args: {
+async function upsertConnectorTokenSecrets(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly secrets: readonly EncryptedOAuthConnectorSecret[];
+  readonly secrets: readonly EncryptedConnectorTokenSecret[];
   readonly signal: AbortSignal;
 }): Promise<void> {
   if (args.secrets.length === 0) {
@@ -1333,7 +1552,7 @@ async function loadExistingConnectorAuthMethod(
   return existingConnector?.authMethod ?? null;
 }
 
-async function upsertOAuthConnectorRow(
+async function upsertConnectorTokenConnectionRow(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1393,7 +1612,7 @@ async function upsertOAuthConnectorRow(
   return connectorRow;
 }
 
-async function deleteObsoleteConnectorScopedStateForOAuthConnect(
+async function deleteObsoleteConnectorScopedStateForTokenConnect(
   db: Db,
   args: {
     readonly orgId: string;
@@ -1409,9 +1628,9 @@ async function deleteObsoleteConnectorScopedStateForOAuthConnect(
   }
 
   const targetSecretNames = new Set(
-    getConnectorSecretNames(args.type, args.authMethod),
+    getConnectorOwnedSecretNames(args.type, args.authMethod),
   );
-  const obsoleteSecretNames = getConnectorSecretNames(
+  const obsoleteSecretNames = getConnectorOwnedSecretNames(
     args.type,
     args.existingAuthMethod,
   ).filter((name) => {
@@ -1440,7 +1659,7 @@ async function deleteObsoleteConnectorScopedStateForOAuthConnect(
   });
 }
 
-export const upsertOAuthConnector$ = command(
+export const upsertConnectorTokenConnection$ = command(
   async (
     { get, set },
     args: {
@@ -1448,11 +1667,9 @@ export const upsertOAuthConnector$ = command(
       readonly userId: string;
       readonly type: ConnectorAuthProviderType;
       readonly authMethod: ConnectorAuthMethodId;
-      readonly accessToken: string;
+      readonly outputs: ConnectorTokenOutputValues;
       readonly userInfo: ExternalUserInfo;
       readonly oauthScopes: readonly string[];
-      readonly refreshToken?: string | null;
-      readonly refreshSecretName?: string;
       readonly expiresIn?: number;
       readonly extraConnectorSecrets?: Readonly<Record<string, string>>;
     },
@@ -1462,38 +1679,44 @@ export const upsertOAuthConnector$ = command(
     readonly created: boolean;
   }> => {
     const writeDb = set(writeDb$);
-    const secretMetadata = getConnectorAuthProviderSecretMetadata(args.type);
+    const outputMetadata = connectorTokenOutputMetadataForAuthMethod({
+      type: args.type,
+      authMethod: args.authMethod,
+    });
+    if (!outputMetadata) {
+      throw new Error(
+        `${args.type} connector auth method ${args.authMethod} does not expose token outputs`,
+      );
+    }
     const tokenExpiresAt = connectorTokenExpiresAt({
-      isRefreshable: secretMetadata.isRefreshable,
+      isRefreshable: outputMetadata.isRefreshable,
       expiresIn: args.expiresIn,
     });
-    const extraSecrets = validateExtraOAuthConnectorSecrets({
+    const extraSecrets = validateExtraConnectorTokenSecrets({
       type: args.type,
       authMethod: args.authMethod,
       extraConnectorSecrets: args.extraConnectorSecrets,
-      accessSecretName: secretMetadata.accessSecretName,
-      refreshSecretName: secretMetadata.isRefreshable
-        ? secretMetadata.refreshSecretName
-        : undefined,
+      outputSecretNames: outputMetadata.outputSecretNames,
     });
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
     signal.throwIfAborted();
 
-    const encryptedOAuthSecrets = await encryptOAuthConnectorSecretSet({
-      type: args.type,
-      accessSecretName: secretMetadata.accessSecretName,
-      accessToken: args.accessToken,
-      refreshSecretName: args.refreshSecretName,
-      refreshToken: args.refreshToken,
-      extraSecrets,
-      featureSwitchContext,
-      signal,
-    });
+    const encryptedConnectorTokenSecrets = await encryptConnectorTokenSecretSet(
+      {
+        type: args.type,
+        outputSecretNames: outputMetadata.outputSecretNames,
+        requiredOutputNames: outputMetadata.requiredOutputNames,
+        requiredExtraSecretNames: outputMetadata.requiredExtraSecretNames,
+        outputs: args.outputs,
+        extraSecrets,
+        featureSwitchContext,
+        signal,
+      },
+    );
     signal.throwIfAborted();
 
-    const manualGrantFields = getConnectorManualGrantFieldNames(args.type);
     let postCommitAbort: unknown = null;
     const connectorRow = await writeDb.transaction(async (tx) => {
       await lockConnectorState(tx, {
@@ -1510,16 +1733,16 @@ export const upsertOAuthConnector$ = command(
         signal,
       });
 
-      await upsertOAuthConnectorSecrets({
+      await upsertConnectorTokenSecrets({
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        secrets: encryptedOAuthSecrets,
+        secrets: encryptedConnectorTokenSecrets,
         signal,
       });
       signal.throwIfAborted();
 
-      const row = await upsertOAuthConnectorRow(tx, {
+      const row = await upsertConnectorTokenConnectionRow(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
@@ -1530,7 +1753,7 @@ export const upsertOAuthConnector$ = command(
         signal,
       });
 
-      await deleteObsoleteConnectorScopedStateForOAuthConnect(tx, {
+      await deleteObsoleteConnectorScopedStateForTokenConnect(tx, {
         orgId: args.orgId,
         userId: args.userId,
         type: args.type,
@@ -1539,11 +1762,12 @@ export const upsertOAuthConnector$ = command(
         signal,
       });
 
-      await deleteManualGrantConnectorLocalState({
+      await deleteManualGrantConnectorLocalStateForAuthMethods({
         db: tx,
         orgId: args.orgId,
         userId: args.userId,
-        fields: manualGrantFields,
+        type: args.type,
+        authMethods: [existingAuthMethod, args.authMethod],
         signal,
       });
 

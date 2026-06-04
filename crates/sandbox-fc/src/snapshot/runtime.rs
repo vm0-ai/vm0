@@ -174,8 +174,7 @@ pub(super) async fn drain_or_abort_forwarder(
     }
 }
 
-pub(super) const SPAWN_INNER_CMD: &str =
-    r#"mount --bind "$1" "$2" && exec ip netns exec "$3" "$4" --api-sock "$5""#;
+pub(super) const SPAWN_INNER_CMD: &str = r#"mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
 pub(super) const UNSHARE_MOUNT_ARGS: &[&str] = &["--mount", "--propagation", "private"];
 
 /// Number of recent stderr lines retained from the spawn chain, used to
@@ -260,7 +259,7 @@ pub(super) async fn run_snapshot_workflow(
     config: &SnapshotCreateConfig,
     attempt: &mut SnapshotAttempt,
 ) -> Result<SnapshotConfig, SnapshotError> {
-    attempt.prepare_firecracker_files().await?;
+    attempt.prepare_firecracker_files(config).await?;
     attempt.acquire_network().await?;
     attempt.spawn_firecracker(config).await?;
 
@@ -289,29 +288,8 @@ async fn run_with_firecracker(
 
     info!("firecracker API ready");
 
-    // The COW-device bind mount was established inside `unshare --mount`
-    // at spawn time; `configure_drive` only needs the path string FC will
-    // open inside its private mount namespace.
-    let drive_bind_str = paths.cow_device_bind().display().to_string();
-
-    // 6. Configure VM via API (6 parallel PUT calls).
     let inv = InvariantConfig::new();
-    let kernel_path = config.kernel_path.display().to_string();
-    tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
-    let vsock_uds_str = sock_paths.vsock().display().to_string();
-
-    tokio::try_join!(
-        client.configure_machine(config.vcpu_count, config.memory_mb),
-        client.configure_boot_source(&kernel_path, &inv.boot_args),
-        client.configure_drive("rootfs", &drive_bind_str, true, false, None),
-        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name, None, None),
-        client.configure_vsock(inv.guest_cid, &vsock_uds_str),
-        client.configure_balloon(
-            inv.balloon.amount_mib,
-            inv.balloon.deflate_on_oom,
-            inv.balloon.stats_polling_interval_s
-        ),
-    )?;
+    let vsock_uds_str = configure_snapshot_vm(&client, config, paths, sock_paths, &inv).await?;
 
     info!("VM configured");
 
@@ -397,17 +375,251 @@ async fn run_with_firecracker(
     Ok(output.snapshot_config(&config.id))
 }
 
+async fn configure_snapshot_vm(
+    client: &ApiClient<'_>,
+    config: &SnapshotCreateConfig,
+    paths: &SandboxPaths,
+    sock_paths: &SockPaths,
+    inv: &InvariantConfig,
+) -> Result<String, SnapshotError> {
+    // The COW-device bind mount was established inside `unshare --mount`
+    // at spawn time; `configure_drive` only needs the path string FC will
+    // open inside its private mount namespace.
+    let drive_bind_str = paths.cow_device_bind().display().to_string();
+    let workspace_drive_bind_str = paths.workspace_device_bind().display().to_string();
+
+    // 6. Configure VM via API. Keep drive requests ordered so snapshot creation
+    // matches the fresh-boot config path: rootfs first, workspace second.
+    let kernel_path = config.kernel_path.display().to_string();
+    tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
+    let vsock_uds_str = sock_paths.vsock().display().to_string();
+
+    client
+        .configure_drive("rootfs", &drive_bind_str, true, false, None)
+        .await?;
+    client
+        .configure_drive("workspace", &workspace_drive_bind_str, false, false, None)
+        .await?;
+
+    tokio::try_join!(
+        client.configure_machine(config.vcpu_count, config.memory_mb),
+        client.configure_boot_source(&kernel_path, &inv.boot_args),
+        client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name, None, None),
+        client.configure_vsock(inv.guest_cid, &vsock_uds_str),
+        client.configure_balloon(
+            inv.balloon.amount_mib,
+            inv.balloon.deflate_on_oom,
+            inv.balloon.stats_polling_interval_s
+        ),
+    )?;
+
+    Ok(vsock_uds_str)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::VecDeque;
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use crate::api::ApiError;
     use crate::config::SnapshotConfig;
     use crate::snapshot::SnapshotError;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{UnixListener, UnixStream};
+    use tokio::sync::mpsc;
 
     use super::*;
+
+    const MOCK_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+    #[derive(Debug)]
+    struct RecordedRequest {
+        method: String,
+        path: String,
+    }
+
+    struct RecordingFirecrackerApi {
+        _dir: tempfile::TempDir,
+        socket_path: PathBuf,
+        requests: mpsc::UnboundedReceiver<RecordedRequest>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    impl RecordingFirecrackerApi {
+        fn spawn() -> Self {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let socket_path = dir.path().join("fc.sock");
+            let listener = UnixListener::bind(&socket_path).expect("bind mock Firecracker API");
+            let (tx, requests) = mpsc::unbounded_channel();
+            let server = tokio::spawn(async move {
+                serve_recording_api(listener, tx).await;
+            });
+
+            Self {
+                _dir: dir,
+                socket_path,
+                requests,
+                server,
+            }
+        }
+
+        fn socket_path(&self) -> &std::path::Path {
+            &self.socket_path
+        }
+
+        async fn next_request(&mut self) -> RecordedRequest {
+            tokio::time::timeout(MOCK_REQUEST_TIMEOUT, self.requests.recv())
+                .await
+                .expect("timed out waiting for Firecracker API request")
+                .expect("mock Firecracker API stopped before request")
+        }
+    }
+
+    impl Drop for RecordingFirecrackerApi {
+        fn drop(&mut self) {
+            self.server.abort();
+        }
+    }
+
+    async fn serve_recording_api(
+        listener: UnixListener,
+        tx: mpsc::UnboundedSender<RecordedRequest>,
+    ) {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
+            let Ok(request) = read_recorded_request(&mut stream).await else {
+                continue;
+            };
+            if tx.send(request).is_err() {
+                break;
+            }
+            let _ = stream
+                .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+                .await;
+        }
+    }
+
+    async fn read_recorded_request(stream: &mut UnixStream) -> std::io::Result<RecordedRequest> {
+        let mut buf = Vec::with_capacity(4096);
+        while header_end(&buf).is_none() {
+            let read = stream.read_buf(&mut buf).await?;
+            if read == 0 {
+                break;
+            }
+        }
+        let header_end = header_end(&buf).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request missing header terminator",
+            )
+        })?;
+        let headers = String::from_utf8_lossy(&buf[..header_end.saturating_sub(4)]);
+        let request_line = headers.lines().next().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "request missing request line",
+            )
+        })?;
+        let mut parts = request_line.split_whitespace();
+        let method = parts
+            .next()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "missing method"))?
+            .to_owned();
+        let path = parts
+            .next()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "missing path"))?
+            .to_owned();
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                key.trim()
+                    .eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().ok())
+                    .flatten()
+            })
+            .unwrap_or(0);
+        let body_start = header_end;
+        let target_len = body_start + content_length;
+        while buf.len() < target_len {
+            let read = stream.read_buf(&mut buf).await?;
+            if read == 0 {
+                break;
+            }
+        }
+
+        Ok(RecordedRequest { method, path })
+    }
+
+    fn header_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|idx| idx + 4)
+    }
+
+    fn snapshot_create_config(output_dir: PathBuf) -> SnapshotCreateConfig {
+        SnapshotCreateConfig {
+            id: "snapshot-test".into(),
+            binary_path: PathBuf::from("/tmp/firecracker"),
+            kernel_path: PathBuf::from("/tmp/vmlinux"),
+            rootfs_path: PathBuf::from("/tmp/rootfs.ext4"),
+            output_dir,
+            vcpu_count: 2,
+            memory_mb: 512,
+            workspace_disk_mb: 1024,
+        }
+    }
+
+    #[tokio::test]
+    async fn configure_snapshot_vm_orders_rootfs_before_workspace_drive() {
+        let mut api = RecordingFirecrackerApi::spawn();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = SandboxPaths::new(dir.path().join("work"));
+        let sock_paths = SockPaths::new(dir.path().join("sock"));
+        let client = ApiClient::new(api.socket_path());
+        let config = snapshot_create_config(dir.path().join("snapshot-output"));
+        let inv = InvariantConfig::new();
+
+        tokio::time::timeout(
+            MOCK_REQUEST_TIMEOUT,
+            configure_snapshot_vm(&client, &config, &paths, &sock_paths, &inv),
+        )
+        .await
+        .expect("snapshot VM configuration should finish")
+        .expect("snapshot VM configuration should succeed");
+
+        let mut requests = Vec::new();
+        for _ in 0..7 {
+            requests.push(api.next_request().await);
+        }
+
+        assert_eq!(requests[0].method, "PUT");
+        assert_eq!(requests[0].path, "/drives/rootfs");
+        assert_eq!(requests[1].method, "PUT");
+        assert_eq!(requests[1].path, "/drives/workspace");
+
+        let mut paths: Vec<&str> = requests
+            .iter()
+            .map(|request| request.path.as_str())
+            .collect();
+        paths.sort_unstable();
+        assert_eq!(
+            paths,
+            [
+                "/balloon",
+                "/boot-source",
+                "/drives/rootfs",
+                "/drives/workspace",
+                "/machine-config",
+                "/network-interfaces/eth0",
+                "/vsock",
+            ]
+        );
+    }
 
     #[tokio::test]
     async fn abort_on_drop_task_aborts_vsock_listener() {
@@ -597,6 +809,7 @@ mod tests {
             memory_path: "/tmp/memory.bin".into(),
             cow_path: "/tmp/cow.img".into(),
             drive_bind_path: "/tmp/cow-device-bind".into(),
+            workspace_drive_bind_path: "/tmp/workspace-device-bind".into(),
             vsock_bind_dir: "/tmp/vsock".into(),
         }
     }
@@ -751,17 +964,17 @@ mod tests {
     fn spawn_inner_cmd_uses_positional_args() {
         // Only positional args, no $0 or unquoted vars.
         assert!(!SPAWN_INNER_CMD.contains("$0"));
-        for arg in ["$1", "$2", "$3", "$4", "$5"] {
+        for arg in ["$1", "$2", "$3", "$4", "$5", "$6", "$7"] {
             let quoted = format!(r#""{arg}""#);
             assert!(
                 SPAWN_INNER_CMD.contains(&quoted),
                 "expected quoted positional {arg} in inner_cmd: {SPAWN_INNER_CMD}"
             );
         }
-        // Strictly 5 positional args — if someone adds a `$6`..`$9` without
+        // Strictly 7 positional args — if someone adds a `$8`..`$9` without
         // updating the spawn site's `.arg(...)` count, the bash call
         // silently expands to empty strings and fails at runtime.
-        for unexpected in ["$6", "$7", "$8", "$9"] {
+        for unexpected in ["$8", "$9"] {
             assert!(
                 !SPAWN_INNER_CMD.contains(unexpected),
                 "unexpected positional {unexpected} in inner_cmd: {SPAWN_INNER_CMD}"

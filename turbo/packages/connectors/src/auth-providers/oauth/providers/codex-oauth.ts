@@ -71,15 +71,16 @@ const refreshErrorBodySchema = z.object({
  * so the firewall pipeline can distinguish stale-token from transient errors.
  */
 export async function refreshChatgptToken(
-  _clientId: string,
-  _clientSecret: string,
+  clientId: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<ChatgptRefreshResult> {
   const response = await fetch(CHATGPT_OAUTH_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      client_id: CHATGPT_OAUTH_CLIENT_ID,
+      client_id: clientId,
       grant_type: "refresh_token",
       refresh_token: refreshToken,
     }),
@@ -122,10 +123,10 @@ export async function refreshChatgptToken(
   };
 }
 
-export function getChatgptSecretName(): string {
+export function getChatgptSecretName(): "CHATGPT_ACCESS_TOKEN" {
   return "CHATGPT_ACCESS_TOKEN";
 }
 
-export function getChatgptRefreshSecretName(): string {
+export function getChatgptRefreshSecretName(): "CHATGPT_REFRESH_TOKEN" {
   return "CHATGPT_REFRESH_TOKEN";
 }

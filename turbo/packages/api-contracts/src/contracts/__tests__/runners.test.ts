@@ -71,6 +71,63 @@ describe("runner storage manifest contract", () => {
     expect(result.success).toBe(false);
   });
 
+  it("accepts preserve-parent missing-root policy on artifact entries", () => {
+    const manifest = storageManifestSchema.parse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: "https://storage.example/artifact.tar.gz",
+          manifestUrl: "https://storage.example/manifest.json",
+          missingRootPolicy: "preserveParentVersion",
+        },
+      ],
+    });
+
+    expect(manifest.artifacts[0]?.missingRootPolicy).toBe(
+      "preserveParentVersion",
+    );
+  });
+
+  it("accepts explicit fail missing-root policy on artifact entries", () => {
+    const manifest = storageManifestSchema.parse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: "https://storage.example/artifact.tar.gz",
+          missingRootPolicy: "fail",
+        },
+      ],
+    });
+
+    expect(manifest.artifacts[0]?.missingRootPolicy).toBe("fail");
+  });
+
+  it("rejects unknown artifact missing-root policies", () => {
+    const result = storageManifestSchema.safeParse({
+      storages: [],
+      artifacts: [
+        {
+          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+          vasStorageName: "memory",
+          vasStorageId: "storage-id-1",
+          vasVersionId: "version-2",
+          archiveUrl: "https://storage.example/artifact.tar.gz",
+          missingRootPolicy: "ignore",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("strips runner-derived guest-download fields", () => {
     const manifest = storageManifestSchema.parse({
       storages: [

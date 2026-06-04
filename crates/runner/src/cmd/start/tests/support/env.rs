@@ -17,7 +17,8 @@ pub(in super::super) fn test_profiles() -> BTreeMap<String, config::ProfileConfi
             snapshot_hash: "snap".into(),
             vcpu: 2,
             memory_mb: 4096,
-            disk_mb: 10240,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 10240,
         },
     );
     m
@@ -232,6 +233,7 @@ fn build_mock_run_config_with_runtime(
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             home,
+            workspace_cache: None,
         }),
         shutdown: ShutdownHandles {
             kmsg_handle: kmsg_log::KmsgHandle::noop(),
@@ -286,7 +288,8 @@ pub(in super::super) fn two_profiles() -> BTreeMap<String, config::ProfileConfig
             snapshot_hash: "snap".into(),
             vcpu: 2,
             memory_mb: 4096,
-            disk_mb: 10240,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 10240,
         },
     );
     m.insert(
@@ -296,7 +299,8 @@ pub(in super::super) fn two_profiles() -> BTreeMap<String, config::ProfileConfig
             snapshot_hash: "snap2".into(),
             vcpu: 4,
             memory_mb: 8192,
-            disk_mb: 20480,
+            rootfs_disk_mb: 8192,
+            workspace_disk_mb: 20480,
         },
     );
     m

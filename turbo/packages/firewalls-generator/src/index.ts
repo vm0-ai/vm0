@@ -96,6 +96,7 @@ import { generate as generateGroq } from "./groq";
 import { generate as generateGumroad } from "./gumroad";
 import { generate as generateHeygen } from "./heygen";
 import { generate as generateHelicone } from "./helicone";
+import { generate as generateHitem3d } from "./hitem3d";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
 import { generate as generateHoncho } from "./honcho";
 import { generate as generateHubspot } from "./hubspot";
@@ -212,6 +213,7 @@ import { generate as generateTicketmaster } from "./ticketmaster";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateTogether } from "./together";
+import { generate as generateTripo } from "./tripo";
 import { generate as generateTwenty } from "./twenty";
 import { generate as generateTypeform } from "./typeform";
 import { generate as generateV0 } from "./v0";
@@ -333,6 +335,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   gumroad: generateGumroad,
   heygen: generateHeygen,
   helicone: generateHelicone,
+  hitem3d: generateHitem3d,
   htmlcsstoimage: generateHtmlcsstoimage,
   honcho: generateHoncho,
   hubspot: generateHubspot,
@@ -442,6 +445,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tldv: generateTldv,
   todoist: generateTodoist,
   together: generateTogether,
+  tripo: generateTripo,
   twenty: generateTwenty,
   typeform: generateTypeform,
   v0: generateV0,

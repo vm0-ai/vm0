@@ -17,9 +17,12 @@ export const gumroad = {
           clientIdEnv: "GUMROAD_OAUTH_CLIENT_ID",
           clientSecretEnv: "GUMROAD_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GUMROAD_ACCESS_TOKEN", "GUMROAD_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://gumroad.com/oauth/token",
           scopes: [
             "view_profile",
             "edit_products",
@@ -27,11 +30,21 @@ export const gumroad = {
             "mark_sales_as_shipped",
             "edit_sales",
           ],
+          outputs: {
+            accessToken: "$secrets.GUMROAD_ACCESS_TOKEN",
+            refreshToken: "$secrets.GUMROAD_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "GUMROAD_ACCESS_TOKEN",
-          refreshToken: "GUMROAD_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.GUMROAD_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.GUMROAD_ACCESS_TOKEN",
+            refreshToken: "$secrets.GUMROAD_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["GUMROAD_ACCESS_TOKEN"],
           envBindings: {
             GUMROAD_TOKEN: "$secrets.GUMROAD_ACCESS_TOKEN",
           },
@@ -42,6 +55,10 @@ export const gumroad = {
         label: "Access Token",
         helpText:
           "1. Log in to [Gumroad](https://app.gumroad.com/settings/advanced)\n2. Scroll to the **Applications** section\n3. Click **Generate access token**\n4. Copy the token and paste it here",
+        storage: {
+          secrets: ["GUMROAD_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

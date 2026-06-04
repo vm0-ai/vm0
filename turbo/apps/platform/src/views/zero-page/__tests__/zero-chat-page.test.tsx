@@ -375,7 +375,6 @@ describe("zero chat page - connectors popover", () => {
           displayName: params.id === "agent-b" ? "Agent B" : null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
           modelProviderId: null,
           selectedModel: null,
@@ -419,7 +418,6 @@ describe("zero chat page - connector label casing", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),

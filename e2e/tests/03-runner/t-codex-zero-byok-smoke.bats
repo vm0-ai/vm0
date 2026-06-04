@@ -51,7 +51,6 @@ agents:
   ${AGENT_NAME}:
     description: "BYOK codex zero web smoke test"
     framework: codex
-    working_dir: /home/user/workspace
 EOF
 
     local compose_json

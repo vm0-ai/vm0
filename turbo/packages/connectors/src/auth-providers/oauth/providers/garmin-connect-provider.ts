@@ -2,15 +2,15 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildGarminConnectAuthorizationUrl,
   exchangeGarminConnectCode,
-  getGarminConnectSecretName,
   refreshGarminConnectToken,
 } from "./garmin-connect";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connect"> =
   {
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         return buildGarminConnectAuthorizationUrl(
           clientId,
           args.redirectUri,
@@ -18,7 +18,7 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const state = args.state;
         if (!state) {
@@ -27,14 +27,17 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
           );
         }
         const result = await exchangeGarminConnectCode(
+          args.authCodeGrant,
           clientId,
           clientSecret,
           code,
           state,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {
@@ -47,16 +50,15 @@ export const garminConnectProvider: AuthCodeConnectorAuthProvider<"garmin-connec
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: getGarminConnectSecretName,
-      getRefreshSecretName: () => {
-        return "GARMIN_CONNECT_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
-        return refreshGarminConnectToken(
-          clientId,
-          clientSecret,
-          args.refreshToken,
+      refresh: async (args) => {
+        const { clientId, clientSecret } = args.authClient;
+        return oauthRefreshResultToProviderResult(
+          await refreshGarminConnectToken(
+            clientId,
+            clientSecret,
+            args.inputs.refreshToken,
+            args.signal,
+          ),
         );
       },
     },

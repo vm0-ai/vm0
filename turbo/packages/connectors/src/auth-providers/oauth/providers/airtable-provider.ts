@@ -2,26 +2,28 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildAirtableAuthorizationUrl,
   exchangeAirtableCode,
-  getAirtableSecretName,
   refreshAirtableToken,
 } from "./airtable";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildAirtableAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const codeVerifier = args.codeVerifier;
       const result = await exchangeAirtableCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -29,8 +31,10 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
         codeVerifier,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -43,13 +47,16 @@ export const airtableProvider: AuthCodeConnectorAuthProvider<"airtable"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getAirtableSecretName,
-    getRefreshSecretName: () => {
-      return "AIRTABLE_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshAirtableToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshAirtableToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

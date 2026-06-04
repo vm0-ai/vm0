@@ -393,14 +393,15 @@ export const connectSlackWorkspace$ = command(
       });
       signal.throwIfAborted();
 
-      await ensureUserArtifactStorage({
-        get,
-        db: writeDb,
-        orgId: args.orgId,
-        userId: args.userId,
-        name: "artifact",
-        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
-      });
+      await get(
+        ensureUserArtifactStorage({
+          db: writeDb,
+          orgId: args.orgId,
+          userId: args.userId,
+          name: "artifact",
+          bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+        }),
+      );
       signal.throwIfAborted();
 
       return {
@@ -425,14 +426,15 @@ export const connectSlackWorkspace$ = command(
     });
     signal.throwIfAborted();
 
-    await ensureUserArtifactStorage({
-      get,
-      db: writeDb,
-      orgId: args.orgId,
-      userId: args.userId,
-      name: "artifact",
-      bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
-    });
+    await get(
+      ensureUserArtifactStorage({
+        db: writeDb,
+        orgId: args.orgId,
+        userId: args.userId,
+        name: "artifact",
+        bucket: env("R2_USER_STORAGES_BUCKET_NAME"),
+      }),
+    );
     signal.throwIfAborted();
 
     return {

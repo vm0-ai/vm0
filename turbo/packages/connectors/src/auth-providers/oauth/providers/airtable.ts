@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const AIRTABLE_TOKEN_URL = "https://airtable.com/oauth2/v1/token";
 
 const AIRTABLE_AUTHORIZATION_URL = "https://airtable.com/oauth2/v1/authorize";
 
@@ -57,11 +59,11 @@ async function computeCodeChallenge(codeVerifier: string): Promise<string> {
  * Airtable requires PKCE (code_challenge with S256 method).
  */
 export async function buildAirtableAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<{ url: string; codeVerifier: string }> {
-  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -86,20 +88,20 @@ export async function buildAirtableAuthorizationUrl(
  * Airtable uses Basic auth (base64 of client_id:client_secret) for token exchange.
  */
 export async function exchangeAirtableCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   codeVerifier?: string,
 ): Promise<AirtableTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   if (!codeVerifier) {
     throw new Error("Airtable requires PKCE code_verifier for token exchange");
   }
 
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(AIRTABLE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -156,11 +158,12 @@ export async function refreshAirtableToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<AirtableRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("airtable");
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(AIRTABLE_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

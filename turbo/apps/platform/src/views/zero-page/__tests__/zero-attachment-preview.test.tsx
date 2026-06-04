@@ -534,8 +534,59 @@ describe("document thumbnail preview", () => {
     const preview = screen.getByTestId("attachment-preview-html");
     expect(preview).toBeInTheDocument();
     expect(preview.tagName).toBe("A");
+    expect(preview).toHaveClass("w-[min(100%,400px)]");
     expect(preview).toHaveAttribute("href", "https://example.com/page.html");
     expect(preview).toHaveTextContent("page.html");
+    const iframe = within(preview).getByTitle("Site preview for page.html");
+    expect(iframe).toHaveAttribute(
+      "data-preview-src",
+      "https://example.com/page.html",
+    );
+    expect(iframe).toHaveClass("pointer-events-none");
+    expect(iframe).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("renders HTML site previews from a desktop-sized viewport", () => {
+    render(
+      <StoreProvider value={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: "page.html",
+            url: "https://example.com/page.html",
+          }}
+        />
+      </StoreProvider>,
+    );
+
+    const preview = screen.getByTestId("attachment-preview-html");
+    const viewport = within(preview).getByTestId(
+      "attachment-preview-html-viewport",
+    );
+
+    expect(viewport).toHaveClass("h-[400%]", "w-[400%]", "scale-[0.25]");
+    expect(
+      within(viewport).getByTitle("Site preview for page.html"),
+    ).toHaveAttribute("scrolling", "no");
+  });
+
+  it("uses the hosted site slug as the fallback site preview card title", () => {
+    const url = "https://tabby-cat-guide-35a4112d.sites.vm7.io";
+    render(
+      <StoreProvider value={context.store}>
+        <AttachmentPreview
+          attachment={{
+            filename: url,
+            url,
+            contentType: "text/html",
+          }}
+        />
+      </StoreProvider>,
+    );
+
+    expect(screen.getByText("Tabby Cat Guide")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Site preview for Tabby Cat Guide"),
+    ).toHaveAttribute("data-preview-src", url);
   });
 
   it("opens HTML previews in the lightbox on plain left click", () => {

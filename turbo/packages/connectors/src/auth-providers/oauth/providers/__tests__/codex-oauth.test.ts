@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
-import { getModelProviderOAuthSecretMetadata } from "../../../model-provider-auth";
+import { getModelProviderRefreshMetadata } from "../../../model-provider-auth";
 import {
   getChatgptSecretName,
   getChatgptRefreshSecretName,
@@ -14,12 +14,12 @@ import { server } from "./test-server";
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PUBLIC_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
+
 function getCodexRefreshAccess() {
-  const access = codexOauthProvider.access;
-  if (access.kind !== "refresh-token") {
-    throw new Error("codexOauthProvider must expose refresh-token access");
-  }
-  return access;
+  return codexOauthProvider.access;
 }
 
 describe("connector/providers/codex-oauth", () => {
@@ -39,7 +39,11 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const result = await refreshChatgptToken("x", "x", "old-rt");
+      const result = await refreshChatgptToken(
+        CODEX_PUBLIC_CLIENT_ID,
+        "old-rt",
+        testRefreshSignal(),
+      );
       expect(result.accessToken).toBe("new-at");
       expect(result.refreshToken).toBe("new-rt");
       expect(result.expiresIn).toBe(600000);
@@ -51,7 +55,11 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const result = await refreshChatgptToken("x", "x", "old-rt");
+      const result = await refreshChatgptToken(
+        CODEX_PUBLIC_CLIENT_ID,
+        "old-rt",
+        testRefreshSignal(),
+      );
       expect(result.accessToken).toBe("new-at");
       expect(result.refreshToken).toBeNull();
     });
@@ -71,7 +79,11 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt"),
+        refreshChatgptToken(
+          CODEX_PUBLIC_CLIENT_ID,
+          "old-rt",
+          testRefreshSignal(),
+        ),
       ).rejects.toMatchObject({
         name: "ChatgptRefreshError",
         code: "refresh_token_expired",
@@ -88,7 +100,11 @@ describe("connector/providers/codex-oauth", () => {
       server.use(handler);
 
       await expect(
-        refreshChatgptToken("x", "x", "old-rt"),
+        refreshChatgptToken(
+          CODEX_PUBLIC_CLIENT_ID,
+          "old-rt",
+          testRefreshSignal(),
+        ),
       ).rejects.toMatchObject({
         name: "ChatgptRefreshError",
         code: "refresh_token_reused",
@@ -109,11 +125,13 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
+      const error = await refreshChatgptToken(
+        CODEX_PUBLIC_CLIENT_ID,
+        "old-rt",
+        testRefreshSignal(),
+      ).catch((e: unknown) => {
+        return e;
+      });
       expect(isChatgptRefreshError(error)).toBe(true);
       expect((error as ChatgptRefreshError).code).toBe(
         "refresh_token_invalidated",
@@ -129,11 +147,13 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
+      const error = await refreshChatgptToken(
+        CODEX_PUBLIC_CLIENT_ID,
+        "old-rt",
+        testRefreshSignal(),
+      ).catch((e: unknown) => {
+        return e;
+      });
       expect(isChatgptRefreshError(error)).toBe(true);
       expect((error as ChatgptRefreshError).code).toBe("refresh_token_other");
     });
@@ -144,11 +164,13 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      const error = await refreshChatgptToken("x", "x", "old-rt").catch(
-        (e: unknown) => {
-          return e;
-        },
-      );
+      const error = await refreshChatgptToken(
+        CODEX_PUBLIC_CLIENT_ID,
+        "old-rt",
+        testRefreshSignal(),
+      ).catch((e: unknown) => {
+        return e;
+      });
       expect(error).toBeInstanceOf(Error);
       expect(isChatgptRefreshError(error)).toBe(false);
     });
@@ -159,20 +181,30 @@ describe("connector/providers/codex-oauth", () => {
       });
       server.use(handler);
 
-      await expect(refreshChatgptToken("x", "x", "old-rt")).rejects.toThrow(
-        /No access token in ChatGPT refresh response/,
-      );
+      await expect(
+        refreshChatgptToken(
+          CODEX_PUBLIC_CLIENT_ID,
+          "old-rt",
+          testRefreshSignal(),
+        ),
+      ).rejects.toThrow(/No access token in ChatGPT refresh response/);
     });
   });
 
   describe("codexOauthProvider", () => {
     it("is registered with model-provider refresh metadata", () => {
       expect(
-        getModelProviderOAuthSecretMetadata("codex-oauth-token"),
+        getModelProviderRefreshMetadata("codex-oauth-token"),
       ).toStrictEqual({
-        accessSecretName: "CHATGPT_ACCESS_TOKEN",
-        refreshSecretName: "CHATGPT_REFRESH_TOKEN",
         isRefreshable: true,
+        inputs: {
+          refreshToken: "CHATGPT_REFRESH_TOKEN",
+        },
+        outputs: {
+          accessToken: "CHATGPT_ACCESS_TOKEN",
+          refreshToken: "CHATGPT_REFRESH_TOKEN",
+        },
+        refreshableSecrets: ["CHATGPT_ACCESS_TOKEN"],
       });
     });
 
@@ -180,14 +212,12 @@ describe("connector/providers/codex-oauth", () => {
       expect(codexOauthProvider.grant.kind).toBe("none");
     });
 
-    it("getClientId returns the Codex public client_id (used by refresh)", () => {
-      expect(getCodexRefreshAccess().getClientId({})).toBe(
-        CODEX_PUBLIC_CLIENT_ID,
-      );
-    });
-
-    it("getClientSecret returns undefined (PKCE-only)", () => {
-      expect(getCodexRefreshAccess().getClientSecret({})).toBeUndefined();
+    it("resolves the Codex public client for refresh", () => {
+      expect(getCodexRefreshAccess().resolveAuthClient({})).toStrictEqual({
+        clientRegistration: "static",
+        clientType: "public",
+        clientId: CODEX_PUBLIC_CLIENT_ID,
+      });
     });
 
     it("returns documented secret names", () => {

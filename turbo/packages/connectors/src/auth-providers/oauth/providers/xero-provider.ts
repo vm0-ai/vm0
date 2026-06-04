@@ -2,29 +2,37 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildXeroAuthorizationUrl,
   exchangeXeroCode,
-  getXeroSecretName,
   refreshXeroToken,
 } from "./xero";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildXeroAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildXeroAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeXeroCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -37,13 +45,16 @@ export const xeroProvider: AuthCodeConnectorAuthProvider<"xero"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getXeroSecretName,
-    getRefreshSecretName: () => {
-      return "XERO_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshXeroToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshXeroToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

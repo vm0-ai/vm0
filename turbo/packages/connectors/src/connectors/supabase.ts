@@ -18,9 +18,12 @@ export const supabase = {
           clientIdEnv: "SUPABASE_OAUTH_CLIENT_ID",
           clientSecretEnv: "SUPABASE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["SUPABASE_ACCESS_TOKEN", "SUPABASE_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.supabase.com/v1/oauth/token",
           scopes: [
             "organizations:read",
             "projects:read",
@@ -35,11 +38,21 @@ export const supabase = {
             "environment:read",
             "domains:read",
           ],
+          outputs: {
+            accessToken: "$secrets.SUPABASE_ACCESS_TOKEN",
+            refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "SUPABASE_ACCESS_TOKEN",
-          refreshToken: "SUPABASE_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.SUPABASE_ACCESS_TOKEN",
+            refreshToken: "$secrets.SUPABASE_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["SUPABASE_ACCESS_TOKEN"],
           envBindings: {
             SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
           },
@@ -50,6 +63,10 @@ export const supabase = {
         label: "Service Role Key",
         helpText:
           "1. Log in to the [Supabase Dashboard](https://supabase.com/dashboard)\n2. Open your project's **Connect** dialog, or go to **Project Settings > API Keys**\n3. For legacy keys, copy the `anon` key (for client-side) or `service_role` key (for server-side) from the **Legacy API Keys** tab\n4. For new keys, open the **API Keys** tab, click **Create new API Keys** if needed, and copy the value from the **Publishable key** section",
+        storage: {
+          secrets: ["SUPABASE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

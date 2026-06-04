@@ -5,17 +5,12 @@ fn mock_claude() -> Command {
     Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"))
 }
 
-fn expected_history_path(
-    home: &std::path::Path,
-    session_id: &str,
-) -> Result<std::path::PathBuf, std::io::Error> {
-    let cwd = std::env::current_dir()?.to_string_lossy().into_owned();
-    let project_name = cwd.trim_start_matches('/').replace('/', "-");
-    Ok(home
-        .join(".claude")
+fn expected_history_path(home: &std::path::Path, session_id: &str) -> std::path::PathBuf {
+    let project_name = "home-user-workspace";
+    home.join(".claude")
         .join("projects")
         .join(format!("-{project_name}"))
-        .join(format!("{session_id}.jsonl")))
+        .join(format!("{session_id}.jsonl"))
 }
 
 #[test]
@@ -45,8 +40,40 @@ fn echo_jsonl_outputs_valid_payload_unchanged() -> Result<(), Box<dyn std::error
     );
     assert!(output.stderr.is_empty());
 
-    let history = fs::read_to_string(expected_history_path(home.path(), "preview-1")?)?;
+    let history = fs::read_to_string(expected_history_path(home.path(), "preview-1"))?;
     assert_eq!(history, format!("{payload}\n"));
+    Ok(())
+}
+
+#[test]
+fn echo_jsonl_rejects_path_like_session_id_without_writing_history() -> std::io::Result<()> {
+    let home = tempfile::tempdir()?;
+    let payload = r#"{"type":"system","subtype":"init","cwd":"/home/user/workspace","session_id":"../escape","tools":["Bash"],"model":"mock-claude"}"#;
+    let prompt = format!("@ECHO@\n{payload}\n");
+
+    let output = mock_claude()
+        .env("HOME", home.path())
+        .args(["--output-format", "stream-json", "--", &prompt])
+        .output()?;
+
+    assert!(!output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "expected empty stdout, got: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid @ECHO@ session_id"));
+    assert!(stderr.contains("../escape"));
+    assert!(!expected_history_path(home.path(), "../escape").exists());
+    assert!(
+        !home
+            .path()
+            .join(".claude")
+            .join("projects")
+            .join("escape.jsonl")
+            .exists()
+    );
     Ok(())
 }
 

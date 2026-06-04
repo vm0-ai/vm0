@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 
 const REDDIT_AUTHORIZATION_URL = "https://www.reddit.com/api/v1/authorize";
 
@@ -35,11 +37,11 @@ function encodeBasicAuth(clientId: string, clientSecret: string): string {
  * Requests permanent duration to obtain a refresh token.
  */
 export function buildRedditAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("reddit");
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
@@ -57,13 +59,13 @@ export function buildRedditAuthorizationUrl(
  * Reddit uses Basic Auth header (like Notion) with form-encoded body (like Strava).
  */
 export async function exchangeRedditCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<RedditTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("reddit");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(REDDIT_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,
@@ -160,9 +162,10 @@ export async function refreshRedditToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<RedditRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("reddit");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(REDDIT_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${encodeBasicAuth(clientId, clientSecret)}`,

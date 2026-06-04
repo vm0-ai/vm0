@@ -2,7 +2,6 @@ import { computed, type Computed } from "ccstate";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { connectorTypeSchema } from "@vm0/connectors/connectors";
-import { toFirewallPolicies } from "@vm0/connectors/firewall-types";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -19,8 +18,6 @@ export function agentResponse(row: {
   readonly description: string | null;
   readonly sound: string | null;
   readonly avatarUrl: string | null;
-  readonly permissionPolicies: typeof zeroAgents.$inferSelect.permissionPolicies;
-  readonly unknownPermissionPolicies: typeof zeroAgents.$inferSelect.unknownPermissionPolicies;
   readonly customSkills: readonly string[];
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
@@ -34,10 +31,6 @@ export function agentResponse(row: {
     description: row.description,
     sound: row.sound,
     avatarUrl: row.avatarUrl,
-    permissionPolicies: toFirewallPolicies(
-      row.permissionPolicies,
-      row.unknownPermissionPolicies,
-    ),
     customSkills: [...row.customSkills],
     modelProviderId: null,
     selectedModel: null,
@@ -57,7 +50,6 @@ export function defaultAgentResponse(args: {
     description: null,
     sound: null,
     avatarUrl: null,
-    permissionPolicies: null,
     customSkills: [],
     modelProviderId: null,
     selectedModel: null,
@@ -113,8 +105,6 @@ export function zeroAgentList(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        permissionPolicies: zeroAgents.permissionPolicies,
-        unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
         customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
@@ -147,8 +137,6 @@ export function zeroAgentDetail(args: {
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        permissionPolicies: zeroAgents.permissionPolicies,
-        unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
         customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
@@ -232,6 +220,7 @@ export function zeroTeam(
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
+        customSkills: zeroAgents.customSkills,
         visibility: zeroAgents.visibility,
       })
       .from(agentComposes)
@@ -249,6 +238,7 @@ export function zeroTeam(
         description: row.description,
         sound: row.sound,
         avatarUrl: row.avatarUrl,
+        customSkills: [...row.customSkills],
         visibility: row.visibility,
         headVersionId: row.headVersionId,
         updatedAt: row.updatedAt.toISOString(),

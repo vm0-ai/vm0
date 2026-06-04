@@ -31,15 +31,14 @@ export enum FeatureSwitchKey {
   GitHubIntegration = "githubIntegration",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
+  Banking = "banking",
   LarkConnector = "larkConnector",
   Lab = "lab",
   AuditLink = "auditLink",
   AudioOutput = "audioOutput",
-  AutoSkill = "autoSkill",
+  SkillsViewer = "skillsViewer",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
-
-  ChatMessageStartButton = "chatMessageStartButton",
   ChatThreadRename = "chatThreadRename",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
@@ -49,6 +48,10 @@ export enum FeatureSwitchKey {
 
   ZapierConnector = "zapierConnector",
   SandboxIoLimiters = "sandboxIoLimiters",
+  SessionWorkspaceImageCache = "sessionWorkspaceImageCache",
   ChatArtifactSidebar = "chatArtifactSidebar",
+  ChatGithubPrTracking = "chatGithubPrTracking",
+  MemoryViewer = "memoryViewer",
   ChatScrollToBottomButton = "chatScrollToBottomButton",
+  ChatRecommendedFollowups = "chatRecommendedFollowups",
 }

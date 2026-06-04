@@ -1,8 +1,10 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "./grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import type { GoogleOAuthConnectorType } from "./google-connectors";
 import { throwOAuthError } from "./error";
+
+const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 const GOOGLE_OAUTH_AUTHORIZATION_URL =
   "https://accounts.google.com/o/oauth2/v2/auth";
@@ -34,12 +36,12 @@ interface GoogleRefreshResult {
  * Requests offline access to obtain a refresh token.
  */
 export function buildGoogleAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -58,14 +60,14 @@ export function buildGoogleAuthorizationUrl(
  * Uses the Google userinfo endpoint to identify the user.
  */
 export async function exchangeGoogleOAuthCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   connectorType: GoogleOAuthConnectorType,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<GoogleTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -124,9 +126,10 @@ export async function refreshGoogleToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<GoogleRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig(connectorType);
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

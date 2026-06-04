@@ -6,11 +6,13 @@ log entries, and extracting firewall metadata.
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime, timezone
 
 from mitmproxy import ctx, http
 
 import flow_metadata_keys as metadata_keys
+import network_log_sanitization
 
 _PROXY_LOG_RESERVED_FIELDS = {"timestamp", "level", "message"}
 
@@ -25,13 +27,18 @@ def _write_jsonl_entry(log_path: str, entry: dict, log_name: str) -> None:
         return
     try:
         line = (json.dumps(entry) + "\n").encode()
+    except Exception as e:
+        ctx.log.warn(f"Failed to encode {log_name} log: {type(e).__name__}: {e}")
+        return
+
+    try:
         fd = os.open(log_path, os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o644)
         try:
             os.write(fd, line)
         finally:
             os.close(fd)
     except Exception as e:
-        ctx.log.warn(f"Failed to write {log_name} log: {e}")
+        ctx.log.warn(f"Failed to write {log_name} log: {type(e).__name__}: {e}")
 
 
 def log_network_entry(log_path: str, entry: dict) -> None:
@@ -40,6 +47,12 @@ def log_network_entry(log_path: str, entry: dict) -> None:
         return
     log_entry = {**entry, "timestamp": _utc_log_timestamp()}
     _write_jsonl_entry(log_path, log_entry, "network")
+
+
+def _proxy_log_extra_value(key: str, value: object) -> object:
+    if key == "url" and isinstance(value, str):
+        return network_log_sanitization.sanitize_url_for_network_log(value)
+    return value
 
 
 def log_proxy_entry(
@@ -57,30 +70,82 @@ def log_proxy_entry(
     }
     for key, value in extra.items():
         if key not in _PROXY_LOG_RESERVED_FIELDS:
-            entry[key] = value
+            entry[key] = _proxy_log_extra_value(key, value)
     _write_jsonl_entry(proxy_log_path, entry, "proxy")
+
+
+def _metadata_str(meta: Mapping[str, object], key: str, default: str = "") -> str:
+    value = meta.get(key)
+    return value if isinstance(value, str) else default
+
+
+def _metadata_optional_str(meta: Mapping[str, object], key: str) -> str | None:
+    value = meta.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _metadata_bool(meta: Mapping[str, object], key: str, default: bool = False) -> bool:
+    value = meta.get(key)
+    return value if isinstance(value, bool) else default
+
+
+def _metadata_optional_bool(meta: Mapping[str, object], key: str) -> bool | None:
+    value = meta.get(key)
+    return value if isinstance(value, bool) else None
+
+
+def _metadata_str_list(meta: Mapping[str, object], key: str) -> list[str] | None:
+    value = meta.get(key)
+    if not isinstance(value, list):
+        return None
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            return None
+        result.append(item)
+    return result
+
+
+def _metadata_str_record(meta: Mapping[str, object], key: str) -> dict[str, str] | None:
+    value = meta.get(key)
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, str] = {}
+    for item_key, item_value in value.items():
+        if not isinstance(item_key, str) or not isinstance(item_value, str):
+            return None
+        result[item_key] = item_value
+    return result
 
 
 def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
-    log_entry["firewall_base"] = meta.get(metadata_keys.FIREWALL_BASE, "")
-    log_entry["firewall_name"] = meta.get(metadata_keys.FIREWALL_NAME, "")
-    log_entry["firewall_permission"] = meta.get(metadata_keys.FIREWALL_PERMISSION, "")
-    log_entry["firewall_rule_match"] = meta.get(metadata_keys.FIREWALL_RULE_MATCH, "")
-    log_entry["firewall_billable"] = meta.get(metadata_keys.FIREWALL_BILLABLE, False)
+    log_entry["firewall_base"] = _metadata_str(meta, metadata_keys.FIREWALL_BASE)
+    log_entry["firewall_name"] = _metadata_str(meta, metadata_keys.FIREWALL_NAME)
+    log_entry["firewall_permission"] = _metadata_str(meta, metadata_keys.FIREWALL_PERMISSION)
+    log_entry["firewall_rule_match"] = _metadata_str(meta, metadata_keys.FIREWALL_RULE_MATCH)
+    log_entry["firewall_billable"] = _metadata_bool(meta, metadata_keys.FIREWALL_BILLABLE)
 
-    # Optional fields — only include when present
-    for metadata_key, log_key in (
-        (metadata_keys.FIREWALL_PARAMS, "firewall_params"),
-        (metadata_keys.FIREWALL_ERROR, "firewall_error"),
-        (metadata_keys.AUTH_RESOLVED_SECRETS, "auth_resolved_secrets"),
-        (metadata_keys.AUTH_REFRESHED_CONNECTORS, "auth_refreshed_connectors"),
-        (metadata_keys.AUTH_REFRESHED_SECRETS, "auth_refreshed_secrets"),
-        (metadata_keys.AUTH_CACHE_HIT, "auth_cache_hit"),
-        (metadata_keys.AUTH_URL_REWRITE, "auth_url_rewrite"),
+    # Optional fields — only include when present with the network-log schema type.
+    for log_key, value in (
+        ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
+        ("firewall_error", _metadata_optional_str(meta, metadata_keys.FIREWALL_ERROR)),
+        (
+            "auth_resolved_secrets",
+            _metadata_str_list(meta, metadata_keys.AUTH_RESOLVED_SECRETS),
+        ),
+        (
+            "auth_refreshed_connectors",
+            _metadata_str_list(meta, metadata_keys.AUTH_REFRESHED_CONNECTORS),
+        ),
+        (
+            "auth_refreshed_secrets",
+            _metadata_str_list(meta, metadata_keys.AUTH_REFRESHED_SECRETS),
+        ),
+        ("auth_cache_hit", _metadata_optional_bool(meta, metadata_keys.AUTH_CACHE_HIT)),
+        ("auth_url_rewrite", _metadata_optional_bool(meta, metadata_keys.AUTH_URL_REWRITE)),
     ):
-        value = meta.get(metadata_key)
         if value is not None:
             log_entry[log_key] = value

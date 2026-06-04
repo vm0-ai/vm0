@@ -2136,7 +2136,11 @@ func cgWindowCandidates(pid: pid_t, scope: CGWindowCandidateScope = .currentSpac
     }
     if let currentSpaceId {
         return candidates.filter { candidate in
-            candidate.spaceIds?.contains(currentSpaceId) ?? candidate.isOnScreen
+            isWindowCandidateReachableFromCurrentDisplayContext(
+                currentSpaceId: currentSpaceId,
+                windowSpaceIds: candidate.spaceIds,
+                isOnScreen: candidate.isOnScreen
+            )
         }
     }
     return candidates.filter { candidate in
@@ -3970,13 +3974,31 @@ func performElementMouseClick(
         }
     }
 
-    if foregroundRecovery != .always {
-        do {
-            return try currentSpaceClick()
-        } catch {
-            guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
-                throw error
+    if foregroundRecovery == .always {
+        return try withForegroundRecovery(
+            appName: appName,
+            policy: foregroundRecovery,
+            reason: foregroundRecoveryReason(policy: foregroundRecovery),
+            preferredScreenPoint: point,
+            dispatchMode: "foreground_mouse_event",
+            dispatchTarget: "element_point",
+            inputRisk: "foreground_app_pointer",
+            resolveTarget: {
+                guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
+                    throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
+                }
+                return target
             }
+        ) { target in
+            try foregroundClickResult(target: target)
+        }
+    }
+
+    do {
+        return try currentSpaceClick()
+    } catch {
+        guard shouldAttemptForegroundRecovery(error, policy: foregroundRecovery) else {
+            throw error
         }
     }
 
@@ -3985,9 +4007,9 @@ func performElementMouseClick(
         policy: foregroundRecovery,
         reason: foregroundRecoveryReason(policy: foregroundRecovery),
         preferredScreenPoint: point,
-        dispatchMode: "foreground_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "element_point",
-        inputRisk: "foreground_app_pointer",
+        inputRisk: "background_app_pointer",
         resolveTarget: {
             guard let target = resolveWindowTarget(app: app, preferredScreenPoint: point) else {
                 throw windowTargetUnavailableFailure(appName: appName, pid: app.processIdentifier)
@@ -3995,7 +4017,7 @@ func performElementMouseClick(
             return target
         }
     ) { target in
-        try foregroundClickResult(target: target)
+        try clickResult(target: target)
     }
 }
 
@@ -4313,13 +4335,26 @@ func handleElementClickPoint(
         }
     }
 
-    if policy != .always {
-        do {
-            return try currentSpaceClick()
-        } catch {
-            guard shouldAttemptForegroundRecovery(error, policy: policy) else {
-                throw error
-            }
+    if policy == .always {
+        return try withForegroundRecovery(
+            appName: appName,
+            policy: policy,
+            reason: foregroundRecoveryReason(policy: policy),
+            preferredScreenPoint: point,
+            dispatchMode: "foreground_mouse_event",
+            dispatchTarget: "app_process",
+            inputRisk: "foreground_app_pointer",
+            resolveTarget: resolveSnapshotTarget
+        ) { target in
+            try foregroundClickResult(target: target)
+        }
+    }
+
+    do {
+        return try currentSpaceClick()
+    } catch {
+        guard shouldAttemptForegroundRecovery(error, policy: policy) else {
+            throw error
         }
     }
 
@@ -4328,12 +4363,12 @@ func handleElementClickPoint(
         policy: policy,
         reason: foregroundRecoveryReason(policy: policy),
         preferredScreenPoint: point,
-        dispatchMode: "foreground_mouse_event",
+        dispatchMode: "background_mouse_event",
         dispatchTarget: "app_process",
-        inputRisk: "foreground_app_pointer",
+        inputRisk: "background_app_pointer",
         resolveTarget: resolveSnapshotTarget
     ) { target in
-        try foregroundClickResult(target: target)
+        try clickResult(target: target)
     }
 }
 

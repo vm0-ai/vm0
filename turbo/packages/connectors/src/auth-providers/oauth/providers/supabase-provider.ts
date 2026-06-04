@@ -2,22 +2,23 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildSupabaseAuthorizationUrl,
   exchangeSupabaseCode,
-  getSupabaseSecretName,
   refreshSupabaseToken,
 } from "./supabase";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildSupabaseAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -27,6 +28,7 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
         );
       }
       const result = await exchangeSupabaseCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -34,8 +36,10 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
         state,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -48,13 +52,16 @@ export const supabaseProvider: AuthCodeConnectorAuthProvider<"supabase"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getSupabaseSecretName,
-    getRefreshSecretName: () => {
-      return "SUPABASE_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshSupabaseToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshSupabaseToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

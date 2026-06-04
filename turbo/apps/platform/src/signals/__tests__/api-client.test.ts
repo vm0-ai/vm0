@@ -4,6 +4,18 @@ import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
+import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
+import { zeroSchedulesMainContract } from "@vm0/api-contracts/contracts/zero-schedules";
+import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import {
+  chatThreadsContract,
+  chatThreadByIdContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "./test-helpers.ts";
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
@@ -297,7 +309,135 @@ describe("zeroClient$ apiBackend routing", () => {
     expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
-  it("keeps GET contract requests on www when apiBackend is off", async () => {
+  it("keeps non-allowlisted GET contract requests on www when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroConnectorsMainContract.list, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          connectors: [],
+          configuredTypes: [],
+          connectorProvidedEnvNames: [],
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroConnectorsMainContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted user preferences contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroUserPreferencesContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          timezone: null,
+          pinnedAgentIds: [],
+          sendMode: "enter",
+          captureNetworkBodiesRemaining: 0,
+        });
+      }),
+      mockApi(zeroUserPreferencesContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          timezone: "America/Los_Angeles",
+          pinnedAgentIds: [],
+          sendMode: "cmd-enter",
+          captureNetworkBodiesRemaining: 0,
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroUserPreferencesContract);
+    const getResult = await client.get();
+    const updateResult = await client.update({
+      body: { sendMode: "cmd-enter" },
+    });
+
+    expect(getResult.status).toBe(200);
+    expect(updateResult.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai", "api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted team contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroTeamContract.list, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, []);
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroTeamContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted onboarding status contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(onboardingStatusContract.getStatus, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: "agent_1",
+          defaultAgentMetadata: null,
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(onboardingStatusContract);
+    const result = await client.getStatus();
+
+    expect(result.status).toBe(200);
+    // The onboard guard may also fetch status during page bootstrap; assert
+    // every onboarding-status request routes to the api host, not the count.
+    expect(requestHosts.length).toBeGreaterThan(0);
+    expect([...new Set(requestHosts)]).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted org contract requests to api host when apiBackend is off", async () => {
     vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
     detachedSetupPage({
       context,
@@ -323,7 +463,190 @@ describe("zeroClient$ apiBackend routing", () => {
     const result = await client.get();
 
     expect(result.status).toBe(200);
-    expect(requestHosts).toStrictEqual(["www.vm0.ai"]);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes allowlisted org mutation to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroOrgContract.update, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.update({ body: { name: "Renamed" } });
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted voice-io quota contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroVoiceIoQuotaContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { allowed: true, count: 0, limit: null });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroVoiceIoQuotaContract);
+    const result = await client.get();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted schedules list contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroSchedulesMainContract.list, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { schedules: [] });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroSchedulesMainContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted personal model providers contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(
+        zeroPersonalModelProvidersMainContract.list,
+        ({ request, respond }) => {
+          requestHosts.push(new URL(request.url).host);
+          return respond(200, { modelProviders: [] });
+        },
+      ),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroPersonalModelProvidersMainContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes policy allowlisted org model providers contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroModelProvidersMainContract.list, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, { modelProviders: [] });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroModelProvidersMainContract);
+    const result = await client.list();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes allowlisted mutation contract requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(chatThreadsContract.create, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(201, {
+          id: "thread_1",
+          title: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(chatThreadsContract);
+    const result = await client.create({ body: { agentId: "agent_1" } });
+
+    expect(result.status).toBe(201);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
+  });
+
+  it("routes allowlisted dynamic-path requests to api host when apiBackend is off", async () => {
+    vi.stubGlobal("location", new URL("https://platform.vm0.ai/"));
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(chatThreadByIdContract.delete, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(204);
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(chatThreadByIdContract);
+    const result = await client.delete({
+      params: { id: "00000000-0000-0000-0000-000000000001" },
+    });
+
+    expect(result.status).toBe(204);
+    // The :id template segment must match a concrete id, not just an exact path.
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 
   it("routes GET contract requests to api host when apiBackend is on", async () => {

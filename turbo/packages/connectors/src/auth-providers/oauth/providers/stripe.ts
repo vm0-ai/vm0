@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const STRIPE_TOKEN_URL = "https://connect.stripe.com/oauth/token";
 
 const STRIPE_AUTHORIZATION_URL = "https://connect.stripe.com/oauth/authorize";
 
@@ -31,11 +33,11 @@ interface StripeRefreshResult {
  * Uses the Stripe Connect OAuth flow for Standard accounts.
  */
 export function buildStripeAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("stripe");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,12 +54,12 @@ export function buildStripeAuthorizationUrl(
  * Stripe Connect returns stripe_user_id and access token in the response.
  */
 export async function exchangeStripeCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   _clientId: string,
   clientSecret: string,
   code: string,
 ): Promise<StripeTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("stripe");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(STRIPE_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -116,9 +118,10 @@ export async function refreshStripeToken(
   _clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<StripeRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("stripe");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(STRIPE_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

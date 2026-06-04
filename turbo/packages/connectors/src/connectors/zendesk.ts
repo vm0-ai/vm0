@@ -11,6 +11,10 @@ export const zendesk = {
         label: "API Token",
         helpText:
           "1. Log in to [Zendesk Admin Center](https://www.zendesk.com/admin/)\n2. Go to **Apps and integrations → APIs → Zendesk API**\n3. Enable **Token Access** under the Settings tab\n4. Click **Add API token** and copy the token",
+        storage: {
+          secrets: ["ZENDESK_API_TOKEN"],
+          variables: ["ZENDESK_EMAIL", "ZENDESK_SUBDOMAIN"],
+        },
         grant: {
           kind: "manual",
           fields: {

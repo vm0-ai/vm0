@@ -12,6 +12,10 @@ export const ironclad = {
         label: "API Key",
         helpText:
           "1. In Ironclad, go to **Company Settings → API**\n2. Generate an API key and copy it\n3. Set the API host to match your instance's data region: `ironcladapp.com` (North America), `eu1.ironcladapp.com` (Europe), or `demo.ironcladapp.com` (demo)",
+        storage: {
+          secrets: ["IRONCLAD_API_KEY"],
+          variables: ["IRONCLAD_HOST"],
+        },
         grant: {
           kind: "manual",
           fields: {

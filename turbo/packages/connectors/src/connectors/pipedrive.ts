@@ -11,6 +11,10 @@ export const pipedrive = {
         label: "API Key",
         helpText:
           "1. In Pipedrive, click your avatar (top right) → **Personal Preferences** → **API**\n2. Copy your personal API token\n3. Paste it here",
+        storage: {
+          secrets: ["PIPEDRIVE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

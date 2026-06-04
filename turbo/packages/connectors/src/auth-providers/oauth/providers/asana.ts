@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const ASANA_TOKEN_URL = "https://app.asana.com/-/oauth_token";
 
 const ASANA_AUTHORIZATION_URL = "https://app.asana.com/-/oauth_authorize";
 
@@ -48,13 +50,13 @@ export function buildAsanaAuthorizationUrl(
  * Asana returns a refresh token and user info (data field) in the token response.
  */
 export async function exchangeAsanaCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<AsanaTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("asana");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(ASANA_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -159,9 +161,10 @@ export async function refreshAsanaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<AsanaRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("asana");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(ASANA_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

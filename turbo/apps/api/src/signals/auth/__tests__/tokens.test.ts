@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import {
   generateZeroToken,
@@ -117,5 +118,22 @@ describe("auth tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
+  });
+
+  it("gates banking capability behind the banking feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.Banking]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "banking:read",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "banking:read",
+    );
   });
 });

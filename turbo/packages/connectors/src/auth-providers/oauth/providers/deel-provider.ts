@@ -2,18 +2,23 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildDeelAuthorizationUrl,
   exchangeDeelCode,
-  getDeelSecretName,
   refreshDeelToken,
 } from "./deel";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildDeelAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildDeelAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -23,6 +28,7 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
         );
       }
       const result = await exchangeDeelCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -30,8 +36,10 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
         state,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -44,13 +52,16 @@ export const deelProvider: AuthCodeConnectorAuthProvider<"deel"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getDeelSecretName,
-    getRefreshSecretName: () => {
-      return "DEEL_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshDeelToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshDeelToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

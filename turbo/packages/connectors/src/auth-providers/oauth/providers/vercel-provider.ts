@@ -1,14 +1,10 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildVercelAuthorizationUrl,
-  exchangeVercelCode,
-  getVercelSecretName,
-} from "./vercel";
+import { buildVercelAuthorizationUrl, exchangeVercelCode } from "./vercel";
 export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildVercelAuthorizationUrl(
         clientId,
         args.redirectUri,
@@ -16,17 +12,20 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeVercelCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
+        outputs: {
+          accessToken: result.accessToken,
+        },
         scopes: [],
         userInfo: {
           id: result.userInfo.id,
@@ -38,7 +37,6 @@ export const vercelProvider: AuthCodeConnectorAuthProvider<"vercel"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getVercelSecretName,
   },
   revoke: { kind: "none" },
 };

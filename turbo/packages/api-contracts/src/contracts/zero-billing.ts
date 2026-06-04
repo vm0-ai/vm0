@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { adAttributionMetadataSchema } from "./zero-attribution";
 
 const c = initContract();
 
@@ -94,6 +95,7 @@ const checkoutRequestSchema = z.object({
   successUrl: z.string().url(),
   cancelUrl: z.string().url(),
   trialDays: z.literal(7).optional(),
+  adAttribution: adAttributionMetadataSchema.optional(),
 });
 
 const checkoutCompleteRequestSchema = z.object({

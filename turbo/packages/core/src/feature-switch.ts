@@ -171,6 +171,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable remote desktop host registration",
     enabled: false,
   },
+  [FeatureSwitchKey.Banking]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Enable the managed Zero Banking gateway and banking:read ZERO_TOKEN capability for Finicity-backed accounts, balances, and transactions.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.LarkConnector]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -194,10 +201,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable audio output in chat (TTS read-aloud + auto-read) — gates the volume/read buttons and the /api/zero/voice-io/tts route",
     enabled: false,
   },
-  [FeatureSwitchKey.AutoSkill]: {
+  [FeatureSwitchKey.SkillsViewer]: {
     maintainer: "lancy@vm0.ai",
-    description: "Enable automatic skill creation in agent prompts",
+    description: "Show the skills viewer in the Zero sidebar and page UI",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@vm0.ai",
@@ -209,12 +217,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ChatMessageStartButton]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
   [FeatureSwitchKey.ChatThreadRename]: {
@@ -266,6 +268,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SessionWorkspaceImageCache]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Enable runner session workspace image cache reuse for canonical workspace drives.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatArtifactSidebar]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -273,10 +282,30 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatGithubPrTracking]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.MemoryViewer]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Show the read-only memory viewer page in the Zero sidebar and at /memory, listing the files in the user's memory artifact.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatScrollToBottomButton]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread (above the composer) whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
+      "Show a floating scroll-to-bottom button in the bottom-right of the chat thread whenever the message list is scrolled away from the bottom. Clicking it jumps to the latest message.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ChatRecommendedFollowups]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Generate and show recommended follow-up prompts after completed chat runs.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

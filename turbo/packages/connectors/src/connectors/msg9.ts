@@ -11,6 +11,10 @@ export const msg9 = {
         label: "API Key",
         helpText:
           "1. Log in to [msg9](https://www.msg9.io)\n2. Go to **Settings > API Keys**\n3. Create a new API key\n4. Copy the key (format: `msg9_sk_...`)",
+        storage: {
+          secrets: ["MSG9_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

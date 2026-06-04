@@ -11,6 +11,10 @@ export const openweather = {
         label: "API Key",
         helpText:
           "1. Sign in to [OpenWeather](https://home.openweathermap.org)\n2. Go to **My API keys**\n3. Copy your default key or click **Generate** to create a new one\n4. Pass it as the `appid` query parameter on every request",
+        storage: {
+          secrets: ["OPENWEATHER_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

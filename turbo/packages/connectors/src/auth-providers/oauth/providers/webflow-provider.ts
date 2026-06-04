@@ -1,33 +1,32 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildWebflowAuthorizationUrl,
-  exchangeWebflowCode,
-  getWebflowSecretName,
-} from "./webflow";
+import { buildWebflowAuthorizationUrl, exchangeWebflowCode } from "./webflow";
 export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildWebflowAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeWebflowCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: null,
+        outputs: {
+          accessToken: result.accessToken,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,
@@ -39,7 +38,6 @@ export const webflowProvider: AuthCodeConnectorAuthProvider<"webflow"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getWebflowSecretName,
   },
   revoke: { kind: "none" },
 };

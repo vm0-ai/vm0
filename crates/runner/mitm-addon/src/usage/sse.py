@@ -3,6 +3,11 @@
 The scanner owns only SSE framing: line endings, event names, skipped events,
 and ``data`` field boundaries.  Provider modules own JSON parsing and billing
 field mapping through the callback interface below.
+
+Some provider usage streams omit SSE ``event:`` names and put the event type in
+the JSON ``data:`` payload instead.  For those streams, the scanner can
+optimistically capture data before an event name is known while keeping provider
+JSON and billing semantics outside this module.
 """
 
 from typing import Protocol
@@ -21,11 +26,21 @@ class SseUsageEventHandler(Protocol):
     """Provider-owned sink for target SSE event data."""
 
     def should_capture_event(self, event_name: str | None) -> bool:
-        """Return whether data fields for *event_name* should be streamed."""
+        """Return whether data fields for *event_name* should be streamed.
+
+        ``event_name`` is ``None`` before the scanner has seen an ``event:``
+        line.  When ``capture_data_without_event`` is enabled, the scanner may
+        still start capture for a data-before-event frame and let a later
+        ``event:`` line or provider-owned JSON parsing decide the final event.
+        """
         raise NotImplementedError
 
     def on_event_start(self, event_name: str | None) -> None:
-        """Called before the first captured data field in an event."""
+        """Called before the first captured data field in an event.
+
+        ``event_name`` may be ``None`` for event-less frames or for data fields
+        that arrive before their eventual ``event:`` line.
+        """
 
     def on_data(self, chunk: bytes) -> None:
         """Called with bytes from a captured data field."""
@@ -34,10 +49,18 @@ class SseUsageEventHandler(Protocol):
         """Called between multiple captured data fields in one event."""
 
     def on_event_end(self, event_name: str | None) -> None:
-        """Called when a captured event reaches a blank-line boundary."""
+        """Called when a captured event reaches a blank-line boundary.
+
+        The value is the final SSE event name if one was seen, or ``None`` if
+        the frame ended without an ``event:`` line.
+        """
 
     def on_event_discard(self, event_name: str | None) -> None:
-        """Called when an in-progress captured event must be discarded."""
+        """Called when an in-progress captured event must be discarded.
+
+        This can happen when an optimistic data-before-event capture is later
+        assigned a non-capturable event name.
+        """
 
 
 class SseUsageScanner:
@@ -46,6 +69,15 @@ class SseUsageScanner:
     This is deliberately not a full EventSource implementation and does not
     return assembled event bodies.  It keeps only bounded control-line state;
     captured ``data`` payload bytes are streamed directly to the handler.
+
+    With ``capture_data_without_event=True``, the first ``data:`` field can
+    start a captured event while the current event name is still ``None``.  If a
+    later ``event:`` line arrives and the handler accepts that final name, the
+    event completes through ``on_event_end(final_event_name)``.  If the final
+    name is not capturable, the in-progress event is discarded through
+    ``on_event_discard(final_event_name)``.  If no ``event:`` line arrives, the
+    event completes through ``on_event_end(None)`` so provider handlers can
+    inspect payload fields such as a JSON ``type`` value.
     """
 
     def __init__(
@@ -55,6 +87,13 @@ class SseUsageScanner:
         max_control_line_bytes: int = _MAX_CONTROL_LINE_BYTES,
         capture_data_without_event: bool = False,
     ) -> None:
+        """Create a bounded SSE usage scanner.
+
+        ``capture_data_without_event`` supports provider streams whose event
+        type is carried in the JSON payload instead of the SSE ``event:`` field.
+        It only affects data fields seen while the current event name is
+        ``None``; named events still go through ``should_capture_event``.
+        """
         self._handler = handler
         self._max_control_line_bytes = max_control_line_bytes
         self._capture_data_without_event = capture_data_without_event

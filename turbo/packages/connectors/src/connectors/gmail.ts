@@ -16,15 +16,28 @@ export const gmail = {
           clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
           clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GMAIL_ACCESS_TOKEN", "GMAIL_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://oauth2.googleapis.com/token",
           scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+          outputs: {
+            accessToken: "$secrets.GMAIL_ACCESS_TOKEN",
+            refreshToken: "$secrets.GMAIL_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "GMAIL_ACCESS_TOKEN",
-          refreshToken: "GMAIL_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.GMAIL_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.GMAIL_ACCESS_TOKEN",
+            refreshToken: "$secrets.GMAIL_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["GMAIL_ACCESS_TOKEN"],
           envBindings: {
             GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
           },

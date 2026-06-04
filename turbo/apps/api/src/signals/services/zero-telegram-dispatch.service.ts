@@ -1,6 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
 
-import { command, type Setter } from "ccstate";
+import { command } from "ccstate";
 import { and, desc, eq } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -875,72 +875,76 @@ async function fetchTelegramContext(args: {
   ].join("\n");
 }
 
-async function runAgentForTelegram(args: {
-  readonly set: Setter;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly sessionId: string | undefined;
-  readonly prompt: string;
-  readonly appendSystemPrompt: string;
-  readonly userInfoExtras: {
-    readonly telegramDisplayName?: string;
-    readonly telegramUsername?: string;
-    readonly telegramUserId?: string;
-    readonly telegramLanguage?: string;
-  };
-  readonly apiStartTime: number;
-  readonly callbackPayload: unknown;
-  readonly signal: AbortSignal;
-}): Promise<RunDispatchResult> {
-  const result = await args.set(
-    createZeroIntegrationRun$,
-    {
-      userId: args.userId,
-      orgId: args.orgId,
-      agentId: args.agentId,
-      sessionId: args.sessionId,
-      prompt: args.prompt,
-      appendSystemPrompt: args.appendSystemPrompt,
-      triggerSource: "telegram",
-      userInfoExtras: args.userInfoExtras,
-      callbacks: [
-        {
-          url: `${env("VM0_API_URL")}/api/internal/callbacks/telegram`,
-          secret: randomBytes(32).toString("hex"),
-          payload: args.callbackPayload,
-        },
-      ],
-      apiStartTime: args.apiStartTime,
+const runAgentForTelegram$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly sessionId: string | undefined;
+      readonly prompt: string;
+      readonly appendSystemPrompt: string;
+      readonly userInfoExtras: {
+        readonly telegramDisplayName?: string;
+        readonly telegramUsername?: string;
+        readonly telegramUserId?: string;
+        readonly telegramLanguage?: string;
+      };
+      readonly apiStartTime: number;
+      readonly callbackPayload: unknown;
     },
-    args.signal,
-  );
-  args.signal.throwIfAborted();
-  if (result.status !== 201) {
-    return {
-      status: "failed",
-      response:
-        routeErrorMessage(result.body) ??
-        "Something went wrong while starting the agent. Please try again later.",
-    };
-  }
+    signal: AbortSignal,
+  ): Promise<RunDispatchResult> => {
+    const result = await set(
+      createZeroIntegrationRun$,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: args.agentId,
+        sessionId: args.sessionId,
+        prompt: args.prompt,
+        appendSystemPrompt: args.appendSystemPrompt,
+        triggerSource: "telegram",
+        userInfoExtras: args.userInfoExtras,
+        callbacks: [
+          {
+            url: `${env("VM0_API_URL")}/api/internal/callbacks/telegram`,
+            secret: randomBytes(32).toString("hex"),
+            payload: args.callbackPayload,
+          },
+        ],
+        apiStartTime: args.apiStartTime,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (result.status !== 201) {
+      return {
+        status: "failed",
+        response:
+          routeErrorMessage(result.body) ??
+          "Something went wrong while starting the agent. Please try again later.",
+      };
+    }
 
-  const status = stringField(result.body, "status");
-  const runId = stringField(result.body, "runId");
-  if (status === "queued") {
-    return { status: "queued", runId };
-  }
-  if (status === "failed") {
-    return {
-      status: "failed",
-      runId,
-      response:
-        stringField(result.body, "error") ??
-        "Something went wrong while starting the agent. Please try again later.",
-    };
-  }
-  return { status: "accepted", runId };
-}
+    const status = stringField(result.body, "status");
+    const runId = stringField(result.body, "runId");
+    if (status === "queued") {
+      return { status: "queued", runId };
+    }
+    if (status === "failed") {
+      return {
+        status: "failed",
+        runId,
+        response:
+          stringField(result.body, "error") ??
+          "Something went wrong while starting the agent. Please try again later.",
+      };
+    }
+    return { status: "accepted", runId };
+  },
+);
 
 function telegramUserInfoExtras(message: TelegramDispatchMessage): {
   readonly telegramDisplayName?: string;
@@ -960,85 +964,93 @@ function telegramUserInfoExtras(message: TelegramDispatchMessage): {
   };
 }
 
-async function dispatchTelegramMessage(args: {
-  readonly set: Setter;
-  readonly db: Db;
-  readonly installation: TelegramInstallation;
-  readonly userLink: TelegramUserLink;
-  readonly agent: TelegramAgent;
-  readonly botToken: string;
-  readonly message: TelegramDispatchMessage;
-  readonly chatId: string;
-  readonly session: ThreadSession;
-  readonly prompt: string;
-  readonly apiStartTime: number;
-  readonly isDM: boolean;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const context = await fetchTelegramContext({
-    db: args.db,
-    installationId: args.installation.telegramBotId,
-    chatId: args.chatId,
-    currentMessageId: String(args.message.message_id),
-  });
-  args.signal.throwIfAborted();
-
-  const result = await runAgentForTelegram({
-    set: args.set,
-    userId: args.userLink.vm0UserId,
-    orgId: args.installation.orgId,
-    agentId: args.agent.agentId,
-    sessionId: args.session.existingSessionId,
-    prompt: args.prompt,
-    appendSystemPrompt: buildTelegramPrompt(
-      {
-        botId: args.installation.telegramBotId,
-        botUsername: args.installation.botUsername,
-        chatId: args.chatId,
-        chatType: args.message.chat.type,
-        messageId: String(args.message.message_id),
-        rootMessageId: args.session.rootMessageId ?? null,
-        messageThreadId: args.message.message_thread_id,
-      },
-      context,
-    ),
-    userInfoExtras: telegramUserInfoExtras(args.message),
-    apiStartTime: args.apiStartTime,
-    callbackPayload: {
+const dispatchTelegramMessage$ = command(
+  async (
+    { set },
+    args: {
+      readonly db: Db;
+      readonly installation: TelegramInstallation;
+      readonly userLink: TelegramUserLink;
+      readonly agent: TelegramAgent;
+      readonly botToken: string;
+      readonly message: TelegramDispatchMessage;
+      readonly chatId: string;
+      readonly session: ThreadSession;
+      readonly prompt: string;
+      readonly apiStartTime: number;
+      readonly isDM: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const context = await fetchTelegramContext({
+      db: args.db,
       installationId: args.installation.telegramBotId,
       chatId: args.chatId,
-      messageId: String(args.message.message_id),
-      rootMessageId: args.session.rootMessageId ?? null,
-      userLinkId: args.userLink.id,
-      agentId: args.installation.defaultComposeId,
-      existingSessionId: args.session.existingSessionId ?? null,
-      isDM: args.isDM,
-    },
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-
-  if (result.status === "queued") {
-    await sendQueuedNotification({
-      botToken: args.botToken,
-      chatId: args.chatId,
-      replyToMessageId: args.isDM ? undefined : args.message.message_id,
+      currentMessageId: String(args.message.message_id),
     });
-    return;
-  }
+    signal.throwIfAborted();
 
-  if (result.status === "failed") {
-    await sendAgentError({
-      botToken: args.botToken,
-      chatId: args.chatId,
-      message:
-        result.response ??
-        "An unexpected error occurred. Please try again later.",
-      runId: result.runId,
-      replyToMessageId: args.isDM ? undefined : args.message.message_id,
-    });
-  }
-}
+    const result = await set(
+      runAgentForTelegram$,
+      {
+        userId: args.userLink.vm0UserId,
+        orgId: args.installation.orgId,
+        agentId: args.agent.agentId,
+        sessionId: args.session.existingSessionId,
+        prompt: args.prompt,
+        appendSystemPrompt: buildTelegramPrompt(
+          {
+            botId: args.installation.telegramBotId,
+            botUsername: args.installation.botUsername,
+            chatId: args.chatId,
+            chatType: args.message.chat.type,
+            messageId: String(args.message.message_id),
+            rootMessageId: args.session.rootMessageId ?? null,
+            messageThreadId: args.message.message_thread_id,
+          },
+          context,
+        ),
+        userInfoExtras: telegramUserInfoExtras(args.message),
+        apiStartTime: args.apiStartTime,
+        callbackPayload: {
+          installationId: args.installation.telegramBotId,
+          chatId: args.chatId,
+          messageId: String(args.message.message_id),
+          rootMessageId: args.session.rootMessageId ?? null,
+          userLinkId: args.userLink.id,
+          agentId: args.installation.defaultComposeId,
+          existingSessionId: args.session.existingSessionId ?? null,
+          isDM: args.isDM,
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "queued") {
+      await sendQueuedNotification({
+        botToken: args.botToken,
+        chatId: args.chatId,
+        replyToMessageId: args.isDM ? undefined : args.message.message_id,
+      });
+      signal.throwIfAborted();
+      return;
+    }
+
+    if (result.status === "failed") {
+      await sendAgentError({
+        botToken: args.botToken,
+        chatId: args.chatId,
+        message:
+          result.response ??
+          "An unexpected error occurred. Please try again later.",
+        runId: result.runId,
+        replyToMessageId: args.isDM ? undefined : args.message.message_id,
+      });
+      signal.throwIfAborted();
+    }
+  },
+);
 
 async function resolveDispatchBase(args: {
   readonly db: Db;
@@ -1188,21 +1200,23 @@ export const dispatchTelegramDirectMessage$ = command(
       prompt = `${replyQuote}\n\n${prompt}`;
     }
 
-    await dispatchTelegramMessage({
-      set,
-      db,
-      installation: base.installation,
-      userLink: base.userLink,
-      agent: base.agent,
-      botToken: base.botToken,
-      message: base.message,
-      chatId: base.chatId,
-      session,
-      prompt,
-      apiStartTime: args.apiStartTime,
-      isDM: true,
+    await set(
+      dispatchTelegramMessage$,
+      {
+        db,
+        installation: base.installation,
+        userLink: base.userLink,
+        agent: base.agent,
+        botToken: base.botToken,
+        message: base.message,
+        chatId: base.chatId,
+        session,
+        prompt,
+        apiStartTime: args.apiStartTime,
+        isDM: true,
+      },
       signal,
-    });
+    );
   },
 );
 
@@ -1252,20 +1266,22 @@ export const dispatchTelegramMention$ = command(
       prompt = `${replyQuote}\n\n${prompt}`;
     }
 
-    await dispatchTelegramMessage({
-      set,
-      db,
-      installation: base.installation,
-      userLink: base.userLink,
-      agent: base.agent,
-      botToken: base.botToken,
-      message: base.message,
-      chatId: base.chatId,
-      session,
-      prompt,
-      apiStartTime: args.apiStartTime,
-      isDM: false,
+    await set(
+      dispatchTelegramMessage$,
+      {
+        db,
+        installation: base.installation,
+        userLink: base.userLink,
+        agent: base.agent,
+        botToken: base.botToken,
+        message: base.message,
+        chatId: base.chatId,
+        session,
+        prompt,
+        apiStartTime: args.apiStartTime,
+        isDM: false,
+      },
       signal,
-    });
+    );
   },
 );

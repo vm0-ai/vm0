@@ -2,22 +2,23 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildDocuSignAuthorizationUrl,
   exchangeDocuSignCode,
-  getDocuSignSecretName,
   refreshDocuSignToken,
 } from "./docusign";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildDocuSignAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -27,6 +28,7 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
         );
       }
       const result = await exchangeDocuSignCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -34,8 +36,10 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
         state,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -48,13 +52,16 @@ export const docusignProvider: AuthCodeConnectorAuthProvider<"docusign"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getDocuSignSecretName,
-    getRefreshSecretName: () => {
-      return "DOCUSIGN_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshDocuSignToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshDocuSignToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

@@ -1,7 +1,8 @@
 import { command } from "ccstate";
 import { zeroBillingRedeemContract } from "@vm0/api-contracts/contracts/zero-billing";
 
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
+import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { badRequestMessage } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -45,12 +46,11 @@ const redeemAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   const { successUrl, cancelUrl } = bodyResult.data;
 
   // Open-redirect guard: client supplies successUrl/cancelUrl and they flow
-  // straight to Stripe. Pin both to the platform origin so an attacker can't
+  // straight to Stripe. Pin both to vm0-owned hosts so an attacker can't
   // redirect Stripe back to evil.example.com.
-  const appOrigin = new URL(env("APP_URL")).origin;
   if (
-    new URL(successUrl).origin !== appOrigin ||
-    new URL(cancelUrl).origin !== appOrigin
+    !billingRedirectAllowed(successUrl) ||
+    !billingRedirectAllowed(cancelUrl)
   ) {
     return badRequestMessage(
       "successUrl and cancelUrl must match the platform origin",

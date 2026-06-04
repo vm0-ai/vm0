@@ -1,14 +1,16 @@
 import { z } from "zod";
 
-import { getDeviceAuthGrantConfig } from "../grant-config";
 import type {
   OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
   OAuthRefreshResult,
-  OAuthTokenResult,
+  OAuthTokenUserInfo,
 } from "../types";
 import { throwOAuthError } from "../error";
 
+const BASE44_DEVICE_AUTH_URL = "https://app.base44.com/oauth/device/code";
+const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 export const BASE44_ACCESS_SECRET_NAME = "BASE44_ACCESS_TOKEN";
@@ -51,10 +53,6 @@ const userInfoResponseSchema = z
   })
   .passthrough();
 
-function base44DeviceAuthGrant() {
-  return getDeviceAuthGrantConfig("base44");
-}
-
 function parseScopes(scope: string | undefined): string[] {
   return scope?.split(/\s+/).filter(Boolean) ?? [];
 }
@@ -62,7 +60,7 @@ function parseScopes(scope: string | undefined): string[] {
 function devicePollErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult {
+}): OAuthDeviceAuthIncompleteResult {
   if (args.error === "authorization_pending") {
     return { status: "pending" };
   }
@@ -107,7 +105,7 @@ export async function startBase44DeviceAuth(args: {
   readonly clientId: string;
   readonly scopes: readonly string[];
 }): Promise<OAuthDeviceAuthStartResult> {
-  const response = await fetch(base44DeviceAuthGrant().deviceAuthUrl, {
+  const response = await fetch(BASE44_DEVICE_AUTH_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -136,8 +134,8 @@ export async function startBase44DeviceAuth(args: {
 export async function pollBase44DeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult> {
-  const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
+}): Promise<OAuthDeviceAuthPollResult<"base44", "oauth">> {
+  const response = await fetch(BASE44_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -176,8 +174,10 @@ export async function pollBase44DeviceAuth(args: {
   return {
     status: "complete",
     token: {
-      accessToken,
-      refreshToken: data.refresh_token ?? null,
+      outputs: {
+        accessToken,
+        refreshToken: data.refresh_token ?? null,
+      },
       expiresIn: data.expires_in,
       scopes: parseScopes(data.scope),
       userInfo,
@@ -188,8 +188,10 @@ export async function pollBase44DeviceAuth(args: {
 export async function refreshBase44Token(args: {
   readonly clientId: string;
   readonly refreshToken: string;
+  readonly signal: AbortSignal;
 }): Promise<OAuthRefreshResult> {
-  const response = await fetch(base44DeviceAuthGrant().tokenUrl, {
+  const response = await fetch(BASE44_TOKEN_URL, {
+    signal: args.signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -215,7 +217,7 @@ export async function refreshBase44Token(args: {
 
 async function fetchBase44UserInfo(
   accessToken: string,
-): Promise<OAuthTokenResult["userInfo"]> {
+): Promise<OAuthTokenUserInfo> {
   const response = await fetch(BASE44_USERINFO_URL, {
     headers: {
       Authorization: `Bearer ${accessToken}`,

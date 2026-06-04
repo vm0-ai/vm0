@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 
 const XERO_AUTHORIZATION_URL =
   "https://login.xero.com/identity/connect/authorize";
@@ -32,11 +34,11 @@ interface XeroRefreshResult {
  * Build Xero OAuth authorization URL.
  */
 export function buildXeroAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("xero");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -53,13 +55,13 @@ export function buildXeroAuthorizationUrl(
  * Xero uses form-encoded body with client_id and client_secret.
  */
 export async function exchangeXeroCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<XeroTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("xero");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(XERO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -117,9 +119,10 @@ export async function refreshXeroToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<XeroRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("xero");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(XERO_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

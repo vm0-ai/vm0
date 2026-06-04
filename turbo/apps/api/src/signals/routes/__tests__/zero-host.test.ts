@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -38,9 +39,26 @@ const track = createFixtureTracker<HostedSiteFixture>(async (fixture) => {
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
 
-function seedHostedSiteFixture(): Promise<HostedSiteFixture> {
+async function setOrgTier(
+  orgId: string,
+  tier: "free" | "pro-suspend",
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(orgMetadata)
+    .values({ orgId, tier, credits: 10_000 })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { tier, credits: 10_000 },
+    });
+}
+
+async function seedHostedSiteFixture(
+  tier: "free" | "pro-suspend" = "free",
+): Promise<HostedSiteFixture> {
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
+  await setOrgTier(orgId, tier);
   return track(Promise.resolve({ orgId, userId }));
 }
 
@@ -120,9 +138,11 @@ describe("POST /api/zero/host/deployments/prepare", () => {
       [200],
     );
 
-    expect(response.body.publicSlug).toMatch(/^demo-site-[a-f0-9]{8}$/);
+    expect(response.body.publicSlug).toMatch(
+      /^demo-site-[a-f0-9]{8}-[a-f0-9]{8}$/,
+    );
     expect(response.body.url).toMatch(
-      /^https:\/\/demo-site-[a-f0-9]{8}\.sites\.example\.com$/,
+      /^https:\/\/demo-site-[a-f0-9]{8}-[a-f0-9]{8}\.sites\.example\.com$/,
     );
     expect(response.body.uploads).toHaveLength(2);
     expect(
@@ -151,6 +171,122 @@ describe("POST /api/zero/host/deployments/prepare", () => {
       sizeBytes: 540,
       spaFallback: true,
     });
+  });
+
+  it("generates a unique public slug by default for the same site slug", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const first = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [200],
+    );
+
+    expect(first.body.publicSlug).toMatch(
+      /^demo-site-[a-f0-9]{8}-[a-f0-9]{8}$/,
+    );
+    expect(second.body.publicSlug).toMatch(
+      /^demo-site-[a-f0-9]{8}-[a-f0-9]{8}$/,
+    );
+    expect(second.body.publicSlug).not.toBe(first.body.publicSlug);
+    expect(second.body.url).not.toBe(first.body.url);
+    expect(second.body.siteId).toBe(first.body.siteId);
+
+    const [site] = await store
+      .set(writeDb$)
+      .select()
+      .from(hostedSites)
+      .where(eq(hostedSites.id, first.body.siteId));
+    expect(site).toMatchObject({
+      orgId: fixture.orgId,
+      slug: "demo-site",
+      publicSlug: second.body.publicSlug,
+    });
+  });
+
+  it("reuses the public slug when a slug suffix is provided", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const first = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "demo-site",
+          slugSuffix: "release-01",
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+    const second = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "demo-site",
+          slugSuffix: "release-01",
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [200],
+    );
+
+    expect(first.body.publicSlug).toMatch(/^demo-site-[a-f0-9]{8}-release-01$/);
+    expect(second.body.publicSlug).toBe(first.body.publicSlug);
+    expect(second.body.url).toBe(first.body.url);
+    expect(second.body.siteId).toBe(first.body.siteId);
+  });
+
+  it("rejects slug suffixes that would exceed the stored public slug length", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          site: "a".repeat(63),
+          slugSuffix: "b".repeat(32),
+          spaFallback: true,
+          files: validFiles(),
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    expect(response.body.error.message).toContain("96");
+  });
+
+  it("rejects suspended orgs with insufficient credits", async () => {
+    const fixture = await seedHostedSiteFixture("pro-suspend");
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const response = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [402],
+    );
+
+    expect(response.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
   it("rejects deployments missing index.html", async () => {
@@ -207,7 +343,7 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
       status: "ready",
     });
     expect(completed.body.url).toMatch(
-      /^https:\/\/demo-site-[a-f0-9]{8}\.sites\.example\.com$/,
+      /^https:\/\/demo-site-[a-f0-9]{8}-[a-f0-9]{8}\.sites\.example\.com$/,
     );
     expect(puts).toStrictEqual([
       `${prefix}/manifest.json`,
@@ -220,6 +356,32 @@ describe("POST /api/zero/host/deployments/:deploymentId/complete", () => {
       .from(hostedSites)
       .where(eq(hostedSites.id, prepared.body.siteId));
     expect(site?.activeDeploymentId).toBe(prepared.body.deploymentId);
+  });
+
+  it("rejects suspended orgs before completing a deployment", async () => {
+    const fixture = await seedHostedSiteFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const client = setupApp({ context })(zeroHostContract);
+    const prepared = await accept(
+      client.prepare({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { site: "demo-site", spaFallback: true, files: validFiles() },
+      }),
+      [200],
+    );
+
+    await setOrgTier(fixture.orgId, "pro-suspend");
+    const completed = await accept(
+      client.complete({
+        params: { deploymentId: prepared.body.deploymentId },
+        headers: { authorization: "Bearer clerk-session" },
+        body: {},
+      }),
+      [402],
+    );
+
+    expect(completed.body.error.code).toBe("INSUFFICIENT_CREDITS");
   });
 
   it("records a run artifact that points at the hosted site URL", async () => {

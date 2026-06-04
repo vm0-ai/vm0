@@ -96,7 +96,6 @@ function storedExecutionContext(args?: {
 }): StoredExecutionContext {
   const secretValue = args?.secretValue ?? "super-secret";
   return {
-    workingDir: "/workspace",
     storageManifest: null,
     environment: {
       API_KEY: secretValue,
@@ -780,7 +779,6 @@ describe("POST /api/runners/*", () => {
     expect(response.body).toMatchObject({
       runId: queued.runId,
       prompt: "queued prompt",
-      workingDir: "/workspace",
       cliAgentType: "claude-code",
       environment: {
         API_KEY: "runner-visible-secret",
@@ -889,7 +887,7 @@ describe("POST /api/runners/*", () => {
     const db = store.set(writeDb$);
     await db
       .update(runnerJobQueue)
-      .set({ executionContext: { workingDir: "/workspace" } })
+      .set({ executionContext: {} })
       .where(eq(runnerJobQueue.runId, queued.runId));
 
     const response = await claimRunnerJob({
@@ -978,7 +976,7 @@ describe("POST /api/runners/*", () => {
     const db = store.set(writeDb$);
     await db
       .update(runnerJobQueue)
-      .set({ executionContext: { workingDir: "/workspace" } })
+      .set({ executionContext: {} })
       .where(eq(runnerJobQueue.runId, queued.runId));
     const client = setupApp({ context })(runnersJobClaimContract);
 

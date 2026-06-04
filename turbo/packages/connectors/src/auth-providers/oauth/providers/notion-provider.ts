@@ -2,14 +2,14 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildNotionAuthorizationUrl,
   exchangeNotionCode,
-  getNotionSecretName,
   refreshNotionToken,
 } from "./notion";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildNotionAuthorizationUrl(
         clientId,
         args.redirectUri,
@@ -17,18 +17,21 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeNotionCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: result.userInfo,
@@ -37,13 +40,16 @@ export const notionProvider: AuthCodeConnectorAuthProvider<"notion"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getNotionSecretName,
-    getRefreshSecretName: () => {
-      return "NOTION_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshNotionToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshNotionToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

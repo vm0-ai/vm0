@@ -43,7 +43,6 @@ function mockTeamAPIs() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

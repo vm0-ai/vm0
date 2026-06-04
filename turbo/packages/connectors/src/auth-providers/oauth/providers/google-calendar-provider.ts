@@ -4,15 +4,17 @@ import {
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "../google";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calendar"> =
   {
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-calendar",
           clientId,
           redirectUri,
@@ -20,10 +22,11 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-calendar",
           clientId,
           clientSecret,
@@ -31,8 +34,10 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
           redirectUri,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {
@@ -45,20 +50,17 @@ export const googleCalendarProvider: AuthCodeConnectorAuthProvider<"google-calen
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: () => {
-        return "GOOGLE_CALENDAR_ACCESS_TOKEN";
-      },
-      getRefreshSecretName: () => {
-        return "GOOGLE_CALENDAR_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
-        const refreshToken = args.refreshToken;
-        return refreshGoogleToken(
-          "google-calendar",
-          clientId,
-          clientSecret,
-          refreshToken,
+      refresh: async (args) => {
+        const { clientId, clientSecret } = args.authClient;
+        const refreshToken = args.inputs.refreshToken;
+        return oauthRefreshResultToProviderResult(
+          await refreshGoogleToken(
+            "google-calendar",
+            clientId,
+            clientSecret,
+            refreshToken,
+            args.signal,
+          ),
         );
       },
     },

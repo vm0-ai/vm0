@@ -240,36 +240,6 @@ export function extractAndGroupVariables(obj: unknown): {
 }
 
 /**
- * Template literal that resolves to the compose's framework-derived working_dir
- * during mount-path expansion. Scoped to mount paths only — intentionally not
- * part of VARIABLE_PATTERN (different grammar: no source prefix).
- */
-export const WORKING_DIR_TEMPLATE = "${{ working_dir }}";
-
-/**
- * Expand the ${{ working_dir }} template in a mount path.
- * @param raw - Mount path string, possibly containing the template
- * @param workingDir - Working dir to substitute (typically framework-derived)
- * @returns { result, missing: true } when template is present but workingDir
- * is not provided; otherwise the expanded string.
- */
-export function expandMountPath(
-  raw: string,
-  workingDir: string | undefined,
-): { result: string; missing: boolean } {
-  if (!raw.includes(WORKING_DIR_TEMPLATE)) {
-    return { result: raw, missing: false };
-  }
-  if (!workingDir) {
-    return { result: raw, missing: true };
-  }
-  return {
-    result: raw.replaceAll(WORKING_DIR_TEMPLATE, workingDir),
-    missing: false,
-  };
-}
-
-/**
  * Format missing variables for error messages
  * @param missing - Array of missing variable references
  * @returns Formatted error message

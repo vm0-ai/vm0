@@ -1,19 +1,32 @@
 import { randomUUID } from "node:crypto";
 
-import type {
-  AuthCodeGrantConnectorType,
-  ConnectorAuthClientConfig,
+import {
+  CONNECTOR_TYPES,
+  type AuthCodeGrantConnectorType,
+  type ConnectorAuthCodeGrantAuthMethodId,
+  type ConnectorAuthMethodId,
+  type ConnectorAuthClientConfig,
+  type ConnectorAuthMethodConfig,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthMethod } from "@vm0/connectors/connector-utils";
-import { getConnectorAuthProviderSecretMetadata } from "@vm0/connectors/auth-providers";
-import { testOauthProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+import {
+  connectorAuthMethodHasGrantKind,
+  getConnectorAuthMethod,
+  getConnectorAuthMethodGrantMetadata,
+  getConnectorGrantOutputSecretName,
+} from "@vm0/connectors/connector-utils";
+import {
+  testOauthApiProvider,
+  testOauthProvider,
+} from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-provider";
+import type { AuthCodeConnectorAuthProvider } from "@vm0/connectors/auth-providers/types";
+import type { OAuthTokenResultBase } from "@vm0/connectors/auth-providers";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { connectorSessions } from "@vm0/db/schema/connector-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
@@ -89,7 +102,6 @@ function callbackUrl(
 
 function callbackHeaders(args: {
   readonly stateCookie?: string;
-  readonly sessionId?: string;
   readonly codeVerifier?: string;
   readonly oauthContext?: string;
   readonly webOrigin?: string;
@@ -98,11 +110,6 @@ function callbackHeaders(args: {
   if (args.stateCookie) {
     cookies.push(
       `connector_oauth_state=${encodeURIComponent(args.stateCookie)}`,
-    );
-  }
-  if (args.sessionId) {
-    cookies.push(
-      `connector_oauth_session=${encodeURIComponent(args.sessionId)}`,
     );
   }
   if (args.codeVerifier) {
@@ -213,7 +220,63 @@ type CapturedOAuthExchange = {
   readonly oauthContext: string | undefined;
 };
 
+type DynamicTestOAuthExchangeOptions<
+  Method extends ConnectorAuthCodeGrantAuthMethodId<"test-oauth">,
+> = {
+  readonly authMethod: Method;
+  readonly provider: AuthCodeConnectorAuthProvider<"test-oauth", Method>;
+};
+
+type DynamicTestOAuthExchangeResult = {
+  readonly outputs: {
+    readonly accessToken: string;
+    readonly refreshToken: string;
+  };
+  readonly expiresIn: number;
+  readonly scopes: string[];
+  readonly userInfo: {
+    readonly id: string;
+    readonly username: string;
+    readonly email: string;
+  };
+};
+
+type DynamicTestOAuthApiExchangeResult = Omit<
+  DynamicTestOAuthExchangeResult,
+  "outputs"
+> & {
+  readonly outputs: {
+    readonly initialAccessToken: string;
+    readonly initialRefreshToken: string;
+  };
+};
+
+const defaultDynamicTestOAuthExchangeOptions = {
+  authMethod: "oauth",
+  provider: testOauthProvider,
+} satisfies DynamicTestOAuthExchangeOptions<"oauth">;
+
 function useDynamicTestOAuthExchange(): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+};
+function useDynamicTestOAuthExchange(
+  args: DynamicTestOAuthExchangeOptions<"oauth">,
+): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+};
+function useDynamicTestOAuthExchange(
+  args: DynamicTestOAuthExchangeOptions<"api">,
+): {
+  readonly exchanges: readonly CapturedOAuthExchange[];
+  readonly restore: () => void;
+};
+function useDynamicTestOAuthExchange(
+  args?:
+    | DynamicTestOAuthExchangeOptions<"oauth">
+    | DynamicTestOAuthExchangeOptions<"api">,
+): {
   readonly exchanges: readonly CapturedOAuthExchange[];
   readonly restore: () => void;
 } {
@@ -221,50 +284,186 @@ function useDynamicTestOAuthExchange(): {
 
   return {
     exchanges,
-    restore: configureDynamicTestOAuthExchange(exchanges),
+    restore: args
+      ? configureDynamicTestOAuthExchange(exchanges, args)
+      : configureDynamicTestOAuthExchange(
+          exchanges,
+          defaultDynamicTestOAuthExchangeOptions,
+        ),
   };
+}
+
+function dynamicTestOAuthExchangeResult(): DynamicTestOAuthExchangeResult {
+  return {
+    outputs: {
+      accessToken: "dynamic-access-token",
+      refreshToken: "dynamic-refresh-token",
+    },
+    expiresIn: 3600,
+    scopes: ["read"],
+    userInfo: {
+      id: "dynamic-user-id",
+      username: "dynamic-user",
+      email: "dynamic@example.com",
+    },
+  };
+}
+
+function dynamicTestOAuthApiExchangeResult(): DynamicTestOAuthApiExchangeResult {
+  return {
+    outputs: {
+      initialAccessToken: "dynamic-access-token",
+      initialRefreshToken: "dynamic-refresh-token",
+    },
+    expiresIn: 3600,
+    scopes: ["read"],
+    userInfo: {
+      id: "dynamic-user-id",
+      username: "dynamic-user",
+      email: "dynamic@example.com",
+    },
+  };
+}
+
+function captureDynamicTestOAuthExchange(
+  exchanges: CapturedOAuthExchange[],
+  args:
+    | Parameters<
+        AuthCodeConnectorAuthProvider<
+          "test-oauth",
+          "oauth"
+        >["grant"]["exchangeCode"]
+      >[0]
+    | Parameters<
+        AuthCodeConnectorAuthProvider<
+          "test-oauth",
+          "api"
+        >["grant"]["exchangeCode"]
+      >[0],
+): void {
+  exchanges.push({
+    clientId:
+      args.authClient.clientRegistration === "static"
+        ? args.authClient.clientId
+        : undefined,
+    clientSecret:
+      args.authClient.clientRegistration === "static" &&
+      args.authClient.clientType === "confidential"
+        ? args.authClient.clientSecret
+        : undefined,
+    code: args.code,
+    redirectUri: args.redirectUri,
+    state: args.state,
+    codeVerifier: args.codeVerifier,
+    oauthContext: args.oauthContext,
+  });
 }
 
 function configureDynamicTestOAuthExchange(
   exchanges: CapturedOAuthExchange[],
+  args:
+    | DynamicTestOAuthExchangeOptions<"oauth">
+    | DynamicTestOAuthExchangeOptions<"api">,
 ): () => void {
-  const method = getConnectorAuthMethod("test-oauth", "oauth");
+  const method = getConnectorAuthMethod("test-oauth", args.authMethod);
   if (method?.grant.kind !== "auth-code") {
-    throw new Error("test-oauth OAuth config is missing");
+    throw new Error(`test-oauth ${args.authMethod} config is missing`);
   }
 
   const mutableMethod = method as { client: ConnectorAuthClientConfig };
   const originalClient = mutableMethod.client;
-  const provider = testOauthProvider;
-  const originalExchangeCode = provider.grant.exchangeCode;
-
   mutableMethod.client = dynamicPublicClient;
-  provider.grant.exchangeCode = (args) => {
-    exchanges.push({
-      clientId: args.clientId,
-      clientSecret: args.clientSecret,
-      code: args.code,
-      redirectUri: args.redirectUri,
-      state: args.state,
-      codeVerifier: args.codeVerifier,
-      oauthContext: args.oauthContext,
-    });
-    return Promise.resolve({
-      accessToken: "dynamic-access-token",
-      refreshToken: "dynamic-refresh-token",
-      expiresIn: 3600,
-      scopes: ["read"],
-      userInfo: {
-        id: "dynamic-user-id",
-        username: "dynamic-user",
-        email: "dynamic@example.com",
-      },
-    });
-  };
+  if (args.authMethod === "oauth") {
+    const provider = args.provider;
+    const originalExchangeCode = provider.grant.exchangeCode;
+    provider.grant.exchangeCode = (exchangeArgs) => {
+      captureDynamicTestOAuthExchange(exchanges, exchangeArgs);
+      return Promise.resolve(dynamicTestOAuthExchangeResult());
+    };
+    return () => {
+      mutableMethod.client = originalClient;
+      provider.grant.exchangeCode = originalExchangeCode;
+    };
+  }
 
+  const provider = args.provider;
+  const originalExchangeCode = provider.grant.exchangeCode;
+  provider.grant.exchangeCode = (exchangeArgs) => {
+    captureDynamicTestOAuthExchange(exchanges, exchangeArgs);
+    return Promise.resolve(dynamicTestOAuthApiExchangeResult());
+  };
   return () => {
     mutableMethod.client = originalClient;
     provider.grant.exchangeCode = originalExchangeCode;
+  };
+}
+
+function testManualAuthMethod(args: {
+  readonly secretName: string;
+  readonly variableName: string;
+}): ConnectorAuthMethodConfig {
+  return {
+    label: `Manual ${args.secretName}`,
+    helpText: "Test-only manual grant.",
+    storage: {
+      secrets: [args.secretName],
+      variables: [args.variableName],
+    },
+    grant: {
+      kind: "manual",
+      fields: {
+        [args.secretName]: {
+          label: "Token",
+          required: true,
+        },
+        [args.variableName]: {
+          label: "Host",
+          required: false,
+          storage: "variable",
+        },
+      },
+    },
+    access: {
+      kind: "static",
+      envBindings: {
+        [args.secretName]: `$secrets.${args.secretName}`,
+        [args.variableName]: `$vars.${args.variableName}`,
+      },
+    },
+    revoke: { kind: "none" },
+  };
+}
+
+function configureTestOauthManualGrantAuthMethods(): () => void {
+  const authMethods = CONNECTOR_TYPES["test-oauth"].authMethods;
+  const originalApiDescriptor = Object.getOwnPropertyDescriptor(
+    authMethods,
+    "api",
+  );
+  Object.defineProperty(authMethods, "api-token", {
+    value: testManualAuthMethod({
+      secretName: "TEST_OAUTH_LEGACY_TOKEN",
+      variableName: "TEST_OAUTH_LEGACY_HOST",
+    }),
+    configurable: true,
+    enumerable: true,
+  });
+  Object.defineProperty(authMethods, "api", {
+    value: testManualAuthMethod({
+      secretName: "TEST_OAUTH_OTHER_TOKEN",
+      variableName: "TEST_OAUTH_OTHER_HOST",
+    }),
+    configurable: true,
+    enumerable: true,
+  });
+
+  return () => {
+    Reflect.deleteProperty(authMethods, "api-token");
+    if (originalApiDescriptor) {
+      Object.defineProperty(authMethods, "api", originalApiDescriptor);
+    } else {
+      Reflect.deleteProperty(authMethods, "api");
+    }
   };
 }
 
@@ -922,28 +1121,12 @@ function mockProviderOAuth(options: ProviderMockOptions): void {
   mocker(resolvedProviderMockOptions(options));
 }
 
-async function seedSession(userId: string): Promise<string> {
-  const db = store.set(writeDb$);
-  const [session] = await db
-    .insert(connectorSessions)
-    .values({
-      code: randomUUID().slice(0, 9).toUpperCase(),
-      type: "github",
-      userId,
-      status: "pending",
-      expiresAt: new Date(now() + 15 * 60 * 1000),
-    })
-    .returning({ id: connectorSessions.id });
-  expect(session).toBeDefined();
-  return session!.id;
-}
-
 async function seedOauthState(args: {
   readonly type: string;
+  readonly authMethod?: string;
   readonly userId: string;
   readonly orgId: string;
   readonly state?: string;
-  readonly sessionId?: string;
   readonly redirectUri?: string;
   readonly codeVerifier?: string;
   readonly oauthContext?: string;
@@ -956,9 +1139,9 @@ async function seedOauthState(args: {
     .values({
       state: args.state ?? `state-${randomUUID()}`,
       type: args.type,
+      authMethod: args.authMethod ?? "oauth",
       userId: args.userId,
       orgId: args.orgId,
-      sessionId: args.sessionId,
       redirectUri:
         args.redirectUri ?? `${BASE_URL}/api/connectors/${args.type}/callback`,
       codeVerifier: args.codeVerifier,
@@ -994,6 +1177,7 @@ async function findSecret(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
+  readonly type?: "connector" | "user";
 }) {
   const db = store.set(writeDb$);
   const [secret] = await db
@@ -1004,10 +1188,31 @@ async function findSecret(args: {
         eq(secrets.orgId, args.orgId),
         eq(secrets.userId, args.userId),
         eq(secrets.name, args.name),
-        eq(secrets.type, "connector"),
+        eq(secrets.type, args.type ?? "connector"),
       ),
     );
   return secret;
+}
+
+async function findVariable(args: {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly type?: "connector" | "user";
+}) {
+  const db = store.set(writeDb$);
+  const [variable] = await db
+    .select()
+    .from(variables)
+    .where(
+      and(
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(variables.name, args.name),
+        eq(variables.type, args.type ?? "connector"),
+      ),
+    );
+  return variable;
 }
 
 async function findDecryptedSecret(args: {
@@ -1017,6 +1222,40 @@ async function findDecryptedSecret(args: {
 }): Promise<string | undefined> {
   const secret = await findSecret(args);
   return secret ? decryptSecretForTests(secret.encryptedValue) : undefined;
+}
+
+function callbackAuthMethodForTest(
+  type: AuthCodeGrantConnectorType,
+): ConnectorAuthMethodId {
+  const authMethod = "oauth" satisfies ConnectorAuthMethodId;
+  if (!connectorAuthMethodHasGrantKind(type, authMethod, "auth-code")) {
+    throw new Error(`${type}: oauth auth method should use auth-code grant`);
+  }
+  return authMethod;
+}
+
+function accessTokenSecretNameForAuthCodeMethod(
+  type: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): string {
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(type, authMethod);
+  const secretName =
+    grantMetadata &&
+    getConnectorGrantOutputSecretName(grantMetadata, "accessToken");
+  if (!secretName) {
+    throw new Error(`${type}: auth-code auth method has no access output`);
+  }
+  return secretName;
+}
+
+function refreshTokenSecretNameForAuthCodeMethod(
+  type: AuthCodeGrantConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): string | undefined {
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(type, authMethod);
+  return grantMetadata
+    ? getConnectorGrantOutputSecretName(grantMetadata, "refreshToken")
+    : undefined;
 }
 
 interface ProviderSuccessCase {
@@ -1173,16 +1412,26 @@ const providerUserInfoErrorCases = providerSuccessCases.filter(
 
 describe("GET /api/connectors/:type/callback", () => {
   const orgIds: string[] = [];
-  const sessionIds: string[] = [];
   const oauthStateIds: string[] = [];
   let restoreDynamicTestOAuthExchange: (() => void) | undefined;
+  let restoreTestOauthManualGrantAuthMethods: (() => void) | undefined;
 
   beforeEach(() => {
     mockEnv("VM0_WEB_URL", BASE_URL);
     mockOAuthEnv();
   });
 
+  async function seedTrackedOauthState(
+    args: Parameters<typeof seedOauthState>[0],
+  ): Promise<string> {
+    const oauthStateId = await seedOauthState(args);
+    oauthStateIds.push(oauthStateId);
+    return oauthStateId;
+  }
+
   afterEach(async () => {
+    restoreTestOauthManualGrantAuthMethods?.();
+    restoreTestOauthManualGrantAuthMethods = undefined;
     restoreDynamicTestOAuthExchange?.();
     restoreDynamicTestOAuthExchange = undefined;
 
@@ -1197,15 +1446,8 @@ describe("GET /api/connectors/:type/callback", () => {
           .where(eq(githubInstallations.orgId, orgId));
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
+        await db.delete(variables).where(eq(variables.orgId, orgId));
         await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
-      }
-    }
-    while (sessionIds.length > 0) {
-      const sessionId = sessionIds.pop();
-      if (sessionId) {
-        await db
-          .delete(connectorSessions)
-          .where(eq(connectorSessions.id, sessionId));
       }
     }
     while (oauthStateIds.length > 0) {
@@ -1218,7 +1460,7 @@ describe("GET /api/connectors/:type/callback", () => {
     }
   });
 
-  it("redirects unauthenticated users to the connector error page", async () => {
+  it("rejects callbacks without trusted OAuth state", async () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
@@ -1235,7 +1477,9 @@ describe("GET /api/connectors/:type/callback", () => {
     const url = new URL(location!);
     expect(url.pathname).toBe("/connector/error");
     expect(url.searchParams.get("type")).toBe("github");
-    expect(url.searchParams.get("message")).toBe("Not authenticated");
+    expect(url.searchParams.get("message")).toBe(
+      "Invalid state - please try again",
+    );
   });
 
   it("redirects unknown connector types to the connector error page", async () => {
@@ -1287,6 +1531,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+    });
 
     const response = await requestCallback({
       type: "github",
@@ -1307,7 +1557,6 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(response.headers.getSetCookie()).toStrictEqual(
       expect.arrayContaining([
         "connector_oauth_state=; Max-Age=0; Path=/",
-        "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
       ]),
     );
@@ -1318,6 +1567,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+    });
 
     const response = await requestCallback({
       type: "github",
@@ -1334,7 +1589,6 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(response.headers.getSetCookie()).toStrictEqual(
       expect.arrayContaining([
         "connector_oauth_state=; Max-Age=0; Path=/",
-        "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
       ]),
     );
@@ -1361,7 +1615,6 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(response.headers.getSetCookie()).toStrictEqual(
       expect.arrayContaining([
         "connector_oauth_state=; Max-Age=0; Path=/",
-        "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
       ]),
     );
@@ -1417,7 +1670,6 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(cookies).toStrictEqual(
       expect.arrayContaining([
         "connector_oauth_state=; Max-Age=0; Path=/",
-        "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
         "connector_oauth_context=; Max-Age=0; Path=/",
       ]),
@@ -1466,108 +1718,32 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
-  it("marks CLI sessions as error when user info fetch fails", async () => {
+  it("rejects callbacks when the stored auth method is not auth-code", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
-    const sessionId = await seedSession(userId);
-    sessionIds.push(sessionId);
-    mockGitHubOAuth({ accessToken: "github-token", userError: true });
-
-    const response = await requestCallback({
+    await seedTrackedOauthState({
       type: "github",
-      query: { code: "code-123", state: "state-123" },
-      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
-    });
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
-    expect(url.pathname).toBe("/connector/error");
-    expect(url.searchParams.get("message")).toBe(
-      "OAuth authorization failed. Please try again.",
-    );
-
-    const db = store.set(writeDb$);
-    const [session] = await db
-      .select()
-      .from(connectorSessions)
-      .where(eq(connectorSessions.id, sessionId));
-    expect(session?.status).toBe("error");
-    expect(session?.errorMessage).toContain("GitHub user API failed");
-  });
-
-  it("stores a GitHub OAuth connector and completes the CLI session", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    orgIds.push(orgId);
-    authenticate({ userId, orgId });
-    const sessionId = await seedSession(userId);
-    sessionIds.push(sessionId);
-    mockGitHubOAuth({
-      accessToken: "github-token",
-      userId: 98_765,
-      username: "octocat",
-      email: "octocat@example.com",
-    });
-
-    const response = await requestCallback({
-      type: "github",
-      query: { code: "code-123", state: "state-123" },
-      headers: callbackHeaders({
-        stateCookie: "state-123",
-        sessionId,
-        oauthContext: "opaque-context",
-      }),
-    });
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
-    expect(url.pathname).toBe("/connector/success");
-    expect(url.searchParams.get("type")).toBe("github");
-    expect(url.searchParams.get("username")).toBe("octocat");
-    expect(response.headers.getSetCookie()).toStrictEqual(
-      expect.arrayContaining([
-        "connector_oauth_state=; Max-Age=0; Path=/",
-        "connector_oauth_session=; Max-Age=0; Path=/",
-        "connector_oauth_pkce=; Max-Age=0; Path=/",
-        "connector_oauth_context=; Max-Age=0; Path=/",
-      ]),
-    );
-
-    const connector = await findConnector({ orgId, userId, type: "github" });
-    expect(connector).toMatchObject({
-      type: "github",
-      authMethod: "oauth",
-      externalId: "98765",
-      externalUsername: "octocat",
-      externalEmail: "octocat@example.com",
-      needsReconnect: false,
-    });
-    expect(connector?.oauthScopes).toBe(
-      JSON.stringify(["repo", "project", "workflow"]),
-    );
-    expect(connector?.tokenExpiresAt).toBeNull();
-
-    const secret = await findSecret({
-      orgId,
+      authMethod: "api-token",
       userId,
-      name: "GITHUB_ACCESS_TOKEN",
+      orgId,
+      state: "state-123",
     });
-    expect(secret).toBeDefined();
-    expect(decryptSecretForTests(secret!.encryptedValue)).toBe("github-token");
 
-    const db = store.set(writeDb$);
-    const [session] = await db
-      .select()
-      .from(connectorSessions)
-      .where(eq(connectorSessions.id, sessionId));
-    expect(session?.status).toBe("complete");
-    expect(session?.completedAt).toBeInstanceOf(Date);
+    const response = await requestCallback({
+      type: "github",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid connector auth method - please try again",
+    });
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
   });
 
   it("links a GitHub integration after GitHub connector OAuth completes", async () => {
@@ -1598,6 +1774,12 @@ describe("GET /api/connectors/:type/callback", () => {
     if (!installation) {
       throw new Error("Expected GitHub installation insert to return a row");
     }
+    await seedTrackedOauthState({
+      type: "github",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockGitHubOAuth({
       accessToken: "github-token",
       userId: 98_765,
@@ -1935,7 +2117,7 @@ describe("GET /api/connectors/:type/callback", () => {
     });
   });
 
-  it("uses cookie-backed direct callback state when no stored handoff state exists", async () => {
+  it("rejects cookie-backed callback state when no stored OAuth state exists", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
@@ -1953,13 +2135,13 @@ describe("GET /api/connectors/:type/callback", () => {
       headers: callbackHeaders({ stateCookie: "state-123" }),
     });
 
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
-    expect(url.pathname).toBe("/connector/success");
-    expect(url.searchParams.get("type")).toBe("github");
-    expect(url.searchParams.get("username")).toBe("octocat");
+    expectConnectorErrorRedirect(response, {
+      type: "github",
+      message: "Invalid state - please try again",
+    });
+    await expect(
+      findConnector({ orgId, userId, type: "github" }),
+    ).resolves.toBeUndefined();
   });
 
   it("passes OAuth context to dynamic public connector exchange", async () => {
@@ -1970,6 +2152,14 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      userId,
+      orgId,
+      state: "state-123",
+      codeVerifier: "pkce-verifier",
+      oauthContext: "dynamic-oauth-context; tenant=example",
+    });
 
     const response = await requestCallback({
       type: "test-oauth",
@@ -1995,7 +2185,6 @@ describe("GET /api/connectors/:type/callback", () => {
     expect(response.headers.getSetCookie()).toStrictEqual(
       expect.arrayContaining([
         "connector_oauth_state=; Max-Age=0; Path=/",
-        "connector_oauth_session=; Max-Age=0; Path=/",
         "connector_oauth_pkce=; Max-Age=0; Path=/",
         "connector_oauth_context=; Max-Age=0; Path=/",
       ]),
@@ -2026,6 +2215,241 @@ describe("GET /api/connectors/:type/callback", () => {
     );
   });
 
+  it("stores tokens through method-specific grant output names", async () => {
+    const dynamicOAuth = useDynamicTestOAuthExchange({
+      authMethod: "api",
+      provider: testOauthApiProvider,
+    });
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "api",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    const connector = await findConnector({
+      orgId,
+      userId,
+      type: "test-oauth",
+    });
+    expect(connector).toMatchObject({
+      type: "test-oauth",
+      authMethod: "api",
+      externalId: "dynamic-user-id",
+      externalUsername: "dynamic-user",
+      externalEmail: "dynamic@example.com",
+      needsReconnect: false,
+    });
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_ACCESS_TOKEN",
+      }),
+    ).resolves.toBe("dynamic-access-token");
+    await expect(
+      findDecryptedSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_REFRESH_TOKEN",
+      }),
+    ).resolves.toBe("dynamic-refresh-token");
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects method-specific grant responses missing runtime token outputs", async () => {
+    const originalExchangeCode = testOauthApiProvider.grant.exchangeCode;
+    const malformedResult = {
+      ...dynamicTestOAuthApiExchangeResult(),
+      outputs: {
+        initialRefreshToken: "dynamic-refresh-token",
+      },
+    } satisfies OAuthTokenResultBase;
+    testOauthApiProvider.grant.exchangeCode = () => {
+      return Promise.resolve(
+        malformedResult as DynamicTestOAuthApiExchangeResult,
+      );
+    };
+    restoreDynamicTestOAuthExchange = () => {
+      testOauthApiProvider.grant.exchangeCode = originalExchangeCode;
+    };
+
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "api",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expectConnectorErrorRedirect(response, {
+      type: "test-oauth",
+      message: "OAuth authorization failed. Please try again.",
+    });
+    await expect(
+      findConnector({
+        orgId,
+        userId,
+        type: "test-oauth",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_API_REFRESH_TOKEN",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("deletes legacy manual grant rows only for the stored auth method", async () => {
+    restoreTestOauthManualGrantAuthMethods =
+      configureTestOauthManualGrantAuthMethods();
+    const dynamicOAuth = useDynamicTestOAuthExchange();
+    restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    orgIds.push(orgId);
+    authenticate({ userId, orgId });
+    const db = store.set(writeDb$);
+    await db.insert(connectors).values({
+      orgId,
+      userId,
+      type: "test-oauth",
+      authMethod: "api-token",
+    });
+    await db.insert(secrets).values([
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_TOKEN",
+        encryptedValue: "encrypted_legacy_token",
+        type: "user",
+      },
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_TOKEN",
+        encryptedValue: "encrypted_other_token",
+        type: "user",
+      },
+    ]);
+    await db.insert(variables).values([
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_HOST",
+        value: "legacy.example.com",
+        type: "user",
+      },
+      {
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_HOST",
+        value: "other.example.com",
+        type: "user",
+      },
+    ]);
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      state: "state-123",
+    });
+
+    const response = await requestCallback({
+      type: "test-oauth",
+      query: { code: "code-123", state: "state-123" },
+      headers: callbackHeaders({ stateCookie: "state-123" }),
+    });
+
+    expect(response.status).toBe(307);
+    await expect(
+      findConnector({ orgId, userId, type: "test-oauth" }),
+    ).resolves.toMatchObject({
+      type: "test-oauth",
+      authMethod: "oauth",
+      externalId: "dynamic-user-id",
+      needsReconnect: false,
+    });
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_ACCESS_TOKEN",
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_TOKEN",
+        type: "user",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findVariable({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_LEGACY_HOST",
+        type: "user",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      findSecret({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_TOKEN",
+        type: "user",
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      findVariable({
+        orgId,
+        userId,
+        name: "TEST_OAUTH_OTHER_HOST",
+        type: "user",
+      }),
+    ).resolves.toMatchObject({ value: "other.example.com" });
+  });
+
   it("uses VM0_WEB_URL for token exchange and success redirects", async () => {
     const dynamicOAuth = useDynamicTestOAuthExchange();
     restoreDynamicTestOAuthExchange = dynamicOAuth.restore;
@@ -2034,6 +2458,14 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "test-oauth",
+      userId,
+      orgId,
+      state: "state-123",
+      codeVerifier: "pkce-verifier",
+      oauthContext: "dynamic-oauth-context; tenant=example",
+    });
 
     const response = await requestCallback({
       type: "test-oauth",
@@ -2066,6 +2498,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "slack",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockSlackOAuth({ accessToken: "xoxp-stored-token" });
 
     const response = await requestCallback({
@@ -2101,6 +2539,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "notion",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockNotionOAuth({
       accessToken: "notion-access",
       refreshToken: "notion-refresh",
@@ -2150,6 +2594,12 @@ describe("GET /api/connectors/:type/callback", () => {
     const userId = `user_${randomUUID()}`;
     orgIds.push(orgId);
     authenticate({ userId, orgId });
+    await seedTrackedOauthState({
+      type: "notion",
+      userId,
+      orgId,
+      state: "state-123",
+    });
     mockNotionOAuth({
       accessToken: "notion-access",
       refreshToken: "notion-refresh",
@@ -2173,7 +2623,7 @@ describe("GET /api/connectors/:type/callback", () => {
   });
 
   it.each(providerSuccessCases)(
-    "stores $type OAuth connector data through the API callback route",
+    "stores $type connector token data through the API callback route",
     async (providerCase) => {
       const orgId = `org_${randomUUID()}`;
       const userId = `user_${randomUUID()}`;
@@ -2181,6 +2631,14 @@ describe("GET /api/connectors/:type/callback", () => {
       const refreshToken = `${providerCase.type}-stored-refresh-token`;
       orgIds.push(orgId);
       authenticate({ userId, orgId });
+      await seedTrackedOauthState({
+        type: providerCase.type,
+        userId,
+        orgId,
+        state: "state-123",
+        codeVerifier:
+          providerCase.type === "x" ? "x-test-code-verifier" : undefined,
+      });
       mockProviderOAuth({
         type: providerCase.type,
         accessToken,
@@ -2213,32 +2671,38 @@ describe("GET /api/connectors/:type/callback", () => {
         userId,
         type: providerCase.type,
       });
+      const authMethod = callbackAuthMethodForTest(providerCase.type);
       expect(connector).toMatchObject({
         type: providerCase.type,
-        authMethod: "oauth",
+        authMethod,
         externalId: providerCase.externalId,
         externalUsername: providerCase.externalUsername,
         externalEmail: providerCase.externalEmail,
         needsReconnect: false,
       });
 
-      const secretMetadata = getConnectorAuthProviderSecretMetadata(
+      const accessTokenSecretName = accessTokenSecretNameForAuthCodeMethod(
         providerCase.type,
+        authMethod,
       );
       await expect(
         findDecryptedSecret({
           orgId,
           userId,
-          name: secretMetadata.accessSecretName,
+          name: accessTokenSecretName,
         }),
       ).resolves.toBe(accessToken);
 
-      if (secretMetadata.isRefreshable) {
+      const refreshTokenSecretName = refreshTokenSecretNameForAuthCodeMethod(
+        providerCase.type,
+        authMethod,
+      );
+      if (refreshTokenSecretName) {
         await expect(
           findDecryptedSecret({
             orgId,
             userId,
-            name: secretMetadata.refreshSecretName,
+            name: refreshTokenSecretName,
           }),
         ).resolves.toBe(refreshToken);
         expect(connector?.tokenExpiresAt).toBeInstanceOf(Date);
@@ -2254,6 +2718,14 @@ describe("GET /api/connectors/:type/callback", () => {
       const userId = `user_${randomUUID()}`;
       orgIds.push(orgId);
       authenticate({ userId, orgId });
+      await seedTrackedOauthState({
+        type: providerCase.type,
+        userId,
+        orgId,
+        state: "state-123",
+        codeVerifier:
+          providerCase.type === "x" ? "x-test-code-verifier" : undefined,
+      });
       mockProviderOAuth({
         type: providerCase.type,
         tokenError: "bad code",
@@ -2281,7 +2753,6 @@ describe("GET /api/connectors/:type/callback", () => {
       expect(response.headers.getSetCookie()).toStrictEqual(
         expect.arrayContaining([
           "connector_oauth_state=; Max-Age=0; Path=/",
-          "connector_oauth_session=; Max-Age=0; Path=/",
           "connector_oauth_pkce=; Max-Age=0; Path=/",
         ]),
       );
@@ -2299,6 +2770,14 @@ describe("GET /api/connectors/:type/callback", () => {
       const userId = `user_${randomUUID()}`;
       orgIds.push(orgId);
       authenticate({ userId, orgId });
+      await seedTrackedOauthState({
+        type: providerCase.type,
+        userId,
+        orgId,
+        state: "state-123",
+        codeVerifier:
+          providerCase.type === "x" ? "x-test-code-verifier" : undefined,
+      });
       mockProviderOAuth({
         type: providerCase.type,
         userError: true,
@@ -2329,37 +2808,4 @@ describe("GET /api/connectors/:type/callback", () => {
       ).resolves.toBeUndefined();
     },
   );
-
-  it("marks CLI sessions as error when token exchange fails", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    orgIds.push(orgId);
-    authenticate({ userId, orgId });
-    const sessionId = await seedSession(userId);
-    sessionIds.push(sessionId);
-    mockGitHubOAuth({ tokenError: "bad code" });
-
-    const response = await requestCallback({
-      type: "github",
-      query: { code: "code-123", state: "state-123" },
-      headers: callbackHeaders({ stateCookie: "state-123", sessionId }),
-    });
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
-    expect(url.pathname).toBe("/connector/error");
-    expect(url.searchParams.get("message")).toBe(
-      "OAuth authorization failed. Please try again.",
-    );
-
-    const db = store.set(writeDb$);
-    const [session] = await db
-      .select()
-      .from(connectorSessions)
-      .where(eq(connectorSessions.id, sessionId));
-    expect(session?.status).toBe("error");
-    expect(session?.errorMessage).toBe("bad code");
-  });
 });

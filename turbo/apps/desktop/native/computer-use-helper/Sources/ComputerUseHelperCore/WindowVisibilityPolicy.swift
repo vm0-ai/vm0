@@ -61,3 +61,15 @@ public func shouldShowVisualPointer(
     return topWindow.windowNumber == target.windowNumber ||
         topWindow.ownerPID == target.ownerPID
 }
+
+public func isWindowCandidateReachableFromCurrentDisplayContext(
+    currentSpaceId: UInt64?,
+    windowSpaceIds: [UInt64]?,
+    isOnScreen: Bool
+) -> Bool {
+    guard let currentSpaceId else {
+        return isOnScreen
+    }
+
+    return windowSpaceIds?.contains(currentSpaceId) == true || isOnScreen
+}

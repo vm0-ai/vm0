@@ -4,15 +4,17 @@ import {
   exchangeGoogleOAuthCode,
   refreshGoogleToken,
 } from "../google";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
   {
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildGoogleAuthorizationUrl(
+          args.authCodeGrant,
           "google-docs",
           clientId,
           redirectUri,
@@ -20,10 +22,11 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeGoogleOAuthCode(
+          args.authCodeGrant,
           "google-docs",
           clientId,
           clientSecret,
@@ -31,8 +34,10 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
           redirectUri,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {
@@ -45,20 +50,17 @@ export const googleDocsProvider: AuthCodeConnectorAuthProvider<"google-docs"> =
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: () => {
-        return "GOOGLE_DOCS_ACCESS_TOKEN";
-      },
-      getRefreshSecretName: () => {
-        return "GOOGLE_DOCS_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
-        const refreshToken = args.refreshToken;
-        return refreshGoogleToken(
-          "google-docs",
-          clientId,
-          clientSecret,
-          refreshToken,
+      refresh: async (args) => {
+        const { clientId, clientSecret } = args.authClient;
+        const refreshToken = args.inputs.refreshToken;
+        return oauthRefreshResultToProviderResult(
+          await refreshGoogleToken(
+            "google-docs",
+            clientId,
+            clientSecret,
+            refreshToken,
+            args.signal,
+          ),
         );
       },
     },

@@ -12,6 +12,10 @@ export const lumaAi = {
         label: "API Key",
         helpText:
           "1. Sign up at [lumalabs.ai](https://lumalabs.ai)\n2. Go to [lumalabs.ai/dream-machine/api](https://lumalabs.ai/dream-machine/api) or account settings → API Keys\n3. Create a new API key and copy it\n4. Paste the key here",
+        storage: {
+          secrets: ["LUMA_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

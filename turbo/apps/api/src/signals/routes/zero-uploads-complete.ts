@@ -10,6 +10,7 @@ import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
+import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route";
 
 const completeBody$ = bodyResultOf(zeroUploadsContract.complete);
@@ -39,6 +40,13 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         },
       },
     };
+  }
+
+  if (auth.orgId) {
+    const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+    if (suspended) {
+      return suspended;
+    }
   }
 
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");

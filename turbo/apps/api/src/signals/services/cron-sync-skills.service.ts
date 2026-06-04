@@ -23,7 +23,7 @@ import {
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { command, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
 import { create as createTar, Parser } from "tar";
 
@@ -73,8 +73,6 @@ interface SkillArchiveUpload {
   readonly s3Prefix: string;
   readonly s3Key: string;
 }
-
-type Getter = <T>(source: Computed<T>) => T;
 
 const log = logger("skills:sync");
 const REPO_REFS_URL = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}.git/info/refs?service=git-upload-pack`;
@@ -317,41 +315,42 @@ async function hasCurrentSkillVersion(args: {
   return true;
 }
 
-async function uploadSkillArchive(args: {
-  readonly get: Getter;
-  readonly context: SkillSyncContext;
-  readonly signal: AbortSignal;
-}): Promise<SkillArchiveUpload> {
-  const { archiveBuffer, manifestBuffer } = await createSkillArchive(
-    args.context.files,
-  );
-  args.signal.throwIfAborted();
+function uploadSkillArchive(
+  context: SkillSyncContext,
+  signal: AbortSignal,
+): Computed<Promise<SkillArchiveUpload>> {
+  return computed(async (get): Promise<SkillArchiveUpload> => {
+    const { archiveBuffer, manifestBuffer } = await createSkillArchive(
+      context.files,
+    );
+    signal.throwIfAborted();
 
-  const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
-  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${args.context.storageName}`;
-  const s3Key = `${s3Prefix}/${args.context.versionHash}`;
+    const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
+    const s3Prefix = `${SYSTEM_ORG_ID}/volume/${context.storageName}`;
+    const s3Key = `${s3Prefix}/${context.versionHash}`;
 
-  await Promise.all([
-    args.get(
-      putS3Object(
-        bucketName,
-        `${s3Key}/archive.tar.gz`,
-        archiveBuffer,
-        "application/gzip",
+    await Promise.all([
+      get(
+        putS3Object(
+          bucketName,
+          `${s3Key}/archive.tar.gz`,
+          archiveBuffer,
+          "application/gzip",
+        ),
       ),
-    ),
-    args.get(
-      putS3Object(
-        bucketName,
-        `${s3Key}/manifest.json`,
-        manifestBuffer,
-        "application/json",
+      get(
+        putS3Object(
+          bucketName,
+          `${s3Key}/manifest.json`,
+          manifestBuffer,
+          "application/json",
+        ),
       ),
-    ),
-  ]);
-  args.signal.throwIfAborted();
+    ]);
+    signal.throwIfAborted();
 
-  return { archiveBuffer, manifestBuffer, s3Prefix, s3Key };
+    return { archiveBuffer, manifestBuffer, s3Prefix, s3Key };
+  });
 }
 
 async function upsertSkillStorage(args: {
@@ -480,165 +479,161 @@ async function upsertSkillRecord(args: {
   args.signal.throwIfAborted();
 }
 
-async function syncSingleSkill(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly extracted: ExtractedSkill;
-  readonly commitSha: string;
-  readonly signal: AbortSignal;
-}): Promise<boolean> {
-  const context = buildSkillSyncContext(args.extracted);
+function syncSingleSkill(
+  db: Db,
+  extracted: ExtractedSkill,
+  commitSha: string,
+  signal: AbortSignal,
+): Computed<Promise<boolean>> {
+  return computed(async (get): Promise<boolean> => {
+    const context = buildSkillSyncContext(extracted);
 
-  if (
-    await hasCurrentSkillVersion({
-      db: args.db,
-      url: context.url,
-      versionHash: context.versionHash,
-      commitSha: args.commitSha,
-      signal: args.signal,
-    })
-  ) {
-    return false;
-  }
+    if (
+      await hasCurrentSkillVersion({
+        db,
+        url: context.url,
+        versionHash: context.versionHash,
+        commitSha,
+        signal,
+      })
+    ) {
+      return false;
+    }
 
-  const timestamp = nowDate();
-  const upload = await uploadSkillArchive({
-    get: args.get,
-    context,
-    signal: args.signal,
-  });
-  const storageId = await upsertSkillStorage({
-    db: args.db,
-    context,
-    upload,
-    timestamp,
-    signal: args.signal,
-  });
-  await insertSkillStorageVersion({
-    db: args.db,
-    storageId,
-    context,
-    upload,
-    commitSha: args.commitSha,
-    signal: args.signal,
-  });
-  await updateSkillStorageHead({
-    db: args.db,
-    storageId,
-    context,
-    upload,
-    timestamp,
-    signal: args.signal,
-  });
-  await upsertSkillRecord({
-    db: args.db,
-    storageId,
-    context,
-    upload,
-    commitSha: args.commitSha,
-    timestamp,
-    signal: args.signal,
-  });
-
-  log.debug("Synced skill", {
-    skillName: context.skillName,
-    versionHash: context.versionHash.slice(0, 8),
-  });
-  return true;
-}
-
-async function removeOrphanedSkills(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly extractedSkills: readonly ExtractedSkill[];
-  readonly signal: AbortSignal;
-}): Promise<number> {
-  const tarballUrls = new Set(
-    args.extractedSkills.map((skill) => {
-      return skillUrl(skill.skillName);
-    }),
-  );
-  const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
-  const existingSkills = await args.db
-    .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
-    .from(skills)
-    .where(like(skills.url, `${urlPrefix}%`));
-  args.signal.throwIfAborted();
-
-  const orphans = existingSkills.filter((skill) => {
-    return !tarballUrls.has(skill.url);
-  });
-  if (orphans.length === 0) {
-    return 0;
-  }
-
-  const orphanIds = orphans.map((skill) => {
-    return skill.id;
-  });
-  const orphanStorageIds = orphans
-    .map((skill) => {
-      return skill.storageId;
-    })
-    .filter((id): id is string => {
-      return id !== null;
+    const timestamp = nowDate();
+    const upload = await get(uploadSkillArchive(context, signal));
+    const storageId = await upsertSkillStorage({
+      db,
+      context,
+      upload,
+      timestamp,
+      signal,
+    });
+    await insertSkillStorageVersion({
+      db,
+      storageId,
+      context,
+      upload,
+      commitSha,
+      signal,
+    });
+    await updateSkillStorageHead({
+      db,
+      storageId,
+      context,
+      upload,
+      timestamp,
+      signal,
+    });
+    await upsertSkillRecord({
+      db,
+      storageId,
+      context,
+      upload,
+      commitSha,
+      timestamp,
+      signal,
     });
 
-  const orphanStorages =
-    orphanStorageIds.length > 0
-      ? await args.db
-          .select({ id: storages.id, s3Prefix: storages.s3Prefix })
-          .from(storages)
-          .where(inArray(storages.id, orphanStorageIds))
-      : [];
-  args.signal.throwIfAborted();
-
-  await args.db.delete(skills).where(inArray(skills.id, orphanIds));
-  args.signal.throwIfAborted();
-
-  if (orphanStorageIds.length > 0) {
-    await args.db
-      .delete(storages)
-      .where(inArray(storages.id, orphanStorageIds));
-    args.signal.throwIfAborted();
-  }
-
-  const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-  for (const storage of orphanStorages) {
-    const cleanupResult = await settle(
-      (async () => {
-        const objects = await args.get(listS3Objects(bucket, storage.s3Prefix));
-        args.signal.throwIfAborted();
-        if (objects.length > 0) {
-          await args.get(
-            deleteS3Objects(
-              bucket,
-              objects.map((object) => {
-                return object.key;
-              }),
-            ),
-          );
-          args.signal.throwIfAborted();
-        }
-      })(),
-    );
-    if (!cleanupResult.ok) {
-      log.warn("Failed to clean up S3 objects for removed skill", {
-        s3Prefix: storage.s3Prefix,
-        error:
-          cleanupResult.error instanceof Error
-            ? cleanupResult.error.message
-            : String(cleanupResult.error),
-      });
-    }
-  }
-
-  log.debug("Removed orphaned skills", {
-    removed: orphans.length,
-    skillUrls: orphans.map((skill) => {
-      return skill.url;
-    }),
+    log.debug("Synced skill", {
+      skillName: context.skillName,
+      versionHash: context.versionHash.slice(0, 8),
+    });
+    return true;
   });
-  return orphans.length;
+}
+
+function removeOrphanedSkills(
+  db: Db,
+  extractedSkills: readonly ExtractedSkill[],
+  signal: AbortSignal,
+): Computed<Promise<number>> {
+  return computed(async (get): Promise<number> => {
+    const tarballUrls = new Set(
+      extractedSkills.map((skill) => {
+        return skillUrl(skill.skillName);
+      }),
+    );
+    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
+    const existingSkills = await db
+      .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
+      .from(skills)
+      .where(like(skills.url, `${urlPrefix}%`));
+    signal.throwIfAborted();
+
+    const orphans = existingSkills.filter((skill) => {
+      return !tarballUrls.has(skill.url);
+    });
+    if (orphans.length === 0) {
+      return 0;
+    }
+
+    const orphanIds = orphans.map((skill) => {
+      return skill.id;
+    });
+    const orphanStorageIds = orphans
+      .map((skill) => {
+        return skill.storageId;
+      })
+      .filter((id): id is string => {
+        return id !== null;
+      });
+
+    const orphanStorages =
+      orphanStorageIds.length > 0
+        ? await db
+            .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+            .from(storages)
+            .where(inArray(storages.id, orphanStorageIds))
+        : [];
+    signal.throwIfAborted();
+
+    await db.delete(skills).where(inArray(skills.id, orphanIds));
+    signal.throwIfAborted();
+
+    if (orphanStorageIds.length > 0) {
+      await db.delete(storages).where(inArray(storages.id, orphanStorageIds));
+      signal.throwIfAborted();
+    }
+
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    for (const storage of orphanStorages) {
+      const cleanupResult = await settle(
+        (async () => {
+          const objects = await get(listS3Objects(bucket, storage.s3Prefix));
+          signal.throwIfAborted();
+          if (objects.length > 0) {
+            await get(
+              deleteS3Objects(
+                bucket,
+                objects.map((object) => {
+                  return object.key;
+                }),
+              ),
+            );
+            signal.throwIfAborted();
+          }
+        })(),
+      );
+      if (!cleanupResult.ok) {
+        log.warn("Failed to clean up S3 objects for removed skill", {
+          s3Prefix: storage.s3Prefix,
+          error:
+            cleanupResult.error instanceof Error
+              ? cleanupResult.error.message
+              : String(cleanupResult.error),
+        });
+      }
+    }
+
+    log.debug("Removed orphaned skills", {
+      removed: orphans.length,
+      skillUrls: orphans.map((skill) => {
+        return skill.url;
+      }),
+    });
+    return orphans.length;
+  });
 }
 
 function validateSeedSkills(extractedSkills: readonly ExtractedSkill[]): void {
@@ -698,13 +693,7 @@ export const syncSkills$ = command(
       const batch = extractedSkills.slice(index, index + SYNC_BATCH_SIZE);
       const results = await Promise.allSettled(
         batch.map((extracted) => {
-          return syncSingleSkill({
-            get,
-            db,
-            extracted,
-            commitSha: headSha,
-            signal,
-          });
+          return get(syncSingleSkill(db, extracted, headSha, signal));
         }),
       );
       signal.throwIfAborted();
@@ -730,12 +719,9 @@ export const syncSkills$ = command(
       }
     }
 
-    const removed = await removeOrphanedSkills({
-      get,
-      db,
-      extractedSkills,
-      signal,
-    });
+    const removed = await get(
+      removeOrphanedSkills(db, extractedSkills, signal),
+    );
     signal.throwIfAborted();
     validateSeedSkills(extractedSkills);
 

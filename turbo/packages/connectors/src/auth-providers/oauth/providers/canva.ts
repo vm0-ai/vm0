@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
 
 const CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize";
 
@@ -65,11 +67,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build Canva OAuth authorization URL with PKCE code_challenge.
  */
 export async function buildCanvaAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -95,13 +97,14 @@ export async function refreshCanvaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<CanvaRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(CANVA_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -146,19 +149,19 @@ export async function refreshCanvaToken(
  * Exchange authorization code for access token and user info with PKCE code_verifier.
  */
 export async function exchangeCanvaCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<CanvaTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("canva");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(CANVA_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

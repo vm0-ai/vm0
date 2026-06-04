@@ -34,8 +34,11 @@
 
 use serde_json::{Value, json};
 use std::io::Write;
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ECHO_MARKER: &str = "@ECHO@";
@@ -148,16 +151,10 @@ fn echo_session_id(events: &[(String, Value)]) -> Option<&str> {
     })
 }
 
-fn write_echo_session_history(events: &[(String, Value)]) {
-    let Some(session_id) = echo_session_id(events) else {
-        return;
-    };
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
-
-    if let Some(path) = create_session_history(session_id, &cwd)
-        && let Ok(mut file) = std::fs::File::create(&path)
+fn write_echo_session_history(events: &[(String, Value)], session_id: Option<&str>) {
+    if let Some(session_id) = session_id
+        && let Some(path) = create_session_history(session_id)
+        && let Ok(mut file) = std::fs::File::create(path)
     {
         for (line, _) in events {
             let _ = writeln!(file, "{line}");
@@ -174,10 +171,18 @@ fn run_echo_jsonl_mode(payload: &str) -> ExitCode {
         }
     };
 
+    let session_id = echo_session_id(&events);
+    if let Some(session_id) = session_id
+        && !is_valid_session_history_id(session_id)
+    {
+        eprintln!("invalid @ECHO@ session_id: {session_id:?}");
+        return ExitCode::from(1);
+    }
+
     for (line, _) in &events {
         println!("{line}");
     }
-    write_echo_session_history(&events);
+    write_echo_session_history(&events, session_id);
     let _ = std::io::stdout().flush();
     ExitCode::SUCCESS
 }
@@ -265,24 +270,53 @@ fn generate_session_id() -> String {
     format!("mock-{micros}")
 }
 
+fn is_valid_session_history_id(session_id: &str) -> bool {
+    if session_id.is_empty()
+        || session_id == "."
+        || session_id == ".."
+        || session_id.contains('/')
+        || session_id.contains('\\')
+        || session_id.chars().any(char::is_control)
+    {
+        return false;
+    }
+
+    let mut components = Path::new(session_id).components();
+    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
+}
+
 /// Build the session history file path and create the directory.
 ///
 /// Claude Code stores session history at: `{home}/.claude/projects/-{path}/{session_id}.jsonl`
-fn build_session_history_path(session_id: &str, cwd: &str, home: &str) -> Option<String> {
-    let project_name = cwd.trim_start_matches('/').replace('/', "-");
-    let session_dir = format!("{home}/.claude/projects/-{project_name}");
+fn build_session_history_path(session_id: &str, home: &str) -> Option<String> {
+    if !is_valid_session_history_id(session_id) {
+        return None;
+    }
+
+    let project_name = CANONICAL_WORKING_DIR
+        .trim_start_matches('/')
+        .replace('/', "-");
+    let session_dir = PathBuf::from(home)
+        .join(".claude")
+        .join("projects")
+        .join(format!("-{project_name}"));
 
     if std::fs::create_dir_all(&session_dir).is_err() {
         return None;
     }
 
-    Some(format!("{session_dir}/{session_id}.jsonl"))
+    Some(
+        session_dir
+            .join(format!("{session_id}.jsonl"))
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 /// Create session history using `$HOME` from the environment.
-fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
+fn create_session_history(session_id: &str) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    build_session_history_path(session_id, cwd, &home)
+    build_session_history_path(session_id, &home)
 }
 
 /// Emit the init + result JSONL pair shared by post-result mock test
@@ -291,9 +325,7 @@ fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
 /// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
 fn emit_post_result_pair() {
     let session_id = generate_session_id();
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
     let init_event = json!({
         "type": "system",
@@ -318,7 +350,7 @@ fn emit_post_result_pair() {
     });
     println!("{result_event}");
 
-    if let Some(path) = create_session_history(&session_id, &cwd)
+    if let Some(path) = create_session_history(&session_id)
         && let Ok(mut file) = std::fs::File::create(&path)
     {
         let _ = writeln!(file, "{init_event}");
@@ -330,9 +362,7 @@ fn emit_post_result_pair() {
 
 fn emit_stuck_tool_events() {
     let session_id = generate_session_id();
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
     // Init event
     println!(
@@ -440,11 +470,9 @@ fn run_text_mode(prompt: &str) -> ExitCode {
 
 /// Execute prompt in stream-json mode: output JSONL events, capture output.
 fn run_stream_json_mode(prompt: &str, session_id: &str) -> ExitCode {
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".to_string());
+    let cwd = CANONICAL_WORKING_DIR;
 
-    let session_history_file = create_session_history(session_id, &cwd);
+    let session_history_file = create_session_history(session_id);
     let mut events: Vec<Value> = Vec::with_capacity(5);
 
     // 1. System init event
@@ -758,10 +786,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let result = build_session_history_path("test-session-123", "/workspaces/my-project", home);
+        let result = build_session_history_path("test-session-123", home);
 
         let expected =
-            format!("{home}/.claude/projects/-workspaces-my-project/test-session-123.jsonl");
+            format!("{home}/.claude/projects/-home-user-workspace/test-session-123.jsonl");
         assert_eq!(result, Some(expected));
     }
 
@@ -770,32 +798,50 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let _ = build_session_history_path("test-session", "/some/path", home);
+        let _ = build_session_history_path("test-session", home);
 
-        let expected_dir = dir.path().join(".claude/projects/-some-path");
+        let expected_dir = dir.path().join(".claude/projects/-home-user-workspace");
         assert!(expected_dir.exists());
     }
 
     #[test]
-    fn session_history_root_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = dir.path().to_str().unwrap();
-
-        let result = build_session_history_path("root-session", "/", home);
-
-        let expected = format!("{home}/.claude/projects/-/root-session.jsonl");
-        assert_eq!(result, Some(expected));
+    fn session_history_id_accepts_safe_file_components() {
+        for session_id in [
+            "mock-123",
+            "preview-1",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "session.with.dot",
+        ] {
+            assert!(
+                is_valid_session_history_id(session_id),
+                "expected {session_id} to be accepted"
+            );
+        }
     }
 
     #[test]
-    fn session_history_deep_path() {
+    fn session_history_path_rejects_unsafe_session_ids() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().to_str().unwrap();
 
-        let result = build_session_history_path("deep-session", "/a/b/c/d/e/f", home);
-
-        let expected = format!("{home}/.claude/projects/-a-b-c-d-e-f/deep-session.jsonl");
-        assert_eq!(result, Some(expected));
+        for session_id in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "..\\escape",
+            "/absolute",
+            "nested/path",
+            "nested\\path",
+            "line\nbreak",
+        ] {
+            assert!(
+                !is_valid_session_history_id(session_id),
+                "expected {session_id:?} to be rejected"
+            );
+            assert_eq!(build_session_history_path(session_id, home), None);
+        }
+        assert!(!dir.path().join(".claude").exists());
     }
 
     #[test]

@@ -16,9 +16,12 @@ export const x = {
           clientIdEnv: "X_OAUTH_CLIENT_ID",
           clientSecretEnv: "X_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["X_ACCESS_TOKEN", "X_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.x.com/2/oauth2/token",
           scopes: [
             "tweet.read", // All the Tweets you can view, including Tweets from protected accounts.
             "tweet.write", // Tweet and Retweet for you.
@@ -43,11 +46,21 @@ export const x = {
             "dm.write", // Send and manage Direct Messages for you.
             "media.write", // Upload media.
           ],
+          outputs: {
+            accessToken: "$secrets.X_ACCESS_TOKEN",
+            refreshToken: "$secrets.X_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "X_ACCESS_TOKEN",
-          refreshToken: "X_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.X_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.X_ACCESS_TOKEN",
+            refreshToken: "$secrets.X_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["X_ACCESS_TOKEN"],
           envBindings: {
             X_TOKEN: "$secrets.X_ACCESS_TOKEN",
           },

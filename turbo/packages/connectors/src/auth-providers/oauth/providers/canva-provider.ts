@@ -2,18 +2,23 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildCanvaAuthorizationUrl,
   exchangeCanvaCode,
-  getCanvaSecretName,
   refreshCanvaToken,
 } from "./canva";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildCanvaAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildCanvaAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -23,6 +28,7 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
         );
       }
       const result = await exchangeCanvaCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -30,8 +36,10 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
         state,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -44,13 +52,16 @@ export const canvaProvider: AuthCodeConnectorAuthProvider<"canva"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getCanvaSecretName,
-    getRefreshSecretName: () => {
-      return "CANVA_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshCanvaToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshCanvaToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

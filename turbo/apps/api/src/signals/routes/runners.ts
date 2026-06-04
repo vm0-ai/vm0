@@ -1,4 +1,4 @@
-import { command, type Setter } from "ccstate";
+import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
   runnersHeartbeatContract,
@@ -571,40 +571,44 @@ async function recordClaimApiToClaimMetric(args: {
   });
 }
 
-function scheduleClaimFailedSideEffects(args: {
-  readonly set: Setter;
-  readonly runId: string;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly error: string;
-}): void {
-  const backgroundSignal = new AbortController().signal;
-  waitUntil(
-    publishRunChangedForUserSafely(args.userId, args.runId, {
-      status: "failed",
-    }),
-  );
-  waitUntil(
-    tapError(
-      args.set(
-        dispatchCompleteSideEffects$,
-        {
-          runId: args.runId,
-          orgId: args.orgId,
-          status: "failed",
-          error: args.error,
+const scheduleClaimFailedSideEffects$ = command(
+  (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly error: string;
+    },
+  ): void => {
+    const backgroundSignal = new AbortController().signal;
+    waitUntil(
+      publishRunChangedForUserSafely(args.userId, args.runId, {
+        status: "failed",
+      }),
+    );
+    waitUntil(
+      tapError(
+        set(
+          dispatchCompleteSideEffects$,
+          {
+            runId: args.runId,
+            orgId: args.orgId,
+            status: "failed",
+            error: args.error,
+          },
+          backgroundSignal,
+        ),
+        (error) => {
+          L.error("dispatchCompleteSideEffects failed", {
+            runId: args.runId,
+            error,
+          });
         },
-        backgroundSignal,
       ),
-      (error) => {
-        L.error("dispatchCompleteSideEffects failed", {
-          runId: args.runId,
-          error,
-        });
-      },
-    ),
-  );
-}
+    );
+  },
+);
 
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = await set(runnerAuth$, get(authorization$), signal);
@@ -655,8 +659,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return notFound("Run not found");
     }
 
-    scheduleClaimFailedSideEffects({
-      set,
+    set(scheduleClaimFailedSideEffects$, {
       runId,
       userId: run.userId,
       orgId: run.orgId,

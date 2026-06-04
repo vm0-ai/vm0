@@ -1,12 +1,12 @@
-"""Tests for raw firewall request matching."""
+"""Tests for raw firewall config matched through the compiled production path."""
 
 import pytest
 
 import matching
-from tests.firewall_helpers import grant_all, wrap_firewalls
+from tests.firewall_helpers import grant_all, match_request_with_raw_firewalls, wrap_firewalls
 
 
-class TestMatchFirewallRequest:
+class TestCompiledFirewallRequest:
     """Tests for the three-state matching: allow, block, or None (pass-through)."""
 
     def test_no_permissions_blocks(self, headers):
@@ -17,7 +17,7 @@ class TestMatchFirewallRequest:
             ],
             name="github",
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
@@ -42,7 +42,7 @@ class TestMatchFirewallRequest:
             ],
             name="github",
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/octocat/hello",
             "GET",
             fw_configs,
@@ -64,7 +64,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/anything",
             "DELETE",
             fw_configs,
@@ -73,7 +73,92 @@ class TestMatchFirewallRequest:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "full-access"
 
-    def test_method_case_insensitive(self, headers):
+    def test_unsafe_path_blocks_before_greedy_permission_allow(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                }
+            ],
+            name="github",
+        )
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/../admin",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs, unknown_policy="allow"),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unsafe_path"
+        assert result.path == "/repos/../admin"
+        assert result.permissions == ()
+
+    def test_encoded_unsafe_path_blocks_before_unknown_policy_allow(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "repo-read", "rules": ["GET /repos/{owner}"]}],
+                }
+            ],
+            name="github",
+        )
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/users/%2e%2e/admin",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs, unknown_policy="allow"),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unsafe_path"
+        assert result.path == "/users/%2e%2e/admin"
+        assert result.permissions == ()
+
+    def test_unsafe_path_consumed_by_parameterized_base_blocks(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/api/{tenant}",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "admin", "rules": ["GET /admin"]}],
+                }
+            ],
+            name="example",
+        )
+        result = match_request_with_raw_firewalls(
+            "https://api.example.com/api/%2e%2e/admin",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs, unknown_policy="allow"),
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unsafe_path"
+        assert result.path == "/admin"
+
+    def test_dot_like_regular_segments_can_still_allow(self, headers):
+        fw_configs = wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+                }
+            ],
+            name="github",
+        )
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/..hidden/a..b",
+            "GET",
+            fw_configs,
+            network_policies=grant_all(fw_configs),
+        )
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "full-access"
+
+    def test_lowercase_rule_method_fails_closed(self, headers):
         fw_configs = wrap_firewalls(
             [
                 {
@@ -83,13 +168,14 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "POST",
             fw_configs,
             network_policies=grant_all(fw_configs),
         )
-        assert isinstance(result, matching.FirewallAllow)
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "malformed_firewall_config"
 
     def test_wrong_method_blocks(self, headers):
         fw_configs = wrap_firewalls(
@@ -101,7 +187,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/a/b",
             "POST",
             fw_configs,
@@ -119,7 +205,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             fw_configs,
@@ -137,7 +223,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.gitlab.com/repos",
             "GET",
             fw_configs,
@@ -147,7 +233,7 @@ class TestMatchFirewallRequest:
 
     def test_no_firewall_returns_none(self):
         assert (
-            matching.match_firewall_request(
+            match_request_with_raw_firewalls(
                 "https://api.github.com", "GET", None, network_policies=grant_all(None)
             )
             is None
@@ -155,7 +241,7 @@ class TestMatchFirewallRequest:
 
     def test_empty_firewall_returns_none(self):
         assert (
-            matching.match_firewall_request(
+            match_request_with_raw_firewalls(
                 "https://api.github.com", "GET", [], network_policies=grant_all([])
             )
             is None
@@ -172,14 +258,14 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com", "GET", fw_configs, network_policies=grant_all(fw_configs)
         )
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "root"
 
     def test_trailing_slash_on_url(self, headers):
-        """URL trailing slash doesn't affect matching (split filters empty segments)."""
+        """A trailing slash is a distinct path segment for permission rules."""
         fw_configs = wrap_firewalls(
             [
                 {
@@ -189,13 +275,14 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/",
             "GET",
             fw_configs,
             network_policies=grant_all(fw_configs),
         )
-        assert isinstance(result, matching.FirewallAllow)
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.reason == "unknown_endpoint"
 
     def test_trailing_slash_on_base_config(self, headers):
         """Base URL with trailing slash still matches (rstrip strips it)."""
@@ -208,7 +295,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
@@ -227,7 +314,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com:8443/repos",
             "GET",
             fw_configs,
@@ -245,7 +332,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com.evil.com/steal",
             "GET",
             fw_configs,
@@ -266,7 +353,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://slack.com/api/chat.postMessage",
             "POST",
             fw_configs,
@@ -275,8 +362,8 @@ class TestMatchFirewallRequest:
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "messages-send"
 
-    def test_malformed_rules_skipped(self, headers):
-        """Rules without 'METHOD /path' format are silently skipped, not crash or false-allow."""
+    def test_malformed_rules_fail_closed_without_blocking_valid_match(self, headers):
+        """Malformed rules fail closed unless a valid allowed rule matches."""
         fw_configs = wrap_firewalls(
             [
                 {
@@ -288,22 +375,23 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        # Only "GET /repos" is valid — the rest are skipped
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
             network_policies=grant_all(fw_configs),
         )
         assert isinstance(result, matching.FirewallAllow)
-        # Non-matching path still blocks (malformed rules don't accidentally allow)
-        result2 = matching.match_firewall_request(
+        # Non-matching paths fail closed because this request matched malformed
+        # firewall config without a valid allowed permission match.
+        result2 = match_request_with_raw_firewalls(
             "https://api.github.com/users",
             "GET",
             fw_configs,
             network_policies=grant_all(fw_configs),
         )
         assert isinstance(result2, matching.FirewallBlock)
+        assert result2.reason == "malformed_firewall_config"
 
     def test_path_case_sensitive(self, headers):
         """URL paths are case-sensitive — /REPOS must not match /repos."""
@@ -316,7 +404,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/REPOS/octocat",
             "GET",
             fw_configs,
@@ -347,7 +435,7 @@ class TestMatchFirewallRequest:
                 ],
             },
         ]
-        gh = matching.match_firewall_request(
+        gh = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
@@ -356,7 +444,7 @@ class TestMatchFirewallRequest:
         assert isinstance(gh, matching.FirewallAllow)
         assert gh.name == "github"
 
-        sl = matching.match_firewall_request(
+        sl = match_request_with_raw_firewalls(
             "https://slack.com/api/chat.postMessage",
             "POST",
             fw_configs,
@@ -375,7 +463,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos?page=1",
             "GET",
             fw_configs,
@@ -393,7 +481,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos#section",
             "GET",
             fw_configs,
@@ -412,7 +500,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
@@ -437,7 +525,7 @@ class TestMatchFirewallRequest:
             ]
         )
         # Request to first base
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://slack.com/api/conversations.history",
             "POST",
             fw_configs,
@@ -448,7 +536,7 @@ class TestMatchFirewallRequest:
         assert result.permission == "full-access"
 
         # Request to second base
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://files.slack.com/files-pri/T1/download",
             "GET",
             fw_configs,
@@ -474,7 +562,7 @@ class TestMatchFirewallRequest:
                 },
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://slack.com/api/chat.postMessage",
             "POST",
             fw_configs,
@@ -496,7 +584,7 @@ class TestMatchFirewallRequest:
             ],
             name="zendesk",
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://acme.zendesk.com/api/v2/tickets",
             "GET",
             fw_configs,
@@ -519,7 +607,7 @@ class TestMatchFirewallRequest:
             ],
             name="zendesk",
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://acme.zendesk.com/api/v2/users",
             "GET",
             fw_configs,
@@ -539,7 +627,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
@@ -558,7 +646,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.example.com/v1/acme/projects/123",
             "GET",
             fw_configs,
@@ -578,7 +666,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://us.api.example.com/v1/acme/data",
             "GET",
             fw_configs,
@@ -598,7 +686,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://a.b.c.example.com/api",
             "GET",
             fw_configs,
@@ -618,7 +706,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://example.com/api", "GET", fw_configs, network_policies=grant_all(fw_configs)
         )
         assert isinstance(result, matching.FirewallAllow)
@@ -648,7 +736,7 @@ class TestMatchFirewallRequest:
                 ],
             },
         ]
-        gh = matching.match_firewall_request(
+        gh = match_request_with_raw_firewalls(
             "https://api.github.com/repos",
             "GET",
             fw_configs,
@@ -657,7 +745,7 @@ class TestMatchFirewallRequest:
         assert isinstance(gh, matching.FirewallAllow)
         assert gh.name == "github"
 
-        zd = matching.match_firewall_request(
+        zd = match_request_with_raw_firewalls(
             "https://acme.zendesk.com/api/v2/tickets",
             "GET",
             fw_configs,
@@ -678,7 +766,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://acme.zendesk.com/api/v2/tickets?page=2",
             "GET",
             fw_configs,
@@ -698,7 +786,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://acme.zendesk.com:8443/api",
             "GET",
             fw_configs,
@@ -707,20 +795,21 @@ class TestMatchFirewallRequest:
         assert result is None
 
 
-class TestMatchFirewallRequestMixedSegments:
+class TestCompiledFirewallRequestMixedSegments:
     def test_mixed_base_and_rule_round_trip(self):
         """End-to-end: base URL with mixed {repo}.git segment,
         followed by a permission rule that matches the remainder."""
         apis = [
             {
                 "base": "https://github.com/{owner}/{repo}.git",
+                "auth": {"headers": {}},
                 "permissions": [
                     {"name": "git|fetch", "rules": ["GET /info/refs"]},
                 ],
             }
         ]
         firewalls = wrap_firewalls(apis)
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://github.com/octocat/hello.git/info/refs",
             "GET",
             firewalls,
@@ -732,8 +821,8 @@ class TestMatchFirewallRequestMixedSegments:
         assert result.permission == "git|fetch"
 
 
-class TestMatchFirewallRequestRelPath:
-    """Tests that match_firewall_request includes rel_path in allow result."""
+class TestCompiledFirewallRequestRelPath:
+    """Tests that compiled request matching includes rel_path in allow result."""
 
     def test_rel_path_included_in_allow_result(self, headers):
         fw_configs = wrap_firewalls(
@@ -746,7 +835,7 @@ class TestMatchFirewallRequestRelPath:
             ],
             name="discord-webhook",
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
             "POST",
             fw_configs,
@@ -766,7 +855,7 @@ class TestMatchFirewallRequestRelPath:
             ],
             name="bitrix",
         )
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://firewall-placeholder.vm3.ai/bitrix/rest/0/placeholder/crm.deal.list",
             "GET",
             fw_configs,
@@ -798,7 +887,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -811,7 +900,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "PUT",
             self._firewalls(),
@@ -824,7 +913,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": [], "deny": ["repo-read"], "ask": [], "unknownPolicy": "deny"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://API.GitHub.COM/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -837,7 +926,7 @@ class TestThreeLevelMatching:
     def test_uncategorized_permission_allowed(self):
         """Permission not in allow/deny/ask defaults to allowed."""
         policies = {"github": {"allow": [], "deny": [], "ask": [], "unknownPolicy": "deny"}}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -851,7 +940,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": [], "deny": [], "ask": ["repo-read"], "unknownPolicy": "allow"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -871,7 +960,7 @@ class TestThreeLevelMatching:
             }
         }
         # repo-read in deny → blocked
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -880,7 +969,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, matching.FirewallBlock)
         assert result.reason == "permission_denied"
         # repo-write in ask → blocked
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "PUT",
             self._firewalls(),
@@ -892,7 +981,7 @@ class TestThreeLevelMatching:
     def test_unknown_policy_key_missing_defaults_to_allow(self):
         """Ref present but unknownPolicy key absent → defaults to allow."""
         policies = {"github": {"allow": ["repo-read"], "deny": ["repo-write"]}}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
@@ -906,7 +995,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-read"], "unknownPolicy": "allow"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -919,7 +1008,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "allow"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
@@ -933,7 +1022,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
@@ -947,7 +1036,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "ask"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
@@ -959,7 +1048,7 @@ class TestThreeLevelMatching:
     def test_name_absent_allows(self):
         """Name not in networkPolicies → fully permissive."""
         policies = {}  # github not in map
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "PUT",
             self._firewalls(),
@@ -969,7 +1058,7 @@ class TestThreeLevelMatching:
 
     def test_no_base_match_returns_none(self):
         policies = {}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.example.com/foo",
             "GET",
             self._firewalls(),
@@ -979,7 +1068,7 @@ class TestThreeLevelMatching:
 
     def test_none_network_policies_allows_all(self):
         """None networkPolicies → empty map → absent names are fully permissive."""
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -987,7 +1076,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, matching.FirewallAllow)
 
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
@@ -1003,7 +1092,7 @@ class TestThreeLevelMatching:
         ],
     )
     def test_null_permission_lists_behave_as_empty(self, policies):
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -1023,7 +1112,7 @@ class TestThreeLevelMatching:
         ],
     )
     def test_malformed_permission_policy_fails_closed_after_base_match(self, policies):
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -1035,13 +1124,13 @@ class TestThreeLevelMatching:
         assert result.reason == "malformed_network_policy"
 
     def test_top_level_malformed_network_policy_fails_closed_after_base_match(self):
-        unrelated = matching.match_firewall_request(
+        unrelated = match_request_with_raw_firewalls(
             "https://api.example.com/foo",
             "GET",
             self._firewalls(),
             network_policies="denied",
         )
-        matched = matching.match_firewall_request(
+        matched = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
@@ -1056,13 +1145,13 @@ class TestThreeLevelMatching:
     def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch(self):
         policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
 
-        allowed = matching.match_firewall_request(
+        allowed = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
             network_policies=policies,
         )
-        blocked = matching.match_firewall_request(
+        blocked = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
@@ -1087,7 +1176,7 @@ class TestThreeLevelMatching:
             name="hubspot",
         )
         policies = {"hubspot": {"allow": [], "unknownPolicy": "allow"}}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.hubspot.com/crm/v3/objects",
             "GET",
             fws,
@@ -1114,7 +1203,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": ["repo-admin"], "deny": ["repo-read"], "unknownPolicy": "deny"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1145,7 +1234,7 @@ class TestThreeLevelMatching:
                 "unknownPolicy": "deny",
             }
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1188,7 +1277,7 @@ class TestThreeLevelMatching:
             "slack": {"allow": [], "deny": ["channels:read"], "unknownPolicy": "allow"},
         }
         # GitHub: not in deny → ALLOW
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1198,7 +1287,7 @@ class TestThreeLevelMatching:
         assert result.name == "github"
 
         # Slack: channels:read explicitly denied → DENY
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://slack.com/api/conversations.list",
             "GET",
             fws,
@@ -1208,7 +1297,7 @@ class TestThreeLevelMatching:
         assert result.reason == "permission_denied"
 
         # Slack: unknown endpoint → ALLOW (unknownPolicy: allow)
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://slack.com/api/users.info",
             "GET",
             fws,
@@ -1235,7 +1324,7 @@ class TestThreeLevelMatching:
             "slack": {"allow": [], "deny": [], "unknownPolicy": "allow"},
         }
         # GitHub unknown → DENY (unknownPolicy: deny)
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/anything",
             "GET",
             fws,
@@ -1245,7 +1334,7 @@ class TestThreeLevelMatching:
         assert result.reason == "unknown_endpoint"
 
         # Slack unknown → ALLOW (unknownPolicy: allow)
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://slack.com/api/anything",
             "GET",
             fws,
@@ -1268,7 +1357,7 @@ class TestThreeLevelMatching:
             name="github",
         )
         policies = {"github": {"allow": [], "deny": ["repo-write"], "unknownPolicy": "allow"}}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "PUT",
             fws,
@@ -1300,7 +1389,7 @@ class TestThreeLevelMatching:
             name="github",
         )
         policies = {"github": {"allow": [], "deny": ["repo-read"], "unknownPolicy": "deny"}}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1328,7 +1417,7 @@ class TestThreeLevelMatching:
         policies = {
             "github": {"allow": [], "deny": ["repo-read", "repo-write"], "unknownPolicy": "deny"}
         }
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1352,7 +1441,7 @@ class TestThreeLevelMatching:
         )
         # networkPolicies exists but has no entry for "github" → fully permissive
         policies = {"slack": {"allow": [], "unknownPolicy": "allow"}}
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1361,7 +1450,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, matching.FirewallAllow)
 
         # Unknown endpoint also allowed (name absent → fully permissive)
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/users/octocat",
             "GET",
             fws,
@@ -1391,7 +1480,7 @@ class TestThreeLevelMatching:
         policies = {"github": {"allow": ["repo-read"], "deny": [], "unknownPolicy": "allow"}}
 
         # First API: known permission not in deny → ALLOW
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
@@ -1402,7 +1491,7 @@ class TestThreeLevelMatching:
 
         # Second API: no permissions defined, base matches → unknown
         # → ALLOW (unknownPolicy: allow)
-        result = matching.match_firewall_request(
+        result = match_request_with_raw_firewalls(
             "https://uploads.github.com/anything",
             "POST",
             fws,

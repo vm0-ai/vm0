@@ -18,15 +18,28 @@ export const reddit = {
           clientIdEnv: "REDDIT_OAUTH_CLIENT_ID",
           clientSecretEnv: "REDDIT_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["REDDIT_ACCESS_TOKEN", "REDDIT_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://www.reddit.com/api/v1/access_token",
           scopes: ["identity", "read"],
+          outputs: {
+            accessToken: "$secrets.REDDIT_ACCESS_TOKEN",
+            refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "REDDIT_ACCESS_TOKEN",
-          refreshToken: "REDDIT_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.REDDIT_ACCESS_TOKEN",
+            refreshToken: "$secrets.REDDIT_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["REDDIT_ACCESS_TOKEN"],
           envBindings: {
             REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
           },

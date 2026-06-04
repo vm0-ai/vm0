@@ -40,6 +40,7 @@ describe("zero CLI program", () => {
       "web",
       "host",
       "maps",
+      "banking",
     ];
     for (const name of expectedCommands) {
       expect(commandNames).toContain(name);
@@ -62,7 +63,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 27 commands", () => {
-    expect(commandNames).toHaveLength(27);
+  it("should have exactly 28 commands", () => {
+    expect(commandNames).toHaveLength(28);
   });
 });

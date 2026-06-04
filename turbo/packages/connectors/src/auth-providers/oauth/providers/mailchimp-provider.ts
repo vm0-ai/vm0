@@ -2,13 +2,12 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildMailchimpAuthorizationUrl,
   exchangeMailchimpCode,
-  getMailchimpSecretName,
 } from "./mailchimp";
 export const mailchimpProvider: AuthCodeConnectorAuthProvider<"mailchimp"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildMailchimpAuthorizationUrl(
         clientId,
         args.redirectUri,
@@ -16,18 +15,20 @@ export const mailchimpProvider: AuthCodeConnectorAuthProvider<"mailchimp"> = {
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeMailchimpCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: null,
+        outputs: {
+          accessToken: result.accessToken,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,
@@ -39,7 +40,6 @@ export const mailchimpProvider: AuthCodeConnectorAuthProvider<"mailchimp"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getMailchimpSecretName,
   },
   revoke: { kind: "none" },
 };

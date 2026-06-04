@@ -54,6 +54,7 @@ impl RunPlan {
             "storage",
             "storage_download",
             false,
+            false,
         );
 
         // Artifacts: 404 is non-fatal (may not exist on first run)
@@ -62,6 +63,7 @@ impl RunPlan {
             &manifest.artifacts,
             "artifact",
             "artifact_download",
+            true,
             true,
         );
 
@@ -85,13 +87,20 @@ fn append_download_tasks(
     label_prefix: &str,
     op_name: &'static str,
     allow_404: bool,
+    include_missing_root_policy: bool,
 ) {
     for (idx, entry) in entries.iter().enumerate() {
         if is_valid_url(&entry.archive_url)
             && let Some(url) = entry.archive_url.clone()
         {
             tasks.push(DownloadTask::new(
-                format_entry_label(entry, label_prefix, idx + 1, &url),
+                format_entry_label(
+                    entry,
+                    label_prefix,
+                    idx + 1,
+                    &url,
+                    include_missing_root_policy,
+                ),
                 op_name,
                 url,
                 entry.mount_path.clone(),
@@ -106,6 +115,7 @@ fn format_entry_label(
     label_prefix: &str,
     index: usize,
     archive_url: &str,
+    include_missing_root_policy: bool,
 ) -> String {
     let storage_name = entry.vas_storage_name.as_deref().unwrap_or("unknown");
     let version_id = entry.vas_version_id.as_deref().unwrap_or("unknown");
@@ -113,10 +123,25 @@ fn format_entry_label(
         .split_once("://")
         .map(|(scheme, _)| scheme)
         .unwrap_or("unknown");
+    let missing_root_policy = if include_missing_root_policy {
+        format!(
+            " missingRootPolicy={}",
+            entry.missing_root_policy.as_deref().unwrap_or("fail")
+        )
+    } else {
+        String::new()
+    };
 
     format!(
-        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={}",
-        label_prefix, index, entry.mount_path, storage_name, version_id, url_scheme, entry.cached
+        "{} {} mountPath={} vasStorageName={} vasVersionId={} urlScheme={} cached={}{}",
+        label_prefix,
+        index,
+        entry.mount_path,
+        storage_name,
+        version_id,
+        url_scheme,
+        entry.cached,
+        missing_root_policy
     )
 }
 
@@ -164,7 +189,8 @@ mod tests {
                     "mountPath": "/workspace/a",
                     "archiveUrl": "https://s3/a.tar.gz",
                     "vasStorageName": "workspace-a",
-                    "vasVersionId": "artifact-v1"
+                    "vasVersionId": "artifact-v1",
+                    "missingRootPolicy": "preserveParentVersion"
                 },
                 {
                     "mountPath": "/workspace/b",
@@ -194,7 +220,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[1],
             DownloadTask::new(
-                "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false".into(),
+                "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false missingRootPolicy=preserveParentVersion".into(),
                 "artifact_download",
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
@@ -204,7 +230,7 @@ mod tests {
         assert_eq!(
             plan.download_tasks[2],
             DownloadTask::new(
-                "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false".into(),
+                "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false missingRootPolicy=fail".into(),
                 "artifact_download",
                 "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),

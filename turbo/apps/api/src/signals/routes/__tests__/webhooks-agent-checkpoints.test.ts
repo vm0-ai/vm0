@@ -4,6 +4,10 @@ import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
 } from "@vm0/api-contracts/contracts/webhooks";
+import {
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+} from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
@@ -496,6 +500,24 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   it("accepts checkpoints without artifact snapshots", async () => {
     const fixture = await track(seedFixture());
+    const originalArtifacts = [
+      {
+        name: "existing-artifact",
+        version: "existing-version",
+        mountPath: "/existing",
+      },
+    ];
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, fixture.runId))
+      .limit(1);
+    expect(run).toBeDefined();
+    await db
+      .update(agentSessions)
+      .set({ artifacts: originalArtifacts })
+      .where(eq(agentSessions.id, run!.sessionId));
 
     const response = await accept(
       checkpointClient().create({
@@ -510,13 +532,18 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(response.body.conversationId).toBeTruthy();
     expect(response.body.artifacts).toBeUndefined();
 
-    const db = store.set(writeDb$);
     const [checkpoint] = await db
       .select({ artifactSnapshots: checkpoints.artifactSnapshots })
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
     expect(checkpoint?.artifactSnapshots).toBeNull();
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, run!.sessionId))
+      .limit(1);
+    expect(session?.artifacts).toStrictEqual(originalArtifacts);
   });
 
   it("normalizes empty artifact snapshots to a missing response field", async () => {
@@ -545,7 +572,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     expect(checkpoint?.artifactSnapshots).toBeNull();
   });
 
-  it("persists canonical array-shape artifact snapshots verbatim", async () => {
+  it("persists artifact snapshots without overwriting session artifact declarations", async () => {
     const fixture = await track(seedFixture());
     const artifactSnapshots = [
       {
@@ -554,9 +581,112 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         mountPath: "/workspace/a",
       },
       {
-        name: "artifact-b",
+        name: "memory",
         version: "version-bbb",
-        mountPath: "/workspace/b",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "memory",
+        version: "version-codex",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "artifact-c",
+        version: "version-ccc",
+        mountPath: "/workspace/c",
+        generatedBy: "apiAutoMemory" as const,
+      },
+    ];
+    const persistedArtifactSnapshots = [
+      {
+        name: "artifact-a",
+        version: "version-aaa",
+        mountPath: "/workspace/a",
+      },
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "memory",
+        version: "version-codex",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "artifact-c",
+        version: "version-ccc",
+        mountPath: "/workspace/c",
+      },
+    ];
+    const body = {
+      ...minimalCheckpointBody(fixture),
+      artifactSnapshots,
+    };
+    const db = store.set(writeDb$);
+    const [run] = await db
+      .select({ sessionId: agentRuns.sessionId })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, fixture.runId))
+      .limit(1);
+    expect(run).toBeDefined();
+    const originalSessionArtifacts = [
+      {
+        name: "memory",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+      {
+        name: "memory",
+        mountPath: CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
+      },
+    ];
+    await db
+      .update(agentSessions)
+      .set({
+        artifacts: originalSessionArtifacts,
+      })
+      .where(eq(agentSessions.id, run!.sessionId));
+
+    const response = await accept(
+      checkpointClient().create({
+        body,
+        headers: authHeaders(fixture),
+      }),
+      [200],
+    );
+
+    expect(response.body.artifacts).toStrictEqual(artifactSnapshots);
+
+    const [checkpoint] = await db
+      .select({ artifactSnapshots: checkpoints.artifactSnapshots })
+      .from(checkpoints)
+      .where(eq(checkpoints.id, response.body.checkpointId))
+      .limit(1);
+    expect(checkpoint?.artifactSnapshots).toStrictEqual(
+      persistedArtifactSnapshots,
+    );
+    const [session] = await db
+      .select({ artifacts: agentSessions.artifacts })
+      .from(agentSessions)
+      .where(eq(agentSessions.id, run!.sessionId))
+      .limit(1);
+    expect(session?.artifacts).toStrictEqual(originalSessionArtifacts);
+  });
+
+  it("strips canonical memory provenance unless the session expects api auto memory", async () => {
+    const fixture = await track(seedFixture());
+    const artifactSnapshots = [
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+        generatedBy: "apiAutoMemory" as const,
       },
     ];
     const body = {
@@ -580,7 +710,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       .from(checkpoints)
       .where(eq(checkpoints.id, response.body.checkpointId))
       .limit(1);
-    expect(checkpoint?.artifactSnapshots).toStrictEqual(artifactSnapshots);
+    expect(checkpoint?.artifactSnapshots).toStrictEqual([
+      {
+        name: "memory",
+        version: "version-bbb",
+        mountPath: CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+      },
+    ]);
   });
 
   it("creates independent sessions for separate runs", async () => {

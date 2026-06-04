@@ -12,6 +12,10 @@ export const elevenlabs = {
         label: "API Key",
         helpText:
           "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Go to [Settings > API Keys](https://elevenlabs.io/app/settings/api-keys)\n3. Click to create a new API key\n4. Copy the key and store it securely",
+        storage: {
+          secrets: ["ELEVENLABS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

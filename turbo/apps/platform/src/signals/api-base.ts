@@ -8,7 +8,7 @@ function getConfiguredApiUrl(): string {
 
 const CONFIGURED_API_URL = getConfiguredApiUrl();
 
-type ApiHostTarget = "api" | "www";
+export type ApiHostTarget = "api" | "www";
 
 function trimTrailingSlash(base: string): string {
   return base.endsWith("/") ? base.slice(0, -1) : base;
@@ -48,12 +48,15 @@ function isLocalhostBrowser(): boolean {
   );
 }
 
-export function resolveApiBase(useApiBackend: boolean): string {
-  const target = useApiBackend ? "api" : "www";
+export function resolveApiBaseForTarget(target: ApiHostTarget): string {
   if (CONFIGURED_API_URL === "http://localhost:3000") {
     return browserOriginBase(target) ?? configuredApiBase(target);
   }
   return trimTrailingSlash(configuredApiBase(target));
+}
+
+export function resolveApiBase(useApiBackend: boolean): string {
+  return resolveApiBaseForTarget(useApiBackend ? "api" : "www");
 }
 
 export function resolveApiBaseForNavigation(useApiBackend: boolean): string {

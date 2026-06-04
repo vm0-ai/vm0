@@ -7,7 +7,7 @@
  *
  * permission-deny is a pure diagnostic command — it identifies which permission
  * covers a denied request and tells the agent to run permission-change.
- * It does NOT resolve roles or generate platform URLs.
+ * It does not generate platform URLs.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -21,12 +21,16 @@ describe("zero doctor permission-deny command", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  const mockConsoleDebug = vi
+    .spyOn(console, "debug")
+    .mockImplementation(() => {});
 
   afterEach(() => {
     vi.unstubAllEnvs();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    mockConsoleDebug.mockClear();
   });
 
   describe("known ref with matching permission", () => {
@@ -49,7 +53,9 @@ describe("zero doctor permission-deny command", () => {
       expect(logCalls).toContain(
         "zero doctor permission-change slack --permission",
       );
-      expect(logCalls).toContain("--enable --reason");
+      expect(logCalls).toContain("--enable");
+      expect(logCalls).not.toContain("--reason");
+      expect(mockConsoleDebug).not.toHaveBeenCalled();
     });
   });
 
@@ -147,10 +153,11 @@ describe("zero doctor permission-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      // The suggested command should contain the ref, permission, --enable, and --reason placeholder
+      // The suggested command should contain the ref, permission, and --enable.
       expect(logCalls).toMatch(
-        /zero doctor permission-change slack --permission \S+ --enable --reason/,
+        /zero doctor permission-change slack --permission \S+ --enable/,
       );
+      expect(logCalls).not.toContain("--reason");
     });
 
     it("should not suggest permission-change when no permission matches", async () => {

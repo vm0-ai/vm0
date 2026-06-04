@@ -9,13 +9,30 @@ from dataclasses import dataclass
 from typing import Literal
 
 from mitmproxy import http
-from mitmproxy.net.http import url as mitm_url
+
+from host_normalization import normalize_idna_hostname
+from path_security import has_unsafe_path
+from url_syntax import (
+    ASCII_CONTROL_MAX,
+    ASCII_DELETE,
+    has_raw_whitespace,
+    has_unsafe_url_codepoint,
+    strip_optional_terminal_slash,
+)
 
 # Well-known IANA ports for HTTP and HTTPS.  When the connection uses the
 # default port for its scheme we omit ``:port`` from the reconstructed URL.
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
 _IPV6_VERSION = 6
+_MAX_PORT = 65535
+_PERCENT_ESCAPE_LENGTH = 3
+_FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+_PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
+_URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
+_URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
+_VALID_AUTH_BASE_SCHEME = "https"
 
 
 @dataclass(frozen=True)
@@ -79,11 +96,30 @@ class AuthorityValidationError(Exception):
         self.fallback_url = fallback_url
 
 
+def _has_invalid_hostname_chars(host: str) -> bool:
+    return any(
+        char.isspace()
+        or ord(char) < ASCII_CONTROL_MAX
+        or ord(char) == ASCII_DELETE
+        or char in _FORBIDDEN_HOST_CHARS
+        for char in host
+    )
+
+
 def _normalize_hostname(host: str) -> str:
-    normalized = host.rstrip(".").lower()
-    if not normalized:
-        raise ValueError("empty hostname")
-    return normalized.encode("idna").decode("ascii").lower()
+    if ":" in host:
+        if "%" in host:
+            raise ValueError("IPv6 scope identifiers are not allowed")
+        try:
+            parsed = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError("invalid IPv6 hostname") from exc
+        if parsed.version == _IPV6_VERSION:
+            return parsed.compressed.lower()
+        raise ValueError("colon host must be IPv6")
+    if _has_invalid_hostname_chars(host):
+        raise ValueError("invalid hostname")
+    return normalize_idna_hostname(host)
 
 
 def _format_url_host(host: str) -> str:
@@ -114,9 +150,52 @@ def _build_url(scheme: str, host: str, port: int, path: str) -> str:
     return f"{scheme}://{_host_with_port(scheme, host, port)}{path}"
 
 
+def _parse_authority_port(raw_port: str) -> int:
+    if not raw_port or not raw_port.isdigit():
+        raise ValueError("invalid authority port")
+    port = int(raw_port)
+    if port > _MAX_PORT:
+        raise ValueError("authority port out of range")
+    return port
+
+
 def _parse_host_authority(authority: str) -> tuple[str, int | None]:
-    host, port = mitm_url.parse_authority(authority, check=True)
-    return host, port
+    if not authority or any(
+        char.isspace() or ord(char) < ASCII_CONTROL_MAX or ord(char) == ASCII_DELETE
+        for char in authority
+    ):
+        raise ValueError("invalid authority")
+
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            raise ValueError("invalid IPv6 authority")
+        host = authority[1:close_index]
+        rest = authority[close_index + 1 :]
+        if rest == "":
+            port = None
+        elif rest.startswith(":"):
+            port = _parse_authority_port(rest[1:])
+        else:
+            raise ValueError("invalid IPv6 authority")
+        if "%" in host:
+            raise ValueError("IPv6 scope identifiers are not allowed")
+        parsed = ipaddress.ip_address(host)
+        if parsed.version != _IPV6_VERSION:
+            raise ValueError("bracketed authority must be IPv6")
+        return host, port
+
+    if any(char in _FORBIDDEN_HOST_CHARS or char == "," for char in authority):
+        raise ValueError("invalid host authority")
+    if authority.count(":") > 1:
+        raise ValueError("unbracketed IPv6 authority")
+    if ":" not in authority:
+        return authority, None
+
+    host, raw_port = authority.rsplit(":", maxsplit=1)
+    if not host:
+        raise ValueError("missing authority host")
+    return host, _parse_authority_port(raw_port)
 
 
 def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
@@ -326,6 +405,82 @@ def _merge_rewrite_query(
     return _join_query_sources(filtered_base_pairs, filtered_orig_pairs, auth_pairs)
 
 
+def _percent_decode_host(host: str) -> str:
+    if "%" not in host:
+        return host
+
+    index = host.find("%")
+    while index != -1:
+        run_end = index
+        while run_end < len(host) and host[run_end] == "%":
+            hex_start = run_end + 1
+            hex_end = hex_start + 2
+            hex_value = host[hex_start:hex_end]
+            if hex_end > len(host) or not all(char in _HEX_DIGITS for char in hex_value):
+                raise ValueError("Invalid auth.base URL: host has invalid percent encoding")
+            run_end += _PERCENT_ESCAPE_LENGTH
+
+        try:
+            decoded_run = urllib.parse.unquote_to_bytes(host[index:run_end]).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Invalid auth.base URL: host has invalid percent encoding") from exc
+        if any(char in _PERCENT_DECODED_HOST_SYNTAX_CHARS for char in decoded_run):
+            raise ValueError("Invalid auth.base URL: host has unsafe percent encoding")
+        index = host.find("%", run_end)
+
+    try:
+        return urllib.parse.unquote_to_bytes(host).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Invalid auth.base URL: host has invalid percent encoding") from exc
+
+
+def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
+    if "\\" in resolved_base:
+        raise ValueError("Invalid auth.base URL: must not contain backslash")
+    if has_raw_whitespace(resolved_base):
+        raise ValueError("Invalid auth.base URL: must not contain whitespace")
+    if has_unsafe_url_codepoint(resolved_base):
+        raise ValueError(
+            "Invalid auth.base URL: must not contain control characters or invalid Unicode"
+        )
+
+    parsed = urllib.parse.urlsplit(resolved_base)
+    if parsed.scheme.lower() != _VALID_AUTH_BASE_SCHEME:
+        raise ValueError("Invalid auth.base URL: scheme must be https")
+    if not parsed.netloc:
+        raise ValueError("Invalid auth.base URL: missing host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Invalid auth.base URL: userinfo is not allowed")
+    if parsed.fragment:
+        raise ValueError("Invalid auth.base URL: must not contain fragment")
+    if has_unsafe_path(parsed.path):
+        raise ValueError("Invalid auth.base URL: unsafe path syntax is not allowed")
+
+    host = parsed.hostname
+    if not host:
+        raise ValueError("Invalid auth.base URL: missing host")
+    decoded_host = _percent_decode_host(host)
+    try:
+        normalized_host = _normalize_hostname(decoded_host)
+    except (UnicodeError, ValueError) as exc:
+        raise ValueError("Invalid auth.base URL: invalid host") from exc
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    authority = _format_url_host(normalized_host)
+    if port is not None:
+        authority = f"{authority}:{port}"
+    return parsed, authority
+
+
+def _quote_url_part(value: str, safe: str) -> str:
+    try:
+        return urllib.parse.quote(value, safe=safe, encoding="utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError("Invalid auth.base URL: contains invalid unicode") from exc
+
+
 def build_rewrite_url(
     resolved_base: str,
     rel_path: str,
@@ -338,15 +493,26 @@ def build_rewrite_url(
     path from the firewall match, and query strings from trusted auth data
     and the original request. ``orig_query`` is the raw query string of the
     incoming request (no leading ``?``). Query key precedence is
-    ``resolved_query`` > resolved base query > original request query.
+    ``resolved_query`` > resolved base query > original request query. Unsafe
+    path syntax in ``rel_path`` is rejected as an invariant; firewall matching
+    should already have blocked it before auth is applied.
     """
-    base_parsed = urllib.parse.urlsplit(resolved_base)
+    if has_unsafe_path(rel_path):
+        raise ValueError("Unsafe rewrite path: unsafe path syntax is not allowed")
+
+    base_parsed, base_authority = _validated_rewrite_base(resolved_base)
 
     # Append rel_path to the base path portion
-    base_path = base_parsed.path.rstrip("/") + rel_path if rel_path != "/" else base_parsed.path
+    base_path = (
+        strip_optional_terminal_slash(base_parsed.path) + rel_path
+        if rel_path != "/"
+        else base_parsed.path
+    )
 
     merged_qs = _merge_rewrite_query(base_parsed.query, orig_query, resolved_query)
+    encoded_base_path = _quote_url_part(base_path, _URL_PATH_SAFE_CHARS)
+    encoded_query = _quote_url_part(merged_qs, _URL_QUERY_SAFE_CHARS)
 
     return urllib.parse.urlunsplit(
-        (base_parsed.scheme, base_parsed.netloc, base_path, merged_qs, "")
+        (base_parsed.scheme, base_authority, encoded_base_path, encoded_query, "")
     )

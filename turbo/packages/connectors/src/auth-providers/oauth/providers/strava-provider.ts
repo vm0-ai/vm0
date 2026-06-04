@@ -2,27 +2,35 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildStravaAuthorizationUrl,
   exchangeStravaCode,
-  getStravaSecretName,
   refreshStravaToken,
 } from "./strava";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildStravaAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
-      const result = await exchangeStravaCode(clientId, clientSecret, code);
+      const result = await exchangeStravaCode(
+        args.authCodeGrant,
+        clientId,
+        clientSecret,
+        code,
+      );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -35,13 +43,16 @@ export const stravaProvider: AuthCodeConnectorAuthProvider<"strava"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getStravaSecretName,
-    getRefreshSecretName: () => {
-      return "STRAVA_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshStravaToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshStravaToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

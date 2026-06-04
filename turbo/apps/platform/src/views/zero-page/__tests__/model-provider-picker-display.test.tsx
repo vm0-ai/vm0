@@ -62,7 +62,6 @@ function setupMockAgent() {
         displayName: "My Agent",
         sound: "professional",
         avatarUrl: "preset:0",
-        permissionPolicies: null,
         customSkills: [] as string[],
       });
     }),

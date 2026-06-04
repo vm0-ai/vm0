@@ -3,6 +3,11 @@ import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
 } from "@vm0/api-contracts/contracts/webhooks";
+import {
+  CANONICAL_CODEX_MEMORY_MOUNT_PATH,
+  CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
+} from "@vm0/api-contracts/contracts/runners";
+import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
@@ -17,7 +22,7 @@ import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { generatePresignedPutUrl, s3ObjectExists } from "../external/s3";
 
 type CheckpointCreateBody = z.infer<
@@ -49,6 +54,15 @@ interface EnrichedVolumeVersionsSnapshot {
   readonly additionalVolumes?: readonly AdditionalVolumeSnapshot[];
 }
 
+interface CheckpointRunContext {
+  readonly agentComposeVersionId: string | null;
+  readonly additionalVolumes: typeof agentRuns.$inferSelect.additionalVolumes;
+  readonly secretNames: readonly string[] | null;
+  readonly sessionId: string;
+  readonly sessionArtifacts: readonly ContextArtifact[];
+  readonly vars: unknown;
+}
+
 const L = logger("webhooks:agent:checkpoints");
 
 function recordOfStringsOrUndefined(
@@ -70,18 +84,46 @@ function recordOfStringsOrUndefined(
   return result;
 }
 
-function artifactSnapshotsForDb(
-  snapshots: CheckpointCreateBody["artifactSnapshots"],
-): ContextArtifact[] | null {
-  if (!snapshots || snapshots.length === 0) {
+function isCanonicalMemoryMountPath(mountPath: string): boolean {
+  return (
+    mountPath === CANONICAL_CLAUDE_MEMORY_MOUNT_PATH ||
+    mountPath === CANONICAL_CODEX_MEMORY_MOUNT_PATH
+  );
+}
+
+function isApiAutoMemoryArtifact(artifact: ContextArtifact): boolean {
+  return (
+    artifact.generatedBy === "apiAutoMemory" &&
+    artifact.name === MEMORY_ARTIFACT_NAME &&
+    isCanonicalMemoryMountPath(artifact.mountPath)
+  );
+}
+
+function artifactSnapshotsForDb(args: {
+  readonly snapshots: CheckpointCreateBody["artifactSnapshots"];
+  readonly expectedArtifacts: readonly ContextArtifact[];
+}): ContextArtifact[] | null {
+  if (!args.snapshots || args.snapshots.length === 0) {
     return null;
   }
 
-  return snapshots.map((snapshot) => {
+  return args.snapshots.map((snapshot) => {
+    const preserveGeneratedBy =
+      snapshot.generatedBy === "apiAutoMemory" &&
+      snapshot.name === MEMORY_ARTIFACT_NAME &&
+      isCanonicalMemoryMountPath(snapshot.mountPath) &&
+      args.expectedArtifacts.some((artifact) => {
+        return (
+          isApiAutoMemoryArtifact(artifact) &&
+          artifact.name === snapshot.name &&
+          artifact.mountPath === snapshot.mountPath
+        );
+      });
     return {
       name: snapshot.name,
       version: snapshot.version,
       mountPath: snapshot.mountPath,
+      ...(preserveGeneratedBy ? { generatedBy: snapshot.generatedBy } : {}),
     };
   });
 }
@@ -124,6 +166,32 @@ function enrichVolumeSnapshot(args: {
     versions: request.versions,
     ...(additionalVolumes ? { additionalVolumes } : {}),
   };
+}
+
+async function loadCheckpointRunContext(
+  db: Db,
+  input: CheckpointAuthInput<CheckpointCreateBody>,
+): Promise<CheckpointRunContext | undefined> {
+  const [run] = await db
+    .select({
+      agentComposeVersionId: agentRuns.agentComposeVersionId,
+      additionalVolumes: agentRuns.additionalVolumes,
+      secretNames: agentRuns.secretNames,
+      sessionId: agentRuns.sessionId,
+      sessionArtifacts: agentSessions.artifacts,
+      vars: agentRuns.vars,
+    })
+    .from(agentRuns)
+    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .limit(1);
+
+  return run;
 }
 
 export const prepareCheckpointHistoryUpload$ = command(
@@ -206,22 +274,7 @@ export const createAgentCheckpoint$ = command(
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const [run] = await db
-      .select({
-        agentComposeVersionId: agentRuns.agentComposeVersionId,
-        additionalVolumes: agentRuns.additionalVolumes,
-        secretNames: agentRuns.secretNames,
-        sessionId: agentRuns.sessionId,
-        vars: agentRuns.vars,
-      })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.id, input.body.runId),
-          eq(agentRuns.userId, input.auth.userId),
-        ),
-      )
-      .limit(1);
+    const run = await loadCheckpointRunContext(db, input);
     signal.throwIfAborted();
 
     if (!run) {
@@ -276,9 +329,10 @@ export const createAgentCheckpoint$ = command(
       ...(vars ? { vars } : {}),
       ...(run.secretNames ? { secretNames: run.secretNames } : {}),
     };
-    const artifactSnapshots = artifactSnapshotsForDb(
-      input.body.artifactSnapshots,
-    );
+    const artifactSnapshots = artifactSnapshotsForDb({
+      snapshots: input.body.artifactSnapshots,
+      expectedArtifacts: run.sessionArtifacts,
+    });
     const volumeVersionsSnapshot = enrichVolumeSnapshot({
       request: input.body.volumeVersionsSnapshot,
       additionalVolumes: run.additionalVolumes,

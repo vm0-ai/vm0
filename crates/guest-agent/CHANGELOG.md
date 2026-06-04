@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.34.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.7...guest-agent-v0.34.8) (2026-06-03)
+
+## [0.34.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.6...guest-agent-v0.34.7) (2026-06-03)
+
+
+### Bug Fixes
+
+* preserve missing auto memory artifact checkpoints ([#15964](https://github.com/vm0-ai/vm0/issues/15964)) ([020dc4a](https://github.com/vm0-ai/vm0/commit/020dc4a62cd90237639396419ccee1ba85d7d4d0))
+
+## [0.34.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.5...guest-agent-v0.34.6) (2026-06-03)
+
+## [0.34.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.4...guest-agent-v0.34.5) (2026-06-03)
+
+## [0.34.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.3...guest-agent-v0.34.4) (2026-06-02)
+
+## [0.34.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.2...guest-agent-v0.34.3) (2026-06-02)
+
+
+### Bug Fixes
+
+* **guest-agent:** fail checkpoint on unreadable artifact root ([#15886](https://github.com/vm0-ai/vm0/issues/15886)) ([8812f88](https://github.com/vm0-ai/vm0/commit/8812f887b4559f8b68f36a7f1824780eacb14bfa))
+
+## [0.34.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.1...guest-agent-v0.34.2) (2026-06-02)
+
+
+### Refactoring
+
+* split guest-agent integration tests ([#15871](https://github.com/vm0-ai/vm0/issues/15871)) ([5c14f9e](https://github.com/vm0-ai/vm0/commit/5c14f9e68f60d9daab881d15568e0891893e44b5))
+
+## [0.34.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.34.0...guest-agent-v0.34.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* classify Claude Code session/weekly limits as usage limits ([#15854](https://github.com/vm0-ai/vm0/issues/15854)) ([140fcaa](https://github.com/vm0-ai/vm0/commit/140fcaae9e2d190c91746ee556174418acdcad04)), closes [#15852](https://github.com/vm0-ai/vm0/issues/15852)
+
+## [0.34.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.5...guest-agent-v0.34.0) (2026-06-01)
+
+
+### Features
+
+* add canonical workspace drive foundation ([#15688](https://github.com/vm0-ai/vm0/issues/15688)) ([593460a](https://github.com/vm0-ai/vm0/commit/593460ab818768ae75d1fd658a7211a2120a956b))
+
+## [0.33.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.4...guest-agent-v0.33.5) (2026-06-01)
+
+## [0.33.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.3...guest-agent-v0.33.4) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
+## [0.33.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.2...guest-agent-v0.33.3) (2026-05-31)
+
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.1...guest-agent-v0.33.2) (2026-05-31)
+
+
+### Performance Improvements
+
+* **guest-agent:** move event payloads without cloning ([#15558](https://github.com/vm0-ai/vm0/issues/15558)) ([9ebd3fa](https://github.com/vm0-ai/vm0/commit/9ebd3fa72143c81e2a8e5233227f96f51c26fb02))
+
 ## [0.33.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.33.0...guest-agent-v0.33.1) (2026-05-29)
 
 

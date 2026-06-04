@@ -82,7 +82,7 @@ const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
 
 function isRecallControlMessage(msg: PagedChatMessage): boolean {
   return (
-    ((msg.role === "user" && msg.runId === undefined) ||
+    ((msg.role === "user" && msg.runId === undefined && msg.content === null) ||
       (msg.role === "assistant" && msg.content === null)) &&
     msg.revokesMessageId !== undefined
   );
@@ -396,7 +396,12 @@ export interface ChatThreadSignals {
   setModelSelection$: Command<void, [ModelProviderSelection | null]>;
   sendMessage$: Command<
     Promise<void>,
-    [string, ModelSelectionRequest | null, AbortSignal]
+    [
+      string,
+      ModelSelectionRequest | null,
+      SendMessageOptions | undefined,
+      AbortSignal,
+    ]
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
   recallMessage$: Command<Promise<void>, [EnrichedChatMessage, AbortSignal]>;
@@ -1559,6 +1564,32 @@ function createRunTracking({
 // Sub-factory: sendMessage command
 // ---------------------------------------------------------------------------
 
+interface SendMessageOptions {
+  readonly revokesMessageId?: string;
+  readonly includeDraftAttachments?: boolean;
+}
+
+function prepareTextOnlyUserMessage(prompt: string) {
+  const trimmedPrompt = prompt.trim();
+  if (!trimmedPrompt) {
+    return null;
+  }
+  return {
+    prompt: trimmedPrompt,
+    attachFiles: undefined,
+    attachments: undefined,
+    hasTextContent: true,
+  };
+}
+
+function sendMessageRevocationPatch(options: SendMessageOptions | undefined): {
+  readonly revokesMessageId?: string;
+} {
+  return options?.revokesMessageId
+    ? { revokesMessageId: options.revokesMessageId }
+    : {};
+}
+
 interface SendMessageDeps {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
@@ -1584,6 +1615,7 @@ function createSendMessage(deps: SendMessageDeps) {
       { get, set },
       prompt: string,
       modelSelection: ModelSelectionRequest | null,
+      options: SendMessageOptions | undefined,
       signal: AbortSignal,
     ) => {
       L.debug("sendMessage$ start", { threadId, promptLen: prompt.length });
@@ -1612,17 +1644,21 @@ function createSendMessage(deps: SendMessageDeps) {
           })?.selectedModel ?? undefined;
       }
 
-      const result = await set(
-        prepareUserMessageFromDraft$,
-        draft,
-        prompt,
-        {
-          excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
-            effectiveSelectedModel,
-          ),
-        },
-        signal,
-      );
+      const result =
+        options?.includeDraftAttachments === false
+          ? prepareTextOnlyUserMessage(prompt)
+          : await set(
+              prepareUserMessageFromDraft$,
+              draft,
+              prompt,
+              {
+                excludeVisualAttachments:
+                  shouldExcludeVisualAttachmentsForModel(
+                    effectiveSelectedModel,
+                  ),
+              },
+              signal,
+            );
       if (!result) {
         L.debug("sendMessage$ prepare returned null, abort", { threadId });
         return;
@@ -1641,6 +1677,7 @@ function createSendMessage(deps: SendMessageDeps) {
           role: "user",
           content: result.prompt,
           attachFiles: result.attachments,
+          ...sendMessageRevocationPatch(options),
           createdAt: new Date().toISOString(),
         },
       });
@@ -1676,6 +1713,7 @@ function createSendMessage(deps: SendMessageDeps) {
               clientMessageId,
               modelSelection,
               attachFiles: result.attachFiles,
+              ...sendMessageRevocationPatch(options),
               ...(forceNewSession ? { forceNewSession: true } : {}),
             },
             fetchOptions: { signal },
@@ -2137,10 +2175,7 @@ export function createChatThreadSignals(
     agentDisplayName$,
     defaultModelSelection$,
     agentPinned$,
-    timelineExpandedIds$: threadUi.timelineExpandedIds$,
-    toggleTimelineExpanded$: threadUi.toggleTimelineExpanded$,
-    copiedMessageId$: threadUi.copiedMessageId$,
-    copyMessage$: threadUi.copyMessage$,
+    ...threadUi,
     setInputRef$,
     focusInput$,
     scheduleDraftSync$,

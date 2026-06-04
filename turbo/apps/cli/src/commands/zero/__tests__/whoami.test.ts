@@ -41,6 +41,30 @@ function buildCliToken(payload: Record<string, unknown>): string {
   return buildJwt(payload, "vm0_pat_");
 }
 
+function mockUserPermissionGrantsHandler(
+  grants: Record<string, unknown>[] = [],
+) {
+  return http.get(
+    "http://localhost:3000/api/zero/user-permission-grants",
+    () => {
+      return HttpResponse.json(grants);
+    },
+  );
+}
+
+function makePermissionGrant(overrides: Record<string, unknown> = {}) {
+  return {
+    agentId: "agent-123",
+    connectorRef: "slack",
+    permission: "channels:read",
+    action: "allow",
+    expiresAt: null,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("zero whoami command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -493,27 +517,20 @@ describe("zero whoami command", () => {
             connectorProvidedEnvNames: [],
           });
         }),
-        http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
-          return HttpResponse.json({
-            agentId: "agent-123",
-            ownerId: "owner-1",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: {
-              slack: {
-                policies: {
-                  "channels:read": "allow",
-                  "chat:write": "deny",
-                  "reactions:read": "allow",
-                  admin: "ask",
-                },
-              },
-            },
-            customSkills: [],
-          });
-        }),
+        mockUserPermissionGrantsHandler([
+          makePermissionGrant({
+            permission: "channels:read",
+            action: "allow",
+          }),
+          makePermissionGrant({
+            permission: "chat:write",
+            action: "deny",
+          }),
+          makePermissionGrant({
+            permission: "reactions:read",
+            action: "allow",
+          }),
+        ]),
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
@@ -540,11 +557,6 @@ describe("zero whoami command", () => {
       expect(
         output.some((line) => {
           return line.includes("✗") && line.includes("chat:write");
-        }),
-      ).toBe(true);
-      expect(
-        output.some((line) => {
-          return line.includes("?") && line.includes("admin");
         }),
       ).toBe(true);
     });
@@ -584,18 +596,7 @@ describe("zero whoami command", () => {
             connectorProvidedEnvNames: [],
           });
         }),
-        http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
-          return HttpResponse.json({
-            agentId: "agent-123",
-            ownerId: "owner-1",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: null,
-            customSkills: [],
-          });
-        }),
+        mockUserPermissionGrantsHandler(),
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
@@ -619,7 +620,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
-    it("should show identity only when agent API fails with --permissions", async () => {
+    it("should show identity only when permission grant API fails with --permissions", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -654,19 +655,19 @@ describe("zero whoami command", () => {
             connectorProvidedEnvNames: [],
           });
         }),
-        http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
-          return HttpResponse.json(
-            { error: { message: "Internal Server Error", code: "INTERNAL" } },
-            { status: 500 },
-          );
-        }),
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/zero/user-permission-grants",
           () => {
             return HttpResponse.json(
               { error: { message: "Internal Server Error", code: "INTERNAL" } },
               { status: 500 },
             );
+          },
+        ),
+        http.get(
+          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
           },
         ),
       );
@@ -684,7 +685,7 @@ describe("zero whoami command", () => {
           return line.includes("@octocat");
         }),
       ).toBe(true);
-      // No permission lines when agent API fails
+      // No permission lines when grants are unavailable
       expect(
         output.some((line) => {
           return line.includes("✓") || line.includes("✗") || line.includes("?");
@@ -697,7 +698,7 @@ describe("zero whoami command", () => {
       ).toBe(false);
     });
 
-    it("should show identity only when one agent API fails with --permissions", async () => {
+    it("should show identity only when connector access API fails with --permissions", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -732,20 +733,13 @@ describe("zero whoami command", () => {
             connectorProvidedEnvNames: [],
           });
         }),
-        http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
-          return HttpResponse.json({
-            agentId: "agent-123",
-            ownerId: "owner-1",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            permissionPolicies: {
-              slack: { policies: { "channels:read": "allow" } },
-            },
-            customSkills: [],
-          });
-        }),
+        mockUserPermissionGrantsHandler([
+          makePermissionGrant({
+            connectorRef: "github",
+            permission: "repo",
+            action: "allow",
+          }),
+        ]),
         // user-connectors API fails
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
@@ -766,7 +760,7 @@ describe("zero whoami command", () => {
           return line.includes("@octocat");
         }),
       ).toBe(true);
-      // No permission lines when one agent API fails
+      // No permission lines when connector access data is unavailable
       expect(
         output.some((line) => {
           return line.includes("✓") || line.includes("✗") || line.includes("?");

@@ -13,9 +13,12 @@ import {
   getClerkFrontendApiHost,
   getClerkPublishableKey,
 } from "../src/lib/shared/clerk-config";
-import { getAppUrl } from "../src/lib/zero/url";
+import { getAllowedRedirectOrigins, getAppUrl } from "../src/lib/zero/url";
 import { SafeGoogleOneTap } from "./components/SafeGoogleOneTap";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { AttributionCapture } from "./components/AttributionCapture";
+import { PostHogProvider } from "./components/PostHogProvider";
+import { VM0_CLERK_LOCALIZATION } from "./components/auth/banned-account-message";
 import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
@@ -154,7 +157,8 @@ export default async function RootLayout({
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl={getAppUrl()}
       signUpFallbackRedirectUrl={getAppUrl()}
-      allowedRedirectOrigins={[getAppUrl()]}
+      allowedRedirectOrigins={getAllowedRedirectOrigins()}
+      localization={VM0_CLERK_LOCALIZATION}
     >
       <SafeGoogleOneTap redirectUrl={getAppUrl()} />
       <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
@@ -310,7 +314,11 @@ export default async function RootLayout({
               }),
             }}
           />
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <AttributionCapture />
+            <PostHogProvider />
+            {children}
+          </ThemeProvider>
           <Script
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
             strategy="lazyOnload"

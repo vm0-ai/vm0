@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
+import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
-  zeroAgentPermissionPoliciesContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -17,15 +17,21 @@ import {
 import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import {
+  createMockUserPermissionGrantResponse,
+  setMockUserPermissionGrants,
+} from "../../../mocks/handlers/api-user-permission-grants.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
+const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 
 function mockAPIs({
-  permissionPolicies = null,
+  userPermissionGrants = [],
 }: {
-  permissionPolicies?: FirewallPolicies | null;
+  userPermissionGrants?: UserPermissionGrantResponse[];
 } = {}) {
+  setMockUserPermissionGrants(userPermissionGrants);
   setMockTeam([
     {
       id: "c0000000-0000-4000-a000-000000000001",
@@ -49,13 +55,12 @@ function mockAPIs({
   server.use(
     mockApi(zeroAgentsByIdContract.get, ({ respond }) => {
       return respond(200, {
-        agentId: "e0000000-0000-4000-a000-000000000010",
+        agentId: AGENT_ID,
         ownerId: "test-user-123",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies,
         customSkills: [],
       });
     }),
@@ -80,20 +85,18 @@ function mockAPIs({
       updatedAt: "2026-01-01T00:00:00Z",
     },
   ]);
-  server.use(
-    mockApi(zeroAgentPermissionPoliciesContract.update, ({ body, respond }) => {
-      return respond(200, {
-        agentId: "e0000000-0000-4000-a000-000000000010",
-        ownerId: "test-user-123",
-        description: null,
-        displayName: null,
-        sound: null,
-        avatarUrl: null,
-        permissionPolicies: body.policies,
-        customSkills: [],
-      });
-    }),
-  );
+}
+
+function mockSlackGrant(
+  permission: string,
+  action: UserPermissionGrantResponse["action"],
+): UserPermissionGrantResponse {
+  return createMockUserPermissionGrantResponse({
+    agentId: AGENT_ID,
+    connectorRef: "slack",
+    permission,
+    action,
+  });
 }
 
 async function openPermissionsDrawer() {
@@ -165,14 +168,10 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   it("should not highlight either Allow or Deny at group level when permissions are mixed", async () => {
     // Provide mixed policies: some allow, some deny within Read group
     mockAPIs({
-      permissionPolicies: {
-        slack: {
-          policies: {
-            "bookmarks:read": "allow",
-            "channels:read": "deny",
-          },
-        },
-      },
+      userPermissionGrants: [
+        mockSlackGrant("bookmarks:read", "allow"),
+        mockSlackGrant("channels:read", "deny"),
+      ],
     });
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
@@ -282,8 +281,10 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     expect(allowBtn!.className).toContain("bg-emerald");
   });
 
-  it("should show unknown endpoints as Allow when saved as allow", async () => {
-    mockAPIs({});
+  it("should show unknown endpoints as Allow when granted as allow", async () => {
+    mockAPIs({
+      userPermissionGrants: [mockSlackGrant(UNKNOWN_PERMISSION_GRANT, "allow")],
+    });
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 

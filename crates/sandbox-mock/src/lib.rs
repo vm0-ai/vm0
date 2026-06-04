@@ -7,9 +7,9 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, shared lifecycle behavior queues, custom `wait_process` exits,
-//! and durable [`MockLifecycleGate`] gates for lifecycle and cancellation
-//! testing.
+//! results, shared read-file results, shared lifecycle behavior queues, custom
+//! `wait_process` exits, and durable [`MockLifecycleGate`] gates for lifecycle
+//! and cancellation testing.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -54,8 +54,11 @@ pub struct ExecMatcher {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecCall {
     pub cmd: String,
+    pub timeout: Duration,
+    pub env_keys: Vec<String>,
     pub sudo: bool,
     pub stdin_bytes: Option<Vec<u8>>,
+    pub output_limits: ExecOutputLimits,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -312,19 +315,25 @@ enum BlockingGate {
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
 ///
 /// Tests create this via [`MockSandboxRuntime::with_overrides`] so every
-/// sandbox produced by the factory checks these overrides before falling
-/// back to the default FIFO-queue behaviour. Queue fields on this type are
-/// shared globally by every factory and sandbox that receives the same
-/// `Arc<MockSandboxOverrides>`.
+/// sandbox produced by the factory can share queued behavior and call
+/// observations. Queue fields on this type are shared globally by every
+/// factory and sandbox that receives the same `Arc<MockSandboxOverrides>`.
 pub struct MockSandboxOverrides {
     /// Pattern-matched exec results. First matching pattern wins and is
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
+    /// Recorded exec calls across all sandboxes built from this override set.
+    exec_calls: Mutex<Vec<ExecCall>>,
+    /// FIFO queue of read_file results consumed by factory-created sandboxes.
+    read_file_results: Mutex<VecDeque<Result<Option<Vec<u8>>>>>,
     /// When `Some`, `wait_process` returns this exit code instead of 0.
     wait_process_code: Option<i32>,
     /// When set, `wait_process` awaits this [`tokio::sync::Notify`] before
     /// returning — giving the test a window to cancel the job.
     wait_process_gate: Option<Arc<tokio::sync::Notify>>,
+    /// Optional durable gate that records and blocks every `wait_process`
+    /// entry until released.
+    wait_process_lifecycle_gate: Mutex<Option<MockLifecycleGate>>,
     /// When `Some`, `wait_process` returns a wait-process operation error to
     /// simulate timeout or crash. The stdout channel sender is also kept alive
     /// in `MockSandbox` so the drain task would block without the fix.
@@ -389,8 +398,11 @@ impl MockSandboxOverrides {
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
+            exec_calls: Mutex::new(Vec::new()),
+            read_file_results: Mutex::new(VecDeque::new()),
             wait_process_code: None,
             wait_process_gate: None,
+            wait_process_lifecycle_gate: Mutex::new(None),
             wait_process_error: None,
             wait_process_exits: Mutex::new(VecDeque::new()),
             create_results: Mutex::new(VecDeque::new()),
@@ -431,6 +443,22 @@ impl MockSandboxOverrides {
         }
     }
 
+    /// Block every `wait_process` call with a durable lifecycle gate.
+    ///
+    /// Prefer this over [`Self::with_wait_process_gate`]: entries and releases
+    /// are durable, so tests do not need to pre-arm `Notify` futures.
+    pub fn set_wait_process_lifecycle_gate(&self, gate: MockLifecycleGate) {
+        *self.wait_process_lifecycle_gate.lock_ignoring_poison() = Some(gate);
+    }
+
+    /// Remove the durable `wait_process` gate for future wait calls.
+    ///
+    /// Already-entered wait calls keep waiting on their cloned gate until the
+    /// test releases it.
+    pub fn clear_wait_process_lifecycle_gate(&self) {
+        *self.wait_process_lifecycle_gate.lock_ignoring_poison() = None;
+    }
+
     /// Create overrides that make `wait_process` return an error (simulating
     /// timeout or crash). The stdout channel sender is kept alive so the
     /// drain task blocks unless the caller aborts it.
@@ -453,6 +481,21 @@ impl MockSandboxOverrides {
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
         self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Recorded exec calls across all sandboxes built from this override set,
+    /// in call order.
+    pub fn exec_calls(&self) -> Vec<ExecCall> {
+        self.exec_calls.lock_ignoring_poison().clone()
+    }
+
+    /// Queue a read_file result applied to the next read made through any
+    /// sandbox built from these overrides after that sandbox's local read queue
+    /// is empty.
+    pub fn push_read_file_result(&self, result: Result<Option<Vec<u8>>>) {
+        self.read_file_results
+            .lock_ignoring_poison()
+            .push_back(result);
     }
 
     /// Queue a factory `create()` result applied to the next factory create
@@ -635,6 +678,32 @@ impl MockSandboxOverrides {
         *self
             .process_cancel_releases_wait_gate
             .lock_ignoring_poison() = releases;
+    }
+
+    async fn wait_for_wait_process_gate(&self) {
+        let lifecycle_gate = {
+            self.wait_process_lifecycle_gate
+                .lock_ignoring_poison()
+                .clone()
+        };
+        if let Some(gate) = lifecycle_gate {
+            gate.enter_and_wait().await;
+        } else if let Some(gate) = &self.wait_process_gate {
+            gate.notified().await;
+        }
+    }
+
+    fn release_wait_process_gate(&self) {
+        if let Some(gate) = &self.wait_process_gate {
+            gate.notify_one();
+        }
+        if let Some(gate) = self
+            .wait_process_lifecycle_gate
+            .lock_ignoring_poison()
+            .clone()
+        {
+            gate.release_one();
+        }
     }
 }
 
@@ -862,11 +931,22 @@ impl Sandbox for MockSandbox {
     }
 
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
-        self.exec_calls.lock_ignoring_poison().push(ExecCall {
+        let call = ExecCall {
             cmd: request.cmd.to_string(),
+            timeout: request.timeout,
+            env_keys: request
+                .env
+                .iter()
+                .map(|(key, _)| (*key).to_string())
+                .collect(),
             sudo: request.sudo,
             stdin_bytes: request.stdin_bytes.map(Vec::from),
-        });
+            output_limits: request.output_limits,
+        };
+        self.exec_calls.lock_ignoring_poison().push(call.clone());
+        if let Some(overrides) = &self.overrides {
+            overrides.exec_calls.lock_ignoring_poison().push(call);
+        }
         // Check pattern matchers before the FIFO queue.
         let result = if let Some(overrides) = &self.overrides {
             let mut matchers = overrides.exec_matchers.lock_ignoring_poison();
@@ -916,6 +996,14 @@ impl Sandbox for MockSandbox {
             .read_file_results
             .lock_ignoring_poison()
             .pop_front()
+            .or_else(|| {
+                self.overrides.as_ref().and_then(|overrides| {
+                    overrides
+                        .read_file_results
+                        .lock_ignoring_poison()
+                        .pop_front()
+                })
+            })
             .unwrap_or(Ok(None))?;
         if let Some(bytes) = &result
             && bytes.len() as u64 > max_bytes
@@ -1078,9 +1166,8 @@ impl Sandbox for MockSandbox {
                     if *overrides
                         .process_cancel_releases_wait_gate
                         .lock_ignoring_poison()
-                        && let Some(gate) = &overrides.wait_process_gate
                     {
-                        gate.notify_one();
+                        overrides.release_wait_process_gate();
                     }
                     Ok(())
                 })
@@ -1119,9 +1206,7 @@ impl Sandbox for MockSandbox {
 
         if let Some(overrides) = &self.overrides {
             // Block until the test signals (gives a window for cancellation).
-            if let Some(gate) = &overrides.wait_process_gate {
-                gate.notified().await;
-            }
+            overrides.wait_for_wait_process_gate().await;
             // Return error when configured (simulates timeout or crash).
             if let Some(ref msg) = overrides.wait_process_error {
                 return Err(SandboxError::Operation {
@@ -1424,6 +1509,7 @@ mod tests {
             output_dir,
             vcpu_count: 2,
             memory_mb: 1024,
+            workspace_disk_mb: 16,
         }
     }
 
@@ -1435,6 +1521,7 @@ mod tests {
                 memory_mb: 1024,
             },
             device_rate_limits: None,
+            workspace_drive: None,
         }
     }
 
@@ -1528,6 +1615,7 @@ mod tests {
                 output_dir: output_dir.clone(),
                 vcpu_count: 1,
                 memory_mb: 128,
+                workspace_disk_mb: 16,
             })
             .await
             .expect("create snapshot");
@@ -2217,6 +2305,44 @@ mod tests {
         second_factory.create(test_sandbox_config()).await.unwrap();
     }
 
+    #[tokio::test]
+    async fn overrides_share_read_file_results_across_factory_sandboxes() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_read_file_result(Ok(Some(b"first".to_vec())));
+        overrides.push_read_file_result(Ok(Some(b"second".to_vec())));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let first = factory.create(test_sandbox_config()).await.unwrap();
+        let second = factory.create(test_sandbox_config()).await.unwrap();
+
+        assert_eq!(
+            first.read_file("/tmp/one", 1024).await.unwrap(),
+            Some(b"first".to_vec())
+        );
+        assert_eq!(
+            second.read_file("/tmp/two", 1024).await.unwrap(),
+            Some(b"second".to_vec())
+        );
+        assert_eq!(first.read_file("/tmp/empty", 1024).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn sandbox_local_read_file_result_takes_precedence_over_shared_overrides() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.push_read_file_result(Ok(Some(b"shared".to_vec())));
+        let sandbox = MockSandbox::with_overrides("sandbox", Arc::clone(&overrides));
+        sandbox.push_read_file_result(Ok(Some(b"local".to_vec())));
+
+        assert_eq!(
+            sandbox.read_file("/tmp/local", 1024).await.unwrap(),
+            Some(b"local".to_vec())
+        );
+        assert_eq!(
+            sandbox.read_file("/tmp/shared", 1024).await.unwrap(),
+            Some(b"shared".to_vec())
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn shared_create_result_is_consumed_once_across_concurrent_factories() {
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -2727,6 +2853,126 @@ mod tests {
 
         gate.notify_waiters();
         wait.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_process_lifecycle_gate_blocks_until_released() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_wait_process_lifecycle_gate(gate.clone());
+        let sandbox = MockSandbox::with_overrides("test", overrides);
+        let handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+
+        let wait =
+            tokio::spawn(async move { sandbox.wait_process(handle, Duration::from_secs(5)).await });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+        assert!(
+            !wait.is_finished(),
+            "wait_process should block until the lifecycle gate is released",
+        );
+
+        gate.release_one();
+        let result = wait.await.unwrap().unwrap();
+        assert_eq!(result.pid, 1);
+        assert_eq!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn wait_process_lifecycle_gate_clear_only_affects_future_waits() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_wait_process_lifecycle_gate(gate.clone());
+        let first_sandbox = MockSandbox::with_overrides("first", Arc::clone(&overrides));
+        let first_handle = first_sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+
+        let first_wait = tokio::spawn(async move {
+            first_sandbox
+                .wait_process(first_handle, Duration::from_secs(5))
+                .await
+        });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+
+        overrides.clear_wait_process_lifecycle_gate();
+        assert!(
+            !first_wait.is_finished(),
+            "clearing the gate must not release an already-entered wait_process",
+        );
+
+        let second_sandbox = MockSandbox::with_overrides("second", overrides);
+        let second_handle = second_sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+        let second_result = tokio::time::timeout(
+            test_timeout(),
+            second_sandbox.wait_process(second_handle, Duration::from_secs(5)),
+        )
+        .await
+        .expect("future wait_process calls should bypass a cleared gate")
+        .unwrap();
+        assert_eq!(second_result.exit_code, 0);
+
+        gate.release_one();
+        let first_result = first_wait.await.unwrap().unwrap();
+        assert_eq!(first_result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn process_cancel_releases_wait_process_lifecycle_gate() {
+        let gate = MockLifecycleGate::new();
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.set_wait_process_lifecycle_gate(gate.clone());
+        let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+        let mut handle = sandbox
+            .start_process(&StartProcessRequest {
+                cmd: "agent",
+                timeout: Duration::from_secs(5),
+                env: &[],
+                sudo: false,
+                output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+                control: ProcessControlMode::None,
+            })
+            .await
+            .unwrap();
+        let cancel = handle
+            .take_cancel_handle()
+            .expect("mock process should expose a cancel handle");
+
+        let wait =
+            tokio::spawn(async move { sandbox.wait_process(handle, Duration::from_secs(5)).await });
+        assert_eq!(gate.wait_entered(1, test_timeout()).await.unwrap(), 1);
+
+        cancel.cancel(Duration::from_secs(1)).await.unwrap();
+        let result = wait.await.unwrap().unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(overrides.process_cancel_calls().len(), 1);
     }
 
     #[tokio::test]

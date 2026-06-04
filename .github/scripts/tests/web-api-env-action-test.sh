@@ -93,23 +93,6 @@ oauth_client_config_keys() {
   done < <(oauth_client_config_prefixes)
 }
 
-verify_workflow_oauth_client_config_keys() {
-  awk '
-    /^          EXPECTED_KEYS: \|$/ {
-      in_list = 1
-      next
-    }
-    in_list && /^            [A-Z0-9_]+_OAUTH_CLIENT_(ID|SECRET)$/ {
-      sub(/^            /, "")
-      print
-      next
-    }
-    in_list && /^        run:/ {
-      in_list = 0
-    }
-  ' "${REPO_ROOT}/.github/workflows/verify-doppler-oauth-config.yml" | sort -u
-}
-
 build_doppler_secrets_json() {
   local omit_key="${1:-}"
   local json="{}"
@@ -143,8 +126,8 @@ run_action() {
     INPUT_APP_URL="https://pr-123-app.vm0.test" \
     INPUT_API_URL="https://pr-123-api.vm0.test" \
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
-    REPO_VARS_JSON='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var"}' \
-    REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret"}' \
+    REPO_VARS_JSON='{"GH_OAUTH_CLIENT_ID":"github-gh-client-id","SLACK_OAUTH_CLIENT_ID":"github-slack-client-id","VM0_API_URL":"https://api.github.test","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-var","FINICITY_PARTNER_ID":"github-finicity-partner-id"}' \
+    REPO_SECRETS_JSON='{"GH_OAUTH_CLIENT_SECRET":"github-gh-client-secret","SLACK_OAUTH_CLIENT_SECRET":"github-slack-client-secret","GOOGLE_ADS_DEVELOPER_TOKEN":"github-google-ads-secret","FINICITY_APP_KEY":"github-finicity-app-key","FINICITY_APP_SECRET":"github-finicity-app-secret"}' \
     DOPPLER_SECRETS_JSON="$doppler_secrets_json" \
     bash "$action_script"
 }
@@ -157,10 +140,6 @@ if ! oauth_client_config_prefixes | grep -qx SLACK; then
   fail "expected Slack OAuth client config to come from Doppler"
 fi
 
-if ! diff -u <(oauth_client_config_keys | sort -u) <(verify_workflow_oauth_client_config_keys); then
-  fail "web-api-env OAuth client config keys must match verify-doppler-oauth-config expected keys"
-fi
-
 success_dir="$(mktemp -d)"
 TEMP_DIRS+=("$success_dir")
 success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir")"
@@ -171,6 +150,9 @@ assert_env_value "$success_env_file" GH_OAUTH_CLIENT_SECRET "doppler-GH_OAUTH_CL
 assert_env_value "$success_env_file" SLACK_OAUTH_CLIENT_ID "doppler-SLACK_OAUTH_CLIENT_ID"
 assert_env_value "$success_env_file" SLACK_OAUTH_CLIENT_SECRET "doppler-SLACK_OAUTH_CLIENT_SECRET"
 assert_env_value "$success_env_file" GOOGLE_ADS_DEVELOPER_TOKEN "github-google-ads-secret"
+assert_env_value "$success_env_file" FINICITY_APP_KEY "github-finicity-app-key"
+assert_env_value "$success_env_file" FINICITY_APP_SECRET "github-finicity-app-secret"
+assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partner-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-id"
 assert_env_absent_value "$success_env_file" "github-gh-client-secret"
 assert_env_absent_value "$success_env_file" "github-slack-client-id"

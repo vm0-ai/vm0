@@ -7,6 +7,10 @@ import {
   type ZeroAgentRequest,
   type ZeroAgentInstructionsResponse,
 } from "@vm0/api-contracts/contracts/zero-agents";
+import {
+  zeroUserPermissionGrantsContract,
+  type UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -75,6 +79,19 @@ export async function getZeroAgentUserConnectors(
   handleError(
     result,
     `Failed to get connector permissions for zero agent "${id}"`,
+  );
+}
+
+export async function listZeroUserPermissionGrants(
+  agentId: string,
+): Promise<UserPermissionGrantResponse[]> {
+  const config = await getClientConfig();
+  const client = initClient(zeroUserPermissionGrantsContract, config);
+  const result = await client.list({ query: { agentId } });
+  if (result.status === 200) return result.body;
+  handleError(
+    result,
+    `Failed to get permission grants for zero agent "${agentId}"`,
   );
 }
 

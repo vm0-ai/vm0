@@ -11,6 +11,10 @@ export const square = {
         label: "Access Token",
         helpText:
           "1. Sign in to the [Square Developer Console](https://developer.squareup.com/apps)\n2. Open (or create) an application\n3. In the left pane, choose **Credentials**\n4. At the top of the page, select **Production**\n5. Copy the **Production Access token** (format: `EAAA...`)",
+        storage: {
+          secrets: ["SQUARE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

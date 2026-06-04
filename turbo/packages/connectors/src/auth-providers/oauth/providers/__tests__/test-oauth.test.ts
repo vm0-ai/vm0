@@ -1,4 +1,5 @@
 import { HttpResponse, http } from "msw";
+import { getConnectorAuthMethodAuthCodeGrantConfig } from "../../../../connector-utils";
 import { setupServer } from "msw/node";
 import {
   afterAll,
@@ -17,6 +18,14 @@ import {
 } from "../test-oauth";
 
 const server = setupServer();
+
+function authCodeGrant() {
+  return getConnectorAuthMethodAuthCodeGrantConfig("test-oauth", "oauth");
+}
+
+function testRefreshSignal(): AbortSignal {
+  return new AbortController().signal;
+}
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -47,6 +56,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -67,6 +77,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -83,6 +94,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -117,6 +129,7 @@ describe("test-oauth provider URLs", () => {
       "test-oauth-client",
       "test-oauth-secret",
       "refresh-1",
+      testRefreshSignal(),
     );
 
     expect(tokenRequestHeaders?.get("x-vercel-protection-bypass")).toBe(
@@ -133,6 +146,7 @@ describe("test-oauth provider URLs", () => {
 
     const authorizationUrl = new URL(
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",
@@ -147,6 +161,7 @@ describe("test-oauth provider URLs", () => {
 
     expect(() => {
       buildTestOAuthAuthorizationUrl(
+        authCodeGrant(),
         "test-client",
         "https://app.vm0.ai/callback",
         "state-123",

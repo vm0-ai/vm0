@@ -55,7 +55,6 @@ describe("zero about page", () => {
           description: null,
           sound: null,
           avatarUrl: null,
-          permissionPolicies: null,
           customSkills: [],
         });
       }),

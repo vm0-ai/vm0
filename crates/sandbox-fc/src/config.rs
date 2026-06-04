@@ -39,6 +39,8 @@ pub struct SnapshotConfig {
     pub cow_path: PathBuf,
     /// Drive path recorded in the snapshot's Firecracker config (bind mount target).
     pub drive_bind_path: PathBuf,
+    /// Workspace drive path recorded in the snapshot's Firecracker config.
+    pub workspace_drive_bind_path: PathBuf,
     /// Vsock directory recorded in the snapshot's Firecracker config (bind mount target).
     pub vsock_bind_dir: PathBuf,
 }
@@ -78,11 +80,11 @@ pub struct RateLimiterConfig {
 /// creation should use `sandbox::DeviceRateLimits`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FirecrackerDeviceRateLimits {
-    /// Rate limiter applied to the Firecracker root block device.
+    /// Sandbox-level block-device budget.
     ///
-    /// The provider-neutral conversion populates both bandwidth and ops
-    /// dimensions for this device.
-    pub drive: RateLimiterConfig,
+    /// Firecracker limiters are attached per drive, so callers must split this
+    /// budget across all block drives they attach for a sandbox.
+    pub block: sandbox::BlockRateLimits,
     /// Receive-side rate limiter applied to the Firecracker network interface.
     ///
     /// The provider-neutral conversion populates bandwidth only and leaves ops
@@ -99,17 +101,13 @@ impl TryFrom<&sandbox::DeviceRateLimits> for FirecrackerDeviceRateLimits {
     type Error = String;
 
     fn try_from(limits: &sandbox::DeviceRateLimits) -> Result<Self, Self::Error> {
+        validate_positive(
+            "block bandwidth_bytes_per_sec",
+            limits.block.bandwidth_bytes_per_sec,
+        )?;
+        validate_positive("block ops_per_sec", limits.block.ops_per_sec)?;
         Ok(Self {
-            drive: RateLimiterConfig {
-                bandwidth: Some(positive_token_bucket(
-                    "block bandwidth_bytes_per_sec",
-                    limits.block.bandwidth_bytes_per_sec,
-                )?),
-                ops: Some(positive_token_bucket(
-                    "block ops_per_sec",
-                    limits.block.ops_per_sec,
-                )?),
-            },
+            block: limits.block.clone(),
             net_rx: RateLimiterConfig {
                 bandwidth: Some(positive_token_bucket(
                     "network rx_bytes_per_sec",
@@ -126,6 +124,36 @@ impl TryFrom<&sandbox::DeviceRateLimits> for FirecrackerDeviceRateLimits {
             },
         })
     }
+}
+
+impl FirecrackerDeviceRateLimits {
+    /// Build the limiter applied to each writable block drive.
+    ///
+    /// `sandbox::DeviceRateLimits::block` is a sandbox-level budget. Since
+    /// Firecracker limiters are per-drive, split that budget across all block
+    /// drives to keep aggregate block I/O within the runner's per-sandbox
+    /// allocation.
+    pub(crate) fn block_drive_limiter(
+        &self,
+        drive_count: NonZeroU64,
+    ) -> Result<RateLimiterConfig, String> {
+        let drive_count = drive_count.get();
+        let bandwidth = self.block.bandwidth_bytes_per_sec / drive_count;
+        let ops = self.block.ops_per_sec / drive_count;
+        Ok(RateLimiterConfig {
+            bandwidth: Some(positive_token_bucket(
+                "per-drive block bandwidth_bytes_per_sec",
+                bandwidth,
+            )?),
+            ops: Some(positive_token_bucket("per-drive block ops_per_sec", ops)?),
+        })
+    }
+}
+
+fn validate_positive(name: &'static str, rate_per_sec: u64) -> Result<(), String> {
+    NonZeroU64::new(rate_per_sec)
+        .map(|_| ())
+        .ok_or_else(|| format!("{name} must be positive"))
 }
 
 fn positive_token_bucket(
@@ -191,13 +219,55 @@ mod tests {
         };
 
         let fc = FirecrackerDeviceRateLimits::try_from(&limits).unwrap();
+        let block_limiter = fc.block_drive_limiter(nonzero(1)).unwrap();
 
-        assert_eq!(fc.drive.bandwidth.unwrap().size, 10 * 1024 * 1024);
-        assert_eq!(fc.drive.ops.unwrap().size, 1_000);
+        assert_eq!(fc.block, limits.block);
+        assert_eq!(block_limiter.bandwidth.unwrap().size, 10 * 1024 * 1024);
+        assert_eq!(block_limiter.ops.unwrap().size, 1_000);
         assert_eq!(fc.net_rx.bandwidth.unwrap().size, 5 * 1024 * 1024);
         assert_eq!(fc.net_tx.bandwidth.unwrap().size, 2_621_440);
         assert_eq!(fc.net_rx.ops, None);
         assert_eq!(fc.net_tx.ops, None);
+    }
+
+    #[test]
+    fn block_drive_limiter_splits_budget_across_drives() {
+        let limits = sandbox::DeviceRateLimits {
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 100 * 1024 * 1024,
+                ops_per_sec: 10_000,
+            },
+            network: sandbox::NetworkRateLimits {
+                rx_bytes_per_sec: 50 * 1024 * 1024,
+                tx_bytes_per_sec: 25 * 1024 * 1024,
+            },
+        };
+        let fc = FirecrackerDeviceRateLimits::try_from(&limits).unwrap();
+
+        let block_limiter = fc.block_drive_limiter(nonzero(2)).unwrap();
+
+        assert_eq!(block_limiter.bandwidth.unwrap().size, 5 * 1024 * 1024);
+        assert_eq!(block_limiter.ops.unwrap().size, 500);
+    }
+
+    #[test]
+    fn block_drive_limiter_rejects_budget_that_cannot_be_split() {
+        let limits = sandbox::DeviceRateLimits {
+            block: sandbox::BlockRateLimits {
+                bandwidth_bytes_per_sec: 1,
+                ops_per_sec: 1,
+            },
+            network: sandbox::NetworkRateLimits {
+                rx_bytes_per_sec: 1,
+                tx_bytes_per_sec: 1,
+            },
+        };
+        let fc = FirecrackerDeviceRateLimits::try_from(&limits).unwrap();
+
+        let err = fc.block_drive_limiter(nonzero(2)).unwrap_err();
+
+        assert!(err.contains("per-drive block bandwidth_bytes_per_sec"));
+        assert!(err.contains("positive"));
     }
 
     #[test]

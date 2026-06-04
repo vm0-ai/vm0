@@ -7,6 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
@@ -513,6 +514,7 @@ describe("POST /api/zero/chat/messages", () => {
       triggerSource: "web",
       chatThreadId: response.body.threadId,
     });
+    expect(run?.appendSystemPrompt).not.toContain("# Generation Template");
 
     const message = await firstUserMessage(response.body.threadId);
     expect(message).toMatchObject({
@@ -554,6 +556,171 @@ describe("POST /api/zero/chat/messages", () => {
       `chatThreadRunCreated:${response.body.threadId}`,
       null,
     );
+  });
+
+  it("adds generation template guidance to appendSystemPrompt", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await send({
+      agentId: fixture.agentId,
+      prompt: "make a launch deck",
+      generationTemplate: {
+        type: "presentation",
+        selection: {
+          designSystemId: item.designSystemId,
+          templateId: item.templateId,
+        },
+      },
+    });
+    await clearAllDetached();
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, response.body.runId!))
+      .limit(1);
+
+    expect(run?.prompt).toBe("make a launch deck");
+    expect(run?.appendSystemPrompt).toContain("# Generation Template");
+    expect(run?.appendSystemPrompt).toContain(
+      "Use the following registered resources for this run.",
+    );
+    expect(run?.appendSystemPrompt).toContain("Type: presentation");
+    expect(run?.appendSystemPrompt).toContain(
+      `Design system ID: ${item.designSystemId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain(
+      `Template ID: ${item.templateId}`,
+    );
+    expect(run?.appendSystemPrompt).toContain("Instructions:");
+    expect(run?.appendSystemPrompt).toContain(
+      "- Keep the user's prompt as the source of the requested content.",
+    );
+  });
+
+  it("rejects unknown generation template resources", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const unknownTemplate = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: item.designSystemId,
+              templateId: "template:missing",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownTemplate.body.error.message).toBe(
+      "Unknown generation template",
+    );
+
+    const unknownDesignSystem = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: "design-system:missing",
+              templateId: item.templateId,
+            },
+          },
+        },
+      }),
+      [400],
+    );
+    expect(unknownDesignSystem.body.error.message).toBe(
+      "Unknown generation template design system",
+    );
+  });
+
+  it("rejects generation templates that do not support presentation", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "make a deck",
+          generationTemplate: {
+            type: "presentation",
+            selection: {
+              designSystemId: item.designSystemId,
+              templateId: "template:web-prototype-taste-editorial",
+            },
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Generation template does not support the requested type",
+    );
+  });
+
+  it("queues generation template when the thread has an active run", async () => {
+    const fixture = await track(seedFixture());
+    const item = PRESENTATION_TEMPLATE_ITEMS[0]!;
+    const generationTemplate = {
+      type: "presentation",
+      selection: {
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    } as const;
+    const active = await send({
+      agentId: fixture.agentId,
+      prompt: "active deck run",
+    });
+    await clearAllDetached();
+
+    const response = await send({
+      agentId: fixture.agentId,
+      threadId: active.body.threadId,
+      prompt: "template queued deck",
+      generationTemplate,
+    });
+
+    expect(response.body.runId).toBeNull();
+    const [queued] = await store
+      .set(writeDb$)
+      .select({
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+        generationTemplate: chatMessages.generationTemplate,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, active.body.threadId),
+          eq(chatMessages.content, "template queued deck"),
+        ),
+      )
+      .limit(1);
+    expect(queued).toStrictEqual({
+      content: "template queued deck",
+      runId: null,
+      generationTemplate,
+    });
   });
 
   it("appends an assistant queue marker when a chat run enters the org queue", async () => {
@@ -785,6 +952,136 @@ describe("POST /api/zero/chat/messages", () => {
     });
   });
 
+  it("returns the original run when a new chat send is retried with the same client ids", async () => {
+    const fixture = await track(seedFixture());
+    const clientThreadId = randomUUID();
+    const clientMessageId = randomUUID();
+
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "retry client thread",
+      clientThreadId,
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    const retry = await send({
+      agentId: fixture.agentId,
+      prompt: "retry client thread",
+      clientThreadId,
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    expect(retry.body).toStrictEqual(first.body);
+
+    const writeDb = store.set(writeDb$);
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+      .where(eq(zeroRuns.chatThreadId, clientThreadId));
+    expect(runs).toStrictEqual([{ id: first.body.runId }]);
+
+    const messages = await writeDb
+      .select({
+        id: chatMessages.id,
+        runId: chatMessages.runId,
+        role: chatMessages.role,
+        content: chatMessages.content,
+      })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, clientThreadId),
+          eq(chatMessages.role, "user"),
+        ),
+      );
+    expect(messages).toStrictEqual([
+      {
+        id: clientMessageId,
+        runId: first.body.runId,
+        role: "user",
+        content: "retry client thread",
+      },
+    ]);
+  });
+
+  it("returns 404 when clientThreadId belongs to another user", async () => {
+    const owner = await track(seedFixture());
+    const clientThreadId = randomUUID();
+
+    await send({
+      agentId: owner.agentId,
+      prompt: "owner thread",
+      clientThreadId,
+      clientMessageId: randomUUID(),
+    });
+    await clearAllDetached();
+
+    const caller = await track(seedFixture());
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: caller.agentId,
+          prompt: "colliding thread",
+          clientThreadId,
+          clientMessageId: randomUUID(),
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "NOT_FOUND",
+      message: "Chat thread not found",
+    });
+  });
+
+  it("returns 404 when clientThreadId belongs to a different agent", async () => {
+    const owner = await track(seedFixture());
+    const clientThreadId = randomUUID();
+
+    await send({
+      agentId: owner.agentId,
+      prompt: "owner agent thread",
+      clientThreadId,
+      clientMessageId: randomUUID(),
+    });
+    await clearAllDetached();
+
+    const otherAgent = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    await writeDb
+      .update(agentComposes)
+      .set({ orgId: owner.orgId, userId: owner.userId })
+      .where(eq(agentComposes.id, otherAgent.agentId));
+    await writeDb
+      .update(zeroAgents)
+      .set({ orgId: owner.orgId, owner: owner.userId })
+      .where(eq(zeroAgents.id, otherAgent.agentId));
+    mocks.clerk.session(owner.userId, owner.orgId);
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: otherAgent.agentId,
+          prompt: "colliding agent thread",
+          clientThreadId,
+          clientMessageId: randomUUID(),
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "NOT_FOUND",
+      message: "Chat thread not found",
+    });
+  });
+
   it("passes enabled feature switch overrides into generated ZERO_TOKEN capabilities", async () => {
     const fixture = await track(seedFixture());
     await store
@@ -921,6 +1218,195 @@ describe("POST /api/zero/chat/messages", () => {
       content: "queued",
       runId: null,
       revokesMessageId: null,
+    });
+  });
+
+  it("returns the existing queued user message for duplicate clientMessageId retries", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({ agentId: fixture.agentId, prompt: "first" });
+    await clearAllDetached();
+
+    const clientMessageId = randomUUID();
+    const queued = await send({
+      agentId: fixture.agentId,
+      prompt: "queued once",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+    const retry = await send({
+      agentId: fixture.agentId,
+      prompt: "queued once",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+
+    expect(queued.body.runId).toBeNull();
+    expect(retry.body).toStrictEqual(queued.body);
+    const messages = await store
+      .set(writeDb$)
+      .select({
+        id: chatMessages.id,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, clientMessageId));
+    expect(messages).toStrictEqual([
+      {
+        id: clientMessageId,
+        content: "queued once",
+        runId: null,
+      },
+    ]);
+  });
+
+  it("returns the existing associated run for duplicate clientMessageId retries", async () => {
+    const fixture = await track(seedFixture());
+    const clientMessageId = randomUUID();
+    const first = await send({
+      agentId: fixture.agentId,
+      prompt: "first with client id",
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    const activeRetry = await send({
+      agentId: fixture.agentId,
+      prompt: "first with client id",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+    expect(activeRetry.body).toStrictEqual(first.body);
+
+    await setRunStatus(first.body.runId!, "completed");
+    const completedRetry = await send({
+      agentId: fixture.agentId,
+      prompt: "first with client id",
+      threadId: first.body.threadId,
+      clientMessageId,
+    });
+    expect(completedRetry.body).toStrictEqual({
+      ...first.body,
+      status: "completed",
+    });
+
+    const writeDb = store.set(writeDb$);
+    const messages = await writeDb
+      .select({
+        id: chatMessages.id,
+        content: chatMessages.content,
+        runId: chatMessages.runId,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, clientMessageId));
+    expect(messages).toStrictEqual([
+      {
+        id: clientMessageId,
+        content: "first with client id",
+        runId: first.body.runId,
+      },
+    ]);
+
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId));
+    expect(runs).toStrictEqual([{ id: first.body.runId }]);
+  });
+
+  it("rejects clientMessageId reuse from another user without leaking ownership", async () => {
+    const ownerFixture = await track(seedFixture());
+    const clientMessageId = randomUUID();
+    await send({
+      agentId: ownerFixture.agentId,
+      prompt: "owned message",
+      clientMessageId,
+    });
+    await clearAllDetached();
+
+    const otherFixture = await track(seedFixture());
+    const active = await send({
+      agentId: otherFixture.agentId,
+      prompt: "other active run",
+    });
+    await clearAllDetached();
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: otherFixture.agentId,
+          prompt: "cross-user retry",
+          threadId: active.body.threadId,
+          clientMessageId,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "CONFLICT",
+      message: "clientMessageId is already in use",
+    });
+    const messages = await store
+      .set(writeDb$)
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, active.body.threadId),
+          eq(chatMessages.content, "cross-user retry"),
+        ),
+      );
+    expect(messages).toStrictEqual([]);
+  });
+
+  it("rejects clientMessageId reuse from a queued recall message", async () => {
+    const fixture = await track(seedFixture());
+    const first = await send({ agentId: fixture.agentId, prompt: "first" });
+    await clearAllDetached();
+    await send({
+      agentId: fixture.agentId,
+      prompt: "queued for recall",
+      threadId: first.body.threadId,
+    });
+
+    const [queued] = await store
+      .set(writeDb$)
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, first.body.threadId),
+          eq(chatMessages.content, "queued for recall"),
+          isNull(chatMessages.runId),
+        ),
+      )
+      .limit(1);
+    const recallClientMessageId = randomUUID();
+    await send({
+      agentId: fixture.agentId,
+      threadId: first.body.threadId,
+      revokesMessageId: queued!.id,
+      clientMessageId: recallClientMessageId,
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "normal retry with recall id",
+          threadId: first.body.threadId,
+          clientMessageId: recallClientMessageId,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "CONFLICT",
+      message: "clientMessageId is already in use",
     });
   });
 
@@ -1336,6 +1822,187 @@ describe("POST /api/zero/chat/messages", () => {
     expect(executionContext.modelUsageProvider).toBe("claude-sonnet-4-6");
   });
 
+  it("rejects unsupported model-first selections before creating a thread", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const clientThreadId = randomUUID();
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "do not persist invalid model",
+          clientThreadId,
+          modelSelection: {
+            modelProviderId: "00000000-0000-4000-8000-000000000000",
+            selectedModel: "codex",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.code).toBe("BAD_REQUEST");
+    const [thread] = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, clientThreadId))
+      .limit(1);
+    expect(thread).toBeUndefined();
+    const [preference] = await writeDb
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      )
+      .limit(1);
+    expect(preference).toBeUndefined();
+  });
+
+  it("rejects removed model-first selections from web chat", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+
+    for (const selectedModel of [
+      "claude-haiku-4-5",
+      "anthropic/claude-haiku-4.5",
+    ]) {
+      const response = await accept(
+        client().send({
+          headers: authHeaders(),
+          body: {
+            agentId: fixture.agentId,
+            prompt: `removed ${selectedModel}`,
+            modelSelection: {
+              modelProviderId: "00000000-0000-4000-8000-000000000000",
+              selectedModel,
+            },
+          },
+        }),
+        [400],
+      );
+
+      expect(response.body.error).toMatchObject({
+        code: "BAD_REQUEST",
+        message: "modelSelection.selectedModel: Invalid model selection",
+      });
+    }
+
+    const threads = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.userId, fixture.userId));
+    expect(threads).toStrictEqual([]);
+
+    const messages = await writeDb
+      .select({ id: chatMessages.id })
+      .from(chatMessages)
+      .where(
+        inArray(chatMessages.content, [
+          "removed claude-haiku-4-5",
+          "removed anthropic/claude-haiku-4.5",
+        ]),
+      );
+    expect(messages).toStrictEqual([]);
+
+    const runs = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId));
+    expect(runs).toStrictEqual([]);
+
+    const [preference] = await writeDb
+      .select({ selectedModel: orgMembersMetadata.selectedModel })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      )
+      .limit(1);
+    expect(preference).toBeUndefined();
+  });
+
+  it("rejects invalid stored model-first thread pins before run creation", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const threadId = randomUUID();
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: null,
+      modelProviderId: null,
+      modelProviderType: null,
+      modelProviderCredentialScope: null,
+      selectedModel: "codex",
+    });
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "continue invalid stored model thread",
+          threadId,
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "BAD_REQUEST",
+      message: "Invalid model selection",
+    });
+    const [run] = await writeDb
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(eq(agentRuns.userId, fixture.userId))
+      .limit(1);
+    expect(run).toBeUndefined();
+  });
+
+  it("rejects unsupported selected models for explicit VM0 provider pins", async () => {
+    const fixture = await track(seedFixture());
+    const writeDb = store.set(writeDb$);
+    const providerId = await seedModelProvider(fixture, "claude-sonnet-4-6", {
+      type: "vm0",
+    });
+    const clientThreadId = randomUUID();
+
+    const response = await accept(
+      client().send({
+        headers: authHeaders(),
+        body: {
+          agentId: fixture.agentId,
+          prompt: "do not run invalid vm0 provider model",
+          clientThreadId,
+          modelSelection: {
+            modelProviderId: providerId,
+            selectedModel: "codex",
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "BAD_REQUEST",
+      message: "Invalid model selection",
+    });
+    const [thread] = await writeDb
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, clientThreadId))
+      .limit(1);
+    expect(thread).toBeUndefined();
+  });
+
   it("passes explicit provider selection into the runner job context", async () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
@@ -1347,7 +2014,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
     const deepseekProviderId = await seedModelProvider(
       fixture,
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       {
         type: "deepseek-api-key",
         isDefault: false,
@@ -1405,7 +2072,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
     const deepseekProviderId = await seedModelProvider(
       fixture,
-      "deepseek-v4-flash",
+      "deepseek-v4-pro",
       {
         type: "deepseek-api-key",
         isDefault: false,
@@ -1446,22 +2113,18 @@ describe("POST /api/zero/chat/messages", () => {
     const fixture = await track(seedFixture());
     const writeDb = store.set(writeDb$);
     await removeComposeFrameworkApiKey(fixture);
-    await seedModelProvider(fixture, "deepseek-v4-flash", {
+    await seedModelProvider(fixture, "deepseek-v4-pro", {
       type: "deepseek-api-key",
       userId: fixture.userId,
       isDefault: true,
       secretValue: "member-deepseek-key",
     });
-    const orgProviderId = await seedModelProvider(
-      fixture,
-      "deepseek-v4-flash",
-      {
-        type: "deepseek-api-key",
-        userId: ORG_SENTINEL_USER_ID,
-        isDefault: true,
-        secretValue: "org-deepseek-key",
-      },
-    );
+    const orgProviderId = await seedModelProvider(fixture, "deepseek-v4-pro", {
+      type: "deepseek-api-key",
+      userId: ORG_SENTINEL_USER_ID,
+      isDefault: true,
+      secretValue: "org-deepseek-key",
+    });
     await writeDb.insert(orgModelPolicies).values({
       orgId: fixture.orgId,
       model: "deepseek-v4-pro",
@@ -1695,19 +2358,50 @@ describe("POST /api/zero/chat/messages", () => {
       createdByUserId: fixture.userId,
       updatedByUserId: fixture.userId,
     });
+    const threadId = randomUUID();
+    await writeDb.insert(chatThreads).values({
+      id: threadId,
+      userId: fixture.userId,
+      agentComposeId: fixture.agentId,
+      title: null,
+    });
+    const [recommendedFollowup] = await writeDb
+      .insert(chatMessages)
+      .values({
+        chatThreadId: threadId,
+        role: "assistant",
+        content: null,
+        recommendedFollowups: [{ prompt: "blocked by credits", kind: "talk" }],
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: chatMessages.id });
+    const clientMessageId = randomUUID();
+    const body = {
+      agentId: fixture.agentId,
+      prompt: "blocked by credits",
+      threadId,
+      revokesMessageId: recommendedFollowup!.id,
+      clientMessageId,
+    };
 
     const response = await accept(
       client().send({
         headers: authHeaders(),
-        body: {
-          agentId: fixture.agentId,
-          prompt: "blocked by credits",
-        },
+        body,
+      }),
+      [201],
+    );
+    const retry = await accept(
+      client().send({
+        headers: authHeaders(),
+        body,
       }),
       [201],
     );
 
     expect(response.body.runId).toBeNull();
+    expect(response.body.threadId).toBe(threadId);
+    expect(retry.body).toStrictEqual(response.body);
     const [run] = await writeDb
       .select({ id: agentRuns.id })
       .from(agentRuns)
@@ -1719,6 +2413,7 @@ describe("POST /api/zero/chat/messages", () => {
         role: chatMessages.role,
         content: chatMessages.content,
         runId: chatMessages.runId,
+        revokesMessageId: chatMessages.revokesMessageId,
         error: chatMessages.error,
       })
       .from(chatMessages)
@@ -1726,15 +2421,24 @@ describe("POST /api/zero/chat/messages", () => {
       .orderBy(chatMessages.createdAt);
     expect(messages).toStrictEqual([
       {
+        role: "assistant",
+        content: null,
+        runId: null,
+        revokesMessageId: null,
+        error: null,
+      },
+      {
         role: "user",
         content: "blocked by credits",
         runId: null,
+        revokesMessageId: recommendedFollowup!.id,
         error: "insufficient_credits",
       },
       {
         role: "assistant",
         content: expect.stringContaining("Upgrade to Pro"),
         runId: null,
+        revokesMessageId: null,
         error: "insufficient_credits",
       },
     ]);

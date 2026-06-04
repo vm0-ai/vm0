@@ -9,6 +9,10 @@ export const salesforce = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        storage: {
+          secrets: ["SALESFORCE_TOKEN"],
+          variables: ["SALESFORCE_INSTANCE"],
+        },
         grant: {
           kind: "manual",
           fields: {

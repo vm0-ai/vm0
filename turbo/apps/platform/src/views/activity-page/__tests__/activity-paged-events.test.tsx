@@ -217,6 +217,81 @@ describe("activity paged events", () => {
     });
   });
 
+  it("should load initial event history with larger pages before polling", async () => {
+    const requestedLimits: { since: number | undefined; limit: number }[] = [];
+
+    const firstEvent = {
+      sequenceNumber: 0,
+      eventType: "assistant",
+      eventData: {
+        message: { content: [{ type: "text", text: "Initial history one" }] },
+      },
+      createdAt: "2026-03-10T14:56:02Z",
+    };
+
+    const secondEvent = {
+      sequenceNumber: 1,
+      eventType: "assistant",
+      eventData: {
+        message: { content: [{ type: "text", text: "Initial history two" }] },
+      },
+      createdAt: "2026-03-10T14:56:03Z",
+    };
+
+    setMockComposesList([]);
+    server.use(
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, makeLogDetail({ status: "completed" }));
+      }),
+      mockApi(
+        zeroRunAgentEventsContract.getAgentEvents,
+        ({ query, respond }) => {
+          requestedLimits.push({ since: query.since, limit: query.limit });
+
+          if (query.since === undefined) {
+            return respond(200, {
+              events: [firstEvent],
+              hasMore: true,
+              framework: "claude-code",
+            } satisfies AgentEventsResponse);
+          }
+
+          if (query.since === 0) {
+            return respond(200, {
+              events: [secondEvent],
+              hasMore: false,
+              framework: "claude-code",
+            } satisfies AgentEventsResponse);
+          }
+
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        },
+      ),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Initial history one")).toBeInTheDocument();
+      expect(screen.getByText("Initial history two")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(requestedLimits).toStrictEqual([
+        { since: undefined, limit: 100 },
+        { since: 0, limit: 100 },
+        { since: 1, limit: 30 },
+      ]);
+    });
+  });
+
   it("should stop polling when navigating away from the run page", async () => {
     let eventFetchCount = 0;
 

@@ -72,7 +72,6 @@ function renderTeamPage(
         displayName: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -184,7 +183,6 @@ function renderTeamPageAsMember(
         displayName: null,
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

@@ -1,19 +1,20 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildXAuthorizationUrl,
-  exchangeXCode,
-  getXSecretName,
-  refreshXToken,
-} from "./x";
+import { buildXAuthorizationUrl, exchangeXCode, refreshXToken } from "./x";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildXAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildXAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const state = args.state;
@@ -21,6 +22,7 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
         throw new Error("X PKCE requires state for code_verifier derivation");
       }
       const result = await exchangeXCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
@@ -28,8 +30,10 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
         state,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -42,13 +46,16 @@ export const xProvider: AuthCodeConnectorAuthProvider<"x"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getXSecretName,
-    getRefreshSecretName: () => {
-      return "X_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshXToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshXToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

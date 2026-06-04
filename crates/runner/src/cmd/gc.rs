@@ -768,14 +768,8 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
 
         let lock_path = entry.path();
         match probe_lock(&lock_path) {
-            LockProbe::Free(_lock) => {
-                if dry_run {
-                    info!("[dry-run] would remove unused lock {name}");
-                    removed += 1;
-                } else if let Err(e) = tokio::fs::remove_file(&lock_path).await {
-                    warn!("cannot remove {}: {e}", lock_path.display());
-                } else {
-                    info!("removed unused lock {name}");
+            LockProbe::Free(lock) => {
+                if remove_unused_lock_after_probe(&lock_path, &lock, name, dry_run).await {
                     removed += 1;
                 }
             }
@@ -784,6 +778,38 @@ async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<u64>
     }
 
     Ok(removed)
+}
+
+async fn remove_unused_lock_after_probe(
+    lock_path: &Path,
+    lock: &Flock<std::fs::File>,
+    name: &str,
+    dry_run: bool,
+) -> bool {
+    match lock_probe_inode_is_current(lock, lock_path) {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(e) => {
+            warn!("{e}");
+            return false;
+        }
+    }
+
+    if dry_run {
+        info!("[dry-run] would remove unused lock {name}");
+        return true;
+    }
+
+    match tokio::fs::remove_file(lock_path).await {
+        Ok(()) => {
+            info!("removed unused lock {name}");
+            true
+        }
+        Err(e) => {
+            warn!("cannot remove {}: {e}", lock_path.display());
+            false
+        }
+    }
 }
 
 /// Delete stale log files (older than [`JOB_LOG_MAX_AGE`]).
@@ -1849,6 +1875,42 @@ mod tests {
         assert!(
             !lock_file_inode_is_current(&file, &path).unwrap(),
             "inode check must reject an opened lock fd whose path was recreated"
+        );
+    }
+
+    #[tokio::test]
+    async fn remove_unused_lock_after_probe_keeps_replaced_lock_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir
+            .path()
+            .join("locks")
+            .join("workspace-image-cache-test.lock");
+
+        let held_lock = match probe_lock(&path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::remove_file(&path).unwrap();
+        drop(lock::open_lock_file(&path).unwrap());
+        assert!(
+            path.exists(),
+            "test setup must recreate the lock path with a new inode"
+        );
+
+        let removed = remove_unused_lock_after_probe(
+            &path,
+            &held_lock,
+            "workspace-image-cache-test.lock",
+            false,
+        )
+        .await;
+
+        assert!(!removed, "stale lock fd must not remove a recreated path");
+        assert!(
+            path.exists(),
+            "cleanup must not remove a lock path recreated after this lock was acquired"
         );
     }
 

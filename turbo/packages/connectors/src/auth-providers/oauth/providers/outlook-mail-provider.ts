@@ -4,15 +4,17 @@ import {
   exchangeMicrosoftOAuthCode,
   refreshMicrosoftToken,
 } from "../microsoft";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> =
   {
     grant: {
       kind: "auth-code",
       buildAuthUrl: (args) => {
-        const { clientId } = args;
+        const { clientId } = args.authClient;
         const redirectUri = args.redirectUri;
         const state = args.state;
         return buildMicrosoftAuthorizationUrl(
+          args.authCodeGrant,
           "outlook-mail",
           clientId,
           redirectUri,
@@ -20,10 +22,11 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
         );
       },
       exchangeCode: async (args) => {
-        const { clientId, clientSecret } = args;
+        const { clientId, clientSecret } = args.authClient;
         const code = args.code;
         const redirectUri = args.redirectUri;
         const result = await exchangeMicrosoftOAuthCode(
+          args.authCodeGrant,
           "outlook-mail",
           clientId,
           clientSecret,
@@ -31,8 +34,10 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
           redirectUri,
         );
         return {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
+          outputs: {
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          },
           expiresIn: result.expiresIn,
           scopes: result.scopes,
           userInfo: {
@@ -45,20 +50,17 @@ export const outlookMailProvider: AuthCodeConnectorAuthProvider<"outlook-mail"> 
     },
     access: {
       kind: "refresh-token",
-      getAccessSecretName: () => {
-        return "OUTLOOK_MAIL_ACCESS_TOKEN";
-      },
-      getRefreshSecretName: () => {
-        return "OUTLOOK_MAIL_REFRESH_TOKEN";
-      },
-      refreshToken: (args) => {
-        const { clientId, clientSecret } = args;
-        const refreshToken = args.refreshToken;
-        return refreshMicrosoftToken(
-          "outlook-mail",
-          clientId,
-          clientSecret,
-          refreshToken,
+      refresh: async (args) => {
+        const { clientId, clientSecret } = args.authClient;
+        const refreshToken = args.inputs.refreshToken;
+        return oauthRefreshResultToProviderResult(
+          await refreshMicrosoftToken(
+            "outlook-mail",
+            clientId,
+            clientSecret,
+            refreshToken,
+            args.signal,
+          ),
         );
       },
     },

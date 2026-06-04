@@ -1,5 +1,369 @@
 # Changelog
 
+## [8.309.4](https://github.com/vm0-ai/vm0/compare/core-v8.309.3...core-v8.309.4) (2026-06-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.1
+    * @vm0/connectors bumped to 1.45.2
+
+## [8.309.3](https://github.com/vm0-ai/vm0/compare/core-v8.309.2...core-v8.309.3) (2026-06-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.0
+
+## [8.309.2](https://github.com/vm0-ai/vm0/compare/core-v8.309.1...core-v8.309.2) (2026-06-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.58.0
+
+## [8.309.1](https://github.com/vm0-ai/vm0/compare/core-v8.309.0...core-v8.309.1) (2026-06-03)
+
+
+### Refactoring
+
+* retire legacy zero permission approval paths ([#15978](https://github.com/vm0-ai/vm0/issues/15978)) ([ed43996](https://github.com/vm0-ai/vm0/commit/ed43996269688f9b255ecc6839b5e0496b99ce15))
+* share presentation template items ([#15987](https://github.com/vm0-ai/vm0/issues/15987)) ([cfe5253](https://github.com/vm0-ai/vm0/commit/cfe52535d6f5e6adcf44400ad733976e178d85a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.57.1
+    * @vm0/connectors bumped to 1.45.1
+
+## [8.309.0](https://github.com/vm0-ai/vm0/compare/core-v8.308.4...core-v8.309.0) (2026-06-03)
+
+
+### Features
+
+* add chat follow-up suggestions ([#15876](https://github.com/vm0-ai/vm0/issues/15876)) ([79a56ee](https://github.com/vm0-ai/vm0/commit/79a56eeea76b3bf5a4e20d1a3f500026c8fe6c62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.57.0
+    * @vm0/connectors bumped to 1.45.0
+
+## [8.308.4](https://github.com/vm0-ai/vm0/compare/core-v8.308.3...core-v8.308.4) (2026-06-03)
+
+
+### Refactoring
+
+* extract resource registry into @vm0/core ([#15970](https://github.com/vm0-ai/vm0/issues/15970)) ([c4d07a2](https://github.com/vm0-ai/vm0/commit/c4d07a2c1a7adc07c597cc5b2287ead9d077ac79))
+
+## [8.308.3](https://github.com/vm0-ai/vm0/compare/core-v8.308.2...core-v8.308.3) (2026-06-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.3
+    * @vm0/connectors bumped to 1.44.2
+
+## [8.308.2](https://github.com/vm0-ai/vm0/compare/core-v8.308.1...core-v8.308.2) (2026-06-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.2
+
+## [8.308.1](https://github.com/vm0-ai/vm0/compare/core-v8.308.0...core-v8.308.1) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.1
+    * @vm0/connectors bumped to 1.44.1
+
+## [8.308.0](https://github.com/vm0-ai/vm0/compare/core-v8.307.0...core-v8.308.0) (2026-06-02)
+
+
+### Features
+
+* add github pr tracking in chat threads ([#15867](https://github.com/vm0-ai/vm0/issues/15867)) ([4756f5e](https://github.com/vm0-ai/vm0/commit/4756f5e53c3e2b011773680fbf994634b2c4b890))
+* add read-only memory viewer page to platform ([#15901](https://github.com/vm0-ai/vm0/issues/15901)) ([6edb542](https://github.com/vm0-ai/vm0/commit/6edb5421c366c5ec98f8e4d24db261c3271dd946))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.56.0
+    * @vm0/connectors bumped to 1.44.0
+
+## [8.307.0](https://github.com/vm0-ai/vm0/compare/core-v8.306.0...core-v8.307.0) (2026-06-02)
+
+
+### Features
+
+* add session workspace image cache rollout ([#15780](https://github.com/vm0-ai/vm0/issues/15780)) ([3fb331b](https://github.com/vm0-ai/vm0/commit/3fb331ba6457c9d3247e0eac03f2629ab5102d89))
+* add zero banking gateway ([#15698](https://github.com/vm0-ai/vm0/issues/15698)) ([c24743c](https://github.com/vm0-ai/vm0/commit/c24743c8eea487201545458c9d8f3400d772473f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.55.0
+    * @vm0/connectors bumped to 1.43.0
+
+## [8.306.0](https://github.com/vm0-ai/vm0/compare/core-v8.305.6...core-v8.306.0) (2026-06-02)
+
+
+### Features
+
+* add org skills library page ([#15816](https://github.com/vm0-ai/vm0/issues/15816)) ([fc7e26f](https://github.com/vm0-ai/vm0/commit/fc7e26f2c38bfa84ed424c5ee38c28487aeed99c))
+
+
+### Refactoring
+
+* clarify connector diagnostic lookups ([#15863](https://github.com/vm0-ai/vm0/issues/15863)) ([607eaf8](https://github.com/vm0-ai/vm0/commit/607eaf8a5ffa79bdfad7b12a22a8be455727db21))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.54.0
+    * @vm0/connectors bumped to 1.42.0
+
+## [8.305.6](https://github.com/vm0-ai/vm0/compare/core-v8.305.5...core-v8.305.6) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.53.0
+    * @vm0/connectors bumped to 1.41.2
+
+## [8.305.5](https://github.com/vm0-ai/vm0/compare/core-v8.305.4...core-v8.305.5) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.2
+
+## [8.305.4](https://github.com/vm0-ai/vm0/compare/core-v8.305.3...core-v8.305.4) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.1
+    * @vm0/connectors bumped to 1.41.1
+
+## [8.305.3](https://github.com/vm0-ai/vm0/compare/core-v8.305.2...core-v8.305.3) (2026-06-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.52.0
+    * @vm0/connectors bumped to 1.41.0
+
+## [8.305.2](https://github.com/vm0-ai/vm0/compare/core-v8.305.1...core-v8.305.2) (2026-06-01)
+
+
+### Refactoring
+
+* derive platform secrets from access config ([#15739](https://github.com/vm0-ai/vm0/issues/15739)) ([45d6def](https://github.com/vm0-ai/vm0/commit/45d6def9bec9822671272fd4ebb3b5379b50f5af))
+* move google security warning helper to platform ([#15730](https://github.com/vm0-ai/vm0/issues/15730)) ([7289928](https://github.com/vm0-ai/vm0/commit/728992840fd0700d14afaed5fa3d92b860538c25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.51.0
+    * @vm0/connectors bumped to 1.40.1
+
+## [8.305.1](https://github.com/vm0-ai/vm0/compare/core-v8.305.0...core-v8.305.1) (2026-06-01)
+
+
+### Refactoring
+
+* remove connector session handoff ([#15689](https://github.com/vm0-ai/vm0/issues/15689)) ([1ea6d2a](https://github.com/vm0-ai/vm0/commit/1ea6d2a3aa5a0db8d8b6118cba818210a5a49df6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.9
+
+## [8.305.0](https://github.com/vm0-ai/vm0/compare/core-v8.304.9...core-v8.305.0) (2026-06-01)
+
+
+### Features
+
+* add user permission grant foundation ([#15633](https://github.com/vm0-ai/vm0/issues/15633)) ([b27e76d](https://github.com/vm0-ai/vm0/commit/b27e76d5b9cfe13a72900976c16ebbd1a65fac80))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.8
+    * @vm0/connectors bumped to 1.40.0
+
+## [8.304.9](https://github.com/vm0-ai/vm0/compare/core-v8.304.8...core-v8.304.9) (2026-06-01)
+
+
+### Refactoring
+
+* hardcode runner working directory ([#15606](https://github.com/vm0-ai/vm0/issues/15606)) ([132296d](https://github.com/vm0-ai/vm0/commit/132296da082953e4cdeb796c8a4432e07cd38c20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.7
+    * @vm0/connectors bumped to 1.39.6
+
+## [8.304.8](https://github.com/vm0-ai/vm0/compare/core-v8.304.7...core-v8.304.8) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.6
+    * @vm0/connectors bumped to 1.39.5
+
+## [8.304.7](https://github.com/vm0-ai/vm0/compare/core-v8.304.6...core-v8.304.7) (2026-06-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.5
+
+## [8.304.6](https://github.com/vm0-ai/vm0/compare/core-v8.304.5...core-v8.304.6) (2026-05-31)
+
+
+### Refactoring
+
+* support multiple connector auth methods ([#15582](https://github.com/vm0-ai/vm0/issues/15582)) ([e00abe8](https://github.com/vm0-ai/vm0/commit/e00abe8ce57f5e14d56dfe8b1ae0e18e2e1e1ef1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.4
+    * @vm0/connectors bumped to 1.39.4
+
+## [8.304.5](https://github.com/vm0-ai/vm0/compare/core-v8.304.4...core-v8.304.5) (2026-05-31)
+
+
+### Refactoring
+
+* preserve connector auth method selection ([#15559](https://github.com/vm0-ai/vm0/issues/15559)) ([d3931bb](https://github.com/vm0-ai/vm0/commit/d3931bb34ce30fce1278e79a7ad20d411f3d4605))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.3
+    * @vm0/connectors bumped to 1.39.3
+
+## [8.304.4](https://github.com/vm0-ai/vm0/compare/core-v8.304.3...core-v8.304.4) (2026-05-31)
+
+
+### Refactoring
+
+* route manual connector grants by method ([#15541](https://github.com/vm0-ai/vm0/issues/15541)) ([65eaa81](https://github.com/vm0-ai/vm0/commit/65eaa8144bd0096f741114f97362eeb69a50e503))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.2
+    * @vm0/connectors bumped to 1.39.2
+
+## [8.304.3](https://github.com/vm0-ai/vm0/compare/core-v8.304.2...core-v8.304.3) (2026-05-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.1
+    * @vm0/connectors bumped to 1.39.1
+
+## [8.304.2](https://github.com/vm0-ai/vm0/compare/core-v8.304.1...core-v8.304.2) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.50.0
+    * @vm0/connectors bumped to 1.39.0
+
+## [8.304.1](https://github.com/vm0-ai/vm0/compare/core-v8.304.0...core-v8.304.1) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.49.0
+
+## [8.304.0](https://github.com/vm0-ai/vm0/compare/core-v8.303.1...core-v8.304.0) (2026-05-30)
+
+
+### Features
+
+* seed paid ads operator skill ([#15454](https://github.com/vm0-ai/vm0/issues/15454)) ([ccb1279](https://github.com/vm0-ai/vm0/commit/ccb127919e3e0aafa585523749c55a03f85935c0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.3
+    * @vm0/connectors bumped to 1.38.2
+
+## [8.303.1](https://github.com/vm0-ai/vm0/compare/core-v8.303.0...core-v8.303.1) (2026-05-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.48.2
+    * @vm0/connectors bumped to 1.38.1
+
 ## [8.303.0](https://github.com/vm0-ai/vm0/compare/core-v8.302.4...core-v8.303.0) (2026-05-29)
 
 

@@ -9,6 +9,10 @@ export const productlane = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        storage: {
+          secrets: ["PRODUCTLANE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -535,6 +535,7 @@ describe("GitHub OAuth API routes", () => {
       .limit(1);
     expect(storedState).toMatchObject({
       type: "github",
+      authMethod: "oauth",
       userId: "user-1",
       orgId: "org-1",
       redirectUri: `${WEB_ORIGIN}/api/connectors/github/callback`,

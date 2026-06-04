@@ -64,6 +64,9 @@ describe("zero generate presentation command", () => {
     );
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
+    expect(stdout).toContain("establish the deck's arc");
+    expect(stdout).toContain("Vary slide forms across the deck");
+    expect(stdout).toContain("Each slide carries one idea");
   });
 
   it("should expose only base artifact flags plus slides in help", () => {

@@ -34,6 +34,7 @@ function buildCommands(): Command[] {
     new Command("web"),
     new Command("host"),
     new Command("maps"),
+    new Command("banking"),
   ];
 }
 
@@ -164,6 +165,7 @@ describe("registerZeroCommands", () => {
       "variable",
       "host",
       "maps",
+      "banking",
     ]);
   });
 
@@ -399,6 +401,31 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toContain("maps");
   });
 
+  it("should show banking when banking:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["banking:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("banking");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide banking when banking:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("banking");
+  });
+
   it("should show credit when billing:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
@@ -465,6 +492,28 @@ describe("registerZeroCommands", () => {
 
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
       "Get directions?",
+    );
+  });
+
+  it("should show the banking help example when banking:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["banking:read"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
+      "Read bank data?",
+    );
+  });
+
+  it("should hide the banking help example when banking:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+
+    expect(buildZeroHelpText(decodeZeroTokenPayload(token))).not.toContain(
+      "Read bank data?",
     );
   });
 

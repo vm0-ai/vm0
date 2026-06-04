@@ -20,6 +20,8 @@ const entries =
   (vercelConfig as { headers?: VercelHeaderEntry[] }).headers ?? [];
 const rewrites =
   (vercelConfig as { rewrites?: VercelRewriteEntry[] }).rewrites ?? [];
+const appPermissionsPolicy =
+  "camera=(), geolocation=(), payment=(), usb=(), serial=(), display-capture=(), clipboard-read=(), microphone=(self), bluetooth=(self), clipboard-write=(self), fullscreen=(self)";
 
 function findHeaderEntry(source: string): VercelHeaderEntry | undefined {
   return entries.find((e) => {
@@ -56,6 +58,9 @@ describe("app vercel.json headers", () => {
     );
     expect(findHeader(catchAll!.headers, "Strict-Transport-Security")).toBe(
       "max-age=31536000; includeSubDomains",
+    );
+    expect(findHeader(catchAll!.headers, "Permissions-Policy")).toBe(
+      appPermissionsPolicy,
     );
   });
 

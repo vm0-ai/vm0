@@ -34,7 +34,9 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use api_contracts::generated::model_providers::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::model_provider_env::placeholders as model_provider_placeholders;
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
 use crate::ids::RunId;
 
@@ -56,6 +58,9 @@ const EXIT_SIGKILL: i32 = 137;
 const EXIT_SIGNAL_KILL: i32 = 9;
 /// Default timeout for guest commands (5 minutes).
 const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT: Duration = Duration::from_secs(5);
+const AGENT_ENV_KEY_DIAGNOSTIC_LIMIT: usize = 128;
+const AGENT_ENV_KEY_MAX_CHARS: usize = 128;
 const SMALL_GUEST_FILE_MAX_BYTES: u64 = 64 * 1024;
 const GUEST_LOG_COPY_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const GUEST_DOWNLOAD_FAILURE_OUTPUT_BYTES: usize = 8 * 1024;
@@ -64,6 +69,18 @@ const STDOUT_STREAM_LIMIT_MARKER: &[u8] =
 const STDOUT_STREAM_OVERFLOW_MARKER: &[u8] =
     b"[vm0] stdout stream overflowed the host queue; some output was dropped\n";
 const MIN_EPOCH_MS_TIMESTAMP: u64 = 1_000_000_000_000;
+const BOOTSTRAP_SENSITIVE_ENV_KEYS: &[&str] = &[
+    "BASH_ENV",
+    "ENV",
+    "SHELLOPTS",
+    "BASHOPTS",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "LD_AUDIT",
+    "NODE_OPTIONS",
+];
+const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
+    include_str!("../scripts/agent-abnormal-exit-diagnostics.sh");
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
 
 use crate::error::{RunnerError, RunnerResult};
@@ -72,7 +89,7 @@ use crate::host_env::{
     RUNNER_NET_RX_MIB_PER_SEC_ENV, RUNNER_NET_TX_MIB_PER_SEC_ENV,
 };
 use crate::http::HttpClient;
-use crate::idle_pool::ReusableIdleSandbox;
+use crate::idle_pool::{ReusableIdleSandbox, StorageFingerprints};
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::network_log_manager::NetworkLogSession;
@@ -83,6 +100,11 @@ use crate::types::{
     ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
     ResumeSession, SandboxReuseResult,
 };
+use crate::workspace_image_cache::{
+    SessionWorkspaceCache, WorkspaceCacheCheckoutResult, WorkspaceImageActiveLeaseRequest,
+    WorkspaceImageLease, WorkspaceImagePrepareRequest,
+};
+use crate::workspace_mount::ensure_workspace_drive_mounted;
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -93,12 +115,15 @@ pub struct ExecutorConfig {
     pub network_log_manager: NetworkLogManager,
     pub network_log_drain: NetworkLogDrainCoordinator,
     pub home: HomePaths,
+    pub workspace_cache: Option<SessionWorkspaceCache>,
 }
 
 /// Per-job VM parameters resolved from the profile config.
 pub struct JobParams {
+    pub profile_name: String,
     pub vcpu: u32,
     pub memory_mb: u32,
+    pub workspace_disk_mb: u32,
     pub restore_guest_state: bool,
     pub device_rate_limits: Option<sandbox::DeviceRateLimits>,
 }
@@ -112,6 +137,8 @@ pub struct ExecuteOutcome {
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
     pub network_log_session: Option<NetworkLogSession>,
+    pub workspace_image: Option<WorkspaceImageLease>,
+    pub workspace_promotable: bool,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub guest_session_id: Option<String>,
@@ -178,6 +205,32 @@ impl AgentStdoutStreamDiagnostics {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AgentEnvDiagnostics {
+    env_count: usize,
+    runner_owned_count: usize,
+    external_count: usize,
+    suspicious_keys: Vec<String>,
+}
+
+impl AgentEnvDiagnostics {
+    fn suspicious_keys_csv(&self) -> String {
+        self.suspicious_keys.join(",")
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AgentEnvKeyDiagnostics {
+    logged_keys: Vec<String>,
+    omitted_key_count: usize,
+}
+
+impl AgentEnvKeyDiagnostics {
+    fn logged_keys_csv(&self) -> String {
+        self.logged_keys.join(",")
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ProcessCancelTimeouts {
     write: Duration,
@@ -234,6 +287,177 @@ fn agent_exit_failure_message(exit_code: i32) -> String {
     format!("Agent exited with code {exit_code}")
 }
 
+fn build_agent_env_diagnostics(env: &HashMap<String, String>) -> AgentEnvDiagnostics {
+    let mut suspicious_keys: Vec<String> = BOOTSTRAP_SENSITIVE_ENV_KEYS
+        .iter()
+        .copied()
+        .filter(|key| env.contains_key(*key))
+        .map(sanitize_env_key_for_diagnostic)
+        .collect();
+    suspicious_keys.sort();
+
+    let runner_owned_count = env
+        .keys()
+        .filter(|key| is_runner_owned_env_key(key))
+        .count();
+
+    AgentEnvDiagnostics {
+        env_count: env.len(),
+        runner_owned_count,
+        external_count: env.len().saturating_sub(runner_owned_count),
+        suspicious_keys,
+    }
+}
+
+fn build_agent_env_key_diagnostics(env: &[(String, String)]) -> AgentEnvKeyDiagnostics {
+    let mut keys: Vec<String> = env
+        .iter()
+        .map(|(key, _)| sanitize_env_key_for_diagnostic(key))
+        .collect();
+    keys.sort();
+
+    let logged_keys: Vec<String> = keys
+        .iter()
+        .take(AGENT_ENV_KEY_DIAGNOSTIC_LIMIT)
+        .cloned()
+        .collect();
+    let omitted_key_count = keys.len().saturating_sub(logged_keys.len());
+
+    AgentEnvKeyDiagnostics {
+        logged_keys,
+        omitted_key_count,
+    }
+}
+
+fn sanitize_env_key_for_diagnostic(key: &str) -> String {
+    let mut chars = key.escape_debug();
+    let mut truncated = String::new();
+    for _ in 0..AGENT_ENV_KEY_MAX_CHARS {
+        let Some(ch) = chars.next() else {
+            return truncated;
+        };
+        truncated.push(ch);
+    }
+    if chars.next().is_some() {
+        truncated.push_str("...");
+    }
+    truncated
+}
+
+fn is_runner_owned_env_key(key: &str) -> bool {
+    key.starts_with("VM0_") || RUNNER_OWNED_ENV_KEYS.contains(&key)
+}
+
+fn should_collect_agent_abnormal_exit_diagnostics(
+    wait_cancelled: bool,
+    exit: &sandbox::ProcessExit,
+    stderr: &str,
+    failure_diagnostic: Option<&FailureDiagnostic>,
+    guest_error: Option<&str>,
+) -> bool {
+    !wait_cancelled
+        && exit.exit_code != 0
+        && exit.diagnostic.is_empty()
+        && stderr.is_empty()
+        && failure_diagnostic.is_none()
+        && guest_error.is_none()
+}
+
+fn log_agent_process_exit_summary(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+) {
+    info!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        exit_code = exit.exit_code,
+        stdout_len = exit.stdout.len(),
+        stderr_len = exit.stderr.len(),
+        stdout_truncated = exit.stdout_truncated,
+        stderr_truncated = exit.stderr_truncated,
+        diagnostic_present = !exit.diagnostic.is_empty(),
+        stream_overflowed = exit.stream_overflowed,
+        env_count = env_diagnostics.env_count,
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        "agent process exit summary"
+    );
+}
+
+fn log_agent_abnormal_exit_env_diagnostics(
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit: &sandbox::ProcessExit,
+    env_diagnostics: &AgentEnvDiagnostics,
+    env_key_diagnostics: &AgentEnvKeyDiagnostics,
+) {
+    warn!(
+        run_id = %run_id,
+        sandbox_id = %sandbox_id,
+        sandbox_reuse_result = reuse_result.as_wire(),
+        exit_code = exit.exit_code,
+        env_count = env_diagnostics.env_count,
+        runner_owned_env_count = env_diagnostics.runner_owned_count,
+        external_env_count = env_diagnostics.external_count,
+        suspicious_env_keys = %env_diagnostics.suspicious_keys_csv(),
+        env_keys = %env_key_diagnostics.logged_keys_csv(),
+        omitted_env_key_count = env_key_diagnostics.omitted_key_count,
+        "agent abnormal exit env diagnostics"
+    );
+}
+
+async fn collect_agent_abnormal_exit_diagnostics(
+    sandbox: &dyn Sandbox,
+    run_id: RunId,
+    sandbox_id: &str,
+    reuse_result: SandboxReuseResult,
+    exit_code: i32,
+) {
+    let request = ExecRequest {
+        cmd: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT,
+        timeout: AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT,
+        env: &[],
+        sudo: true,
+        stdin_bytes: None,
+        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+    };
+
+    match sandbox.exec(&request).await {
+        Ok(result) => {
+            let stdout = String::from_utf8_lossy(&result.stdout);
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                sandbox_reuse_result = reuse_result.as_wire(),
+                exit_code,
+                diagnostic_exit_code = result.exit_code,
+                diagnostic_stdout_len = result.stdout.len(),
+                diagnostic_stderr_len = result.stderr.len(),
+                diagnostic_stdout_truncated = result.stdout_truncated,
+                diagnostic_stderr_truncated = result.stderr_truncated,
+                diagnostic_stdout = %stdout,
+                diagnostic_stderr = %stderr,
+                "agent abnormal exit in-vm diagnostics"
+            );
+        }
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                sandbox_reuse_result = reuse_result.as_wire(),
+                exit_code,
+                error = %error,
+                "failed to collect agent abnormal exit in-vm diagnostics"
+            );
+        }
+    }
+}
+
 fn cancelled_agent_process_exit(pid: u32, stream_overflowed: bool) -> sandbox::ProcessExit {
     let mut exit = sandbox::ProcessExit::new(pid, EXIT_SIGKILL, Vec::new(), Vec::new());
     exit.stream_overflowed = stream_overflowed;
@@ -269,6 +493,8 @@ pub async fn execute_job(
             sandbox: None,
             source_ip: String::new(),
             network_log_session: None,
+            workspace_image: None,
+            workspace_promotable: false,
             guest_session_id: None,
         }
     } else {
@@ -289,6 +515,8 @@ pub async fn execute_job(
                 sandbox: None,
                 source_ip: String::new(),
                 network_log_session: None,
+                workspace_image: None,
+                workspace_promotable: false,
                 guest_session_id: None,
             },
         }
@@ -308,6 +536,7 @@ pub async fn execute_job_reuse(
     idle_sandbox: ReusableIdleSandbox,
     context: ExecutionContext,
     config: &ExecutorConfig,
+    params: &JobParams,
     cancel: CancellationToken,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let run_id = context.run_id;
@@ -317,10 +546,57 @@ pub async fn execute_job_reuse(
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
+    let sandbox_id = idle_sandbox.sandbox_id();
     let idle_parts = idle_sandbox.into_parts();
     let source_ip = idle_parts.source_ip;
     let prev_storage = idle_parts.storage_fingerprints;
+    let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
+
+    let workspace_image = match (
+        context.session_workspace_image_cache_enabled(),
+        config.workspace_cache.as_ref(),
+    ) {
+        (true, Some(cache)) => {
+            let active_request = WorkspaceImageActiveLeaseRequest {
+                run_id,
+                sandbox_id,
+                profile_name: &params.profile_name,
+                session_id: context.session_id(),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_available: true,
+            };
+            Some(match workspace_promotion {
+                Some(promotion) => promotion.into_active_lease(active_request),
+                None => cache.lease_active(active_request).await,
+            })
+        }
+        _ => {
+            if let Some(promotion) = workspace_promotion
+                && let Err(error) = promotion
+                    .invalidate_current("reused sandbox ran without workspace image cache")
+                    .await
+            {
+                let failure = ExecutionFailure::from_error(format!(
+                    "failed to invalidate workspace image cache before disabled-cache reuse: {error}"
+                ));
+                return (
+                    ExecuteOutcome {
+                        failure: Some(failure),
+                        sandbox: Some(sandbox),
+                        source_ip,
+                        network_log_session: None,
+                        workspace_image: None,
+                        workspace_promotable: false,
+                        guest_session_id: None,
+                    },
+                    telemetry,
+                );
+            }
+            None
+        }
+    };
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
@@ -330,10 +606,16 @@ pub async fn execute_job_reuse(
             sandbox: Some(sandbox),
             source_ip,
             network_log_session: None,
+            workspace_promotable: workspace_image_promotable(
+                workspace_image.as_ref(),
+                &context,
+                None,
+            ),
+            workspace_image,
             guest_session_id: None,
         }
     } else {
-        execute_reused_sandbox(
+        let mut outcome = execute_reused_sandbox(
             sandbox,
             &source_ip,
             &context,
@@ -342,7 +624,14 @@ pub async fn execute_job_reuse(
             &mut telemetry,
             cancel,
         )
-        .await
+        .await;
+        outcome.workspace_promotable = workspace_image_promotable(
+            workspace_image.as_ref(),
+            &context,
+            outcome.guest_session_id.as_deref(),
+        );
+        outcome.workspace_image = workspace_image;
+        outcome
     };
 
     (outcome, telemetry)
@@ -364,6 +653,24 @@ fn record_reuse_result(telemetry: &mut JobTelemetry, result: SandboxReuseResult)
         | SandboxReuseResult::ProfileMismatch
         | SandboxReuseResult::DeviceLimitMismatch
         | SandboxReuseResult::UnparkFailed => "sandbox_reuse_miss",
+    };
+    telemetry.record(action_type, Duration::ZERO, true, None);
+}
+
+fn record_workspace_cache_result(
+    telemetry: &mut JobTelemetry,
+    result: WorkspaceCacheCheckoutResult,
+) {
+    let action_type = match result {
+        WorkspaceCacheCheckoutResult::Hit => "workspace_image_cache_hit",
+        WorkspaceCacheCheckoutResult::Miss => "workspace_image_cache_miss",
+        WorkspaceCacheCheckoutResult::NoSession => "workspace_image_cache_no_session",
+        WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
+            "workspace_image_cache_invalid_working_dir"
+        }
+        WorkspaceCacheCheckoutResult::LockBusy => "workspace_image_cache_lock_busy",
+        WorkspaceCacheCheckoutResult::InvalidMetadata => "workspace_image_cache_invalid_metadata",
+        WorkspaceCacheCheckoutResult::DiskPressure => "workspace_image_cache_disk_pressure",
     };
     telemetry.record(action_type, Duration::ZERO, true, None);
 }
@@ -533,6 +840,131 @@ async fn execute_new_sandbox(
         id: sandbox_id,
         reuse_result,
     } = dispatch;
+    let mut workspace_image = prepare_workspace_image(
+        context,
+        sandbox_id,
+        config,
+        &params.profile_name,
+        params.workspace_disk_mb,
+        telemetry,
+    )
+    .await;
+    let prepared = match create_started_sandbox(
+        factory,
+        context,
+        sandbox_id,
+        config,
+        params,
+        telemetry,
+        workspace_image.as_ref(),
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(e)
+            if workspace_image
+                .as_ref()
+                .is_some_and(WorkspaceImageLease::is_cache_hit) =>
+        {
+            invalidate_workspace_cache_hit(
+                workspace_image.as_ref(),
+                context.run_id,
+                "sandbox_prepare_failed",
+            )
+            .await;
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %sandbox_id,
+                error = %e,
+                "workspace image cache hit failed during sandbox preparation; retrying with fresh workspace image"
+            );
+            workspace_image = None;
+            create_started_sandbox(
+                factory, context, sandbox_id, config, params, telemetry, None,
+            )
+            .await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    let mut outcome = execute_prepared_sandbox_run(
+        prepared,
+        context,
+        config,
+        RunStart {
+            restore_guest_state: params.restore_guest_state,
+            reuse_result,
+            prev_storage: workspace_image
+                .as_ref()
+                .and_then(WorkspaceImageLease::previous_storage),
+        },
+        telemetry,
+        cancel,
+    )
+    .await;
+    outcome.workspace_promotable = workspace_image_promotable(
+        workspace_image.as_ref(),
+        context,
+        outcome.guest_session_id.as_deref(),
+    );
+    outcome.workspace_image = workspace_image;
+    Ok(outcome)
+}
+
+struct PreparedSandboxRun {
+    sandbox: Box<dyn Sandbox>,
+    source_ip: String,
+    network_log_session: NetworkLogSession,
+}
+
+async fn prepare_workspace_image(
+    context: &ExecutionContext,
+    sandbox_id: SandboxId,
+    config: &ExecutorConfig,
+    profile_name: &str,
+    workspace_disk_mb: u32,
+    telemetry: &mut JobTelemetry,
+) -> Option<WorkspaceImageLease> {
+    let (true, Some(cache)) = (
+        context.session_workspace_image_cache_enabled(),
+        config.workspace_cache.as_ref(),
+    ) else {
+        return None;
+    };
+
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            run_id: context.run_id,
+            sandbox_id,
+            profile_name,
+            session_id: context.session_id(),
+            working_dir: CANONICAL_WORKING_DIR,
+            image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+            workspace_drive_required: true,
+        })
+        .await;
+    record_workspace_cache_result(telemetry, lease.result());
+    Some(lease)
+}
+
+fn workspace_image_promotable(
+    workspace_image: Option<&WorkspaceImageLease>,
+    context: &ExecutionContext,
+    guest_session_id: Option<&str>,
+) -> bool {
+    workspace_image
+        .is_some_and(|image| image.can_attempt_promotion(context.session_id().or(guest_session_id)))
+}
+
+async fn create_started_sandbox(
+    factory: &dyn SandboxFactory,
+    context: &ExecutionContext,
+    sandbox_id: SandboxId,
+    config: &ExecutorConfig,
+    params: &JobParams,
+    telemetry: &mut JobTelemetry,
+    workspace_image: Option<&WorkspaceImageLease>,
+) -> RunnerResult<PreparedSandboxRun> {
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
         resources: sandbox::ResourceLimits {
@@ -540,9 +972,17 @@ async fn execute_new_sandbox(
             memory_mb: params.memory_mb,
         },
         device_rate_limits: params.device_rate_limits.clone(),
+        workspace_drive: workspace_image.map_or_else(
+            || {
+                Some(sandbox::WorkspaceDriveConfig {
+                    size_mb: params.workspace_disk_mb,
+                    seed_image: None,
+                })
+            },
+            WorkspaceImageLease::workspace_drive_config,
+        ),
     };
 
-    // Create and start sandbox
     info!(run_id = %context.run_id, sandbox_id = %sandbox_id, "creating sandbox");
     let t = Instant::now();
     let mut sandbox = match factory.create(sandbox_config).await {
@@ -554,8 +994,6 @@ async fn execute_new_sandbox(
     };
 
     let source_ip = sandbox.source_ip().to_string();
-
-    // Register VM in proxy registry BEFORE starting the sandbox.
     let network_log_session = register_proxy(config, context, &source_ip).await;
 
     if let Err(e) = sandbox.start().await {
@@ -569,29 +1007,49 @@ async fn execute_new_sandbox(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    Ok(execute_prepared_sandbox_run(
-        PreparedSandboxRun {
-            sandbox,
-            source_ip,
-            network_log_session,
-        },
-        context,
-        config,
-        RunStart {
-            restore_guest_state: params.restore_guest_state,
-            reuse_result,
-            prev_storage: None,
-        },
-        telemetry,
-        cancel,
-    )
-    .await)
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
+        destroy_sandbox_panic_safe(factory, sandbox).await;
+        return Err(e);
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
+
+    Ok(PreparedSandboxRun {
+        sandbox,
+        source_ip,
+        network_log_session,
+    })
 }
 
-struct PreparedSandboxRun {
-    sandbox: Box<dyn Sandbox>,
-    source_ip: String,
-    network_log_session: NetworkLogSession,
+async fn invalidate_workspace_cache_hit(
+    workspace_image: Option<&WorkspaceImageLease>,
+    run_id: RunId,
+    reason: &str,
+) {
+    let Some(workspace_image) = workspace_image else {
+        return;
+    };
+    if !workspace_image.is_cache_hit() {
+        return;
+    }
+    if let Err(e) = workspace_image.invalidate(run_id, reason).await {
+        warn!(
+            run_id = %run_id,
+            reason,
+            error = %e,
+            "failed to invalidate workspace image cache entry"
+        );
+    }
 }
 
 async fn destroy_sandbox_panic_safe(factory: &dyn SandboxFactory, sandbox: Box<dyn Sandbox>) {
@@ -624,6 +1082,27 @@ async fn execute_reused_sandbox(
 
     let source_ip = source_ip.to_string();
     let network_log_session = register_proxy(config, context, &source_ip).await;
+
+    let mount_started = Instant::now();
+    if let Err(e) = ensure_workspace_drive_mounted(sandbox.as_ref(), context.run_id).await {
+        telemetry.record(
+            "workspace_drive_mount",
+            mount_started.elapsed(),
+            false,
+            Some(&e.to_string()),
+        );
+        unregister_proxy_registry(config, context, &source_ip).await;
+        return ExecuteOutcome {
+            failure: Some(ExecutionFailure::from_error(e.to_string())),
+            sandbox: Some(sandbox),
+            source_ip,
+            network_log_session: Some(network_log_session),
+            workspace_image: None,
+            workspace_promotable: false,
+            guest_session_id: None,
+        };
+    }
+    telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
 
     execute_prepared_sandbox_run(
         PreparedSandboxRun {
@@ -704,6 +1183,8 @@ async fn execute_prepared_sandbox_run(
         sandbox: Some(sandbox),
         source_ip,
         network_log_session: Some(network_log_session),
+        workspace_image: None,
+        workspace_promotable: false,
         guest_session_id,
     }
 }
@@ -769,9 +1250,9 @@ async fn post_job_cleanup(
     stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths, cancelled).await;
-    append_stdout_stream_diagnostics_to_system_log(
+    append_stdout_stream_diagnostics_to_stream_log(
         context.run_id,
-        &config.log_paths.system_log(context.run_id),
+        &config.log_paths.system_stream_log(context.run_id),
         stdout_stream_diagnostics,
     )
     .await;
@@ -887,6 +1368,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 5. Build env vars (passed directly via vsock protocol)
     let env_map = build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result)?;
+    let env_diagnostics = build_agent_env_diagnostics(&env_map);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
         .iter()
@@ -896,7 +1378,7 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
 
     // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
     //    guest-agent owns the guest-side system log for telemetry; the runner
-    //    separately writes streamed chunks to the host log file in real time.
+    //    separately writes streamed chunks to a host stream log in real time.
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
     info!(run_id = %context.run_id, "spawning agent");
 
@@ -925,8 +1407,8 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);
 
-    // Spawn background task to drain stdout chunks and write to host log file.
-    let host_log_path = config.log_paths.system_log(context.run_id);
+    // Spawn background task to drain stdout chunks and write to the host stream log file.
+    let host_log_path = config.log_paths.system_stream_log(context.run_id);
     let stream_task = handle
         .take_stdout_receiver()
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
@@ -1077,6 +1559,13 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
         exit_code = exit.exit_code,
         "agent exited"
     );
+    log_agent_process_exit_summary(
+        context.run_id,
+        sandbox.id(),
+        start.reuse_result,
+        &exit,
+        &env_diagnostics,
+    );
 
     // Check for OOM kill when process was terminated by SIGKILL.
     // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
@@ -1113,15 +1602,43 @@ async fn run_in_sandbox_with_process_cancel_timeouts(
     } else if exit.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&exit.stderr).to_string();
         let failure_diagnostic = read_guest_failure_diagnostic_file(sandbox, context.run_id).await;
+        let guest_error = if stderr.is_empty() {
+            read_guest_error_file(sandbox, context.run_id).await
+        } else {
+            None
+        };
+        if should_collect_agent_abnormal_exit_diagnostics(
+            wait_cancelled,
+            &exit,
+            &stderr,
+            failure_diagnostic.as_ref(),
+            guest_error.as_deref(),
+        ) {
+            let env_key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
+            log_agent_abnormal_exit_env_diagnostics(
+                context.run_id,
+                sandbox.id(),
+                start.reuse_result,
+                &exit,
+                &env_diagnostics,
+                &env_key_diagnostics,
+            );
+            collect_agent_abnormal_exit_diagnostics(
+                sandbox,
+                context.run_id,
+                sandbox.id(),
+                start.reuse_result,
+                exit.exit_code,
+            )
+            .await;
+        }
         let error = if !stderr.is_empty() {
             stderr
         } else {
             // Stderr is empty (redirected to log file). Check for a structured
             // error file written by the guest-agent for final failure
             // handoff.
-            read_guest_error_file(sandbox, context.run_id)
-                .await
-                .unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
+            guest_error.unwrap_or_else(|| agent_exit_failure_message(exit.exit_code))
         };
         Some(ExecutionFailure::new(
             exit.exit_code,
@@ -1341,7 +1858,7 @@ async fn drain_stdout_to_file(
     Ok(report)
 }
 
-async fn append_stdout_stream_diagnostics_to_system_log(
+async fn append_stdout_stream_diagnostics_to_stream_log(
     run_id: RunId,
     path: &Path,
     diagnostics: AgentStdoutStreamDiagnostics,
@@ -1355,7 +1872,7 @@ async fn append_stdout_stream_diagnostics_to_system_log(
             run_id = %run_id,
             path = %path.display(),
             error = %e,
-            "failed to append stdout stream diagnostic marker to host system log"
+            "failed to append stdout stream diagnostic marker to host stream log"
         );
     }
 }
@@ -1403,11 +1920,9 @@ const GUEST_SANDBOX_OPS_LOG_SUFFIX: &str = ".jsonl";
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
-/// The agent phase is streamed to the host in real time via vsock stdout
-/// chunks. The final copy here overwrites with the complete guest-side file,
-/// including setup output written before agent streaming starts. Agent stdout
-/// that is not written by guest-agent's logger is intentionally not part of
-/// the final system log.
+/// The final system log copy keeps `system-*` as the guest-authored log. The
+/// supervised process stdout/stderr stream is written separately to
+/// `system-stream-*` in real time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GuestLogCopyFailureKind {
     Failed,
@@ -1610,7 +2125,7 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
 /// skips entries without a valid URL, so unchanged storages stay on disk.
 fn filter_unchanged_storages(
     manifest: &GuestDownloadManifest,
-    prev: &crate::idle_pool::StorageFingerprints,
+    prev: &StorageFingerprints,
 ) -> GuestDownloadManifest {
     let mut skipped: usize = 0;
     let mut cleanup_paths: Vec<String> = Vec::new();
@@ -1619,10 +2134,11 @@ fn filter_unchanged_storages(
         .storages
         .iter()
         .map(|s| {
-            let unchanged = prev
-                .storages
-                .get(&s.mount_path)
-                .is_some_and(|(pn, pv)| pn == &s.vas_storage_name && pv == &s.vas_version_id);
+            let unchanged = prev.storages.get(&s.mount_path).is_some_and(|fingerprint| {
+                !StorageFingerprints::fingerprint_is_tainted(fingerprint)
+                    && fingerprint.0.as_str() == s.vas_storage_name.as_str()
+                    && fingerprint.1.as_str() == s.vas_version_id.as_str()
+            });
             if unchanged {
                 skipped += 1;
             } else {
@@ -1654,12 +2170,17 @@ fn filter_unchanged_storages(
     }
 
     let filter_artifact = |a: &GuestDownloadArtifactEntry,
-                           prev_ver: &Option<(String, String)>,
+                           prev_ver: Option<&(String, String)>,
                            skipped: &mut usize,
                            cleanup: &mut Vec<String>| {
-        let same = prev_ver
-            .as_ref()
-            .is_some_and(|(name, ver)| *name == a.vas_storage_name && *ver == a.vas_version_id);
+        let preserve_missing_root =
+            a.missing_root_policy == Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion);
+        let same = prev_ver.is_some_and(|fingerprint| {
+            !preserve_missing_root
+                && !StorageFingerprints::fingerprint_is_tainted(fingerprint)
+                && fingerprint.0.as_str() == a.vas_storage_name.as_str()
+                && fingerprint.1.as_str() == a.vas_version_id.as_str()
+        });
         if same {
             *skipped += 1;
         } else {
@@ -1676,8 +2197,8 @@ fn filter_unchanged_storages(
         .artifacts
         .iter()
         .map(|a| {
-            let prev_ver = prev.artifacts.get(&a.mount_path).cloned();
-            filter_artifact(a, &prev_ver, &mut skipped, &mut cleanup_paths)
+            let prev_ver = prev.artifacts.get(&a.mount_path);
+            filter_artifact(a, prev_ver, &mut skipped, &mut cleanup_paths)
         })
         .collect();
     // Detect removed artifacts: previous artifact mount_paths not in current manifest.
@@ -1872,8 +2393,7 @@ async fn restore_claude_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    let project_name = context
-        .working_dir
+    let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
@@ -1991,7 +2511,6 @@ fn build_env_json_with_host_env(
     {
         env.insert("VM0_APPEND_SYSTEM_PROMPT".into(), asp.clone());
     }
-    env.insert("VM0_WORKING_DIR".into(), context.working_dir.clone());
     env.insert(
         "VM0_API_START_TIME".into(),
         context
@@ -2013,13 +2532,12 @@ fn build_env_json_with_host_env(
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
-    // `{name, mountPath, storageId, versionId}` objects. Guest-agent
-    // parses this on startup and iterates the list when taking snapshots
-    // at run end. The shape here must stay lockstep with guest-agent's
-    // `ArtifactEnv` — the two ship as one unit via `include_bytes!`, and
-    // `ArtifactEnv` deserializes strict (no `serde(default)`), so a
-    // field drop here will panic the VM at startup instead of silently
-    // producing empty strings.
+    // `{name, mountPath, storageId, versionId, missingRootPolicy?}` objects.
+    // Guest-agent parses this on startup and iterates the list when taking
+    // snapshots at run end. The required fields here must stay lockstep with
+    // guest-agent's `ArtifactEnv` — the two ship as one unit via
+    // `include_bytes!`, and required field drops will panic the VM at startup
+    // instead of silently producing empty strings.
     //
     // Empty-list case: do not set the env var at all (matches the prior
     // "unset = no artifact" convention).
@@ -2030,12 +2548,18 @@ fn build_env_json_with_host_env(
             .artifacts
             .iter()
             .map(|a| {
-                serde_json::json!({
+                let mut entry = serde_json::json!({
                     "name": a.vas_storage_name,
                     "mountPath": a.mount_path,
                     "storageId": a.vas_storage_id,
                     "versionId": a.vas_version_id,
-                })
+                });
+                if let Some(policy) = a.missing_root_policy
+                    && let Some(object) = entry.as_object_mut()
+                {
+                    object.insert("missingRootPolicy".to_string(), serde_json::json!(policy));
+                }
+                entry
             })
             .collect();
         // Serialization cannot fail — payload is a Vec of String-only JSON
@@ -2129,6 +2653,8 @@ const RUNNER_OWNED_ENV_KEYS: &[&str] = &[
     "VM0_SANDBOX_REUSE_RESULT",
     "VM0_PROMPT",
     "VM0_APPEND_SYSTEM_PROMPT",
+    // Retired runner-owned key. Keep scrubbing user-provided values so the
+    // removed working-dir parameter does not leak into guest CLI processes.
     "VM0_WORKING_DIR",
     "VM0_API_START_TIME",
     "CLI_AGENT_TYPE",
@@ -2251,15 +2777,18 @@ mod tests {
     use super::*;
     use crate::http::HttpClientConfig;
     use crate::ids::RunId;
+    use crate::paths::RunnerPaths;
     use crate::types::{
-        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry, ResumeSession,
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+        ResumeSession, SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG,
     };
+    use crate::workspace_image_cache::WorkspaceCacheTerminalStatus;
     use api_contracts::generated::types::runners::storage::{
-        ArtifactEntry, StorageEntry, StorageManifest,
+        ArtifactEntry, ArtifactEntryMissingRootPolicy, StorageEntry, StorageManifest,
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, VecDeque};
     use std::fmt;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
@@ -2352,6 +2881,7 @@ mod tests {
             vas_storage_id: storage_id.into(),
             vas_version_id: version.into(),
             manifest_url: None,
+            missing_root_policy: None,
         }
     }
 
@@ -2421,7 +2951,6 @@ mod tests {
             vars: None,
             checkpoint_id: None,
             sandbox_token: "tok".into(),
-            working_dir: "/workspace".into(),
             storage_manifest: None,
             environment: None,
             resume_session: None,
@@ -2451,6 +2980,65 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.environment = Some(environment);
         ctx
+    }
+
+    #[test]
+    fn agent_env_diagnostics_sort_bounds_and_never_include_values() {
+        let mut env = HashMap::from([
+            ("BASH_ENV".to_string(), "super-secret-bash-env".to_string()),
+            ("NORMAL_KEY".to_string(), "normal-secret-value".to_string()),
+            ("VM0_RUN_ID".to_string(), "runner-secret-value".to_string()),
+            (
+                "VM0_SECRET_VALUES".to_string(),
+                "stored-secret-value".to_string(),
+            ),
+        ]);
+        for index in 0..AGENT_ENV_KEY_DIAGNOSTIC_LIMIT {
+            env.insert(format!("ZZZ_{index:03}"), format!("value-{index}"));
+        }
+        env.insert(
+            format!("AAA_{}", "x".repeat(AGENT_ENV_KEY_MAX_CHARS * 4)),
+            "long-secret-value".to_string(),
+        );
+
+        let diagnostics = build_agent_env_diagnostics(&env);
+
+        assert_eq!(diagnostics.env_count, AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 5);
+        assert_eq!(diagnostics.runner_owned_count, 2);
+        assert_eq!(
+            diagnostics.external_count,
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT + 3
+        );
+        assert_eq!(diagnostics.suspicious_keys, vec!["BASH_ENV".to_string()]);
+        let env_pairs: Vec<(String, String)> = env.into_iter().collect();
+        let key_diagnostics = build_agent_env_key_diagnostics(&env_pairs);
+        assert_eq!(
+            key_diagnostics.logged_keys.len(),
+            AGENT_ENV_KEY_DIAGNOSTIC_LIMIT
+        );
+        assert_eq!(key_diagnostics.omitted_key_count, 5);
+        let mut sorted_logged_keys = key_diagnostics.logged_keys.clone();
+        sorted_logged_keys.sort();
+        assert_eq!(key_diagnostics.logged_keys, sorted_logged_keys);
+        let long_key = key_diagnostics
+            .logged_keys
+            .iter()
+            .find(|key| key.starts_with("AAA_"))
+            .expect("long key should be logged before the ZZZ keys");
+        assert_eq!(long_key.chars().count(), AGENT_ENV_KEY_MAX_CHARS + 3);
+        assert!(long_key.ends_with("..."));
+        let rendered = format!(
+            "{} {}",
+            diagnostics.suspicious_keys_csv(),
+            key_diagnostics.logged_keys_csv()
+        );
+        assert!(rendered.contains("BASH_ENV"));
+        assert!(rendered.contains("VM0_RUN_ID"));
+        assert!(!rendered.contains("super-secret-bash-env"));
+        assert!(!rendered.contains("normal-secret-value"));
+        assert!(!rendered.contains("runner-secret-value"));
+        assert!(!rendered.contains("stored-secret-value"));
+        assert!(!rendered.contains("long-secret-value"));
     }
 
     #[test]
@@ -2607,7 +3195,7 @@ mod tests {
         assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
-        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
         // Guest-agent needs these to post /complete with full metadata when
         // checkpoint lands before VM teardown.
         assert!(
@@ -2748,6 +3336,7 @@ mod tests {
             ("CUSTOM_ENV".into(), "kept".into()),
             ("VM0_PROMPT".into(), "user prompt".into()),
             ("VM0_API_TOKEN".into(), "stolen".into()),
+            ("VM0_WORKING_DIR".into(), "/legacy".into()),
             ("VM0_FEATURE_FLAGS".into(), r#"{"bad":true}"#.into()),
             (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
             (RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV.into(), "999".into()),
@@ -2771,6 +3360,7 @@ mod tests {
         assert_eq!(env.get("VM0_PROMPT").unwrap(), "test prompt");
         assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
         assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
         assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
         assert!(!env.contains_key(RUNNER_CONCURRENCY_FACTOR_ENV));
         assert!(!env.contains_key(RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV));
@@ -2820,7 +3410,7 @@ mod tests {
             "Use terse answers."
         );
         assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");
-        assert_eq!(env.get("VM0_WORKING_DIR").unwrap(), "/workspace");
+        assert!(!env.contains_key("VM0_WORKING_DIR"));
     }
 
     #[test]
@@ -2850,11 +3440,37 @@ mod tests {
         assert_eq!(parsed[0]["mountPath"], "/artifacts");
         assert_eq!(parsed[0]["storageId"], "sid-1");
         assert_eq!(parsed[0]["versionId"], "v1");
+        assert!(parsed[0].get("missingRootPolicy").is_none());
         // Legacy singleton env vars must no longer be emitted.
         assert!(!env.contains_key("VM0_ARTIFACT_DRIVER"));
         assert!(!env.contains_key("VM0_ARTIFACT_MOUNT_PATH"));
         assert!(!env.contains_key("VM0_ARTIFACT_VOLUME_NAME"));
         assert!(!env.contains_key("VM0_ARTIFACT_VERSION_ID"));
+    }
+
+    #[test]
+    fn build_env_json_with_artifact_missing_root_policy() {
+        let mut ctx = minimal_context();
+        let mut artifact = api_artifact(
+            "memory",
+            "/home/user/.claude/projects/-home-user-workspace/memory",
+            "sid-memory",
+            "v1",
+            "https://example.com/memory.tar.gz",
+        );
+        artifact.missing_root_policy = Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion);
+        ctx.storage_manifest = Some(StorageManifest {
+            storages: vec![],
+            artifacts: vec![artifact],
+        });
+
+        let env = build_env_for_test(&ctx, "http://localhost");
+        let raw = env.get("VM0_ARTIFACTS").expect("VM0_ARTIFACTS must be set");
+        let parsed: Vec<serde_json::Value> = serde_json::from_str(raw).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0]["name"], "memory");
+        assert_eq!(parsed[0]["missingRootPolicy"], "preserveParentVersion");
     }
 
     #[test]
@@ -3161,7 +3777,6 @@ mod tests {
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
-            "workingDir": "/workspace",
             "cliAgentType": "claude-code",
             "billableFirewalls": [],
             "firewalls": [{
@@ -3204,7 +3819,6 @@ mod tests {
             "runId": "00000000-0000-0000-0000-000000000001",
             "prompt": "test",
             "sandboxToken": "tok",
-            "workingDir": "/workspace",
             "cliAgentType": "claude-code",
             "billableFirewalls": []
         });
@@ -4113,12 +4727,10 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
 
-        tokio::fs::write(
-            log_paths.system_log(ctx.run_id),
-            b"transient host-streamed stdout\n",
-        )
-        .await
-        .unwrap();
+        let system_stream_log_path = log_paths.system_stream_log(ctx.run_id);
+        tokio::fs::write(&system_stream_log_path, b"transient host-streamed stdout\n")
+            .await
+            .unwrap();
 
         // Queue guest-copy results: system log + metrics log + sandbox ops log.
         sandbox.push_copy_file_result(Ok(b"system log line 1\nsystem log line 2\n".to_vec()));
@@ -4134,7 +4746,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
-        assert!(!system_log.contains("transient host-streamed stdout"));
+        let system_stream_log = tokio::fs::read_to_string(system_stream_log_path)
+            .await
+            .unwrap();
+        assert_eq!(system_stream_log, "transient host-streamed stdout\n");
 
         let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
             .await
@@ -4234,8 +4849,9 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let ctx = minimal_context();
         let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
-        tokio::fs::write(&system_log_path, b"transient host-streamed stdout\n")
+        tokio::fs::write(&system_stream_log_path, b"transient host-streamed stdout\n")
             .await
             .unwrap();
         sandbox.push_copy_file_result(Ok(b"guest system log".to_vec()));
@@ -4254,10 +4870,12 @@ mod tests {
         .await;
 
         let system_log = tokio::fs::read(&system_log_path).await.unwrap();
-        let mut expected = b"guest system log\n".to_vec();
-        expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        expected.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_log, b"guest system log");
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        let mut expected_stream_log = b"transient host-streamed stdout\n".to_vec();
+        expected_stream_log.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
+        expected_stream_log.extend_from_slice(STDOUT_STREAM_OVERFLOW_MARKER);
+        assert_eq!(system_stream_log, expected_stream_log);
     }
 
     // -----------------------------------------------------------------------
@@ -4433,13 +5051,16 @@ mod tests {
             network_log_manager: NetworkLogManager::new(),
             network_log_drain: NetworkLogDrainCoordinator::noop(),
             home: HomePaths::with_root(dir.to_path_buf()),
+            workspace_cache: None,
         }
     }
 
     fn default_params() -> JobParams {
         JobParams {
+            profile_name: "vm0/default".into(),
             vcpu: 2,
             memory_mb: 2048,
+            workspace_disk_mb: 16_384,
             restore_guest_state: false,
             device_rate_limits: None,
         }
@@ -4497,7 +5118,7 @@ mod tests {
             IdleUnparkResult::Reused {
                 sandbox,
                 budget_lease,
-            } => (sandbox, budget_lease),
+            } => (*sandbox, budget_lease),
             IdleUnparkResult::Failed { error, .. } => {
                 panic!("test idle entry should unpark: {error}");
             }
@@ -4608,6 +5229,115 @@ mod tests {
         }
     }
 
+    struct QueuedCopyFileSandbox {
+        inner: Box<dyn Sandbox>,
+        copy_file_results: Mutex<VecDeque<Vec<u8>>>,
+    }
+
+    impl QueuedCopyFileSandbox {
+        fn new(inner: Box<dyn Sandbox>, copy_file_results: Vec<Vec<u8>>) -> Self {
+            Self {
+                inner,
+                copy_file_results: Mutex::new(VecDeque::from(copy_file_results)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Sandbox for QueuedCopyFileSandbox {
+        fn id(&self) -> &str {
+            self.inner.id()
+        }
+
+        fn source_ip(&self) -> &str {
+            self.inner.source_ip()
+        }
+
+        fn process_pid(&self) -> Option<u32> {
+            self.inner.process_pid()
+        }
+
+        async fn start(&mut self) -> sandbox::Result<()> {
+            self.inner.start().await
+        }
+
+        async fn stop(&mut self) -> sandbox::Result<()> {
+            self.inner.stop().await
+        }
+
+        async fn kill(&mut self) -> sandbox::Result<()> {
+            self.inner.kill().await
+        }
+
+        async fn park(&mut self) -> sandbox::Result<()> {
+            self.inner.park().await
+        }
+
+        async fn unpark(&mut self) -> sandbox::Result<()> {
+            self.inner.unpark().await
+        }
+
+        async fn exec(&self, request: &ExecRequest<'_>) -> sandbox::Result<ExecResult> {
+            self.inner.exec(request).await
+        }
+
+        async fn read_file(&self, path: &str, max_bytes: u64) -> sandbox::Result<Option<Vec<u8>>> {
+            self.inner.read_file(path, max_bytes).await
+        }
+
+        async fn copy_file(
+            &self,
+            path: &str,
+            host_path: &std::path::Path,
+            options: CopyFileOptions,
+        ) -> sandbox::Result<sandbox::CopyFileResult> {
+            let bytes = self
+                .copy_file_results
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .pop_front();
+            let Some(bytes) = bytes else {
+                return self.inner.copy_file(path, host_path, options).await;
+            };
+
+            if bytes.len() as u64 > options.max_bytes {
+                return Err(SandboxError::Operation {
+                    operation: SandboxOperation::CopyFile,
+                    reason: SandboxOperationReason::Other,
+                    message: format!("test copy_file exceeded {} bytes", options.max_bytes),
+                });
+            }
+            if let Some(parent) = host_path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(host_path, &bytes)?;
+            Ok(sandbox::CopyFileResult {
+                bytes_copied: bytes.len() as u64,
+            })
+        }
+
+        async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
+            self.inner.write_file(path, content).await
+        }
+
+        async fn start_process(
+            &self,
+            request: &StartProcessRequest<'_>,
+        ) -> sandbox::Result<sandbox::GuestProcessHandle> {
+            self.inner.start_process(request).await
+        }
+
+        async fn wait_process(
+            &self,
+            handle: sandbox::GuestProcessHandle,
+            timeout: Duration,
+        ) -> sandbox::Result<ProcessExit> {
+            self.inner.wait_process(handle, timeout).await
+        }
+    }
+
     async fn run_execute_inner(
         factory: &MockSandboxFactory,
         ctx: &ExecutionContext,
@@ -4643,9 +5373,75 @@ mod tests {
                     memory_mb: 2048,
                 },
                 device_rate_limits: None,
+                workspace_drive: None,
             })
             .await
             .unwrap()
+    }
+
+    async fn seed_workspace_image_cache(
+        cache: &SessionWorkspaceCache,
+        runner_paths: &RunnerPaths,
+        session_id: &str,
+        workspace_disk_mb: u32,
+    ) -> PathBuf {
+        let sandbox_id = SandboxId::new_v4();
+        let run_id = RunId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
+
+        let active_image = runner_paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        let file = tokio::fs::File::create(&active_image).await.unwrap();
+        file.set_len(u64::from(workspace_disk_mb) * 1024 * 1024)
+            .await
+            .unwrap();
+        drop(file);
+
+        assert!(
+            lease
+                .promote(
+                    run_id,
+                    None,
+                    WorkspaceCacheTerminalStatus::Success,
+                    "2026-06-01T00:00:00.000Z".into(),
+                    &crate::idle_pool::StorageFingerprints::default(),
+                )
+                .await
+                .unwrap()
+        );
+        drop(lease);
+
+        let hit = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: "vm0/default",
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(hit.result(), WorkspaceCacheCheckoutResult::Hit);
+        let seed = hit
+            .workspace_drive_config()
+            .and_then(|config| config.seed_image)
+            .expect("seeded workspace cache should produce a seed image");
+        drop(hit);
+        seed
     }
 
     fn spawn_run_in_sandbox_test(
@@ -4709,6 +5505,7 @@ mod tests {
                         memory_mb: 2048,
                     },
                     device_rate_limits: None,
+                    workspace_drive: None,
                 })
                 .await
                 .unwrap(),
@@ -4946,6 +5743,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_job_workspace_mount_failure_destroys_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "mount -t ext4".to_string(),
+            exit_code: 64,
+            stdout: Vec::new(),
+            stderr: b"mount denied".to_vec(),
+        });
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (outcome, _telemetry) = execute_job(
+            &factory,
+            minimal_context(),
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &default_params(),
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_none(),
+            "fresh mount failure should be destroyed inline"
+        );
+        assert!(
+            outcome.network_log_session.is_none(),
+            "network log session should be closed before returning"
+        );
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "agent must not start after workspace mount failure"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
+    }
+
+    #[tokio::test]
     async fn execute_inner_appends_stream_overflow_marker() {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -4955,7 +5801,7 @@ mod tests {
         overrides.push_wait_process_exit(exit);
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -4963,8 +5809,8 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
-        assert_eq!(system_log, STDOUT_STREAM_OVERFLOW_MARKER);
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        assert_eq!(system_stream_log, STDOUT_STREAM_OVERFLOW_MARKER);
     }
 
     #[tokio::test]
@@ -4978,7 +5824,7 @@ mod tests {
         }]);
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -4986,10 +5832,10 @@ mod tests {
 
         assert_eq!(exit_code, 0);
         assert!(error_msg.is_none());
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
     }
 
     #[tokio::test]
@@ -5010,7 +5856,7 @@ mod tests {
         });
         let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let (exit_code, error_msg) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -5021,10 +5867,60 @@ mod tests {
             error_msg.as_deref(),
             Some("Agent process killed by OOM killer")
         );
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_start_process_stdout_chunks(vec![ProcessOutputChunk {
+            bytes: b"bootstrap diagnostic\n".to_vec(),
+            truncated: false,
+        }]);
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+        let ctx = minimal_context();
+        let source_ip = sandbox.source_ip().to_string();
+        let network_log_session = register_proxy(&config, &ctx, &source_ip).await;
+        let sandbox: Box<dyn Sandbox> = Box::new(QueuedCopyFileSandbox::new(
+            sandbox,
+            vec![b"guest system log\n".to_vec()],
+        ));
+        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_prepared_sandbox_run(
+            PreparedSandboxRun {
+                sandbox,
+                source_ip,
+                network_log_session,
+            },
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 126);
+        assert_eq!(outcome.error(), Some("Agent exited with code 126"));
+        assert!(outcome.sandbox.is_some());
+        assert_proxy_registry_empty(dir.path()).await;
+        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        assert_eq!(system_log, b"guest system log\n");
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
+        assert_eq!(system_stream_log, b"bootstrap diagnostic\n");
     }
 
     #[tokio::test]
@@ -5035,6 +5931,7 @@ mod tests {
         let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
         let limits = test_device_rate_limits();
         let params = JobParams {
+            workspace_disk_mb: 512,
             device_rate_limits: Some(limits.clone()),
             ..default_params()
         };
@@ -5049,6 +5946,13 @@ mod tests {
         let configs = overrides.create_configs();
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].device_rate_limits, Some(limits));
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 512,
+                seed_image: None,
+            })
+        );
     }
 
     #[tokio::test]
@@ -5140,6 +6044,132 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_create_result(Err(sandbox_create_error("bad seed image")));
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-cache-hit".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            true,
+        )]));
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let expected_seed =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-hit", 16).await;
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.workspace_image.is_none());
+        assert!(!outcome.workspace_promotable);
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 2);
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: Some(expected_seed.clone()),
+            })
+        );
+        assert_eq!(
+            configs[1].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: None,
+            })
+        );
+        assert!(
+            !expected_seed.exists(),
+            "failed cache hit should invalidate the unusable baseline"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_ignores_workspace_cache_when_feature_flag_disabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-cache-disabled".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            false,
+        )]));
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let seeded_cache =
+            seed_workspace_image_cache(&cache, &runner_paths, "sess-cache-disabled", 16).await;
+        let mut telemetry = test_telemetry(&config, &ctx);
+
+        let outcome = execute_new_sandbox(
+            &factory,
+            &ctx,
+            NewSandboxDispatch {
+                id: SandboxId::new_v4(),
+                reuse_result: SandboxReuseResult::PoolMiss,
+            },
+            &config,
+            &params,
+            &mut telemetry,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome.exit_code(), 0);
+        assert!(outcome.workspace_image.is_none());
+        assert!(!outcome.workspace_promotable);
+        let configs = overrides.create_configs();
+        assert_eq!(configs.len(), 1);
+        assert_eq!(
+            configs[0].workspace_drive,
+            Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 16,
+                seed_image: None,
+            })
+        );
+        assert!(
+            seeded_cache.exists(),
+            "disabled feature flag must not consume or invalidate the workspace cache baseline"
+        );
+    }
+
+    #[tokio::test]
     async fn execute_inner_aborts_drain_task_on_wait_process_error() {
         // Simulate wait_process timeout: stdout channel stays open (sender held
         // alive by MockSandbox), wait_process returns error.
@@ -5199,6 +6229,160 @@ mod tests {
 
         assert_eq!(exit_code, 7);
         assert_eq!(error.as_deref(), Some("Agent exited with code 7"));
+    }
+
+    #[tokio::test]
+    async fn execute_inner_abnormal_exit_collects_guest_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        let calls = overrides.exec_calls();
+        let diagnostic_calls: Vec<&sandbox_mock::ExecCall> = calls
+            .iter()
+            .filter(|call| call.cmd.contains("guest-agent-binary"))
+            .collect();
+        assert_eq!(diagnostic_calls.len(), 1);
+        let call = diagnostic_calls[0];
+        assert!(call.cmd.contains("guest-agent-binary"));
+        let active_diagnostic_cmd = call
+            .cmd
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| !line.starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for forbidden in ["environ", "printenv", "ps aux", "ps -ef", "ps e"] {
+            assert!(
+                !active_diagnostic_cmd.contains(forbidden),
+                "diagnostic command must not collect environment values via {forbidden}"
+            );
+        }
+        assert!(
+            !active_diagnostic_cmd
+                .lines()
+                .any(|line| line == "env" || line.starts_with("env ")),
+            "diagnostic command must not collect raw environment output"
+        );
+        assert_eq!(call.timeout, AGENT_ABNORMAL_EXIT_DIAGNOSTIC_TIMEOUT);
+        assert!(call.env_keys.is_empty());
+        assert!(call.sudo);
+        assert!(call.stdin_bytes.is_none());
+        assert_eq!(call.output_limits, EXEC_OUTPUT_LIMIT_64_KIB);
+    }
+
+    #[tokio::test]
+    async fn execute_inner_success_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 0);
+        assert!(error.is_none());
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_stderr_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(
+            1,
+            7,
+            Vec::new(),
+            b"guest stderr".to_vec(),
+        ));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 7);
+        assert_eq!(error.as_deref(), Some("guest stderr"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_process_diagnostic_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let mut exit = ProcessExit::new(1, 126, Vec::new(), Vec::new());
+        exit.diagnostic = "guest-agent bootstrap diagnostic".to_string();
+        overrides.push_wait_process_exit(exit);
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
+        let diagnostic = FailureDiagnostic::new(
+            agent_diagnostics::FailureClass::CliNonzero,
+            agent_diagnostics::AgentFramework::ClaudeCode,
+            agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        );
+        overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+        overrides.push_read_file_result(Ok(None));
+        let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+
+        assert_eq!(exit_code, 126);
+        assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+        assert!(
+            overrides
+                .exec_calls()
+                .iter()
+                .all(|call| !call.cmd.contains("guest-agent-binary"))
+        );
     }
 
     #[tokio::test]
@@ -5463,11 +6647,458 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (reuse_outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_without_workspace_cache_invalidates_held_cache_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let session_id = "sess-cache-disabled-reuse";
+        let (idle_sandbox, _current_image, _overrides) =
+            reusable_idle_sandbox_with_workspace_promotion(
+                &cache,
+                &runner_paths,
+                &params,
+                session_id,
+            )
+            .await;
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            false,
+        )]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+        assert_eq!(reuse_outcome.exit_code(), 0);
+
+        let checkout = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::Miss);
+    }
+
+    #[tokio::test]
+    async fn uncached_reuse_stops_when_cache_invalidation_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let session_id = "sess-cache-disabled-reuse-invalidate-error";
+        let (idle_sandbox, current_image, overrides) =
+            reusable_idle_sandbox_with_workspace_promotion(
+                &cache,
+                &runner_paths,
+                &params,
+                session_id,
+            )
+            .await;
+        tokio::fs::remove_file(&current_image).await.unwrap();
+        tokio::fs::create_dir(&current_image).await.unwrap();
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            false,
+        )]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 1);
+        assert!(reuse_outcome.sandbox.is_some());
+        assert!(
+            reuse_outcome
+                .error()
+                .unwrap()
+                .contains("failed to invalidate workspace image cache before disabled-cache reuse")
+        );
+        assert!(
+            overrides.exec_calls().is_empty(),
+            "reused sandbox must not run after stale cache invalidation fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn uncached_reuse_stops_when_required_cache_invalidation_lock_is_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let session_id = "sess-cache-disabled-reuse-lock-busy";
+        let current_image =
+            seed_workspace_image_cache(&cache, &runner_paths, session_id, params.workspace_disk_mb)
+                .await;
+        let (idle_sandbox, overrides) = reusable_idle_sandbox_with_unlocked_workspace_promotion(
+            &cache,
+            &runner_paths,
+            &params,
+            session_id,
+        )
+        .await;
+        let cache_key = crate::paths::scoped_session_workspace_cache_key(
+            "",
+            &params.profile_name,
+            session_id,
+            CANONICAL_WORKING_DIR,
+            u64::from(params.workspace_disk_mb) * 1024 * 1024,
+        );
+        let _held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
+            &runner_paths.base_dir().join("locks"),
+            &cache_key,
+        ))
+        .await
+        .unwrap();
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            false,
+        )]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 1);
+        assert!(reuse_outcome.sandbox.is_some());
+        let error = reuse_outcome.error().unwrap();
+        assert!(
+            error
+                .contains("failed to invalidate workspace image cache before disabled-cache reuse"),
+            "got: {error}"
+        );
+        assert!(
+            error.contains("lock unavailable"),
+            "lock contention should be surfaced, got: {error}"
+        );
+        assert!(
+            overrides.exec_calls().is_empty(),
+            "reused sandbox must not run when required stale cache invalidation cannot get the entry lock"
+        );
+        assert!(
+            current_image.exists(),
+            "lock-busy invalidation must not remove a cache image it could not lock"
+        );
+    }
+
+    #[tokio::test]
+    async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner_paths = RunnerPaths::new(dir.path().join("runner"));
+        let cache = SessionWorkspaceCache::new(runner_paths.clone());
+        let mut config = test_executor_config(dir.path()).await;
+        config.workspace_cache = Some(cache.clone());
+        let params = JobParams {
+            workspace_disk_mb: 16,
+            ..default_params()
+        };
+        let session_id = "sess-cache-reuse-validation-failure";
+        let (idle_sandbox, _current_image, overrides) =
+            reusable_idle_sandbox_with_workspace_promotion(
+                &cache,
+                &runner_paths,
+                &params,
+                session_id,
+            )
+            .await;
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: session_id.into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+        ctx.feature_flags = Some(HashMap::from([(
+            SESSION_WORKSPACE_IMAGE_CACHE_FEATURE_FLAG.into(),
+            true,
+        )]));
+        ctx.environment = Some(HashMap::from([(
+            "OPENAI_API_KEY".into(),
+            "sk-proj-real-openai-secret".into(),
+        )]));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (reuse_outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
+
+        assert_eq!(reuse_outcome.exit_code(), 1);
+        assert!(reuse_outcome.sandbox.is_some());
+        assert!(reuse_outcome.workspace_promotable);
+        assert!(reuse_outcome.workspace_image.is_some());
+        assert!(
+            overrides.start_process_calls().is_empty(),
+            "reused sandbox must not start a process after env validation failure"
+        );
+
+        let checkout = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id: RunId::new_v4(),
+                sandbox_id: SandboxId::new_v4(),
+                profile_name: &params.profile_name,
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(
+            checkout.result(),
+            WorkspaceCacheCheckoutResult::LockBusy,
+            "pre-run validation failure must not release the hidden cache baseline before finalization can promote or invalidate the live workspace"
+        );
+    }
+
+    async fn reusable_idle_sandbox_with_workspace_promotion(
+        cache: &SessionWorkspaceCache,
+        runner_paths: &RunnerPaths,
+        params: &JobParams,
+        session_id: &str,
+    ) -> (
+        crate::idle_pool::ReusableIdleSandbox,
+        PathBuf,
+        Arc<sandbox_mock::MockSandboxOverrides>,
+    ) {
+        use crate::idle_pool::{
+            IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, IdleUnparkResult,
+            ParkResult, StorageFingerprints,
+        };
+
+        let current_image =
+            seed_workspace_image_cache(cache, runner_paths, session_id, params.workspace_disk_mb)
+                .await;
+
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: &params.profile_name,
+                session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert!(lease.is_cache_hit());
+        let promotion = lease
+            .into_promotion_context(
+                crate::workspace_image_cache::WorkspaceImagePromotionRequest {
+                    run_id,
+                    sandbox_id,
+                    session_id_override: Some(session_id),
+                    terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    completed_at: "2026-06-01T00:00:01.000Z".into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    promotable: true,
+                },
+            )
+            .unwrap();
+
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
+            MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        ));
+        let sandbox = factory
+            .create(sandbox::SandboxConfig {
+                id: sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: params.vcpu,
+                    memory_mb: params.memory_mb,
+                },
+                device_rate_limits: params.device_rate_limits.clone(),
+                workspace_drive: None,
+            })
+            .await
+            .expect("create sandbox");
+        let source_ip = sandbox.source_ip().to_owned();
+        let candidate = IdleParkRequest::new(IdleParkRequestParts {
+            sandbox,
+            factory,
+            session_id: session_id.to_owned(),
+            sandbox_id,
+            profile_name: params.profile_name.clone(),
+            device_rate_limits: params.device_rate_limits.clone(),
+            budget_lease: test_budget_lease(),
+            source_ip,
+            storage_fingerprints: StorageFingerprints::default(),
+            workspace_promotion: Some(promotion),
+        })
+        .park_for_idle()
+        .await
+        .unwrap_or_else(|failure| {
+            let error = failure.into_active_parts().error;
+            panic!("test sandbox should park: {error}");
+        })
+        .with_last_completed_at("2026-06-01T00:00:01.000Z".into());
+
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: std::time::Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let entry = pool.take(session_id).expect("idle entry should exist");
+        let idle_sandbox = match entry.try_unpark().await {
+            IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
+            IdleUnparkResult::Failed { error, .. } => {
+                panic!("test idle entry should unpark: {error}");
+            }
+        };
+
+        (idle_sandbox, current_image, overrides)
+    }
+
+    async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
+        cache: &SessionWorkspaceCache,
+        runner_paths: &RunnerPaths,
+        params: &JobParams,
+        session_id: &str,
+    ) -> (
+        crate::idle_pool::ReusableIdleSandbox,
+        Arc<sandbox_mock::MockSandboxOverrides>,
+    ) {
+        use crate::idle_pool::{
+            IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, IdleUnparkResult,
+            ParkResult, StorageFingerprints,
+        };
+
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let lease = cache
+            .prepare(WorkspaceImagePrepareRequest {
+                run_id,
+                sandbox_id,
+                profile_name: &params.profile_name,
+                session_id: None,
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
+                workspace_drive_required: true,
+            })
+            .await;
+        assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+        let active_image = runner_paths.active_workspace_image(&sandbox_id);
+        tokio::fs::create_dir_all(active_image.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&active_image, b"active image")
+            .await
+            .unwrap();
+        let promotion = lease
+            .into_promotion_context(
+                crate::workspace_image_cache::WorkspaceImagePromotionRequest {
+                    run_id,
+                    sandbox_id,
+                    session_id_override: Some(session_id),
+                    terminal_status: WorkspaceCacheTerminalStatus::Success,
+                    completed_at: "2026-06-01T00:00:01.000Z".into(),
+                    storage_fingerprints: StorageFingerprints::default(),
+                    promotable: true,
+                },
+            )
+            .unwrap();
+
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let factory: Arc<Box<dyn SandboxFactory>> = Arc::new(Box::new(
+            MockSandboxFactory::with_overrides(Arc::clone(&overrides)),
+        ));
+        let sandbox = factory
+            .create(sandbox::SandboxConfig {
+                id: sandbox_id,
+                resources: sandbox::ResourceLimits {
+                    cpu_count: params.vcpu,
+                    memory_mb: params.memory_mb,
+                },
+                device_rate_limits: params.device_rate_limits.clone(),
+                workspace_drive: None,
+            })
+            .await
+            .expect("create sandbox");
+        let source_ip = sandbox.source_ip().to_owned();
+        let candidate = IdleParkRequest::new(IdleParkRequestParts {
+            sandbox,
+            factory,
+            session_id: session_id.to_owned(),
+            sandbox_id,
+            profile_name: params.profile_name.clone(),
+            device_rate_limits: params.device_rate_limits.clone(),
+            budget_lease: test_budget_lease(),
+            source_ip,
+            storage_fingerprints: StorageFingerprints::default(),
+            workspace_promotion: Some(promotion),
+        })
+        .park_for_idle()
+        .await
+        .unwrap_or_else(|failure| {
+            let error = failure.into_active_parts().error;
+            panic!("test sandbox should park: {error}");
+        })
+        .with_last_completed_at("2026-06-01T00:00:01.000Z".into());
+
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: std::time::Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let entry = pool.take(session_id).expect("idle entry should exist");
+        let idle_sandbox = match entry.try_unpark().await {
+            IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
+            IdleUnparkResult::Failed { error, .. } => {
+                panic!("test idle entry should unpark: {error}");
+            }
+        };
+
+        (idle_sandbox, overrides)
     }
 
     #[tokio::test]
@@ -5485,7 +7116,7 @@ mod tests {
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(reuse_outcome.exit_code(), 1);
         let error = reuse_outcome.error().unwrap();
@@ -5513,7 +7144,7 @@ mod tests {
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(reuse_outcome.exit_code(), 1);
         let error = reuse_outcome.error().unwrap();
@@ -5541,21 +7172,21 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, source_ip, "test-session").await;
         let ctx = minimal_context();
-        let system_log_path = config.log_paths.system_log(ctx.run_id);
+        let system_stream_log_path = config.log_paths.system_stream_log(ctx.run_id);
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.error().is_none());
         assert!(reuse_outcome.sandbox.is_some());
         assert!(reuse_outcome.network_log_session.is_some());
         assert_proxy_registry_empty(dir.path()).await;
-        let system_log = tokio::fs::read(&system_log_path).await.unwrap();
+        let system_stream_log = tokio::fs::read(&system_stream_log_path).await.unwrap();
         let mut expected = b"reuse partial stdout\n".to_vec();
         expected.extend_from_slice(STDOUT_STREAM_LIMIT_MARKER);
-        assert_eq!(system_log, expected);
+        assert_eq!(system_stream_log, expected);
     }
 
     #[tokio::test]
@@ -5602,7 +7233,7 @@ mod tests {
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, ctx2, &config, cancel).await;
+            execute_job_reuse(idle_sandbox, ctx2, &config, &default_params(), cancel).await;
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -5670,13 +7301,19 @@ mod tests {
             crate::idle_pool::IdleUnparkResult::Reused {
                 sandbox,
                 budget_lease,
-            } => (sandbox, budget_lease),
+            } => (*sandbox, budget_lease),
             crate::idle_pool::IdleUnparkResult::Failed { error, .. } => {
                 panic!("test idle entry should unpark: {error}");
             }
         };
-        let (reuse_outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (reuse_outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
         assert_eq!(reuse_outcome.exit_code(), 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -5722,15 +7359,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // Build a MockSandbox that fails on the first exec (fix_guest_clock)
+        // First exec mounts the workspace drive, second exec fixes the clock.
         let sandbox = MockSandbox::new("reuse-clock-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
-        let (outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         assert_eq!(outcome.exit_code(), 1);
         assert!(outcome.error().unwrap().contains("vsock broken"));
@@ -5751,16 +7395,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
 
-        // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
+        // Workspace mount and clock fix succeed, then reseed_guest_entropy fails.
         let sandbox = MockSandbox::new("reuse-reseed-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
-        let (outcome, _telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         assert_eq!(outcome.exit_code(), 1);
         assert!(outcome.error().unwrap().contains("reseed timeout"));
@@ -5768,6 +7419,48 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on reseed failure"
         );
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_workspace_mount_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-mount-fail");
+        sandbox.push_exec_result(Ok(ExecResult::new(
+            64,
+            Vec::new(),
+            b"mount denied".to_vec(),
+        )));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
+        let (outcome, _telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+
+        assert_eq!(outcome.exit_code(), 1);
+        let error = outcome.error().unwrap();
+        assert!(
+            error.contains("mount workspace drive failed"),
+            "got: {error}"
+        );
+        assert!(error.contains("mount denied"), "got: {error}");
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on workspace mount failure"
+        );
+        assert!(
+            outcome.network_log_session.is_some(),
+            "network log session must be returned so finalization can close it"
+        );
+        assert_proxy_registry_empty(dir.path()).await;
     }
 
     /// Verify that session restore failure during reuse still returns the sandbox.
@@ -5790,7 +7483,8 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-abc").await;
-        let (outcome, _telemetry) = execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
+        let (outcome, _telemetry) =
+            execute_job_reuse(idle_sandbox, ctx, &config, &default_params(), cancel).await;
 
         assert_eq!(outcome.exit_code(), 1);
         assert!(outcome.error().unwrap().contains("disk full"));
@@ -5832,6 +7526,15 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
+        guest_art_with_policy(name, ver, url, None)
+    }
+
+    fn guest_art_with_policy(
+        name: &str,
+        ver: &str,
+        url: Option<&str>,
+        missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
+    ) -> GuestDownloadArtifactEntry {
         GuestDownloadArtifactEntry {
             mount_path: "/workspace".into(),
             archive_url: url.map(str::to_string),
@@ -5839,6 +7542,7 @@ mod tests {
             vas_storage_name: name.into(),
             vas_storage_id: String::new(),
             vas_version_id: ver.into(),
+            missing_root_policy,
         }
     }
 
@@ -5976,6 +7680,7 @@ mod tests {
             vas_storage_name: "art-a".into(),
             vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
+            missing_root_policy: None,
         };
         let art_b = GuestDownloadArtifactEntry {
             mount_path: "/data".into(),
@@ -5984,6 +7689,7 @@ mod tests {
             vas_storage_name: "art-b".into(),
             vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
+            missing_root_policy: None,
         };
         let manifest = GuestDownloadManifest {
             storages: vec![],
@@ -6145,6 +7851,33 @@ mod tests {
     }
 
     #[test]
+    fn filter_preserve_missing_root_artifact_keeps_url_even_when_version_matches() {
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![guest_art_with_policy(
+                "memory",
+                "v1",
+                Some("https://s3/memory"),
+                Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
+            )],
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifacts: art_fp("/workspace", "memory", "v1"),
+        };
+
+        let result = filter_unchanged_storages(&manifest, &prev);
+
+        assert_eq!(
+            result.artifacts[0].archive_url.as_deref(),
+            Some("https://s3/memory")
+        );
+        assert!(!result.artifacts[0].cached);
+        assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
+    }
+
+    #[test]
     fn filter_changed_storage_with_null_url_adds_cleanup_path() {
         let manifest = GuestDownloadManifest {
             storages: vec![guest_storage("/data", "vol-1", "v2", None)],
@@ -6184,6 +7917,92 @@ mod tests {
         let result = filter_unchanged_storages(&manifest, &prev);
         assert!(result.storages[0].cached);
         assert!(result.storages[0].archive_url.is_none());
+    }
+
+    #[test]
+    fn filter_tainted_paths_force_download_even_when_versions_match() {
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/workspace/repo",
+                "repo",
+                "v1",
+                Some("https://s3/repo"),
+            )],
+            artifacts: vec![GuestDownloadArtifactEntry {
+                mount_path: "/workspace/artifact".into(),
+                archive_url: Some("https://s3/artifact".into()),
+                cached: false,
+                vas_storage_name: "artifact".into(),
+                vas_storage_id: String::new(),
+                vas_version_id: "v1".into(),
+                missing_root_policy: None,
+            }],
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::from([("/workspace/repo".into(), ("repo".into(), "v1".into()))]),
+            artifacts: HashMap::from([(
+                "/workspace/artifact".into(),
+                ("artifact".into(), "v1".into()),
+            )]),
+        }
+        .tainted_paths();
+
+        let result = filter_unchanged_storages(&manifest, &prev);
+
+        assert_eq!(
+            result.storages[0].archive_url.as_deref(),
+            Some("https://s3/repo")
+        );
+        assert!(!result.storages[0].cached);
+        assert_eq!(
+            result.artifacts[0].archive_url.as_deref(),
+            Some("https://s3/artifact")
+        );
+        assert!(!result.artifacts[0].cached);
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&"/workspace/repo".to_string())
+        );
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&"/workspace/artifact".to_string())
+        );
+    }
+
+    #[test]
+    fn filter_tainted_removed_paths_are_cleaned() {
+        let manifest = GuestDownloadManifest {
+            storages: vec![],
+            artifacts: vec![],
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::from([(
+                "/workspace/removed-storage".into(),
+                ("repo".into(), "v1".into()),
+            )]),
+            artifacts: HashMap::from([(
+                "/workspace/removed-artifact".into(),
+                ("artifact".into(), "v1".into()),
+            )]),
+        }
+        .tainted_paths();
+
+        let result = filter_unchanged_storages(&manifest, &prev);
+
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&"/workspace/removed-storage".to_string())
+        );
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&"/workspace/removed-artifact".to_string())
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -6279,8 +8098,14 @@ mod tests {
         let cancel = tokio_util::sync::CancellationToken::new();
         let (idle_sandbox, _lease) =
             make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
-        let (_outcome, telemetry) =
-            execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
+        let (_outcome, telemetry) = execute_job_reuse(
+            idle_sandbox,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
 
         let ops = telemetry.pending_ops_snapshot();
         let reuse_events: Vec<_> = ops

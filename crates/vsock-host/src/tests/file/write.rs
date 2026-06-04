@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use vsock_proto::{Decoder, MSG_EXEC_START, MSG_WRITE_FILE};
+use tokio::io::AsyncWriteExt;
+use vsock_proto::{Decoder, MSG_EXEC_START};
 
 use super::super::support::{
     assert_connection_accepts_exec_operation, host_from_stream, make_pair, mock_handshake,
@@ -18,31 +18,19 @@ use crate::{FrameWriteObserver, operation_tracker::NormalOperationReadiness};
 
 #[tokio::test]
 async fn test_write_file() {
-    let (host_stream, mut guest) = make_pair();
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_file(Arc::clone(&host), "/tmp/test.txt", b"hello".to_vec(), false);
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(write.path, "/tmp/test.txt");
+    assert_eq!(write.content, b"hello");
+    assert!(!write.sudo);
+    assert!(!write.append);
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
-        assert_eq!(msgs[0].msg_type, MSG_WRITE_FILE);
+    send_write_file_success(&mut guest, write.seq()).await;
 
-        let (path, content, sudo, append) =
-            vsock_proto::decode_write_file(&msgs[0].payload).unwrap();
-        assert_eq!(path, "/tmp/test.txt");
-        assert_eq!(content, b"hello");
-        assert!(!sudo);
-        assert!(!append);
-
-        send_write_file_success(&mut guest, msgs[0].seq).await;
-    });
-
-    let host = host_from_stream(host_stream).await.unwrap();
-    host.write_file("/tmp/test.txt", b"hello", false)
-        .await
-        .unwrap();
+    write_task.await.unwrap().unwrap();
 }
 
 #[tokio::test]
@@ -307,23 +295,18 @@ async fn write_file_after_connection_close_returns_immediately_without_not_parka
 
 #[tokio::test]
 async fn test_write_file_failure() {
-    let (host_stream, mut guest) = make_pair();
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_task = spawn_write_file(Arc::clone(&host), "/etc/shadow", b"bad".to_vec(), false);
 
-    tokio::spawn(async move {
-        let mut decoder = Decoder::new();
-        mock_handshake(&mut guest, &mut decoder).await;
+    let write = expect_write_file(&mut guest).await;
+    assert_eq!(write.path, "/etc/shadow");
+    assert_eq!(write.content, b"bad");
+    assert!(!write.sudo);
+    assert!(!write.append);
 
-        let mut buf = [0u8; 4096];
-        let n = guest.read(&mut buf).await.unwrap();
-        let msgs = decoder.decode(&buf[..n]).unwrap();
+    send_write_file_failure(&mut guest, write.seq(), "permission denied").await;
 
-        send_write_file_failure(&mut guest, msgs[0].seq, "permission denied").await;
-    });
-
-    let host = host_from_stream(host_stream).await.unwrap();
-    let err = host
-        .write_file("/etc/shadow", b"bad", false)
-        .await
-        .unwrap_err();
+    let err = write_task.await.unwrap().unwrap_err();
     assert!(err.to_string().contains("permission denied"));
 }

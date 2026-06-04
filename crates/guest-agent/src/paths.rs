@@ -1,12 +1,14 @@
-//! Derived temp-file paths — all scoped to the current run ID.
+//! Guest filesystem paths and derived temp-file paths.
 //!
 //! Naming conventions:
 //! - "system log" = guest-agent's own stderr (matches TS `SYSTEM_LOG_FILE` and API `systemLog`)
 //! - "agent log" = AI agent (Claude Code) stdout output
 //! - "metrics" = periodic CPU/memory/disk snapshots
 //! - "sandbox ops" = operation timing records (defined in guest-common, re-exported here)
+//! - temp-file paths are scoped to the current run ID
 
 use crate::env;
+pub use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use std::sync::LazyLock;
 
 // ---------------------------------------------------------------------------

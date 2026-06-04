@@ -11,6 +11,10 @@ export const agentmail = {
         label: "API Key",
         helpText:
           "1. Log in to [AgentMail Console](https://console.agentmail.to)\n2. Go to **API Keys**\n3. Create a new API key\n4. Copy the key",
+        storage: {
+          secrets: ["AGENTMAIL_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

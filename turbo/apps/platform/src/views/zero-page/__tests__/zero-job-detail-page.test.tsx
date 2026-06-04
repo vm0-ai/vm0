@@ -56,7 +56,6 @@ function mockAPIs() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -147,7 +146,6 @@ describe("zero job detail page", () => {
             displayName: "Zero",
             sound: null,
             avatarUrl: null,
-            permissionPolicies: null,
             customSkills: [],
           });
         }
@@ -212,7 +210,6 @@ function mockAPIsWithSchedules() {
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        permissionPolicies: null,
         customSkills: [],
       });
     }),

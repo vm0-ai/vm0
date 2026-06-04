@@ -18,9 +18,12 @@ export const zoom = {
           clientIdEnv: "ZOOM_OAUTH_CLIENT_ID",
           clientSecretEnv: "ZOOM_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["ZOOM_ACCESS_TOKEN", "ZOOM_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://zoom.us/oauth/token",
           scopes: [
             "user:read:user",
             "meeting:read:list_meetings",
@@ -37,11 +40,21 @@ export const zoom = {
             "webinar:read:list_webinars",
             "webinar:read:webinar",
           ],
+          outputs: {
+            accessToken: "$secrets.ZOOM_ACCESS_TOKEN",
+            refreshToken: "$secrets.ZOOM_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "ZOOM_ACCESS_TOKEN",
-          refreshToken: "ZOOM_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.ZOOM_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.ZOOM_ACCESS_TOKEN",
+            refreshToken: "$secrets.ZOOM_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["ZOOM_ACCESS_TOKEN"],
           envBindings: {
             ZOOM_TOKEN: "$secrets.ZOOM_ACCESS_TOKEN",
           },

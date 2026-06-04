@@ -305,6 +305,32 @@ def test_flush_logs_aggregate_summary_without_token(tmp_path):
     assert entries[1]["duration_ms"] >= 0
 
 
+def test_flush_logs_dropped_webhook_batches(tmp_path):
+    proxy_log_path = tmp_path / "proxy.jsonl"
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "secret-token",
+        "run-1",
+        [_event(source_key="source-1")],
+        str(proxy_log_path),
+    )
+
+    with patch.object(usage_buffer, "_enqueue_webhook", return_value=False) as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    entries = _flush_log_entries(proxy_log_path)
+    assert [entry["phase"] for entry in entries] == ["started", "completed"]
+    assert entries[0]["dropped_webhook_batch_count"] == 0
+    assert entries[1]["level"] == "warn"
+    assert entries[1]["message"] == (
+        "Usage event buffer flush completed with dropped webhook batches"
+    )
+    assert entries[1]["dropped_webhook_batch_count"] == 1
+    assert entries[1]["webhook_batch_count"] == 1
+    assert "secret-token" not in json.dumps(entries)
+
+
 def test_flush_logs_failure_without_token(tmp_path):
     proxy_log_path = tmp_path / "proxy.jsonl"
     usage.buffer_usage_events(
@@ -334,6 +360,211 @@ def test_flush_logs_failure_without_token(tmp_path):
     assert isinstance(entries[1]["duration_ms"], int)
     assert entries[1]["duration_ms"] >= 0
     assert "secret-token" not in json.dumps(entries)
+    assert usage.counters._buffered_usage_events == 1
+
+
+def test_flush_failure_preserves_retryable_payload_with_same_idempotency_key(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1", quantity=10)],
+        proxy_log_path,
+    )
+
+    failed_payloads = []
+
+    def fail_enqueue(url, sandbox_token, payload, path, log_type):
+        failed_payloads.append(payload)
+        raise OSError("no threads")
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=fail_enqueue) as enqueue,
+        pytest.raises(OSError, match="no threads"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 1
+    failed_key = failed_payloads[0]["events"][0]["idempotencyKey"]
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.call_args.args[2]
+    assert retry_payload["runId"] == "run-1"
+    assert retry_payload["events"][0]["quantity"] == 10
+    assert retry_payload["events"][0]["idempotencyKey"] == failed_key
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_partial_flush_failure_retries_accepted_batches_with_same_idempotency_keys(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-2",
+        [_event(source_key="source-2")],
+        proxy_log_path,
+    )
+
+    failed_payloads = []
+
+    def fail_second_batch(url, sandbox_token, payload, path, log_type):
+        failed_payloads.append(payload)
+        if len(failed_payloads) == 2:
+            raise OSError("second batch rejected")
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=fail_second_batch) as enqueue,
+        pytest.raises(OSError, match="second batch rejected"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    assert enqueue.call_count == 2
+    assert [payload["runId"] for payload in failed_payloads] == ["run-1", "run-2"]
+    assert usage.counters._buffered_usage_events == 2
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 2
+
+    retry_payloads = _payloads_from_enqueue_calls(enqueue.call_args_list)
+    assert [
+        event["idempotencyKey"] for payload in retry_payloads for event in payload["events"]
+    ] == [event["idempotencyKey"] for payload in failed_payloads for event in payload["events"]]
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_threshold_flush_failure_preserves_retryable_payload_with_same_idempotency_key(
+    tmp_path,
+):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    events = [
+        _event(source_key=f"source-{index}", quantity=1)
+        for index in range(usage_buffer.MAX_BUFFERED_SOURCE_EVENTS)
+    ]
+    failed_payloads = []
+
+    def fail_enqueue(url, sandbox_token, payload, path, log_type):
+        failed_payloads.append(payload)
+        raise OSError("threshold enqueue failed")
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=fail_enqueue) as enqueue,
+        pytest.raises(OSError, match="threshold enqueue failed"),
+    ):
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-threshold",
+            events,
+            proxy_log_path,
+        )
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
+    failed_key = failed_payloads[0]["events"][0]["idempotencyKey"]
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    retry_payload = enqueue.call_args.args[2]
+    assert retry_payload["runId"] == "run-threshold"
+    assert retry_payload["events"][0]["quantity"] == usage_buffer.MAX_BUFFERED_SOURCE_EVENTS
+    assert retry_payload["events"][0]["idempotencyKey"] == failed_key
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_pending_flush_retries_before_live_usage_snapshot(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-a",
+        [_event(source_key="source-a")],
+        proxy_log_path,
+    )
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("no threads")),
+        pytest.raises(OSError, match="no threads"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-b",
+        [_event(source_key="source-b")],
+        proxy_log_path,
+    )
+    assert usage.counters._buffered_usage_events == 2
+
+    attempted_runs = []
+
+    def fail_retry(url, sandbox_token, payload, path, log_type):
+        attempted_runs.append(payload["runId"])
+        raise OSError("still full")
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=fail_retry),
+        pytest.raises(OSError, match="still full"),
+    ):
+        usage.flush_usage_events(trigger="test")
+
+    assert attempted_runs == ["run-a"]
+    assert usage.counters._buffered_usage_events == 2
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 2
+
+    assert [call.args[2]["runId"] for call in enqueue.call_args_list] == ["run-a", "run-b"]
+    assert usage.counters._buffered_usage_events == 0
+
+
+def test_overlapping_flush_defers_live_snapshot_while_enqueueing(tmp_path):
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1")],
+        proxy_log_path,
+    )
+
+    def enqueue_webhook(url, sandbox_token, payload, path, log_type):
+        usage.buffer_usage_events(
+            url,
+            sandbox_token,
+            "run-2",
+            [_event(source_key="source-2")],
+            path,
+        )
+        assert usage.flush_usage_events(trigger="runner") == 0
+        assert payload["runId"] == "run-1"
+        assert usage.counters._buffered_usage_events == 2
+
+    with patch.object(usage_buffer, "_enqueue_webhook", side_effect=enqueue_webhook) as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert usage.counters._buffered_usage_events == 1
+
+    with patch.object(usage_buffer, "_enqueue_webhook") as enqueue:
+        assert usage.flush_usage_events(trigger="test") == 1
+
+    enqueue.assert_called_once()
+    assert enqueue.call_args.args[2]["runId"] == "run-2"
     assert usage.counters._buffered_usage_events == 0
 
 
@@ -444,6 +675,40 @@ def test_timer_flush_uses_scheduled_callback_without_real_sleep(tmp_path):
     enqueue.assert_called_once()
     assert timers[0].cancelled is True
     assert enqueue.call_args.args[2]["events"][0]["quantity"] == 10
+
+
+def test_timer_flush_failure_reschedules_retry_without_real_sleep(tmp_path):
+    timers = []
+
+    def timer_factory(delay: float, callback):
+        timer = _FakeTimer(delay, callback)
+        timers.append(timer)
+        return timer
+
+    usage.reset_usage_buffer_for_tests(timer_enabled=True, timer_factory=timer_factory)
+
+    usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [_event(source_key="source-1", quantity=10)],
+        str(tmp_path / "proxy.jsonl"),
+    )
+
+    assert len(timers) == 1
+    assert timers[0].started is True
+
+    with (
+        patch.object(usage_buffer, "_enqueue_webhook", side_effect=OSError("no threads")),
+        pytest.raises(OSError, match="no threads"),
+    ):
+        timers[0].callback()
+
+    assert timers[0].cancelled is True
+    assert len(timers) == 2
+    assert timers[1].started is True
+    assert timers[1].cancelled is False
+    assert usage.counters._buffered_usage_events == 1
 
 
 def test_threshold_flush_cancels_scheduled_timer_and_allows_reschedule(tmp_path):

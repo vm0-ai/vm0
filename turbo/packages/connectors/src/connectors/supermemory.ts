@@ -11,6 +11,10 @@ export const supermemory = {
         label: "API Key",
         helpText:
           "Go to [console.supermemory.ai](https://console.supermemory.ai) → **API Keys** → create or copy your key.",
+        storage: {
+          secrets: ["SUPERMEMORY_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -12,6 +12,10 @@ export const huggingFace = {
         label: "API Token",
         helpText:
           "1. Log in to [Hugging Face](https://huggingface.co)\n2. Go to **Settings → Access Tokens**\n3. Create a new token with the required permissions\n4. Copy the token",
+        storage: {
+          secrets: ["HUGGING_FACE_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

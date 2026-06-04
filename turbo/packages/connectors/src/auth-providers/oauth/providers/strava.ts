@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 
 const STRAVA_AUTHORIZATION_URL = "https://www.strava.com/oauth/authorize";
 
@@ -32,11 +34,11 @@ interface StravaRefreshResult {
  * Requests offline access via approval_prompt=force to obtain a refresh token.
  */
 export function buildStravaAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("strava");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -54,12 +56,12 @@ export function buildStravaAuthorizationUrl(
  * Strava returns athlete info in the token response.
  */
 export async function exchangeStravaCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
 ): Promise<StravaTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("strava");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(STRAVA_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -133,9 +135,10 @@ export async function refreshStravaToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<StravaRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("strava");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(STRAVA_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

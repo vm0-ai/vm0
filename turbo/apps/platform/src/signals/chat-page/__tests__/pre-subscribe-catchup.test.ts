@@ -176,6 +176,7 @@ describe("subscribeChatThread$ pre-subscribe catch-up", () => {
       thread.sendMessage$,
       "blocked by credits",
       null,
+      undefined,
       context.signal,
     );
 

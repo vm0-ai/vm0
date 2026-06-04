@@ -11,6 +11,10 @@ export const railwayProject = {
         label: "Project Token",
         helpText:
           "1. Log in to [Railway](https://railway.com) and open the target project\n2. Go to **Project Settings → Tokens**\n3. Click **Create Token**, pick the environment, and name it\n4. Copy the token (UUID v4 format)\n\nThis token is sent via the `Project-Access-Token` header and is bound to one environment in one project. For cross-project automation use the **Railway** connector instead.",
+        storage: {
+          secrets: ["RAILWAY_PROJECT_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const MERCURY_TOKEN_URL = "https://oauth2.mercury.com/oauth2/token";
 
 const MERCURY_AUTHORIZATION_URL = "https://oauth2.mercury.com/oauth2/auth";
 
@@ -32,11 +34,11 @@ interface MercuryRefreshResult {
  * Requests offline_access scope to obtain a refresh token.
  */
 export function buildMercuryAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("mercury");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -52,13 +54,13 @@ export function buildMercuryAuthorizationUrl(
  * Exchange authorization code for access token and user info.
  */
 export async function exchangeMercuryCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
 ): Promise<MercuryTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("mercury");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MERCURY_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -115,9 +117,10 @@ export async function refreshMercuryToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<MercuryRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("mercury");
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(MERCURY_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",

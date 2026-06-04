@@ -114,6 +114,23 @@ class TestLogProxyEntry:
         assert entry["extra_field"] == "value"
         assert_utc_millisecond_timestamp(entry["timestamp"])
 
+    def test_sanitizes_structured_url_field(self, tmp_path):
+        proxy_path = tmp_path / "proxy-test.jsonl"
+        raw_url = "https://user:pass@example.com/v1/search?token=secret#fragment"
+
+        logging_utils.log_proxy_entry(
+            str(proxy_path),
+            "warn",
+            "url diagnostic",
+            url=raw_url,
+            raw_url_copy=raw_url,
+        )
+
+        entry = json.loads(proxy_path.read_text().strip())
+        assert entry["message"] == "url diagnostic"
+        assert entry["url"] == "https://example.com/v1/search"
+        assert entry["raw_url_copy"] == raw_url
+
     def test_appends_multiple_entries(self, tmp_path):
         proxy_path = str(tmp_path / "proxy-test.jsonl")
         logging_utils.log_proxy_entry(proxy_path, "info", "first")
@@ -143,7 +160,9 @@ class TestLogProxyEntry:
             )
 
         log.warn.assert_called_once()
-        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write proxy log:" in warning
+        assert "FileNotFoundError" in warning
 
     def test_directory_path_warns_and_does_not_raise(self, tmp_path):
         log = MagicMock()
@@ -152,7 +171,9 @@ class TestLogProxyEntry:
             logging_utils.log_proxy_entry(str(tmp_path), "warn", "message")
 
         log.warn.assert_called_once()
-        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to write proxy log:" in warning
+        assert "IsADirectoryError" in warning
 
     def test_non_serializable_extra_warns_without_creating_file(self, tmp_path):
         proxy_path = tmp_path / "proxy-test.jsonl"
@@ -164,7 +185,8 @@ class TestLogProxyEntry:
             )
 
         log.warn.assert_called_once()
-        assert "Failed to write proxy log:" in log.warn.call_args.args[0]
+        warning = log.warn.call_args.args[0]
+        assert "Failed to encode proxy log: TypeError:" in warning
         assert not proxy_path.exists()
 
     def test_extra_cannot_override_reserved_fields(self, tmp_path):

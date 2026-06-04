@@ -17,10 +17,16 @@ export const github = {
           clientIdEnv: "GH_OAUTH_CLIENT_ID",
           clientSecretEnv: "GH_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["GITHUB_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://github.com/login/oauth/access_token",
           scopes: ["repo", "project", "workflow"],
+          outputs: {
+            accessToken: "$secrets.GITHUB_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",
@@ -29,7 +35,12 @@ export const github = {
             GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
           },
         },
-        revoke: { kind: "token-revoke" },
+        revoke: {
+          kind: "token-revoke",
+          inputs: {
+            accessToken: "$secrets.GITHUB_ACCESS_TOKEN",
+          },
+        },
       },
     },
     defaultAuthMethod: "oauth",

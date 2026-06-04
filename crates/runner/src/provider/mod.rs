@@ -7,13 +7,12 @@
 mod api;
 mod api_ably_supervisor;
 mod local;
-pub(crate) mod local_queue;
+mod local_cancel;
 #[cfg(test)]
 pub mod mock;
 
 pub use api::ApiProvider;
 pub use local::LocalProvider;
-pub(crate) use local::{JobRequest, JobResponse};
 
 use sandbox::SandboxId;
 use std::path::{Path, PathBuf};
@@ -254,7 +253,6 @@ mod tests {
             vars: None,
             checkpoint_id: None,
             sandbox_token: "sandbox-token".into(),
-            working_dir: "/workspace".into(),
             storage_manifest: None,
             environment: None,
             resume_session: None,

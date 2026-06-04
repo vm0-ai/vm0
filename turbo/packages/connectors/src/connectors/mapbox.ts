@@ -11,6 +11,10 @@ export const mapbox = {
         label: "Access Token",
         helpText:
           "1. Log in to [Mapbox](https://account.mapbox.com)\n2. Open the **Access tokens** page\n3. Click **Create a token**, give it a name, and pick the scopes you need\n4. Copy the token (format: `pk.…`) — pass it as the `access_token` query parameter",
+        storage: {
+          secrets: ["MAPBOX_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

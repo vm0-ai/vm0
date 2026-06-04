@@ -2,6 +2,8 @@
 
 use std::sync::LazyLock;
 
+use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
+
 use crate::constants;
 use guest_common::log_warn;
 
@@ -66,7 +68,6 @@ static VERCEL_BYPASS: LazyLock<String> = LazyLock::new(|| env_or_empty("VERCEL_P
 static RESUME_SESSION_ID: LazyLock<String> =
     LazyLock::new(|| env_or_empty("VM0_RESUME_SESSION_ID"));
 static API_START_TIME: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_API_START_TIME"));
-static WORKING_DIR: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_WORKING_DIR"));
 static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECRET_VALUES"));
 static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
 static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_TOOLS"));
@@ -179,8 +180,9 @@ static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
 // Artifacts (multi-mount)
 //
 // The runner emits a single `VM0_ARTIFACTS` env var containing a JSON array
-// of `{name, mountPath, storageId, versionId}` entries — one per artifact
-// mounted at boot. If the env var is unset or empty, there are no artifacts.
+// of `{name, mountPath, storageId, versionId, missingRootPolicy?}` entries —
+// one per artifact mounted at boot. If the env var is unset or empty, there
+// are no artifacts.
 // ---------------------------------------------------------------------------
 
 /// One artifact mount described by the runner-provided `VM0_ARTIFACTS` JSON array.
@@ -201,6 +203,10 @@ pub struct ArtifactEnv {
     /// VAS version id mounted at startup. This is the expected content hash used
     /// to skip unchanged snapshots and the parent version for new snapshots.
     pub version_id: String,
+    /// Optional internal checkpoint policy. Absence means strict failure on a
+    /// missing or unreadable artifact root.
+    #[serde(default)]
+    pub missing_root_policy: Option<ArtifactEntryMissingRootPolicy>,
 }
 
 /// Parse `VM0_ARTIFACTS`, which the runner writes as a JSON array.
@@ -269,10 +275,6 @@ pub fn resume_session_id() -> &'static str {
 /// `VM0_API_START_TIME`; empty string means unset.
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
-}
-/// Guest working directory from `VM0_WORKING_DIR`; empty string means unset.
-pub fn working_dir() -> &'static str {
-    &WORKING_DIR
 }
 /// Encoded secret values from `VM0_SECRET_VALUES`; empty string means no secrets.
 pub fn secret_values() -> &'static str {

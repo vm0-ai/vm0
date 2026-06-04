@@ -21,6 +21,7 @@ interface PublishStaticSiteResult {
 interface PublishStaticSiteOptions {
   readonly dir: string;
   readonly site: string;
+  readonly slugSuffix?: string;
   readonly spaFallback?: boolean;
   readonly onProgress?: (progress: PublishStaticSiteProgress) => void;
 }
@@ -40,6 +41,7 @@ export async function publishStaticSite(
 
   const prepared = await prepareHostedSite({
     site: options.site,
+    ...(options.slugSuffix !== undefined && { slugSuffix: options.slugSuffix }),
     spaFallback: Boolean(options.spaFallback),
     files: scan.files.map((file) => {
       return {

@@ -2,27 +2,35 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildStripeAuthorizationUrl,
   exchangeStripeCode,
-  getStripeSecretName,
   refreshStripeToken,
 } from "./stripe";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildStripeAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
-      const result = await exchangeStripeCode(clientId, clientSecret, code);
+      const result = await exchangeStripeCode(
+        args.authCodeGrant,
+        clientId,
+        clientSecret,
+        code,
+      );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,
@@ -34,13 +42,16 @@ export const stripeProvider: AuthCodeConnectorAuthProvider<"stripe"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getStripeSecretName,
-    getRefreshSecretName: () => {
-      return "STRIPE_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshStripeToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshStripeToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

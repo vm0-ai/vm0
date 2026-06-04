@@ -12,6 +12,10 @@ export const dify = {
         label: "API Key",
         helpText:
           "1. Log in to [Dify](https://cloud.dify.ai)\n2. Open your app and navigate to **API Access** in the left sidebar\n3. Click to generate new API credentials\n4. Copy the API key",
+        storage: {
+          secrets: ["DIFY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

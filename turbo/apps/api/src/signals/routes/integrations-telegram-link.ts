@@ -1,4 +1,4 @@
-import { command, type Setter } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
@@ -436,103 +436,111 @@ const linkOfficialInner$ = command(
   },
 );
 
-async function linkCustomWithTelegramAuth(args: {
-  readonly set: Setter;
-  readonly auth: OrganizationAuth;
-  readonly body: TelegramLinkBody;
-  readonly installation: TelegramInstallationForLink;
-  readonly signal: AbortSignal;
-}) {
-  const telegramAuth = args.body.telegramAuth;
-  if (!telegramAuth) {
-    return missingAuthMethodResponse();
-  }
+const linkCustomWithTelegramAuth$ = command(
+  async (
+    { set },
+    args: {
+      readonly auth: OrganizationAuth;
+      readonly body: TelegramLinkBody;
+      readonly installation: TelegramInstallationForLink;
+    },
+    signal: AbortSignal,
+  ) => {
+    const telegramAuth = args.body.telegramAuth;
+    if (!telegramAuth) {
+      return missingAuthMethodResponse();
+    }
 
-  if (!verifyTelegramLogin(telegramAuth, args.installation.botToken)) {
-    return invalidTelegramAuthResponse();
-  }
+    if (!verifyTelegramLogin(telegramAuth, args.installation.botToken)) {
+      return invalidTelegramAuthResponse();
+    }
 
-  const telegramUserId = String(telegramAuth.id);
-  const result = await args.set(
-    linkTelegramUserToVm0User$,
-    {
-      installationId: args.installation.telegramBotId,
+    const telegramUserId = String(telegramAuth.id);
+    const result = await set(
+      linkTelegramUserToVm0User$,
+      {
+        installationId: args.installation.telegramBotId,
+        telegramUserId,
+        telegramUsername: telegramAuth.username,
+        telegramDisplayName: formatTelegramUserDisplayName(telegramAuth),
+        vm0UserId: args.auth.userId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!result.ok) {
+      return linkConflictResponse(result.reason);
+    }
+
+    await set(ensureLinkArtifactStorage$, args.auth, signal);
+    return linkSuccessResponse(
+      args.installation.botUsername ?? "Telegram bot",
       telegramUserId,
-      telegramUsername: telegramAuth.username,
-      telegramDisplayName: formatTelegramUserDisplayName(telegramAuth),
-      vm0UserId: args.auth.userId,
+    );
+  },
+);
+
+const linkCustomWithConnectSignature$ = command(
+  async (
+    { set },
+    args: {
+      readonly auth: OrganizationAuth;
+      readonly body: TelegramLinkBody;
+      readonly installation: TelegramInstallationForLink;
     },
-    args.signal,
-  );
-  args.signal.throwIfAborted();
+    signal: AbortSignal,
+  ) => {
+    const connectSignature = args.body.connectSignature;
+    if (!connectSignature) {
+      return missingAuthMethodResponse();
+    }
 
-  if (!result.ok) {
-    return linkConflictResponse(result.reason);
-  }
+    if (
+      !verifyConnectSignature({
+        installationId: args.installation.telegramBotId,
+        telegramUserId: connectSignature.telegramUserId,
+        timestamp: connectSignature.timestamp,
+        signature: connectSignature.signature,
+        botToken: args.installation.botToken,
+        telegramUsername: connectSignature.telegramUsername,
+        telegramDisplayName: connectSignature.telegramDisplayName,
+      })
+    ) {
+      return invalidConnectSignatureResponse();
+    }
 
-  await args.set(ensureLinkArtifactStorage$, args.auth, args.signal);
-  return linkSuccessResponse(
-    args.installation.botUsername ?? "Telegram bot",
-    telegramUserId,
-  );
-}
+    const result = await set(
+      linkTelegramUserToVm0User$,
+      {
+        installationId: args.installation.telegramBotId,
+        telegramUserId: connectSignature.telegramUserId,
+        telegramUsername: connectSignature.telegramUsername,
+        telegramDisplayName: connectSignature.telegramDisplayName,
+        vm0UserId: args.auth.userId,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
 
-async function linkCustomWithConnectSignature(args: {
-  readonly set: Setter;
-  readonly auth: OrganizationAuth;
-  readonly body: TelegramLinkBody;
-  readonly installation: TelegramInstallationForLink;
-  readonly signal: AbortSignal;
-}) {
-  const connectSignature = args.body.connectSignature;
-  if (!connectSignature) {
-    return missingAuthMethodResponse();
-  }
+    if (!result.ok) {
+      return linkConflictResponse(result.reason);
+    }
 
-  if (
-    !verifyConnectSignature({
-      installationId: args.installation.telegramBotId,
-      telegramUserId: connectSignature.telegramUserId,
-      timestamp: connectSignature.timestamp,
-      signature: connectSignature.signature,
+    await set(ensureLinkArtifactStorage$, args.auth, signal);
+
+    sendConnectSuccessMessage({
       botToken: args.installation.botToken,
-      telegramUsername: connectSignature.telegramUsername,
-      telegramDisplayName: connectSignature.telegramDisplayName,
-    })
-  ) {
-    return invalidConnectSignatureResponse();
-  }
-
-  const result = await args.set(
-    linkTelegramUserToVm0User$,
-    {
-      installationId: args.installation.telegramBotId,
       telegramUserId: connectSignature.telegramUserId,
-      telegramUsername: connectSignature.telegramUsername,
-      telegramDisplayName: connectSignature.telegramDisplayName,
-      vm0UserId: args.auth.userId,
-    },
-    args.signal,
-  );
-  args.signal.throwIfAborted();
+      official: false,
+    });
 
-  if (!result.ok) {
-    return linkConflictResponse(result.reason);
-  }
-
-  await args.set(ensureLinkArtifactStorage$, args.auth, args.signal);
-
-  sendConnectSuccessMessage({
-    botToken: args.installation.botToken,
-    telegramUserId: connectSignature.telegramUserId,
-    official: false,
-  });
-
-  return linkSuccessResponse(
-    args.installation.botUsername ?? "Telegram bot",
-    connectSignature.telegramUserId,
-  );
-}
+    return linkSuccessResponse(
+      args.installation.botUsername ?? "Telegram bot",
+      connectSignature.telegramUserId,
+    );
+  },
+);
 
 const linkCustomInner$ = command(
   async (
@@ -553,23 +561,19 @@ const linkCustomInner$ = command(
     }
 
     if (args.body.telegramAuth) {
-      return linkCustomWithTelegramAuth({
-        set,
-        auth: args.auth,
-        body: args.body,
-        installation,
+      return set(
+        linkCustomWithTelegramAuth$,
+        { auth: args.auth, body: args.body, installation },
         signal,
-      });
+      );
     }
 
     if (args.body.connectSignature) {
-      return linkCustomWithConnectSignature({
-        set,
-        auth: args.auth,
-        body: args.body,
-        installation,
+      return set(
+        linkCustomWithConnectSignature$,
+        { auth: args.auth, body: args.body, installation },
         signal,
-      });
+      );
     }
 
     return missingAuthMethodResponse();

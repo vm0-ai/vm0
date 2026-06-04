@@ -7,15 +7,16 @@ import {
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
 import {
-  type AuthCodeGrantConnectorType,
+  type ConnectorAuthProviderType,
+  type ConnectorAuthMethodId,
+  type ConnectorType,
   connectorTypeSchema,
-  type DeviceAuthGrantConnectorType,
 } from "@vm0/connectors/connectors";
-import { getConnectorAuthProviderSecretMetadata } from "@vm0/connectors/auth-providers";
 import {
-  getConnectorAuthMethodIdForGrantKind,
-  hasConnectorAuthCodeGrant,
-  hasConnectorDeviceAuthGrant,
+  getConnectorAuthMethod,
+  getConnectorAuthMethodAccessMetadata,
+  getConnectorAuthMethodGrantMetadata,
+  getConnectorAuthMethodStorageMetadata,
 } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
@@ -41,7 +42,7 @@ import {
   testUserOrgId,
   ensureTestOrg$,
 } from "../services/cli-auth.service";
-import { upsertOAuthConnector$ } from "../services/zero-connector-data.service";
+import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import { upsertOrgMultiAuthModelProvider$ } from "../services/zero-model-provider.service";
 import {
   isCodexAuthJsonFreePlanError,
@@ -68,6 +69,84 @@ const testCodexOauthQuery$ = queryOf(cliAuthTestCodexOauthContract.create);
 
 function stringError(status: 400 | 404, error: string) {
   return { status, body: { error } };
+}
+
+function connectorTypeHasSelectedProviderDrivenGrant(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+): type is ConnectorAuthProviderType {
+  const grantKind = getConnectorAuthMethod(type, authMethod)?.grant.kind;
+  return grantKind === "auth-code" || grantKind === "device-auth";
+}
+
+function testConnectorTokenOutputs(args: {
+  readonly connectorType: ConnectorAuthProviderType;
+  readonly authMethod: ConnectorAuthMethodId;
+  readonly accessToken: string;
+  readonly refreshToken: string | undefined;
+}): Readonly<Record<string, string>> {
+  const grantMetadata = getConnectorAuthMethodGrantMetadata(
+    args.connectorType,
+    args.authMethod,
+  );
+  const storageMetadata = getConnectorAuthMethodStorageMetadata(
+    args.connectorType,
+    args.authMethod,
+  );
+  if (!grantMetadata || !storageMetadata) {
+    throw new Error(
+      `${args.connectorType} connector auth method ${args.authMethod} does not expose token outputs`,
+    );
+  }
+
+  const outputNameBySecretName = new Map(
+    Object.entries(grantMetadata.outputs).map(([outputName, output]) => {
+      return [output.secretName, outputName];
+    }),
+  );
+  const accessOutputName = storageMetadata.runtimeBindings
+    .flatMap((binding) => {
+      return binding.source.kind === "connector-secret"
+        ? [outputNameBySecretName.get(binding.source.name)]
+        : [];
+    })
+    .find((outputName) => {
+      return outputName !== undefined;
+    });
+  if (!accessOutputName) {
+    throw new Error(
+      `${args.connectorType} connector auth method ${args.authMethod} does not expose a runtime token output`,
+    );
+  }
+
+  const outputs: Record<string, string> = {
+    [accessOutputName]: args.accessToken,
+  };
+  if (!args.refreshToken) {
+    return outputs;
+  }
+
+  const accessMetadata = getConnectorAuthMethodAccessMetadata(
+    args.connectorType,
+    args.authMethod,
+  );
+  if (accessMetadata?.kind !== "refresh-token") {
+    return outputs;
+  }
+
+  const refreshOutputName = Object.values(accessMetadata.inputs)
+    .flatMap((input) => {
+      return input.source.kind === "connector-secret"
+        ? [outputNameBySecretName.get(input.source.name)]
+        : [];
+    })
+    .find((outputName) => {
+      return outputName !== undefined;
+    });
+  if (refreshOutputName) {
+    outputs[refreshOutputName] = args.refreshToken;
+  }
+  return outputs;
 }
 
 function testEndpointAllowed(request: {
@@ -194,7 +273,10 @@ const createTestConnector$ = command(
       ) {
         return stringError(400, "Invalid JSON body");
       }
-      return stringError(400, "connectorName and accessToken are required");
+      return stringError(
+        400,
+        "connectorName, authMethod, and accessToken are required",
+      );
     }
 
     const connectorParsed = connectorTypeSchema.safeParse(
@@ -217,50 +299,42 @@ const createTestConnector$ = command(
       return stringError(400, "Test user has no org — run test-token first");
     }
 
-    let grantConnectorType:
-      | AuthCodeGrantConnectorType
-      | DeviceAuthGrantConnectorType;
-    let authMethodGrantKind: "auth-code" | "device-auth";
-    if (hasConnectorAuthCodeGrant(connectorType)) {
-      grantConnectorType = connectorType;
-      authMethodGrantKind = "auth-code";
-    } else if (hasConnectorDeviceAuthGrant(connectorType)) {
-      grantConnectorType = connectorType;
-      authMethodGrantKind = "device-auth";
-    } else {
+    const authMethod = bodyResult.data.authMethod;
+    if (!getConnectorAuthMethod(connectorType, authMethod)) {
       return stringError(
         400,
-        `${connectorType} connector does not use an auth-code or device-auth grant`,
+        `${connectorType} connector does not configure auth method ${authMethod}`,
       );
     }
-    const authMethod = getConnectorAuthMethodIdForGrantKind(
-      grantConnectorType,
-      authMethodGrantKind,
-    );
-    if (!authMethod) {
-      throw new Error(`${grantConnectorType} connector has no auth method`);
+
+    if (
+      !connectorTypeHasSelectedProviderDrivenGrant(connectorType, authMethod)
+    ) {
+      return stringError(
+        400,
+        `${connectorType} connector auth method ${authMethod} does not use an auth-code or device-auth grant`,
+      );
     }
-    const secretMetadata =
-      getConnectorAuthProviderSecretMetadata(grantConnectorType);
-    const refreshSecretName = secretMetadata.isRefreshable
-      ? secretMetadata.refreshSecretName
-      : undefined;
+
     await set(
-      upsertOAuthConnector$,
+      upsertConnectorTokenConnection$,
       {
         orgId,
         userId,
-        type: grantConnectorType,
+        type: connectorType,
         authMethod,
-        accessToken: bodyResult.data.accessToken,
+        outputs: testConnectorTokenOutputs({
+          connectorType,
+          authMethod,
+          accessToken: bodyResult.data.accessToken,
+          refreshToken: bodyResult.data.refreshToken,
+        }),
         userInfo: {
-          id: `e2e-test-${grantConnectorType}`,
-          username: `e2e-${grantConnectorType}`,
-          email: `e2e-${grantConnectorType}@test.vm0.ai`,
+          id: `e2e-test-${connectorType}`,
+          username: `e2e-${connectorType}`,
+          email: `e2e-${connectorType}@test.vm0.ai`,
         },
         oauthScopes: [],
-        refreshToken: bodyResult.data.refreshToken,
-        refreshSecretName,
         expiresIn: bodyResult.data.expiresIn,
       },
       signal,

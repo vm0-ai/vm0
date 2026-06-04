@@ -16,10 +16,16 @@ export const vercel = {
           clientIdEnv: "VERCEL_OAUTH_CLIENT_ID",
           clientSecretEnv: "VERCEL_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["VERCEL_ACCESS_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.VERCEL_ACCESS_TOKEN",
+          },
         },
         access: {
           kind: "static",

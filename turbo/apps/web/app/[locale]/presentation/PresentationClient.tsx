@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { IconExternalLink, IconSparkles } from "@tabler/icons-react";
 import { CopyablePrompt } from "../../components/CopyablePrompt";
@@ -18,11 +19,13 @@ const PAGE_PADDING = 24;
 function PresentationCard({
   item,
   appUrl,
+  landingSearch,
 }: {
   item: PresentationItem;
   appUrl: string;
+  landingSearch: string;
 }) {
-  const remixHref = buildPresentationRemixHref(item, appUrl);
+  const remixHref = buildPresentationRemixHref(item, appUrl, landingSearch);
 
   return (
     <article
@@ -69,6 +72,11 @@ function PresentationCard({
 
 export function PresentationClient() {
   const appUrl = getAppUrl();
+  const [landingSearch, setLandingSearch] = useState("");
+
+  useEffect(() => {
+    setLandingSearch(window.location.search);
+  }, []);
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
@@ -101,7 +109,12 @@ export function PresentationClient() {
         >
           {PRESENTATION_ITEMS.map((item) => {
             return (
-              <PresentationCard key={item.slug} item={item} appUrl={appUrl} />
+              <PresentationCard
+                key={item.slug}
+                item={item}
+                appUrl={appUrl}
+                landingSearch={landingSearch}
+              />
             );
           })}
         </div>

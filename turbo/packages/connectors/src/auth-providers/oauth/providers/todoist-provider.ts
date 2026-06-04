@@ -1,33 +1,32 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildTodoistAuthorizationUrl,
-  exchangeTodoistCode,
-  getTodoistSecretName,
-} from "./todoist";
+import { buildTodoistAuthorizationUrl, exchangeTodoistCode } from "./todoist";
 export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildTodoistAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeTodoistCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: null,
+        outputs: {
+          accessToken: result.accessToken,
+        },
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,
@@ -39,7 +38,6 @@ export const todoistProvider: AuthCodeConnectorAuthProvider<"todoist"> = {
   },
   access: {
     kind: "none",
-    getAccessSecretName: getTodoistSecretName,
   },
   revoke: { kind: "none" },
 };

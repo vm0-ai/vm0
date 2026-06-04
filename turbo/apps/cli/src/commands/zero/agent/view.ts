@@ -4,12 +4,14 @@ import {
   getZeroAgent,
   getZeroAgentInstructions,
   getZeroAgentUserConnectors,
+  listZeroUserPermissionGrants,
   listZeroConnectors,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import {
   isFirewallConnectorType,
   getConnectorFirewall,
+  permissionGrantsToFirewallPolicies,
   resolveFirewallPolicies,
 } from "@vm0/connectors/firewalls";
 import type {
@@ -181,8 +183,13 @@ Examples:
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
 
+        const permissionPolicies = options.permissions
+          ? permissionGrantsToFirewallPolicies(
+              await listZeroUserPermissionGrants(agent.agentId),
+            )
+          : null;
         const resolvedPolicies = resolveFirewallPolicies(
-          agent.permissionPolicies,
+          permissionPolicies,
           connectorTypes,
         );
 

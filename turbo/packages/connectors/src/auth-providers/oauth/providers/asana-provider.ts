@@ -2,29 +2,32 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildAsanaAuthorizationUrl,
   exchangeAsanaCode,
-  getAsanaSecretName,
   refreshAsanaToken,
 } from "./asana";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildAsanaAuthorizationUrl(clientId, args.redirectUri, args.state);
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeAsanaCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -37,13 +40,16 @@ export const asanaProvider: AuthCodeConnectorAuthProvider<"asana"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getAsanaSecretName,
-    getRefreshSecretName: () => {
-      return "ASANA_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshAsanaToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshAsanaToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

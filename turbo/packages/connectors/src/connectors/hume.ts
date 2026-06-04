@@ -12,6 +12,10 @@ export const hume = {
         label: "API Key",
         helpText:
           "1. Log in to the [Hume Portal](https://app.hume.ai)\n2. Navigate to the **API Keys** page\n3. Copy your API key",
+        storage: {
+          secrets: ["HUME_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

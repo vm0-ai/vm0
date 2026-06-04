@@ -12,6 +12,10 @@ export const together = {
         label: "API Key",
         helpText:
           "1. Sign up at [api.together.ai](https://api.together.ai)\n2. Go to **Settings → API Keys**\n3. Click **Create API Key**\n4. Copy the key. Paste it here. Free $1 credit on signup.",
+        storage: {
+          secrets: ["TOGETHER_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

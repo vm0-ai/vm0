@@ -1,6 +1,8 @@
 const UUID_PATH_SEGMENT_PATTERN =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
+const LEGACY_FILE_REWRITE_SOURCE = "/f/:userId/:id/:filename";
+const LEGACY_FILE_PATH_RE = /^\/f\/[^/]+\/[^/]+\/[^/]+$/;
 const ZERO_ME_MODEL_PROVIDER_TYPE_REWRITE_SOURCE =
   "/api/zero/me/model-providers/:type";
 const ZERO_ME_MODEL_PROVIDER_TYPE_PATH_RE =
@@ -126,8 +128,6 @@ const AGENT_RUN_TELEMETRY_NETWORK_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_P
 const AGENT_RUN_TELEMETRY_NETWORK_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/network$`,
 );
-const CONNECTORS_AUTHORIZE_REWRITE_SOURCE = "/api/connectors/:type/authorize";
-const CONNECTORS_AUTHORIZE_PATH_RE = /^\/api\/connectors\/[^/]+\/authorize$/;
 const AGENT_RUN_TELEMETRY_SYSTEM_LOG_REWRITE_SOURCE = `/api/agent/runs/:id(${UUID_PATH_SEGMENT_PATTERN})/telemetry/system-log`;
 const AGENT_RUN_TELEMETRY_SYSTEM_LOG_PATH_RE = new RegExp(
   `^/api/agent/runs/${UUID_PATH_SEGMENT_PATTERN}/telemetry/system-log$`,
@@ -242,6 +242,10 @@ const ZERO_COMPUTER_USE_COMMAND_APPROVAL_REWRITE_SOURCE = `${ZERO_COMPUTER_USE_C
 const ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE = new RegExp(
   `^/api/zero/computer-use/commands/${UUID_PATH_SEGMENT_PATTERN}/approval$`,
 );
+const ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_REWRITE_SOURCE = `${ZERO_COMPUTER_USE_COMMAND_BY_ID_REWRITE_SOURCE}/screenshot`;
+const ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_PATH_RE = new RegExp(
+  `^/api/zero/computer-use/commands/${UUID_PATH_SEGMENT_PATTERN}/screenshot$`,
+);
 const ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE =
   "/api/zero/computer-use/heartbeat";
 const ZERO_COMPUTER_USE_HOST_STOP_REWRITE_SOURCE =
@@ -261,32 +265,20 @@ const ZERO_COMPUTER_USE_HOSTS_START_REWRITE_SOURCE =
   "/api/zero/computer-use/hosts/start";
 const ZERO_COMPUTER_USE_WRITE_COMMANDS_REWRITE_SOURCE =
   "/api/zero/computer-use/write-commands";
-const ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/authorize";
-const ZERO_CONNECTORS_AUTHORIZE_PATH_RE =
-  /^\/api\/zero\/connectors\/[^/]+\/authorize$/;
 const ZERO_CONNECTORS_LIST_REWRITE_SOURCE = "/api/zero/connectors";
 const ZERO_CONNECTORS_SEARCH_REWRITE_SOURCE = "/api/zero/connectors/search";
 const ZERO_CONNECTORS_BY_TYPE_REWRITE_SOURCE =
   "/api/zero/connectors/:type((?!search$)[^/]+)";
 const ZERO_CONNECTORS_BY_TYPE_PATH_RE =
   /^\/api\/zero\/connectors\/(?!search$)[^/]+$/;
-const ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/api-token";
-const ZERO_CONNECTORS_API_TOKEN_PATH_RE =
-  /^\/api\/zero\/connectors\/[^/]+\/api-token$/;
+const ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE =
+  "/api/zero/connectors/:type/manual-grant";
+const ZERO_CONNECTORS_MANUAL_GRANT_PATH_RE =
+  /^\/api\/zero\/connectors\/[^/]+\/manual-grant$/;
 const ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE =
   "/api/zero/connectors/:type/scope-diff";
 const ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE =
   /^\/api\/zero\/connectors\/[^/]+\/scope-diff$/;
-const ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE =
-  "/api/zero/connectors/:type/sessions";
-const ZERO_CONNECTORS_SESSIONS_PATH_RE =
-  /^\/api\/zero\/connectors\/[^/]+\/sessions$/;
-const ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE = `/api/zero/connectors/:type/sessions/:sessionId(${UUID_PATH_SEGMENT_PATTERN})`;
-const ZERO_CONNECTORS_SESSION_BY_ID_PATH_RE = new RegExp(
-  `^/api/zero/connectors/[^/]+/sessions/${UUID_PATH_SEGMENT_PATTERN}$`,
-);
 const ZERO_CONNECTORS_OAUTH_START_REWRITE_SOURCE =
   "/api/zero/connectors/:type/oauth/start";
 const ZERO_CONNECTORS_OAUTH_START_PATH_RE =
@@ -319,6 +311,10 @@ const ZERO_CHAT_THREAD_MESSAGES_REWRITE_SOURCE =
   "/api/zero/chat-threads/:threadId/messages";
 const ZERO_CHAT_THREAD_MESSAGES_PATH_RE =
   /^\/api\/zero\/chat-threads\/[^/]+\/messages$/;
+const ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE =
+  "/api/zero/chat-threads/:threadId/github-prs";
+const ZERO_CHAT_THREAD_GITHUB_PRS_PATH_RE =
+  /^\/api\/zero\/chat-threads\/[^/]+\/github-prs$/;
 const ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE =
   "/api/zero/chat-threads/:id/mark-read";
 const ZERO_CHAT_THREAD_MARK_READ_PATH_RE =
@@ -341,6 +337,7 @@ const ZERO_API_KEY_BY_ID_REWRITE_SOURCE = `/api/zero/api-keys/:id(${UUID_PATH_SE
 const ZERO_API_KEY_BY_ID_PATH_RE = new RegExp(
   `^/api/zero/api-keys/${UUID_PATH_SEGMENT_PATTERN}$`,
 );
+const ZERO_ATTRIBUTION_SIGNUP_REWRITE_SOURCE = "/api/zero/attribution/signup";
 const ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE =
   "/api/zero/billing/auto-recharge";
 const ZERO_BILLING_CHECKOUT_REWRITE_SOURCE = "/api/zero/billing/checkout";
@@ -358,6 +355,7 @@ const ZERO_DEFAULT_AGENT_REWRITE_SOURCE = "/api/zero/default-agent";
 const ZERO_FEATURE_SWITCHES_REWRITE_SOURCE = "/api/zero/feature-switches";
 
 export const API_BACKEND_REWRITES = [
+  [LEGACY_FILE_REWRITE_SOURCE, "/f/:userId/:id/:filename", LEGACY_FILE_PATH_RE],
   [
     AGENT_CHECKPOINT_REWRITE_SOURCE,
     "/api/agent/checkpoints/:id",
@@ -446,6 +444,10 @@ export const API_BACKEND_REWRITES = [
   ["/api/cron/aggregate-insights", "/api/cron/aggregate-insights"],
   ["/api/cron/aggregate-usage", "/api/cron/aggregate-usage"],
   ["/api/cron/cleanup-sandboxes", "/api/cron/cleanup-sandboxes"],
+  [
+    "/api/cron/computer-use-screenshot-cleanup",
+    "/api/cron/computer-use-screenshot-cleanup",
+  ],
   ["/api/cron/drain-email-outbox", "/api/cron/drain-email-outbox"],
   ["/api/cron/execute-schedules", "/api/cron/execute-schedules"],
   ["/api/cron/process-usage-events", "/api/cron/process-usage-events"],
@@ -453,13 +455,9 @@ export const API_BACKEND_REWRITES = [
     "/api/cron/reconcile-billing-entitlements",
     "/api/cron/reconcile-billing-entitlements",
   ],
+  ["/api/cron/summarize-memory", "/api/cron/summarize-memory"],
   ["/api/cron/sync-skills", "/api/cron/sync-skills"],
   ["/api/cron/telegram-cleanup", "/api/cron/telegram-cleanup"],
-  [
-    CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-    "/api/connectors/:type/authorize",
-    CONNECTORS_AUTHORIZE_PATH_RE,
-  ],
   [
     CONNECTORS_CALLBACK_REWRITE_SOURCE,
     "/api/connectors/:type/callback",
@@ -674,6 +672,7 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/api-keys/:id",
     ZERO_API_KEY_BY_ID_PATH_RE,
   ],
+  [ZERO_ATTRIBUTION_SIGNUP_REWRITE_SOURCE, "/api/zero/attribution/signup"],
   [
     ZERO_BILLING_AUTO_RECHARGE_REWRITE_SOURCE,
     "/api/zero/billing/auto-recharge",
@@ -706,29 +705,14 @@ export const API_BACKEND_REWRITES = [
     ZERO_CONNECTORS_BY_TYPE_PATH_RE,
   ],
   [
-    ZERO_CONNECTORS_API_TOKEN_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/api-token",
-    ZERO_CONNECTORS_API_TOKEN_PATH_RE,
+    ZERO_CONNECTORS_MANUAL_GRANT_REWRITE_SOURCE,
+    "/api/zero/connectors/:type/manual-grant",
+    ZERO_CONNECTORS_MANUAL_GRANT_PATH_RE,
   ],
   [
     ZERO_CONNECTORS_SCOPE_DIFF_REWRITE_SOURCE,
     "/api/zero/connectors/:type/scope-diff",
     ZERO_CONNECTORS_SCOPE_DIFF_PATH_RE,
-  ],
-  [
-    ZERO_CONNECTORS_SESSIONS_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/sessions",
-    ZERO_CONNECTORS_SESSIONS_PATH_RE,
-  ],
-  [
-    ZERO_CONNECTORS_SESSION_BY_ID_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/sessions/:sessionId",
-    ZERO_CONNECTORS_SESSION_BY_ID_PATH_RE,
-  ],
-  [
-    ZERO_CONNECTORS_AUTHORIZE_REWRITE_SOURCE,
-    "/api/zero/connectors/:type/authorize",
-    ZERO_CONNECTORS_AUTHORIZE_PATH_RE,
   ],
   [
     ZERO_CONNECTORS_OAUTH_START_REWRITE_SOURCE,
@@ -880,6 +864,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_COMPUTER_USE_COMMAND_APPROVAL_PATH_RE,
   ],
   [
+    ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_REWRITE_SOURCE,
+    "/api/zero/computer-use/commands/:commandId/screenshot",
+    ZERO_COMPUTER_USE_COMMAND_SCREENSHOT_PATH_RE,
+  ],
+  [
     ZERO_COMPUTER_USE_HEARTBEAT_REWRITE_SOURCE,
     "/api/zero/computer-use/heartbeat",
   ],
@@ -927,6 +916,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_CHAT_THREAD_MESSAGES_PATH_RE,
   ],
   [
+    ZERO_CHAT_THREAD_GITHUB_PRS_REWRITE_SOURCE,
+    "/api/zero/chat-threads/:threadId/github-prs",
+    ZERO_CHAT_THREAD_GITHUB_PRS_PATH_RE,
+  ],
+  [
     ZERO_CHAT_THREAD_MARK_READ_REWRITE_SOURCE,
     "/api/zero/chat-threads/:id/mark-read",
     ZERO_CHAT_THREAD_MARK_READ_PATH_RE,
@@ -954,6 +948,9 @@ export const API_BACKEND_REWRITES = [
   ["/api/zero/image-io/generate", "/api/zero/image-io/generate"],
   ["/api/zero/insights", "/api/zero/insights"],
   ["/api/zero/insights/range", "/api/zero/insights/range"],
+  ["/api/zero/banking/accounts", "/api/zero/banking/accounts"],
+  ["/api/zero/banking/balances", "/api/zero/banking/balances"],
+  ["/api/zero/banking/transactions", "/api/zero/banking/transactions"],
   ["/api/zero/maps/:path*", "/api/zero/maps/:path*"],
   ["/api/zero/onboarding/setup", "/api/zero/onboarding/setup"],
   ["/api/zero/onboarding/status", "/api/zero/onboarding/status"],
@@ -1030,11 +1027,7 @@ export const API_BACKEND_REWRITES = [
   ],
   ["/api/zero/uploads/complete", "/api/zero/uploads/complete"],
   ["/api/zero/uploads/prepare", "/api/zero/uploads/prepare"],
-  [
-    "/api/zero/permission-access-requests",
-    "/api/zero/permission-access-requests",
-  ],
-  ["/api/zero/permission-policies", "/api/zero/permission-policies"],
+  ["/api/zero/user-permission-grants", "/api/zero/user-permission-grants"],
   ["/api/zero/push-subscriptions", "/api/zero/push-subscriptions"],
   ["/api/zero/queue-position", "/api/zero/queue-position"],
   ["/api/zero/secrets", "/api/zero/secrets"],
@@ -1094,6 +1087,8 @@ export const API_BACKEND_REWRITES = [
     "/api/zero/schedules/:name/enable",
     ZERO_SCHEDULES_ENABLE_PATH_RE,
   ],
+  ["/api/zero/memory", "/api/zero/memory"],
+  ["/api/zero/memory/activity", "/api/zero/memory/activity"],
   ["/api/zero/skills", "/api/zero/skills"],
   [
     ZERO_SKILLS_BY_NAME_REWRITE_SOURCE,
@@ -1141,9 +1136,7 @@ export function matchesApiBackendRewritePath(pathname) {
 
 export function matchesConnectorOAuthRewritePath(pathname) {
   return (
-    CONNECTORS_AUTHORIZE_PATH_RE.test(pathname) ||
     CONNECTORS_CALLBACK_PATH_RE.test(pathname) ||
-    ZERO_CONNECTORS_AUTHORIZE_PATH_RE.test(pathname) ||
     ZERO_CONNECTORS_OAUTH_START_PATH_RE.test(pathname)
   );
 }

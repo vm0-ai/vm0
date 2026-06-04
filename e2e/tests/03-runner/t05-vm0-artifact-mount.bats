@@ -26,7 +26,6 @@ agents:
     framework: claude-code
     volumes:
       - claude-files:/home/user/.claude
-    working_dir: /home/user/workspace
 volumes:
   claude-files:
     name: $SHARED_VOLUME_NAME

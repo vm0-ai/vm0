@@ -14,14 +14,14 @@
 //!                          [-C <dir>] [-m <model>] [-c <config>]
 //!                          [--append-system-prompt <s>] [--last]
 //!                          [-- <prompt>]
-//!   guest-mock-codex exec resume <thread_id> [-- <prompt>]
+//!   guest-mock-codex exec resume <canonical-uuid-thread-id> [-- <prompt>]
 //! ```
 //!
 //! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
 //! synthetic 3-event sequence is replaced with a baked JSONL fixture by
 //! that name (see `FIXTURES`). The thread id is taken from the fixture's
-//! `thread.started` event; the fixture's bytes are written verbatim to
-//! stdout and to the session file. Used by
+//! `thread.started` event; the fixture events are emitted to stdout and
+//! persisted to the session file. Used by
 //! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
 //! codex-event-parser branches that the synthetic sequence cannot reach.
 
@@ -93,7 +93,7 @@ struct ExecArgs {
 
 #[derive(Subcommand, Debug)]
 enum ExecSub {
-    /// Mirrors `codex exec resume <thread_id>`.
+    /// Mirrors `codex exec resume <thread_id>`. The id must be a canonical UUID.
     Resume {
         thread_id: String,
 
@@ -104,10 +104,10 @@ enum ExecSub {
 
 /// Embedded JSONL fixtures selectable via `MOCK_CODEX_FIXTURE=<name>`.
 ///
-/// Each fixture's first event must be `thread.started{thread_id}`; the
-/// thread id is used to compute the on-disk session path so the
-/// guest-agent's checkpoint scan finds the same payload that was emitted
-/// to stdout. Adding a new fixture: drop a `*.jsonl` file under
+/// Each fixture's first event must be `thread.started{thread_id}` with a
+/// canonical UUID thread id; that id is used to compute the on-disk session
+/// path so the guest-agent's checkpoint scan finds the same payload that was
+/// emitted to stdout. Adding a new fixture: drop a `*.jsonl` file under
 /// `fixtures/`, append a `(name, include_str!(...))` row here, and refer
 /// to it from the bats test by `MOCK_CODEX_FIXTURE=<name>`.
 const FIXTURES: &[(&str, &str)] = &[
@@ -170,11 +170,11 @@ fn run_fixture(content: &str) -> io::Result<()> {
             "fixture missing thread.started/thread_id",
         )
     })?;
+    let path = build_session_path(&codex_home(), Utc::now().date_naive(), &thread_id)?;
 
     let mut stdout = io::stdout().lock();
     emit_events(&mut stdout, &events)?;
 
-    let path = build_session_path(&codex_home(), Utc::now().date_naive(), &thread_id);
     write_session_file(&path, &events)
 }
 
@@ -226,16 +226,32 @@ fn codex_home() -> PathBuf {
 /// Build the session file path, with `today` injected for testability.
 ///
 /// Layout: `<codex_home>/sessions/YYYY/MM/DD/<thread_id>.jsonl`
-fn build_session_path(codex_home: &Path, today: NaiveDate, thread_id: &str) -> PathBuf {
+fn build_session_path(codex_home: &Path, today: NaiveDate, thread_id: &str) -> io::Result<PathBuf> {
+    validate_thread_id(thread_id)?;
     let yyyy = today.format("%Y").to_string();
     let mm = today.format("%m").to_string();
     let dd = today.format("%d").to_string();
-    codex_home
+    Ok(codex_home
         .join("sessions")
         .join(yyyy)
         .join(mm)
         .join(dd)
-        .join(format!("{thread_id}.jsonl"))
+        .join(format!("{thread_id}.jsonl")))
+}
+
+fn validate_thread_id(thread_id: &str) -> io::Result<()> {
+    let parsed = Uuid::parse_str(thread_id).map_err(|_| invalid_thread_id_error(thread_id))?;
+    if parsed.to_string() != thread_id {
+        return Err(invalid_thread_id_error(thread_id));
+    }
+    Ok(())
+}
+
+fn invalid_thread_id_error(thread_id: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        format!("invalid thread id {thread_id:?}: expected canonical UUID"),
+    )
 }
 
 /// Build the three-event sequence the mock emits for a single turn.
@@ -308,12 +324,12 @@ fn append_session_file(path: &Path, new_events: &[Value]) -> io::Result<()> {
 /// Orchestrator: emit the three-event turn on stdout, then persist (or append)
 /// to the session file under `$CODEX_HOME`.
 fn run(thread_id: &str, prompt: &str, is_resume: bool) -> io::Result<()> {
+    let path = build_session_path(&codex_home(), Utc::now().date_naive(), thread_id)?;
     let events = build_events(thread_id, prompt);
 
     let mut stdout = io::stdout().lock();
     emit_events(&mut stdout, &events)?;
 
-    let path = build_session_path(&codex_home(), Utc::now().date_naive(), thread_id);
     if is_resume {
         append_session_file(&path, &events)
     } else {
@@ -352,10 +368,11 @@ mod tests {
     fn build_session_path_zero_pads() {
         let home = Path::new("/tmp/.codex");
         let day = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let p = build_session_path(home, day, "abc");
+        let thread_id = "00000000-0000-0000-0000-000000000001";
+        let p = build_session_path(home, day, thread_id).unwrap();
         assert_eq!(
             p,
-            PathBuf::from("/tmp/.codex/sessions/2026/01/05/abc.jsonl")
+            PathBuf::from(format!("/tmp/.codex/sessions/2026/01/05/{thread_id}.jsonl"))
         );
     }
 
@@ -363,10 +380,11 @@ mod tests {
     fn build_session_path_typical() {
         let home = Path::new("/var/codex");
         let day = NaiveDate::from_ymd_opt(2026, 12, 31).unwrap();
-        let p = build_session_path(home, day, "xyz-uuid");
+        let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+        let p = build_session_path(home, day, thread_id).unwrap();
         assert_eq!(
             p,
-            PathBuf::from("/var/codex/sessions/2026/12/31/xyz-uuid.jsonl")
+            PathBuf::from(format!("/var/codex/sessions/2026/12/31/{thread_id}.jsonl"))
         );
     }
 

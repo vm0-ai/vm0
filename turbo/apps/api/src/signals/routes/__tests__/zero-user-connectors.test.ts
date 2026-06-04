@@ -221,4 +221,50 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
 
     expect(response.body).toStrictEqual({ enabledTypes: ["github"] });
   });
+
+  it("ignores connector grants for feature-flag-disabled types", async () => {
+    const fixture = await track(
+      store.set(seedSkillsFixture$, undefined, context.signal),
+    );
+    const { agentId } = await store.set(
+      seedAgentForInstructions$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
+    );
+    // `spotify` is a valid connector type but gated behind a feature switch
+    // that is off by default, so it must not be returned to the client. If it
+    // were, the client would replay it on the next update and the update
+    // endpoint would reject the whole request as unavailable.
+    await store.set(
+      seedUserConnector$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorType: "spotify",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedUserConnector$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId,
+        connectorType: "github",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    const response = await accept(
+      apiClient().get({
+        params: { id: agentId },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ enabledTypes: ["github"] });
+  });
 });

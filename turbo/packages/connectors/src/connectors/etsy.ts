@@ -14,6 +14,10 @@ export const etsy = {
           "2. Click **Create a New App** (or select an existing app)\n" +
           "3. Copy the **Keystring** and **Shared Secret**\n" +
           "4. Paste both values joined with a colon: `keystring:shared_secret`",
+        storage: {
+          secrets: ["ETSY_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

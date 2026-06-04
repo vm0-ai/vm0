@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { zeroConnectorOauthDeviceAuthSessionContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { slockProvider } from "@vm0/connectors/auth-providers/oauth/providers/slock-provider";
 import { testOauthDeviceProvider } from "@vm0/connectors/auth-providers/oauth/providers/test-oauth-device-provider";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
@@ -33,10 +34,13 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const originalPollDeviceAuth = testOauthDeviceProvider.grant.pollDeviceAuth;
+const originalSlockPollDeviceAuth = slockProvider.grant.pollDeviceAuth;
 const TEST_OAUTH_DEVICE_CODE_URL =
   "http://localhost:3000/api/test/oauth-provider/device/code";
 const TEST_OAUTH_TOKEN_URL =
   "http://localhost:3000/api/test/oauth-provider/token";
+const TEST_OAUTH_DEVICE_CLIENT_ID = "test-oauth-device-client";
+const TEST_OAUTH_DEVICE_API_CLIENT_ID = "test-oauth-device-api-client";
 const BASE44_DEVICE_CODE_URL = "https://app.base44.com/oauth/device/code";
 const BASE44_TOKEN_URL = "https://app.base44.com/oauth/token";
 const BASE44_USERINFO_URL = "https://app.base44.com/oauth/userinfo";
@@ -182,7 +186,14 @@ function mockTestOAuthDeviceProvider(): void {
           { status: 400 },
         );
       }
-      if (!deviceCode?.startsWith("test-device:test-oauth-device-client:")) {
+      if (
+        !deviceCode?.startsWith(
+          `test-device:${TEST_OAUTH_DEVICE_CLIENT_ID}:`,
+        ) &&
+        !deviceCode?.startsWith(
+          `test-device:${TEST_OAUTH_DEVICE_API_CLIENT_ID}:`,
+        )
+      ) {
         return HttpResponse.json(
           {
             error: "invalid_grant",
@@ -313,6 +324,7 @@ async function createSession(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly connectorType?: "test-oauth-device" | "slock";
+  readonly authMethod?: string;
   readonly deviceCode: string;
   readonly status?: "awaiting_user_authorization" | "polling";
   readonly intervalSeconds?: number;
@@ -329,6 +341,7 @@ async function createSession(args: {
       orgId: args.orgId,
       userId: args.userId,
       connectorType: args.connectorType ?? "test-oauth-device",
+      authMethod: args.authMethod ?? "oauth",
       status: args.status ?? "awaiting_user_authorization",
       sessionTokenHash: sessionTokenHash(sessionToken),
       encryptedProviderState: await encryptedProviderState({
@@ -405,6 +418,7 @@ describe("OAuth device authorization connector routes", () => {
     clearMockedEnv();
     resetSecretKmsClientForTests();
     testOauthDeviceProvider.grant.pollDeviceAuth = originalPollDeviceAuth;
+    slockProvider.grant.pollDeviceAuth = originalSlockPollDeviceAuth;
     while (users.length > 0) {
       const user = users.pop();
       if (user) {
@@ -435,7 +449,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -456,6 +470,7 @@ describe("OAuth device authorization connector routes", () => {
     const session = await onlySession(response.body.sessionId);
     expect(session.orgId).toBe(orgId);
     expect(session.userId).toBe(userId);
+    expect(session.authMethod).toBe("oauth");
     expect(session.status).toBe("awaiting_user_authorization");
     expect(session.sessionTokenHash).toBe(
       sessionTokenHash(response.body.sessionToken),
@@ -485,7 +500,7 @@ describe("OAuth device authorization connector routes", () => {
     const first = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -493,7 +508,7 @@ describe("OAuth device authorization connector routes", () => {
     const second = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -530,6 +545,47 @@ describe("OAuth device authorization connector routes", () => {
     });
   });
 
+  it("does not supersede active sessions for a different auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const oauthSession = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const apiSession = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await expect(
+      onlySession(oauthSession.body.sessionId),
+    ).resolves.toMatchObject({
+      orgId,
+      userId,
+      authMethod: "oauth",
+      status: "awaiting_user_authorization",
+    });
+    await expect(onlySession(apiSession.body.sessionId)).resolves.toMatchObject(
+      {
+        orgId,
+        userId,
+        authMethod: "api",
+        status: "awaiting_user_authorization",
+      },
+    );
+  });
+
   it("does not persist a superseded session that completes after a new session starts", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
@@ -538,7 +594,7 @@ describe("OAuth device authorization connector routes", () => {
     const first = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -568,7 +624,7 @@ describe("OAuth device authorization connector routes", () => {
     const second = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -600,7 +656,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "github" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -620,7 +676,7 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "cloudinary" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -643,7 +699,88 @@ describe("OAuth device authorization connector routes", () => {
     const response = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "OAuth device authorization is not enabled for this connector",
+    );
+  });
+
+  it("rejects selected auth methods that are not device-auth methods", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api-token" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "test-oauth-device connector does not have api-token auth method",
+    );
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+  });
+
+  it("polls with the auth method stored on the session", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      authMethod: "api-token",
+      deviceCode: "pending",
+    });
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [500],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Invalid OAuth device authorization session",
+    );
+  });
+
+  it("rejects polls when the stored auth method is no longer available", async () => {
+    const { userId, orgId } = await setupUser();
+    const session = await createSession({
+      userId,
+      orgId,
+      deviceCode: "pending",
+    });
+    await store
+      .set(writeDb$)
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.userId, userId),
+          eq(userFeatureSwitches.orgId, orgId),
+        ),
+      );
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+
+    const response = await accept(
+      client.poll({
+        params: { type: "test-oauth-device", sessionId: session.id },
+        body: { sessionToken: session.sessionToken },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [403],
@@ -706,7 +843,7 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(session.id)).intervalSeconds).toBe(10);
   });
 
-  it("completes a session through OAuth connector persistence without leaking tokens", async () => {
+  it("completes a session through connector token persistence without leaking tokens", async () => {
     const { userId, orgId } = await setupUser();
     const client = setupApp({ context })(
       zeroConnectorOauthDeviceAuthSessionContract,
@@ -714,7 +851,7 @@ describe("OAuth device authorization connector routes", () => {
     const start = await accept(
       client.create({
         params: { type: "test-oauth-device" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -762,6 +899,55 @@ describe("OAuth device authorization connector routes", () => {
     expect((await onlySession(start.body.sessionId)).status).toBe("complete");
   });
 
+  it("completes a session with the stored non-default auth method", async () => {
+    const { userId, orgId } = await setupUser();
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    const start = await accept(
+      client.create({
+        params: { type: "test-oauth-device" },
+        body: { authMethod: "api" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await accept(
+      client.poll({
+        params: {
+          type: "test-oauth-device",
+          sessionId: start.body.sessionId,
+        },
+        body: { sessionToken: start.body.sessionToken },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.status).toBe("complete");
+    expect(JSON.stringify(response.body)).not.toContain("test-device-access");
+    await expect(connectorAccessToken(userId, orgId)).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN"),
+    ).resolves.toBe(
+      "test-device-access:test-oauth-device-api-client:test-device:test-oauth-device-api-client:read",
+    );
+
+    const stored = await store
+      .set(writeDb$)
+      .select({
+        authMethod: connectors.authMethod,
+        oauthScopes: connectors.oauthScopes,
+      })
+      .from(connectors)
+      .where(and(eq(connectors.userId, userId), eq(connectors.orgId, orgId)));
+    expect(stored).toStrictEqual([
+      { authMethod: "api", oauthScopes: JSON.stringify(["read"]) },
+    ]);
+    expect((await onlySession(start.body.sessionId)).status).toBe("complete");
+  });
+
   it.each<{
     readonly caseName: string;
     readonly extraConnectorSecrets: Readonly<Record<string, string>>;
@@ -788,7 +974,7 @@ describe("OAuth device authorization connector routes", () => {
       const start = await accept(
         client.create({
           params: { type: "test-oauth-device" },
-          body: {},
+          body: { authMethod: "oauth" },
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -834,7 +1020,7 @@ describe("OAuth device authorization connector routes", () => {
     const start = await accept(
       client.create({
         params: { type: "base44" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -914,7 +1100,7 @@ describe("OAuth device authorization connector routes", () => {
     const start = await accept(
       client.create({
         params: { type: "slock" },
-        body: {},
+        body: { authMethod: "oauth" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -994,6 +1180,72 @@ describe("OAuth device authorization connector routes", () => {
     expect(tokenExpiresAt.getTime()).toBeLessThanOrEqual(
       nowDate().getTime() + SLOCK_ACCESS_TOKEN_TTL_SECONDS * 1000,
     );
+  });
+
+  it("rejects complete Slock sessions missing required runtime secrets", async () => {
+    mockSlockOAuthProvider();
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    users.push({ userId, orgId });
+    mocks.clerk.session(userId, orgId);
+    const client = setupApp({ context })(
+      zeroConnectorOauthDeviceAuthSessionContract,
+    );
+    slockProvider.grant.pollDeviceAuth = async (args) => {
+      const result = await originalSlockPollDeviceAuth(args);
+      if (result.status !== "complete") {
+        return result;
+      }
+      return {
+        ...result,
+        token: {
+          ...result.token,
+          extraConnectorSecrets: {},
+        },
+      };
+    };
+
+    const start = await accept(
+      client.create({
+        params: { type: "slock" },
+        body: { authMethod: "oauth" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const response = await client.poll({
+      params: {
+        type: "slock",
+        sessionId: start.body.sessionId,
+      },
+      body: { sessionToken: start.body.sessionToken },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(500);
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_ACCESS_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_REFRESH_TOKEN"),
+    ).resolves.toBeNull();
+    await expect(
+      connectorSecretValue(userId, orgId, "SLOCK_SERVER_ID"),
+    ).resolves.toBeNull();
+
+    const stored = await store
+      .set(writeDb$)
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(
+        and(
+          eq(connectors.userId, userId),
+          eq(connectors.orgId, orgId),
+          eq(connectors.type, "slock"),
+        ),
+      );
+    expect(stored).toStrictEqual([]);
   });
 
   it("marks Slock post-token lookup failures as terminal errors", async () => {
@@ -1115,7 +1367,11 @@ describe("OAuth device authorization connector routes", () => {
     testOauthDeviceProvider.grant.pollDeviceAuth = () => {
       pollCount += 1;
       return originalPollDeviceAuth({
-        clientId: "test-oauth-device-client",
+        authClient: {
+          clientRegistration: "static",
+          clientType: "public",
+          clientId: "test-oauth-device-client",
+        },
         deviceCode: "test-device:test-oauth-device-client:read",
       });
     };

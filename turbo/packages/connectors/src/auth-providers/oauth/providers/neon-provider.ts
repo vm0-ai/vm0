@@ -2,29 +2,37 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildNeonAuthorizationUrl,
   exchangeNeonCode,
-  getNeonSecretName,
   refreshNeonToken,
 } from "./neon";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
-      return buildNeonAuthorizationUrl(clientId, args.redirectUri, args.state);
+      const { clientId } = args.authClient;
+      return buildNeonAuthorizationUrl(
+        args.authCodeGrant,
+        clientId,
+        args.redirectUri,
+        args.state,
+      );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeNeonCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -37,13 +45,16 @@ export const neonProvider: AuthCodeConnectorAuthProvider<"neon"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getNeonSecretName,
-    getRefreshSecretName: () => {
-      return "NEON_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshNeonToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshNeonToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

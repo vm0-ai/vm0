@@ -5,12 +5,11 @@ import {
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { command, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -18,6 +17,7 @@ import { getDatasetName, queryAxiom } from "../external/axiom";
 import { clerk$ } from "../external/clerk";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { getLocalToday, resolveUserTimezones } from "./local-day";
 import { settle } from "../utils";
 
 const L = logger("CronAggregateInsights");
@@ -206,88 +206,8 @@ interface NetworkQueryResult {
   readonly axiomDegraded: boolean;
 }
 
-type SignalGetter = {
-  <T>(source: Computed<T>): T;
-  <T>(source: Computed<Promise<T>>): Promise<T>;
-};
-
 function normalizeDbDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
-}
-
-async function resolveUserTimezones(
-  db: Db,
-  orgUserPairs: OrgUserPair[],
-  signal: AbortSignal,
-): Promise<Map<string, string>> {
-  if (orgUserPairs.length === 0) {
-    return new Map();
-  }
-
-  const userIds = [
-    ...new Set(
-      orgUserPairs.map((pair) => {
-        return pair.userId;
-      }),
-    ),
-  ];
-
-  const rows = await db
-    .select({
-      orgId: orgMembersMetadata.orgId,
-      userId: orgMembersMetadata.userId,
-      timezone: orgMembersMetadata.timezone,
-    })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        inArray(orgMembersMetadata.userId, userIds),
-        isNotNull(orgMembersMetadata.timezone),
-      ),
-    );
-  signal.throwIfAborted();
-
-  const tzMap = new Map<string, string>();
-  for (const row of rows) {
-    if (row.timezone) {
-      tzMap.set(`${row.orgId}:${row.userId}`, row.timezone);
-    }
-  }
-  return tzMap;
-}
-
-function getLocalDayStartUtc(timezone: string, now: Date): Date {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  const localMidnight = new Date(`${parts}T00:00:00`);
-  const utcStr = localMidnight.toLocaleString("en-US", { timeZone: "UTC" });
-  const tzStr = localMidnight.toLocaleString("en-US", { timeZone: timezone });
-  const utcDate = new Date(utcStr);
-  const tzDate = new Date(tzStr);
-  const offsetMs = utcDate.getTime() - tzDate.getTime();
-  return new Date(localMidnight.getTime() + offsetMs);
-}
-
-function getLocalToday(
-  timezone: string,
-  now: Date,
-): {
-  readonly targetDate: string;
-  readonly dayStart: Date;
-  readonly dayEnd: Date;
-} {
-  const dayStart = getLocalDayStartUtc(timezone, now);
-  const targetDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-  return { targetDate, dayStart, dayEnd: now };
 }
 
 function getPermissionLabel(
@@ -922,83 +842,84 @@ async function loadWindowUsageData(
   };
 }
 
-async function queryWindowNetworkData(
-  get: SignalGetter,
+function queryWindowNetworkData(
   db: Db,
   scope: WindowScope,
   signal: AbortSignal,
-): Promise<NetworkQueryResult> {
-  const dataset = getDatasetName("sandbox-telemetry-network");
-  const startIso = scope.dayStart.toISOString();
-  const endIso = scope.dayEnd.toISOString();
-  const apl = `['${dataset}']
+): Computed<Promise<NetworkQueryResult>> {
+  return computed(async (get): Promise<NetworkQueryResult> => {
+    const dataset = getDatasetName("sandbox-telemetry-network");
+    const startIso = scope.dayStart.toISOString();
+    const endIso = scope.dayEnd.toISOString();
+    const apl = `['${dataset}']
 | where _time >= datetime("${startIso}") and _time < datetime("${endIso}")
 | where isnotnull(firewall_name) and firewall_name != ""
 | project runId, host, firewall_name, firewall_permission, action
 | limit 100000`;
 
-  const axiomResult = await settle(
-    (async (): Promise<AxiomNetworkRow[]> => {
-      return [
-        ...((await get(
-          queryAxiom(apl),
-        )) as unknown as readonly AxiomNetworkRow[]),
-      ];
-    })(),
-  );
-  const networkRows = axiomResult.ok ? axiomResult.value : [];
-  const axiomDegraded = !axiomResult.ok;
-  if (!axiomResult.ok) {
-    L.error("Failed to query Axiom for network logs", {
-      error:
-        axiomResult.error instanceof Error
-          ? axiomResult.error.message
-          : String(axiomResult.error),
-    });
-  }
-  signal.throwIfAborted();
-
-  const networkRunIds = [
-    ...new Set(
-      networkRows
-        .map((row) => {
-          return row.runId;
-        })
-        .filter(Boolean),
-    ),
-  ];
-  const runAgentRows =
-    networkRunIds.length > 0
-      ? await queryNetworkRunAgentRows(
-          db,
-          scope.orgIds,
-          scope.userIds,
-          networkRunIds,
-          signal,
-        )
-      : [];
-
-  const runIdToInfo = new Map<
-    string,
-    {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly agentName: string;
+    const axiomResult = await settle(
+      (async (): Promise<AxiomNetworkRow[]> => {
+        return [
+          ...((await get(
+            queryAxiom(apl),
+          )) as unknown as readonly AxiomNetworkRow[]),
+        ];
+      })(),
+    );
+    const networkRows = axiomResult.ok ? axiomResult.value : [];
+    const axiomDegraded = !axiomResult.ok;
+    if (!axiomResult.ok) {
+      L.error("Failed to query Axiom for network logs", {
+        error:
+          axiomResult.error instanceof Error
+            ? axiomResult.error.message
+            : String(axiomResult.error),
+      });
     }
-  >();
-  for (const row of runAgentRows) {
-    runIdToInfo.set(row.runId, {
-      orgId: row.orgId,
-      userId: row.userId,
-      agentName: row.agentName,
-    });
-  }
+    signal.throwIfAborted();
 
-  return {
-    userNetworkMap: aggregateNetworkDataPerUser(networkRows, runIdToInfo),
-    networkRows: networkRows.length,
-    axiomDegraded,
-  };
+    const networkRunIds = [
+      ...new Set(
+        networkRows
+          .map((row) => {
+            return row.runId;
+          })
+          .filter(Boolean),
+      ),
+    ];
+    const runAgentRows =
+      networkRunIds.length > 0
+        ? await queryNetworkRunAgentRows(
+            db,
+            scope.orgIds,
+            scope.userIds,
+            networkRunIds,
+            signal,
+          )
+        : [];
+
+    const runIdToInfo = new Map<
+      string,
+      {
+        readonly orgId: string;
+        readonly userId: string;
+        readonly agentName: string;
+      }
+    >();
+    for (const row of runAgentRows) {
+      runIdToInfo.set(row.runId, {
+        orgId: row.orgId,
+        userId: row.userId,
+        agentName: row.agentName,
+      });
+    }
+
+    return {
+      userNetworkMap: aggregateNetworkDataPerUser(networkRows, runIdToInfo),
+      networkRows: networkRows.length,
+      axiomDegraded,
+    };
+  });
 }
 
 async function upsertWindowInsights(
@@ -1039,24 +960,31 @@ async function upsertWindowInsights(
   return upserted;
 }
 
-async function processWindowGroup(
-  get: SignalGetter,
+function processWindowGroup(
   db: Db,
   clerk: ClerkLike,
   group: WindowGroup,
   signal: AbortSignal,
-): Promise<{ readonly upserted: number; readonly networkRows: number }> {
-  const scope = windowScope(group);
-  const usageData = await loadWindowUsageData(db, clerk, scope, signal);
-  const networkData = await queryWindowNetworkData(get, db, scope, signal);
-  const upserted = await upsertWindowInsights(
-    db,
-    group,
-    usageData,
-    networkData,
-    signal,
+): Computed<
+  Promise<{ readonly upserted: number; readonly networkRows: number }>
+> {
+  return computed(
+    async (
+      get,
+    ): Promise<{ readonly upserted: number; readonly networkRows: number }> => {
+      const scope = windowScope(group);
+      const usageData = await loadWindowUsageData(db, clerk, scope, signal);
+      const networkData = await get(queryWindowNetworkData(db, scope, signal));
+      const upserted = await upsertWindowInsights(
+        db,
+        group,
+        usageData,
+        networkData,
+        signal,
+      );
+      return { upserted, networkRows: networkData.networkRows };
+    },
   );
-  return { upserted, networkRows: networkData.networkRows };
 }
 
 export const aggregateInsights$ = command(
@@ -1154,10 +1082,10 @@ export const aggregateInsights$ = command(
     let upserted = 0;
     let totalNetworkRows = 0;
     for (const group of windowGroups.values()) {
-      const result = await processWindowGroup(get, db, clerk, group, signal);
+      const result = await get(processWindowGroup(db, clerk, group, signal));
+      signal.throwIfAborted();
       upserted += result.upserted;
       totalNetworkRows += result.networkRows;
-      signal.throwIfAborted();
     }
 
     L.debug("Aggregated insights", {

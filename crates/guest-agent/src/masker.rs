@@ -110,7 +110,7 @@ impl SecretMasker {
         }
         match val {
             Value::String(s) => {
-                *s = self.mask_string(s);
+                self.mask_string_in_place(s);
             }
             Value::Array(arr) => {
                 for item in arr {
@@ -132,9 +132,28 @@ impl SecretMasker {
     /// longest configured pattern wins, so a shorter secret that is a
     /// substring of a longer one cannot strip a byte off the longer match.
     pub fn mask_string(&self, s: &str) -> String {
-        match &self.matcher {
-            Some(m) => m.ac.replace_all(s, &m.replacements),
-            None => s.to_string(),
+        self.masked_string(s).unwrap_or_else(|| s.to_string())
+    }
+
+    pub(crate) fn mask_owned_string(&self, s: String) -> String {
+        self.masked_string(&s).unwrap_or(s)
+    }
+
+    fn mask_string_in_place(&self, s: &mut String) -> bool {
+        if let Some(masked) = self.masked_string(s) {
+            *s = masked;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn masked_string(&self, s: &str) -> Option<String> {
+        let matcher = self.matcher.as_ref()?;
+        if matcher.ac.is_match(s) {
+            Some(matcher.ac.replace_all(s, &matcher.replacements))
+        } else {
+            None
         }
     }
 }
@@ -222,6 +241,54 @@ mod tests {
     }
 
     #[test]
+    fn mask_string_in_place_preserves_unmatched_allocation() {
+        let masker = masker_with(vec!["secret123"]);
+        let mut value = String::from("ordinary event field");
+        let original_ptr = value.as_ptr();
+        let original_capacity = value.capacity();
+
+        assert!(!masker.mask_string_in_place(&mut value));
+
+        assert_eq!(value, "ordinary event field");
+        assert_eq!(value.as_ptr(), original_ptr);
+        assert_eq!(value.capacity(), original_capacity);
+    }
+
+    #[test]
+    fn mask_string_in_place_masks_matched_string() {
+        let masker = masker_with(vec!["secret123"]);
+        let mut value = String::from("Bearer secret123");
+
+        assert!(masker.mask_string_in_place(&mut value));
+
+        assert_eq!(value, "Bearer ***");
+    }
+
+    #[test]
+    fn mask_owned_string_preserves_unmatched_allocation() {
+        let masker = masker_with(vec!["secret123"]);
+        let value = String::from("ordinary stderr line");
+        let original_ptr = value.as_ptr();
+        let original_capacity = value.capacity();
+
+        let masked = masker.mask_owned_string(value);
+
+        assert_eq!(masked, "ordinary stderr line");
+        assert_eq!(masked.as_ptr(), original_ptr);
+        assert_eq!(masked.capacity(), original_capacity);
+    }
+
+    #[test]
+    fn mask_owned_string_masks_matched_string() {
+        let masker = masker_with(vec!["secret123"]);
+
+        assert_eq!(
+            masker.mask_owned_string("stderr has secret123".to_string()),
+            "stderr has ***"
+        );
+    }
+
+    #[test]
     fn from_raw_with_encoded_secrets() {
         // Build comma-separated base64-encoded secrets (matching TS format)
         let engine = base64::engine::general_purpose::STANDARD;
@@ -297,6 +364,26 @@ mod tests {
         assert_eq!(val["bool"], true);
         assert!(val["null"].is_null());
         assert_eq!(val["list"][0], "no match");
+    }
+
+    #[test]
+    fn mask_value_preserves_unmatched_string_allocation() {
+        let masker = masker_with(vec!["secret123"]);
+        let mut val = Value::String(String::from("ordinary event field"));
+        let Value::String(value) = &val else {
+            panic!("test value should be a string");
+        };
+        let original_ptr = value.as_ptr();
+        let original_capacity = value.capacity();
+
+        masker.mask_value(&mut val);
+
+        let Value::String(value) = &val else {
+            panic!("masked value should remain a string");
+        };
+        assert_eq!(value, "ordinary event field");
+        assert_eq!(value.as_ptr(), original_ptr);
+        assert_eq!(value.capacity(), original_capacity);
     }
 
     #[test]

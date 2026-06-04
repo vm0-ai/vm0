@@ -11,6 +11,10 @@ export const rentcast = {
         label: "API Key",
         helpText:
           "1. Log in to the [RentCast API dashboard](https://app.rentcast.io/app/api)\n2. Click **Create API Key**\n3. Copy the generated API key",
+        storage: {
+          secrets: ["RENTCAST_API_KEY"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

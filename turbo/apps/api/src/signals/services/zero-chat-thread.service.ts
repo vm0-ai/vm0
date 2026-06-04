@@ -21,6 +21,8 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
+  type ChatMessageRecommendedFollowupGenerationType,
+  type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -104,6 +106,7 @@ type ChatMessageRow = {
   readonly runError: string | null;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatMessageAttachFileMetadata[] | null;
+  readonly recommendedFollowups: ChatMessageRecommendedFollowups | null;
   readonly revokesMessageId: string | null;
   readonly interruptsRunId: string | null;
 };
@@ -174,6 +177,8 @@ export function visibleChatMessageCondition() {
       ${chatMessages.role} = 'user'
       AND ${chatMessages.runId} IS NULL
       AND ${chatMessages.revokesMessageId} IS NOT NULL
+      AND ${chatMessages.content} IS NULL
+      AND ${chatMessages.error} IS NULL
     )
     AND NOT (
       ${chatMessages.role} = 'user'
@@ -195,6 +200,7 @@ const messageColumns = {
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
   attachFileMetadata: chatMessages.attachFileMetadata,
+  recommendedFollowups: chatMessages.recommendedFollowups,
   revokesMessageId: chatMessages.revokesMessageId,
   interruptsRunId: chatMessages.interruptsRunId,
 } as const;
@@ -503,6 +509,59 @@ function lifecycleEventOrUndefined(
   return undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isRecommendedFollowupGenerationType(
+  value: unknown,
+): value is ChatMessageRecommendedFollowupGenerationType {
+  return (
+    value === "image" ||
+    value === "video" ||
+    value === "presentation" ||
+    value === "website"
+  );
+}
+
+function normalizeRecommendedFollowups(
+  value: unknown,
+): ChatMessageRecommendedFollowups | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const seen = new Set<string>();
+  const followups: ChatMessageRecommendedFollowups = [];
+  for (const item of value) {
+    const prompt =
+      typeof item === "string"
+        ? item.trim()
+        : isRecord(item) && typeof item.prompt === "string"
+          ? item.prompt.trim()
+          : "";
+    if (prompt.length === 0 || seen.has(prompt)) {
+      continue;
+    }
+    seen.add(prompt);
+
+    if (!isRecord(item) || item.kind !== "generate") {
+      followups.push({ prompt, kind: "talk" });
+      continue;
+    }
+
+    followups.push({
+      prompt,
+      kind: "generate",
+      ...(isRecommendedFollowupGenerationType(item.generationType)
+        ? { generationType: item.generationType }
+        : {}),
+    });
+  }
+
+  return followups.length > 0 ? followups : undefined;
+}
+
 function toPagedMessage(
   threadId: string,
   userId: string,
@@ -553,6 +612,9 @@ function toPagedMessage(
       role: "assistant" as const,
       status: chatMessageStatus(row),
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
+      recommendedFollowups: normalizeRecommendedFollowups(
+        row.recommendedFollowups,
+      ),
     };
   });
 }

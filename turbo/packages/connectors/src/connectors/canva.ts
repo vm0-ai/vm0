@@ -18,9 +18,12 @@ export const canva = {
           clientIdEnv: "CANVA_OAUTH_CLIENT_ID",
           clientSecretEnv: "CANVA_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["CANVA_ACCESS_TOKEN", "CANVA_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
           scopes: [
             "asset:read",
             "asset:write",
@@ -35,11 +38,21 @@ export const canva = {
             "folder:write",
             "profile:read",
           ],
+          outputs: {
+            accessToken: "$secrets.CANVA_ACCESS_TOKEN",
+            refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "CANVA_ACCESS_TOKEN",
-          refreshToken: "CANVA_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.CANVA_ACCESS_TOKEN",
+            refreshToken: "$secrets.CANVA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["CANVA_ACCESS_TOKEN"],
           envBindings: {
             CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
           },

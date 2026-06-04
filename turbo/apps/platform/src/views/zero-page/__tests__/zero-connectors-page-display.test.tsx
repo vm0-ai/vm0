@@ -253,9 +253,10 @@ describe("connectors page - connector status indicators", () => {
         }),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText("OAuth Device Authorization")).toBeInTheDocument();
     expect(
-      screen.getByText(/Connect .*Test OAuth Device \(internal\)/),
-    ).toBeInTheDocument();
+      screen.getAllByText(/Connect .*Test OAuth Device \(internal\)/).length,
+    ).toBeGreaterThan(0);
     expect(open).not.toHaveBeenCalled();
   });
 

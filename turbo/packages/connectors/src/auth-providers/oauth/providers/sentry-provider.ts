@@ -2,33 +2,37 @@ import type { AuthCodeConnectorAuthProvider } from "../../types";
 import {
   buildSentryAuthorizationUrl,
   exchangeSentryCode,
-  getSentrySecretName,
   refreshSentryToken,
 } from "./sentry";
+import { oauthRefreshResultToProviderResult } from "../types";
 export const sentryProvider: AuthCodeConnectorAuthProvider<"sentry"> = {
   grant: {
     kind: "auth-code",
     buildAuthUrl: (args) => {
-      const { clientId } = args;
+      const { clientId } = args.authClient;
       return buildSentryAuthorizationUrl(
+        args.authCodeGrant,
         clientId,
         args.redirectUri,
         args.state,
       );
     },
     exchangeCode: async (args) => {
-      const { clientId, clientSecret } = args;
+      const { clientId, clientSecret } = args.authClient;
       const code = args.code;
       const redirectUri = args.redirectUri;
       const result = await exchangeSentryCode(
+        args.authCodeGrant,
         clientId,
         clientSecret,
         code,
         redirectUri,
       );
       return {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
+        outputs: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
         expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
@@ -41,13 +45,16 @@ export const sentryProvider: AuthCodeConnectorAuthProvider<"sentry"> = {
   },
   access: {
     kind: "refresh-token",
-    getAccessSecretName: getSentrySecretName,
-    getRefreshSecretName: () => {
-      return "SENTRY_REFRESH_TOKEN";
-    },
-    refreshToken: (args) => {
-      const { clientId, clientSecret } = args;
-      return refreshSentryToken(clientId, clientSecret, args.refreshToken);
+    refresh: async (args) => {
+      const { clientId, clientSecret } = args.authClient;
+      return oauthRefreshResultToProviderResult(
+        await refreshSentryToken(
+          clientId,
+          clientSecret,
+          args.inputs.refreshToken,
+          args.signal,
+        ),
+      );
     },
   },
   revoke: { kind: "none" },

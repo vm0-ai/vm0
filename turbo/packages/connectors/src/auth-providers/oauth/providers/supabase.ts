@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const SUPABASE_TOKEN_URL = "https://api.supabase.com/v1/oauth/token";
 
 const SUPABASE_AUTHORIZATION_URL =
   "https://api.supabase.com/v1/oauth/authorize";
@@ -65,11 +67,11 @@ function base64UrlEncode(bytes: Uint8Array): string {
  * Build Supabase OAuth authorization URL with PKCE code_challenge.
  */
 export async function buildSupabaseAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): Promise<string> {
-  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const codeChallenge = await computeCodeChallenge(codeVerifier);
 
@@ -95,13 +97,14 @@ export async function refreshSupabaseToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
+  signal: AbortSignal,
 ): Promise<SupabaseRefreshResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(SUPABASE_TOKEN_URL, {
+    signal,
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -147,19 +150,19 @@ export async function refreshSupabaseToken(
  * Supabase uses Basic Auth (Base64 of clientId:clientSecret) for token exchange.
  */
 export async function exchangeSupabaseCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri: string,
   state: string,
 ): Promise<SupabaseTokenResult> {
-  const authCodeGrant = getAuthCodeGrantConfig("supabase");
   const codeVerifier = await deriveCodeVerifier(state);
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
     "base64",
   );
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(SUPABASE_TOKEN_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,

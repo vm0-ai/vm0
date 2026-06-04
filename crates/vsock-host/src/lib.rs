@@ -806,12 +806,22 @@ fn validate_empty_lifecycle_response(
         .map_err(protocol_invalid_data)
 }
 
+fn deadline_after(timeout: Duration, overflow_message: &'static str) -> io::Result<Instant> {
+    Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, overflow_message))
+}
+
 impl VsockHost {
     /// Wait for a guest to connect on the vsock UDS path.
     ///
     /// Creates a UDS listener at `{vsock_path}_{port}`, accepts the first
     /// connection, and performs the ready/ping/pong handshake.
+    ///
+    /// Returns [`io::ErrorKind::InvalidInput`] if `timeout` cannot be
+    /// represented as a Tokio deadline.
     pub async fn wait_for_connection(vsock_path: &str, timeout: Duration) -> io::Result<Self> {
+        let deadline = deadline_after(timeout, "guest connection timeout overflowed")?;
         let listener_path = format!("{vsock_path}_{}", vsock_proto::VSOCK_PORT);
 
         // Clean up stale socket
@@ -821,7 +831,6 @@ impl VsockHost {
         let mut listener_socket = ListenerSocketGuard {
             path: Some(listener_path.clone()),
         };
-        let deadline = Instant::now() + timeout;
 
         let accept_result = time::timeout_at(deadline, listener.accept()).await;
 
@@ -1129,7 +1138,7 @@ impl VsockHost {
     /// state under the same lock that `close` holds, so no transition is
     /// missed.
     async fn wait_until_closed(&self, timeout: Duration) -> io::Result<()> {
-        let deadline = Instant::now() + timeout;
+        let deadline = deadline_after(timeout, "wait_until_closed timeout overflowed")?;
         loop {
             let notified = self.shared.close_notify.notified();
             tokio::pin!(notified);

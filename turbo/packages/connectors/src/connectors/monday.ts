@@ -16,9 +16,12 @@ export const monday = {
           clientIdEnv: "MONDAY_OAUTH_CLIENT_ID",
           clientSecretEnv: "MONDAY_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["MONDAY_ACCESS_TOKEN", "MONDAY_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://auth.monday.com/oauth2/token",
           scopes: [
             "me:read",
             "boards:read",
@@ -35,11 +38,21 @@ export const monday = {
             "tags:read",
             "teams:read",
           ],
+          outputs: {
+            accessToken: "$secrets.MONDAY_ACCESS_TOKEN",
+            refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "MONDAY_ACCESS_TOKEN",
-          refreshToken: "MONDAY_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.MONDAY_ACCESS_TOKEN",
+            refreshToken: "$secrets.MONDAY_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["MONDAY_ACCESS_TOKEN"],
           envBindings: {
             MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
           },

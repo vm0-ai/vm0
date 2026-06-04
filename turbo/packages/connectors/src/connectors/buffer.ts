@@ -11,6 +11,10 @@ export const buffer = {
         label: "API Key",
         helpText:
           "1. Log in to [Buffer](https://publish.buffer.com) and go to **Settings > Developer Dashboard** (you must be an **Org Owner** — paid accounts can create up to 5 keys; free accounts get 1).\n2. Click **Create API Key**, give it a name, and set an expiration if desired.\n3. Copy the key immediately — it's only shown once.\n4. Paste it here.\n\n**Note:** Buffer's API is currently in beta.",
+        storage: {
+          secrets: ["BUFFER_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "manual",
           fields: {

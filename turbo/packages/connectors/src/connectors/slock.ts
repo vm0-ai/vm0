@@ -1,7 +1,5 @@
 import type { ConnectorConfig } from "../connectors";
 
-const SLOCK_API_BASE_URL = "https://api.slock.ai";
-
 export const slock = {
   slock: {
     label: "Slock",
@@ -16,16 +14,32 @@ export const slock = {
           clientRegistration: "dynamic",
           clientType: "public",
         },
+        storage: {
+          secrets: [
+            "SLOCK_ACCESS_TOKEN",
+            "SLOCK_SERVER_ID",
+            "SLOCK_REFRESH_TOKEN",
+          ],
+          variables: [],
+        },
         grant: {
           kind: "device-auth",
-          deviceAuthUrl: `${SLOCK_API_BASE_URL}/api/auth/device/authorize`,
-          tokenUrl: `${SLOCK_API_BASE_URL}/api/auth/device/token`,
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.SLOCK_ACCESS_TOKEN",
+            refreshToken: "$secrets.SLOCK_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "SLOCK_ACCESS_TOKEN",
-          refreshToken: "SLOCK_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.SLOCK_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.SLOCK_ACCESS_TOKEN",
+            refreshToken: "$secrets.SLOCK_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["SLOCK_ACCESS_TOKEN"],
           envBindings: {
             SLOCK_TOKEN: "$secrets.SLOCK_ACCESS_TOKEN",
             SLOCK_SERVER_ID: "$secrets.SLOCK_SERVER_ID",

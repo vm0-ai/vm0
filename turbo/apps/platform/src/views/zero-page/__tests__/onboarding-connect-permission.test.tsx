@@ -6,6 +6,7 @@ import {
   detachedSetupPage,
   fill,
   click,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { permissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
@@ -76,6 +77,27 @@ function mockConnectorOauthStart() {
 
 function createMockAuthWindow() {
   return { closed: false, close: vi.fn(), location: { href: "" } };
+}
+
+async function clickTestOAuthDeviceConnectButton() {
+  const heading = await screen.findByRole("heading", {
+    name: "OAuth Device Authorization",
+  });
+  const section = heading.parentElement;
+  if (!section) {
+    throw new Error("OAuth Device Authorization section not found");
+  }
+
+  const button = queryAllByRoleFast("button", section).find((element) => {
+    return (
+      element.textContent?.trim() === "Connect Test OAuth Device (internal)"
+    );
+  });
+  if (!button) {
+    throw new Error("Test OAuth device connect button not found");
+  }
+
+  click(button);
 }
 
 describe("onboarding connector permission dialog suppression", () => {
@@ -199,7 +221,7 @@ describe("onboarding connector permission dialog suppression", () => {
         screen.getByRole("heading", { name: "Test OAuth Device (internal)" }),
       ).toBeInTheDocument();
     });
-    click(screen.getByText("Connect Test OAuth Device (internal)"));
+    await clickTestOAuthDeviceConnectButton();
 
     await waitFor(() => {
       expect(

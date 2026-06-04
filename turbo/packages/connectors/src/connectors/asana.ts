@@ -16,15 +16,28 @@ export const asana = {
           clientIdEnv: "ASANA_OAUTH_CLIENT_ID",
           clientSecretEnv: "ASANA_OAUTH_CLIENT_SECRET",
         },
+        storage: {
+          secrets: ["ASANA_ACCESS_TOKEN", "ASANA_REFRESH_TOKEN"],
+          variables: [],
+        },
         grant: {
           kind: "auth-code",
-          tokenUrl: "https://app.asana.com/-/oauth_token",
           scopes: [],
+          outputs: {
+            accessToken: "$secrets.ASANA_ACCESS_TOKEN",
+            refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
+          },
         },
         access: {
           kind: "refresh-token",
-          accessToken: "ASANA_ACCESS_TOKEN",
-          refreshToken: "ASANA_REFRESH_TOKEN",
+          inputs: {
+            refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
+          },
+          outputs: {
+            accessToken: "$secrets.ASANA_ACCESS_TOKEN",
+            refreshToken: "$secrets.ASANA_REFRESH_TOKEN",
+          },
+          refreshableSecrets: ["ASANA_ACCESS_TOKEN"],
           envBindings: {
             ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
           },

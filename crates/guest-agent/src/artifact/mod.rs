@@ -1,7 +1,7 @@
 //! VAS artifact upload — SHA-256 hashing, tar.gz creation, S3 presigned upload.
 //!
-//! Flow (caller first walks the mount via [`walk_files`], then invokes
-//! [`create_snapshot`] with the pre-walked file list):
+//! Flow (caller first walks the mount via [`walk_files_for_checkpoint`], then
+//! invokes [`create_snapshot`] with the pre-walked file list):
 //! 1. POST `/storages/prepare` with file list → get presigned URLs
 //! 2. If deduplicated, POST `/storages/commit` to update HEAD
 //! 3. Create tar.gz archive
@@ -28,7 +28,7 @@ use std::path::PathBuf;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub(crate) struct FileEntry {
     pub(crate) path: String,
     pub(crate) hash: String,
@@ -49,25 +49,82 @@ pub(crate) struct CreateSnapshotRequest<'a> {
     pub(crate) parent_version_id: &'a str,
 }
 
-/// Walk `mount_path` in a blocking task and collect `FileEntry` records,
-/// recording the hash-compute op and emitting a "Found N files" log. Exposed
-/// so the checkpoint step can pre-walk once, decide whether to skip, and reuse
-/// the result for `create_snapshot` without a second walk.
-pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, AgentError> {
+#[derive(Debug)]
+pub(crate) enum WalkFilesError {
+    Execution(String),
+    Checkpoint {
+        message: String,
+        root_not_found: bool,
+        elapsed: std::time::Duration,
+    },
+}
+
+impl WalkFilesError {
+    pub(crate) fn is_root_not_found(&self) -> bool {
+        matches!(
+            self,
+            Self::Checkpoint {
+                root_not_found: true,
+                ..
+            }
+        )
+    }
+
+    pub(crate) fn into_agent_error(self) -> AgentError {
+        match self {
+            Self::Execution(message) => AgentError::Execution(message),
+            Self::Checkpoint {
+                message, elapsed, ..
+            } => {
+                record_sandbox_op("artifact_hash_compute", elapsed, false, Some(&message));
+                log_error!(LOG_TAG, "{message}");
+                AgentError::Checkpoint(message)
+            }
+        }
+    }
+}
+
+pub(crate) async fn walk_files_for_checkpoint(
+    mount_path: &str,
+) -> Result<Vec<FileEntry>, WalkFilesError> {
     log_info!(LOG_TAG, "Computing file hashes...");
     let hash_start = std::time::Instant::now();
     let mount = mount_path.to_string();
-    let files = tokio::task::spawn_blocking(move || collect_file_metadata(&mount))
-        .await
-        .map_err(|e| AgentError::Execution(format!("hash task panicked: {e}")))?;
+    let files_result =
+        match tokio::task::spawn_blocking(move || collect_file_metadata(&mount)).await {
+            Ok(result) => result,
+            Err(e) => {
+                let message = format!("hash task panicked: {e}");
+                record_sandbox_op(
+                    "artifact_hash_compute",
+                    hash_start.elapsed(),
+                    false,
+                    Some(&message),
+                );
+                return Err(WalkFilesError::Execution(message));
+            }
+        };
+    let files = match files_result {
+        Ok(files) => files,
+        Err(e) => {
+            let root_not_found = e.is_root_not_found();
+            let message = format!("Failed to walk artifact files: {e}");
+            return Err(WalkFilesError::Checkpoint {
+                message,
+                root_not_found,
+                elapsed: hash_start.elapsed(),
+            });
+        }
+    };
     record_sandbox_op("artifact_hash_compute", hash_start.elapsed(), true, None);
     log_info!(LOG_TAG, "Found {} files", files.len());
     Ok(files)
 }
 
 /// Create a VAS snapshot using direct S3 upload. Caller provides the
-/// pre-walked file list (see [`walk_files`]) — this lets the checkpoint step
-/// share one walk between its skip-check fingerprint and the snapshot upload.
+/// pre-walked file list (see [`walk_files_for_checkpoint`]) — this lets the
+/// checkpoint step share one walk between its skip-check fingerprint and the
+/// snapshot upload.
 pub(crate) async fn create_snapshot(
     http: &HttpClient,
     request: CreateSnapshotRequest<'_>,
@@ -407,7 +464,7 @@ mod tests {
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
         std::fs::write(root.join("target.txt"), "content").unwrap();
-        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let expected_files = file_json_values(&files);
         let total_size: u64 = files.iter().map(|file| file.size).sum();
@@ -528,7 +585,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
-        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let expected_files = file_json_values(&files);
         let archive_url = format!("{}/test/artifact-archive-upload", server.base_url());
@@ -626,7 +683,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(root.join("alpha.txt"), "alpha").unwrap();
-        let mut files = archive::collect_file_metadata(root.to_str().unwrap());
+        let mut files = archive::collect_file_metadata(root.to_str().unwrap()).unwrap();
         files.sort_by(|left, right| left.path.cmp(&right.path));
         let expected_files = file_json_values(&files);
 

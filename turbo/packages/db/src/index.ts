@@ -60,6 +60,7 @@ import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
+import * as userPermissionGrantSchema from "./schema/user-permission-grant";
 import * as zeroRunSchema from "./schema/zero-run";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as runUploadedFileSchema from "./schema/run-uploaded-file";
@@ -74,6 +75,9 @@ import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as hostedSiteSchema from "./schema/hosted-site";
 import * as builtInGenerationJobSchema from "./schema/built-in-generation-job";
+import * as bankingSchema from "./schema/banking";
+import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
+import * as memoryChangeItemSchema from "./schema/memory-change-item";
 
 export const schema = {
   ...userSchema,
@@ -138,6 +142,7 @@ export const schema = {
   ...skillSchema,
   ...usagePricingSchema,
   ...zeroAgentSchema,
+  ...userPermissionGrantSchema,
   ...zeroRunSchema,
   ...storageVersionLineageSchema,
   ...runUploadedFileSchema,
@@ -152,4 +157,7 @@ export const schema = {
   ...orgCustomConnectorSecretSchema,
   ...hostedSiteSchema,
   ...builtInGenerationJobSchema,
+  ...bankingSchema,
+  ...memoryChangeSummarySchema,
+  ...memoryChangeItemSchema,
 };

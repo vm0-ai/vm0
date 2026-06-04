@@ -19,6 +19,33 @@ use crate::{
 };
 
 #[tokio::test]
+async fn wait_for_connection_oversized_timeout_returns_invalid_input() {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let base = std::env::temp_dir().join(format!(
+        "vsock-host-timeout-overflow-{}-{unique}",
+        std::process::id()
+    ));
+    let listener =
+        std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+    let base = base.display().to_string();
+
+    let result = VsockHost::wait_for_connection(&base, Duration::MAX).await;
+    let error_kind = match result {
+        Ok(_) => panic!("oversized timeout should return InvalidInput"),
+        Err(error) => error.kind(),
+    };
+
+    assert_eq!(error_kind, io::ErrorKind::InvalidInput);
+    assert!(
+        !listener.exists(),
+        "invalid timeout should not create listener socket"
+    );
+}
+
+#[tokio::test]
 async fn wait_for_connection_removes_listener_socket_on_abort() {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

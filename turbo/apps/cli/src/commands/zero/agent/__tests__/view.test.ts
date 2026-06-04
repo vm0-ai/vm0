@@ -18,7 +18,6 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
-  permissionPolicies: null,
 };
 
 function mockConnectorListHandler(
@@ -32,6 +31,30 @@ function mockConnectorListHandler(
       connectorProvidedEnvNames: [],
     });
   });
+}
+
+function mockUserPermissionGrantsHandler(
+  grants: Record<string, unknown>[] = [],
+) {
+  return http.get(
+    "http://localhost:3000/api/zero/user-permission-grants",
+    () => {
+      return HttpResponse.json(grants);
+    },
+  );
+}
+
+function makePermissionGrant(overrides: Record<string, unknown> = {}) {
+  return {
+    agentId: "comp_abc123",
+    connectorRef: "slack",
+    permission: "channels:read",
+    action: "allow",
+    expiresAt: null,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+    ...overrides,
+  };
 }
 
 function makeConnector(overrides: Record<string, unknown> = {}) {
@@ -63,6 +86,7 @@ describe("zero agent view command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
+    server.use(mockUserPermissionGrantsHandler());
   });
 
   afterEach(() => {
@@ -170,22 +194,10 @@ describe("zero agent view command", () => {
       expect(logCalls).not.toContain("Avatar:");
     });
 
-    it("should show permission summary with permission policies", async () => {
+    it("should resolve connector summary from connector defaults", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json({
-            ...mockAgent,
-            permissionPolicies: {
-              slack: {
-                policies: {
-                  "channels:read": "allow",
-                  "chat:write": "deny",
-                  "reactions:read": "allow",
-                  admin: "deny",
-                },
-              },
-            },
-          });
+          return HttpResponse.json(mockAgent);
         }),
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
@@ -199,7 +211,8 @@ describe("zero agent view command", () => {
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toMatch(/slack \(\d+\/\d+ allowed\)/);
+      expect(logCalls).toContain("slack");
+      expect(logCalls).not.toContain("slack (0/");
     });
 
     it("should show instructions content with --instructions flag", async () => {
@@ -274,16 +287,6 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            permissionPolicies: {
-              slack: {
-                policies: {
-                  "channels:read": "allow",
-                  "chat:write": "deny",
-                  "reactions:read": "allow",
-                  admin: "ask",
-                },
-              },
-            },
           });
         }),
         http.get(
@@ -292,6 +295,20 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: ["slack"] });
           },
         ),
+        mockUserPermissionGrantsHandler([
+          makePermissionGrant({
+            permission: "channels:read",
+            action: "allow",
+          }),
+          makePermissionGrant({
+            permission: "chat:write",
+            action: "deny",
+          }),
+          makePermissionGrant({
+            permission: "reactions:read",
+            action: "allow",
+          }),
+        ]),
         mockConnectorListHandler(),
       );
 
@@ -306,7 +323,6 @@ describe("zero agent view command", () => {
       expect(logCalls).toMatch(/slack \(\d+\/\d+ allowed\)/);
       expect(logCalls).toContain("✓");
       expect(logCalls).toContain("✗");
-      expect(logCalls).toContain("?");
     });
 
     it("should show full access for connectors without policies", async () => {

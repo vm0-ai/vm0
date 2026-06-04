@@ -7,7 +7,6 @@ through the X firewall and buffers them for aggregate platform upload.
 import json
 import urllib.parse
 import uuid
-import zlib
 from collections.abc import Callable, Iterable
 from typing import TypedDict
 
@@ -20,8 +19,10 @@ from logging_utils import log_proxy_entry
 
 from ...buffer import UsageEvent, buffer_usage_events
 from ...idempotency import USAGE_EVENT_NAMESPACE_CONNECTOR
-from ...json_selective import JsonSelectiveExtractor, ScalarField
+from ...json_selective import JsonExtractionResult, JsonSelectiveExtractor, ScalarField
+from .response_parser import ConnectorResponseParser
 from .x_billing import (
+    bucket_needs_body_refinement,
     classify_bucket,
     classify_includes_bucket,
     refine_bucket_with_body,
@@ -50,8 +51,15 @@ _STREAM_ENDPOINTS = frozenset(
     }
 )
 
+_COUNT_ENDPOINTS = frozenset(
+    {
+        "/2/tweets/counts/recent",
+        "/2/tweets/counts/all",
+    }
+)
 
-def is_stream_path(path: str) -> bool:
+
+def _is_stream_path(path: str) -> bool:
     """Return True when *path* is one of the X v2 NDJSON streaming endpoints.
 
     Exact match only — ``/2/tweets/search/stream/rules`` (rules management)
@@ -60,12 +68,34 @@ def is_stream_path(path: str) -> bool:
     return path in _STREAM_ENDPOINTS
 
 
+def _is_count_path(path: str) -> bool:
+    return path in _COUNT_ENDPOINTS
+
+
+def _strip_request_target_query(request_target: str) -> str:
+    query_start = request_target.find("?")
+    path_or_url = request_target if query_start == -1 else request_target[:query_start]
+    scheme_separator = path_or_url.find("://")
+    if scheme_separator != -1 and path_or_url[:scheme_separator].lower() in {"http", "https"}:
+        authority_start = scheme_separator + len("://")
+        path_start = path_or_url.find("/", authority_start)
+        return "" if path_start == -1 else path_or_url[path_start:]
+    return path_or_url
+
+
 # Single NDJSON line cap — matches ``LARGE_RESPONSE_DECOMPRESS_LIMIT`` in
 # ``body_utils.py``.  A real X tweet line (``data`` + ``includes`` +
 # ``matching_rules`` with full expansion) should never approach this size;
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
-MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
+_MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
+_REQUEST_BODY_REFINEMENT_LIMIT = body_utils.STREAM_BUFFER_LIMIT
+_REQUEST_QUERY_HINT_MAX_BYTES = 64 * 1024
+_REQUEST_QUERY_HINT_KEY_MAX_CHARS = 128
+_REQUEST_QUERY_HINT_VALUE_MAX_BYTES = 16 * 1024
+_REQUEST_ID_LIKE_QUERY_KEYS = frozenset({"ids", "usernames"})
+_REQUEST_MAX_RESULTS_QUERY_KEY = "max_results"
+_ASCII_CODEPOINT_LIMIT = 128
 
 _X_JSON_RESULT_COUNT_FIELDS = {
     ("meta", "result_count"): ScalarField("int", max_bytes=64),
@@ -73,12 +103,61 @@ _X_JSON_RESULT_COUNT_FIELDS = {
 }
 
 
-class NdjsonState(TypedDict):
+def _as_non_bool_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _create_x_json_selective_extractor() -> JsonSelectiveExtractor:
+    return JsonSelectiveExtractor(
+        scalar_fields=_X_JSON_RESULT_COUNT_FIELDS,
+        array_count_paths={("data",), ("errors",)},
+        wildcard_array_count_paths={("includes", "*")},
+        object_presence_paths={(), ("data",)},
+    )
+
+
+def _parse_x_json_response_fields(extracted: JsonExtractionResult) -> dict:
+    result: dict = {}
+
+    data_count = extracted.array_counts.get(("data",))
+    if data_count is not None:
+        result["response_data_count"] = data_count
+    elif ("data",) in extracted.object_present:
+        result["response_data_count"] = 1
+
+    errors_count = extracted.array_counts.get(("errors",), 0)
+    if errors_count:
+        result["response_errors_count"] = errors_count
+
+    includes = extracted.wildcard_array_counts.get(("includes", "*"), {})
+    if includes:
+        result["response_includes"] = dict(includes)
+
+    result_count = _as_non_bool_int(extracted.values.get(("meta", "result_count")))
+    if result_count is not None:
+        result["response_result_count"] = result_count
+
+    total_tweet_count = _as_non_bool_int(extracted.values.get(("meta", "total_tweet_count")))
+    if total_tweet_count is not None:
+        result["response_total_tweet_count"] = total_tweet_count
+
+    return result
+
+
+def _parse_x_json_response_fields_from_body(body: bytes) -> dict | None:
+    extractor = _create_x_json_selective_extractor()
+    extractor.feed(body)
+    extracted = extractor.finish()
+    if not extracted.complete or () not in extracted.object_present:
+        return None
+    return _parse_x_json_response_fields(extracted)
+
+
+class _NdjsonState(TypedDict):
     """Accumulated parser state for an X NDJSON stream.
 
-    Populated by :func:`create_ndjson_extractor`'s ``parse_chunk`` and
-    read by :func:`_parse_response_metadata` when emitting the billing
-    log entry.
+    Populated by :class:`_NdjsonExtractor` and read by
+    :func:`_parse_response_metadata` when emitting the billing log entry.
     """
 
     data_count: int
@@ -91,8 +170,8 @@ class NdjsonState(TypedDict):
     """Lines that failed JSON decoding or exceeded the single-line safety cap."""
 
 
-def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
-    """Create an incremental NDJSON parser for X v2 streaming responses.
+class _NdjsonExtractor:
+    """Incremental NDJSON parser for X v2 streaming responses.
 
     X v2 streaming endpoints deliver one JSON object per line separated by
     ``\\n`` (or ``\\r\\n``), with blank lines as keep-alives.  Each tweet
@@ -100,9 +179,8 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
 
         {"data": {...tweet...}, "includes": {...}, "matching_rules": [...]}
 
-    Returns ``(parse_chunk, state)`` where *parse_chunk* processes raw
-    response bytes incrementally (so we never buffer the full body) and
-    *state* is a dict that accumulates:
+    ``feed`` processes raw response bytes incrementally so we never buffer the
+    full body. ``state`` is a dict that accumulates:
 
     - ``data_count``: int — number of lines whose top-level ``data`` is a
       dict (one tweet per line).  Lines whose ``data`` is an array or
@@ -115,89 +193,97 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
 
     The parser keeps a ``line_buf`` holding the in-flight partial line
     across chunk boundaries.  If a single line ever exceeds
-    :data:`MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
-    terminating newline (malformed / hostile upstream).  A truncated
-    trailing line at connection close (no final ``\\n``) stays in the buffer
-    uncounted — worst-case under-count is 1.
+    :data:`_MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
+    terminating newline (malformed / hostile upstream). ``finish`` finalizes a
+    complete trailing line that arrived without a final ``\\n`` and treats
+    malformed or incomplete trailing data as a failed, unbilled line.
     """
-    state: NdjsonState = {
-        "data_count": 0,
-        "includes": {},
-        "lines_parsed": 0,
-        "lines_failed": 0,
-    }
-    # Mutate in-place (``line_buf[:] = ...``, ``extend(...)``) throughout
-    # ``parse_chunk`` — captured by the closure.  Rebinding via
-    # ``line_buf = ...`` would create a new local and lose cross-call state.
-    line_buf = bytearray()
-    discarding_overlong_line = False
 
-    def parse_chunk(chunk: bytes) -> None:
-        nonlocal discarding_overlong_line
+    def __init__(self) -> None:
+        self.state: _NdjsonState = {
+            "data_count": 0,
+            "includes": {},
+            "lines_parsed": 0,
+            "lines_failed": 0,
+        }
+        self._line_buf = bytearray()
+        self._discarding_overlong_line = False
+        self._finished = False
 
+    def feed(self, chunk: bytes) -> None:
+        """Process one decoded response-body chunk."""
         start = 0
         while start < len(chunk):
             newline = chunk.find(b"\n", start)
             end = len(chunk) if newline == -1 else newline
             fragment_len = end - start
 
-            if discarding_overlong_line:
+            if self._discarding_overlong_line:
                 if newline == -1:
                     return
-                discarding_overlong_line = False
+                self._discarding_overlong_line = False
                 start = newline + 1
                 continue
 
-            if len(line_buf) + fragment_len > MAX_NDJSON_LINE_BYTES:
-                line_buf[:] = b""
-                state["lines_failed"] += 1
+            if len(self._line_buf) + fragment_len > _MAX_NDJSON_LINE_BYTES:
+                self._line_buf.clear()
+                self.state["lines_failed"] += 1
                 if newline == -1:
-                    discarding_overlong_line = True
+                    self._discarding_overlong_line = True
                     return
                 start = newline + 1
                 continue
 
-            line_buf.extend(chunk[start:end])
+            self._line_buf.extend(chunk[start:end])
             if newline == -1:
                 return
 
-            line = bytes(line_buf).rstrip(b"\r")
-            line_buf[:] = b""
-            if not line:
-                start = newline + 1
-                continue  # keep-alive blank line
-            try:
-                obj = json.loads(line)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                state["lines_failed"] += 1
-                start = newline + 1
-                continue
-            state["lines_parsed"] += 1
-            if not isinstance(obj, dict):
-                start = newline + 1
-                continue
-            if isinstance(obj.get("data"), dict):
-                state["data_count"] += 1
-            inc = obj.get("includes")
-            if isinstance(inc, dict):
-                for k, v in inc.items():
-                    if isinstance(v, list):
-                        state["includes"][k] = state["includes"].get(k, 0) + len(v)
+            line = bytes(self._line_buf)
+            self._line_buf.clear()
+            self._parse_line(line)
             start = newline + 1
 
-    return parse_chunk, state
+    def finish(self) -> None:
+        """Finalize a complete trailing line that was not newline-terminated."""
+        if self._finished:
+            return
+        self._finished = True
+        if self._discarding_overlong_line:
+            self._line_buf.clear()
+            self._discarding_overlong_line = False
+            return
+        if not self._line_buf:
+            return
+        line = bytes(self._line_buf)
+        self._line_buf.clear()
+        self._parse_line(line)
+
+    def _parse_line(self, raw_line: bytes) -> None:
+        line = raw_line.rstrip(b"\r")
+        if not line:
+            return  # keep-alive blank line
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.state["lines_failed"] += 1
+            return
+        self.state["lines_parsed"] += 1
+        if not isinstance(obj, dict):
+            return
+        if isinstance(obj.get("data"), dict):
+            self.state["data_count"] += 1
+        inc = obj.get("includes")
+        if isinstance(inc, dict):
+            for k, v in inc.items():
+                if isinstance(v, list):
+                    self.state["includes"][k] = self.state["includes"].get(k, 0) + len(v)
 
 
-class XJsonResponseExtractor:
+class _XJsonResponseExtractor:
     """Incrementally extract billing metadata from non-streaming X JSON."""
 
     def __init__(self) -> None:
-        self._extractor = JsonSelectiveExtractor(
-            scalar_fields=_X_JSON_RESULT_COUNT_FIELDS,
-            array_count_paths={("data",), ("errors",)},
-            wildcard_array_count_paths={("includes", "*")},
-            object_presence_paths={(), ("data",)},
-        )
+        self._extractor = _create_x_json_selective_extractor()
 
     def feed(self, chunk: bytes) -> None:
         self._extractor.feed(chunk)
@@ -211,33 +297,42 @@ class XJsonResponseExtractor:
             return result, None
 
         result["body_parsed"] = True
-        data_count = extracted.array_counts.get(("data",))
-        if data_count is not None:
-            result["response_data_count"] = data_count
-        elif ("data",) in extracted.object_present:
-            result["response_data_count"] = 1
-
-        errors_count = extracted.array_counts.get(("errors",), 0)
-        if errors_count:
-            result["response_errors_count"] = errors_count
-
-        includes = extracted.wildcard_array_counts.get(("includes", "*"), {})
-        if includes:
-            result["response_includes"] = dict(includes)
-
-        rcs = [
-            value
-            for path in (("meta", "result_count"), ("meta", "total_tweet_count"))
-            if isinstance((value := extracted.values.get(path)), int)
-        ]
-        if rcs:
-            result["response_result_count"] = max(rcs)
-
+        result.update(_parse_x_json_response_fields(extracted))
         return result, None
 
 
-def create_json_response_extractor() -> XJsonResponseExtractor:
-    return XJsonResponseExtractor()
+def create_response_parser(
+    flow: http.HTTPFlow, original_url: str
+) -> ConnectorResponseParser | None:
+    """Create the X response-body parser needed for this flow, if any."""
+    if not flow.response:
+        return None
+
+    status_code = flow.response.status_code
+    if _HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN:
+        # Use the dispatcher-required original URL so parser registration and
+        # final request metadata cannot diverge.
+        stream_path = urllib.parse.urlparse(original_url).path
+        if _is_stream_path(stream_path):
+            extractor = _NdjsonExtractor()
+            # Deliberately NOT "model_provider_usage" — that key routes through
+            # report_model_provider_usage and triggers the model-provider webhook.
+            # x_ndjson_state is only consumed by report_connector_usage.
+            flow.metadata[metadata_keys.X_NDJSON_STATE] = extractor.state
+            return ConnectorResponseParser(feed=extractor.feed, finish=extractor.finish)
+
+    if not (_HTTP_STATUS_OK_MIN <= status_code < _HTTP_STATUS_REDIRECT_MIN):
+        return None
+
+    extractor = _XJsonResponseExtractor()
+
+    def finish_json_state() -> None:
+        state, error = extractor.finish()
+        if error:
+            state["parse_error"] = error
+        flow.metadata[metadata_keys.X_JSON_STATE] = state
+
+    return ConnectorResponseParser(feed=extractor.feed, finish=finish_json_state)
 
 
 def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:
@@ -245,43 +340,123 @@ def _count_non_empty_comma_segments(values: Iterable[str]) -> int | None:
     return count or None
 
 
-def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
+def _empty_request_query_fallback_hints() -> dict:
+    return {"request_ids_count": None, "max_results": None}
+
+
+def _parse_request_metadata(original_url: str) -> dict:
     """Extract billing-relevant query params from an X API request.
 
     Returns a dict with:
-      - ``request_ids_count``: int | None — total comma-separated count
-        across all ``?ids=`` and ``?usernames=`` params (None when both
-        are absent or contain no non-empty segments).  ``usernames`` is
-        folded in because ``GET /2/users/by`` uses it instead of ``ids`` for
-        batch user lookup; both signal the same "this many resources" billing
-        dimension.
-      - ``has_expansions``: bool — whether ``?expansions=`` is present.
-      - ``max_results``: int | None — value of ``?max_results=``, used
-        as an upper-bound fallback when the response body cannot be parsed.
-      - ``is_stream``: bool — True when the request path is one of the X v2
-        NDJSON streaming endpoints (see :data:`_STREAM_ENDPOINTS`).
+      - ``is_count_endpoint``: bool — True when the request path is an X Post
+        Counts endpoint whose ``data`` array contains time buckets instead of
+        returned posts.
 
-    Reads from ``flow.metadata[metadata_keys.ORIGINAL_URL]`` (set by the request handler
-    via ``url_utils.get_original_url``) rather than ``pretty_url`` to stay
-    consistent with the rest of the addon.
+    Parses the dispatcher-required original URL rather than ``pretty_url`` to
+    stay consistent with the rest of the addon.
     """
-    parsed = urllib.parse.urlparse(flow.metadata.get(metadata_keys.ORIGINAL_URL, ""))
-    qs = urllib.parse.parse_qs(parsed.query)
-    id_like_values = qs.get("ids", []) + qs.get("usernames", [])
-    ids_count = _count_non_empty_comma_segments(id_like_values)
-    max_values = qs.get("max_results", [])
+    return {"is_count_endpoint": _is_count_path(urllib.parse.urlparse(original_url).path)}
+
+
+def _decode_request_query_hint_key(raw_key: str) -> str | None:
+    if len(raw_key) > _REQUEST_QUERY_HINT_KEY_MAX_CHARS:
+        return None
+    if raw_key in _REQUEST_ID_LIKE_QUERY_KEYS or raw_key == _REQUEST_MAX_RESULTS_QUERY_KEY:
+        return raw_key
+    if "%" not in raw_key and "+" not in raw_key:
+        return None
+
+    decoded_key = urllib.parse.unquote_plus(raw_key)
+    if decoded_key in _REQUEST_ID_LIKE_QUERY_KEYS or decoded_key == _REQUEST_MAX_RESULTS_QUERY_KEY:
+        return decoded_key
+    return None
+
+
+def _slice_exceeds_query_hint_byte_limit(value: str, start: int, end: int, max_bytes: int) -> bool:
+    if end - start > max_bytes:
+        return True
+
+    size = 0
+    for index in range(start, end):
+        char = value[index]
+        size += 1 if ord(char) < _ASCII_CODEPOINT_LIMIT else len(char.encode("utf-8"))
+        if size > max_bytes:
+            return True
+    return False
+
+
+def _exceeds_query_hint_byte_limit(value: str, max_bytes: int) -> bool:
+    return _slice_exceeds_query_hint_byte_limit(value, 0, len(value), max_bytes)
+
+
+def _get_bounded_original_request_query(original_url: str) -> str | None:
+    query_start = original_url.find("?")
+    if query_start == -1:
+        return ""
+
+    value_start = query_start + 1
+    fragment_start = original_url.find("#", value_start)
+    value_end = len(original_url) if fragment_start == -1 else fragment_start
+    if _slice_exceeds_query_hint_byte_limit(
+        original_url, value_start, value_end, _REQUEST_QUERY_HINT_MAX_BYTES
+    ):
+        return None
+
+    if fragment_start == -1:
+        return original_url[value_start:]
+    return original_url[value_start:fragment_start]
+
+
+def _parse_request_query_fallback_hints(original_url: str) -> dict:
+    """Extract request-side count hints only for unparseable GET responses.
+
+    This intentionally does not call ``parse_qs``.  Successful X responses
+    normally bill from the parsed response body, so query hints are only a
+    fallback for lost response visibility.  The scanner therefore looks only
+    for the small key set that can affect billing, preserves ``parse_qs``'
+    blank-value and ``+`` behavior for those keys, and caps work on hostile
+    query strings instead of materializing every parameter.
+    """
+    query = _get_bounded_original_request_query(original_url)
+    if query is None:
+        return _empty_request_query_fallback_hints()
+
+    ids_count = 0
     max_results: int | None = None
-    if max_values:
-        try:
-            max_results = int(max_values[0])
-        except ValueError:
-            max_results = None
-    return {
-        "request_ids_count": ids_count,
-        "has_expansions": "expansions" in qs,
-        "max_results": max_results,
-        "is_stream": is_stream_path(parsed.path),
-    }
+    max_results_seen = False
+    start = 0
+    while start <= len(query):
+        end = query.find("&", start)
+        if end == -1:
+            end = len(query)
+        raw_pair = query[start:end]
+        if raw_pair:
+            raw_key, separator, raw_value = raw_pair.partition("=")
+            if separator and raw_value:
+                hint_key = _decode_request_query_hint_key(raw_key)
+                if hint_key is not None:
+                    if _exceeds_query_hint_byte_limit(
+                        raw_value, _REQUEST_QUERY_HINT_VALUE_MAX_BYTES
+                    ):
+                        return _empty_request_query_fallback_hints()
+
+                    decoded_value = urllib.parse.unquote_plus(raw_value)
+                    if hint_key in _REQUEST_ID_LIKE_QUERY_KEYS:
+                        value_count = _count_non_empty_comma_segments((decoded_value,))
+                        if value_count is not None:
+                            ids_count += value_count
+                    elif hint_key == _REQUEST_MAX_RESULTS_QUERY_KEY and not max_results_seen:
+                        max_results_seen = True
+                        try:
+                            max_results = int(decoded_value)
+                        except ValueError:
+                            max_results = None
+
+        if end == len(query):
+            break
+        start = end + 1
+
+    return {"request_ids_count": ids_count or None, "max_results": max_results}
 
 
 def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
@@ -293,18 +468,17 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
       - ``response_data_count``: int — ``len(data)`` for a list payload,
         ``1`` for a single object payload.
       - ``response_includes``: dict[str, int] — counts per ``includes.<key>``.
-      - ``response_result_count``: int — total matched count.  Sourced
-        from ``meta.result_count`` (search / paginated endpoints) or
-        ``meta.total_tweet_count`` (``/2/tweets/counts/*``, where ``data``
-        carries time buckets, not tweets, and the real count lives in
-        ``meta``).  Both fields are alternative spellings of the same
-        billing dimension, so we collapse them into one log key.
+      - ``response_result_count``: int — ``meta.result_count`` from search
+        / paginated endpoints.
+      - ``response_total_tweet_count``: int — ``meta.total_tweet_count``
+        from ``/2/tweets/counts/*`` endpoints, where ``data`` carries time
+        buckets, not tweets.
 
     For X NDJSON streaming endpoints, the responseheaders hook registers an
     incremental parser that populates ``flow.metadata[metadata_keys.X_NDJSON_STATE]``
     as response bytes arrive.  When that state is present we return its
     accumulated counters directly (``body_format: "ndjson"``) and skip
-    the legacy buffered ``json.loads`` fallback, since stream buffers are
+    the legacy buffered fallback, since stream buffers are
     capped at ``STREAM_BUFFER_LIMIT`` and don't contain the full response.
     For streams ``body_truncated`` is always ``False`` — the incremental
     parser saw every byte even if the forensic ``stream_buffer`` filled up.
@@ -352,43 +526,12 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     body = body_utils.decompress_body(
         bytes(buf), flow.response.headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
     )
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        return result
-    if not isinstance(data, dict):
+    fields = _parse_x_json_response_fields_from_body(body)
+    if fields is None:
         return result
 
     result["body_parsed"] = True
-
-    payload = data.get("data")
-    if isinstance(payload, list):
-        result["response_data_count"] = len(payload)
-    elif isinstance(payload, dict):
-        result["response_data_count"] = 1
-
-    errors = data.get("errors")
-    if isinstance(errors, list) and errors:
-        result["response_errors_count"] = len(errors)
-
-    includes = data.get("includes")
-    if isinstance(includes, dict):
-        counts = {k: len(v) for k, v in includes.items() if isinstance(v, list)}
-        if counts:
-            result["response_includes"] = counts
-
-    meta = data.get("meta")
-    if isinstance(meta, dict):
-        # ``result_count`` is the standard search/paginated field;
-        # ``total_tweet_count`` is the counts-endpoint variant where
-        # ``data`` is time buckets rather than tweets.  Prefer whichever
-        # is present (mutually exclusive in practice; if both appear,
-        # take the larger to stay on the safe side of billing).
-        candidates = [meta.get("result_count"), meta.get("total_tweet_count")]
-        rcs = [c for c in candidates if isinstance(c, int)]
-        if rcs:
-            result["response_result_count"] = max(rcs)
-
+    result.update(fields)
     return result
 
 
@@ -415,11 +558,13 @@ def _compute_billable_counts(
     data are billed"), so the primary count must reflect what was
     actually in the response, not what was requested.
 
-    - **Body parsed**: ``max(data_count, result_count)`` — trust the
-      actual response.  Soft errors (HTTP 200 + ``errors`` array, no
-      ``data``) and zero-result searches yield primary 0, which is
-      skipped from the returned dict so no empty ``usage_event`` row
-      is created.
+    - **Body parsed, count endpoint**: use ``meta.total_tweet_count``.
+      ``data`` is a time-bucket array for count endpoints, not returned
+      posts.
+    - **Body parsed, other endpoints**: ``max(data_count, result_count)`` —
+      trust the actual response.  Soft errors (HTTP 200 + ``errors`` array,
+      no ``data``) and zero-result searches yield primary 0, which is skipped
+      from the returned dict so no empty ``usage_event`` row is created.
     - **Body NOT parsed**: fall back to request-side hints
       ``max(ids_count, max_results, 1)``.  When the URL also carries
       no hints we emit no ``usage_event`` row; :func:`report_usage`
@@ -436,21 +581,41 @@ def _compute_billable_counts(
     result = resp_meta.get("response_result_count") or 0
 
     if resp_meta.get("body_parsed"):
-        # Body was parsed — trust actual response counts.
-        # Soft errors (no data field) and empty searches correctly yield 0.
-        primary = max(data, result)
+        if req_meta.get("is_count_endpoint"):
+            total = _as_non_bool_int(resp_meta.get("response_total_tweet_count"))
+            if total is None:
+                log_warn(
+                    "X count endpoint response missing total_tweet_count; skipping primary billing",
+                    {
+                        "category": endpoint_bucket,
+                        "response_data_count": data,
+                    },
+                )
+                primary = 0
+            else:
+                primary = total
+        else:
+            # Body was parsed — trust actual response counts.
+            # Soft errors (no data field) and empty searches correctly yield 0.
+            primary = max(data, result)
     else:
-        # Body couldn't be parsed — fall back to request-side hints.
-        # With no hints at all we leave primary at 0 and let the caller
-        # log this loss of visibility; blind-guessing a quantity risks
-        # over-charging by a large factor on small real responses.
-        ids = req_meta.get("request_ids_count") or 0
-        max_r = req_meta.get("max_results") or 0
-        primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
+        if req_meta.get("is_count_endpoint"):
+            primary = 0
+        else:
+            # Body couldn't be parsed — fall back to request-side hints.
+            # With no hints at all we leave primary at 0 and let the caller
+            # log this loss of visibility; blind-guessing a quantity risks
+            # over-charging by a large factor on small real responses.
+            ids = req_meta.get("request_ids_count") or 0
+            max_r = req_meta.get("max_results") or 0
+            primary = max(ids, max_r, 1) if any((ids, max_r)) else 0
 
     counts: dict[str, int] = {}
     if primary > 0:
         counts[endpoint_bucket] = primary
+
+    if req_meta.get("is_count_endpoint"):
+        return counts
 
     includes = resp_meta.get("response_includes") or {}
     for key, n in includes.items():
@@ -472,7 +637,7 @@ def _compute_billable_counts(
     return counts
 
 
-def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
+def report_usage(flow: http.HTTPFlow, run_id: str, original_url: str) -> None:
     """Compute billable resource counts and buffer them for upload.
 
     Derives per-permission billable resource counts from the request and
@@ -481,9 +646,10 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
 
     **Caller contract**: the dispatcher in
     :mod:`usage.providers.connectors` guarantees ``run_id`` is non-empty,
-    ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True, and
-    ``flow.metadata[metadata_keys.FIREWALL_NAME] == "x"`` before calling this.  Those
-    gates are not re-checked here.
+    ``flow.metadata[metadata_keys.FIREWALL_BILLABLE]`` is True,
+    ``flow.metadata[metadata_keys.FIREWALL_NAME] == "x"``, and
+    ``original_url`` is a non-empty string before calling this. Those gates are
+    not re-checked here.
 
     Additional X-specific skip conditions:
 
@@ -502,29 +668,38 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
     if not permission:
         return
     # mitmproxy's ``flow.request.path`` is the raw request-target — it
-    # includes the query string.  Strip it via ``urlsplit`` so
-    # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``)
-    # still match requests that carry ``?max_results=10`` or similar.
-    request_path = urllib.parse.urlsplit(flow.request.path).path
+    # includes the query string.  Strip it without parsing query params so
+    # literal-suffix overrides (e.g. ``/2/tweets/{id}/retweeted_by``) still
+    # match requests that carry ``?max_results=10`` or similar.
+    request_path = _strip_request_target_query(flow.request.path)
     endpoint_bucket = classify_bucket(permission, flow.request.method, request_path)
     if endpoint_bucket is None:
         return
-    try:
-        request_body = flow.request.content
-    except (zlib.error, ValueError):
-        # Bogus Content-Encoding on the request: stay on the conservative
-        # (more expensive) bucket, matching refine_bucket_with_body's own
-        # "never under-charge" rule for parse failures.
-        request_body = None
-    endpoint_bucket = refine_bucket_with_body(
-        endpoint_bucket,
-        flow.request.method,
-        request_path,
-        request_body,
-    )
+    if bucket_needs_body_refinement(endpoint_bucket, flow.request.method, request_path):
+        request_body = body_utils.decode_request_body_for_billing(
+            flow.request.raw_content,
+            flow.request.headers,
+            max_raw=_REQUEST_BODY_REFINEMENT_LIMIT,
+            max_decoded=_REQUEST_BODY_REFINEMENT_LIMIT,
+        )
+        endpoint_bucket = refine_bucket_with_body(
+            endpoint_bucket,
+            flow.request.method,
+            request_path,
+            request_body,
+        )
 
-    req_meta = _parse_request_metadata(flow)
+    req_meta = _parse_request_metadata(original_url)
     resp_meta = _parse_response_metadata(flow)
+    req_meta.update(
+        _parse_request_query_fallback_hints(original_url)
+        if (
+            flow.request.method == "GET"
+            and not req_meta["is_count_endpoint"]
+            and not resp_meta.get("body_parsed")
+        )
+        else _empty_request_query_fallback_hints()
+    )
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
 
     # Structured context common to every billing-side proxy log entry
@@ -536,7 +711,7 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         "firewall_name": firewall_name,
         "permission": permission,
         "method": flow.request.method,
-        "url": flow.request.url,
+        "url": original_url,
     }
 
     def _log_warn(message: str, extra: dict) -> None:
@@ -549,17 +724,19 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         flow.request.method, req_meta, resp_meta, endpoint_bucket, log_warn=_log_warn
     )
 
-    # Loud-but-zero billing path: GET with an unparseable response body
-    # AND no URL-side count hints.  We deliberately emit nothing rather
-    # than blind-guess a quantity — the error log carries enough context
-    # for ops to audit and, if needed, back-charge manually.  Use
-    # ``is None`` so a legitimate ``?max_results=0`` (no-op query) is
-    # distinguished from the absent-field case.
+    # Loud-but-zero billing path: GET with an unparseable response body and
+    # no reliable count source.  We deliberately emit nothing rather than
+    # blind-guess a quantity — the error log carries enough context for ops
+    # to audit and, if needed, back-charge manually.  Use ``is None`` so a
+    # legitimate ``?max_results=0`` (no-op query) is distinguished from the
+    # absent-field case.
+    missing_count_visibility = bool(req_meta.get("is_count_endpoint")) or (
+        req_meta.get("request_ids_count") is None and req_meta.get("max_results") is None
+    )
     if (
         flow.request.method == "GET"
         and not resp_meta.get("body_parsed")
-        and req_meta.get("request_ids_count") is None
-        and req_meta.get("max_results") is None
+        and missing_count_visibility
     ):
         log_extra: dict[str, object] = {
             "body_truncated": bool(resp_meta.get("body_truncated")),
@@ -570,7 +747,11 @@ def report_usage(flow: http.HTTPFlow, run_id: str) -> None:
         log_proxy_entry(
             proxy_log_path,
             "error",
-            "X response unparseable and request carries no count hints — skipping billing",
+            (
+                "X count endpoint response unparseable — skipping billing"
+                if req_meta.get("is_count_endpoint")
+                else "X response unparseable and request carries no count hints — skipping billing"
+            ),
             **log_context,
             **log_extra,
         )

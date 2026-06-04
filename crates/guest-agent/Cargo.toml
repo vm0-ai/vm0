@@ -1,6 +1,6 @@
 [package]
 name = "guest-agent"
-version = "0.33.1"
+version = "0.34.8"
 edition.workspace = true
 
 [dependencies]
@@ -34,6 +34,10 @@ nix = { workspace = true, features = ["inotify"] }
 vsock-host.workspace = true
 vsock-guest = { workspace = true, features = ["test-support"] }
 vsock-proto.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
 
 [lints]
 workspace = true

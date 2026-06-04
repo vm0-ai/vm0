@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import { getDeviceAuthGrantConfig } from "../grant-config";
 import type {
-  OAuthDeviceAuthPollResult,
+  OAuthDeviceAuthIncompleteResult,
   OAuthDeviceAuthStartResult,
+  OAuthTokenResultFields,
 } from "../types";
 import { throwOAuthError } from "../error";
 import {
@@ -17,7 +17,11 @@ export const TEST_OAUTH_DEVICE_VERIFICATION_URI =
   "https://oauth-device.test/device";
 export const TEST_OAUTH_DEVICE_ACCESS_SECRET_NAME =
   "TEST_OAUTH_DEVICE_ACCESS_TOKEN";
+export const TEST_OAUTH_DEVICE_API_ACCESS_SECRET_NAME =
+  "TEST_OAUTH_DEVICE_API_ACCESS_TOKEN";
 
+const TEST_OAUTH_DEVICE_AUTH_URL = "/api/test/oauth-provider/device/code";
+const TEST_OAUTH_DEVICE_TOKEN_URL = "/api/test/oauth-provider/token";
 const DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 
 const deviceAuthResponseSchema = z.object({
@@ -42,18 +46,28 @@ const tokenErrorResponseSchema = z.object({
   error_description: z.string().optional(),
 });
 
+type TestOAuthDeviceTokenResult = OAuthTokenResultFields & {
+  readonly outputs: {
+    readonly accessToken: string;
+  };
+};
+
+type TestOAuthDevicePollResult =
+  | OAuthDeviceAuthIncompleteResult
+  | {
+      readonly status: "complete";
+      readonly token: TestOAuthDeviceTokenResult;
+    };
+
 function getDeviceAuthUrl(): string {
   return resolveTestOAuthProviderUrl(
     "deviceAuthUrl",
-    getDeviceAuthGrantConfig("test-oauth-device").deviceAuthUrl,
+    TEST_OAUTH_DEVICE_AUTH_URL,
   );
 }
 
 function getDeviceTokenUrl(): string {
-  return resolveTestOAuthProviderUrl(
-    "tokenUrl",
-    getDeviceAuthGrantConfig("test-oauth-device").tokenUrl,
-  );
+  return resolveTestOAuthProviderUrl("tokenUrl", TEST_OAUTH_DEVICE_TOKEN_URL);
 }
 
 export async function startTestOAuthDeviceAuth(args: {
@@ -90,7 +104,7 @@ export async function startTestOAuthDeviceAuth(args: {
 function devicePollErrorResult(args: {
   readonly error: string;
   readonly errorDescription: string | undefined;
-}): OAuthDeviceAuthPollResult | null {
+}): OAuthDeviceAuthIncompleteResult | null {
   if (args.error === "authorization_pending") {
     return { status: "pending" };
   }
@@ -124,7 +138,7 @@ function devicePollErrorResult(args: {
 export async function pollTestOAuthDeviceAuth(args: {
   readonly clientId: string;
   readonly deviceCode: string;
-}): Promise<OAuthDeviceAuthPollResult> {
+}): Promise<TestOAuthDevicePollResult> {
   const response = await fetch(getDeviceTokenUrl(), {
     method: "POST",
     headers: {
@@ -167,8 +181,9 @@ export async function pollTestOAuthDeviceAuth(args: {
   return {
     status: "complete",
     token: {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token ?? null,
+      outputs: {
+        accessToken: data.access_token,
+      },
       expiresIn: data.expires_in,
       scopes: data.scope?.split(" ") ?? [],
       userInfo: {

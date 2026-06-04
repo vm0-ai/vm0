@@ -1,7 +1,9 @@
 import { z } from "zod";
 
-import { getAuthCodeGrantConfig } from "../grant-config";
+import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connectors";
 import { throwOAuthError } from "../error";
+
+const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 
 const GITHUB_AUTHORIZATION_URL = "https://github.com/login/oauth/authorize";
 
@@ -17,11 +19,11 @@ interface GitHubUserInfo {
  * Build GitHub OAuth authorization URL
  */
 export function buildGitHubAuthorizationUrl(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   redirectUri: string,
   state: string,
 ): string {
-  const authCodeGrant = getAuthCodeGrantConfig("github");
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -36,12 +38,12 @@ export function buildGitHubAuthorizationUrl(
  * Exchange authorization code for access token
  */
 export async function exchangeGitHubCode(
+  authCodeGrant: ConnectorAuthCodeGrantConfig,
   clientId: string,
   clientSecret: string,
   code: string,
   redirectUri?: string,
 ): Promise<{ accessToken: string; scopes: string[] }> {
-  const authCodeGrant = getAuthCodeGrantConfig("github");
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -51,7 +53,7 @@ export async function exchangeGitHubCode(
     body.set("redirect_uri", redirectUri);
   }
 
-  const response = await fetch(authCodeGrant.tokenUrl, {
+  const response = await fetch(GITHUB_TOKEN_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",

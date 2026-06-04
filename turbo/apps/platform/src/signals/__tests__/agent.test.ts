@@ -40,7 +40,6 @@ function mockAgentResponse(overrides: AgentOverrides = {}) {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    permissionPolicies: null,
     customSkills: [],
     modelProviderId: null,
     selectedModel: null,

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.19](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.18...vsock-host-v0.17.19) (2026-06-03)
+
+
+### Bug Fixes
+
+* **vsock-host:** guard connection timeout overflow ([#16022](https://github.com/vm0-ai/vm0/issues/16022)) ([f0fcb67](https://github.com/vm0-ai/vm0/commit/f0fcb672d9add32f298806b702d78c27aed8e2d3))
+
+## [0.17.18](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.17...vsock-host-v0.17.18) (2026-06-03)
+
+
+### Documentation
+
+* document vsock exec operation API ([#15954](https://github.com/vm0-ai/vm0/issues/15954)) ([dce4119](https://github.com/vm0-ai/vm0/commit/dce41199e9e642ada2a4c05ef2036fd3148721d5))
+
 ## [0.17.17](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.16...vsock-host-v0.17.17) (2026-05-28)
 
 ## [0.17.16](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.15...vsock-host-v0.17.16) (2026-05-27)

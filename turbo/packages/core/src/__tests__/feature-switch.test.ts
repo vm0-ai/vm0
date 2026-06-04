@@ -35,11 +35,21 @@ describe("isFeatureEnabled", () => {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.SkillsViewer, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
   });
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Lab, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.SkillsViewer, {
         orgId: "org_nonexistent",
       }),
     ).toBe(false);
@@ -90,14 +100,33 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatHeaderNewButton]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ChatMessageStartButton]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadRename]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
+      true,
+    );
+    expect(staffOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
+      true,
+    );
 
     const otherOrgStates = getAllFeatureStates({
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SkillsViewer]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SessionWorkspaceImageCache]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatScrollToBottomButton]).toBe(
+      true,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.ChatRecommendedFollowups]).toBe(
+      false,
+    );
   });
 
   it("should apply overrides to enable disabled features", () => {

@@ -12,6 +12,10 @@ export const jira = {
         label: "API Token",
         helpText:
           "1. Go to [Atlassian API token management](https://id.atlassian.com/manage-profile/security/api-tokens)\n2. Log in to your Atlassian account\n3. Click **Create API token**\n4. Enter a name that describes what the token is for\n5. Choose an expiration date (between 1 and 365 days)\n6. Click **Create**\n7. Click **Copy to clipboard** and save the token in a secure place (you cannot recover it later)",
+        storage: {
+          secrets: ["JIRA_API_TOKEN"],
+          variables: ["JIRA_DOMAIN", "JIRA_EMAIL"],
+        },
         grant: {
           kind: "manual",
           fields: {

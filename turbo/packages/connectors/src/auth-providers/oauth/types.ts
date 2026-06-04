@@ -1,18 +1,44 @@
 import type {
-  CONNECTOR_TYPES,
-  ConnectorAuthClientConfig,
-  ConnectorAuthProviderType,
+  AuthCodeGrantConnectorType,
+  ConnectorAuthCodeGrantConfig,
+  ConnectorAuthMethodIds,
+  ConnectorAuthCodeGrantAuthMethodId,
+  ConnectorDeviceAuthGrantAuthMethodId,
+  ConnectorAuthMethodIdsByRevokeKind,
+  ConnectorGrantOutputValues,
+  ConnectorRevokeInputValues,
+  ConnectorType,
   DeviceAuthGrantConnectorType,
+  TokenRevokeConnectorType,
 } from "@vm0/connectors/connectors";
+import type {
+  ConnectorAuthClientForMethod,
+  ConnectorAuthClientIdentityForMethod,
+} from "@vm0/connectors/connector-utils";
 
-export interface OAuthTokenResult {
-  accessToken: string;
-  refreshToken?: string | null;
+export interface OAuthTokenUserInfo {
+  readonly id: string;
+  readonly username: string | null;
+  readonly email: string | null;
+}
+
+export interface OAuthTokenResultFields {
   expiresIn?: number; // seconds until access token expires
   scopes: string[];
-  userInfo: { id: string; username: string | null; email: string | null };
+  userInfo: OAuthTokenUserInfo;
   extraConnectorSecrets?: Readonly<Record<string, string>>;
 }
+
+export type OAuthTokenResultBase = OAuthTokenResultFields & {
+  readonly outputs: Readonly<Record<string, string | null | undefined>>;
+};
+
+export type OAuthTokenResult<
+  T extends AuthCodeGrantConnectorType | DeviceAuthGrantConnectorType,
+  Method extends ConnectorAuthMethodIds<T>,
+> = OAuthTokenResultFields & {
+  readonly outputs: ConnectorGrantOutputValues<T, Method>;
+};
 
 /**
  * Result from buildAuthUrl when PKCE is required.
@@ -37,14 +63,6 @@ interface OAuthExchangeFlowArgs {
   readonly oauthContext?: string;
 }
 
-interface OAuthRefreshFlowArgs {
-  readonly refreshToken: string;
-}
-
-interface OAuthRevokeFlowArgs {
-  readonly accessToken: string;
-}
-
 interface OAuthDeviceAuthStartFlowArgs {
   readonly scopes: readonly string[];
 }
@@ -53,30 +71,28 @@ interface OAuthDeviceAuthPollFlowArgs {
   readonly deviceCode: string;
 }
 
-type OptionalClientCredentialArgs = {
-  readonly clientId?: string;
-  readonly clientSecret?: string;
-};
-
-export type OAuthAuthorizeArgs = OAuthAuthorizeFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthExchangeArgs = OAuthExchangeFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthRefreshArgs = OAuthRefreshFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthDeviceAuthStartArgs = OAuthDeviceAuthStartFlowArgs &
-  OptionalClientCredentialArgs;
-
-export type OAuthDeviceAuthPollArgs = OAuthDeviceAuthPollFlowArgs &
-  OptionalClientCredentialArgs;
-
 export interface OAuthRefreshResult {
   readonly accessToken: string;
   readonly refreshToken: string | null;
   readonly expiresIn?: number;
+}
+
+export function oauthRefreshResultToProviderResult(
+  result: OAuthRefreshResult,
+): {
+  readonly outputs: {
+    readonly accessToken: string;
+    readonly refreshToken?: string;
+  };
+  readonly expiresIn?: number;
+} {
+  return {
+    outputs: {
+      accessToken: result.accessToken,
+      ...(result.refreshToken ? { refreshToken: result.refreshToken } : {}),
+    },
+    ...(result.expiresIn === undefined ? {} : { expiresIn: result.expiresIn }),
+  };
 }
 
 export interface OAuthDeviceAuthStartResult {
@@ -97,9 +113,17 @@ export interface OAuthDeviceAuthSlowDownResult {
   readonly status: "slow_down";
 }
 
-export interface OAuthDeviceAuthCompleteResult {
+export interface OAuthDeviceAuthCompleteResultBase {
   readonly status: "complete";
-  readonly token: OAuthTokenResult;
+  readonly token: OAuthTokenResultBase;
+}
+
+export interface OAuthDeviceAuthCompleteResult<
+  T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
+> {
+  readonly status: "complete";
+  readonly token: OAuthTokenResult<T, Method>;
 }
 
 export interface OAuthDeviceAuthDeniedResult {
@@ -120,67 +144,79 @@ export interface OAuthDeviceAuthErrorResult {
   readonly errorDescription?: string;
 }
 
-export type OAuthDeviceAuthPollResult =
+export type OAuthDeviceAuthPollResultBase =
   | OAuthDeviceAuthPendingResult
   | OAuthDeviceAuthSlowDownResult
-  | OAuthDeviceAuthCompleteResult
+  | OAuthDeviceAuthCompleteResultBase
   | OAuthDeviceAuthDeniedResult
   | OAuthDeviceAuthExpiredResult
   | OAuthDeviceAuthErrorResult;
 
-type ConnectorAuthClientFor<T extends ConnectorAuthProviderType> = {
-  [Method in keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]]: (typeof CONNECTOR_TYPES)[T]["authMethods"][Method] extends {
-    readonly client: infer Client;
-    readonly grant: {
-      readonly kind: "auth-code" | "device-auth";
-    };
-  }
-    ? Client
-    : never;
-}[keyof (typeof CONNECTOR_TYPES)[T]["authMethods"]] &
-  ConnectorAuthClientConfig;
+export type OAuthDeviceAuthIncompleteResult = Exclude<
+  OAuthDeviceAuthPollResultBase,
+  OAuthDeviceAuthCompleteResultBase
+>;
 
-type NoClientCredentialArgs = Record<never, never>;
+export type OAuthDeviceAuthPollResult<
+  T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T>,
+> =
+  | OAuthDeviceAuthPendingResult
+  | OAuthDeviceAuthSlowDownResult
+  | OAuthDeviceAuthCompleteResult<T, Method>
+  | OAuthDeviceAuthDeniedResult
+  | OAuthDeviceAuthExpiredResult
+  | OAuthDeviceAuthErrorResult;
 
-type StaticClientIdArgs<Client extends ConnectorAuthClientConfig> =
-  Client extends { readonly clientRegistration: "static" }
-    ? { readonly clientId: string }
-    : NoClientCredentialArgs;
+type ConnectorAuthMethodClientArgs<
+  T extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<T>,
+> = {
+  readonly authClient: ConnectorAuthClientForMethod<T, Method>;
+};
 
-type TokenCredentialArgs<Client extends ConnectorAuthClientConfig> =
-  Client extends {
-    readonly clientRegistration: "static";
-    readonly clientType: "confidential";
-  }
-    ? { readonly clientId: string; readonly clientSecret: string }
-    : Client extends {
-          readonly clientRegistration: "static";
-          readonly clientType: "public";
-        }
-      ? { readonly clientId: string }
-      : NoClientCredentialArgs;
+type ConnectorAuthMethodClientIdentityArgs<
+  T extends ConnectorType,
+  Method extends ConnectorAuthMethodIds<T>,
+> = {
+  readonly authClient: ConnectorAuthClientIdentityForMethod<T, Method>;
+};
 
 export type ConnectorAuthCodeAuthorizeArgs<
-  T extends ConnectorAuthProviderType,
-> = OAuthAuthorizeFlowArgs & StaticClientIdArgs<ConnectorAuthClientFor<T>>;
+  T extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
+    ConnectorAuthCodeGrantAuthMethodId<T>,
+> = OAuthAuthorizeFlowArgs &
+  ConnectorAuthMethodClientIdentityArgs<T, Method> & {
+    readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
+  };
 
-export type ConnectorAuthCodeExchangeArgs<T extends ConnectorAuthProviderType> =
-  OAuthExchangeFlowArgs & TokenCredentialArgs<ConnectorAuthClientFor<T>>;
-
-export type ConnectorAuthProviderRefreshArgs<
-  T extends ConnectorAuthProviderType,
-> = OAuthRefreshFlowArgs & TokenCredentialArgs<ConnectorAuthClientFor<T>>;
+export type ConnectorAuthCodeExchangeArgs<
+  T extends AuthCodeGrantConnectorType,
+  Method extends ConnectorAuthCodeGrantAuthMethodId<T> =
+    ConnectorAuthCodeGrantAuthMethodId<T>,
+> = OAuthExchangeFlowArgs &
+  ConnectorAuthMethodClientArgs<T, Method> & {
+    readonly authCodeGrant: ConnectorAuthCodeGrantConfig;
+  };
 
 export type ConnectorAuthProviderRevokeArgs<
-  T extends ConnectorAuthProviderType,
-> = OAuthRevokeFlowArgs & TokenCredentialArgs<ConnectorAuthClientFor<T>>;
+  T extends TokenRevokeConnectorType,
+  Method extends ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke"> =
+    ConnectorAuthMethodIdsByRevokeKind<T, "token-revoke">,
+> = ConnectorAuthMethodClientArgs<T, Method> & {
+  readonly inputs: ConnectorRevokeInputValues<T, Method>;
+};
 
 export type ConnectorDeviceAuthorizationStartArgs<
   T extends DeviceAuthGrantConnectorType,
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
+    ConnectorDeviceAuthGrantAuthMethodId<T>,
 > = OAuthDeviceAuthStartFlowArgs &
-  StaticClientIdArgs<ConnectorAuthClientFor<T>>;
+  ConnectorAuthMethodClientIdentityArgs<T, Method>;
 
 export type ConnectorDeviceAuthorizationPollArgs<
   T extends DeviceAuthGrantConnectorType,
-> = OAuthDeviceAuthPollFlowArgs &
-  TokenCredentialArgs<ConnectorAuthClientFor<T>>;
+  Method extends ConnectorDeviceAuthGrantAuthMethodId<T> =
+    ConnectorDeviceAuthGrantAuthMethodId<T>,
+> = OAuthDeviceAuthPollFlowArgs & ConnectorAuthMethodClientArgs<T, Method>;
