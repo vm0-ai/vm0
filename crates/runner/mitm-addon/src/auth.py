@@ -20,6 +20,8 @@ from mitmproxy import ctx, http
 import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
+    MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    ForwardedRequestTooLargeError,
     forward_request,
     forwarded_request_header_pairs,
     header_pairs,
@@ -712,6 +714,39 @@ def _set_url_rewrite_forward_failed(
     )
 
 
+def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
+    body = flow.request.raw_content
+    return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
+
+
+def _set_auth_base_request_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    body = flow.request.raw_content
+    observed_size = len(body) if body is not None else 0
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base request body too large",
+        type="firewall",
+        firewall_base=firewall_base,
+        request_body_size_bytes=observed_size,
+        request_body_limit_bytes=MAX_AUTH_BASE_REQUEST_BODY_BYTES,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=413,
+        action="ALLOW",
+        error_code="auth_base_request_body_too_large",
+        message="auth.base request body too large",
+        permission=allow.name,
+    )
+
+
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -753,6 +788,14 @@ async def _apply_url_rewrite(
             req_body,
         )
         flow.response = http.Response.make(status, resp_body, resp_headers)
+    except ForwardedRequestTooLargeError:
+        _set_auth_base_request_too_large(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return False
     except Exception as e:
         _set_url_rewrite_forward_failed(
             flow,
@@ -831,6 +874,15 @@ async def handle_firewall_request(
     vars_map = vm_info.get("vars")
 
     firewall_billable = bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE])
+
+    if auth_base and _request_body_exceeds_auth_base_limit(flow):
+        _set_auth_base_request_too_large(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return
 
     if not encrypted_secrets:
         log_proxy_entry(

@@ -30,6 +30,7 @@ HOP_BY_HOP: frozenset[str] = frozenset(
     )
 )
 DEFAULT_HTTPS_PORT = 443
+MAX_AUTH_BASE_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
@@ -39,6 +40,10 @@ _forward_request_semaphore_state: tuple[asyncio.AbstractEventLoop, asyncio.Semap
 
 class ForwardedResponseTooLargeError(Exception):
     """Raised when an auth.base upstream response exceeds the local body cap."""
+
+
+class ForwardedRequestTooLargeError(Exception):
+    """Raised when an auth.base forwarded request body exceeds the local cap."""
 
 
 class UnsafeAuthBaseDestinationError(Exception):
@@ -248,6 +253,11 @@ def _read_response_body(resp) -> bytes:
     return body
 
 
+def _validate_request_body_size(body: bytes | None) -> None:
+    if body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES:
+        raise ForwardedRequestTooLargeError("Forwarded auth.base request body too large")
+
+
 def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(address, ipaddress.IPv6Address) and (
         address.ipv4_mapped is not None
@@ -292,6 +302,7 @@ def _forward_request_sync(
     Security: only https URLs are allowed, and redirects are returned
     to the sandbox client instead of being followed inside the addon.
     """
+    _validate_request_body_size(body)
     parsed = urllib.parse.urlsplit(url)
     conn_factory = _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
@@ -344,5 +355,6 @@ async def forward_request(
     body: bytes | None,
 ) -> tuple[int, bytes, http.Headers]:
     """Async wrapper for _forward_request_sync."""
+    _validate_request_body_size(body)
     async with _get_forward_request_semaphore():
         return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)

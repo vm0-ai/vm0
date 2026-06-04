@@ -622,6 +622,158 @@ class TestAuthBaseUrlRewriteEdgeCases:
 
         assert mock_forward.call_args[0][3] is None
 
+    async def test_forward_request_accepts_body_at_limit(self, real_flow, mitm_ctx, tmp_path):
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="POST",
+            request_body=b"1234",
+        )
+        get_headers = AsyncMock(return_value=token_meta)
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
+        with (
+            patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(auth, "get_firewall_headers", get_headers),
+            patch.object(auth, "forward_request", mock_forward),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert get_headers.await_count == 1
+        assert mock_forward.call_args[0][3] == b"1234"
+        assert flow.response is not None
+        assert flow.response.status_code == 200
+
+    async def test_oversized_request_body_returns_413_before_auth_resolution(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        request_body = b"super-secret-body"
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="POST",
+            request_body=request_body,
+            token_overrides={
+                "base": "https://real.example.com/webhook/super-secret-token",
+                "headers": {"Authorization": "Bearer real-token"},
+            },
+        )
+        get_headers = AsyncMock(return_value=token_meta)
+        mock_forward = AsyncMock()
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(auth, "get_firewall_headers", get_headers),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        get_headers.assert_not_called()
+        mock_forward.assert_not_called()
+        assert flow.response is not None
+        assert flow.response.status_code == 413
+        body = json.loads(flow.response.content)
+        assert body == {
+            "error": "auth_base_request_body_too_large",
+            "message": "auth.base request body too large",
+            "permission": allow.name,
+            "base": allow.api_entry["base"],
+        }
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_base_request_body_too_large"
+        assert "auth_url_rewrite" not in flow.metadata
+        assert "auth_resolved_secrets" not in flow.metadata
+        response_text = flow.response.text
+        assert "super-secret-body" not in response_text
+        assert "super-secret-token" not in response_text
+        assert "Bearer real-token" not in response_text
+        assert "iv:tag:data" not in response_text
+        assert mock_log.call_args is not None
+        _args, kwargs = mock_log.call_args
+        assert kwargs["firewall_base"] == allow.api_entry["base"]
+        assert kwargs["request_body_size_bytes"] == len(request_body)
+        assert kwargs["request_body_limit_bytes"] == 4
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-body" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "Bearer real-token" not in json.dumps(log_call.args)
+            assert "iv:tag:data" not in json.dumps(log_call.args)
+            assert "super-secret-body" not in json.dumps(log_call.kwargs)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
+            assert "Bearer real-token" not in json.dumps(log_call.kwargs)
+            assert "iv:tag:data" not in json.dumps(log_call.kwargs)
+
+    async def test_forward_request_too_large_error_returns_413(self, real_flow, mitm_ctx, tmp_path):
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="POST",
+            request_body=b"1234",
+            resolved_base="https://real.example.com/webhook/super-secret-token",
+            token_overrides={"headers": {"Authorization": "Bearer real-token"}},
+        )
+        mock_forward = AsyncMock(side_effect=forwarder.ForwardedRequestTooLargeError())
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 100),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert mock_forward.call_count == 1
+        assert flow.response is not None
+        assert flow.response.status_code == 413
+        body = json.loads(flow.response.content)
+        assert body["error"] == "auth_base_request_body_too_large"
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.metadata["firewall_error"] == "auth_base_request_body_too_large"
+        assert "auth_url_rewrite" not in flow.metadata
+        assert "url_rewrite_forward_failed" not in flow.response.text
+        assert "super-secret-token" not in flow.response.text
+        assert "Bearer real-token" not in flow.response.text
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "Bearer real-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
+            assert "Bearer real-token" not in json.dumps(log_call.kwargs)
+
+    async def test_non_auth_base_rule_does_not_use_auth_base_body_cap(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow, allow, vm_info, token_meta = make_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            method="POST",
+            request_body=b"12345",
+            auth_overrides={
+                "base": None,
+                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+            },
+            token_overrides={
+                "base": None,
+                "headers": {"Authorization": "Bearer real-token"},
+            },
+        )
+        get_headers = AsyncMock(return_value=token_meta)
+        with (
+            patch.object(auth, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(auth, "get_firewall_headers", get_headers),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert get_headers.await_count == 1
+        assert flow.response is None
+        assert flow.request.headers["Authorization"] == "Bearer real-token"
+        assert flow.metadata["firewall_action"] == "ALLOW"
+        assert "firewall_error" not in flow.metadata
+        assert "auth_url_rewrite" not in flow.metadata
+
     async def test_forward_failure_returns_502(self, headers, real_flow, mitm_ctx, tmp_path):
         """forward_request exception produces a 502 error response and marks
         firewall_error without falling through to the success-path metadata.

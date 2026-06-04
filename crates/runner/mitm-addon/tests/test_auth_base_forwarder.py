@@ -684,6 +684,41 @@ class TestAuthBaseForwarderResponseBodyLimit:
         upstream.conn.close.assert_called_once()
 
 
+class TestAuthBaseForwarderRequestBodyLimit:
+    def test_accepts_body_at_limit(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            _patched_forwarder_connection() as upstream,
+        ):
+            status, body, _headers = forwarder._forward_request_sync(
+                "https://example.com",
+                "POST",
+                [],
+                b"1234",
+            )
+
+        assert status == 200
+        assert body == b"ok"
+        upstream.conn.endheaders.assert_called_once_with(b"1234")
+
+    def test_rejects_body_over_limit_before_connection_setup(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            _patched_forwarder_connection() as upstream,
+            pytest.raises(forwarder.ForwardedRequestTooLargeError),
+        ):
+            forwarder._forward_request_sync(
+                "https://example.com",
+                "POST",
+                [],
+                b"12345",
+            )
+
+        upstream.resolver.assert_not_called()
+        upstream.connection_factory.assert_not_called()
+        upstream.conn.endheaders.assert_not_called()
+
+
 class TestAuthBaseForwarderResourceCleanup:
     def test_closes_response_on_success(self):
         with _patched_forwarder_connection(
@@ -750,6 +785,21 @@ class TestAuthBaseForwarderResourceCleanup:
 
 
 class TestForwardRequestAsyncWrapper:
+    async def test_rejects_body_over_limit_before_sync_forward(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(forwarder, "_forward_request_sync") as sync_forward,
+            pytest.raises(forwarder.ForwardedRequestTooLargeError),
+        ):
+            await forwarder.forward_request(
+                "https://example.com",
+                "POST",
+                [],
+                b"12345",
+            )
+
+        sync_forward.assert_not_called()
+
     async def test_releases_forward_slot_when_forwarding_raises(self):
         with (
             patch.object(forwarder, "MAX_CONCURRENT_AUTH_BASE_FORWARDS", 1),
