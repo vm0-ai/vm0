@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.98.2](https://github.com/vm0-ai/vm0/compare/api-v1.98.1...api-v1.98.2) (2026-06-04)
+
+
+### Bug Fixes
+
+* **api:** handle invalid memory frontmatter in summary cron ([#16045](https://github.com/vm0-ai/vm0/issues/16045)) ([b49ed30](https://github.com/vm0-ai/vm0/commit/b49ed3021c9097eea14a761870205c824920e863))
+
+
+### Refactoring
+
+* separate connector grant result types ([#16037](https://github.com/vm0-ai/vm0/issues/16037)) ([77a2994](https://github.com/vm0-ai/vm0/commit/77a2994cf5bd943b68df074aecc9c33c2865d6d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.2
+    * @vm0/connectors bumped to 1.45.3
+    * @vm0/core bumped to 8.309.5
+    * @vm0/db bumped to 1.28.3
+
 ## [1.98.1](https://github.com/vm0-ai/vm0/compare/api-v1.98.0...api-v1.98.1) (2026-06-03)
 
 

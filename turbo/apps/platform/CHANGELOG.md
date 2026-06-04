@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.407.1](https://github.com/vm0-ai/vm0/compare/app-v0.407.0...app-v0.407.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* contain memory markdown overflow ([#16041](https://github.com/vm0-ai/vm0/issues/16041)) ([5f56519](https://github.com/vm0-ai/vm0/commit/5f565197b5daa6393401c1d3f8a37ef4d88f2d3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.2
+    * @vm0/connectors bumped to 1.45.3
+    * @vm0/core bumped to 8.309.5
+
 ## [0.407.0](https://github.com/vm0-ai/vm0/compare/app-v0.406.1...app-v0.407.0) (2026-06-03)
 
 
