@@ -677,6 +677,19 @@ mod tests {
     }
 
     #[test]
+    fn full_block_write_does_not_read_base_block() {
+        let base = create_base_image(&[]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        cow.write(0, &vec![0xCC; 4096]).unwrap();
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xCC));
+    }
+
+    #[test]
     fn write_after_flush_overwrites_dirty_block() {
         let base = create_base_image(&vec![0x00; 4096]);
         let cow_file = NamedTempFile::new().unwrap();
