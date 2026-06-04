@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.409.0](https://github.com/vm0-ai/vm0/compare/app-v0.408.0...app-v0.409.0) (2026-06-04)
+
+
+### Features
+
+* route platform connector and slack-integration data to api backend ([#16120](https://github.com/vm0-ai/vm0/issues/16120)) ([414aeeb](https://github.com/vm0-ai/vm0/commit/414aeebdbe975bacb918da667c34b598b8321967))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.5
+    * @vm0/connectors bumped to 1.46.0
+    * @vm0/core bumped to 8.309.8
+
 ## [0.408.0](https://github.com/vm0-ai/vm0/compare/app-v0.407.3...app-v0.408.0) (2026-06-04)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.98.6](https://github.com/vm0-ai/vm0/compare/api-v1.98.5...api-v1.98.6) (2026-06-04)
+
+
+### Bug Fixes
+
+* **api:** ignore stale onboarding pending for paid orgs ([#16033](https://github.com/vm0-ai/vm0/issues/16033)) ([da7b043](https://github.com/vm0-ai/vm0/commit/da7b0432c913ed17410b785e9b8add336e314c02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.59.5
+    * @vm0/connectors bumped to 1.46.0
+    * @vm0/core bumped to 8.309.8
+    * @vm0/db bumped to 1.28.6
+
 ## [1.98.5](https://github.com/vm0-ai/vm0/compare/api-v1.98.4...api-v1.98.5) (2026-06-04)
 
 
