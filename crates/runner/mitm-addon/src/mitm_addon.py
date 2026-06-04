@@ -11,6 +11,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 6. Participates in runner-triggered usage drain before proxy shutdown
 """
 
+import asyncio
 import functools
 import json
 import signal
@@ -18,6 +19,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from collections.abc import Callable
 from pathlib import Path
 
 from mitmproxy import ctx, http, tcp, tls
@@ -67,6 +69,7 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
+_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
 # Network log size fields are consumed as JavaScript numbers downstream.
 _MAX_SAFE_NETWORK_LOG_SIZE = 9_007_199_254_740_991
@@ -630,6 +633,39 @@ def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 
+_WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
+
+
+def _call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
+    asyncio.get_running_loop().call_soon(callback, flow)
+
+
+def _is_model_websocket_usage_flow(flow: http.HTTPFlow) -> bool:
+    return bool(flow.websocket and response_streaming.is_model_websocket_usage_enabled(flow))
+
+
+def _trim_model_websocket_messages(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
+    if not _is_model_websocket_usage_flow(flow):
+        return
+    if not flow.websocket or not flow.websocket.messages:
+        return
+    flow.websocket.messages[:] = flow.websocket.messages[-1:]
+
+
+def _clear_model_websocket_messages(flow: http.HTTPFlow) -> None:
+    flow.metadata.pop(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, None)
+    if _is_model_websocket_usage_flow(flow) and flow.websocket:
+        flow.websocket.messages.clear()
+
+
+def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
+    if flow.metadata.get(_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED, False):
+        return
+    flow.metadata[_MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED] = True
+    _call_soon(_trim_model_websocket_messages, flow)
+
+
 # ============================================================================
 # HTTP Response Handlers
 # ============================================================================
@@ -646,11 +682,15 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         return
     if not flow.metadata.get(metadata_keys.VM_RUN_ID, ""):
         return
+    if not response_streaming.is_model_websocket_usage_enabled(flow):
+        return
 
     message = flow.websocket.messages[-1]
     if getattr(message, "from_client", False):
+        _schedule_model_websocket_message_trim(flow)
         return
     response_streaming.feed_model_websocket_usage(flow, message.content)
+    _schedule_model_websocket_message_trim(flow)
 
 
 def _response_size(flow: http.HTTPFlow) -> int:
@@ -715,6 +755,8 @@ def _single_content_length_response_size(content_length: str, start: int, end: i
 
 
 def _release_usage_hook_state(flow: http.HTTPFlow, *, release_tracking: bool) -> None:
+    if release_tracking:
+        _clear_model_websocket_messages(flow)
     response_streaming.release_response_stream_state(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)

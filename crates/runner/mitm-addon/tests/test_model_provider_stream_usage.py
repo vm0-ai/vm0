@@ -17,6 +17,9 @@ import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.pending_helpers import assert_pending
 
+_WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
+_ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
+
 
 def _openai_model_websocket_flow(
     tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
@@ -82,21 +85,80 @@ def _openai_responses_sse_flow(
     )
 
 
+@pytest.fixture(autouse=True)
+def deferred_websocket_trim_scheduler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[_ScheduledWebSocketTrim]:
+    scheduled: list[_ScheduledWebSocketTrim] = []
+
+    def call_soon(callback: _WebSocketTrimCallback, flow: http.HTTPFlow) -> None:
+        scheduled.append((callback, flow))
+
+    monkeypatch.setattr(mitm_addon, "_call_soon", call_soon)
+    return scheduled
+
+
+def _run_deferred_websocket_trims(scheduled: list[_ScheduledWebSocketTrim]) -> None:
+    pending = list(scheduled)
+    scheduled.clear()
+    for callback, flow in pending:
+        callback(flow)
+
+
+def _make_websocket_message(
+    *,
+    from_client: bool,
+    content: bytes,
+) -> websocket.WebSocketMessage:
+    return websocket.WebSocketMessage(
+        Opcode.TEXT,
+        from_client=from_client,
+        content=content,
+    )
+
+
+def _append_websocket_message(
+    flow: http.HTTPFlow,
+    *,
+    from_client: bool,
+    content: bytes,
+) -> websocket.WebSocketMessage:
+    message = _make_websocket_message(from_client=from_client, content=content)
+    websocket_data = flow.websocket
+    if websocket_data is None:
+        websocket_data = websocket.WebSocketData(messages=[])
+        flow.websocket = websocket_data
+    websocket_data.messages.append(message)
+    return message
+
+
+def _openai_websocket_usage_frame(
+    response_id: str,
+    *,
+    input_tokens: int = 10,
+    output_tokens: int = 4,
+    model: str = "gpt-5.5",
+) -> bytes:
+    return json.dumps(
+        {
+            "type": "response.completed",
+            "response": {
+                "id": response_id,
+                "model": model,
+                "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+            },
+        }
+    ).encode()
+
+
 def _set_websocket_message(
     flow: http.HTTPFlow,
     *,
     from_client: bool,
     content: bytes,
 ) -> None:
-    flow.websocket = websocket.WebSocketData(
-        messages=[
-            websocket.WebSocketMessage(
-                Opcode.TEXT,
-                from_client=from_client,
-                content=content,
-            )
-        ]
-    )
+    flow.websocket = websocket.WebSocketData(messages=[])
+    _append_websocket_message(flow, from_client=from_client, content=content)
 
 
 def _feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:
@@ -601,6 +663,175 @@ class TestModelProviderStreamUsage:
 
         assert webhook.request_count == 0
         assert flow.metadata["model_provider_usage"] == {}
+
+    def test_model_websocket_deferred_trim_keeps_latest_server_message(
+        self,
+        tmp_path,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        old_client = _append_websocket_message(flow, from_client=True, content=b"client-old")
+        old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
+        latest_server = _append_websocket_message(
+            flow,
+            from_client=False,
+            content=_openai_websocket_usage_frame("resp_ws_latest"),
+        )
+        assert flow.websocket is not None
+        messages = flow.websocket.messages
+
+        mitm_addon.websocket_message(flow)
+
+        assert messages == [old_client, old_server, latest_server]
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_latest",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+
+        assert flow.websocket.messages is messages
+        assert flow.websocket.messages == [latest_server]
+
+    def test_model_websocket_deferred_trim_keeps_latest_client_message(
+        self,
+        tmp_path,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        old_server = _append_websocket_message(flow, from_client=False, content=b"server-old")
+        latest_client = _append_websocket_message(
+            flow,
+            from_client=True,
+            content=_openai_websocket_usage_frame("resp_ws_client"),
+        )
+
+        mitm_addon.websocket_message(flow)
+
+        assert flow.metadata["model_provider_usage"] == {}
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+
+        assert flow.websocket is not None
+        assert flow.websocket.messages == [latest_client]
+        assert old_server not in flow.websocket.messages
+
+    def test_model_websocket_deferred_trim_coalesces_and_keeps_latest_at_callback(
+        self,
+        tmp_path,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        first_server = _append_websocket_message(
+            flow,
+            from_client=False,
+            content=_openai_websocket_usage_frame(
+                "resp_ws_first",
+                input_tokens=1,
+                output_tokens=1,
+            ),
+        )
+        mitm_addon.websocket_message(flow)
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        latest_server = _append_websocket_message(
+            flow,
+            from_client=False,
+            content=_openai_websocket_usage_frame("resp_ws_latest"),
+        )
+        mitm_addon.websocket_message(flow)
+
+        assert len(deferred_websocket_trim_scheduler) == 1
+        assert flow.websocket is not None
+        assert flow.websocket.messages == [first_server, latest_server]
+
+        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+
+        assert flow.websocket.messages == [latest_server]
+        assert flow.metadata["model_provider_usage"] == {
+            "message_id": "resp_ws_latest",
+            "model": "gpt-5.5",
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+
+    def test_non_model_websocket_message_retention_is_unchanged(
+        self,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
+    ):
+        flow = real_flow(with_response=False, host="example.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        first = _append_websocket_message(flow, from_client=True, content=b"client")
+        second = _append_websocket_message(flow, from_client=False, content=b"server")
+
+        mitm_addon.websocket_message(flow)
+
+        assert deferred_websocket_trim_scheduler == []
+        assert flow.websocket is not None
+        assert flow.websocket.messages == [first, second]
+
+    def test_model_websocket_end_clears_final_retained_message(
+        self,
+        tmp_path,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        _append_websocket_message(
+            flow,
+            from_client=False,
+            content=_openai_websocket_usage_frame("resp_ws_1"),
+        )
+        mitm_addon.websocket_message(flow)
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        webhook = self._run_websocket_end(flow)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        assert flow.websocket is not None
+        assert flow.websocket.messages == []
+
+        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+        assert flow.websocket.messages == []
+
+    def test_model_websocket_error_clears_final_retained_message(
+        self,
+        tmp_path,
+        real_flow,
+        deferred_websocket_trim_scheduler: list[_ScheduledWebSocketTrim],
+    ):
+        flow = _openai_model_websocket_flow(tmp_path, real_flow)
+        flow.error = Error("connection reset by peer")
+        _append_websocket_message(
+            flow,
+            from_client=False,
+            content=_openai_websocket_usage_frame("resp_ws_1"),
+        )
+        mitm_addon.websocket_message(flow)
+        assert len(deferred_websocket_trim_scheduler) == 1
+
+        webhook = self._run_error(flow)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 10,
+            "tokens.output": 4,
+        }
+        assert flow.websocket is not None
+        assert flow.websocket.messages == []
+
+        _run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
+        assert flow.websocket.messages == []
 
 
 class TestModelProviderWebSocketUsageMetadata:
